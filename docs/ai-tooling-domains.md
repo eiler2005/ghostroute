@@ -1,153 +1,144 @@
-# AI Tooling Domains
+# Domain Families Reference: AI & Dev Tools
 
-## Зачем нужен этот документ
+This document explains which domains each service uses and why they need to be routed through VPN. Useful when diagnosing issues or adding similar services.
 
-Здесь собраны доменные семейства для инструментов разработки и AI-сервисов, которые имеет смысл отправлять через VPN в вашем рабочем сценарии.
+All domains listed here are included in `configs/dnsmasq.conf.add` (ipset rules) and `configs/dnsmasq-vpn-upstream.conf.add` (VPN DNS upstream).
 
-## Уже включено в конфиг
+---
 
-Все перечисленные ниже домены не только маршрутизируются через `WGC1`, но и резолвятся через публичные DNS `1.1.1.1` и `9.9.9.9`, отправленные через `wgc1`. Это уменьшает риск, что сервис получит локализованные ответы от DNS провайдера.
+## How subdomain coverage works
 
-### GitHub / GitHub CLI
+A single `ipset=/github.com/VPN_DOMAINS` rule covers `github.com` **and all its subdomains** (`*.github.com`). You don't need to enumerate subdomains manually — dnsmasq handles this automatically.
 
-- `github.com`
-- `api.github.com`
-- `githubstatus.com`
-- `raw.githubusercontent.com`
-- `objects.githubusercontent.com`
-- `githubusercontent.com`
-- `codeload.github.com`
+Each service below lists only the **registrable domains** needed, not individual subdomains.
 
-Что это покрывает:
+---
 
-- browser device-flow через `https://github.com/login/device`
-- OAuth endpoints `https://github.com/login/oauth/*`
-- GitHub CLI проверки аккаунта и API-вызовы через `api.github.com`
-- HTTPS git-операции к `github.com`
-- status page `githubstatus.com`, которая фигурирует в ошибках GitHub CLI
-- raw-файлы, release assets и архивы репозиториев
+## GitHub
 
-### GitLab / Bitbucket / Azure DevOps
+```
+github.com          — web, git operations, OAuth, device flow
+api.github.com      — REST/GraphQL API, GitHub CLI
+githubstatus.com    — status page (appears in GitHub CLI errors)
+githubusercontent.com     — raw files, release assets
+raw.githubusercontent.com    — direct raw file access
+objects.githubusercontent.com — LFS, release binary downloads
+codeload.github.com — repository archive downloads (zip/tar.gz)
+```
 
-- `gitlab.com`
-- `gitlab-static.net`
-- `bitbucket.org`
-- `dev.azure.com`
-- `visualstudio.com`
+**Why separate `api.github.com`?** GitHub CLI uses `api.github.com` for all API calls. Without it, `gh` commands fail even if the web UI works.
 
-Что это покрывает:
+---
 
-- GitLab web и git-операции
-- GitLab static assets для web UI
-- Bitbucket Cloud web и git-операции
-- Azure DevOps repos и legacy Visual Studio Team Services URLs
+## GitLab / Bitbucket / Azure DevOps
 
-### OpenAI / Codex / ChatGPT
+```
+gitlab.com          — web, git operations
+gitlab-static.net   — GitLab web UI static assets (CSS, JS, images)
+bitbucket.org       — Bitbucket Cloud web and git operations
+dev.azure.com       — Azure DevOps repos and pipelines
+visualstudio.com    — legacy VSTS URLs, still used by some Azure DevOps links
+```
 
-- `chatgpt.com`
-- `openai.com`
-- `oaistatic.com`
-- `oaiusercontent.com`
+---
 
-Что это покрывает:
+## Anthropic / Claude
 
-- ChatGPT web
-- OpenAI auth
-- OpenAI platform и API-соседние хосты под `*.openai.com`
-- статические и контентные домены OpenAI
+```
+anthropic.com   — API (api.anthropic.com), console, docs
+claude.ai       — Claude web app
+claude.com      — claude.com redirect and assets
+```
 
-### Anthropic / Claude / Claude Code
+All subdomains of each domain are covered automatically.
 
-- `anthropic.com`
-- `claude.ai`
-- `claude.com`
+---
 
-Что это покрывает:
+## OpenAI / ChatGPT
 
-- `api.anthropic.com`
-- `console.anthropic.com`
-- `claude.ai`
-- `claude.com`
-- связанные поддомены `*.anthropic.com`, `*.claude.ai`, `*.claude.com`
+```
+openai.com        — API (api.openai.com), platform, auth
+chatgpt.com       — ChatGPT web app
+oaistatic.com     — OpenAI static assets and CDN
+oaiusercontent.com — user-uploaded content (images in chats, file uploads)
+```
 
-### Google AI Studio / NotebookLM / Gemini API
+---
 
-- `aistudio.google.com`
-- `notebooklm.google.com`
-- `ai.google.dev`
-- `generativelanguage.googleapis.com`
-- `google.com`
+## Google AI Studio / Gemini API / NotebookLM
 
-Что это покрывает:
+```
+google.com                          — Google sign-in, base domain
+aistudio.google.com                 — AI Studio web app
+notebooklm.google.com               — NotebookLM web app
+ai.google.dev                       — Google AI developer docs and tools
+generativelanguage.googleapis.com   — Gemini API endpoint
+```
 
-- Google AI Studio web
-- NotebookLM web
-- документацию и web-хосты Google AI Developers
-- Gemini API через `generativelanguage.googleapis.com`
-- Google sign-in и связанные `*.google.com` поддомены
+**Note**: `aistudio.google.com` and `notebooklm.google.com` are subdomains of `google.com`, so technically covered by the `google.com` rule. They are listed separately in the config for explicitness. `generativelanguage.googleapis.com` requires its own rule because `google.com` does not cover `googleapis.com`.
 
-Важно:
+---
 
-- `aistudio.google.com` и `notebooklm.google.com` уже попадают под правило `google.com`, но записаны отдельно для читаемости.
-- `generativelanguage.googleapis.com` добавлен отдельно, потому что `google.com` не покрывает `googleapis.com`.
+## YouTube
 
-## Уже включено для смежных сервисов
+```
+youtube.com             — main site
+youtu.be                — short URL redirects
+googlevideo.com         — video stream delivery (primary CDN)
+ytimg.com               — thumbnails, images, UI assets
+ggpht.com               — legacy image CDN (still used for some thumbnails)
+youtubei.googleapis.com — YouTube internal API (used by the player)
+```
 
-- `google.com`
-- `youtube.com`
-- `youtu.be`
-- `googlevideo.com`
-- `ytimg.com`
-- `ggpht.com`
-- `youtubei.googleapis.com`
+**Why so many domains?** YouTube's video delivery is split across several CDNs. Without `googlevideo.com`, the page loads but videos won't play. Without `youtubei.googleapis.com`, the player won't initialize in some clients.
 
-Это полезно, если AI-сервисы используют Google sign-in, Google-hosted media, YouTube-ссылки или встроенные preview.
+---
 
-## Что пока не включено
+## Telegram
 
-Ниже кандидаты, которые можно добавить позже, если появится реальная проблема:
+Telegram is a special case — see [telegram-deep-dive.md](telegram-deep-dive.md) for full details.
 
-### VS Code / Marketplace
+**Domain routing:**
+```
+telegram.org / telegram.com / t.me / telegram.me
+telegra.ph / telesco.pe / tg.dev
+cdn-telegram.org / telegram-cdn.org
+fragment.com / graph.org / contest.com / comments.app
+usercontent.dev / tdesktop.com
+```
 
-- `marketplace.visualstudio.com`
-- `gallery.vsassets.io`
-- `gallerycdn.vsassets.io`
-- `update.code.visualstudio.com`
-- `vscode.dev`
+**Static IP routing** (Telegram uses direct IP connections, bypassing DNS):  
+ASN-based CIDR ranges in `configs/static-networks.txt` → `VPN_STATIC_NETS` ipset.
 
-## Рекомендуемый минимальный набор для вашей работы
+---
 
-Если смотреть именно на ваш текущий стек `VS Code + Codex/OpenAI + Claude Code + Google AI tools`, то уже включённый минимум выглядит так:
+## Smithery (MCP Registry)
 
-- `chatgpt.com`
-- `openai.com`
-- `oaistatic.com`
-- `oaiusercontent.com`
-- `anthropic.com`
-- `claude.ai`
-- `claude.com`
-- `aistudio.google.com`
-- `notebooklm.google.com`
-- `ai.google.dev`
-- `generativelanguage.googleapis.com`
-- `google.com`
-- `github.com`
-- `api.github.com`
-- `githubstatus.com`
-- `raw.githubusercontent.com`
-- `objects.githubusercontent.com`
-- `githubusercontent.com`
-- `codeload.github.com`
-- `gitlab.com`
-- `gitlab-static.net`
-- `bitbucket.org`
-- `dev.azure.com`
-- `visualstudio.com`
+```
+smithery.ai — MCP (Model Context Protocol) server registry
+```
 
-## Когда имеет смысл что-то добавлять ещё
+Smithery is the main registry for Claude MCP servers — discovery and installation happen through `smithery.ai`.
 
-Добавлять новый домен имеет смысл только если:
+---
 
-1. Сервис открывается частично, но не работает полностью.
-2. На роутере видно, что нужные хосты не попали в `VPN_DOMAINS`.
-3. Домен относится к тому же сервису, а не является слишком широким “общим интернетом”.
+## Adding a New Service
+
+When a service doesn't work after adding its main domain, diagnose with:
+
+```bash
+# Check dnsmasq log for what domains the service queries
+tail -f /opt/var/log/dnsmasq.log | grep 'query\[A\]'
+
+# Then check if those IPs made it into the ipset
+ipset list VPN_DOMAINS | grep <IP>
+
+# Check if traffic is actually routed via VPN
+ip route get <IP> mark 0x1000
+```
+
+Common patterns:
+- **App loads but content fails** → missing CDN domain (check for `*.cdn-*` or `*.static.*` queries)
+- **Auth fails** → missing auth subdomain (often `accounts.`, `auth.`, or `sso.` + main domain)
+- **API works, web UI fails** → missing static asset CDN (often a separate domain like `oaistatic.com`)
+- **DNS resolves but connection fails** → service may be blocked at IP level, not DNS → check if service needs static IP routing

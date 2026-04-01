@@ -1,5 +1,11 @@
 # Smart Domain-Based VPN Routing for ASUS Router
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Router-ASUS%20Asuswrt--Merlin-blue)](https://github.com/RMerl/asuswrt-merlin.ng)
+[![VPN](https://img.shields.io/badge/VPN-WireGuard-88171A)](https://www.wireguard.com/)
+[![Shell](https://img.shields.io/badge/Shell-POSIX%20sh%20%2F%20BusyBox-4EAA25)](https://www.busybox.net/)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
+
 > Transparent, domain-aware VPN routing system for ASUS routers running Asuswrt-Merlin. Routes selected services through WireGuard while keeping everything else direct — fully automated, idempotent deployment, with smart domain auto-discovery.
 
 **[Русская версия / Russian version →](README-ru.md)**
@@ -274,7 +280,7 @@ The auto-discovery filter also took a deliberate approach: instead of trying to 
 
 ## License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2025 Denis Ermilov
 
 ---
 
