@@ -1,5 +1,5 @@
 #!/bin/sh
-# Automatic domain routing — runs every 4 hours via cron.
+# Automatic domain routing — runs every hour via cron.
 #
 # For each domain queried >= MIN_COUNT times in the dnsmasq log:
 #   - Adds ipset + server entries to dnsmasq-autodiscovered.conf.add

@@ -4,12 +4,12 @@
 cru d SaveIPSet 2>/dev/null
 cru a SaveIPSet "0 */6 * * * /jffs/scripts/cron-save-ipset"
 
-# Domain auto-routing: add newly discovered blocked domains to VPN.
+# Domain auto-routing: add newly discovered blocked domains to VPN (every hour).
 # Requires dnsmasq logging (enabled by default) and Entware on USB.
 cru d DomainCollect 2>/dev/null
 cru d DomainAutoAdd 2>/dev/null
 [ -x /jffs/addons/x3mRouting/domain-auto-add.sh ] && \
-  cru a DomainAutoAdd "0 */4 * * * /jffs/addons/x3mRouting/domain-auto-add.sh"
+  cru a DomainAutoAdd "0 * * * * /jffs/addons/x3mRouting/domain-auto-add.sh"
 
 # Update blocked domains list from antifilter.download (daily at 5:00 AM).
 # Used by domain-auto-add.sh to filter: only blocked domains get VPN-routed.

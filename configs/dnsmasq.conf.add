@@ -83,3 +83,6 @@ ipset=/wa.me/VPN_DOMAINS
 ipset=/openai.com/VPN_DOMAINS
 ipset=/oaistatic.com/VPN_DOMAINS
 ipset=/oaiusercontent.com/VPN_DOMAINS
+
+# Load auto-discovered domains (written by domain-auto-add.sh every 4h)
+conf-file=/jffs/configs/dnsmasq-autodiscovered.conf.add
