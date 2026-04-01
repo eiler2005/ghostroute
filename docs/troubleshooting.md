@@ -173,6 +173,32 @@ ip route get 1.1.1.1
 - **DNS upstream не настроен для этого домена** — проверьте `dnsmasq-vpn-upstream.conf.add`
 - **DNS-кэш устройства** — устройство кэширует старый ответ; очистите кэш или подождите TTL
 
+## Авто-добавленные домены есть в файле, но не работают
+
+### Симптом
+
+`domain-report --all` показывает домены, но трафик к ним не идёт через VPN — `nslookup` не добавляет IP в ipset.
+
+### Причина
+
+Merlin автоматически подключает к dnsmasq **только** `/jffs/configs/dnsmasq.conf.add`. Файл `dnsmasq-autodiscovered.conf.add` должен загружаться явной директивой `conf-file=` в конце основного конфига. Если этой строки нет — все авто-добавленные ipset/server правила молча игнорируются.
+
+### Диагностика
+
+```bash
+# Проверить, что директива есть в основном конфиге на роутере
+grep "conf-file.*autodiscovered" /etc/dnsmasq.conf
+
+# Ожидаем:
+# conf-file=/jffs/configs/dnsmasq-autodiscovered.conf.add
+```
+
+### Решение
+
+Если строки нет — запустите `./deploy.sh`. Начиная с текущей версии `configs/dnsmasq.conf.add` содержит эту директиву в конце файла.
+
+---
+
 ## Авто-добавленный домен не работает или добавился лишний
 
 ### Симптом
@@ -190,7 +216,7 @@ ip route get 1.1.1.1
 
 # Проверить cron-задачу на роутере
 cru l | grep DomainAutoAdd
-# Ожидаем: 0 */4 * * * /jffs/addons/x3mRouting/domain-auto-add.sh
+# Ожидаем: 0 * * * * /jffs/addons/x3mRouting/domain-auto-add.sh
 
 # Посмотреть содержимое файла авто-добавленных доменов (через SSH)
 cat /jffs/configs/dnsmasq-autodiscovered.conf.add

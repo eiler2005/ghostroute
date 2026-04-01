@@ -85,7 +85,7 @@ ls /opt/bin  # утилиты Entware
 После установки Entware и деплоя с `ENABLE_DNSMASQ_LOGGING=1`:
 
 - DNS-лог пишется в `/opt/var/log/dnsmasq.log`
-- `domain-auto-add.sh` каждые 4 часа автоматически добавляет новые домены в VPN
+- `domain-auto-add.sh` каждый час автоматически добавляет новые домены в VPN
 - ipset-состояние хранится на USB (`/opt/tmp/VPN_DOMAINS.ipset`) — меньше износ JFFS
 
 Подробности: [x3mrouting-roadmap.md](x3mrouting-roadmap.md)

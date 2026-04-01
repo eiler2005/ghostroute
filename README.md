@@ -30,7 +30,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 
 - **Domain + subdomain routing** — `ipset=/youtube.com/VPN_DOMAINS` covers the domain and every subdomain automatically
 - **DNS geo-alignment** — VPN-routed domains are resolved via Cloudflare/Quad9 *over the VPN tunnel*, so IPs are geographically correct for the exit node, not ISP-localized
-- **Auto-discovery** — parses DNS logs every 4 hours and adds newly-seen blocked domains to VPN routing automatically
+- **Auto-discovery** — parses DNS logs every hour and adds newly-seen blocked domains to VPN routing automatically
 - **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates (logged but not added)
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
@@ -68,7 +68,7 @@ Device (iPhone / PC)
 ```
 /opt/var/log/dnsmasq.log   ←  all DNS queries (rotated daily)
           │
-          │  domain-auto-add.sh  (cron, every 4 hours)
+          │  domain-auto-add.sh  (cron, every hour)
           ▼
     Extract unique domains
           │
@@ -259,7 +259,7 @@ wg show wgc1
 | dnsmasq + ipset + iptables + ip rule pipeline | Running |
 | WireGuard client wgc1 | Connected (handshake every 20s) |
 | Telegram domain + IP subnet routing | Active |
-| Auto-discovery (every 4h) | Active |
+| Auto-discovery (every 1h) | Active |
 | Blocked-list filter (antifilter.download) | Active, ~500 curated entries |
 | ipset persistence on USB | Active (saves every 6h) |
 | Idempotent deploy | Tested |

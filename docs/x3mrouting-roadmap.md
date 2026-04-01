@@ -10,7 +10,7 @@ Domain discovery — автоматический и ручной процесс
 
 ### Режим 1: Автоматический (основной)
 
-Скрипт `domain-auto-add.sh` запускается каждые 4 часа через cron и автоматически добавляет новые домены в VPN:
+Скрипт `domain-auto-add.sh` запускается каждый час через cron и автоматически добавляет новые домены в VPN:
 
 ```
 dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsmasq restart
@@ -176,7 +176,7 @@ x3mRouting умеет строить полный routing pipeline (ipset → ip
 | Лог активности | `/opt/var/log/domain-activity.log` |
 | getdomainnames.sh | `/jffs/addons/x3mRouting/getdomainnames.sh` |
 | autoscan.sh | `/jffs/addons/x3mRouting/prior_prior/prior/prior/prior/prior/prior/prior/prior/prior/autoscan.sh` |
-| Cron: auto-discovery | `0 */4 * * *` (DomainAutoAdd) |
+| Cron: auto-discovery | `0 * * * *` (DomainAutoAdd) |
 | Cron: обновление списка блокировок | `0 5 * * *` (UpdateBlockedList) |
 
 ## Источники

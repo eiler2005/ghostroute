@@ -111,7 +111,7 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 
 1. Запускается `nat-start` — добавляет `ip rule` для DNS и fwmark.
 2. Запускается `firewall-start` — создаёт ipset'ы, загружает статические сети, настраивает iptables.
-3. Запускается `services-start` — добавляет cron-задачи: сохранение ipset (каждые 6ч) и domain auto-add (каждые 4ч).
+3. Запускается `services-start` — добавляет cron-задачи: сохранение ipset (каждые 6ч) и domain auto-add (каждый час).
 4. Перезапускается `dnsmasq` — подхватывает новые правила из `/jffs/configs/dnsmasq.conf.add`.
 
 ## Персистентность ipset
@@ -131,10 +131,10 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 ```
   dnsmasq.log (DNS-запросы)
          │
-         │ domain-auto-add.sh (cron, каждые 4 часа)
+         │ domain-auto-add.sh (cron, каждый час)
          ▼
   dnsmasq-autodiscovered.conf.add   ← автоматически найденные домены
-         │
+         │                            (загружается через conf-file= в dnsmasq.conf.add)
          │ dnsmasq restart
          ▼
       dnsmasq → ipset → iptables → ip rule → WGC1  (routing engine)
@@ -142,7 +142,7 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 
 ### Как работает auto-discovery
 
-Скрипт `domain-auto-add.sh` запускается каждые 4 часа через cron (`services-start` → `cru a DomainAutoAdd`):
+Скрипт `domain-auto-add.sh` запускается каждый час через cron (`services-start` → `cru a DomainAutoAdd`):
 
 1. Парсит `/opt/var/log/dnsmasq.log` — извлекает уникальные домены
 2. Фильтрует: системные домены, CDN-инфраструктуру, российские TLD, домены из `domains-no-vpn.txt`, уже добавленные
@@ -165,7 +165,7 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 | Ручные домены | `/jffs/configs/dnsmasq.conf.add` | `deploy.sh` (managed blocks) |
 | Авто-добавленные | `/jffs/configs/dnsmasq-autodiscovered.conf.add` | `domain-auto-add.sh` (cron) |
 
-Merlin автоматически подключает оба файла с суффиксом `.conf.add` к dnsmasq.
+**Важно:** Merlin автоматически подключает к dnsmasq только `dnsmasq.conf.add`. Файл `dnsmasq-autodiscovered.conf.add` загружается явной директивой `conf-file=` в конце `dnsmasq.conf.add`.
 
 ### Утилиты x3mRouting
 
