@@ -40,7 +40,11 @@
 
 ### Путь 2: Статический (static-networks.txt)
 
-Для сервисов, которые используют прямые IP-подключения (Telegram), одних доменов недостаточно. Для них используется отдельный ipset `VPN_STATIC_NETS` типа `hash:net`.
+Для сервисов, которые используют прямые IP-подключения (Telegram, Apple Podcasts), одних доменов недостаточно. Для них используется отдельный ipset `VPN_STATIC_NETS` типа `hash:net`.
+
+Примеры:
+- **Telegram** — клиент подключается напрямую к IP-диапазонам, минуя DNS
+- **Apple (17.0.0.0/8)** — iPhone устанавливает соединение с Apple-серверами (`bag.itunes.apple.com`, `amp-api`, `entitlements`) раньше, чем DNS-запрос успевает заполнить ipset. Весь блок 17.0.0.0/8 принадлежит исключительно Apple Inc. (ARIN whois).
 
 1. При запуске `firewall-start` загружает CIDR-блоки из файла `static-networks.txt`.
 2. Блоки добавляются в `VPN_STATIC_NETS`.

@@ -71,11 +71,18 @@ ipset=/fb.com/VPN_DOMAINS
 ipset=/messenger.com/VPN_DOMAINS
 # Apple Podcasts
 ipset=/podcasts.apple.com/VPN_DOMAINS
+ipset=/apps.apple.com/VPN_DOMAINS
 ipset=/mzstatic.com/VPN_DOMAINS
 ipset=/itunes.apple.com/VPN_DOMAINS
 ipset=/aaplimg.com/VPN_DOMAINS
 ipset=/media.apple.com/VPN_DOMAINS
 ipset=/icloud-content.com/VPN_DOMAINS
+ipset=/acast.com/VPN_DOMAINS
+ipset=/acast.cloud/VPN_DOMAINS
+ipset=/omny.fm/VPN_DOMAINS
+ipset=/tritondigital.com/VPN_DOMAINS
+ipset=/podtrac.com/VPN_DOMAINS
+ipset=/pscrb.fm/VPN_DOMAINS
 # Smithery (MCP registry)
 ipset=/smithery.ai/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS

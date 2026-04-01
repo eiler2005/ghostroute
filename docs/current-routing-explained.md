@@ -81,6 +81,19 @@
 - `cdninstagram.com`
 - `fbcdn.net`
 - `fbsbx.com`
+- `podcasts.apple.com`
+- `apps.apple.com`
+- `mzstatic.com`
+- `itunes.apple.com`
+- `aaplimg.com`
+- `media.apple.com`
+- `icloud-content.com`
+- `acast.com`
+- `acast.cloud`
+- `omny.fm`
+- `tritondigital.com`
+- `podtrac.com`
+- `pscrb.fm`
 - `openai.com`
 - `oaistatic.com`
 - `oaiusercontent.com`
@@ -257,6 +270,25 @@ ipset=/youtube.com/VPN_DOMAINS
   изображения и media-хосты Google/YouTube
 - `youtubei.googleapis.com`
   API-вызовы YouTube-клиентов
+
+### Apple Podcasts
+
+- `podcasts.apple.com`
+  витрина Apple Podcasts и связанные `*.podcasts.apple.com` API-хосты
+- `apps.apple.com`
+  App Store / AMP API-хосты Apple (`amp-api*.apps.apple.com`), которые iPhone использует для контента и дополнительных app features
+- `itunes.apple.com`
+  bag/auth/playback/entitlements-хосты Apple и любые будущие `*.itunes.apple.com`
+- `mzstatic.com`
+  статика, обложки и часть контент-ассетов Apple
+- `aaplimg.com`
+  CNAME-целевые хосты Apple, на которые часто указывают `*.apple.com` и `*.itunes.apple.com`
+- `media.apple.com`
+  дополнительные media/API-хосты Apple
+- `icloud-content.com`
+  контентные хосты Apple, встречающиеся в media/download сценариях
+- `acast.com`, `acast.cloud`, `omny.fm`, `tritondigital.com`, `podtrac.com`, `pscrb.fm`
+  внешние подкастовые CDN, redirect и measurement-хосты, которые Apple Podcasts использует уже на этапе реального получения эпизода
 
 Важно:
 для YouTube не существует маленького “одного домена”.

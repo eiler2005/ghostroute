@@ -168,6 +168,8 @@ server=/messenger.com/9.9.9.9@wgc1
 # Apple Podcasts
 server=/podcasts.apple.com/1.1.1.1@wgc1
 server=/podcasts.apple.com/9.9.9.9@wgc1
+server=/apps.apple.com/1.1.1.1@wgc1
+server=/apps.apple.com/9.9.9.9@wgc1
 server=/mzstatic.com/1.1.1.1@wgc1
 server=/mzstatic.com/9.9.9.9@wgc1
 server=/itunes.apple.com/1.1.1.1@wgc1
@@ -178,6 +180,18 @@ server=/media.apple.com/1.1.1.1@wgc1
 server=/media.apple.com/9.9.9.9@wgc1
 server=/icloud-content.com/1.1.1.1@wgc1
 server=/icloud-content.com/9.9.9.9@wgc1
+server=/acast.com/1.1.1.1@wgc1
+server=/acast.com/9.9.9.9@wgc1
+server=/acast.cloud/1.1.1.1@wgc1
+server=/acast.cloud/9.9.9.9@wgc1
+server=/omny.fm/1.1.1.1@wgc1
+server=/omny.fm/9.9.9.9@wgc1
+server=/tritondigital.com/1.1.1.1@wgc1
+server=/tritondigital.com/9.9.9.9@wgc1
+server=/podtrac.com/1.1.1.1@wgc1
+server=/podtrac.com/9.9.9.9@wgc1
+server=/pscrb.fm/1.1.1.1@wgc1
+server=/pscrb.fm/9.9.9.9@wgc1
 
 # Smithery (MCP server registry)
 server=/smithery.ai/1.1.1.1@wgc1

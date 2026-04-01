@@ -1,4 +1,20 @@
 # =============================================================================
+# Apple Podcasts / Apple services
+# =============================================================================
+# Apple owns the entire 17.0.0.0/8 range exclusively — no other organization
+# uses it. Apple Podcasts connects directly to these IPs (bag.itunes.apple.com,
+# entitlements, amp-api) before DNS-based ipset rules can take effect, causing
+# the first connection to timeout via ISP. Static routing ensures all Apple
+# traffic is pre-marked for VPN.
+#
+# Confirmed blocked by ISP (HTTP 000 / timeout on wan0):
+#   bag.itunes.apple.com     → 17.253.x.x
+#   amp-api.podcasts.apple.com → (via Akamai, but auth via 17.x)
+#
+# Sources: ARIN whois 17.0.0.0/8 → Apple Inc.
+17.0.0.0/8
+
+# =============================================================================
 # Telegram IPv4 prefixes
 # =============================================================================
 # Telegram-клиенты подключаются напрямую к IP-диапазонам, минуя DNS.
