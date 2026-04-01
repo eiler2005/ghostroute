@@ -1,0 +1,9 @@
+#!/bin/sh
+
+STATE_DIR="/jffs/addons/router_configuration"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/tmp"
+mkdir -p "$STATE_DIR"
+STATE_FILE="$STATE_DIR/VPN_DOMAINS.ipset"
+
+ipset list VPN_DOMAINS >/dev/null 2>&1 || exit 0
+ipset save VPN_DOMAINS > "$STATE_FILE"

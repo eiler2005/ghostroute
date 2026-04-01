@@ -1,0 +1,30 @@
+# Персональные переменные окружения (IP роутера, SSH-ключ и т.п.)
+.env
+
+# Конфиги WireGuard с приватными ключами
+*.conf.wg
+wireguard/
+wg*.conf
+
+# Любые файлы с приватными/чувствительными данными
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+id_ecdsa
+*.pub
+
+# Claude Code
+.claude/
+
+# macOS
+.DS_Store
+
+# Редакторы
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

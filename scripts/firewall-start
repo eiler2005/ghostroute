@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# Use persistent JFFS by default. Switch to /opt/tmp only when Entware is present.
+STATE_DIR="/jffs/addons/router_configuration"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/tmp"
+mkdir -p "$STATE_DIR"
+STATE_FILE="$STATE_DIR/VPN_DOMAINS.ipset"
+STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
+
+# Create/restore the VPN target sets and mark matching LAN traffic for WGC1.
+ipset create VPN_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
+ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
+[ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
+ipset flush VPN_STATIC_NETS 2>/dev/null
+if [ -f "$STATIC_NETWORKS_FILE" ]; then
+  sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$STATIC_NETWORKS_FILE" | while IFS= read -r network; do
+    ipset add VPN_STATIC_NETS "$network" 2>/dev/null
+  done
+fi
+iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
+iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
+iptables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
+iptables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
+
+# --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
+# Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.
+# Verify first: ip -6 route show table wgc1
+#
+# ipset create VPN_DOMAINS_V6 hash:ip family inet6 hashsize 1024 maxelem 65536 2>/dev/null
+# ipset create VPN_STATIC_NETS_V6 hash:net family inet6 hashsize 256 maxelem 65536 2>/dev/null
+# ip6tables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS_V6 dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
+# ip6tables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS_V6 dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
+# ip6tables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_DOMAINS_V6 dst -j MARK --set-mark 0x1000/0x1000
+# ip6tables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS_V6 dst -j MARK --set-mark 0x1000/0x1000

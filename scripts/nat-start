@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Route router-originated DNS for TikTok through WGC1 as well. Without these
+# destination rules dnsmasq may still reach public resolvers through WAN and get
+# localized answers.
+ip rule del to 1.1.1.1/32 table wgc1 prio 9901 2>/dev/null
+ip rule add to 1.1.1.1/32 table wgc1 prio 9901
+
+ip rule del to 9.9.9.9/32 table wgc1 prio 9902 2>/dev/null
+ip rule add to 9.9.9.9/32 table wgc1 prio 9902
+
+# Route marked client packets through the WGC1 routing table.
+ip rule del fwmark 0x1000/0x1000 2>/dev/null
+ip rule add fwmark 0x1000/0x1000 table wgc1 prio 9910
+
+# --- IPv6 fwmark routing (uncomment when WGC1 carries IPv6 traffic) ---
+# ip -6 rule del fwmark 0x1000/0x1000 2>/dev/null
+# ip -6 rule add fwmark 0x1000/0x1000 table wgc1 prio 9910

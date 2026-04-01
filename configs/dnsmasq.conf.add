@@ -1,0 +1,85 @@
+ipset=/atlassian.com/VPN_DOMAINS
+ipset=/anthropic.com/VPN_DOMAINS
+ipset=/chatgpt.com/VPN_DOMAINS
+ipset=/claude.ai/VPN_DOMAINS
+ipset=/claude.com/VPN_DOMAINS
+ipset=/aistudio.google.com/VPN_DOMAINS
+ipset=/notebooklm.google.com/VPN_DOMAINS
+ipset=/ai.google.dev/VPN_DOMAINS
+ipset=/generativelanguage.googleapis.com/VPN_DOMAINS
+ipset=/github.com/VPN_DOMAINS
+ipset=/api.github.com/VPN_DOMAINS
+ipset=/githubstatus.com/VPN_DOMAINS
+ipset=/raw.githubusercontent.com/VPN_DOMAINS
+ipset=/objects.githubusercontent.com/VPN_DOMAINS
+ipset=/githubusercontent.com/VPN_DOMAINS
+ipset=/codeload.github.com/VPN_DOMAINS
+ipset=/gitlab.com/VPN_DOMAINS
+ipset=/gitlab-static.net/VPN_DOMAINS
+ipset=/bitbucket.org/VPN_DOMAINS
+ipset=/dev.azure.com/VPN_DOMAINS
+ipset=/visualstudio.com/VPN_DOMAINS
+ipset=/google.com/VPN_DOMAINS
+ipset=/linkedin.com/VPN_DOMAINS
+ipset=/twitter.com/VPN_DOMAINS
+ipset=/x.com/VPN_DOMAINS
+ipset=/twimg.com/VPN_DOMAINS
+ipset=/t.co/VPN_DOMAINS
+ipset=/tiktok.com/VPN_DOMAINS
+ipset=/tiktokv.com/VPN_DOMAINS
+ipset=/tiktokcdn.com/VPN_DOMAINS
+ipset=/tiktokcdn-us.com/VPN_DOMAINS
+ipset=/tiktokcdn-eu.com/VPN_DOMAINS
+ipset=/byteoversea.com/VPN_DOMAINS
+ipset=/ibytedtos.com/VPN_DOMAINS
+ipset=/byteimg.com/VPN_DOMAINS
+ipset=/muscdn.com/VPN_DOMAINS
+ipset=/ttwstatic.com/VPN_DOMAINS
+ipset=/youtube.com/VPN_DOMAINS
+ipset=/youtu.be/VPN_DOMAINS
+ipset=/googlevideo.com/VPN_DOMAINS
+ipset=/ytimg.com/VPN_DOMAINS
+ipset=/ggpht.com/VPN_DOMAINS
+ipset=/youtubei.googleapis.com/VPN_DOMAINS
+# ==========================================================================
+# Telegram (домены + см. также configs/static-networks.txt для IP-подсетей)
+# ==========================================================================
+# Telegram core
+ipset=/telegram.org/VPN_DOMAINS
+ipset=/telegram.com/VPN_DOMAINS
+ipset=/t.me/VPN_DOMAINS
+ipset=/telegram.me/VPN_DOMAINS
+ipset=/telegra.ph/VPN_DOMAINS
+ipset=/telesco.pe/VPN_DOMAINS
+ipset=/tg.dev/VPN_DOMAINS
+# Telegram CDN
+ipset=/cdn-telegram.org/VPN_DOMAINS
+ipset=/telegram-cdn.org/VPN_DOMAINS
+# Telegram ecosystem
+ipset=/fragment.com/VPN_DOMAINS
+ipset=/graph.org/VPN_DOMAINS
+ipset=/contest.com/VPN_DOMAINS
+ipset=/comments.app/VPN_DOMAINS
+ipset=/usercontent.dev/VPN_DOMAINS
+ipset=/tdesktop.com/VPN_DOMAINS
+ipset=/instagram.com/VPN_DOMAINS
+ipset=/cdninstagram.com/VPN_DOMAINS
+ipset=/fbcdn.net/VPN_DOMAINS
+ipset=/fbsbx.com/VPN_DOMAINS
+ipset=/facebook.com/VPN_DOMAINS
+ipset=/fb.com/VPN_DOMAINS
+ipset=/messenger.com/VPN_DOMAINS
+# Apple Podcasts
+ipset=/podcasts.apple.com/VPN_DOMAINS
+ipset=/mzstatic.com/VPN_DOMAINS
+ipset=/itunes.apple.com/VPN_DOMAINS
+ipset=/aaplimg.com/VPN_DOMAINS
+# Smithery (MCP registry)
+ipset=/smithery.ai/VPN_DOMAINS
+ipset=/redshieldvpn.com/VPN_DOMAINS
+ipset=/whatsapp.com/VPN_DOMAINS
+ipset=/whatsapp.net/VPN_DOMAINS
+ipset=/wa.me/VPN_DOMAINS
+ipset=/openai.com/VPN_DOMAINS
+ipset=/oaistatic.com/VPN_DOMAINS
+ipset=/oaiusercontent.com/VPN_DOMAINS
