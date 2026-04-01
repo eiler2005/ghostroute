@@ -74,6 +74,8 @@ ipset=/podcasts.apple.com/VPN_DOMAINS
 ipset=/mzstatic.com/VPN_DOMAINS
 ipset=/itunes.apple.com/VPN_DOMAINS
 ipset=/aaplimg.com/VPN_DOMAINS
+ipset=/media.apple.com/VPN_DOMAINS
+ipset=/icloud-content.com/VPN_DOMAINS
 # Smithery (MCP registry)
 ipset=/smithery.ai/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS
