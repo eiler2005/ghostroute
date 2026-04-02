@@ -19,20 +19,22 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
 Что он делает:
 
 1. Парсит `/opt/var/log/dnsmasq.log` — извлекает все уникальные домены
-2. Фильтрует:
-   - Пропускает системные домены (`.local`, `.lan`, `.arpa`)
-   - Пропускает CDN/infrastructure паттерны (`cloudfront.net`, `akamaized.net`, `windowsupdate.com` и др.)
-   - Пропускает российские TLD (`.ru`, `.su`, `.рф`, `.москва`, `.tatar`, `.moscow`) — они доступны без VPN
-   - Пропускает домены из `domains-no-vpn.txt` (ручные исключения)
-   - Пропускает домены, уже добавленные в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add`
-   - **Проверяет по списку заблокированных** (`blocked-domains.lst`) — добавляет только реально заблокированные в РФ. Если список не скачан — fallback (добавлять всё).
-3. Добавляет прошедшие все проверки домены в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
+2. Фильтрует по очереди (первый совпавший фильтр = SKIP):
+   - Системные домены (`.local`, `.lan`, `.arpa`)
+   - CDN/infrastructure паттерны (`cloudfront.net`, `akamaiedge.net`, `akadns.net`, `windowsupdate.com` и др.)
+   - Российские TLD (`.ru`, `.su`, `.рф`, `.москва`, `.tatar`, `.moscow`)
+   - Домены из `domains-no-vpn.txt` (ручные исключения)
+   - Домены, уже покрытые правилом в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add`
+3. **Проверяет по реестру РКН** (`blocked-domains.lst`) — не найден → КАНДИДАТ. Если список не скачан → fallback (добавлять всё)
+4. **ISP-проба кандидатов** (≥3 запросов, ≥1 устройство) — `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 8 проб за запуск
+5. **Определяет write_domain**: поддомен (≥3 меток) → записывает registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), покрывая все поддомены
+6. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
    - `ipset=/<domain>/VPN_DOMAINS`
    - `server=/<domain>/1.1.1.1@wgc1`
    - `server=/<domain>/9.9.9.9@wgc1`
-4. Перезапускает dnsmasq для подхвата новых правил
-5. Пишет компактный лог в `/opt/var/log/domain-activity.log`
-6. Ротирует dnsmasq.log после обработки
+7. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
+
+Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
 
 Автоматически добавленные домены хранятся **отдельно** от ручных:
 
