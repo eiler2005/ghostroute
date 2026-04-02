@@ -239,9 +239,18 @@ cat /jffs/configs/dnsmasq-autodiscovered.conf.add
 - **Устройство не использует роутер как DNS** — проверьте DNS-настройки устройства
 - **Домен в SKIP_PATTERNS** — CDN/инфраструктурные паттерны пропускаются намеренно
 - **Домен совпадает с Russian TLD** — проверьте: `.ru`, `.su`, `.рф`, `.москва`, `.tatar`, `.moscow`
+- **Домен не в реестре РКН и не проходит ISP-пробу** — скрипт тестирует кандидатов с ≥3 запросами через ISP. Если сайт доступен через ISP (HTTP не 000) — он не добавляется. Добавьте вручную
 - **DNS-лог не пишется** — проверьте `ls /opt/var/log/dnsmasq.log` и что `ENABLE_DNSMASQ_LOGGING=1` в `.env`
 - **domain-auto-add.sh не запускается** — проверьте `cru l | grep DomainAutoAdd`, перезапустите `services-start`
 - **Добавьте вручную** через `configs/dnsmasq.conf.add` + `configs/dnsmasq-vpn-upstream.conf.add` + `./deploy.sh`
+
+### Домен попал в GEO-BLOCKED, но не должен
+
+ISP-проба иногда даёт ложные срабатывания (временный таймаут сервера). Чтобы исключить домен:
+
+1. Добавьте в `configs/domains-no-vpn.txt`
+2. Запустите `./deploy.sh`
+3. Если домен уже в `dnsmasq-autodiscovered.conf.add` — вручную удалите строки или сделайте `--reset`
 
 ## Общие команды диагностики
 

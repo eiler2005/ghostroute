@@ -43,11 +43,14 @@ CNT_ADD=/tmp/daa-add.$$
 CNT_KNW=/tmp/daa-knw.$$
 CNT_SKP=/tmp/daa-skp.$$
 CNT_CND=/tmp/daa-cnd.$$
+CNT_GEO=/tmp/daa-geo.$$
 ADDED_LIST=/tmp/daa-list.$$
 CANDIDATES=/tmp/daa-candidates.$$
-: > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"
-: > "$ADDED_LIST"; : > "$CANDIDATES"
-trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$ADDED_LIST" "$CANDIDATES"' 0
+CANDIDATES_PROBE=/tmp/daa-probe.$$
+GEO_LIST=/tmp/daa-geolist.$$
+: > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"; : > "$CNT_GEO"
+: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$GEO_LIST"
+trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$GEO_LIST"' 0
 
 # ── Process each unique domain ──────────────────────────────────────────────
 grep "query\[A" "$LOG" \
@@ -70,6 +73,7 @@ grep "query\[A" "$LOG" \
       fi
 
       parent=$(echo "$domain" | sed 's/^[^.]*\.//')
+      reg_domain=$(echo "$domain" | awk -F. '{print $(NF-1)"."$NF}')
 
       # Check user exclusion list (domains-no-vpn.txt) — exact or parent match
       if [ -f "$NO_VPN" ]; then
@@ -79,7 +83,7 @@ grep "query\[A" "$LOG" \
         fi
       fi
 
-      if grep -qE "ipset=.*/(${domain}|${parent})/" "$MANAGED" "$AUTO" 2>/dev/null; then
+      if grep -qE "ipset=.*/(${domain}|${parent}|${reg_domain})/" "$MANAGED" "$AUTO" 2>/dev/null; then
         echo 1 >> "$CNT_KNW"
         continue
       fi
@@ -91,37 +95,103 @@ grep "query\[A" "$LOG" \
       # Check against blocked domains list — only add known-blocked domains.
       # If the list doesn't exist (not yet downloaded), fall back to old behavior (add all).
       if [ -f "$BLOCKED_LIST" ]; then
-        reg_domain=$(echo "$domain" | awk -F. '{print $(NF-1)"."$NF}')
         if ! grep -qFx "$domain" "$BLOCKED_LIST" \
            && ! grep -qFx "$parent" "$BLOCKED_LIST" \
            && ! grep -qFx "$reg_domain" "$BLOCKED_LIST"; then
           printf '  ? %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$CANDIDATES"
+          # Save raw data for ISP probe (domain count num_devices)
+          num_devs=$(echo "$srcs" | tr ',' '\n' | grep -c '.')
+          printf '%s %d %d\n' "$domain" "$count" "$num_devs" >> "$CANDIDATES_PROBE"
           echo 1 >> "$CNT_CND"
           continue
         fi
       fi
 
+      # Determine write target: prefer registrable domain for subdomains (≥3 labels).
+      # This ensures www.example-provider.invalid → writes example-provider.invalid, covering robot/console too.
+      # CDN domains are already filtered by SKIP_PATTERNS before reaching this point.
+      dot_count=$(echo "$domain" | tr -cd '.' | wc -c)
+      if [ "$dot_count" -ge 2 ]; then
+        write_domain="$reg_domain"
+      else
+        write_domain="$domain"
+      fi
+
+      # If reg_domain differs from domain, do an exact check for the write target
+      if [ "$write_domain" != "$domain" ] && \
+         grep -qF "ipset=/$write_domain/" "$MANAGED" "$AUTO" 2>/dev/null; then
+        echo 1 >> "$CNT_KNW"
+        continue
+      fi
+
       # Add to dnsmasq autodiscovered config
       {
         printf '\n# auto-added %s (queries: %d, from: %s)\n' "$NOW" "$count" "$srcs"
-        printf 'ipset=/%s/%s\n'          "$domain" "$VPN_IPSET"
-        printf 'server=/%s/1.1.1.1@%s\n' "$domain" "$VPN_IFACE"
-        printf 'server=/%s/9.9.9.9@%s\n' "$domain" "$VPN_IFACE"
+        printf 'ipset=/%s/%s\n'          "$write_domain" "$VPN_IPSET"
+        printf 'server=/%s/1.1.1.1@%s\n' "$write_domain" "$VPN_IFACE"
+        printf 'server=/%s/9.9.9.9@%s\n' "$write_domain" "$VPN_IFACE"
       } >> "$AUTO"
 
       # One line per added domain for the activity log
-      printf '  + %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$ADDED_LIST"
+      printf '  + %-48s %3d запр  [%s]\n' "$write_domain" "$count" "$srcs" >> "$ADDED_LIST"
 
       echo 1 >> "$CNT_ADD"
       touch "$CHANGED"
       logger -t domain-auto-add "Added: $domain (queries: $count)"
     done
 
+# ── ISP probe for high-priority candidates (geo-blocked sites) ───────────────
+# Tests candidates with many queries from multiple devices via ISP.
+# HTTP 000 (timeout/refused) = ISP blocks it → add to VPN even without antifilter entry.
+PROBE_MIN_COUNT=3
+PROBE_MIN_DEVICES=1
+PROBE_MAX_PER_RUN=8
+PROBE_TIMEOUT=4
+WAN_IFACE=wan0
+probe_count=0
+
+while IFS=' ' read -r cand_domain cand_count cand_devs; do
+  [ "$probe_count" -ge "$PROBE_MAX_PER_RUN" ] && break
+  [ "$cand_count" -lt "$PROBE_MIN_COUNT" ]    && continue
+  [ "$cand_devs"  -lt "$PROBE_MIN_DEVICES" ]  && continue
+
+  # Determine write target (same reg_domain logic as main loop)
+  cand_reg=$(echo "$cand_domain" | awk -F. '{print $(NF-1)"."$NF}')
+  cand_dots=$(echo "$cand_domain" | tr -cd '.' | wc -c)
+  [ "$cand_dots" -ge 2 ] && cand_write="$cand_reg" || cand_write="$cand_domain"
+
+  # Skip if already covered in any config
+  if grep -qF "ipset=/$cand_write/" "$MANAGED" "$AUTO" 2>/dev/null; then
+    continue
+  fi
+
+  http_code=$(curl -s --max-time "$PROBE_TIMEOUT" --interface "$WAN_IFACE" \
+                   -o /dev/null -w '%{http_code}' "https://$cand_domain/" 2>/dev/null)
+  probe_count=$((probe_count + 1))
+
+  if [ "$http_code" = "000" ]; then
+    cand_srcs=$(grep "query\[A\] ${cand_domain} from" "$LOG" \
+                | awk '{print $8}' | sort -u | tr '\n' ',' | sed 's/,$//')
+    {
+      printf '\n# geo-blocked (ISP:000) %s (queries: %d, from: %s)\n' \
+             "$NOW" "$cand_count" "$cand_srcs"
+      printf 'ipset=/%s/%s\n'          "$cand_write" "$VPN_IPSET"
+      printf 'server=/%s/1.1.1.1@%s\n' "$cand_write" "$VPN_IFACE"
+      printf 'server=/%s/9.9.9.9@%s\n' "$cand_write" "$VPN_IFACE"
+    } >> "$AUTO"
+    printf '  + %-48s %3d запр  ISP:000\n' "$cand_write" "$cand_count" >> "$GEO_LIST"
+    echo 1 >> "$CNT_GEO"
+    touch "$CHANGED"
+    logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries: $cand_count)"
+  fi
+done < "$CANDIDATES_PROBE"
+
 # ── Compute counts ───────────────────────────────────────────────────────────
 n_add=$(wc -l < "$CNT_ADD"  2>/dev/null | tr -d ' '); n_add=${n_add:-0}
 n_knw=$(wc -l < "$CNT_KNW"  2>/dev/null | tr -d ' '); n_knw=${n_knw:-0}
 n_skp=$(wc -l < "$CNT_SKP"  2>/dev/null | tr -d ' '); n_skp=${n_skp:-0}
 n_cnd=$(wc -l < "$CNT_CND"  2>/dev/null | tr -d ' '); n_cnd=${n_cnd:-0}
+n_geo=$(wc -l < "$CNT_GEO"  2>/dev/null | tr -d ' '); n_geo=${n_geo:-0}
 
 # ── Write compact entry to activity log ─────────────────────────────────────
 {
@@ -139,6 +209,14 @@ n_cnd=$(wc -l < "$CNT_CND"  2>/dev/null | tr -d ' '); n_cnd=${n_cnd:-0}
     printf '│ Новых доменов для VPN: нет\n'
   fi
 
+  if [ "$n_geo" -gt 0 ] && [ -s "$GEO_LIST" ]; then
+    printf '│\n'
+    printf '│ GEO-BLOCKED (ISP-проба, %d):\n' "$n_geo"
+    while IFS= read -r line; do
+      printf '│%s\n' "$line"
+    done < "$GEO_LIST"
+  fi
+
   if [ "$n_cnd" -gt 0 ] && [ -s "$CANDIDATES" ]; then
     printf '│\n'
     printf '│ КАНДИДАТЫ (не в списке блокировок, %d):\n' "$n_cnd"
@@ -152,8 +230,8 @@ n_cnd=$(wc -l < "$CNT_CND"  2>/dev/null | tr -d ' '); n_cnd=${n_cnd:-0}
   BL_STATUS=""
   [ -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: $(wc -l < "$BLOCKED_LIST" | tr -d ' ')"
   [ ! -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: нет (fallback)"
-  printf '│ Итог: +%d добавлено  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
-    "$n_add" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
+  printf '│ Итог: +%d добавлено  |  +%d geo  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
+    "$n_add" "$n_geo" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
   printf '└─────────────────────────────────────────────────────────────\n'
 } >> "$ACTIVITY"
 
@@ -181,4 +259,4 @@ if [ -f "$ACTIVITY" ]; then
   fi
 fi
 
-logger -t domain-auto-add "Done. Added=$n_add, Known=$n_knw, Skipped=$n_skp, Candidates=$n_cnd"
+logger -t domain-auto-add "Done. Added=$n_add, Geo=$n_geo, Known=$n_knw, Skipped=$n_skp, Candidates=$n_cnd"
