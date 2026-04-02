@@ -83,6 +83,9 @@ ipset=/omny.fm/VPN_DOMAINS
 ipset=/tritondigital.com/VPN_DOMAINS
 ipset=/podtrac.com/VPN_DOMAINS
 ipset=/pscrb.fm/VPN_DOMAINS
+# VPS (robot.example-provider.invalid, console.example-provider.invalid blocked by ISP; not in antifilter)
+ipset=/example-provider.invalid/VPN_DOMAINS
+ipset=/example-provider-cloud.invalid/VPN_DOMAINS
 # Smithery (MCP registry)
 ipset=/smithery.ai/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS

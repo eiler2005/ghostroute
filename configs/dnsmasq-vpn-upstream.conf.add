@@ -193,6 +193,12 @@ server=/podtrac.com/9.9.9.9@wgc1
 server=/pscrb.fm/1.1.1.1@wgc1
 server=/pscrb.fm/9.9.9.9@wgc1
 
+# VPS
+server=/example-provider.invalid/1.1.1.1@wgc1
+server=/example-provider.invalid/9.9.9.9@wgc1
+server=/example-provider-cloud.invalid/1.1.1.1@wgc1
+server=/example-provider-cloud.invalid/9.9.9.9@wgc1
+
 # Smithery (MCP server registry)
 server=/smithery.ai/1.1.1.1@wgc1
 server=/smithery.ai/9.9.9.9@wgc1
