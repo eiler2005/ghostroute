@@ -19,6 +19,9 @@ id_ecdsa
 # Claude Code
 .claude/
 
+# VPN domain journal (local-only, не для репозитория)
+docs/vpn-domain-journal.md
+
 # macOS
 .DS_Store
 
