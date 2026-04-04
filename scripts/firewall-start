@@ -6,6 +6,8 @@ STATE_DIR="/jffs/addons/router_configuration"
 mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/VPN_DOMAINS.ipset"
 STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
+PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
+ROUTING_CHAIN="RC_VPN_ROUTE"
 
 # Create/restore the VPN target sets and mark matching LAN traffic for WGC1.
 ipset create VPN_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
@@ -17,10 +19,38 @@ if [ -f "$STATIC_NETWORKS_FILE" ]; then
     ipset add VPN_STATIC_NETS "$network" 2>/dev/null
   done
 fi
+
+iptables -t mangle -N "$ROUTING_CHAIN" 2>/dev/null || true
+iptables -t mangle -F "$ROUTING_CHAIN"
+iptables -t mangle -D PREROUTING -i br0 -j "$ROUTING_CHAIN" 2>/dev/null
+
+# Clean up legacy direct PREROUTING rules from older versions.
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
-iptables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
-iptables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
+
+# Optional per-IP:port bypasses. Useful when a service's web UI must stay on VPN
+# but management ports (for example SSH on 22/tcp) should go directly via WAN.
+if [ -f "$PORT_BYPASS_FILE" ]; then
+  sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$PORT_BYPASS_FILE" | while read -r proto ip port; do
+    case "$proto" in
+      tcp|udp) ;;
+      *) continue ;;
+    esac
+
+    case "$port" in
+      ''|*[!0-9]*) continue ;;
+    esac
+
+    [ "$port" -ge 1 ] 2>/dev/null || continue
+    [ "$port" -le 65535 ] 2>/dev/null || continue
+
+    iptables -t mangle -A "$ROUTING_CHAIN" -p "$proto" -d "$ip" --dport "$port" -j RETURN
+  done
+fi
+
+iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
+iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
+iptables -t mangle -A PREROUTING -i br0 -j "$ROUTING_CHAIN"
 
 # --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
 # Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.

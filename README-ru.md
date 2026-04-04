@@ -124,6 +124,7 @@ configs/
   dnsmasq-logging.conf.add        # настройки логирования DNS
   static-networks.txt             # статические IP-подсети (Telegram)
   domains-no-vpn.txt              # домены-исключения (никогда не VPN)
+  no-vpn-ip-ports.txt             # исключения по IP:порту (всегда через WAN)
 
 scripts/
   firewall-start                  # создание ipset, загрузка статических сетей, iptables

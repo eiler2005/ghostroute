@@ -137,6 +137,7 @@ configs/
   dnsmasq-logging.conf.add        # DNS query logging config (for auto-discovery)
   static-networks.txt             # static CIDR ranges (Telegram ASN ranges)
   domains-no-vpn.txt              # explicit exclusions (never route via VPN)
+  no-vpn-ip-ports.txt             # per-IP:port exceptions that must stay on WAN
 
 scripts/
   firewall-start                  # creates ipsets, loads static nets, sets iptables rules

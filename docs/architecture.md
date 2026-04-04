@@ -100,6 +100,7 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 | `configs/dnsmasq.conf.add` | `/jffs/configs/dnsmasq.conf.add` | merge block |
 | `configs/dnsmasq-vpn-upstream.conf.add` | `/jffs/configs/dnsmasq.conf.add` | merge block (другой маркер) |
 | `configs/static-networks.txt` | `/jffs/configs/router_configuration.static_nets` | полная копия |
+| `configs/no-vpn-ip-ports.txt` | `/jffs/configs/router_configuration.no_vpn_ip_ports` | полная копия |
 | `scripts/firewall-start` | `/jffs/scripts/firewall-start` | merge block |
 | `scripts/nat-start` | `/jffs/scripts/nat-start` | merge block |
 | `scripts/cron-save-ipset` | `/jffs/scripts/cron-save-ipset` | merge block |
@@ -114,7 +115,7 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 ### Что происходит после загрузки файлов
 
 1. Запускается `nat-start` — добавляет `ip rule` для DNS и fwmark.
-2. Запускается `firewall-start` — создаёт ipset'ы, загружает статические сети, настраивает iptables.
+2. Запускается `firewall-start` — создаёт ipset'ы, загружает статические сети и per-IP:port WAN-исключения, настраивает iptables.
 3. Запускается `services-start` — добавляет cron-задачи: сохранение ipset (каждые 6ч) и domain auto-add (каждый час).
 4. Перезапускается `dnsmasq` — подхватывает новые правила из `/jffs/configs/dnsmasq.conf.add`.
 

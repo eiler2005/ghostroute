@@ -85,6 +85,7 @@ fi
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/static-networks.txt"
+require_local_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt"
 require_local_file "${PROJECT_ROOT}/scripts/firewall-start"
 require_local_file "${PROJECT_ROOT}/scripts/nat-start"
 require_local_file "${PROJECT_ROOT}/scripts/cron-save-ipset"
@@ -111,6 +112,7 @@ ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' /jffs/conf
 upload_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add" "${REMOTE_STAGE}/configs/dnsmasq.conf.add"
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-vpn-upstream.conf.add"
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
+upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
 upload_file "${PROJECT_ROOT}/scripts/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
 upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
 upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
@@ -205,6 +207,9 @@ rm -f /jffs/configs/dnsmasq-vpn-upstream.conf.add
 
 backup_if_present /jffs/configs/router_configuration.static_nets
 cp "$REMOTE_STAGE/configs/static-networks.txt" /jffs/configs/router_configuration.static_nets
+
+backup_if_present /jffs/configs/router_configuration.no_vpn_ip_ports
+cp "$REMOTE_STAGE/configs/no-vpn-ip-ports.txt" /jffs/configs/router_configuration.no_vpn_ip_ports
 
 install_script \
   "$REMOTE_STAGE/scripts/firewall-start" \
