@@ -32,6 +32,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **DNS geo-alignment** — VPN-routed domains are resolved via Cloudflare/Quad9 *over the VPN tunnel*, so IPs are geographically correct for the exit node, not ISP-localized
 - **Auto-discovery** — parses DNS logs every hour and adds newly-seen blocked domains to VPN routing automatically
 - **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates and may still be auto-added after an ISP-side reachability probe
+- **Service-family domain detection** — subdomains usually collapse to a shared family (`www.example-provider.invalid` → `example-provider.invalid`), while IP-encoded dynamic DNS keeps a narrower family (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
@@ -81,11 +82,17 @@ Device (iPhone / PC)
                 ├─ In blocked list → add to dnsmasq-autodiscovered.conf.add
                 │                    restart dnsmasq
                 └─ Not in list → candidate
+                                   ├─ short entry domain / IP-encoded family?
+                                   │    → probe early
                                    ├─ ISP probe says HTTP 000 → add as geo-blocked
                                    └─ otherwise stay logged as candidate
 ```
 
 `blocked-domains.lst` is updated daily by `update-blocked-list.sh` from [community.antifilter.download](https://community.antifilter.download) — a curated list of ~500 key services blocked in Russia, downloaded through the VPN tunnel itself.
+
+When a domain passes auto-discovery, the script writes a **service-family domain**:
+- regular subdomains usually collapse to the registrable domain (`api.example-provider.invalid` → `example-provider.invalid`)
+- IP-encoded dynamic DNS keeps the family at the IP label (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
 
 ---
 

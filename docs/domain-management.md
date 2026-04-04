@@ -131,7 +131,7 @@ DNS-запрос с устройства (любой сайт)
           │
           ▼
 [5] Уже есть ipset-правило                  ──да───► KNOWN
-    для домена / parent / reg_domain?
+    для домена / parent / reg_domain / family_domain?
           │
           ▼
 [6] В реестре РКН                           ──нет──► КАНДИДАТ
@@ -147,9 +147,15 @@ DNS-запрос с устройства (любой сайт)
           │                                       кандидатом     │
           ▼                                                       │
 [7] Определить write_domain:               ◄─────────────────────┘
-    ≥3 меток (sub.example.com)
-      → писать reg_domain (example.com)    ← все поддомены покрыты сразу
-    2 метки (example.com) → как есть
+    Обычно:
+      ≥3 меток (sub.example.com)
+        → писать reg_domain (example.com)  ← все поддомены покрыты сразу
+      2 метки (example.com) → как есть
+    Исключение:
+      dynamic DNS с IP-encoded family label
+      (например openclaw.203-0-113-10.sslip.io
+       или openclaw.203.0.113.10.nip.io)
+        → писать семейство по IP-лейблу, а не весь публичный суффикс
           │
           ▼
     Добавить в dnsmasq-autodiscovered.conf.add

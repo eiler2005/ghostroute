@@ -74,11 +74,17 @@ dnsmasq.log (все DNS-запросы)
        └─ Проверить по blocked-domains.lst
              ├─ ЕСТЬ в списке → добавить в VPN (автоматически)
              └─ НЕТ → кандидат
+                   ├─ короткий входной домен / IP-encoded family?
+                   │    → ранняя ISP-проба
                    ├─ ISP-проба = HTTP 000 → добавить как geo-blocked
                    └─ иначе оставить кандидатом
 ```
 
 Список заблокированных доменов (~500 ключевых сервисов) скачивается ежедневно через VPN-туннель скриптом `update-blocked-list.sh`.
+
+Когда домен проходит auto-discovery, скрипт пишет **service-family domain**:
+- обычные поддомены обычно сворачиваются в registrable domain (`api.example-provider.invalid` → `example-provider.invalid`)
+- dynamic DNS с IP-encoded family label сохраняет более узкое семейство (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
 
 ---
 

@@ -240,6 +240,7 @@ cat /jffs/configs/dnsmasq-autodiscovered.conf.add
 - **Домен в SKIP_PATTERNS** — CDN/инфраструктурные паттерны пропускаются намеренно
 - **Домен совпадает с Russian TLD** — проверьте: `.ru`, `.su`, `.рф`, `.москва`, `.tatar`, `.moscow`
 - **Домен не в реестре РКН и не проходит ISP-пробу** — обычные кандидаты скрипт тестирует через ISP после `≥3` запросов, а короткие/`www`-входные домены может проверить раньше. Если сайт доступен через ISP (HTTP не `000`) — он не добавляется. Добавьте вручную
+- **Dynamic DNS хосты с IP-encoded family label** — скрипт не должен сворачивать их в общий публичный суффикс, а должен писать семейство по IP-лейблу, например `203-0-113-10.sslip.io`
 - **DNS-лог не пишется** — проверьте `ls /opt/var/log/dnsmasq.log` и что `ENABLE_DNSMASQ_LOGGING=1` в `.env`
 - **domain-auto-add.sh не запускается** — проверьте `cru l | grep DomainAutoAdd`, перезапустите `services-start`
 - **Добавьте вручную** через `configs/dnsmasq.conf.add` + `configs/dnsmasq-vpn-upstream.conf.add` + `./deploy.sh`

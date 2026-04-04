@@ -26,8 +26,8 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
    - Домены из `domains-no-vpn.txt` (ручные исключения)
    - Домены, уже покрытые правилом в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add`
 3. **Проверяет по реестру РКН** (`blocked-domains.lst`) — не найден → КАНДИДАТ. Если список не скачан → fallback (добавлять всё)
-4. **ISP-проба кандидатов** — обычные кандидаты идут в пробу после `≥3` запросов, а короткие/`www`-входные домены получают повышенный приоритет и могут проверяться уже после одного запроса. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
-5. **Определяет write_domain**: поддомен (≥3 меток) → записывает registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), покрывая все поддомены
+4. **ISP-проба кандидатов** — обычные кандидаты идут в пробу после `≥3` запросов, а короткие/`www`-входные домены и dynamic DNS хосты с IP-encoded family label получают повышенный приоритет и могут проверяться уже после одного запроса. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
+5. **Определяет write_domain**: обычно поддомен (≥3 меток) → registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
 6. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
    - `ipset=/<domain>/VPN_DOMAINS`
    - `server=/<domain>/1.1.1.1@wgc1`

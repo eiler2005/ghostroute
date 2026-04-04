@@ -26,6 +26,68 @@ SKIP_PATTERNS="msftconnecttest\.com|windowsupdate\.com|update\.microsoft\.com|lo
 # Russian TLDs — accessible without VPN, never auto-route.
 RU_TLDS="\.ru$|\.su$|\.xn--p1ai$|\.xn--80adxhks$|\.xn--d1acj3b$|\.xn--p1acf$|\.tatar$|\.moscow$"
 
+get_parent_domain() {
+  printf '%s\n' "$1" | sed 's/^[^.]*\.//'
+}
+
+get_reg_domain() {
+  printf '%s\n' "$1" | awk -F. '{print $(NF-1)"."$NF}'
+}
+
+is_ipv4_dash_label() {
+  label="$1"
+  printf '%s\n' "$label" | awk -F- '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i > 255) exit 1
+      }
+      exit 0
+    }'
+}
+
+get_ip_family_label() {
+  domain="$1"
+  reg_domain=$(get_reg_domain "$domain")
+  prefix="${domain%.$reg_domain}"
+  [ "$prefix" = "$domain" ] && return 1
+
+  last_label=${prefix##*.}
+  if is_ipv4_dash_label "$last_label"; then
+    printf '%s\n' "$last_label"
+    return 0
+  fi
+
+  printf '%s\n' "$prefix" | awk -F. '
+    NF < 4 { exit 1 }
+    {
+      a=$(NF-3); b=$(NF-2); c=$(NF-1); d=$NF
+      if (a ~ /^[0-9]+$/ && b ~ /^[0-9]+$/ && c ~ /^[0-9]+$/ && d ~ /^[0-9]+$/ &&
+          a <= 255 && b <= 255 && c <= 255 && d <= 255) {
+        printf "%s.%s.%s.%s\n", a, b, c, d
+        exit 0
+      }
+      exit 1
+    }'
+}
+
+get_family_domain() {
+  domain="$1"
+  reg_domain=$(get_reg_domain "$domain")
+  ip_family_label=$(get_ip_family_label "$domain" 2>/dev/null || true)
+  if [ -n "$ip_family_label" ]; then
+    printf '%s.%s\n' "$ip_family_label" "$reg_domain"
+    return 0
+  fi
+
+  dot_count=$(printf '%s\n' "$domain" | tr -cd '.' | wc -c)
+  if [ "$dot_count" -ge 2 ]; then
+    printf '%s\n' "$reg_domain"
+  else
+    printf '%s\n' "$domain"
+  fi
+}
+
 if [ ! -f "$LOG" ]; then
   logger -t domain-auto-add "No log at $LOG — is dnsmasq logging enabled?"
   exit 0
@@ -72,8 +134,9 @@ grep "query\[A" "$LOG" \
         continue
       fi
 
-      parent=$(echo "$domain" | sed 's/^[^.]*\.//')
-      reg_domain=$(echo "$domain" | awk -F. '{print $(NF-1)"."$NF}')
+      parent=$(get_parent_domain "$domain")
+      reg_domain=$(get_reg_domain "$domain")
+      family_domain=$(get_family_domain "$domain")
 
       # Check user exclusion list (domains-no-vpn.txt) — exact or parent match
       if [ -f "$NO_VPN" ]; then
@@ -83,7 +146,7 @@ grep "query\[A" "$LOG" \
         fi
       fi
 
-      if grep -qE "ipset=.*/(${domain}|${parent}|${reg_domain})/" "$MANAGED" "$AUTO" 2>/dev/null; then
+      if grep -qE "ipset=.*/(${domain}|${parent}|${reg_domain}|${family_domain})/" "$MANAGED" "$AUTO" 2>/dev/null; then
         echo 1 >> "$CNT_KNW"
         continue
       fi
@@ -97,11 +160,13 @@ grep "query\[A" "$LOG" \
       if [ -f "$BLOCKED_LIST" ]; then
         if ! grep -qFx "$domain" "$BLOCKED_LIST" \
            && ! grep -qFx "$parent" "$BLOCKED_LIST" \
-           && ! grep -qFx "$reg_domain" "$BLOCKED_LIST"; then
+           && ! grep -qFx "$reg_domain" "$BLOCKED_LIST" \
+           && ! grep -qFx "$family_domain" "$BLOCKED_LIST"; then
           printf '  ? %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$CANDIDATES"
           # Save raw data for ISP probe.
           # Short "entry" domains (for example www.ig.com) get a higher score so
-          # they can be probed even after a single observed query.
+          # they can be probed even after a single observed query. Dynamic DNS
+          # names with IP-encoded family labels get the same treatment.
           num_devs=$(echo "$srcs" | tr ',' '\n' | grep -c '.')
           reg_label=${reg_domain%%.*}
           reg_len=${#reg_label}
@@ -118,21 +183,18 @@ grep "query\[A" "$LOG" \
           if [ "$dot_count" -le 1 ]; then
             probe_score=$((probe_score + 100))
           fi
+          if [ "$family_domain" != "$reg_domain" ]; then
+            probe_score=$((probe_score + 700))
+          fi
           printf '%d %d %d %s\n' "$probe_score" "$count" "$num_devs" "$domain" >> "$CANDIDATES_PROBE"
           echo 1 >> "$CNT_CND"
           continue
         fi
       fi
 
-      # Determine write target: prefer registrable domain for subdomains (≥3 labels).
-      # This ensures www.example-provider.invalid → writes example-provider.invalid, covering robot/console too.
-      # CDN domains are already filtered by SKIP_PATTERNS before reaching this point.
-      dot_count=$(echo "$domain" | tr -cd '.' | wc -c)
-      if [ "$dot_count" -ge 2 ]; then
-        write_domain="$reg_domain"
-      else
-        write_domain="$domain"
-      fi
+      # Prefer a service-family domain for subdomains, but keep IP-encoded
+      # dynamic DNS families narrower than the public suffix.
+      write_domain="$family_domain"
 
       # If reg_domain differs from domain, do an exact check for the write target
       if [ "$write_domain" != "$domain" ] && \
@@ -160,7 +222,8 @@ grep "query\[A" "$LOG" \
 # ── ISP probe for high-priority candidates (geo-blocked sites) ───────────────
 # Tests candidates via ISP.
 # Ordinary candidates need repeated hits, but short/entry domains such as
-# www.ig.com are probed earlier even after a single observed query.
+# www.ig.com and dynamic DNS names with IP-encoded family labels are probed
+# earlier even after a single observed query.
 # HTTP 000 (timeout/refused) = ISP blocks it → add to VPN even without antifilter entry.
 PROBE_MIN_COUNT=3
 PROBE_MIN_COUNT_PRIORITY=1
@@ -178,10 +241,8 @@ sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_
   [ "$cand_count" -lt "$min_count" ]          && continue
   [ "$cand_devs"  -lt "$PROBE_MIN_DEVICES" ]  && continue
 
-  # Determine write target (same reg_domain logic as main loop)
-  cand_reg=$(echo "$cand_domain" | awk -F. '{print $(NF-1)"."$NF}')
-  cand_dots=$(echo "$cand_domain" | tr -cd '.' | wc -c)
-  [ "$cand_dots" -ge 2 ] && cand_write="$cand_reg" || cand_write="$cand_domain"
+  # Determine write target (same family-domain logic as main loop)
+  cand_write=$(get_family_domain "$cand_domain")
 
   # Skip if already covered in any config
   if grep -qF "ipset=/$cand_write/" "$MANAGED" "$AUTO" 2>/dev/null; then
