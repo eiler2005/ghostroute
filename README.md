@@ -31,7 +31,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **Domain + subdomain routing** — `ipset=/youtube.com/VPN_DOMAINS` covers the domain and every subdomain automatically
 - **DNS geo-alignment** — VPN-routed domains are resolved via Cloudflare/Quad9 *over the VPN tunnel*, so IPs are geographically correct for the exit node, not ISP-localized
 - **Auto-discovery** — parses DNS logs every hour and adds newly-seen blocked domains to VPN routing automatically
-- **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates (logged but not added)
+- **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates and may still be auto-added after an ISP-side reachability probe
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
@@ -80,7 +80,9 @@ Device (iPhone / PC)
           └─ Check vs /opt/tmp/blocked-domains.lst
                 ├─ In blocked list → add to dnsmasq-autodiscovered.conf.add
                 │                    restart dnsmasq
-                └─ Not in list → log as candidate (skipped)
+                └─ Not in list → candidate
+                                   ├─ ISP probe says HTTP 000 → add as geo-blocked
+                                   └─ otherwise stay logged as candidate
 ```
 
 `blocked-domains.lst` is updated daily by `update-blocked-list.sh` from [community.antifilter.download](https://community.antifilter.download) — a curated list of ~500 key services blocked in Russia, downloaded through the VPN tunnel itself.

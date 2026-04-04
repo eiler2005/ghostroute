@@ -99,9 +99,26 @@ grep "query\[A" "$LOG" \
            && ! grep -qFx "$parent" "$BLOCKED_LIST" \
            && ! grep -qFx "$reg_domain" "$BLOCKED_LIST"; then
           printf '  ? %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$CANDIDATES"
-          # Save raw data for ISP probe (domain count num_devices)
+          # Save raw data for ISP probe.
+          # Short "entry" domains (for example www.ig.com) get a higher score so
+          # they can be probed even after a single observed query.
           num_devs=$(echo "$srcs" | tr ',' '\n' | grep -c '.')
-          printf '%s %d %d\n' "$domain" "$count" "$num_devs" >> "$CANDIDATES_PROBE"
+          reg_label=${reg_domain%%.*}
+          reg_len=${#reg_label}
+          dot_count=$(echo "$domain" | tr -cd '.' | wc -c)
+          probe_score=$count
+          case "$domain" in
+            www.*) probe_score=$((probe_score + 500)) ;;
+          esac
+          if [ "$reg_len" -le 3 ]; then
+            probe_score=$((probe_score + 300))
+          elif [ "$reg_len" -le 4 ]; then
+            probe_score=$((probe_score + 200))
+          fi
+          if [ "$dot_count" -le 1 ]; then
+            probe_score=$((probe_score + 100))
+          fi
+          printf '%d %d %d %s\n' "$probe_score" "$count" "$num_devs" "$domain" >> "$CANDIDATES_PROBE"
           echo 1 >> "$CNT_CND"
           continue
         fi
@@ -141,18 +158,24 @@ grep "query\[A" "$LOG" \
     done
 
 # ── ISP probe for high-priority candidates (geo-blocked sites) ───────────────
-# Tests candidates with many queries from multiple devices via ISP.
+# Tests candidates via ISP.
+# Ordinary candidates need repeated hits, but short/entry domains such as
+# www.ig.com are probed earlier even after a single observed query.
 # HTTP 000 (timeout/refused) = ISP blocks it → add to VPN even without antifilter entry.
 PROBE_MIN_COUNT=3
+PROBE_MIN_COUNT_PRIORITY=1
+PROBE_PRIORITY_MIN_SCORE=700
 PROBE_MIN_DEVICES=1
-PROBE_MAX_PER_RUN=8
+PROBE_MAX_PER_RUN=16
 PROBE_TIMEOUT=4
 WAN_IFACE=wan0
 probe_count=0
 
-while IFS=' ' read -r cand_domain cand_count cand_devs; do
+sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_devs cand_domain; do
   [ "$probe_count" -ge "$PROBE_MAX_PER_RUN" ] && break
-  [ "$cand_count" -lt "$PROBE_MIN_COUNT" ]    && continue
+  min_count="$PROBE_MIN_COUNT"
+  [ "$cand_score" -ge "$PROBE_PRIORITY_MIN_SCORE" ] && min_count="$PROBE_MIN_COUNT_PRIORITY"
+  [ "$cand_count" -lt "$min_count" ]          && continue
   [ "$cand_devs"  -lt "$PROBE_MIN_DEVICES" ]  && continue
 
   # Determine write target (same reg_domain logic as main loop)
@@ -184,7 +207,7 @@ while IFS=' ' read -r cand_domain cand_count cand_devs; do
     touch "$CHANGED"
     logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries: $cand_count)"
   fi
-done < "$CANDIDATES_PROBE"
+done
 
 # ── Compute counts ───────────────────────────────────────────────────────────
 n_add=$(wc -l < "$CNT_ADD"  2>/dev/null | tr -d ' '); n_add=${n_add:-0}
