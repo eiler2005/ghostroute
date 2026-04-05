@@ -264,6 +264,8 @@ ip route show table wgc1
 # Состояние ipset
 ipset list VPN_DOMAINS | wc -l        # количество записей
 ipset list VPN_STATIC_NETS            # статические подсети
+ipset list VPN_DOMAINS | sed -n '1,10p'   # header: hashsize / maxelem / memory
+ipset list VPN_DOMAINS | awk '/^Number of entries:/ {print $4}'
 
 # DNS-тест
 nslookup google.com 127.0.0.1
@@ -272,6 +274,12 @@ nslookup google.com 127.0.0.1
 ip route get 142.250.74.206           # Google
 ip route get 149.154.167.1            # Telegram DC
 ```
+
+Если `VPN_DOMAINS` заметно растёт:
+
+- До `~10%` лимита `65536` — это комфортный уровень.
+- После `>30%` стоит проверить auto-discovery на слишком широкие семейства и CDN-агрегаты.
+- Для истории и тренда обновляйте локальный `docs/vpn-domain-journal.md`: там хранится operational snapshot по размеру `ipset`.
 
 ## Связанные документы
 
