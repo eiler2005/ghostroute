@@ -20,6 +20,7 @@ BLOCKED_LIST=/opt/tmp/blocked-domains.lst
 VPN_IPSET=VPN_DOMAINS
 VPN_IFACE=wgc1
 MIN_COUNT=1
+MODE="${1:-run}"
 
 SKIP_PATTERNS="msftconnecttest\.com|windowsupdate\.com|update\.microsoft\.com|login\.microsoftonline\.com|apple-dns\.net|akadns\.net|connectivitycheck|captive\.apple\.com|cloudfront\.net|akamaized\.net|akamaiedge\.net"
 
@@ -88,16 +89,154 @@ get_family_domain() {
   fi
 }
 
-if [ ! -f "$LOG" ]; then
+extract_ipset_domains() {
+  file="$1"
+  [ -f "$file" ] || return 0
+  grep '^ipset=/' "$file" 2>/dev/null \
+    | sed 's|^ipset=/||;s|/.*$||' \
+    | sed '/^[[:space:]]*$/d' \
+    | sort -u
+}
+
+extract_literal_domains() {
+  file="$1"
+  [ -f "$file" ] || return 0
+  grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$file" 2>/dev/null | sort -u
+}
+
+domain_in_list_exact() {
+  domain="$1"
+  list_file="$2"
+  [ -f "$list_file" ] || return 1
+  grep -qxF "$domain" "$list_file" 2>/dev/null
+}
+
+find_covering_domain_in_lists() {
+  domain="$1"
+  shift
+  current="$domain"
+  while [ -n "$current" ]; do
+    for list_file in "$@"; do
+      if domain_in_list_exact "$current" "$list_file"; then
+        printf '%s\n' "$current"
+        return 0
+      fi
+    done
+    case "$current" in
+      *.*) current=${current#*.} ;;
+      *) break ;;
+    esac
+  done
+  return 1
+}
+
+is_domain_covered_by_lists() {
+  domain="$1"
+  shift
+  find_covering_domain_in_lists "$domain" "$@" >/dev/null 2>&1
+}
+
+sort_domains_by_breadth() {
+  list_file="$1"
+  [ -f "$list_file" ] || return 0
+  awk -F. '{print NF, length($0), $0}' "$list_file" \
+    | sort -k1,1n -k2,2n -k3,3 \
+    | awk '{print $3}'
+}
+
+rewrite_auto_file_from_list() {
+  keep_list="$1"
+  tmp_auto="/tmp/daa-auto-rewrite.$$"
+  {
+    printf '# normalized by domain-auto-add.sh at %s\n' "$NOW"
+    while IFS= read -r kept_domain; do
+      [ -n "$kept_domain" ] || continue
+      printf 'ipset=/%s/%s\n'          "$kept_domain" "$VPN_IPSET"
+      printf 'server=/%s/1.1.1.1@%s\n' "$kept_domain" "$VPN_IFACE"
+      printf 'server=/%s/9.9.9.9@%s\n' "$kept_domain" "$VPN_IFACE"
+    done < "$keep_list"
+  } > "$tmp_auto"
+  mv "$tmp_auto" "$AUTO"
+}
+
+cleanup_auto_config() {
+  cleanup_before=$(wc -l < "$AUTO_DOMAINS" 2>/dev/null | tr -d ' ')
+  cleanup_before=${cleanup_before:-0}
+  cleanup_after=$cleanup_before
+  cleanup_removed=0
+  [ "$cleanup_before" -gt 0 ] || return 0
+
+  AUTO_ORDERED=/tmp/daa-auto-ordered.$$
+  AUTO_KEEP=/tmp/daa-auto-keep.$$
+  AUTO_DROP=/tmp/daa-auto-drop.$$
+  : > "$AUTO_ORDERED"; : > "$AUTO_KEEP"; : > "$AUTO_DROP"
+
+  sort_domains_by_breadth "$AUTO_DOMAINS" > "$AUTO_ORDERED"
+
+  while IFS= read -r auto_domain; do
+    [ -n "$auto_domain" ] || continue
+
+    covered_by=$(find_covering_domain_in_lists "$auto_domain" "$MANAGED_DOMAINS" 2>/dev/null || true)
+    if [ -n "$covered_by" ]; then
+      printf '%s\tmanual\t%s\n' "$auto_domain" "$covered_by" >> "$AUTO_DROP"
+      continue
+    fi
+
+    covered_by=$(find_covering_domain_in_lists "$auto_domain" "$AUTO_KEEP" 2>/dev/null || true)
+    if [ -n "$covered_by" ]; then
+      printf '%s\tauto\t%s\n' "$auto_domain" "$covered_by" >> "$AUTO_DROP"
+      continue
+    fi
+
+    printf '%s\n' "$auto_domain" >> "$AUTO_KEEP"
+  done < "$AUTO_ORDERED"
+
+  cleanup_after=$(wc -l < "$AUTO_KEEP" 2>/dev/null | tr -d ' ')
+  cleanup_after=${cleanup_after:-0}
+  cleanup_removed=$((cleanup_before - cleanup_after))
+
+  if [ "$cleanup_removed" -gt 0 ]; then
+    rewrite_auto_file_from_list "$AUTO_KEEP"
+    cp "$AUTO_KEEP" "$AUTO_DOMAINS"
+
+    while IFS="$(printf '\t')" read -r dropped_domain dropped_source covered_by; do
+      [ -n "$dropped_domain" ] || continue
+      printf '  - %-48s covered by %s %s\n' \
+        "$dropped_domain" "$dropped_source" "$covered_by" >> "$CLEANUP_LIST"
+      echo 1 >> "$CNT_CLN"
+    done < "$AUTO_DROP"
+
+    touch "$CHANGED"
+    logger -t domain-auto-add \
+      "Cleanup removed $cleanup_removed redundant auto-domains (kept: $cleanup_after)"
+  fi
+
+  rm -f "$AUTO_ORDERED" "$AUTO_KEEP" "$AUTO_DROP"
+}
+
+NOW=$(date '+%Y-%m-%d %H:%M')
+
+if [ "$MODE" != "--cleanup-only" ] && [ "$MODE" != "run" ] && [ -n "$MODE" ]; then
+  echo "Usage: $0 [--cleanup-only]" >&2
+  exit 1
+fi
+
+if [ -f "$LOG" ]; then
+  TOTAL_Q=$(grep -c "query\[A" "$LOG" 2>/dev/null || echo 0)
+  LOG_FROM=$(head -1 "$LOG" 2>/dev/null | awk '{print $3}')
+  LOG_TO=$(tail  -1 "$LOG" 2>/dev/null | awk '{print $3}')
+  DATE_HDR=$(head -1 "$LOG" 2>/dev/null | awk '{print $1, $2}')
+else
+  TOTAL_Q=0
+  LOG_FROM="-"
+  LOG_TO="-"
+  DATE_HDR=""
+fi
+
+if [ "$MODE" = "run" ] && [ ! -f "$LOG" ]; then
   logger -t domain-auto-add "No log at $LOG — is dnsmasq logging enabled?"
   exit 0
 fi
-
-NOW=$(date '+%Y-%m-%d %H:%M')
-TOTAL_Q=$(grep -c "query\[A" "$LOG" 2>/dev/null || echo 0)
-LOG_FROM=$(head -1 "$LOG" 2>/dev/null | awk '{print $3}')
-LOG_TO=$(tail  -1 "$LOG" 2>/dev/null | awk '{print $3}')
-DATE_HDR=$(head -1 "$LOG" 2>/dev/null | awk '{print $1, $2}')
 
 # Temp files — pre-created so subshell (pipe) can append to them
 CHANGED=/tmp/daa-changed.$$
@@ -106,13 +245,41 @@ CNT_KNW=/tmp/daa-knw.$$
 CNT_SKP=/tmp/daa-skp.$$
 CNT_CND=/tmp/daa-cnd.$$
 CNT_GEO=/tmp/daa-geo.$$
+CNT_CLN=/tmp/daa-cln.$$
 ADDED_LIST=/tmp/daa-list.$$
 CANDIDATES=/tmp/daa-candidates.$$
 CANDIDATES_PROBE=/tmp/daa-probe.$$
 GEO_LIST=/tmp/daa-geolist.$$
-: > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"; : > "$CNT_GEO"
-: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$GEO_LIST"
-trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$GEO_LIST"' 0
+CLEANUP_LIST=/tmp/daa-cleanup.$$
+MANAGED_DOMAINS=/tmp/daa-managed.$$
+AUTO_DOMAINS=/tmp/daa-auto.$$
+NO_VPN_DOMAINS=/tmp/daa-no-vpn.$$
+: > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"; : > "$CNT_GEO"; : > "$CNT_CLN"
+: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$GEO_LIST"; : > "$CLEANUP_LIST"
+: > "$MANAGED_DOMAINS"; : > "$AUTO_DOMAINS"; : > "$NO_VPN_DOMAINS"
+trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$CNT_CLN" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$GEO_LIST" "$CLEANUP_LIST" "$MANAGED_DOMAINS" "$AUTO_DOMAINS" "$NO_VPN_DOMAINS"' 0
+
+extract_ipset_domains "$MANAGED" > "$MANAGED_DOMAINS"
+extract_ipset_domains "$AUTO" > "$AUTO_DOMAINS"
+extract_literal_domains "$NO_VPN" > "$NO_VPN_DOMAINS"
+
+cleanup_before=0
+cleanup_after=0
+cleanup_removed=0
+cleanup_auto_config
+
+if [ "$MODE" = "--cleanup-only" ]; then
+  if [ -f "$CHANGED" ]; then
+    service restart_dnsmasq
+  fi
+  printf 'Auto cleanup: %d -> %d (removed %d redundant entries)\n' \
+    "$cleanup_before" "$cleanup_after" "$cleanup_removed"
+  if [ "$cleanup_removed" -gt 0 ] && [ -s "$CLEANUP_LIST" ]; then
+    head -20 "$CLEANUP_LIST"
+    [ "$cleanup_removed" -gt 20 ] && printf '  ...trimmed output, total removed: %d\n' "$cleanup_removed"
+  fi
+  exit 0
+fi
 
 # ── Process each unique domain ──────────────────────────────────────────────
 grep "query\[A" "$LOG" \
@@ -139,14 +306,12 @@ grep "query\[A" "$LOG" \
       family_domain=$(get_family_domain "$domain")
 
       # Check user exclusion list (domains-no-vpn.txt) — exact or parent match
-      if [ -f "$NO_VPN" ]; then
-        if grep -vE '^\s*#|^\s*$' "$NO_VPN" | grep -qE "^(${domain}|${parent})$"; then
-          echo 1 >> "$CNT_SKP"
-          continue
-        fi
+      if is_domain_covered_by_lists "$domain" "$NO_VPN_DOMAINS"; then
+        echo 1 >> "$CNT_SKP"
+        continue
       fi
 
-      if grep -qE "ipset=.*/(${domain}|${parent}|${reg_domain}|${family_domain})/" "$MANAGED" "$AUTO" 2>/dev/null; then
+      if is_domain_covered_by_lists "$domain" "$MANAGED_DOMAINS" "$AUTO_DOMAINS"; then
         echo 1 >> "$CNT_KNW"
         continue
       fi
@@ -198,7 +363,7 @@ grep "query\[A" "$LOG" \
 
       # If reg_domain differs from domain, do an exact check for the write target
       if [ "$write_domain" != "$domain" ] && \
-         grep -qF "ipset=/$write_domain/" "$MANAGED" "$AUTO" 2>/dev/null; then
+         is_domain_covered_by_lists "$write_domain" "$MANAGED_DOMAINS" "$AUTO_DOMAINS"; then
         echo 1 >> "$CNT_KNW"
         continue
       fi
@@ -215,6 +380,8 @@ grep "query\[A" "$LOG" \
       printf '  + %-48s %3d запр  [%s]\n' "$write_domain" "$count" "$srcs" >> "$ADDED_LIST"
 
       echo 1 >> "$CNT_ADD"
+      printf '%s\n' "$write_domain" >> "$AUTO_DOMAINS"
+      sort -u "$AUTO_DOMAINS" -o "$AUTO_DOMAINS"
       touch "$CHANGED"
       logger -t domain-auto-add "Added: $domain (queries: $count)"
     done
@@ -245,7 +412,7 @@ sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_
   cand_write=$(get_family_domain "$cand_domain")
 
   # Skip if already covered in any config
-  if grep -qF "ipset=/$cand_write/" "$MANAGED" "$AUTO" 2>/dev/null; then
+  if is_domain_covered_by_lists "$cand_write" "$MANAGED_DOMAINS" "$AUTO_DOMAINS"; then
     continue
   fi
 
@@ -265,6 +432,8 @@ sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_
     } >> "$AUTO"
     printf '  + %-48s %3d запр  ISP:000\n' "$cand_write" "$cand_count" >> "$GEO_LIST"
     echo 1 >> "$CNT_GEO"
+    printf '%s\n' "$cand_write" >> "$AUTO_DOMAINS"
+    sort -u "$AUTO_DOMAINS" -o "$AUTO_DOMAINS"
     touch "$CHANGED"
     logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries: $cand_count)"
   fi
@@ -276,6 +445,7 @@ n_knw=$(wc -l < "$CNT_KNW"  2>/dev/null | tr -d ' '); n_knw=${n_knw:-0}
 n_skp=$(wc -l < "$CNT_SKP"  2>/dev/null | tr -d ' '); n_skp=${n_skp:-0}
 n_cnd=$(wc -l < "$CNT_CND"  2>/dev/null | tr -d ' '); n_cnd=${n_cnd:-0}
 n_geo=$(wc -l < "$CNT_GEO"  2>/dev/null | tr -d ' '); n_geo=${n_geo:-0}
+n_cln=$(wc -l < "$CNT_CLN"  2>/dev/null | tr -d ' '); n_cln=${n_cln:-0}
 
 # ── Write compact entry to activity log ─────────────────────────────────────
 {
@@ -301,6 +471,15 @@ n_geo=$(wc -l < "$CNT_GEO"  2>/dev/null | tr -d ' '); n_geo=${n_geo:-0}
     done < "$GEO_LIST"
   fi
 
+  if [ "$n_cln" -gt 0 ] && [ -s "$CLEANUP_LIST" ]; then
+    printf '│\n'
+    printf '│ CLEANUP AUTO-ФАЙЛА (%d):\n' "$n_cln"
+    head -10 "$CLEANUP_LIST" | while IFS= read -r line; do
+      printf '│%s\n' "$line"
+    done
+    [ "$n_cln" -gt 10 ] && printf '│  ...показаны первые 10 из %d\n' "$n_cln"
+  fi
+
   if [ "$n_cnd" -gt 0 ] && [ -s "$CANDIDATES" ]; then
     printf '│\n'
     printf '│ КАНДИДАТЫ (не в списке блокировок, %d):\n' "$n_cnd"
@@ -314,8 +493,8 @@ n_geo=$(wc -l < "$CNT_GEO"  2>/dev/null | tr -d ' '); n_geo=${n_geo:-0}
   BL_STATUS=""
   [ -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: $(wc -l < "$BLOCKED_LIST" | tr -d ' ')"
   [ ! -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: нет (fallback)"
-  printf '│ Итог: +%d добавлено  |  +%d geo  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
-    "$n_add" "$n_geo" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
+  printf '│ Итог: +%d добавлено  |  +%d geo  |  -%d cleanup  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
+    "$n_add" "$n_geo" "$n_cln" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
   printf '└─────────────────────────────────────────────────────────────\n'
 } >> "$ACTIVITY"
 
@@ -343,4 +522,4 @@ if [ -f "$ACTIVITY" ]; then
   fi
 fi
 
-logger -t domain-auto-add "Done. Added=$n_add, Geo=$n_geo, Known=$n_knw, Skipped=$n_skp, Candidates=$n_cnd"
+logger -t domain-auto-add "Done. Added=$n_add, Geo=$n_geo, Cleanup=$n_cln, Known=$n_knw, Skipped=$n_skp, Candidates=$n_cnd"

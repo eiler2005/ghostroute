@@ -6,6 +6,7 @@
 #   ./scripts/domain-report --log      # show full activity log (что заходили, что добавлено)
 #   ./scripts/domain-report --log 100  # show last N lines of log
 #   ./scripts/domain-report --reset    # remove all auto-added domains and reload dnsmasq
+#   ./scripts/domain-report --cleanup  # prune redundant child auto-domains and reload dnsmasq
 #   ./scripts/domain-report --candidates # show domains skipped (not in blocked list)
 
 set -euo pipefail
@@ -26,9 +27,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --log)   MODE="log"; [ "${2:-}" -eq "${2:-}" ] 2>/dev/null && { LOG_LINES="${2:-200}"; shift; }; shift ;;
     --reset)      MODE="reset"; shift ;;
+    --cleanup)    MODE="cleanup"; shift ;;
     --all)        MODE="all"; shift ;;
     --candidates) MODE="candidates"; shift ;;
-    *) echo "Usage: $0 [--log [N]] [--reset] [--all] [--candidates]" >&2; exit 1 ;;
+    *) echo "Usage: $0 [--log [N]] [--reset] [--cleanup] [--all] [--candidates]" >&2; exit 1 ;;
   esac
 done
 
@@ -64,6 +66,17 @@ case "$MODE" in
       'rm -f /jffs/configs/dnsmasq-autodiscovered.conf.add
        service restart_dnsmasq
        echo "Готово. Все авто-добавленные домены удалены, dnsmasq перезапущен."'
+    ;;
+
+  cleanup)
+    echo "Нормализую auto-файл на роутере и убираю дочерние записи, покрытые более общими правилами..."
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
+       BEFORE=$( [ -f "$AUTO" ] && grep -c "^ipset=" "$AUTO" || echo 0 )
+       /jffs/addons/x3mRouting/domain-auto-add.sh --cleanup-only
+       AFTER=$( [ -f "$AUTO" ] && grep -c "^ipset=" "$AUTO" || echo 0 )
+       echo ""
+       echo "Auto-domains: ${BEFORE} -> ${AFTER}"'
     ;;
 
   all)
@@ -106,6 +119,7 @@ case "$MODE" in
        echo "Подробный лог: ./scripts/domain-report --log"
        echo "Все домены:    ./scripts/domain-report --all"
        echo "Кандидаты:     ./scripts/domain-report --candidates"
+       echo "Cleanup:       ./scripts/domain-report --cleanup"
        echo "Сбросить всё:  ./scripts/domain-report --reset"'
     ;;
 

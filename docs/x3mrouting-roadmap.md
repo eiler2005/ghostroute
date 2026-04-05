@@ -19,20 +19,22 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
 Что он делает:
 
 1. Парсит `/opt/var/log/dnsmasq.log` — извлекает все уникальные домены
-2. Фильтрует по очереди (первый совпавший фильтр = SKIP):
+2. Нормализует `dnsmasq-autodiscovered.conf.add` и вычищает child-записи, уже покрытые ручными или более широкими auto-правилами
+3. Фильтрует по очереди (первый совпавший фильтр = SKIP):
    - Системные домены (`.local`, `.lan`, `.arpa`)
    - CDN/infrastructure паттерны (`cloudfront.net`, `akamaiedge.net`, `akadns.net`, `windowsupdate.com` и др.)
    - Российские TLD (`.ru`, `.su`, `.рф`, `.москва`, `.tatar`, `.moscow`)
    - Домены из `domains-no-vpn.txt` (ручные исключения)
-   - Домены, уже покрытые правилом в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add`
-3. **Проверяет по реестру РКН** (`blocked-domains.lst`) — не найден → КАНДИДАТ. Если список не скачан → fallback (добавлять всё)
-4. **ISP-проба кандидатов** — обычные кандидаты идут в пробу после `≥3` запросов, а короткие/`www`-входные домены и dynamic DNS хосты с IP-encoded family label получают повышенный приоритет и могут проверяться уже после одного запроса. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
-5. **Определяет write_domain**: обычно поддомен (≥3 меток) → registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
-6. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
+   - Домены, уже покрытые правилом в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add` по ancestor suffix
+4. **Проверяет по реестру РКН** (`blocked-domains.lst`) — не найден → КАНДИДАТ. Если список не скачан → fallback (добавлять всё)
+5. **ISP-проба кандидатов** — обычные кандидаты идут в пробу после `≥3` запросов, а короткие/`www`-входные домены и dynamic DNS хосты с IP-encoded family label получают повышенный приоритет и могут проверяться уже после одного запроса. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
+6. **Определяет write_domain**: обычно поддомен (≥3 меток) → registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
+7. Перед записью делает повторный suffix coverage check — если write-domain уже покрыт, новая child-запись не создаётся
+8. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
    - `ipset=/<domain>/VPN_DOMAINS`
    - `server=/<domain>/1.1.1.1@wgc1`
    - `server=/<domain>/9.9.9.9@wgc1`
-7. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
+9. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
 
 Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
 
@@ -143,6 +145,9 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 # Все авто-добавленные домены (список)
 ./scripts/domain-report --all
+
+# Cleanup: убрать child auto-домены, уже покрытые родителем
+./scripts/domain-report --cleanup
 
 # Сброс: удалить все авто-добавленные домены
 ./scripts/domain-report --reset

@@ -33,6 +33,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **Auto-discovery** — parses DNS logs every hour and adds newly-seen blocked domains to VPN routing automatically
 - **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates and may still be auto-added after an ISP-side reachability probe
 - **Service-family domain detection** — subdomains usually collapse to a shared family (`www.example-provider.invalid` → `example-provider.invalid`), while IP-encoded dynamic DNS keeps a narrower family (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
+- **Ancestor dedupe + cleanup** — if `fbcdn.net` is already routed, child hosts like `video.xx.fbcdn.net` are skipped automatically; stale child rules in the auto file are pruned during cleanup
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
@@ -76,7 +77,8 @@ Device (iPhone / PC)
           ├─ Skip: system/CDN/infra patterns
           ├─ Skip: Russian TLDs (.ru, .su, .рф, ...)
           ├─ Skip: domains in domains-no-vpn.txt
-          ├─ Skip: already routed via VPN
+          ├─ Skip: already covered by a broader VPN suffix
+          ├─ Normalize auto file: drop child rules already covered by parent rules
           │
           └─ Check vs /opt/tmp/blocked-domains.lst
                 ├─ In blocked list → add to dnsmasq-autodiscovered.conf.add
@@ -93,6 +95,10 @@ Device (iPhone / PC)
 When a domain passes auto-discovery, the script writes a **service-family domain**:
 - regular subdomains usually collapse to the registrable domain (`api.example-provider.invalid` → `example-provider.invalid`)
 - IP-encoded dynamic DNS keeps the family at the IP label (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
+
+Before writing, the script also does a full **suffix coverage check** across manual rules and already-kept auto rules:
+- if `fbcdn.net` already exists, `static.xx.fbcdn.net` is skipped as redundant
+- if an old child rule is still present in `dnsmasq-autodiscovered.conf.add`, cleanup rewrites the auto file without that child
 
 ---
 
@@ -205,6 +211,9 @@ The deploy script:
 
 # List all auto-added domains
 ./scripts/domain-report --all
+
+# Prune redundant child auto-domains on the router
+./scripts/domain-report --cleanup
 
 # Remove all auto-discovered domains and restart dnsmasq
 ./scripts/domain-report --reset
