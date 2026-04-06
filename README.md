@@ -32,6 +32,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **DNS geo-alignment** — VPN-routed domains are resolved via Cloudflare/Quad9 *over the VPN tunnel*, so IPs are geographically correct for the exit node, not ISP-localized
 - **Auto-discovery** — parses DNS logs every hour and adds newly-seen blocked domains to VPN routing automatically
 - **Smart filtering** — auto-discovered domains are validated against a community blocked list; non-blocked domains become candidates and may still be auto-added after an ISP-side reachability probe
+- **User-interest signal** — repeated candidate requests over a week (`count7d` + active days) increase probe priority even when current-hour traffic is low
 - **Service-family domain detection** — subdomains usually collapse to a shared family (`www.example-provider.invalid` → `example-provider.invalid`), while IP-encoded dynamic DNS keeps a narrower family (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
 - **Ancestor dedupe + cleanup** — if `fbcdn.net` is already routed, child hosts like `video.xx.fbcdn.net` are skipped automatically; stale child rules in the auto file are pruned during cleanup
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
@@ -84,8 +85,11 @@ Device (iPhone / PC)
                 ├─ In blocked list → add to dnsmasq-autodiscovered.conf.add
                 │                    restart dnsmasq
                 └─ Not in list → candidate
-                                   ├─ short entry domain / IP-encoded family?
-                                   │    → probe early
+                                   ├─ count24h threshold / priority entry?
+                                   ├─ weekly user-interest signal?
+                                   │    (count7d + active_days7d)
+                                   ├─ scheduler:
+                                   │    2 interest + 10 top-score + 4 fair
                                    ├─ ISP probe says HTTP 000 → add as geo-blocked
                                    └─ otherwise stay logged as candidate
 ```

@@ -23,7 +23,15 @@ MIN_COUNT=1
 MODE="${1:-run}"
 CANDIDATE_EVENTS_STATE=/opt/tmp/domain-auto-add-candidate-events.tsv
 PROBE_HISTORY_STATE=/opt/tmp/domain-auto-add-probe-history.tsv
-CANDIDATE_WINDOW_SEC=86400
+CANDIDATE_WINDOW_24H_SEC=86400
+CANDIDATE_WINDOW_7D_SEC=604800
+CANDIDATE_RETENTION_SEC=$CANDIDATE_WINDOW_7D_SEC
+
+# "User interest" signal: domain is repeatedly requested by user devices
+# across multiple days, even if current 24h volume is low.
+USER_INTEREST_MIN_COUNT_7D=10
+USER_INTEREST_MIN_DAYS_7D=2
+PROBE_INTEREST_SCORE_BOOST=450
 
 SKIP_PATTERNS="msftconnecttest\.com|windowsupdate\.com|update\.microsoft\.com|login\.microsoftonline\.com|apple-dns\.net|akadns\.net|connectivitycheck|captive\.apple\.com|cloudfront\.net|akamaized\.net|akamaiedge\.net"
 
@@ -223,19 +231,54 @@ refresh_candidate_events_state() {
   {
     cat "$CANDIDATE_EVENTS_STATE" 2>/dev/null
     cat "$CANDIDATE_EVENTS_NEW" 2>/dev/null
-  } | awk -F '\t' -v cutoff="$CANDIDATE_CUTOFF_EPOCH" '
+  } | awk -F '\t' -v cutoff="$CANDIDATE_RETENTION_CUTOFF_EPOCH" '
         NF >= 3 && $1 ~ /^[0-9]+$/ && $1 >= cutoff { print $1 "\t" $2 "\t" $3 }
       ' > "$tmp_state"
   mv "$tmp_state" "$CANDIDATE_EVENTS_STATE"
 }
 
-build_candidate_count24_index() {
+build_candidate_indexes() {
   : > "$CANDIDATE_COUNT24"
+  : > "$CANDIDATE_COUNT7"
+  : > "$CANDIDATE_DAYS7"
   [ -s "$CANDIDATE_EVENTS_STATE" ] || return 0
-  awk -F '\t' '
-    NF >= 3 { sum[$2] += $3 }
-    END { for (d in sum) printf "%s\t%d\n", d, sum[d] }
-  ' "$CANDIDATE_EVENTS_STATE" > "$CANDIDATE_COUNT24"
+  awk -F '\t' -v cutoff24="$CANDIDATE_CUTOFF_24H_EPOCH" -v cutoff7="$CANDIDATE_CUTOFF_7D_EPOCH" '
+    NF >= 3 && $1 ~ /^[0-9]+$/ {
+      epoch = $1 + 0
+      domain = $2
+      cnt = $3 + 0
+      if (epoch >= cutoff24) {
+        sum24[domain] += cnt
+      }
+      if (epoch >= cutoff7) {
+        sum7[domain] += cnt
+        day_key = int(epoch / 86400)
+        seen_day[domain "|" day_key] = 1
+      }
+    }
+    END {
+      for (d in sum24) {
+        printf "24\t%s\t%d\n", d, sum24[d]
+      }
+      for (d in sum7) {
+        printf "7\t%s\t%d\n", d, sum7[d]
+      }
+      for (k in seen_day) {
+        split(k, parts, "|")
+        domain = parts[1]
+        days[domain] += 1
+      }
+      for (d in days) {
+        printf "d\t%s\t%d\n", d, days[d]
+      }
+    }
+  ' "$CANDIDATE_EVENTS_STATE" | while IFS='	' read -r marker domain value; do
+    case "$marker" in
+      24) printf '%s\t%s\n' "$domain" "$value" >> "$CANDIDATE_COUNT24" ;;
+      7)  printf '%s\t%s\n' "$domain" "$value" >> "$CANDIDATE_COUNT7" ;;
+      d)  printf '%s\t%s\n' "$domain" "$value" >> "$CANDIDATE_DAYS7" ;;
+    esac
+  done
 }
 
 get_candidate_count24() {
@@ -245,6 +288,24 @@ get_candidate_count24() {
     $1 == d { print $2; found = 1; exit }
     END { if (!found) print 0 }
   ' "$CANDIDATE_COUNT24"
+}
+
+get_candidate_count7() {
+  domain="$1"
+  [ -f "$CANDIDATE_COUNT7" ] || { printf '0\n'; return 0; }
+  awk -F '\t' -v d="$domain" '
+    $1 == d { print $2; found = 1; exit }
+    END { if (!found) print 0 }
+  ' "$CANDIDATE_COUNT7"
+}
+
+get_candidate_days7() {
+  domain="$1"
+  [ -f "$CANDIDATE_DAYS7" ] || { printf '0\n'; return 0; }
+  awk -F '\t' -v d="$domain" '
+    $1 == d { print $2; found = 1; exit }
+    END { if (!found) print 0 }
+  ' "$CANDIDATE_DAYS7"
 }
 
 get_probe_last_epoch() {
@@ -278,8 +339,12 @@ update_probe_last_epoch() {
 NOW=$(date '+%Y-%m-%d %H:%M')
 CURRENT_EPOCH=$(date '+%s' 2>/dev/null || echo 0)
 [ "$CURRENT_EPOCH" -gt 0 ] 2>/dev/null || CURRENT_EPOCH=0
-CANDIDATE_CUTOFF_EPOCH=$((CURRENT_EPOCH - CANDIDATE_WINDOW_SEC))
-[ "$CANDIDATE_CUTOFF_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_CUTOFF_EPOCH=0
+CANDIDATE_CUTOFF_24H_EPOCH=$((CURRENT_EPOCH - CANDIDATE_WINDOW_24H_SEC))
+[ "$CANDIDATE_CUTOFF_24H_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_CUTOFF_24H_EPOCH=0
+CANDIDATE_CUTOFF_7D_EPOCH=$((CURRENT_EPOCH - CANDIDATE_WINDOW_7D_SEC))
+[ "$CANDIDATE_CUTOFF_7D_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_CUTOFF_7D_EPOCH=0
+CANDIDATE_RETENTION_CUTOFF_EPOCH=$((CURRENT_EPOCH - CANDIDATE_RETENTION_SEC))
+[ "$CANDIDATE_RETENTION_CUTOFF_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_RETENTION_CUTOFF_EPOCH=0
 
 if [ "$MODE" != "--cleanup-only" ] && [ "$MODE" != "run" ] && [ -n "$MODE" ]; then
   echo "Usage: $0 [--cleanup-only]" >&2
@@ -316,7 +381,10 @@ CANDIDATES=/tmp/daa-candidates.$$
 CANDIDATES_PROBE=/tmp/daa-probe.$$
 CANDIDATE_EVENTS_NEW=/tmp/daa-candidate-events-new.$$
 CANDIDATE_COUNT24=/tmp/daa-candidate-count24.$$
+CANDIDATE_COUNT7=/tmp/daa-candidate-count7.$$
+CANDIDATE_DAYS7=/tmp/daa-candidate-days7.$$
 PROBE_ELIGIBLE=/tmp/daa-probe-eligible.$$
+PROBE_SELECTED_INTEREST=/tmp/daa-probe-interest.$$
 PROBE_SELECTED_TOP=/tmp/daa-probe-top.$$
 PROBE_SELECTED_FAIR=/tmp/daa-probe-fair.$$
 PROBE_SELECTED_ALL=/tmp/daa-probe-all.$$
@@ -328,11 +396,11 @@ MANAGED_DOMAINS=/tmp/daa-managed.$$
 AUTO_DOMAINS=/tmp/daa-auto.$$
 NO_VPN_DOMAINS=/tmp/daa-no-vpn.$$
 : > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"; : > "$CNT_GEO"; : > "$CNT_CLN"
-: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$CANDIDATE_EVENTS_NEW"; : > "$CANDIDATE_COUNT24"
-: > "$PROBE_ELIGIBLE"; : > "$PROBE_SELECTED_TOP"; : > "$PROBE_SELECTED_FAIR"; : > "$PROBE_SELECTED_ALL"; : > "$PROBE_SELECTED_DOMAINS"; : > "$PROBE_REMAINING"
+: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$CANDIDATE_EVENTS_NEW"; : > "$CANDIDATE_COUNT24"; : > "$CANDIDATE_COUNT7"; : > "$CANDIDATE_DAYS7"
+: > "$PROBE_ELIGIBLE"; : > "$PROBE_SELECTED_INTEREST"; : > "$PROBE_SELECTED_TOP"; : > "$PROBE_SELECTED_FAIR"; : > "$PROBE_SELECTED_ALL"; : > "$PROBE_SELECTED_DOMAINS"; : > "$PROBE_REMAINING"
 : > "$GEO_LIST"; : > "$CLEANUP_LIST"
 : > "$MANAGED_DOMAINS"; : > "$AUTO_DOMAINS"; : > "$NO_VPN_DOMAINS"
-trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$CNT_CLN" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$CANDIDATE_EVENTS_NEW" "$CANDIDATE_COUNT24" "$PROBE_ELIGIBLE" "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" "$PROBE_SELECTED_ALL" "$PROBE_SELECTED_DOMAINS" "$PROBE_REMAINING" "$GEO_LIST" "$CLEANUP_LIST" "$MANAGED_DOMAINS" "$AUTO_DOMAINS" "$NO_VPN_DOMAINS"' 0
+trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$CNT_CLN" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$CANDIDATE_EVENTS_NEW" "$CANDIDATE_COUNT24" "$CANDIDATE_COUNT7" "$CANDIDATE_DAYS7" "$PROBE_ELIGIBLE" "$PROBE_SELECTED_INTEREST" "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" "$PROBE_SELECTED_ALL" "$PROBE_SELECTED_DOMAINS" "$PROBE_REMAINING" "$GEO_LIST" "$CLEANUP_LIST" "$MANAGED_DOMAINS" "$AUTO_DOMAINS" "$NO_VPN_DOMAINS"' 0
 
 extract_ipset_domains "$MANAGED" > "$MANAGED_DOMAINS"
 extract_ipset_domains "$AUTO" > "$AUTO_DOMAINS"
@@ -472,43 +540,64 @@ PROBE_MIN_COUNT_24H=3
 PROBE_MIN_COUNT_PRIORITY=1
 PROBE_PRIORITY_MIN_SCORE=700
 PROBE_MIN_DEVICES=1
-PROBE_TOP_N=12
+PROBE_TOP_N=10
 PROBE_FAIR_N=4
+PROBE_INTEREST_N=2
 PROBE_MAX_PER_RUN=16
 PROBE_TIMEOUT=4
 WAN_IFACE=wan0
 probe_count=0
 
 refresh_candidate_events_state
-build_candidate_count24_index
+build_candidate_indexes
 
 sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_devs cand_domain; do
   [ -n "$cand_domain" ] || continue
   [ "$cand_devs" -lt "$PROBE_MIN_DEVICES" ] && continue
 
   cand_count24=$(get_candidate_count24 "$cand_domain")
+  cand_count7=$(get_candidate_count7 "$cand_domain")
+  cand_days7=$(get_candidate_days7 "$cand_domain")
+  cand_interest=0
+  if [ "$cand_count7" -ge "$USER_INTEREST_MIN_COUNT_7D" ] && \
+     [ "$cand_days7" -ge "$USER_INTEREST_MIN_DAYS_7D" ]; then
+    cand_interest=1
+  fi
+
   min_count="$PROBE_MIN_COUNT_24H"
   [ "$cand_score" -ge "$PROBE_PRIORITY_MIN_SCORE" ] && min_count="$PROBE_MIN_COUNT_PRIORITY"
-  [ "$cand_count24" -lt "$min_count" ] && continue
+  if [ "$cand_count24" -lt "$min_count" ] && [ "$cand_interest" -ne 1 ]; then
+    continue
+  fi
 
   cand_last_probe=$(get_probe_last_epoch "$cand_domain")
-  printf '%d\t%d\t%d\t%d\t%s\n' \
-    "$cand_score" "$cand_count24" "$cand_count" "$cand_last_probe" "$cand_domain" >> "$PROBE_ELIGIBLE"
+  cand_effective_score=$cand_score
+  [ "$cand_interest" -eq 1 ] && cand_effective_score=$((cand_effective_score + PROBE_INTEREST_SCORE_BOOST))
+  printf '%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n' \
+    "$cand_effective_score" "$cand_count24" "$cand_count7" "$cand_days7" "$cand_count" "$cand_last_probe" "$cand_interest" "$cand_domain" >> "$PROBE_ELIGIBLE"
 done
 
-# Top priority by score first.
-sort -t '	' -k1,1nr -k2,2nr -k3,3nr -k5,5 "$PROBE_ELIGIBLE" | head -n "$PROBE_TOP_N" > "$PROBE_SELECTED_TOP"
-awk -F '	' '{print $5}' "$PROBE_SELECTED_TOP" > "$PROBE_SELECTED_DOMAINS"
-awk -F '	' 'NR==FNR { picked[$1]=1; next } !picked[$5] { print }' \
+# Reserve a small probe budget for "user interest" domains.
+awk -F '	' '$7 == 1 { print }' "$PROBE_ELIGIBLE" \
+  | sort -t '	' -k6,6n -k3,3nr -k1,1nr -k8,8 \
+  | head -n "$PROBE_INTEREST_N" > "$PROBE_SELECTED_INTEREST"
+awk -F '	' '{print $8}' "$PROBE_SELECTED_INTEREST" > "$PROBE_SELECTED_DOMAINS"
+awk -F '	' 'NR==FNR { picked[$1]=1; next } !picked[$8] { print }' \
+  "$PROBE_SELECTED_DOMAINS" "$PROBE_ELIGIBLE" > "$PROBE_REMAINING"
+
+# Top priority by effective score.
+sort -t '	' -k1,1nr -k2,2nr -k5,5nr -k8,8 "$PROBE_REMAINING" | head -n "$PROBE_TOP_N" > "$PROBE_SELECTED_TOP"
+awk -F '	' '{print $8}' "$PROBE_SELECTED_TOP" >> "$PROBE_SELECTED_DOMAINS"
+awk -F '	' 'NR==FNR { picked[$1]=1; next } !picked[$8] { print }' \
   "$PROBE_SELECTED_DOMAINS" "$PROBE_ELIGIBLE" > "$PROBE_REMAINING"
 
 # Fair queue by "longest since last probe" (or never probed = 0).
-sort -t '	' -k4,4n -k1,1nr -k2,2nr -k5,5 "$PROBE_REMAINING" | head -n "$PROBE_FAIR_N" > "$PROBE_SELECTED_FAIR"
+sort -t '	' -k6,6n -k1,1nr -k2,2nr -k8,8 "$PROBE_REMAINING" | head -n "$PROBE_FAIR_N" > "$PROBE_SELECTED_FAIR"
 
-cat "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" \
-  | awk -F '	' '!seen[$5]++ { print }' > "$PROBE_SELECTED_ALL"
+cat "$PROBE_SELECTED_INTEREST" "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" \
+  | awk -F '	' '!seen[$8]++ { print }' > "$PROBE_SELECTED_ALL"
 
-while IFS='	' read -r cand_score cand_count24 cand_count cand_last_probe cand_domain; do
+while IFS='	' read -r cand_effective_score cand_count24 cand_count7 cand_days7 cand_count cand_last_probe cand_interest cand_domain; do
   [ -n "$cand_domain" ] || continue
   [ "$probe_count" -ge "$PROBE_MAX_PER_RUN" ] && break
 
@@ -526,21 +615,27 @@ while IFS='	' read -r cand_score cand_count24 cand_count cand_last_probe cand_do
   update_probe_last_epoch "$cand_domain" "$CURRENT_EPOCH"
 
   if [ "$http_code" = "000" ]; then
+    interest_tag=""
+    [ "$cand_interest" -eq 1 ] && interest_tag=" interest"
     cand_srcs=$(grep "query\[A\] ${cand_domain} from" "$LOG" \
                 | awk '{print $8}' | sort -u | tr '\n' ',' | sed 's/,$//')
     {
-      printf '\n# geo-blocked (ISP:000) %s (queries: %d, from: %s)\n' \
-             "$NOW" "$cand_count24" "$cand_srcs"
+      printf '\n# geo-blocked (ISP:000%s) %s (queries24h: %d, queries7d: %d, from: %s)\n' \
+             "$interest_tag" "$NOW" "$cand_count24" "$cand_count7" "$cand_srcs"
       printf 'ipset=/%s/%s\n'          "$cand_write" "$VPN_IPSET"
       printf 'server=/%s/1.1.1.1@%s\n' "$cand_write" "$VPN_IFACE"
       printf 'server=/%s/9.9.9.9@%s\n' "$cand_write" "$VPN_IFACE"
     } >> "$AUTO"
-    printf '  + %-48s %3d запр24  ISP:000\n' "$cand_write" "$cand_count24" >> "$GEO_LIST"
+    if [ "$cand_interest" -eq 1 ]; then
+      printf '  + %-48s %3d запр24 %3d запр7д  ISP:000 interest\n' "$cand_write" "$cand_count24" "$cand_count7" >> "$GEO_LIST"
+    else
+      printf '  + %-48s %3d запр24            ISP:000\n' "$cand_write" "$cand_count24" >> "$GEO_LIST"
+    fi
     echo 1 >> "$CNT_GEO"
     printf '%s\n' "$cand_write" >> "$AUTO_DOMAINS"
     sort -u "$AUTO_DOMAINS" -o "$AUTO_DOMAINS"
     touch "$CHANGED"
-    logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries24h: $cand_count24)"
+    logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries24h: $cand_count24, queries7d: $cand_count7, interest: $cand_interest)"
   fi
 done < "$PROBE_SELECTED_ALL"
 

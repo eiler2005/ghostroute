@@ -191,7 +191,7 @@ ipset list VPN_STATIC_NETS | awk '/^Number of entries:/ {print $4}'
 4. **Проверяет по списку заблокированных** (`/opt/tmp/blocked-domains.lst`) — добавляет только домены из реестра РКН. Если список не скачан — fallback (добавлять всё). Домены, не попавшие в список, становятся «кандидатами».
 5. **Пишет service-family domain** — обычно registrable domain (e.g. `example-provider.invalid`) вместо конкретного поддомена (`www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label использует семейство по IP-лейблу, а не весь публичный суффикс.
 6. **Проверяет suffix coverage перед записью** — если write-domain уже покрыт более общим правилом (`fbcdn.net`, `facebook.com`, `203-0-113-10.sslip.io` и т.п.), новая child-запись не создаётся.
-7. **ISP-проба кандидатов** — пороги считаются по накопленному окну `24h`: обычные домены тестируются после `count24h ≥ 3`, а короткие/входные домены (например `www.ig.com`) и dynamic DNS хосты с IP-encoded family label могут проверяться с `count24h ≥ 1`. Планировщик проб — `12` top-score + `4` fair-queue (давно/никогда не проверялись), максимум `16` проб за запуск.
+7. **ISP-проба кандидатов** — пороги считаются по накопленным окнам: базовый `count24h` (`>=3` для обычных, `>=1` для коротких/входных и IP-encoded family), плюс сигнал **user interest** (`count7d >= 10` и `active_days7d >= 2`). Планировщик проб — `2 interest + 10 top-score + 4 fair-queue` (давно/никогда не проверялись), максимум `16` проб за запуск.
 8. Добавляет прошедшие проверку в `/jffs/configs/dnsmasq-autodiscovered.conf.add` (ipset + server entries)
 9. Перезапускает dnsmasq
 10. Пишет лог в `/opt/var/log/domain-activity.log` (секции: ДОБАВЛЕНО В VPN, GEO-BLOCKED, CLEANUP AUTO-ФАЙЛА, КАНДИДАТЫ)

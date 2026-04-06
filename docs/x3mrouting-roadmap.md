@@ -27,7 +27,7 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
    - Домены из `domains-no-vpn.txt` (ручные исключения)
    - Домены, уже покрытые правилом в `dnsmasq.conf.add` или `dnsmasq-autodiscovered.conf.add` по ancestor suffix
 4. **Проверяет по реестру РКН** (`blocked-domains.lst`) — не найден → КАНДИДАТ. Если список не скачан → fallback (добавлять всё)
-5. **ISP-проба кандидатов** — пороги считаются по накопленному окну `24h`: обычные кандидаты идут в пробу после `count24h ≥ 3`, а короткие/`www`-входные и dynamic DNS с IP-encoded family label — с `count24h ≥ 1`. Отбор fair: `12` top-score + `4` кандидата из очереди “давно/никогда не пробовались”. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
+5. **ISP-проба кандидатов** — пороги считаются по окнам `24h` и `7d`: базово `count24h` (`>=3` для обычных, `>=1` для коротких/`www` и dynamic DNS IP-encoded family), плюс сигнал user-interest (`count7d >= 10` и `active_days7d >= 2`). Отбор: `2 interest + 10 top-score + 4 fair`. `curl --interface wan0`, 4 сек. HTTP 000 → добавляется как **geo-blocked** (сайт блокирует российские IP сам). Максимум 16 проб за запуск
 6. **Определяет write_domain**: обычно поддомен (≥3 меток) → registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
 7. Перед записью делает повторный suffix coverage check — если write-domain уже покрыт, новая child-запись не создаётся
 8. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
