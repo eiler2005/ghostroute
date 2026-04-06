@@ -69,6 +69,8 @@ ipset=/fbsbx.com/VPN_DOMAINS
 ipset=/facebook.com/VPN_DOMAINS
 ipset=/fb.com/VPN_DOMAINS
 ipset=/messenger.com/VPN_DOMAINS
+# LiveTV (sports streaming)
+ipset=/livetv.sx/VPN_DOMAINS
 # Apple Podcasts
 ipset=/podcasts.apple.com/VPN_DOMAINS
 ipset=/apps.apple.com/VPN_DOMAINS

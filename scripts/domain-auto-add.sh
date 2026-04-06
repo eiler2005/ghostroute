@@ -21,6 +21,9 @@ VPN_IPSET=VPN_DOMAINS
 VPN_IFACE=wgc1
 MIN_COUNT=1
 MODE="${1:-run}"
+CANDIDATE_EVENTS_STATE=/opt/tmp/domain-auto-add-candidate-events.tsv
+PROBE_HISTORY_STATE=/opt/tmp/domain-auto-add-probe-history.tsv
+CANDIDATE_WINDOW_SEC=86400
 
 SKIP_PATTERNS="msftconnecttest\.com|windowsupdate\.com|update\.microsoft\.com|login\.microsoftonline\.com|apple-dns\.net|akadns\.net|connectivitycheck|captive\.apple\.com|cloudfront\.net|akamaized\.net|akamaiedge\.net"
 
@@ -214,7 +217,69 @@ cleanup_auto_config() {
   rm -f "$AUTO_ORDERED" "$AUTO_KEEP" "$AUTO_DROP"
 }
 
+refresh_candidate_events_state() {
+  tmp_state="/tmp/daa-candidate-events-state.$$"
+  [ -f "$CANDIDATE_EVENTS_STATE" ] || : > "$CANDIDATE_EVENTS_STATE"
+  {
+    cat "$CANDIDATE_EVENTS_STATE" 2>/dev/null
+    cat "$CANDIDATE_EVENTS_NEW" 2>/dev/null
+  } | awk -F '\t' -v cutoff="$CANDIDATE_CUTOFF_EPOCH" '
+        NF >= 3 && $1 ~ /^[0-9]+$/ && $1 >= cutoff { print $1 "\t" $2 "\t" $3 }
+      ' > "$tmp_state"
+  mv "$tmp_state" "$CANDIDATE_EVENTS_STATE"
+}
+
+build_candidate_count24_index() {
+  : > "$CANDIDATE_COUNT24"
+  [ -s "$CANDIDATE_EVENTS_STATE" ] || return 0
+  awk -F '\t' '
+    NF >= 3 { sum[$2] += $3 }
+    END { for (d in sum) printf "%s\t%d\n", d, sum[d] }
+  ' "$CANDIDATE_EVENTS_STATE" > "$CANDIDATE_COUNT24"
+}
+
+get_candidate_count24() {
+  domain="$1"
+  [ -f "$CANDIDATE_COUNT24" ] || { printf '0\n'; return 0; }
+  awk -F '\t' -v d="$domain" '
+    $1 == d { print $2; found = 1; exit }
+    END { if (!found) print 0 }
+  ' "$CANDIDATE_COUNT24"
+}
+
+get_probe_last_epoch() {
+  domain="$1"
+  [ -f "$PROBE_HISTORY_STATE" ] || { printf '0\n'; return 0; }
+  awk -F '\t' -v d="$domain" '
+    $1 == d { print $2; found = 1; exit }
+    END { if (!found) print 0 }
+  ' "$PROBE_HISTORY_STATE"
+}
+
+update_probe_last_epoch() {
+  domain="$1"
+  ts="$2"
+  tmp_history="/tmp/daa-probe-history.$$"
+
+  if [ -f "$PROBE_HISTORY_STATE" ]; then
+    awk -F '\t' -v d="$domain" -v ts="$ts" '
+      BEGIN { updated = 0 }
+      $1 == d { if (!updated) { print d "\t" ts; updated = 1 }; next }
+      { print }
+      END { if (!updated) print d "\t" ts }
+    ' "$PROBE_HISTORY_STATE" > "$tmp_history"
+  else
+    printf '%s\t%s\n' "$domain" "$ts" > "$tmp_history"
+  fi
+
+  mv "$tmp_history" "$PROBE_HISTORY_STATE"
+}
+
 NOW=$(date '+%Y-%m-%d %H:%M')
+CURRENT_EPOCH=$(date '+%s' 2>/dev/null || echo 0)
+[ "$CURRENT_EPOCH" -gt 0 ] 2>/dev/null || CURRENT_EPOCH=0
+CANDIDATE_CUTOFF_EPOCH=$((CURRENT_EPOCH - CANDIDATE_WINDOW_SEC))
+[ "$CANDIDATE_CUTOFF_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_CUTOFF_EPOCH=0
 
 if [ "$MODE" != "--cleanup-only" ] && [ "$MODE" != "run" ] && [ -n "$MODE" ]; then
   echo "Usage: $0 [--cleanup-only]" >&2
@@ -249,15 +314,25 @@ CNT_CLN=/tmp/daa-cln.$$
 ADDED_LIST=/tmp/daa-list.$$
 CANDIDATES=/tmp/daa-candidates.$$
 CANDIDATES_PROBE=/tmp/daa-probe.$$
+CANDIDATE_EVENTS_NEW=/tmp/daa-candidate-events-new.$$
+CANDIDATE_COUNT24=/tmp/daa-candidate-count24.$$
+PROBE_ELIGIBLE=/tmp/daa-probe-eligible.$$
+PROBE_SELECTED_TOP=/tmp/daa-probe-top.$$
+PROBE_SELECTED_FAIR=/tmp/daa-probe-fair.$$
+PROBE_SELECTED_ALL=/tmp/daa-probe-all.$$
+PROBE_SELECTED_DOMAINS=/tmp/daa-probe-selected-domains.$$
+PROBE_REMAINING=/tmp/daa-probe-remaining.$$
 GEO_LIST=/tmp/daa-geolist.$$
 CLEANUP_LIST=/tmp/daa-cleanup.$$
 MANAGED_DOMAINS=/tmp/daa-managed.$$
 AUTO_DOMAINS=/tmp/daa-auto.$$
 NO_VPN_DOMAINS=/tmp/daa-no-vpn.$$
 : > "$CNT_ADD"; : > "$CNT_KNW"; : > "$CNT_SKP"; : > "$CNT_CND"; : > "$CNT_GEO"; : > "$CNT_CLN"
-: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$GEO_LIST"; : > "$CLEANUP_LIST"
+: > "$ADDED_LIST"; : > "$CANDIDATES"; : > "$CANDIDATES_PROBE"; : > "$CANDIDATE_EVENTS_NEW"; : > "$CANDIDATE_COUNT24"
+: > "$PROBE_ELIGIBLE"; : > "$PROBE_SELECTED_TOP"; : > "$PROBE_SELECTED_FAIR"; : > "$PROBE_SELECTED_ALL"; : > "$PROBE_SELECTED_DOMAINS"; : > "$PROBE_REMAINING"
+: > "$GEO_LIST"; : > "$CLEANUP_LIST"
 : > "$MANAGED_DOMAINS"; : > "$AUTO_DOMAINS"; : > "$NO_VPN_DOMAINS"
-trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$CNT_CLN" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$GEO_LIST" "$CLEANUP_LIST" "$MANAGED_DOMAINS" "$AUTO_DOMAINS" "$NO_VPN_DOMAINS"' 0
+trap 'rm -f "$CHANGED" "$CNT_ADD" "$CNT_KNW" "$CNT_SKP" "$CNT_CND" "$CNT_GEO" "$CNT_CLN" "$ADDED_LIST" "$CANDIDATES" "$CANDIDATES_PROBE" "$CANDIDATE_EVENTS_NEW" "$CANDIDATE_COUNT24" "$PROBE_ELIGIBLE" "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" "$PROBE_SELECTED_ALL" "$PROBE_SELECTED_DOMAINS" "$PROBE_REMAINING" "$GEO_LIST" "$CLEANUP_LIST" "$MANAGED_DOMAINS" "$AUTO_DOMAINS" "$NO_VPN_DOMAINS"' 0
 
 extract_ipset_domains "$MANAGED" > "$MANAGED_DOMAINS"
 extract_ipset_domains "$AUTO" > "$AUTO_DOMAINS"
@@ -352,6 +427,7 @@ grep "query\[A" "$LOG" \
             probe_score=$((probe_score + 700))
           fi
           printf '%d %d %d %s\n' "$probe_score" "$count" "$num_devs" "$domain" >> "$CANDIDATES_PROBE"
+          printf '%s\t%s\t%s\n' "$CURRENT_EPOCH" "$domain" "$count" >> "$CANDIDATE_EVENTS_NEW"
           echo 1 >> "$CNT_CND"
           continue
         fi
@@ -392,21 +468,49 @@ grep "query\[A" "$LOG" \
 # www.ig.com and dynamic DNS names with IP-encoded family labels are probed
 # earlier even after a single observed query.
 # HTTP 000 (timeout/refused) = ISP blocks it → add to VPN even without antifilter entry.
-PROBE_MIN_COUNT=3
+PROBE_MIN_COUNT_24H=3
 PROBE_MIN_COUNT_PRIORITY=1
 PROBE_PRIORITY_MIN_SCORE=700
 PROBE_MIN_DEVICES=1
+PROBE_TOP_N=12
+PROBE_FAIR_N=4
 PROBE_MAX_PER_RUN=16
 PROBE_TIMEOUT=4
 WAN_IFACE=wan0
 probe_count=0
 
+refresh_candidate_events_state
+build_candidate_count24_index
+
 sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_devs cand_domain; do
-  [ "$probe_count" -ge "$PROBE_MAX_PER_RUN" ] && break
-  min_count="$PROBE_MIN_COUNT"
+  [ -n "$cand_domain" ] || continue
+  [ "$cand_devs" -lt "$PROBE_MIN_DEVICES" ] && continue
+
+  cand_count24=$(get_candidate_count24 "$cand_domain")
+  min_count="$PROBE_MIN_COUNT_24H"
   [ "$cand_score" -ge "$PROBE_PRIORITY_MIN_SCORE" ] && min_count="$PROBE_MIN_COUNT_PRIORITY"
-  [ "$cand_count" -lt "$min_count" ]          && continue
-  [ "$cand_devs"  -lt "$PROBE_MIN_DEVICES" ]  && continue
+  [ "$cand_count24" -lt "$min_count" ] && continue
+
+  cand_last_probe=$(get_probe_last_epoch "$cand_domain")
+  printf '%d\t%d\t%d\t%d\t%s\n' \
+    "$cand_score" "$cand_count24" "$cand_count" "$cand_last_probe" "$cand_domain" >> "$PROBE_ELIGIBLE"
+done
+
+# Top priority by score first.
+sort -t '	' -k1,1nr -k2,2nr -k3,3nr -k5,5 "$PROBE_ELIGIBLE" | head -n "$PROBE_TOP_N" > "$PROBE_SELECTED_TOP"
+awk -F '	' '{print $5}' "$PROBE_SELECTED_TOP" > "$PROBE_SELECTED_DOMAINS"
+awk -F '	' 'NR==FNR { picked[$1]=1; next } !picked[$5] { print }' \
+  "$PROBE_SELECTED_DOMAINS" "$PROBE_ELIGIBLE" > "$PROBE_REMAINING"
+
+# Fair queue by "longest since last probe" (or never probed = 0).
+sort -t '	' -k4,4n -k1,1nr -k2,2nr -k5,5 "$PROBE_REMAINING" | head -n "$PROBE_FAIR_N" > "$PROBE_SELECTED_FAIR"
+
+cat "$PROBE_SELECTED_TOP" "$PROBE_SELECTED_FAIR" \
+  | awk -F '	' '!seen[$5]++ { print }' > "$PROBE_SELECTED_ALL"
+
+while IFS='	' read -r cand_score cand_count24 cand_count cand_last_probe cand_domain; do
+  [ -n "$cand_domain" ] || continue
+  [ "$probe_count" -ge "$PROBE_MAX_PER_RUN" ] && break
 
   # Determine write target (same family-domain logic as main loop)
   cand_write=$(get_family_domain "$cand_domain")
@@ -419,25 +523,26 @@ sort -rn "$CANDIDATES_PROBE" | while IFS=' ' read -r cand_score cand_count cand_
   http_code=$(curl -s --max-time "$PROBE_TIMEOUT" --interface "$WAN_IFACE" \
                    -o /dev/null -w '%{http_code}' "https://$cand_domain/" 2>/dev/null)
   probe_count=$((probe_count + 1))
+  update_probe_last_epoch "$cand_domain" "$CURRENT_EPOCH"
 
   if [ "$http_code" = "000" ]; then
     cand_srcs=$(grep "query\[A\] ${cand_domain} from" "$LOG" \
                 | awk '{print $8}' | sort -u | tr '\n' ',' | sed 's/,$//')
     {
       printf '\n# geo-blocked (ISP:000) %s (queries: %d, from: %s)\n' \
-             "$NOW" "$cand_count" "$cand_srcs"
+             "$NOW" "$cand_count24" "$cand_srcs"
       printf 'ipset=/%s/%s\n'          "$cand_write" "$VPN_IPSET"
       printf 'server=/%s/1.1.1.1@%s\n' "$cand_write" "$VPN_IFACE"
       printf 'server=/%s/9.9.9.9@%s\n' "$cand_write" "$VPN_IFACE"
     } >> "$AUTO"
-    printf '  + %-48s %3d запр  ISP:000\n' "$cand_write" "$cand_count" >> "$GEO_LIST"
+    printf '  + %-48s %3d запр24  ISP:000\n' "$cand_write" "$cand_count24" >> "$GEO_LIST"
     echo 1 >> "$CNT_GEO"
     printf '%s\n' "$cand_write" >> "$AUTO_DOMAINS"
     sort -u "$AUTO_DOMAINS" -o "$AUTO_DOMAINS"
     touch "$CHANGED"
-    logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries: $cand_count)"
+    logger -t domain-auto-add "Geo-blocked: $cand_domain → $cand_write (ISP:000, queries24h: $cand_count24)"
   fi
-done
+done < "$PROBE_SELECTED_ALL"
 
 # ── Compute counts ───────────────────────────────────────────────────────────
 n_add=$(wc -l < "$CNT_ADD"  2>/dev/null | tr -d ' '); n_add=${n_add:-0}

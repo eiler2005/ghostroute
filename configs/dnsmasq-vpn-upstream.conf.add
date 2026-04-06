@@ -164,6 +164,9 @@ server=/fb.com/1.1.1.1@wgc1
 server=/fb.com/9.9.9.9@wgc1
 server=/messenger.com/1.1.1.1@wgc1
 server=/messenger.com/9.9.9.9@wgc1
+# LiveTV (sports streaming)
+server=/livetv.sx/1.1.1.1@wgc1
+server=/livetv.sx/9.9.9.9@wgc1
 
 # Apple Podcasts
 server=/podcasts.apple.com/1.1.1.1@wgc1
