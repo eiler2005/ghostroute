@@ -62,6 +62,11 @@ ipset=/contest.com/VPN_DOMAINS
 ipset=/comments.app/VPN_DOMAINS
 ipset=/usercontent.dev/VPN_DOMAINS
 ipset=/tdesktop.com/VPN_DOMAINS
+# Telegram extra domains (source: github.com/RockBlack-VPN/ip-address telegram_domain)
+ipset=/tx.me/VPN_DOMAINS
+ipset=/telega.one/VPN_DOMAINS
+ipset=/telegram.dog/VPN_DOMAINS
+ipset=/telegram.space/VPN_DOMAINS
 ipset=/instagram.com/VPN_DOMAINS
 ipset=/cdninstagram.com/VPN_DOMAINS
 ipset=/fbcdn.net/VPN_DOMAINS
@@ -91,9 +96,11 @@ ipset=/example-provider-cloud.invalid/VPN_DOMAINS
 # Smithery (MCP registry)
 ipset=/smithery.ai/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS
+# WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
 ipset=/whatsapp.com/VPN_DOMAINS
 ipset=/whatsapp.net/VPN_DOMAINS
 ipset=/wa.me/VPN_DOMAINS
+ipset=/wl.co/VPN_DOMAINS
 ipset=/openai.com/VPN_DOMAINS
 ipset=/oaistatic.com/VPN_DOMAINS
 ipset=/oaiusercontent.com/VPN_DOMAINS
