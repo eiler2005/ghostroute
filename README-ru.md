@@ -46,10 +46,13 @@
     Телефон соединяется с IP
          │
          ▼
-    iptables: IP в VPN_DOMAINS?
+    iptables: PREROUTING / OUTPUT
+    IP в VPN_DOMAINS?
     ├─ ДА → метка 0x1000 → WireGuard wgc1 → интернет
     └─ НЕТ → прямо через провайдера
 ```
+
+`PREROUTING` работает для обычных клиентов в `LAN/Wi-Fi`. `OUTPUT` нужен для локально сгенерированного трафика роутера, в том числе для `Tailscale Exit Node`, потому что такой трафик проксируется самим роутером и не приходит как обычный пакет с `br0`.
 
 ---
 
@@ -181,6 +184,19 @@ cp .env.example .env
 ```
 
 Подробная инструкция: [docs/getting-started.md](docs/getting-started.md)
+
+---
+
+## Дополнительно: Tailscale Exit Node
+
+Если провайдер даёт только `CGNAT/private WAN`, прямой входящий VPN (`Instant Guard`, обычный WireGuard/OpenVPN-сервер) извне не заработает без белого IPv4. В таком случае на Merlin можно поставить `Tailscale` через `Entware` и использовать роутер как `Exit Node`.
+
+Что важно:
+
+- трафик `Tailscale Exit Node` обрабатывается как локально сгенерированный, поэтому для совпадения с LAN-логикой нужен хук `OUTPUT -> RC_VPN_ROUTE`
+- домены из `VPN_DOMAINS` и сети из `VPN_STATIC_NETS` по-прежнему идут через `wgc1`
+- всё, что не совпало со списками, остаётся на обычном `WAN`
+- скорость может быть ниже, чем у локального клиента в LAN: `Tailscale` на роутере работает в `userspace`, а на мобильной сети соединение иногда уходит в `DERP/relay`
 
 ---
 

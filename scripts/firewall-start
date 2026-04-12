@@ -23,6 +23,7 @@ fi
 iptables -t mangle -N "$ROUTING_CHAIN" 2>/dev/null || true
 iptables -t mangle -F "$ROUTING_CHAIN"
 iptables -t mangle -D PREROUTING -i br0 -j "$ROUTING_CHAIN" 2>/dev/null
+iptables -t mangle -D OUTPUT -j "$ROUTING_CHAIN" 2>/dev/null
 
 # Clean up legacy direct PREROUTING rules from older versions.
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
@@ -51,6 +52,10 @@ fi
 iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
 iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
 iptables -t mangle -A PREROUTING -i br0 -j "$ROUTING_CHAIN"
+# Tailscale exit-node traffic is generated locally on the router, so it
+# bypasses the LAN PREROUTING hook. Mirror the same destination-based marking
+# in OUTPUT to keep router-originated and userspace-proxied flows on WGC1.
+iptables -t mangle -A OUTPUT -j "$ROUTING_CHAIN"
 
 # --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
 # Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.

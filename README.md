@@ -38,6 +38,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
+- **Remote access via Tailscale** — optional `Exit Node` mode works even behind CGNAT and still honors `VPN_DOMAINS` / `VPN_STATIC_NETS`
 
 ---
 
@@ -58,13 +59,15 @@ Device (iPhone / PC)
       │
       └─ TCP/UDP connection to resolved IP
                 ↓
-          iptables PREROUTING
+          iptables PREROUTING / OUTPUT
           └─ IP in VPN_DOMAINS? → mark packet 0x1000
                 ↓
           ip rule: fwmark 0x1000 → lookup routing table wgc1
                 ↓
           WireGuard wgc1 tunnel → VPN exit → internet
 ```
+
+`PREROUTING` handles ordinary LAN clients arriving on `br0`. `OUTPUT` mirrors the same destination-based marking for router-originated traffic, which is required for `Tailscale Exit Node` because those proxied flows are generated locally on the router.
 
 ### Auto-discovery pipeline
 
@@ -198,6 +201,19 @@ The deploy script:
 2. Merges each file into the router's config using managed blocks (idempotent)
 3. Runs `nat-start`, `firewall-start`, `services-start` in sequence
 4. Restarts dnsmasq
+
+---
+
+## Optional: Tailscale Exit Node
+
+If the router is behind CGNAT/private WAN, direct inbound VPN (`Instant Guard`, raw WireGuard server, OpenVPN server) will not work from the public internet without a public IPv4. In that case, `Tailscale` can be installed on Merlin through `Entware` and used as an `Exit Node`.
+
+Important notes:
+
+- `Tailscale Exit Node` traffic is processed as router-originated traffic, so `OUTPUT -> RC_VPN_ROUTE` is required for split routing to match normal LAN behavior
+- destinations in `VPN_DOMAINS` / `VPN_STATIC_NETS` still go through `wgc1`
+- everything else still uses the normal WAN path
+- performance can be lower than plain LAN routing because `Tailscale` runs in `userspace` on the router, and some mobile sessions may fall back to `DERP/relay`
 
 ---
 
