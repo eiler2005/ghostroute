@@ -160,8 +160,10 @@ scripts/
   update-blocked-list.sh          # downloads blocked domain list daily via VPN
   domain-report                   # CLI tool: view / manage / reset auto-discovered domains
   traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/Tailscale totals + LAN activity snapshot
+  traffic-daily-report            # CLI tool: closed-day report from stored snapshots
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
   cron-traffic-snapshot           # stores traffic counters / Tailscale snapshots every 6h
+  cron-traffic-daily-close        # stores end-of-day LAN snapshot at 23:55
 
 docs/
   architecture.md                 # packet flow, DNS upstream, deployment mechanics (RU)
@@ -171,6 +173,7 @@ docs/
   troubleshooting.md              # diagnostics and common issues (RU)
   current-routing-explained.md    # full catalog of routed domains (RU)
   traffic-observability.md        # traffic-report architecture and counter semantics (RU)
+  llm-traffic-runbook.md          # minimal instructions for an LLM / agent (RU)
 
 deploy.sh                         # idempotent deploy to router via SSH/SCP
 verify.sh                         # validates router state after deploy
@@ -231,6 +234,14 @@ Important notes:
 For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
 
 Detailed collection / delta / network-counter architecture: [docs/traffic-observability.md](docs/traffic-observability.md)
+LLM runbook for reading these reports: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+
+Quick commands:
+
+```bash
+./scripts/traffic-report
+./scripts/traffic-daily-report yesterday
+```
 
 ---
 

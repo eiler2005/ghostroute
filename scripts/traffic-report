@@ -92,7 +92,7 @@ set -e
 ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "
 set -e
 STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic )
-SNAP=\$(find \"\$STATE_DIR/tailscale\" -maxdepth 1 -type f -name \"${TODAY}T*.json\" 2>/dev/null | sort | head -1)
+SNAP=\$(ls \"\$STATE_DIR/tailscale\"/${TODAY}T*.json 2>/dev/null | sort | head -1)
 if [ -n \"\$SNAP\" ]; then
   cat \"\$SNAP\"
 else

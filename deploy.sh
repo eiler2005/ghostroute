@@ -90,6 +90,7 @@ require_local_file "${PROJECT_ROOT}/scripts/firewall-start"
 require_local_file "${PROJECT_ROOT}/scripts/nat-start"
 require_local_file "${PROJECT_ROOT}/scripts/cron-save-ipset"
 require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot"
+require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close"
 require_local_file "${PROJECT_ROOT}/scripts/services-start"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   require_local_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add"
@@ -118,6 +119,7 @@ upload_file "${PROJECT_ROOT}/scripts/firewall-start" "${REMOTE_STAGE}/scripts/fi
 upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
 upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
 upload_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
+upload_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
 upload_file "${PROJECT_ROOT}/scripts/services-start" "${REMOTE_STAGE}/scripts/services-start"
 upload_file "${PROJECT_ROOT}/scripts/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
 upload_file "${PROJECT_ROOT}/scripts/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
@@ -232,6 +234,11 @@ install_script \
   "$REMOTE_STAGE/scripts/cron-traffic-snapshot" \
   /jffs/scripts/cron-traffic-snapshot \
   "router_configuration cron-traffic-snapshot"
+
+install_script \
+  "$REMOTE_STAGE/scripts/cron-traffic-daily-close" \
+  /jffs/scripts/cron-traffic-daily-close \
+  "router_configuration cron-traffic-daily-close"
 
 install_script \
   "$REMOTE_STAGE/scripts/services-start" \

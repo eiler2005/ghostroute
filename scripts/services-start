@@ -9,6 +9,11 @@ cru d TrafficSnapshot 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-snapshot ] && \
   cru a TrafficSnapshot "0 */6 * * * /jffs/scripts/cron-traffic-snapshot"
 
+# Save a close-of-day LAN/Tailscale baseline for readable daily reports.
+cru d TrafficDailyClose 2>/dev/null
+[ -x /jffs/scripts/cron-traffic-daily-close ] && \
+  cru a TrafficDailyClose "55 23 * * * /jffs/scripts/cron-traffic-daily-close"
+
 # Domain auto-routing: add newly discovered blocked domains to VPN (every hour).
 # Requires dnsmasq logging (enabled by default) and Entware on USB.
 cru d DomainCollect 2>/dev/null

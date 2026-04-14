@@ -147,8 +147,10 @@ scripts/
   update-blocked-list.sh          # скачивание списка блокировок (cron, раз в сутки)
   domain-report                   # CLI: просмотр/управление авто-добавленными доменами
   traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/Tailscale + текущая активность LAN
+  traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots
   cron-save-ipset                 # сохранение ipset на диск каждые 6ч
   cron-traffic-snapshot           # сохранение traffic snapshots каждые 6ч
+  cron-traffic-daily-close        # сохранение end-of-day LAN snapshot в 23:55
 
 docs/
   architecture.md                 # детальная архитектура
@@ -158,6 +160,7 @@ docs/
   troubleshooting.md              # диагностика проблем
   current-routing-explained.md    # полный каталог доменов с пояснениями
   traffic-observability.md        # архитектура traffic-report и сетевых счётчиков
+  llm-traffic-runbook.md          # короткая инструкция для LLM / агента
 
 deploy.sh                         # деплой на роутер по SSH/SCP
 verify.sh                         # проверка состояния роутера после деплоя
@@ -212,6 +215,14 @@ cp .env.example .env
 - `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
 
 Подробная архитектура сбора, расчёта дельт и ограничения для `Tailscale Exit Node`: [docs/traffic-observability.md](docs/traffic-observability.md)
+Короткий runbook для LLM/агента: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+
+Быстрые команды:
+
+```bash
+./scripts/traffic-report
+./scripts/traffic-daily-report yesterday
+```
 
 ---
 

@@ -45,6 +45,19 @@
 - до 5000 строк для `interface-counters.tsv`
 - до 60 дней для raw Tailscale JSON snapshots
 
+### `scripts/cron-traffic-daily-close`
+
+Запускается на роутере в `23:55`.
+
+Что делает:
+
+1. Делает closing snapshot счётчиков через `cron-traffic-snapshot`.
+2. Сохраняет raw `dnsmasq.leases + conntrack` снимок конца дня.
+
+Куда сохраняет:
+
+- `daily/YYYY-MM-DD-lan-conntrack.txt`
+
 ### `scripts/traffic-report`
 
 Локальный CLI-скрипт на рабочей машине.
@@ -60,6 +73,25 @@
 7. Берёт самый ранний Tailscale snapshot за текущий день.
 8. Считает per-peer дельты `RxBytes` / `TxBytes`.
 9. Отдельно строит live-срез локальных устройств по `dnsmasq.leases + conntrack`.
+
+### `scripts/traffic-daily-report`
+
+Локальный CLI-скрипт на рабочей машине.
+
+Что делает:
+
+1. Берёт первый и последний snapshot выбранного дня.
+2. Считает закрытые дневные дельты по интерфейсам.
+3. Считает per-peer Tailscale дельты между первым и последним JSON snapshot дня.
+4. Показывает end-of-day `LAN DEVICES` снимок из `daily/YYYY-MM-DD-lan-conntrack.txt`.
+
+Примеры:
+
+```bash
+./scripts/traffic-daily-report today
+./scripts/traffic-daily-report yesterday
+./scripts/traffic-daily-report 2026-04-14
+```
 
 ## Как читать метрики
 
@@ -220,6 +252,8 @@ Remote peer
 - `--since 7d`
 - `--month`
 
+Для уже закрытого дня используйте `traffic-daily-report`.
+
 ### Почему `WAN total` и `VPN total` нельзя просто вычесть друг из друга
 
 `wan0` и `wgc1` считают трафик на разных уровнях:
@@ -228,3 +262,19 @@ Remote peer
 - `wgc1` видит трафик внутри VPN-интерфейса
 
 Поэтому `VPN share/WAN` полезен как ориентир, но не как бухгалтерски точная формула по payload.
+
+## Практический workflow
+
+### Что собирается автоматически
+
+- каждые 6 часов: raw interface counters + raw Tailscale JSON
+- в `23:55`: closing snapshot дня + end-of-day LAN conntrack snapshot
+
+### Что смотреть руками
+
+- текущий день: `./scripts/traffic-report`
+- закрытый день: `./scripts/traffic-daily-report YYYY-MM-DD`
+
+### Отдельная инструкция для LLM
+
+См. [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)

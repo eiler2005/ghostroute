@@ -21,5 +21,7 @@ if [ -x /opt/bin/tailscale ]; then
 fi
 
 # Keep history bounded on disk.
-find "$TAILSCALE_DIR" -type f -mtime +60 -delete 2>/dev/null
+find "$TAILSCALE_DIR" -name '*.json' -mtime +60 -print 2>/dev/null | while IFS= read -r old_file; do
+  [ -n "$old_file" ] && rm -f "$old_file"
+done
 [ -f "$COUNTERS_FILE" ] && tail -n 5000 "$COUNTERS_FILE" > "$COUNTERS_FILE.tmp" && mv "$COUNTERS_FILE.tmp" "$COUNTERS_FILE"
