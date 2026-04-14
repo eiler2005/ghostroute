@@ -222,6 +222,8 @@ cp .env.example .env
 ```bash
 ./scripts/traffic-report
 ./scripts/traffic-daily-report yesterday
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
 ```
 
 ---

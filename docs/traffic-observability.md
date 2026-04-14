@@ -91,7 +91,18 @@
 ./scripts/traffic-daily-report today
 ./scripts/traffic-daily-report yesterday
 ./scripts/traffic-daily-report 2026-04-14
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
 ```
+
+Семантика периодов:
+
+- `today` — с первого snapshot сегодняшнего дня до текущего состояния
+- `yesterday` / `YYYY-MM-DD` — закрытый день по stored snapshots
+- `week` — с первого snapshot понедельника текущей недели до текущего состояния
+- `month` — с первого snapshot первого числа текущего месяца до текущего состояния
+
+Если история начала собираться уже внутри недели или месяца, отчёт стартует с самого раннего доступного snapshot внутри этого периода.
 
 ## Как читать метрики
 
@@ -274,6 +285,8 @@ Remote peer
 
 - текущий день: `./scripts/traffic-report`
 - закрытый день: `./scripts/traffic-daily-report YYYY-MM-DD`
+- текущая неделя: `./scripts/traffic-daily-report week`
+- текущий месяц: `./scripts/traffic-daily-report month`
 
 ### Отдельная инструкция для LLM
 
