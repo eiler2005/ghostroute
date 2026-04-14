@@ -92,16 +92,18 @@ ls /opt/bin  # утилиты Entware
 
 ---
 
-## Шаг 5. Настройка .env (опционально, но рекомендуется)
+## Шаг 5. Настройка локальных secrets (опционально, но рекомендуется)
 
-Для удобства создайте файл `.env` на основе шаблона и заполните своими значениями:
+Для удобства создайте файл `secrets/router.env` на основе шаблона и заполните своими значениями:
 
 ```bash
-cp .env.example .env
-# Отредактируйте .env и раскомментируйте нужные переменные
+mkdir -p secrets
+cp .env.example secrets/router.env
+# Отредактируйте secrets/router.env и раскомментируйте нужные переменные
 ```
 
-Файл `.env` добавлен в `.gitignore` и **никогда не попадёт в git**.
+Директория `secrets/` добавлена в `.gitignore` и **никогда не попадёт в git**.
+Для обратной совместимости скрипты всё ещё читают `.env`, если `secrets/router.env` отсутствует.
 
 ## Шаг 6. Деплой
 
@@ -109,10 +111,10 @@ cp .env.example .env
 ./deploy.sh
 ```
 
-Скрипт автоматически загружает `.env` и определяет IP роутера из default gateway. Если нужно указать IP вручную без `.env`:
+Скрипт автоматически загружает `secrets/router.env` и определяет IP роутера из default gateway. Если нужно указать IP вручную без локального secrets-файла:
 
 ```bash
-ROUTER=192.0.2.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 ```
 
 Все поддерживаемые переменные окружения:
@@ -179,9 +181,66 @@ Members:                  ← подсети Telegram
 - `VPN_STATIC_NETS` содержит подсети Telegram — если пуст, проверьте `static-networks.txt`
 - Таблица `wgc1` не пуста — если пуста, WireGuard-клиент не подключен
 
+## Шаг 8. Проверка traffic observability
+
+После первого деплоя полезно сразу проверить, что отчёты и snapshots работают.
+
+### Текущий день
+
+```bash
+./scripts/traffic-report
+```
+
+Что должно быть в выводе:
+
+- `WAN total`
+- `VPN total`
+- `WG server total`
+- `Tailscale total`
+- `LAN DEVICES`
+- `WIREGUARD SERVER PEERS`
+- `TAILSCALE PEERS`
+
+По умолчанию имена peer'ов, hostnames, tunnel addresses и endpoints в отчёте **редактируются**.
+
+Если нужен полный локальный просмотр без редактирования:
+
+```bash
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report
+```
+
+Используйте этот режим только в доверенной локальной среде и не вставляйте сырой вывод в git / публичные заметки.
+
+### Закрытый день / период
+
+```bash
+./scripts/traffic-daily-report today
+./scripts/traffic-daily-report yesterday
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
+```
+
+Что важно:
+
+- snapshots пишутся каждые 6 часов
+- close-of-day conntrack snapshot сохраняется в `23:55`
+- поэтому полноценный исторический отчёт по новому каналу `wgs1` появится после первых cron-снимков
+
+### Если raw WireGuard server client подключается, но `VPN_DOMAINS` не повторяются
+
+Проверьте, что в `firewall-start` есть hook:
+
+```bash
+iptables -t mangle -S | grep 'PREROUTING -i wgs1 -j RC_VPN_ROUTE'
+```
+
+Если его нет — заново запустите `./deploy.sh`.
+
 ## Дальнейшие действия
 
 - [Как добавить или удалить домен](domain-management.md)
 - [Как устроена архитектура](architecture.md)
+- [Как читать traffic-отчёты](traffic-observability.md)
+- [LLM-инструкция по запуску traffic-скриптов](llm-traffic-runbook.md)
 - [Что делать, если что-то не работает](troubleshooting.md)
 - [Подробности про Telegram](telegram-deep-dive.md)

@@ -2,10 +2,11 @@
 
 set -euo pipefail
 
-# Загружаем персональные переменные из .env, если он есть.
-# .env добавлен в .gitignore и не попадает в git.
-# Шаблон: .env.example
+# Загружаем персональные переменные из локального secrets-файла.
+# Рекомендуемый путь: secrets/router.env
+# Для обратной совместимости поддерживается и .env.
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${_SCRIPT_DIR}/secrets/router.env" ] && set -a && . "${_SCRIPT_DIR}/secrets/router.env" && set +a
 [ -f "${_SCRIPT_DIR}/.env" ] && set -a && . "${_SCRIPT_DIR}/.env" && set +a
 unset _SCRIPT_DIR
 

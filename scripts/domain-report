@@ -12,6 +12,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
 [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
 
 ROUTER_USER="${ROUTER_USER:-admin}"
@@ -46,7 +47,7 @@ SSH_OPTS=(
 if [ -z "$ROUTER" ]; then
   ROUTER=$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }') || true
 fi
-[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in .env" >&2; exit 1; }
+[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
 
 case "$MODE" in
 

@@ -10,11 +10,23 @@
 ./scripts/traffic-report
 ```
 
+Безопасный дефолт:
+
+- скрипт уже редактирует peer names, LAN hostnames, tunnel addresses и endpoints
+- это режим по умолчанию
+
+Никогда не снимайте редактирование без прямой необходимости. Если trusted local inspection всё же нужен:
+
+```bash
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report
+```
+
 Использовать, когда нужен ответ:
 
 - что происходит сегодня
-- сколько уже прошло через `WAN` / `VPN` / `Wi-Fi` / `Tailscale`
+- сколько уже прошло через `WAN` / `VPN` / `WG server` / `Wi-Fi` / `Tailscale`
 - какие локальные устройства активны прямо сейчас
+- какие raw `WireGuard server` peer'ы сейчас активны
 
 ### Закрытый дневной отчёт
 
@@ -25,13 +37,21 @@
 ./scripts/traffic-daily-report month
 ```
 
+При необходимости trusted local inspection:
+
+```bash
+REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
+```
+
 Использовать, когда нужен ответ:
 
 - сколько было за конкретный день
 - сколько уже накопилось за текущую неделю
 - сколько уже накопилось за текущий месяц
 - какие `Tailscale` peer'ы дали трафик за этот день
+- какие raw `WireGuard server` peer'ы дали трафик за этот день
 - какой был end-of-day снимок локальных устройств
+- какой был end-of-day снимок raw `WireGuard server` peer'ов
 
 ### Когда данные закрытого дня появляются
 
@@ -56,10 +76,14 @@
 
 - `WAN total`
 - `VPN total`
+- `WG server total`
 - `Wi-Fi total`
 - `LAN bridge`
 - `Tailscale total`
+- строки `WIREGUARD SERVER PEERS` (`RX` / `TX`)
 - строки `TAILSCALE PEERS` (`RX` / `TX`)
+
+Все эти выводы по умолчанию уже в redacted-виде.
 
 Это байты/гигабайты.
 
@@ -74,6 +98,15 @@
 
 Это количество `conntrack`-записей, а не объём трафика.
 
+Раздел `WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
+
+- `Total`
+- `VPN`
+- `WAN`
+- `Local`
+
+Это тоже количество `conntrack`-записей, а не объём трафика.
+
 ## Что нельзя утверждать
 
 Для `Tailscale Exit Node` нельзя честно говорить:
@@ -86,6 +119,13 @@
 - сколько peer передал по `Tailscale` всего
 - сколько роутер в целом передал через `wgc1`
 
+Для raw `WireGuard server` говорить можно точнее:
+
+- сколько peer передал по `wgs1`
+- сколько у peer'а было active conntrack entries в `VPN` / `WAN` / `Local`
+
+Но это всё равно не полноценный NetFlow/pcap учёт на каждый запрос.
+
 ## Как отвечать пользователю
 
 Предпочтительный формат:
@@ -95,10 +135,12 @@
 2. Дать totals:
    - `WAN`
    - `VPN`
+   - `WG server`
    - `Wi-Fi`
    - `Tailscale`
-3. Отдельно перечислить `Tailscale peers`, у которых не ноль.
-4. Отдельно пояснить, что `LAN DEVICES` — это снимок соединений, не байты.
+3. Отдельно перечислить `WIREGUARD SERVER PEERS`, у которых не ноль.
+4. Отдельно перечислить `Tailscale peers`, у которых не ноль.
+5. Отдельно пояснить, что `LAN DEVICES` и `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — это снимки соединений, не байты.
 
 ## Чего не выводить в ответ
 
@@ -109,3 +151,4 @@
 - MAC-адреса
 - SSH-команды с чувствительными путями или ключами
 - сырые конфиги с ключами / токенами / endpoint'ами
+- живые имена peer'ов и hostnames, если отчёт запускался с `REPORT_REDACT_NAMES=0`

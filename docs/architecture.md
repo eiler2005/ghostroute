@@ -25,6 +25,44 @@
                     (трафик уходит в VPN)
 ```
 
+## Три точки входа в routing engine
+
+Одна и та же destination-based split-routing логика теперь обслуживает три разных источника трафика:
+
+1. `LAN/Wi-Fi` клиенты на `br0`
+2. raw `WireGuard server` клиенты на `wgs1`
+3. локально сгенерированный трафик роутера в `OUTPUT` (в том числе `Tailscale Exit Node`)
+
+Упрощённая схема:
+
+```text
+LAN client
+  -> br0
+  -> PREROUTING
+  -> RC_VPN_ROUTE
+  -> wgc1 | wan0
+
+Raw WireGuard server client
+  -> wgs1
+  -> PREROUTING
+  -> RC_VPN_ROUTE
+  -> wgc1 | wan0
+
+Tailscale Exit Node
+  -> tailscaled / local socket
+  -> OUTPUT
+  -> RC_VPN_ROUTE
+  -> wgc1 | wan0
+```
+
+Из-за этого в `firewall-start` нужны три hooks:
+
+```sh
+iptables -t mangle -A PREROUTING -i br0 -j RC_VPN_ROUTE
+iptables -t mangle -A PREROUTING -i wgs1 -j RC_VPN_ROUTE
+iptables -t mangle -A OUTPUT -j RC_VPN_ROUTE
+```
+
 ## Два пути попадания в VPN
 
 ### Путь 1: Доменный (dnsmasq + ipset)
@@ -32,7 +70,7 @@
 1. Устройство в сети запрашивает DNS (например, `youtube.com`).
 2. `dnsmasq` на роутере видит запрос и резолвит домен.
 3. Если домен подходит под правило `ipset=/youtube.com/VPN_DOMAINS`, результирующий IP добавляется в набор `VPN_DOMAINS`.
-4. `iptables` помечает пакеты к этому IP меткой `0x1000`.
+4. `iptables` в цепочке `RC_VPN_ROUTE` помечает пакеты к этому IP меткой `0x1000`.
 5. `ip rule` отправляет помеченные пакеты в таблицу маршрутизации `wgc1`.
 6. Трафик уходит через WireGuard.
 
@@ -49,6 +87,34 @@
 1. При запуске `firewall-start` загружает CIDR-блоки из файла `static-networks.txt`.
 2. Блоки добавляются в `VPN_STATIC_NETS`.
 3. Дальше тот же путь: `iptables` → `fwmark` → `ip rule` → `wgc1`.
+
+## Что изменилось для raw WireGuard server
+
+Когда remote клиент подключается к роутеру по raw `WireGuard server`, после расшифровки его трафик входит в стек через `wgs1`.
+
+Раньше split-routing применялась только к:
+
+- `PREROUTING -i br0`
+- `OUTPUT`
+
+Из-за этого remote full-tunnel WireGuard client мог получать домашний внешний IP, но не повторять доменную split-routing логику `VPN_DOMAINS`.
+
+Теперь `firewall-start` добавляет и третий путь:
+
+```sh
+iptables -t mangle -A PREROUTING -i wgs1 -j RC_VPN_ROUTE
+```
+
+Это выравнивает поведение:
+
+- локальный клиент в Wi-Fi
+- remote raw `WireGuard server` клиент
+- `Tailscale Exit Node`
+
+Все трое используют один и тот же routing catalog:
+
+- `VPN_DOMAINS`
+- `VPN_STATIC_NETS`
 
 ## DNS upstream через VPN
 
@@ -104,6 +170,8 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 | `scripts/firewall-start` | `/jffs/scripts/firewall-start` | merge block |
 | `scripts/nat-start` | `/jffs/scripts/nat-start` | merge block |
 | `scripts/cron-save-ipset` | `/jffs/scripts/cron-save-ipset` | merge block |
+| `scripts/cron-traffic-snapshot` | `/jffs/scripts/cron-traffic-snapshot` | merge block |
+| `scripts/cron-traffic-daily-close` | `/jffs/scripts/cron-traffic-daily-close` | merge block |
 | `scripts/services-start` | `/jffs/scripts/services-start` | merge block |
 | `scripts/domain-auto-add.sh` | `/jffs/addons/x3mRouting/domain-auto-add.sh` | полная копия |
 | `scripts/update-blocked-list.sh` | `/jffs/addons/x3mRouting/update-blocked-list.sh` | полная копия |
@@ -116,8 +184,31 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 
 1. Запускается `nat-start` — добавляет `ip rule` для DNS и fwmark.
 2. Запускается `firewall-start` — создаёт ipset'ы, загружает статические сети и per-IP:port WAN-исключения, настраивает iptables.
-3. Запускается `services-start` — добавляет cron-задачи: сохранение ipset (каждые 6ч) и domain auto-add (каждый час).
+3. Запускается `services-start` — добавляет cron-задачи: сохранение ipset, traffic snapshots, close-of-day conntrack snapshot и domain auto-add.
 4. Перезапускается `dnsmasq` — подхватывает новые правила из `/jffs/configs/dnsmasq.conf.add`.
+
+## Наблюдаемость трафика
+
+Traffic observability тоже теперь строится вокруг трёх ingress-путей.
+
+Что сохраняется каждые 6 часов:
+
+- интерфейсные счётчики `wan0`, `wgc1`, `wgs1`, `br0`, `eth6`, `eth7`
+- `tailscale status --json`
+- `wg show wgs1 dump`
+
+Что показывают отчёты:
+
+- `traffic-report` — текущий день
+- `traffic-daily-report` — закрытый день / неделя / месяц
+
+Ключевые новые метрики:
+
+- `WG server total` — router-wide bytes по `wgs1`
+- `WireGuard server peers` — per-peer transfer deltas из `wg show wgs1 dump`
+- `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — current/end-of-day conntrack snapshot для remote peer'ов
+
+Подробности: [traffic-observability.md](traffic-observability.md)
 
 ## Персистентность ipset
 

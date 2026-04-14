@@ -44,7 +44,7 @@ ip route get <IP_из_шага_1>
 iptables -t mangle -S | grep 'OUTPUT -j RC_VPN_ROUTE'
 
 # Проверить, что доменный IP реально в наборе
-nslookup youtube.com 192.0.2.1
+nslookup youtube.com <router_lan_ip>
 ipset test VPN_DOMAINS <IP_из_nslookup>
 
 # Проверить, что такой IP уходит через WGC1 при mark 0x1000
@@ -57,6 +57,38 @@ ip route get <IP_из_nslookup> mark 0x1000
 - убедитесь, что в `scripts/firewall-start` есть `-A OUTPUT -j RC_VPN_ROUTE`
 - выполните `./deploy.sh`
 - перезапустите `Tailscale` на клиенте и заново выберите `Exit Node`
+
+## Raw WireGuard server даёт домашний IP, но `VPN_DOMAINS` не срабатывают
+
+### Симптом
+
+На iPhone через raw `WireGuard server` внешний IP уже домашний, интернет идёт через дом, но `YouTube` и другие домены из `VPN_DOMAINS` не повторяют ту же split-routing логику, что у локального клиента в Wi-Fi.
+
+### Причина
+
+Трафик такого клиента приходит на роутер не через `br0`, а через интерфейс `wgs1`. Если hook `RC_VPN_ROUTE` висит только на `PREROUTING -i br0`, split-routing работает для LAN-клиентов, но не для raw `WireGuard server` peer'ов.
+
+### Диагностика
+
+```bash
+# Проверить, что hook для raw WireGuard server-клиентов есть
+iptables -t mangle -S | grep 'PREROUTING -i wgs1 -j RC_VPN_ROUTE'
+
+# Проверить, что доменный IP реально в наборе
+nslookup youtube.com <router_lan_ip>
+ipset test VPN_DOMAINS <IP_из_nslookup>
+
+# Проверить, что такой IP уходит через WGC1 при mark 0x1000
+ip route get <IP_из_nslookup> mark 0x1000
+# Ожидаем: ... dev wgc1 ...
+```
+
+### Решение
+
+- убедитесь, что в `scripts/firewall-start` есть `-A PREROUTING -i wgs1 -j RC_VPN_ROUTE`
+- выполните `./deploy.sh`
+- переподключите raw `WireGuard server` клиент
+- проверьте `./scripts/traffic-report`: в разделе `WIREGUARD SERVER PEERS` должны появиться conntrack-записи и дельты peer'а
 
 ## Tailscale Exit Node работает, но очень медленно
 
@@ -308,7 +340,7 @@ cat /jffs/configs/dnsmasq-autodiscovered.conf.add
 - **Домен не в реестре РКН и не проходит ISP-пробу** — проверка идёт по `count24h` и по сигналу user-interest (`count7d` + `active_days7d`). Если сайт доступен через ISP (HTTP не `000`) — он не добавляется. Добавьте вручную
 - **Dynamic DNS хосты с IP-encoded family label** — скрипт не должен сворачивать их в общий публичный суффикс, а должен писать семейство по IP-лейблу, например `203-0-113-10.sslip.io`
 - **Веб работает, а SSH/другой порт нет** — если IP уже попал в `VPN_DOMAINS`, весь трафик к нему уходит в VPN. Для точечного обхода добавьте `tcp <IP> 22` в `configs/no-vpn-ip-ports.txt` и задеплойте конфиг
-- **DNS-лог не пишется** — проверьте `ls /opt/var/log/dnsmasq.log` и что `ENABLE_DNSMASQ_LOGGING=1` в `.env`
+- **DNS-лог не пишется** — проверьте `ls /opt/var/log/dnsmasq.log` и что `ENABLE_DNSMASQ_LOGGING=1` в `secrets/router.env` (или `.env`)
 - **domain-auto-add.sh не запускается** — проверьте `cru l | grep DomainAutoAdd`, перезапустите `services-start`
 - **Добавьте вручную** через `configs/dnsmasq.conf.add` + `configs/dnsmasq-vpn-upstream.conf.add` + `./deploy.sh`
 

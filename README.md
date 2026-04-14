@@ -38,7 +38,8 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
-- **Remote access via Tailscale** — optional `Exit Node` mode works even behind CGNAT and still honors `VPN_DOMAINS` / `VPN_STATIC_NETS`
+- **Remote access via WireGuard server or Tailscale** — raw `wgs1` clients with a public IPv4 and optional `Tailscale Exit Node` both honor `VPN_DOMAINS` / `VPN_STATIC_NETS`
+- **Peer-level observability** — `traffic-report` / `traffic-daily-report` show router-wide totals plus per-peer deltas for both `Tailscale` and raw `WireGuard server` clients
 
 ---
 
@@ -67,7 +68,7 @@ Device (iPhone / PC)
           WireGuard wgc1 tunnel → VPN exit → internet
 ```
 
-`PREROUTING` handles ordinary LAN clients arriving on `br0`. `OUTPUT` mirrors the same destination-based marking for router-originated traffic, which is required for `Tailscale Exit Node` because those proxied flows are generated locally on the router.
+`PREROUTING` handles ordinary LAN clients arriving on `br0` and raw WireGuard server clients arriving on `wgs1`. `OUTPUT` mirrors the same destination-based marking for router-originated traffic, which is required for `Tailscale Exit Node` because those proxied flows are generated locally on the router.
 
 ### Auto-discovery pipeline
 
@@ -159,11 +160,11 @@ scripts/
   domain-auto-add.sh              # auto-discovery: DNS log → blocked-list check → dnsmasq config
   update-blocked-list.sh          # downloads blocked domain list daily via VPN
   domain-report                   # CLI tool: view / manage / reset auto-discovered domains
-  traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/Tailscale totals + LAN activity snapshot
-  traffic-daily-report            # CLI tool: closed-day report from stored snapshots
+  traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/WG-server/Tailscale totals + LAN/WGS snapshots
+  traffic-daily-report            # CLI tool: closed-day report from stored snapshots, incl. WGS peers
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
-  cron-traffic-snapshot           # stores traffic counters / Tailscale snapshots every 6h
-  cron-traffic-daily-close        # stores end-of-day LAN snapshot at 23:55
+  cron-traffic-snapshot           # stores traffic counters / Tailscale / WGS snapshots every 6h
+  cron-traffic-daily-close        # stores end-of-day LAN/WGS conntrack snapshot at 23:55
 
 docs/
   architecture.md                 # packet flow, DNS upstream, deployment mechanics (RU)
@@ -180,6 +181,13 @@ verify.sh                         # validates router state after deploy
 .env.example                      # configuration template
 ```
 
+Local-only overrides belong in `secrets/`:
+
+- `secrets/router.env` — router IP / SSH settings
+- `secrets/no-vpn-ip-ports.local.txt` — per-IP:port WAN bypass overrides
+
+The entire `secrets/` directory is gitignored.
+
 ---
 
 ## Quick Start
@@ -191,9 +199,10 @@ verify.sh                         # validates router state after deploy
 git clone https://github.com/eiler2005/router_configuration
 cd router_configuration
 
-# Configure (router IP is auto-detected from default gateway if not set)
-cp .env.example .env
-# Optional: edit .env to override ROUTER=, SSH_IDENTITY_FILE=, etc.
+# Configure local secrets (router IP is auto-detected from default gateway if not set)
+mkdir -p secrets
+cp .env.example secrets/router.env
+# Optional: edit secrets/router.env to override ROUTER=, SSH_IDENTITY_FILE=, etc.
 
 # Deploy
 ./deploy.sh
@@ -227,9 +236,15 @@ Important notes:
 
 - `WAN total` — all external traffic via the ISP-facing interface
 - `VPN total` — all traffic that traversed `wgc1`
+- `WG server total` — all traffic that traversed raw WireGuard server interface `wgs1`
 - `Wi-Fi total` — all traffic on the router radios
 - `Tailscale total` — per-peer `RxBytes` / `TxBytes` deltas reported by `tailscaled`
+- `WireGuard server peers` — per-peer deltas from `wg show wgs1 dump`, plus current/end-of-day conntrack snapshots for remote peers on `wgs1`
 - `LAN devices` — current connection snapshot from `conntrack` (`Total` / `VPN` / `WAN` / `Local` are active connection counts, not bytes)
+
+By default, report output redacts peer names, LAN hostnames, tunnel addresses, and endpoints. Use `REPORT_REDACT_NAMES=0` only for trusted local inspection.
+
+For raw `WireGuard server` peers, the router can report both per-peer transfer counters and current conntrack snapshots because decrypted traffic keeps the peer tunnel address from `wgs1` when it enters `PREROUTING`.
 
 For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
 

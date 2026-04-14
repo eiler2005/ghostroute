@@ -4,20 +4,23 @@
 
 ## Цели
 
-`traffic-report` отвечает на 4 практических вопроса:
+`traffic-report` и `traffic-daily-report` отвечают на 6 практических вопросов:
 
-1. Сколько трафика прошло через внешний канал роутера сегодня.
+1. Сколько трафика прошло через внешний канал роутера.
 2. Сколько из этого трафика прошло через `WireGuard wgc1`.
-3. Какие локальные устройства сейчас активны и сколько у них активных соединений.
-4. Сколько байт по `Tailscale` прошло у каждого peer'а с начала дня.
+3. Сколько трафика прошло через raw `WireGuard server` интерфейс `wgs1`.
+4. Какие локальные устройства сейчас активны и сколько у них активных соединений.
+5. Сколько байт по `Tailscale` прошло у каждого peer'а.
+6. Сколько байт по raw `WireGuard server` прошло у каждого peer'а и какие у него сейчас active conntrack entries.
 
-Скрипт не является биллинговой системой. Он сочетает:
+Скрипты не являются биллинговой системой. Они сочетают:
 
 - накопительные счётчики интерфейсов Linux
-- текущий `conntrack`-срез
+- текущий или end-of-day `conntrack`-срез
 - peer-статистику `tailscaled`
+- peer-статистику `wg show wgs1 dump`
 
-Поэтому часть метрик точная, а часть является срезом "на сейчас".
+Поэтому часть метрик точная, а часть является live или end-of-day снимком.
 
 ## Компоненты
 
@@ -27,8 +30,9 @@
 
 Что сохраняет:
 
-- `wan0`, `wgc1`, `br0`, `eth6`, `eth7` → `rx_bytes` / `tx_bytes`
+- `wan0`, `wgc1`, `wgs1`, `br0`, `eth6`, `eth7` → `rx_bytes` / `tx_bytes`
 - JSON-снимок `tailscale status --json`
+- raw-снимок `wg show wgs1 dump`
 
 Куда сохраняет:
 
@@ -39,11 +43,13 @@
 
 - `interface-counters.tsv`
 - `tailscale/<timestamp>.json`
+- `wgs1/<timestamp>.dump`
 
 Хранение ограничивается:
 
 - до 5000 строк для `interface-counters.tsv`
-- до 60 дней для raw Tailscale JSON snapshots
+- до 60 дней для raw `tailscale` JSON snapshots
+- до 60 дней для raw `wgs1` dump snapshots
 
 ### `scripts/cron-traffic-daily-close`
 
@@ -58,6 +64,8 @@
 
 - `daily/YYYY-MM-DD-lan-conntrack.txt`
 
+Этот файл используется и для локальных устройств из текущего `dnsmasq.leases`, и для remote `WireGuard server` peer'ов из текущего `wgs1` peer-map.
+
 ### `scripts/traffic-report`
 
 Локальный CLI-скрипт на рабочей машине.
@@ -69,10 +77,11 @@
 3. Забирает history-файл `interface-counters.tsv`.
 4. Находит первый snapshot за текущий день.
 5. Считает дельты `текущий - базовый`.
-6. Забирает текущий `tailscale status --json`.
-7. Берёт самый ранний Tailscale snapshot за текущий день.
-8. Считает per-peer дельты `RxBytes` / `TxBytes`.
-9. Отдельно строит live-срез локальных устройств по `dnsmasq.leases + conntrack`.
+6. Забирает текущий `tailscale status --json` и первый snapshot `tailscale` за день.
+7. Считает per-peer дельты `Tailscale`.
+8. Забирает текущий `wg show wgs1 dump` и первый snapshot `wgs1` за день.
+9. Считает per-peer дельты raw `WireGuard server`.
+10. Отдельно строит live-срез локальных устройств и raw `WireGuard server` peer'ов по `dnsmasq.leases + conntrack`.
 
 ### `scripts/traffic-daily-report`
 
@@ -80,14 +89,16 @@
 
 Что делает:
 
-1. Берёт первый и последний snapshot выбранного дня.
-2. Считает закрытые дневные дельты по интерфейсам.
-3. Считает per-peer Tailscale дельты между первым и последним JSON snapshot дня.
-4. Показывает end-of-day `LAN DEVICES` снимок из `daily/YYYY-MM-DD-lan-conntrack.txt`.
+1. Берёт первый и последний snapshot выбранного дня/периода.
+2. Считает закрытые дельты по интерфейсам.
+3. Считает per-peer Tailscale дельты между первым и последним JSON snapshot.
+4. Считает per-peer raw `WireGuard server` дельты между первым и последним `wg show wgs1 dump`.
+5. Показывает end-of-day или end-of-period `LAN DEVICES` и `WIREGUARD SERVER PEERS` снимки из `daily/YYYY-MM-DD-lan-conntrack.txt`.
 
 Примеры:
 
 ```bash
+./scripts/traffic-report
 ./scripts/traffic-daily-report today
 ./scripts/traffic-daily-report yesterday
 ./scripts/traffic-daily-report 2026-04-14
@@ -95,20 +106,11 @@
 ./scripts/traffic-daily-report month
 ```
 
-Семантика периодов:
-
-- `today` — с первого snapshot сегодняшнего дня до текущего состояния
-- `yesterday` / `YYYY-MM-DD` — закрытый день по stored snapshots
-- `week` — с первого snapshot понедельника текущей недели до текущего состояния
-- `month` — с первого snapshot первого числа текущего месяца до текущего состояния
-
-Если история начала собираться уже внутри недели или месяца, отчёт стартует с самого раннего доступного snapshot внутри этого периода.
-
 ## Как читать метрики
 
 ### `WAN total`
 
-Сумма `RX + TX` интерфейса `wan0` с первого snapshot текущего дня.
+Сумма `RX + TX` интерфейса `wan0`.
 
 Это:
 
@@ -118,36 +120,26 @@
 - внешний сервисный трафик роутера
 - Tailscale/DERP и прочие внешние соединения
 
-Это не:
-
-- список устройств
-- per-device статистика
-
 ### `VPN total`
 
-Сумма `RX + TX` интерфейса `wgc1` с первого snapshot текущего дня.
+Сумма `RX + TX` интерфейса `wgc1`.
 
 Это:
 
 - весь объём, прошедший через `WireGuard`-клиент роутера
 
-Это полезно для ответа:
+### `WG server total`
 
-- какая доля внешнего трафика шла через VPN
-
-### `Wi-Fi total`
-
-Сумма `eth6 + eth7` по `RX + TX`.
+Сумма `RX + TX` интерфейса `wgs1`.
 
 Это:
 
-- суммарная активность радиоинтерфейсов
+- весь объём, который пришёл и ушёл через raw `WireGuard server` роутера
+- полезно для ответа на вопрос: “насколько remote raw VPN-клиенты вообще активны”
 
 Это не:
 
-- только интернет
-
-Туда входят и локальные Wi-Fi обмены внутри дома.
+- per-peer breakdown само по себе
 
 ### `LAN bridge`
 
@@ -157,11 +149,17 @@
 
 - активность всего L2/L3-моста LAN
 
-Тоже не равно "только интернет".
+### `Wi-Fi total`
+
+Сумма `eth6 + eth7` по `RX + TX`.
+
+Это:
+
+- суммарная активность радиоинтерфейсов
 
 ### `LAN devices`
 
-Это не байты. Это текущий снимок `conntrack`.
+Это не байты. Это `conntrack`-снимок.
 
 Колонки:
 
@@ -170,11 +168,24 @@
 - `WAN` — сколько идут напрямую во внешний канал
 - `Local` — сколько локальны для роутера / домашней сети
 
-Это хороший live-индикатор "кто сейчас что-то делает", но не исторический объём трафика.
+### `WireGuard server peers`
+
+В отчётах теперь есть два слоя для raw `WireGuard server`.
+
+`WIREGUARD SERVER PEERS (SINCE ...)`:
+
+- per-peer дельты `RX` / `TX` из `wg show wgs1 dump`
+- `Latest handshake`
+- `Endpoint`
+
+`WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
+
+- conntrack-срез по peer'ам raw `WireGuard server`
+- сколько активных соединений у peer'а сейчас или на конец дня ушло через `VPN` / `WAN` / `Local`
 
 ### `Tailscale peers`
 
-Это per-peer дельты `RxBytes` / `TxBytes` из `tailscaled` с начала дня.
+Это per-peer дельты `RxBytes` / `TxBytes` из `tailscaled`.
 
 Это:
 
@@ -182,9 +193,34 @@
 
 Это не:
 
-- разбивка peer'а по `через wgc1` и `мимо wgc1`
+- точная разбивка peer'а по `через wgc1` и `мимо wgc1`
 
-## Почему Tailscale нельзя точно разбить на `VPN` vs `WAN` по peer'ам
+## Почему точность разная для `wgs1` и `Tailscale`
+
+### Raw `WireGuard server`
+
+Когда remote клиент подключён напрямую к роутеру по raw `WireGuard server`, после расшифровки трафик входит в обычный сетевой стек с tunnel-адресом peer'а из текущего `wgs1` peer-map.
+
+Упрощённый путь:
+
+```text
+iPhone
+  -> WireGuard tunnel
+  -> wgs1 on router
+  -> iptables PREROUTING
+  -> RC_VPN_ROUTE
+  -> wgc1 or wan0
+```
+
+Из-за этого проект может показать:
+
+- router-wide `wgs1` bytes
+- per-peer transfer counters из `wg show`
+- conntrack-срез peer'ов с tunnel-адресами `wgs1`
+
+Это точнее, чем у `Tailscale Exit Node`.
+
+### `Tailscale Exit Node`
 
 Когда роутер работает как `Tailscale Exit Node`, трафик peer'а сначала приходит в `tailscaled`, а затем userspace-прокси генерирует локальный исходящий трафик на самом роутере.
 
@@ -203,17 +239,15 @@ iPhone
 Именно поэтому:
 
 - для совпадения с LAN-логикой нужен хук `OUTPUT -> RC_VPN_ROUTE`
-- router-wide split routing работает корректно
-- но per-peer identity уже не сохраняется в таком виде, чтобы потом честно сказать:
-  - из `iphone-11` 1.2 GiB пошло через `wgc1`
-  - а 0.8 GiB напрямую через `WAN`
+- router-wide split-routing работает корректно
+- но per-peer identity уже не сохраняется так же прозрачно, как у raw `WireGuard server`
 
 То есть проект умеет одновременно показать:
 
 - `Tailscale peer bytes`
 - `router-wide VPN bytes`
 
-Но не умеет без дополнительных сложных трейсингов собрать их точное per-peer пересечение.
+Но не умеет без дополнительного сложного трейсинга честно собрать их точное per-peer пересечение.
 
 ## Сетевая схема
 
@@ -222,6 +256,17 @@ iPhone
 ```text
 LAN device
   -> br0
+  -> iptables PREROUTING
+  -> RC_VPN_ROUTE
+  -> wgc1 or wan0
+```
+
+### Raw WireGuard server peer
+
+```text
+Remote peer
+  -> WireGuard tunnel
+  -> wgs1
   -> iptables PREROUTING
   -> RC_VPN_ROUTE
   -> wgc1 or wan0
@@ -239,55 +284,45 @@ Remote peer
   -> wgc1 or wan0
 ```
 
-Вторая схема и объясняет, почему для Tailscale понадобился отдельный `OUTPUT` hook.
+Эти три схемы и объясняют, почему в `firewall-start` нужны оба hooks:
+
+- `PREROUTING -i br0 -j RC_VPN_ROUTE`
+- `PREROUTING -i wgs1 -j RC_VPN_ROUTE`
+- `OUTPUT -j RC_VPN_ROUTE`
 
 ## Практические ограничения
 
-### Почему `0.00 GiB` у Tailscale peer'ов
+### Почему у peer'ов бывает `0.00 GiB`
 
 Обычно это одна из двух причин:
 
-- с начала дня peer передал очень мало данных, и после округления в `GiB` получается `0.00`
-- baseline snapshot за день появился недавно, и дельта пока почти нулевая
+- с начала окна peer передал очень мало данных, и после округления в `GiB` получается `0.00`
+- baseline snapshot за окно появился недавно, и дельта пока почти нулевая
 
-### Почему история начинается "с сегодняшнего дня"
+### Почему история начинается не с полуночи
 
-`traffic-report` сейчас строит отчёт от первого snapshot текущего дня. Это сознательно:
+Отчёты строятся от первого доступного snapshot внутри окна:
 
-- проще читать
-- меньше риска путать старые счётчики интерфейсов с новой конфигурацией
+- так проще читать
+- меньше риск путать старые счётчики интерфейсов с новой конфигурацией
 
-При желании позже можно добавить:
+Если история начала собираться уже внутри недели или месяца, это нормально и должно отражаться в `Window start`.
 
-- `--since yesterday`
-- `--since 7d`
-- `--month`
-
-Для уже закрытого дня используйте `traffic-daily-report`.
-
-### Почему `WAN total` и `VPN total` нельзя просто вычесть друг из друга
-
-`wan0` и `wgc1` считают трафик на разных уровнях:
-
-- `wan0` видит внешний физический обмен с провайдером
-- `wgc1` видит трафик внутри VPN-интерфейса
-
-Поэтому `VPN share/WAN` полезен как ориентир, но не как бухгалтерски точная формула по payload.
-
-## Практический workflow
-
-### Что собирается автоматически
-
-- каждые 6 часов: raw interface counters + raw Tailscale JSON
-- в `23:55`: closing snapshot дня + end-of-day LAN conntrack snapshot
-
-### Что смотреть руками
+## Что смотреть на практике
 
 - текущий день: `./scripts/traffic-report`
 - закрытый день: `./scripts/traffic-daily-report YYYY-MM-DD`
 - текущая неделя: `./scripts/traffic-daily-report week`
 - текущий месяц: `./scripts/traffic-daily-report month`
 
-### Отдельная инструкция для LLM
+Если проблема только у raw `WireGuard server` клиентов:
 
-См. [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+- смотрите `WG server total`
+- смотрите `WIREGUARD SERVER PEERS`
+- проверяйте, растут ли conntrack counts у peer'а и в какой колонке (`VPN` / `WAN` / `Local`)
+
+Если проблема только у `Tailscale Exit Node`:
+
+- смотрите `Tailscale total`
+- смотрите `TAILSCALE PEERS`
+- помните, что per-peer split `VPN` vs `WAN` там принципиально неточный

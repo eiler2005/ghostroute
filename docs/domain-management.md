@@ -45,6 +45,10 @@ ipset list VPN_DOMAINS | grep <resolved_ip>
 # Проверяем маршрут
 ip route get <resolved_ip>
 # Должен показать: ... dev wgc1 ...
+
+# Для split-routing логики проверяем путь c mark 0x1000
+ip route get <resolved_ip> mark 0x1000
+# Должен показать: ... dev wgc1 ...
 ```
 
 ## Как добавить статическую сеть
@@ -237,6 +241,14 @@ tcp 203.0.113.10 22
 
 После `./deploy.sh` `firewall-start` добавит mangle-исключение до правил маркировки `VPN_DOMAINS`, и этот конкретный IP:порт не будет уходить в `wgc1`.
 
+Если для production нужны реальные персональные bypass-правила, храните их в локальном файле:
+
+```text
+secrets/no-vpn-ip-ports.local.txt
+```
+
+Он игнорируется git и автоматически дописывается к tracked `configs/no-vpn-ip-ports.txt` во время `./deploy.sh`.
+
 ### Мониторинг и управление (с Mac)
 
 ```bash
@@ -254,6 +266,36 @@ tcp 203.0.113.10 22
 
 # Удалить все авто-добавленные домены
 ./scripts/domain-report --reset
+```
+
+### Как посмотреть, дал ли новый домен реальный трафик
+
+После добавления домена полезно проверить не только `ipset`, но и фактическое потребление по каналам.
+
+Текущий день:
+
+```bash
+./scripts/traffic-report
+```
+
+Исторический отчёт:
+
+```bash
+./scripts/traffic-daily-report today
+./scripts/traffic-daily-report yesterday
+```
+
+Что смотреть:
+
+- `VPN total` — вырос ли router-wide трафик через `wgc1`
+- `WG server total` — если тестируете через raw `WireGuard server`
+- `LAN DEVICES` — появились ли active conntrack entries у локального клиента
+- `WIREGUARD SERVER PEERS` — появились ли active conntrack entries и transfer deltas у remote peer'а
+
+По умолчанию отчёты редактируют peer names / hostnames / endpoints. Для доверенного локального просмотра без редактирования:
+
+```bash
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 ```
 
 ### Как перенести авто-добавленный домен в ручные конфиги

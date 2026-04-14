@@ -3,6 +3,7 @@
 #
 # Example:
 # tcp 203.0.113.10 22
-
-# OpenClaw host: HTTPS should stay routable via VPN, but SSH works only direct.
-tcp 203.0.113.10 22
+#
+# Personal production overrides should live in:
+#   secrets/no-vpn-ip-ports.local.txt
+# This file is ignored by git and appended during deploy when present.

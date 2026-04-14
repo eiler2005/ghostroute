@@ -52,7 +52,7 @@
     └─ НЕТ → прямо через провайдера
 ```
 
-`PREROUTING` работает для обычных клиентов в `LAN/Wi-Fi`. `OUTPUT` нужен для локально сгенерированного трафика роутера, в том числе для `Tailscale Exit Node`, потому что такой трафик проксируется самим роутером и не приходит как обычный пакет с `br0`.
+`PREROUTING` работает для обычных клиентов в `LAN/Wi-Fi` и для raw-клиентов `WireGuard server`, которые приходят на `wgs1`. `OUTPUT` нужен для локально сгенерированного трафика роутера, в том числе для `Tailscale Exit Node`, потому что такой трафик проксируется самим роутером и не приходит как обычный пакет с `br0`.
 
 ---
 
@@ -146,11 +146,11 @@ scripts/
   domain-auto-add.sh              # авто-обнаружение доменов (cron, каждый час)
   update-blocked-list.sh          # скачивание списка блокировок (cron, раз в сутки)
   domain-report                   # CLI: просмотр/управление авто-добавленными доменами
-  traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/Tailscale + текущая активность LAN
-  traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots
+  traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/WG-server/Tailscale + LAN/WGS snapshots
+  traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots, incl. WGS peers
   cron-save-ipset                 # сохранение ipset на диск каждые 6ч
-  cron-traffic-snapshot           # сохранение traffic snapshots каждые 6ч
-  cron-traffic-daily-close        # сохранение end-of-day LAN snapshot в 23:55
+  cron-traffic-snapshot           # сохранение traffic / Tailscale / WGS snapshots каждые 6ч
+  cron-traffic-daily-close        # сохранение end-of-day LAN/WGS conntrack snapshot в 23:55
 
 docs/
   architecture.md                 # детальная архитектура
@@ -178,8 +178,9 @@ verify.sh                         # проверка состояния роут
 git clone https://github.com/eiler2005/router_configuration
 cd router_configuration
 
-# Настраиваем (IP роутера определяется автоматически из default gateway)
-cp .env.example .env
+# Настраиваем локальные secrets
+mkdir -p secrets
+cp .env.example secrets/router.env
 # При необходимости отредактировать: ROUTER=, SSH_IDENTITY_FILE=
 
 # Деплой
@@ -210,9 +211,13 @@ cp .env.example .env
 
 - `WAN total` — весь внешний трафик через интерфейс провайдера
 - `VPN total` — весь трафик через `wgc1`
+- `WG server total` — весь трафик через raw WireGuard server-интерфейс `wgs1`
 - `Wi-Fi total` — суммарный трафик радиоинтерфейсов роутера
 - `Tailscale total` — сумма per-peer `RxBytes` / `TxBytes` из `tailscaled`
+- `WireGuard server peers` — per-peer дельты из `wg show wgs1 dump` плюс current/end-of-day conntrack-срез по remote peer'ам на `wgs1`
 - `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
+
+По умолчанию отчёты редактируют peer names, hostnames, tunnel addresses и endpoints. `REPORT_REDACT_NAMES=0` используйте только для доверенного локального просмотра.
 
 Подробная архитектура сбора, расчёта дельт и ограничения для `Tailscale Exit Node`: [docs/traffic-observability.md](docs/traffic-observability.md)
 Короткий runbook для LLM/агента: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)

@@ -4,9 +4,10 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Загружаем персональные переменные из .env, если он есть.
-# .env добавлен в .gitignore и не попадает в git.
-# Шаблон: .env.example
+# Загружаем персональные переменные из локального secrets-файла.
+# Рекомендуемый путь: secrets/router.env
+# Для обратной совместимости поддерживается и .env.
+[ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
 [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
 
 ROUTER_USER="${ROUTER_USER:-admin}"
@@ -109,12 +110,15 @@ if ! router_has_port "$ROUTER_PORT"; then
   exit 1
 fi
 
-ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' /jffs/configs /jffs/scripts"
+ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
 
 upload_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add" "${REMOTE_STAGE}/configs/dnsmasq.conf.add"
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-vpn-upstream.conf.add"
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
 upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
+if [ -f "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" ]; then
+  upload_file "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" "${REMOTE_STAGE}/secrets/no-vpn-ip-ports.local.txt"
+fi
 upload_file "${PROJECT_ROOT}/scripts/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
 upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
 upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
@@ -214,6 +218,9 @@ cp "$REMOTE_STAGE/configs/static-networks.txt" /jffs/configs/router_configuratio
 
 backup_if_present /jffs/configs/router_configuration.no_vpn_ip_ports
 cp "$REMOTE_STAGE/configs/no-vpn-ip-ports.txt" /jffs/configs/router_configuration.no_vpn_ip_ports
+if [ -f "$REMOTE_STAGE/secrets/no-vpn-ip-ports.local.txt" ]; then
+  cat "$REMOTE_STAGE/secrets/no-vpn-ip-ports.local.txt" >> /jffs/configs/router_configuration.no_vpn_ip_ports
+fi
 
 install_script \
   "$REMOTE_STAGE/scripts/firewall-start" \
