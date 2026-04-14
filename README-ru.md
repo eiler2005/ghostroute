@@ -146,7 +146,9 @@ scripts/
   domain-auto-add.sh              # авто-обнаружение доменов (cron, каждый час)
   update-blocked-list.sh          # скачивание списка блокировок (cron, раз в сутки)
   domain-report                   # CLI: просмотр/управление авто-добавленными доменами
+  traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/Tailscale + текущая активность LAN
   cron-save-ipset                 # сохранение ipset на диск каждые 6ч
+  cron-traffic-snapshot           # сохранение traffic snapshots каждые 6ч
 
 docs/
   architecture.md                 # детальная архитектура
@@ -155,6 +157,7 @@ docs/
   telegram-deep-dive.md           # почему Telegram особенный
   troubleshooting.md              # диагностика проблем
   current-routing-explained.md    # полный каталог доменов с пояснениями
+  traffic-observability.md        # архитектура traffic-report и сетевых счётчиков
 
 deploy.sh                         # деплой на роутер по SSH/SCP
 verify.sh                         # проверка состояния роутера после деплоя
@@ -198,6 +201,18 @@ cp .env.example .env
 - всё, что не совпало со списками, остаётся на обычном `WAN`
 - скорость может быть ниже, чем у локального клиента в LAN: `Tailscale` на роутере работает в `userspace`, а на мобильной сети соединение иногда уходит в `DERP/relay`
 
+## Наблюдаемость трафика
+
+`traffic-report` использует snapshots, которые роутер сохраняет каждые 6 часов на USB/Entware, и показывает итоги с первого сэмпла текущего дня:
+
+- `WAN total` — весь внешний трафик через интерфейс провайдера
+- `VPN total` — весь трафик через `wgc1`
+- `Wi-Fi total` — суммарный трафик радиоинтерфейсов роутера
+- `Tailscale total` — сумма per-peer `RxBytes` / `TxBytes` из `tailscaled`
+- `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
+
+Подробная архитектура сбора, расчёта дельт и ограничения для `Tailscale Exit Node`: [docs/traffic-observability.md](docs/traffic-observability.md)
+
 ---
 
 ## Управление доменами
@@ -236,8 +251,6 @@ server=/example.com/9.9.9.9@wgc1
 ```
 
 Затем `./deploy.sh`.
-
----
 
 ## Диагностика на роутере
 

@@ -159,7 +159,9 @@ scripts/
   domain-auto-add.sh              # auto-discovery: DNS log → blocked-list check → dnsmasq config
   update-blocked-list.sh          # downloads blocked domain list daily via VPN
   domain-report                   # CLI tool: view / manage / reset auto-discovered domains
+  traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/Tailscale totals + LAN activity snapshot
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
+  cron-traffic-snapshot           # stores traffic counters / Tailscale snapshots every 6h
 
 docs/
   architecture.md                 # packet flow, DNS upstream, deployment mechanics (RU)
@@ -168,6 +170,7 @@ docs/
   telegram-deep-dive.md           # why Telegram needs special treatment (RU)
   troubleshooting.md              # diagnostics and common issues (RU)
   current-routing-explained.md    # full catalog of routed domains (RU)
+  traffic-observability.md        # traffic-report architecture and counter semantics (RU)
 
 deploy.sh                         # idempotent deploy to router via SSH/SCP
 verify.sh                         # validates router state after deploy
@@ -215,6 +218,20 @@ Important notes:
 - everything else still uses the normal WAN path
 - performance can be lower than plain LAN routing because `Tailscale` runs in `userspace` on the router, and some mobile sessions may fall back to `DERP/relay`
 
+### Traffic reporting
+
+`traffic-report` uses snapshots stored on the router every 6 hours and reports totals since the first sample of the current day:
+
+- `WAN total` — all external traffic via the ISP-facing interface
+- `VPN total` — all traffic that traversed `wgc1`
+- `Wi-Fi total` — all traffic on the router radios
+- `Tailscale total` — per-peer `RxBytes` / `TxBytes` deltas reported by `tailscaled`
+- `LAN devices` — current connection snapshot from `conntrack` (`Total` / `VPN` / `WAN` / `Local` are active connection counts, not bytes)
+
+For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
+
+Detailed collection / delta / network-counter architecture: [docs/traffic-observability.md](docs/traffic-observability.md)
+
 ---
 
 ## Domain Management
@@ -240,8 +257,6 @@ Important notes:
 ```
 
 To add a domain permanently, edit `configs/dnsmasq.conf.add` and `configs/dnsmasq-vpn-upstream.conf.add`, then re-run `./deploy.sh`.
-
----
 
 ## Adding a New Domain Manually
 

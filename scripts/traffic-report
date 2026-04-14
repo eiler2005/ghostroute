@@ -1,0 +1,258 @@
+#!/bin/bash
+# Traffic report from the router.
+#
+# Usage:
+#   ./scripts/traffic-report
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+
+ROUTER_USER="${ROUTER_USER:-admin}"
+ROUTER_PORT="${ROUTER_PORT:-22}"
+CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
+ROUTER="${ROUTER:-}"
+SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
+
+SSH_OPTS=(
+  -i "$SSH_IDENTITY_FILE"
+  -p "$ROUTER_PORT"
+  -o ConnectTimeout="$CONNECT_TIMEOUT"
+  -o IdentitiesOnly=yes
+  -o PubkeyAcceptedAlgorithms=+ssh-rsa
+  -o StrictHostKeyChecking=accept-new
+)
+
+if [ -z "$ROUTER" ]; then
+  ROUTER="$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }')" || true
+fi
+[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in .env" >&2; exit 1; }
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+CURRENT_COUNTERS="$TMPDIR/current-counters.tsv"
+HISTORY_COUNTERS="$TMPDIR/history-counters.tsv"
+STATE_FILE="$TMPDIR/state.txt"
+CURRENT_TAILSCALE="$TMPDIR/current-tailscale.json"
+BASE_TAILSCALE="$TMPDIR/base-tailscale.json"
+LAN_RAW="$TMPDIR/lan-raw.txt"
+LAN_PARSED="$TMPDIR/lan.txt"
+TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
+
+human_gib() {
+  awk -v bytes="${1:-0}" 'BEGIN { printf "%.2f GiB", bytes / 1024 / 1024 / 1024; }'
+}
+
+delta_or_current() {
+  local current="${1:-0}"
+  local base="${2:-0}"
+  if [ "$current" -ge "$base" ]; then
+    echo $((current - base))
+  else
+    echo "$current"
+  fi
+}
+
+ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" '
+set -e
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+mkdir -p "$STATE_DIR" "$STATE_DIR/tailscale"
+
+printf "STATE_DIR=%s\n" "$STATE_DIR"
+printf "WAN_IP=%s\n" "$(nvram get wan0_ipaddr 2>/dev/null || true)"
+printf "WGC1_IP=%s\n" "$(ip -4 -o addr show wgc1 2>/dev/null | awk "{print \$4}" | cut -d/ -f1)"
+printf "TODAY=%s\n" "$(date +%Y-%m-%d)"
+
+for iface in wan0 wgc1 br0 eth6 eth7; do
+  if [ -d "/sys/class/net/$iface" ]; then
+    rx=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+    tx=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+    printf "CUR|%s|%s|%s\n" "$iface" "$rx" "$tx"
+  fi
+done
+
+[ -f "$STATE_DIR/interface-counters.tsv" ] && cat "$STATE_DIR/interface-counters.tsv" || true
+' > "$STATE_FILE"
+
+awk -F'|' '$1 == "CUR" { print $2 "|" $3 "|" $4 }' "$STATE_FILE" > "$CURRENT_COUNTERS"
+awk -F'|' '$1 != "CUR" && NF == 4 { print $0 }' "$STATE_FILE" > "$HISTORY_COUNTERS"
+
+WAN_IP="$(awk -F= '/^WAN_IP=/{print $2}' "$STATE_FILE")"
+WGC1_IP="$(awk -F= '/^WGC1_IP=/{print $2}' "$STATE_FILE")"
+TODAY="$(awk -F= '/^TODAY=/{print $2}' "$STATE_FILE")"
+
+ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" '
+set -e
+/opt/bin/tailscale status --json 2>/dev/null || printf "{}\n"
+' > "$CURRENT_TAILSCALE"
+
+ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "
+set -e
+STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic )
+SNAP=\$(find \"\$STATE_DIR/tailscale\" -maxdepth 1 -type f -name \"${TODAY}T*.json\" 2>/dev/null | sort | head -1)
+if [ -n \"\$SNAP\" ]; then
+  cat \"\$SNAP\"
+else
+  printf '{}\n'
+fi
+" > "$BASE_TAILSCALE"
+
+ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" '
+set -e
+cat /var/lib/misc/dnsmasq.leases 2>/dev/null || true
+printf "\n---CONNTRACK---\n"
+conntrack -L 2>/dev/null || true
+' > "$LAN_RAW"
+
+iface_current() {
+  local iface="$1"
+  local column="$2"
+  awk -F'|' -v iface="$iface" -v column="$column" '$1 == iface { print $column }' "$CURRENT_COUNTERS"
+}
+
+iface_base_pair() {
+  local iface="$1"
+  awk -F'|' -v today="$TODAY" -v iface="$iface" '$1 ~ ("^" today) && $2 == iface { print $3 "|" $4; exit }' "$HISTORY_COUNTERS"
+}
+
+REPORT_START="$(awk -F'|' -v today="$TODAY" '$1 ~ ("^" today) { print $1; exit }' "$HISTORY_COUNTERS")"
+[ -n "$REPORT_START" ] || REPORT_START="${TODAY} (no samples yet; using current totals)"
+
+WAN_RX_NOW="$(iface_current wan0 2)"; WAN_TX_NOW="$(iface_current wan0 3)"
+VPN_RX_NOW="$(iface_current wgc1 2)"; VPN_TX_NOW="$(iface_current wgc1 3)"
+BR0_RX_NOW="$(iface_current br0 2)"; BR0_TX_NOW="$(iface_current br0 3)"
+WIFI24_RX_NOW="$(iface_current eth6 2)"; WIFI24_TX_NOW="$(iface_current eth6 3)"
+WIFI5_RX_NOW="$(iface_current eth7 2)"; WIFI5_TX_NOW="$(iface_current eth7 3)"
+
+base_pair="$(iface_base_pair wan0)"; WAN_RX_BASE="${base_pair%%|*}"; WAN_TX_BASE="${base_pair##*|}"; [ "$base_pair" = "$WAN_RX_BASE" ] && WAN_RX_BASE=0 WAN_TX_BASE=0
+base_pair="$(iface_base_pair wgc1)"; VPN_RX_BASE="${base_pair%%|*}"; VPN_TX_BASE="${base_pair##*|}"; [ "$base_pair" = "$VPN_RX_BASE" ] && VPN_RX_BASE=0 VPN_TX_BASE=0
+base_pair="$(iface_base_pair br0)"; BR0_RX_BASE="${base_pair%%|*}"; BR0_TX_BASE="${base_pair##*|}"; [ "$base_pair" = "$BR0_RX_BASE" ] && BR0_RX_BASE=0 BR0_TX_BASE=0
+base_pair="$(iface_base_pair eth6)"; WIFI24_RX_BASE="${base_pair%%|*}"; WIFI24_TX_BASE="${base_pair##*|}"; [ "$base_pair" = "$WIFI24_RX_BASE" ] && WIFI24_RX_BASE=0 WIFI24_TX_BASE=0
+base_pair="$(iface_base_pair eth7)"; WIFI5_RX_BASE="${base_pair%%|*}"; WIFI5_TX_BASE="${base_pair##*|}"; [ "$base_pair" = "$WIFI5_RX_BASE" ] && WIFI5_RX_BASE=0 WIFI5_TX_BASE=0
+
+WAN_RX="$(delta_or_current "${WAN_RX_NOW:-0}" "${WAN_RX_BASE:-0}")"
+WAN_TX="$(delta_or_current "${WAN_TX_NOW:-0}" "${WAN_TX_BASE:-0}")"
+VPN_RX="$(delta_or_current "${VPN_RX_NOW:-0}" "${VPN_RX_BASE:-0}")"
+VPN_TX="$(delta_or_current "${VPN_TX_NOW:-0}" "${VPN_TX_BASE:-0}")"
+BR0_RX="$(delta_or_current "${BR0_RX_NOW:-0}" "${BR0_RX_BASE:-0}")"
+BR0_TX="$(delta_or_current "${BR0_TX_NOW:-0}" "${BR0_TX_BASE:-0}")"
+WIFI24_RX="$(delta_or_current "${WIFI24_RX_NOW:-0}" "${WIFI24_RX_BASE:-0}")"
+WIFI24_TX="$(delta_or_current "${WIFI24_TX_NOW:-0}" "${WIFI24_TX_BASE:-0}")"
+WIFI5_RX="$(delta_or_current "${WIFI5_RX_NOW:-0}" "${WIFI5_RX_BASE:-0}")"
+WIFI5_TX="$(delta_or_current "${WIFI5_TX_NOW:-0}" "${WIFI5_TX_BASE:-0}")"
+
+WAN_TOTAL=$(( WAN_RX + WAN_TX ))
+VPN_TOTAL=$(( VPN_RX + VPN_TX ))
+WIFI_RX_TOTAL=$(( WIFI24_RX + WIFI5_RX ))
+WIFI_TX_TOTAL=$(( WIFI24_TX + WIFI5_TX ))
+WIFI_TOTAL=$(( WIFI_RX_TOTAL + WIFI_TX_TOTAL ))
+BR0_TOTAL=$(( BR0_RX + BR0_TX ))
+
+VPN_SHARE="n/a"
+if [ "${WAN_TOTAL:-0}" -gt 0 ]; then
+  VPN_SHARE="$(awk -v vpn="$VPN_TOTAL" -v wan="$WAN_TOTAL" 'BEGIN { printf "%.1f%%", (vpn / wan) * 100; }')"
+fi
+
+awk -v wan_ip="$WAN_IP" -v vpn_ip="$WGC1_IP" '
+  BEGIN { mode = "leases"; }
+  /^---CONNTRACK---$/ { mode = "ct"; next; }
+  mode == "leases" && NF >= 4 {
+    host = $4;
+    if (host == "*") host = "?";
+    hostmap[$3] = host;
+    next;
+  }
+  mode == "ct" {
+    src = "";
+    path = "local";
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^src=192\.168\.50\./ && src == "") {
+        split($i, a, "=");
+        src = a[2];
+        continue;
+      }
+      if (src == "") continue;
+      if (vpn_ip != "" && ($i == "src=" vpn_ip || $i == "dst=" vpn_ip)) path = "vpn";
+      else if (wan_ip != "" && ($i == "src=" wan_ip || $i == "dst=" wan_ip)) path = "wan";
+    }
+    if (src != "") {
+      total[src]++;
+      bucket[src, path]++;
+    }
+  }
+  END {
+    for (ip in hostmap) {
+      printf "%s|%s|%d|%d|%d|%d\n",
+        ip, hostmap[ip], total[ip] + 0, bucket[ip, "vpn"] + 0, bucket[ip, "wan"] + 0, bucket[ip, "local"] + 0;
+    }
+  }' "$LAN_RAW" | sort -t'|' -k3,3nr -k1,1V > "$LAN_PARSED"
+
+ruby -rjson -e '
+  current = JSON.parse(File.read(ARGV[0]))
+  base = JSON.parse(File.read(ARGV[1]))
+  base_peers = {}
+  (base["Peer"] || {}).each_value do |peer|
+    next unless peer["ID"]
+    base_peers[peer["ID"]] = {
+      "rx" => (peer["RxBytes"] || 0).to_i,
+      "tx" => (peer["TxBytes"] || 0).to_i
+    }
+  end
+
+  peers = (current["Peer"] || {}).values
+  peers.sort_by { |peer| peer["DNSName"].to_s }.each do |peer|
+    id = peer["ID"]
+    base_rx = base_peers.dig(id, "rx").to_i
+    base_tx = base_peers.dig(id, "tx").to_i
+    cur_rx = (peer["RxBytes"] || 0).to_i
+    cur_tx = (peer["TxBytes"] || 0).to_i
+    delta_rx = cur_rx >= base_rx ? cur_rx - base_rx : cur_rx
+    delta_tx = cur_tx >= base_tx ? cur_tx - base_tx : cur_tx
+
+    name = peer["DNSName"].to_s.sub(/\.$/, "").sub(/\.tail.*$/, "")
+    name = peer["HostName"].to_s if name.empty?
+    puts [name, peer["Online"], delta_rx, delta_tx, peer["LastSeen"].to_s].join("|")
+  end
+' "$CURRENT_TAILSCALE" "$BASE_TAILSCALE" > "$TAILSCALE_PARSED"
+
+TAILSCALE_RX_TOTAL="$(awk -F'|' '{ sum += ($3 + 0) } END { print sum + 0 }' "$TAILSCALE_PARSED")"
+TAILSCALE_TX_TOTAL="$(awk -F'|' '{ sum += ($4 + 0) } END { print sum + 0 }' "$TAILSCALE_PARSED")"
+TAILSCALE_TOTAL=$(( TAILSCALE_RX_TOTAL + TAILSCALE_TX_TOTAL ))
+
+echo "=== TRAFFIC SUMMARY (SINCE ${REPORT_START}) ==="
+echo
+echo "WAN total:       $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
+echo "VPN total:       $(human_gib "$VPN_TOTAL")  (RX $(human_gib "$VPN_RX") / TX $(human_gib "$VPN_TX"))"
+echo "Wi-Fi total:     $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
+echo "LAN bridge:      $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
+echo "Tailscale total: $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib "$TAILSCALE_RX_TOTAL") / TX $(human_gib "$TAILSCALE_TX_TOTAL"))"
+echo "VPN share/WAN:   ${VPN_SHARE}"
+echo
+echo "=== LAN DEVICES (CURRENT CONNECTION SNAPSHOT) ==="
+printf "%-8s  %-18s  %7s  %7s  %7s  %7s\n" "Device" "Host" "Total" "VPN" "WAN" "Local"
+awk -F'|' '
+  BEGIN { idx = 0; }
+  {
+    idx++;
+    printf "LAN-%-4d  %-18s  %7d  %7d  %7d  %7d\n", idx, $2, $3, $4, $5, $6;
+  }' "$LAN_PARSED"
+echo
+echo "Counts above are active conntrack entries, not cumulative bytes."
+echo
+echo "=== TAILSCALE PEERS (SINCE ${REPORT_START}) ==="
+printf "%-22s  %-7s  %12s  %12s  %s\n" "Name" "Online" "RX" "TX" "Last seen"
+awk -F'|' '
+  function human_gib(x) {
+    return sprintf("%.2f GiB", x / 1024 / 1024 / 1024);
+  }
+  {
+    last_seen = ($5 == "" ? "-" : $5);
+    printf "%-22s  %-7s  %12s  %12s  %s\n", $1, $2, human_gib($3 + 0), human_gib($4 + 0), last_seen;
+  }' "$TAILSCALE_PARSED"
+echo
+echo "Tailscale rows are per-peer traffic deltas since the first sample today."
+echo "Values under 0.01 GiB are rounded to 0.00 GiB."
+echo "Per-peer split into router VPN (wgc1) vs direct WAN is not tracked reliably for Tailscale Exit Node traffic."

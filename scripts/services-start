@@ -4,6 +4,11 @@
 cru d SaveIPSet 2>/dev/null
 cru a SaveIPSet "0 */6 * * * /jffs/scripts/cron-save-ipset"
 
+# Traffic snapshots every 6 hours (stored on USB/Entware when available).
+cru d TrafficSnapshot 2>/dev/null
+[ -x /jffs/scripts/cron-traffic-snapshot ] && \
+  cru a TrafficSnapshot "0 */6 * * * /jffs/scripts/cron-traffic-snapshot"
+
 # Domain auto-routing: add newly discovered blocked domains to VPN (every hour).
 # Requires dnsmasq logging (enabled by default) and Entware on USB.
 cru d DomainCollect 2>/dev/null
@@ -16,3 +21,6 @@ cru d DomainAutoAdd 2>/dev/null
 cru d UpdateBlockedList 2>/dev/null
 [ -x /jffs/addons/x3mRouting/update-blocked-list.sh ] && \
   cru a UpdateBlockedList "0 5 * * * /jffs/addons/x3mRouting/update-blocked-list.sh"
+
+# Seed an initial traffic sample after boot/deploy so same-day reports have a baseline.
+[ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1

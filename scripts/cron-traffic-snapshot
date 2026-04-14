@@ -1,0 +1,25 @@
+#!/bin/sh
+
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+TAILSCALE_DIR="$STATE_DIR/tailscale"
+COUNTERS_FILE="$STATE_DIR/interface-counters.tsv"
+
+mkdir -p "$STATE_DIR" "$TAILSCALE_DIR"
+
+timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+
+for iface in wan0 wgc1 br0 eth6 eth7; do
+  [ -d "/sys/class/net/$iface" ] || continue
+  rx="$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null || echo 0)"
+  tx="$(cat "/sys/class/net/$iface/statistics/tx_bytes" 2>/dev/null || echo 0)"
+  printf '%s|%s|%s|%s\n' "$timestamp" "$iface" "$rx" "$tx" >> "$COUNTERS_FILE"
+done
+
+if [ -x /opt/bin/tailscale ]; then
+  /opt/bin/tailscale status --json > "$TAILSCALE_DIR/$timestamp.json" 2>/dev/null || true
+fi
+
+# Keep history bounded on disk.
+find "$TAILSCALE_DIR" -type f -mtime +60 -delete 2>/dev/null
+[ -f "$COUNTERS_FILE" ] && tail -n 5000 "$COUNTERS_FILE" > "$COUNTERS_FILE.tmp" && mv "$COUNTERS_FILE.tmp" "$COUNTERS_FILE"
