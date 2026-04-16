@@ -16,6 +16,7 @@ CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
 ROUTER="${ROUTER:-}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
+DEVICE_METADATA_FILE="${PROJECT_ROOT}/secrets/device-metadata.local.tsv"
 
 SSH_OPTS=(
   -i "$SSH_IDENTITY_FILE"
@@ -48,6 +49,7 @@ LAN_BYTES_CURRENT="$TMPDIR/lan-device-counters-current.tsv"
 LAN_BYTES_BASE="$TMPDIR/lan-device-counters-base.tsv"
 LAN_BYTES_PARSED="$TMPDIR/lan-device-bytes.txt"
 LAN_ALIAS_MAP="$TMPDIR/lan-alias-map.txt"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
 LAN_PARSED="$TMPDIR/lan.txt"
 TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
 WGS1_PARSED="$TMPDIR/wgs1.txt"
@@ -65,6 +67,51 @@ delta_or_current() {
   else
     echo "$current"
   fi
+}
+
+build_device_metadata_map() {
+  [ -s "$DEVICE_METADATA_FILE" ] || return 0
+
+  awk -F'|' '
+    BEGIN { OFS="|" }
+    /^[[:space:]]*#/ { next }
+    {
+      key = $1
+      alias = $2
+      type = $3
+
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", alias)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", type)
+
+      if (key == "") next
+
+      label = alias
+      if (label == "" || label == "?") label = type
+      if (label != "" && type != "" && label != type) label = label " (" type ")"
+
+      print key, label, type
+    }
+  ' "$DEVICE_METADATA_FILE" > "$DEVICE_METADATA_MAP"
+}
+
+apply_device_metadata() {
+  [ -s "$DEVICE_METADATA_MAP" ] || return 0
+
+  for target in "$LAN_PARSED" "$LAN_BYTES_PARSED"; do
+    [ -s "$target" ] || continue
+    awk -F'|' '
+      BEGIN { OFS="|" }
+      NR == FNR {
+        label[$1] = $2
+        next
+      }
+      {
+        if (($1 in label) && label[$1] != "") $2 = label[$1]
+        print
+      }
+    ' "$DEVICE_METADATA_MAP" "$target" > "$target.metadata" && mv "$target.metadata" "$target"
+  done
 }
 
 redact_report_tables() {
@@ -514,6 +561,8 @@ WGS1_PEER_RX_TOTAL="$(awk -F'|' '{ sum += ($3 + 0) } END { print sum + 0 }' "$WG
 WGS1_PEER_TX_TOTAL="$(awk -F'|' '{ sum += ($4 + 0) } END { print sum + 0 }' "$WGS1_PARSED")"
 WGS1_PEER_TOTAL=$(( WGS1_PEER_RX_TOTAL + WGS1_PEER_TX_TOTAL ))
 
+build_device_metadata_map
+apply_device_metadata
 redact_report_tables
 
 echo "=== TRAFFIC SUMMARY (SINCE ${REPORT_START}) ==="

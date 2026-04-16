@@ -222,6 +222,16 @@ cp .env.example secrets/router.env
 
 По умолчанию отчёты редактируют peer names, hostnames, tunnel addresses и endpoints. `REPORT_REDACT_NAMES=0` используйте только для доверенного локального просмотра.
 
+Если хотите, чтобы в доверенном локальном отчёте вместо сырых IP/hostnames показывались ваши локальные алиасы и типы устройств, создайте `secrets/device-metadata.local.tsv`. Формат:
+
+```txt
+# ip|alias|type|notes
+192.168.50.42||iPhone|метка из UI роутера
+192.168.50.34|Living-room-speaker|IoT|локальная подсказка
+```
+
+Папка `secrets/` уже в `.gitignore`, поэтому эти overrides не попадут в публичный git. При включённом redaction отчёты всё равно будут показывать `lan-host-*`.
+
 Подробная архитектура сбора, расчёта дельт и ограничения для `Tailscale Exit Node`: [docs/traffic-observability.md](docs/traffic-observability.md)
 Короткий runbook для LLM/агента: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
 

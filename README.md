@@ -247,6 +247,16 @@ Important notes:
 
 By default, report output redacts peer names, LAN hostnames, tunnel addresses, and endpoints. Use `REPORT_REDACT_NAMES=0` only for trusted local inspection.
 
+If you want trusted local reports to show your own device aliases and generic types without committing them to git, create `secrets/device-metadata.local.tsv` locally. Format:
+
+```txt
+# ip|alias|type|notes
+192.168.50.42||iPhone|router UI label
+192.168.50.34|Living-room-speaker|IoT|local-only hint
+```
+
+The `secrets/` directory is gitignored, so these overrides stay local. With redaction enabled, reports still show `lan-host-*`.
+
 For raw `WireGuard server` peers, the router can report both per-peer transfer counters and current conntrack snapshots because decrypted traffic keeps the peer tunnel address from `wgs1` when it enters `PREROUTING`.
 
 For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
