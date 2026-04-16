@@ -234,7 +234,7 @@ cp .env.example secrets/router.env
 Папка `secrets/` уже в `.gitignore`, поэтому эти overrides не попадут в публичный git. При включённом redaction отчёты всё равно будут показывать `lan-host-*`.
 
 Подробная архитектура сбора, расчёта дельт и ограничения для `Tailscale Exit Node`: [docs/traffic-observability.md](docs/traffic-observability.md)
-Короткий runbook для LLM/агента: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+Короткий runbook для LLM/агента, включая готовый prompt для запросов `за день / за неделю / за месяц`: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
 
 Быстрые команды:
 

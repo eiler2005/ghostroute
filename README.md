@@ -263,7 +263,7 @@ For raw `WireGuard server` peers, the router can report both per-peer transfer c
 For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
 
 Detailed collection / delta / network-counter architecture: [docs/traffic-observability.md](docs/traffic-observability.md)
-LLM runbook for reading these reports: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+LLM runbook for reading these reports, including a ready-to-paste agent prompt for `day / week / month` traffic requests: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
 
 Quick commands:
 

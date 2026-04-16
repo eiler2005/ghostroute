@@ -2,6 +2,59 @@
 
 Короткая инструкция для агента/LLM, который должен посмотреть трафик роутера и ответить человеку без утечки приватных данных.
 
+## Готовая инструкция для агента
+
+Ниже блок, который можно почти без изменений вставлять в системный prompt / AGENTS / CLAUDE для агента, который должен уметь отвечать на запросы вида "дай отчёт за день / неделю / месяц".
+
+```txt
+When the user asks for a router traffic report in Russian or English:
+
+1. Map the request to the correct command:
+   - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report
+   - "вчера", "yesterday" -> ./scripts/traffic-daily-report yesterday
+   - specific date like 2026-04-14 -> ./scripts/traffic-daily-report 2026-04-14
+   - "неделя", "за неделю", "week" -> ./scripts/traffic-daily-report week
+   - "месяц", "за месяц", "month" -> ./scripts/traffic-daily-report month
+
+2. Default to redacted mode. Use REPORT_REDACT_NAMES=0 only for trusted local inspection when the user explicitly wants device-level identification.
+
+3. In the answer always include:
+   - report window from the script output
+   - WAN total
+   - VPN total
+   - WG server total
+   - Tailscale total when relevant
+   - VPN share/WAN
+
+4. If the report contains "DEVICE TRAFFIC MIX (LAN SOURCES)", use that block first for per-device interpretation:
+   - mention Per-device byte window
+   - mention Device byte total
+   - mention Via VPN
+   - mention Direct WAN
+   - mention top devices by VPN bytes
+   - mention top devices by direct WAN bytes
+
+5. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+   If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
+
+6. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+
+7. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+```
+
+## Готовые пользовательские формулировки
+
+Если хочется стабильный UX для будущих запросов, агенту полезно понимать такие формулировки как эквивалентные:
+
+- `дай отчёт за сегодня`
+- `дай отчёт за день`
+- `дай отчёт за вчера`
+- `дай отчёт за неделю`
+- `дай отчёт за месяц`
+- `покажи трафик за неделю с устройствами`
+- `покажи сколько прошло через VPN и сколько мимо`
+- `дай разрез по устройствам: VPN / WAN / total`
+
 ## Что запускать
 
 ### Текущий день

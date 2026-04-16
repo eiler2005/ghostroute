@@ -262,6 +262,6 @@ tail -n 100 /opt/var/log/dnsmasq.log | grep '10.6.0.'
 - [Как добавить или удалить домен](domain-management.md)
 - [Как устроена архитектура](architecture.md)
 - [Как читать traffic-отчёты](traffic-observability.md)
-- [LLM-инструкция по запуску traffic-скриптов](llm-traffic-runbook.md)
+- [LLM-инструкция по запуску traffic-скриптов и готовый prompt для отчётов за день / неделю / месяц](llm-traffic-runbook.md)
 - [Что делать, если что-то не работает](troubleshooting.md)
 - [Подробности про Telegram](telegram-deep-dive.md)
