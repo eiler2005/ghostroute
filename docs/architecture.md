@@ -116,6 +116,15 @@ iptables -t mangle -A PREROUTING -i wgs1 -j RC_VPN_ROUTE
 - `VPN_DOMAINS`
 - `VPN_STATIC_NETS`
 
+Отдельно `nat-start` принудительно отправляет обычный DNS raw-клиентов `WireGuard server` в локальный `dnsmasq` роутера:
+
+```sh
+iptables -t nat -A PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53
+iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53
+```
+
+Это защищает от частого сбоя после рестарта VPN-сервера: мобильный клиент может переподключиться с некорректным/stale DNS-состоянием, интернет у него формально есть, но `VPN_DOMAINS` перестают срабатывать, потому что запросы не проходят путь `dnsmasq -> ipset`.
+
 ## DNS upstream через VPN
 
 Простого добавления домена в ipset недостаточно. Если DNS-запрос уходит к провайдерскому DNS, провайдер может отдать локализованный (российский) IP, и даже через VPN трафик попадёт на ограниченный сервер.

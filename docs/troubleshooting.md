@@ -340,6 +340,14 @@ cat /jffs/configs/dnsmasq-autodiscovered.conf.add
 - **Домен не в реестре РКН и не проходит ISP-пробу** — проверка идёт по `count24h` и по сигналу user-interest (`count7d` + `active_days7d`). Если сайт доступен через ISP (HTTP не `000`) — он не добавляется. Добавьте вручную
 - **Dynamic DNS хосты с IP-encoded family label** — скрипт не должен сворачивать их в общий публичный суффикс, а должен писать семейство по IP-лейблу, например `203-0-113-10.sslip.io`
 - **Веб работает, а SSH/другой порт нет** — если IP уже попал в `VPN_DOMAINS`, весь трафик к нему уходит в VPN. Для точечного обхода добавьте `tcp <IP> 22` в `configs/no-vpn-ip-ports.txt` и задеплойте конфиг
+- **Через Wi-Fi всё работает, а raw `WireGuard server` client получает `dns resolution failure` или не повторяет `VPN_DOMAINS`** — сначала проверьте, что проблема не в самом туннеле:
+  ```bash
+  wg show wgs1
+  wg show wgs1 dump
+  iptables -t nat -L PREROUTING -v -n | egrep 'wgs1|dpt:53|REDIRECT'
+  tail -n 100 /opt/var/log/dnsmasq.log | grep '10.6.0.'
+  ```
+  Если у peer `endpoint=(none)` и `rx/tx=0`, роутер вообще не получает данные от клиента: это не поломка `VPN_DOMAINS`, а клиентский `WireGuard`/peer-state после рестарта сервера. Если трафик через `wgs1` есть, но DNS-запросов от `10.6.0.x` нет, проверьте профиль клиента и DNS внутри туннеля
 - **DNS-лог не пишется** — проверьте `ls /opt/var/log/dnsmasq.log` и что `ENABLE_DNSMASQ_LOGGING=1` в `secrets/router.env` (или `.env`)
 - **domain-auto-add.sh не запускается** — проверьте `cru l | grep DomainAutoAdd`, перезапустите `services-start`
 - **Добавьте вручную** через `configs/dnsmasq.conf.add` + `configs/dnsmasq-vpn-upstream.conf.add` + `./deploy.sh`

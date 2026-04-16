@@ -13,6 +13,15 @@ ip rule add to 9.9.9.9/32 table wgc1 prio 9902
 ip rule del fwmark 0x1000/0x1000 2>/dev/null
 ip rule add fwmark 0x1000/0x1000 table wgc1 prio 9910
 
+# Force plain DNS from raw WireGuard server clients into the router's dnsmasq.
+# Without this, a client that reconnects with stale/missing DNS settings can
+# still reach the internet, but VPN_DOMAINS won't populate because queries
+# bypass the router-local resolver/ipset pipeline.
+iptables -t nat -D PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null
+iptables -t nat -D PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null
+iptables -t nat -A PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53
+iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53
+
 # --- IPv6 fwmark routing (uncomment when WGC1 carries IPv6 traffic) ---
 # ip -6 rule del fwmark 0x1000/0x1000 2>/dev/null
 # ip -6 rule add fwmark 0x1000/0x1000 table wgc1 prio 9910

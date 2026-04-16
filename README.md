@@ -70,6 +70,8 @@ Device (iPhone / PC)
 
 `PREROUTING` handles ordinary LAN clients arriving on `br0` and raw WireGuard server clients arriving on `wgs1`. `OUTPUT` mirrors the same destination-based marking for router-originated traffic, which is required for `Tailscale Exit Node` because those proxied flows are generated locally on the router.
 
+Raw `WireGuard server` clients also have plain DNS (`tcp/udp 53`) redirected to the router-local `dnsmasq`. This keeps `VPN_DOMAINS` working even if a reconnecting mobile client comes back with stale DNS settings and would otherwise bypass the router's `ipset` population path.
+
 ### Auto-discovery pipeline
 
 ```

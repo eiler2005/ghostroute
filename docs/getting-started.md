@@ -236,6 +236,27 @@ iptables -t mangle -S | grep 'PREROUTING -i wgs1 -j RC_VPN_ROUTE'
 
 Если его нет — заново запустите `./deploy.sh`.
 
+Если hook на месте, а по `Wi-Fi/LAN` всё работает, но через raw `WireGuard server` у клиента:
+
+- открывается обычный интернет,
+- `claude.ai` / `chatgpt.com` / другие VPN-домены не идут через VPN,
+- появляется `dns resolution failure`,
+
+проверьте следующий слой:
+
+```bash
+wg show wgs1
+wg show wgs1 dump
+iptables -t nat -L PREROUTING -v -n | egrep 'wgs1|dpt:53|REDIRECT'
+tail -n 100 /opt/var/log/dnsmasq.log | grep '10.6.0.'
+```
+
+Как читать результат:
+
+- если у peer `endpoint=(none)` и `rx/tx=0`, проблема ещё до split-routing: клиентский туннель реально не несёт данные
+- если `wgs1` жив, но нет DNS-запросов от `10.6.0.x`, клиент не использует DNS роутера внутри туннеля
+- если счётчики `REDIRECT ... wgs1 ... dpt:53` растут, raw-клиентский DNS уже принудительно попадает в локальный `dnsmasq`
+
 ## Дальнейшие действия
 
 - [Как добавить или удалить домен](domain-management.md)
