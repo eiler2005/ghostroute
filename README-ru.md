@@ -217,6 +217,7 @@ cp .env.example secrets/router.env
 - `Wi-Fi total` — суммарный трафик радиоинтерфейсов роутера
 - `Tailscale total` — сумма per-peer `RxBytes` / `TxBytes` из `tailscaled`
 - `LAN device bytes` — накопленные per-device дельты из router-side mangle accounting (`VPN` / `WAN` / `Other` / upload / download)
+- `Device traffic mix` — явная сводка per-device: сколько прошло `через VPN`, сколько ушло `напрямую в WAN`, плюс топ устройств по обоим направлениям
 - `WireGuard server peers` — per-peer дельты из `wg show wgs1 dump` плюс current/end-of-day conntrack-срез по remote peer'ам на `wgs1`
 - `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
 
@@ -244,7 +245,9 @@ cp .env.example secrets/router.env
 ./scripts/traffic-daily-report month
 ```
 
-`LAN device bytes` появятся только после того, как роутер успеет собрать минимум два byte-snapshot внутри дня или периода. До этого в отчёте будет пояснение, что byte baseline ещё не накопился.
+`LAN device bytes` и `Device traffic mix` появятся только после того, как роутер успеет собрать минимум два byte-snapshot внутри дня или периода. До этого в отчёте будет пояснение, что byte baseline ещё не накопился.
+
+Для `week/month` router-wide totals могут покрывать более широкое окно, чем `LAN device bytes`. Поэтому в отчёте теперь есть отдельная строка `Per-device byte window`, которая явно показывает, за какой интервал считается per-device разбивка.
 
 ---
 

@@ -92,11 +92,32 @@ LAN_BYTES_CURRENT="$TMPDIR/lan-device-counters-current.tsv"
 LAN_BYTES_PARSED="$TMPDIR/lan-device-bytes.txt"
 LAN_ALIAS_MAP="$TMPDIR/lan-alias-map.txt"
 DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
+DEVICE_MIX_TOTALS="$TMPDIR/device-mix-totals.txt"
+DEVICE_TOP_VPN="$TMPDIR/device-top-vpn.txt"
+DEVICE_TOP_WAN="$TMPDIR/device-top-wan.txt"
 LAN_PARSED="$TMPDIR/lan.txt"
 WGS1_CONNTRACK_PARSED="$TMPDIR/wgs1-conntrack.txt"
 
 human_gib() {
   awk -v bytes="${1:-0}" 'BEGIN { printf "%.2f GiB", bytes / 1024 / 1024 / 1024; }'
+}
+
+human_bytes() {
+  awk -v bytes="${1:-0}" '
+    BEGIN {
+      if (bytes >= 1024 * 1024 * 1024) printf "%.2f GiB", bytes / 1024 / 1024 / 1024;
+      else if (bytes >= 1024 * 1024) printf "%.1f MiB", bytes / 1024 / 1024;
+      else if (bytes >= 1024) printf "%.1f KiB", bytes / 1024;
+      else printf "%d B", bytes;
+    }'
+}
+
+human_pct() {
+  awk -v part="${1:-0}" -v total="${2:-0}" '
+    BEGIN {
+      if (total <= 0) printf "n/a";
+      else printf "%.1f%%", (part / total) * 100;
+    }'
 }
 
 delta_or_current() {
@@ -152,6 +173,31 @@ apply_device_metadata() {
       }
     ' "$DEVICE_METADATA_MAP" "$target" > "$target.metadata" && mv "$target.metadata" "$target"
   done
+}
+
+build_device_mix_views() {
+  if [ ! -s "$LAN_BYTES_PARSED" ]; then
+    : > "$DEVICE_MIX_TOTALS"
+    : > "$DEVICE_TOP_VPN"
+    : > "$DEVICE_TOP_WAN"
+    return 0
+  fi
+
+  awk -F'|' '
+    {
+      total += $8 + 0
+      vpn += $3 + 0
+      wan += $4 + 0
+      other += $5 + 0
+      devices++
+    }
+    END {
+      printf "%d|%d|%d|%d|%d\n", total, vpn, wan, other, devices
+    }
+  ' "$LAN_BYTES_PARSED" > "$DEVICE_MIX_TOTALS"
+
+  sort -t'|' -k3,3nr -k8,8nr "$LAN_BYTES_PARSED" | awk -F'|' '$3 > 0 { print }' > "$DEVICE_TOP_VPN"
+  sort -t'|' -k4,4nr -k8,8nr "$LAN_BYTES_PARSED" | awk -F'|' '$4 > 0 { print }' > "$DEVICE_TOP_WAN"
 }
 
 redact_report_tables() {
@@ -714,6 +760,7 @@ fi
 build_device_metadata_map
 apply_device_metadata
 redact_report_tables
+build_device_mix_views
 
 case "$PERIOD_LABEL" in
   today) REPORT_TITLE="TODAY TRAFFIC REPORT (${START_DATE})" ;;
@@ -776,6 +823,70 @@ if [ -s "$LAN_BYTES_PARSED" ]; then
   fi
 else
   echo "No LAN byte snapshots found for this period."
+fi
+echo
+echo "=== DEVICE TRAFFIC MIX (LAN SOURCES) ==="
+if [ -s "$DEVICE_MIX_TOTALS" ]; then
+  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_VPN_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
+  if [ "$END_MODE" = "current" ]; then
+    DEVICE_WINDOW_END_LABEL="current router state"
+  else
+    DEVICE_WINDOW_END_LABEL="${LAN_BYTES_END_SNAPSHOT}"
+  fi
+  echo "Per-device byte window:  ${LAN_BYTES_START} -> ${DEVICE_WINDOW_END_LABEL}"
+  echo "Devices in byte view:    ${DEVICE_COUNT}"
+  echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
+  echo "Via VPN:                 $(human_bytes "$DEVICE_VPN_BYTES")  ($(human_pct "$DEVICE_VPN_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo
+  echo "Top devices by VPN bytes:"
+  if [ -s "$DEVICE_TOP_VPN" ]; then
+    awk -F'|' '
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }
+      function pct(part, total) {
+        if (total <= 0) return "n/a"
+        return sprintf("%.1f%%", (part / total) * 100)
+      }
+      NR <= 5 {
+        printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($3), pct($3, $8)
+      }
+    ' "$DEVICE_TOP_VPN"
+  else
+    echo "  none"
+  fi
+  echo
+  echo "Top devices by direct WAN bytes:"
+  if [ -s "$DEVICE_TOP_WAN" ]; then
+    awk -F'|' '
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }
+      function pct(part, total) {
+        if (total <= 0) return "n/a"
+        return sprintf("%.1f%%", (part / total) * 100)
+      }
+      NR <= 5 {
+        printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), pct($4, $8)
+      }
+    ' "$DEVICE_TOP_WAN"
+  else
+    echo "  none"
+  fi
+  echo
+  echo "This section explains the per-device split: 'VPN' is traffic via wgc1, 'Direct WAN' is traffic that bypassed VPN."
+else
+  echo "No device byte mix is available for this period because the router has no matching byte baseline."
 fi
 echo
 echo "=== ${LAN_SECTION_TITLE} ==="

@@ -242,6 +242,7 @@ Important notes:
 - `Wi-Fi total` — all traffic on the router radios
 - `Tailscale total` — per-peer `RxBytes` / `TxBytes` deltas reported by `tailscaled`
 - `LAN device bytes` — cumulative per-device deltas from router-side mangle accounting (`VPN` / `WAN` / `Other` / upload / download)
+- `Device traffic mix` — explicit per-device summary of `Via VPN` vs `Direct WAN`, plus top devices by VPN bytes and direct-WAN bytes
 - `WireGuard server peers` — per-peer deltas from `wg show wgs1 dump`, plus current/end-of-day conntrack snapshots for remote peers on `wgs1`
 - `LAN devices` — current connection snapshot from `conntrack` (`Total` / `VPN` / `WAN` / `Local` are active connection counts, not bytes)
 
@@ -273,7 +274,9 @@ Quick commands:
 ./scripts/traffic-daily-report month
 ```
 
-`LAN device bytes` appear after the router has collected at least two byte snapshots for the same day/period. Until then, reports show a note that the byte baseline is not available yet.
+`LAN device bytes` and `Device traffic mix` appear after the router has collected at least two byte snapshots for the same day/period. Until then, reports show a note that the byte baseline is not available yet.
+
+For `week/month`, router-wide totals may cover a wider window than `LAN device bytes`. In that case the report now prints a dedicated `Per-device byte window` line so you can see exactly what interval the per-device split covers.
 
 ---
 

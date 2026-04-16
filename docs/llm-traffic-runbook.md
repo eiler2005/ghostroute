@@ -112,6 +112,22 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 Это уже байты, накопленные по iptables mangle counters на роутере.
 
+Раздел `DEVICE TRAFFIC MIX (LAN SOURCES)`:
+
+- это короткая interpretive summary над теми же `LAN DEVICE BYTES`
+- `Via VPN` = сумма per-device байтов, прошедших через `wgc1`
+- `Direct WAN` = сумма per-device байтов, ушедших напрямую мимо VPN
+- `Top devices by VPN bytes` = устройства с наибольшим объёмом VPN-трафика
+- `Top devices by direct WAN bytes` = устройства, которые больше всего обходили VPN
+
+Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через VPN?”, начинайте именно с этого блока, а не с сырых строк таблицы.
+
+Строка `Per-device byte window` важна отдельно:
+
+- она показывает реальный интервал, за который накопились per-device байты
+- в `week/month` это окно может быть уже, чем общий `Window start .. Window end`
+- если история per-device счётчиков начала собираться позже, обязательно проговаривайте это явно в ответе
+
 `Other` означает трафик LAN-устройства, который не попал в `wgc1` или `wan0` по нашей грубой классификации. Обычно туда попадает локальная сеть, межLAN-трафик и прочие не-внешние направления.
 
 Раздел `WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
