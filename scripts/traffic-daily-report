@@ -84,6 +84,12 @@ END_WGS1="$TMPDIR/end-wgs1.dump"
 WGS1_MAP="$TMPDIR/wgs1-map.txt"
 WGS1_PARSED="$TMPDIR/wgs1.txt"
 LAN_RAW="$TMPDIR/lan-raw.txt"
+LAN_BYTES_HISTORY="$TMPDIR/lan-device-counters.tsv"
+LAN_BYTES_BASE="$TMPDIR/lan-device-counters-base.tsv"
+LAN_BYTES_END="$TMPDIR/lan-device-counters-end.tsv"
+LAN_BYTES_CURRENT="$TMPDIR/lan-device-counters-current.tsv"
+LAN_BYTES_PARSED="$TMPDIR/lan-device-bytes.txt"
+LAN_ALIAS_MAP="$TMPDIR/lan-alias-map.txt"
 LAN_PARSED="$TMPDIR/lan.txt"
 WGS1_CONNTRACK_PARSED="$TMPDIR/wgs1-conntrack.txt"
 
@@ -104,13 +110,25 @@ delta_or_current() {
 redact_report_tables() {
   [ "$REPORT_REDACT_NAMES" = "1" ] || return 0
 
-  awk -F'|' 'BEGIN { OFS="|" }
-    {
-      key = $1
-      if (!(key in seen)) seen[key] = sprintf("lan-host-%02d", ++idx)
-      $2 = seen[key]
-      print
-    }' "$LAN_PARSED" > "$LAN_PARSED.redacted" && mv "$LAN_PARSED.redacted" "$LAN_PARSED"
+  awk -F'|' '
+    $1 != "" { print $1 }
+  ' "$LAN_PARSED" "$LAN_BYTES_PARSED" | sort -u | awk '
+    NF { printf "%s|lan-host-%02d\n", $1, ++idx }
+  ' > "$LAN_ALIAS_MAP"
+
+  for target in "$LAN_PARSED" "$LAN_BYTES_PARSED"; do
+    [ -s "$target" ] || continue
+    awk -F'|' '
+      BEGIN { OFS="|" }
+      NR == FNR {
+        alias[$1] = $2
+        next
+      }
+      {
+        if ($1 in alias) $2 = alias[$1]
+        print
+      }' "$LAN_ALIAS_MAP" "$target" > "$target.redacted" && mv "$target.redacted" "$target"
+  done
 
   awk -F'|' 'BEGIN { OFS="|" }
     {
@@ -177,6 +195,12 @@ awk -F'|' '$1 != "CUR" && NF == 4 { print $0 }' "$STATE_FILE" > "$HISTORY_COUNTE
 WAN_IP="$(awk -F= '/^WAN_IP=/{print $2}' "$STATE_FILE")"
 WGC1_IP="$(awk -F= '/^WGC1_IP=/{print $2}' "$STATE_FILE")"
 
+ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "
+set -e
+STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic )
+[ -f \"\$STATE_DIR/lan-device-counters.tsv\" ] && cat \"\$STATE_DIR/lan-device-counters.tsv\" || true
+" > "$LAN_BYTES_HISTORY"
+
 iface_pair_for_ts() {
   local iface="$1"
   local ts="$2"
@@ -226,6 +250,27 @@ if [ "$END_DATE" = "$TODAY" ]; then
   END_MODE="current"
   REPORT_END_LABEL="current"
 fi
+
+LAN_BYTES_START="$(
+  awk -F'|' -v start="$START_DATE" -v end="$END_DATE" '
+    {
+      day = substr($1, 1, 10)
+      if (day >= start && day <= end) {
+        print $1
+        exit
+      }
+    }' "$LAN_BYTES_HISTORY"
+)"
+LAN_BYTES_END_SNAPSHOT="$(
+  awk -F'|' -v start="$START_DATE" -v end="$END_DATE" '
+    {
+      day = substr($1, 1, 10)
+      if (day >= start && day <= end) {
+        ts = $1
+      }
+    }
+    END { print ts }' "$LAN_BYTES_HISTORY"
+)"
 
 read_pair_or_zero() {
   local pair="${1:-}"
@@ -283,6 +328,84 @@ BR0_TOTAL=$(( BR0_RX + BR0_TX ))
 VPN_SHARE="n/a"
 if [ "${WAN_TOTAL:-0}" -gt 0 ]; then
   VPN_SHARE="$(awk -v vpn="$VPN_TOTAL" -v wan="$WAN_TOTAL" 'BEGIN { printf "%.1f%%", (vpn / wan) * 100; }')"
+fi
+
+if [ "$END_MODE" = "current" ]; then
+  ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" '
+set -e
+[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true
+' > "$LAN_BYTES_CURRENT"
+fi
+
+if [ -n "$LAN_BYTES_START" ]; then
+  awk -F'|' -v ts="$LAN_BYTES_START" '
+    $1 == ts {
+      print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9
+    }' "$LAN_BYTES_HISTORY" > "$LAN_BYTES_BASE"
+
+  if [ "$END_MODE" = "current" ]; then
+    cp "$LAN_BYTES_CURRENT" "$LAN_BYTES_END"
+  else
+    awk -F'|' -v ts="$LAN_BYTES_END_SNAPSHOT" '
+      $1 == ts {
+        print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9
+      }' "$LAN_BYTES_HISTORY" > "$LAN_BYTES_END"
+  fi
+
+  awk -F'|' '
+    function delta(current, base) {
+      current += 0
+      base += 0
+      return current >= base ? current - base : current
+    }
+    NR == FNR {
+      host[$1] = $2
+      vpn_up[$1] = $3 + 0
+      vpn_down[$1] = $4 + 0
+      wan_up[$1] = $5 + 0
+      wan_down[$1] = $6 + 0
+      other_up[$1] = $7 + 0
+      other_down[$1] = $8 + 0
+      seen[$1] = 1
+      next
+    }
+    {
+      ip = $1
+      current_host[ip] = $2
+      cvpn_up[ip] = $3 + 0
+      cvpn_down[ip] = $4 + 0
+      cwan_up[ip] = $5 + 0
+      cwan_down[ip] = $6 + 0
+      cother_up[ip] = $7 + 0
+      cother_down[ip] = $8 + 0
+      seen[ip] = 1
+    }
+    END {
+      for (ip in seen) {
+        label = current_host[ip]
+        if (label == "" || label == "?") label = host[ip]
+        if (label == "" || label == "?") label = ip
+
+        vup = delta(cvpn_up[ip], vpn_up[ip])
+        vdown = delta(cvpn_down[ip], vpn_down[ip])
+        wup = delta(cwan_up[ip], wan_up[ip])
+        wdown = delta(cwan_down[ip], wan_down[ip])
+        oup = delta(cother_up[ip], other_up[ip])
+        odown = delta(cother_down[ip], other_down[ip])
+
+        vtotal = vup + vdown
+        wtotal = wup + wdown
+        ototal = oup + odown
+        upload = vup + wup + oup
+        download = vdown + wdown + odown
+        total = upload + download
+
+        printf "%s|%s|%d|%d|%d|%d|%d|%d\n",
+          ip, label, vtotal, wtotal, ototal, upload, download, total
+      }
+    }' "$LAN_BYTES_BASE" "$LAN_BYTES_END" | sort -t'|' -k8,8nr -k1,1V > "$LAN_BYTES_PARSED"
+else
+  : > "$LAN_BYTES_PARSED"
 fi
 
 ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" '
@@ -578,6 +701,33 @@ echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_
 echo "Tailscale total:         $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib "$TAILSCALE_RX_TOTAL") / TX $(human_gib "$TAILSCALE_TX_TOTAL"))"
 echo "WireGuard peer total:    $(human_gib "$WGS1_PEER_TOTAL")  (RX $(human_gib "$WGS1_PEER_RX_TOTAL") / TX $(human_gib "$WGS1_PEER_TX_TOTAL"))"
 echo "VPN share/WAN:           ${VPN_SHARE}"
+echo
+echo "=== LAN DEVICE BYTES (${START_DATE} .. ${END_DATE}) ==="
+if [ -s "$LAN_BYTES_PARSED" ]; then
+  printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "VPN" "WAN" "Other" "Upload" "Download"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    BEGIN { idx = 0 }
+    {
+      idx++
+      printf "LAN-%-4d  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n",
+        idx, $2, human_bytes($8), human_bytes($3), human_bytes($4), human_bytes($5), human_bytes($6), human_bytes($7)
+    }' "$LAN_BYTES_PARSED"
+  echo
+  if [ "$END_MODE" = "current" ]; then
+    echo "Rows above are cumulative byte deltas between ${LAN_BYTES_START} and the current router state."
+  else
+    echo "Rows above are cumulative byte deltas between ${LAN_BYTES_START} and ${LAN_BYTES_END_SNAPSHOT}."
+  fi
+else
+  echo "No LAN byte snapshots found for this period."
+fi
 echo
 echo "=== ${LAN_SECTION_TITLE} ==="
 if [ -s "$LAN_PARSED" ]; then

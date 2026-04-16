@@ -1,0 +1,42 @@
+#!/bin/sh
+
+LAN_OUT_CHAIN="RC_LAN_BYTES_OUT"
+LAN_IN_CHAIN="RC_LAN_BYTES_IN"
+LEASES_FILE="/var/lib/misc/dnsmasq.leases"
+
+ensure_chain() {
+  iptables -t mangle -N "$1" 2>/dev/null || true
+}
+
+ensure_forward_hook() {
+  direction_flag="$1"
+  iface="$2"
+  chain="$3"
+  iptables -t mangle -C FORWARD "$direction_flag" "$iface" -j "$chain" 2>/dev/null || \
+    iptables -t mangle -I FORWARD 1 "$direction_flag" "$iface" -j "$chain"
+}
+
+ensure_rule() {
+  chain="$1"
+  shift
+  iptables -t mangle -C "$chain" "$@" 2>/dev/null || iptables -t mangle -A "$chain" "$@"
+}
+
+ensure_chain "$LAN_OUT_CHAIN"
+ensure_chain "$LAN_IN_CHAIN"
+ensure_forward_hook -i br0 "$LAN_OUT_CHAIN"
+ensure_forward_hook -o br0 "$LAN_IN_CHAIN"
+
+[ -f "$LEASES_FILE" ] || exit 0
+
+awk 'NF >= 3 { print $3 }' "$LEASES_FILE" | while IFS= read -r ip; do
+  [ -n "$ip" ] || continue
+
+  ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -o wgc1 -j RETURN
+  ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -o wan0 -j RETURN
+  ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -j RETURN
+
+  ensure_rule "$LAN_IN_CHAIN" -d "$ip" -i wgc1 -j RETURN
+  ensure_rule "$LAN_IN_CHAIN" -d "$ip" -i wan0 -j RETURN
+  ensure_rule "$LAN_IN_CHAIN" -d "$ip" -j RETURN
+done

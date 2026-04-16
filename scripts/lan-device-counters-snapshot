@@ -1,0 +1,71 @@
+#!/bin/sh
+
+LEASES_FILE="/var/lib/misc/dnsmasq.leases"
+TMP_RULES="/tmp/lan-device-counters.$$"
+
+[ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
+
+iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || {
+  rm -f "$TMP_RULES"
+  exit 0
+}
+
+awk '
+  NR == FNR {
+    if (NF >= 4) {
+      host = $4
+      if (host == "" || host == "*") host = "?"
+      hosts[$3] = host
+      ips[$3] = 1
+    }
+    next
+  }
+  {
+    if (NF < 3 || $2 != "-A") next
+    if ($3 == "RC_LAN_BYTES_OUT") direction = "up"
+    else if ($3 == "RC_LAN_BYTES_IN") direction = "down"
+    else next
+
+    bytes_field = $1
+    sub(/^\[[0-9]+:/, "", bytes_field)
+    sub(/\]$/, "", bytes_field)
+    bytes = bytes_field + 0
+
+    ip = ""
+    iface = ""
+    for (i = 4; i <= NF; i++) {
+      if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+        ip = $(i + 1)
+        sub(/\/32$/, "", ip)
+      }
+      if (($i == "-i" || $i == "-o") && (i + 1) <= NF) {
+        iface = $(i + 1)
+      }
+    }
+    if (ip == "") next
+
+    if (iface == "wgc1") channel = "vpn"
+    else if (iface == "wan0") channel = "wan"
+    else channel = "other"
+
+    ips[ip] = 1
+    counters[ip, direction, channel] = bytes
+  }
+  END {
+    for (ip in ips) {
+      host = hosts[ip]
+      if (host == "") host = "?"
+      printf "%s|%s|%d|%d|%d|%d|%d|%d\n",
+        ip,
+        host,
+        counters[ip, "up", "vpn"] + 0,
+        counters[ip, "down", "vpn"] + 0,
+        counters[ip, "up", "wan"] + 0,
+        counters[ip, "down", "wan"] + 0,
+        counters[ip, "up", "other"] + 0,
+        counters[ip, "down", "other"] + 0
+    }
+  }
+' "$LEASES_FILE" "$TMP_RULES" | sort -t'|' -k1,1
+
+rm -f "$TMP_RULES"

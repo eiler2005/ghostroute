@@ -4,18 +4,20 @@
 
 ## Цели
 
-`traffic-report` и `traffic-daily-report` отвечают на 6 практических вопросов:
+`traffic-report` и `traffic-daily-report` отвечают на 7 практических вопросов:
 
 1. Сколько трафика прошло через внешний канал роутера.
 2. Сколько из этого трафика прошло через `WireGuard wgc1`.
 3. Сколько трафика прошло через raw `WireGuard server` интерфейс `wgs1`.
-4. Какие локальные устройства сейчас активны и сколько у них активных соединений.
+4. Какие LAN-устройства дали трафик за день/период и какая часть ушла в `VPN` / `WAN` / `Other`.
 5. Сколько байт по `Tailscale` прошло у каждого peer'а.
 6. Сколько байт по raw `WireGuard server` прошло у каждого peer'а и какие у него сейчас active conntrack entries.
+7. Какие локальные устройства сейчас активны и сколько у них активных соединений.
 
 Скрипты не являются биллинговой системой. Они сочетают:
 
 - накопительные счётчики интерфейсов Linux
+- накопительные iptables mangle counters по LAN-IP
 - текущий или end-of-day `conntrack`-срез
 - peer-статистику `tailscaled`
 - peer-статистику `wg show wgs1 dump`
@@ -31,6 +33,7 @@
 Что сохраняет:
 
 - `wan0`, `wgc1`, `wgs1`, `br0`, `eth6`, `eth7` → `rx_bytes` / `tx_bytes`
+- snapshot iptables mangle counters по LAN-IP из `dnsmasq.leases`
 - JSON-снимок `tailscale status --json`
 - raw-снимок `wg show wgs1 dump`
 
@@ -42,14 +45,24 @@
 Форматы:
 
 - `interface-counters.tsv`
+- `lan-device-counters.tsv`
 - `tailscale/<timestamp>.json`
 - `wgs1/<timestamp>.dump`
 
 Хранение ограничивается:
 
 - до 5000 строк для `interface-counters.tsv`
+- до 20000 строк для `lan-device-counters.tsv`
 - до 60 дней для raw `tailscale` JSON snapshots
 - до 60 дней для raw `wgs1` dump snapshots
+
+Как именно собирается `lan-device-counters.tsv`:
+
+1. `lan-traffic-accounting-refresh` создаёт в `mangle/FORWARD` цепочки `RC_LAN_BYTES_OUT` и `RC_LAN_BYTES_IN`.
+2. Для каждого IP из текущего `dnsmasq.leases` он добавляет правила с комментариями `rcacct|lan|<ip>|<up/down>|<vpn/wan/other>`.
+3. `lan-device-counters-snapshot` читает `iptables-save -t mangle -c`, вытаскивает byte counters этих правил и сохраняет нормализованный TSV.
+
+Это даёт накопительные счётчики по IP-адресу LAN-клиента. Это не MAC-level accounting и не per-app telemetry.
 
 ### `scripts/cron-traffic-daily-close`
 
@@ -81,7 +94,9 @@
 7. Считает per-peer дельты `Tailscale`.
 8. Забирает текущий `wg show wgs1 dump` и первый snapshot `wgs1` за день.
 9. Считает per-peer дельты raw `WireGuard server`.
-10. Отдельно строит live-срез локальных устройств и raw `WireGuard server` peer'ов по `dnsmasq.leases + conntrack`.
+10. Забирает первый LAN byte snapshot за день и текущий live snapshot из `lan-device-counters-snapshot`.
+11. Считает per-device byte дельты `VPN` / `WAN` / `Other` / `Upload` / `Download`.
+12. Отдельно строит live-срез локальных устройств и raw `WireGuard server` peer'ов по `dnsmasq.leases + conntrack`.
 
 ### `scripts/traffic-daily-report`
 
@@ -93,7 +108,8 @@
 2. Считает закрытые дельты по интерфейсам.
 3. Считает per-peer Tailscale дельты между первым и последним JSON snapshot.
 4. Считает per-peer raw `WireGuard server` дельты между первым и последним `wg show wgs1 dump`.
-5. Показывает end-of-day или end-of-period `LAN DEVICES` и `WIREGUARD SERVER PEERS` снимки из `daily/YYYY-MM-DD-lan-conntrack.txt`.
+5. Считает per-device LAN byte дельты между первым и последним snapshot в выбранном периоде.
+6. Показывает end-of-day или end-of-period `LAN DEVICES` и `WIREGUARD SERVER PEERS` снимки из `daily/YYYY-MM-DD-lan-conntrack.txt`.
 
 Примеры:
 
@@ -167,6 +183,25 @@
 - `VPN` — сколько из них сейчас выглядят как вышедшие через `wgc1`
 - `WAN` — сколько идут напрямую во внешний канал
 - `Local` — сколько локальны для роутера / домашней сети
+
+### `LAN device bytes`
+
+Это накопленные байты по LAN-IP, снятые из router-side iptables counters.
+
+Колонки:
+
+- `Total` — суммарный объём `Upload + Download`
+- `VPN` — сколько байт у этого LAN-IP ушло через `wgc1` или пришло обратно с `wgc1`
+- `WAN` — сколько байт ушло напрямую через `wan0` или пришло обратно с `wan0`
+- `Other` — всё, что не попало в `wgc1` или `wan0`
+- `Upload` — исходящий трафик LAN-IP
+- `Download` — входящий трафик LAN-IP
+
+Важно:
+
+- это учёт по IP, а не по MAC; при переиспользовании DHCP-адреса история идёт за IP
+- `Other` обычно означает локальную сеть, inter-LAN трафик или любые не-классифицированные направления
+- это не NetFlow и не L7-биллинг; это практичный accounting-слой для домашней сети
 
 ### `WireGuard server peers`
 
@@ -314,6 +349,10 @@ Remote peer
 - закрытый день: `./scripts/traffic-daily-report YYYY-MM-DD`
 - текущая неделя: `./scripts/traffic-daily-report week`
 - текущий месяц: `./scripts/traffic-daily-report month`
+
+Если нужен per-device объём по обычным LAN-клиентам:
+
+- смотрите `LAN DEVICE BYTES`
 
 Если проблема только у raw `WireGuard server` клиентов:
 

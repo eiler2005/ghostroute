@@ -92,6 +92,8 @@ require_local_file "${PROJECT_ROOT}/scripts/nat-start"
 require_local_file "${PROJECT_ROOT}/scripts/cron-save-ipset"
 require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot"
 require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close"
+require_local_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh"
+require_local_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/scripts/services-start"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   require_local_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add"
@@ -124,6 +126,8 @@ upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-sta
 upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
 upload_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
 upload_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
+upload_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh" "${REMOTE_STAGE}/scripts/lan-traffic-accounting-refresh"
+upload_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
 upload_file "${PROJECT_ROOT}/scripts/services-start" "${REMOTE_STAGE}/scripts/services-start"
 upload_file "${PROJECT_ROOT}/scripts/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
 upload_file "${PROJECT_ROOT}/scripts/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
@@ -200,6 +204,15 @@ install_script() {
   chmod a+rx "$target_file"
 }
 
+install_fully_managed_script() {
+  source_file="$1"
+  target_file="$2"
+
+  backup_if_present "$target_file"
+  cp "$source_file" "$target_file"
+  chmod a+rx "$target_file"
+}
+
 backup_if_present /jffs/configs/dnsmasq.conf.add
 merge_managed_block \
   "$REMOTE_STAGE/configs/dnsmasq.conf.add" \
@@ -246,6 +259,14 @@ install_script \
   "$REMOTE_STAGE/scripts/cron-traffic-daily-close" \
   /jffs/scripts/cron-traffic-daily-close \
   "router_configuration cron-traffic-daily-close"
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/lan-traffic-accounting-refresh" \
+  /jffs/scripts/lan-traffic-accounting-refresh
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/lan-device-counters-snapshot" \
+  /jffs/scripts/lan-device-counters-snapshot
 
 install_script \
   "$REMOTE_STAGE/scripts/services-start" \

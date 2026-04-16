@@ -194,6 +194,7 @@ Traffic observability тоже теперь строится вокруг трё
 Что сохраняется каждые 6 часов:
 
 - интерфейсные счётчики `wan0`, `wgc1`, `wgs1`, `br0`, `eth6`, `eth7`
+- LAN byte snapshots из `iptables mangle` по IP-адресам клиентов
 - `tailscale status --json`
 - `wg show wgs1 dump`
 
@@ -204,6 +205,7 @@ Traffic observability тоже теперь строится вокруг трё
 
 Ключевые новые метрики:
 
+- `LAN device bytes` — per-device byte deltas по обычным LAN-клиентам (`VPN` / `WAN` / `Other`)
 - `WG server total` — router-wide bytes по `wgs1`
 - `WireGuard server peers` — per-peer transfer deltas из `wg show wgs1 dump`
 - `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — current/end-of-day conntrack snapshot для remote peer'ов

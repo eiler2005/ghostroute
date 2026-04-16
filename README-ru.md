@@ -214,6 +214,7 @@ cp .env.example secrets/router.env
 - `WG server total` — весь трафик через raw WireGuard server-интерфейс `wgs1`
 - `Wi-Fi total` — суммарный трафик радиоинтерфейсов роутера
 - `Tailscale total` — сумма per-peer `RxBytes` / `TxBytes` из `tailscaled`
+- `LAN device bytes` — накопленные per-device дельты из router-side mangle accounting (`VPN` / `WAN` / `Other` / upload / download)
 - `WireGuard server peers` — per-peer дельты из `wg show wgs1 dump` плюс current/end-of-day conntrack-срез по remote peer'ам на `wgs1`
 - `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
 
@@ -230,6 +231,8 @@ cp .env.example secrets/router.env
 ./scripts/traffic-daily-report week
 ./scripts/traffic-daily-report month
 ```
+
+`LAN device bytes` появятся только после того, как роутер успеет собрать минимум два byte-snapshot внутри дня или периода. До этого в отчёте будет пояснение, что byte baseline ещё не накопился.
 
 ---
 

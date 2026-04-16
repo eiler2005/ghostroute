@@ -25,6 +25,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 
 - что происходит сегодня
 - сколько уже прошло через `WAN` / `VPN` / `WG server` / `Wi-Fi` / `Tailscale`
+- какие LAN-устройства уже дали заметный объём трафика и в какой канал он ушёл
 - какие локальные устройства активны прямо сейчас
 - какие raw `WireGuard server` peer'ы сейчас активны
 
@@ -48,6 +49,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - сколько было за конкретный день
 - сколько уже накопилось за текущую неделю
 - сколько уже накопилось за текущий месяц
+- какие LAN-устройства дали основной объём трафика за день/неделю/месяц
 - какие `Tailscale` peer'ы дали трафик за этот день
 - какие raw `WireGuard server` peer'ы дали трафик за этот день
 - какой был end-of-day снимок локальных устройств
@@ -80,6 +82,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - `Wi-Fi total`
 - `LAN bridge`
 - `Tailscale total`
+- строки `LAN DEVICE BYTES`
 - строки `WIREGUARD SERVER PEERS` (`RX` / `TX`)
 - строки `TAILSCALE PEERS` (`RX` / `TX`)
 
@@ -97,6 +100,19 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - `Local`
 
 Это количество `conntrack`-записей, а не объём трафика.
+
+Раздел `LAN DEVICE BYTES`:
+
+- `Total`
+- `VPN`
+- `WAN`
+- `Other`
+- `Upload`
+- `Download`
+
+Это уже байты, накопленные по iptables mangle counters на роутере.
+
+`Other` означает трафик LAN-устройства, который не попал в `wgc1` или `wan0` по нашей грубой классификации. Обычно туда попадает локальная сеть, межLAN-трафик и прочие не-внешние направления.
 
 Раздел `WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
 
@@ -138,9 +154,10 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
    - `WG server`
    - `Wi-Fi`
    - `Tailscale`
-3. Отдельно перечислить `WIREGUARD SERVER PEERS`, у которых не ноль.
-4. Отдельно перечислить `Tailscale peers`, у которых не ноль.
-5. Отдельно пояснить, что `LAN DEVICES` и `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — это снимки соединений, не байты.
+3. Если есть раздел `LAN DEVICE BYTES`, назвать 1-3 самых активных LAN-устройства и объём `VPN` / `WAN`.
+4. Отдельно перечислить `WIREGUARD SERVER PEERS`, у которых не ноль.
+5. Отдельно перечислить `Tailscale peers`, у которых не ноль.
+6. Отдельно пояснить, что `LAN DEVICES` и `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — это снимки соединений, не байты.
 
 ## Чего не выводить в ответ
 

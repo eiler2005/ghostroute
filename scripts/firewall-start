@@ -62,6 +62,10 @@ iptables -t mangle -A PREROUTING -i wgs1 -j "$ROUTING_CHAIN"
 # split-routing behavior as ordinary LAN devices.
 iptables -t mangle -A OUTPUT -j "$ROUTING_CHAIN"
 
+# Keep per-device LAN byte accounting chains up to date without resetting
+# their counters during ordinary refreshes.
+[ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
+
 # --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
 # Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.
 # Verify first: ip -6 route show table wgc1
