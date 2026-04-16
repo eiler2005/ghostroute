@@ -117,7 +117,7 @@ dnsmasq.log (все DNS-запросы)
 
 | Категория | Сервисы |
 |---|---|
-| AI-инструменты | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery |
+| AI-инструменты | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery, Wispr Flow |
 | Разработка | GitHub, GitLab, Bitbucket, Azure DevOps, Visual Studio |
 | Видео | YouTube (все поддомены + CDN) |
 | Мессенджеры | Telegram (домены + IP-подсети по ASN), WhatsApp |

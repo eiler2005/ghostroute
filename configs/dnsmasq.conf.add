@@ -95,6 +95,10 @@ ipset=/example-provider.invalid/VPN_DOMAINS
 ipset=/example-provider-cloud.invalid/VPN_DOMAINS
 # Smithery (MCP registry)
 ipset=/smithery.ai/VPN_DOMAINS
+# Wispr Flow (site, docs, auth, API, cloud sync)
+ipset=/wisprflow.ai/VPN_DOMAINS
+ipset=/api.wisprflow.com/VPN_DOMAINS
+ipset=/wisprflow.onelink.me/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS
 # WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
 ipset=/whatsapp.com/VPN_DOMAINS

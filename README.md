@@ -131,7 +131,7 @@ Manually curated domain families, each with VPN DNS upstream + ipset rules:
 
 | Category | Services |
 |---|---|
-| AI Tools | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery |
+| AI Tools | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery, Wispr Flow |
 | Dev tools | GitHub, GitLab, Bitbucket, Azure DevOps, Visual Studio |
 | Video | YouTube (all subdomains + CDN) |
 | Messengers | Telegram (domains + ASN-based IP ranges), WhatsApp |
