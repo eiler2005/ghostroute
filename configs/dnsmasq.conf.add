@@ -99,6 +99,8 @@ ipset=/smithery.ai/VPN_DOMAINS
 ipset=/wisprflow.ai/VPN_DOMAINS
 ipset=/api.wisprflow.com/VPN_DOMAINS
 ipset=/wisprflow.onelink.me/VPN_DOMAINS
+# imo Messenger (official domain family; covers auth/beta/tunnel subdomains)
+ipset=/imo.im/VPN_DOMAINS
 ipset=/redshieldvpn.com/VPN_DOMAINS
 # WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
 ipset=/whatsapp.com/VPN_DOMAINS

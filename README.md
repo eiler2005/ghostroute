@@ -35,7 +35,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **User-interest signal** — repeated candidate requests over a week (`count7d` + active days) increase probe priority even when current-hour traffic is low
 - **Service-family domain detection** — subdomains usually collapse to a shared family (`www.example-provider.invalid` → `example-provider.invalid`), while IP-encoded dynamic DNS keeps a narrower family (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
 - **Ancestor dedupe + cleanup** — if `fbcdn.net` is already routed, child hosts like `video.xx.fbcdn.net` are skipped automatically; stale child rules in the auto file are pruned during cleanup
-- **Static IP routing** — for services blocked at the TCP/IP level rather than DNS (Telegram), CIDR ranges are added to a separate ipset
+- **Static IP routing** — for services that still open direct TCP/IP sessions outside the usual DNS path (Telegram, imo, Apple flows), CIDR ranges are added to a separate ipset
 - **Idempotent deployment** — managed blocks pattern (`# BEGIN router_configuration`) makes `deploy.sh` safe to run repeatedly without duplicating config
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
 - **Remote access via WireGuard server or Tailscale** — raw `wgs1` clients with a public IPv4 and optional `Tailscale Exit Node` both honor `VPN_DOMAINS` / `VPN_STATIC_NETS`
@@ -136,7 +136,7 @@ Manually curated domain families, each with VPN DNS upstream + ipset rules:
 | AI Tools | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery, Wispr Flow |
 | Dev tools | GitHub, GitLab, Bitbucket, Azure DevOps, Visual Studio |
 | Video | YouTube (all subdomains + CDN) |
-| Messengers | Telegram (domains + ASN-based IP ranges), WhatsApp |
+| Messengers | Telegram (domains + ASN-based IP ranges), imo (imo.im + PageBites IP ranges), WhatsApp |
 | Social | Instagram, Facebook / Messenger, Twitter / X, TikTok, LinkedIn |
 | Other | Apple Podcasts, Atlassian |
 
@@ -151,7 +151,7 @@ configs/
   dnsmasq.conf.add                # ipset rules: which domains → VPN_DOMAINS
   dnsmasq-vpn-upstream.conf.add   # per-domain DNS upstream via wgc1
   dnsmasq-logging.conf.add        # DNS query logging config (for auto-discovery)
-  static-networks.txt             # static CIDR ranges (Telegram ASN ranges)
+  static-networks.txt             # static CIDR ranges (Telegram / imo / Apple and similar direct-IP cases)
   domains-no-vpn.txt              # explicit exclusions (never route via VPN)
   no-vpn-ip-ports.txt             # per-IP:port exceptions that must stay on WAN
 
@@ -345,7 +345,7 @@ wg show wgc1
 |---|---|
 | dnsmasq + ipset + iptables + ip rule pipeline | Running |
 | WireGuard client wgc1 | Connected (handshake every 20s) |
-| Telegram domain + IP subnet routing | Active |
+| Telegram / imo domain + IP subnet routing | Active |
 | Auto-discovery (every 1h) | Active |
 | Blocked-list filter (antifilter.download) | Active, ~500 curated entries |
 | ipset persistence on USB | Active (saves every 6h) |

@@ -78,10 +78,11 @@ iptables -t mangle -A OUTPUT -j RC_VPN_ROUTE
 
 ### Путь 2: Статический (static-networks.txt)
 
-Для сервисов, которые используют прямые IP-подключения (Telegram, Apple Podcasts), одних доменов недостаточно. Для них используется отдельный ipset `VPN_STATIC_NETS` типа `hash:net`.
+Для сервисов, которые используют прямые IP-подключения (Telegram, imo, Apple Podcasts), одних доменов недостаточно. Для них используется отдельный ipset `VPN_STATIC_NETS` типа `hash:net`.
 
 Примеры:
 - **Telegram** — клиент подключается напрямую к IP-диапазонам, минуя DNS
+- **imo** — web/auth часть живёт на `imo.im`, но часть пользовательского трафика и tunnel/auth entrypoints использует выделенные сети `AS36131 / PageBites`
 - **Apple (17.0.0.0/8)** — iPhone устанавливает соединение с Apple-серверами (`bag.itunes.apple.com`, `amp-api`, `entitlements`) раньше, чем DNS-запрос успевает заполнить ipset. Весь блок 17.0.0.0/8 принадлежит исключительно Apple Inc. (ARIN whois).
 
 1. При запуске `firewall-start` загружает CIDR-блоки из файла `static-networks.txt`.

@@ -214,6 +214,10 @@ server=/api.wisprflow.com/9.9.9.9@wgc1
 server=/wisprflow.onelink.me/1.1.1.1@wgc1
 server=/wisprflow.onelink.me/9.9.9.9@wgc1
 
+# imo Messenger
+server=/imo.im/1.1.1.1@wgc1
+server=/imo.im/9.9.9.9@wgc1
+
 # RedShield VPN
 server=/redshieldvpn.com/1.1.1.1@wgc1
 server=/redshieldvpn.com/9.9.9.9@wgc1

@@ -105,7 +105,7 @@ dnsmasq.log (все DNS-запросы)
 
 - **Доменная маршрутизация** — правило `ipset=/youtube.com/VPN_DOMAINS` покрывает домен и все поддомены автоматически
 - **DNS через VPN** — для VPN-доменов DNS-запросы идут через Cloudflare/Quad9 по VPN-туннелю (исключает подмену DNS провайдером)
-- **Статические IP-диапазоны** — для Telegram, который блокируется на уровне IP, дополнительно добавлены диапазоны подсетей
+- **Статические IP-диапазоны** — для сервисов, которые частично ходят прямыми IP-соединениями вне обычного DNS-пути (Telegram, imo, часть Apple-потоков), дополнительно добавлены диапазоны подсетей
 - **Авто-обнаружение** — каждый час находит и добавляет новые заблокированные домены
 - **Умная фильтрация** — добавляет только реально заблокированные домены, а не всё подряд из DNS-лога
 - **Сигнал интереса пользователя** — повторяющиеся запросы кандидата за неделю повышают шанс ISP-пробы даже при низком текущем трафике
@@ -122,7 +122,7 @@ dnsmasq.log (все DNS-запросы)
 | AI-инструменты | Claude / Anthropic, ChatGPT / OpenAI, Google AI Studio, NotebookLM, Smithery, Wispr Flow |
 | Разработка | GitHub, GitLab, Bitbucket, Azure DevOps, Visual Studio |
 | Видео | YouTube (все поддомены + CDN) |
-| Мессенджеры | Telegram (домены + IP-подсети по ASN), WhatsApp |
+| Мессенджеры | Telegram (домены + IP-подсети по ASN), imo (imo.im + PageBites IP-подсети), WhatsApp |
 | Соцсети | Instagram, Facebook / Messenger, Twitter / X, TikTok, LinkedIn |
 | Прочее | Apple Podcasts, Atlassian |
 
@@ -137,7 +137,7 @@ configs/
   dnsmasq.conf.add                # ipset-правила: какие домены → VPN
   dnsmasq-vpn-upstream.conf.add   # DNS upstream через VPN для каждого домена
   dnsmasq-logging.conf.add        # настройки логирования DNS
-  static-networks.txt             # статические IP-подсети (Telegram)
+  static-networks.txt             # статические IP-подсети (Telegram / imo / Apple и похожие direct-IP случаи)
   domains-no-vpn.txt              # домены-исключения (никогда не VPN)
   no-vpn-ip-ports.txt             # исключения по IP:порту (всегда через WAN)
 
@@ -308,7 +308,7 @@ wg show wgc1
 |---|---|
 | Цепочка dnsmasq + ipset + iptables + ip rule | Работает |
 | WireGuard клиент wgc1 | Подключён (handshake каждые 20с) |
-| Маршрутизация Telegram (домены + IP-подсети) | Активна |
+| Маршрутизация Telegram / imo (домены + IP-подсети) | Активна |
 | Авто-обнаружение доменов (каждый час) | Активно |
 | Фильтрация по antifilter.download (~500 доменов) | Активна |
 | Персистентность ipset на USB | Активна (сохранение каждые 6ч) |
