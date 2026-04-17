@@ -48,11 +48,13 @@
   - `Via VPN`
   - `Direct WAN`
   - `Other`
+  - и что рядом с ними сохраняются стабильные section markers для peer-top summaries
 
 Почему это важно:
 
 - `router-health-report` строит свой traffic summary именно из этих строк
 - если заголовки или формат будут “тихо” изменены, downstream report перестанет быть надёжным
+- peer-top summaries тоже являются частью UX-контракта: LLM и человек ожидают увидеть их в predictable месте
 
 ### `state-sample.env`
 

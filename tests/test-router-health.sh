@@ -61,6 +61,8 @@ router_extract_traffic_summary \
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_ROUTER_WINDOW" "2026-04-17T00:00:00+0300 -> current router state"
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_WINDOW" "2026-04-17T12:00:00+0300 -> current router state"
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_VIA_VPN" "5.00 GiB  (86.2%)"
+assert_contains "${PROJECT_ROOT}/tests/fixtures/router-health/traffic-report-sample.txt" "=== TOP BY WG SERVER PEERS ==="
+assert_contains "${PROJECT_ROOT}/tests/fixtures/router-health/traffic-report-sample.txt" "=== TOP BY TAILSCALE PEERS ==="
 
 # 3. Markdown renderer contract:
 #    ensure the final sanitised report still exposes the sections relied on by humans and LLMs.
@@ -71,6 +73,10 @@ router_render_health_markdown \
 
 assert_contains "$MARKDOWN_OUT" "# Router Health Latest"
 assert_contains "$MARKDOWN_OUT" "## Catalog Capacity"
+assert_contains "$MARKDOWN_OUT" "### Growth vs latest saved snapshot"
+assert_contains "$MARKDOWN_OUT" "### Growth vs week-old snapshot"
+assert_contains "$MARKDOWN_OUT" "Growth level:"
+assert_contains "$MARKDOWN_OUT" "Growth note:"
 assert_contains "$MARKDOWN_OUT" "## Freshness"
 assert_contains "$MARKDOWN_OUT" "## Traffic Snapshot"
 assert_contains "$MARKDOWN_OUT" "## Drift"

@@ -4,7 +4,7 @@
 
 ## Цели
 
-`traffic-report`, `traffic-daily-report` и `router-health-report` покрывают 8 практических вопросов:
+`traffic-report`, `traffic-daily-report` и `router-health-report` покрывают 10 практических вопросов:
 
 1. Сколько трафика прошло через внешний канал роутера.
 2. Сколько из этого трафика прошло через `WireGuard wgc1`.
@@ -14,6 +14,8 @@
 6. Сколько байт по raw `WireGuard server` прошло у каждого peer'а и какие у него сейчас active conntrack entries.
 7. Какие локальные устройства сейчас активны и сколько у них активных соединений.
 8. Каково текущее health/capacity/freshness-состояние routing-слоя без чтения сырых роутерных дампов.
+9. Какие remote `WireGuard server` peer'ы были самыми активными за окно отчёта.
+10. Какие `Tailscale` peer'ы дали заметный трафик, не сканируя полную peer-таблицу.
 
 Скрипты не являются биллинговой системой. Они сочетают:
 
@@ -137,6 +139,8 @@
    - usage/headroom
    - `VPN_STATIC_NETS current`
    - manual / auto rule counts
+   - growth deltas к latest / week-old local snapshots, если они доступны
+   - `growth level` и `growth note`
 4. Снимает `Freshness` operational artifacts:
    - blocked list
    - ipset persistence file
@@ -179,6 +183,8 @@
 - `=== DEVICE TRAFFIC MIX ===`
 - `=== TOP BY VPN ===`
 - `=== TOP BY DIRECT WAN ===`
+- `=== TOP BY WG SERVER PEERS ===`
+- `=== TOP BY TAILSCALE PEERS ===`
 - `=== LAN DEVICE BYTES ===`
 - `=== LAN DEVICES ===`
 - `=== WG SERVER CONNECTION SNAPSHOT ===`
@@ -192,10 +198,18 @@
 - `Router`
 - `Routing Health`
 - `Catalog Capacity`
+- `Growth vs latest saved snapshot`
+- `Growth vs week-old snapshot` (если history уже накопилась)
 - `Freshness`
 - `Traffic Snapshot`
 - `Drift`
 - `Notes`
+
+Практический смысл:
+
+- `verify.sh` нужен для быстрого live-check после deploy или жалобы
+- `router-health-report` нужен как sanitised snapshot, который можно безопасно читать LLM
+- USB-backed copies на роутере дают тот же слой даже без локального git checkout
 
 Подробное описание тестового слоя, fixture'ов и причин, почему он разделён на `fixture` и `live smoke`, лежит в:
 [../tests/README.md](../tests/README.md)

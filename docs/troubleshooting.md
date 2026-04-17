@@ -15,6 +15,8 @@
   показывает, на месте ли repo-managed hooks, `ip rule`, `RC_VPN_ROUTE`, DNS redirect для `wgs1`
 - `Catalog Capacity`
   показывает, не разросся ли `VPN_DOMAINS` и сколько headroom осталось
+- `Growth Trends`
+  показывает, есть ли заметный рост каталога и не стал ли auto-catalog его главным источником
 - `Freshness`
   показывает, насколько свежи blocked-list, ipset persistence и traffic snapshots
 - `Drift`
@@ -353,6 +355,8 @@ grep "conf-file.*autodiscovered" /etc/dnsmasq.conf
    - если пусто, missing repo-managed invariants не найдено
 3. `Freshness`
    - warning здесь означает проблему observability, а не обязательно проблему маршрутизации
+4. `Growth Trends`
+   - если тут только `Stable` / `Stable growth`, warning почти наверняка не связан с runaway catalog growth
 
 Пример:
 

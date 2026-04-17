@@ -28,6 +28,8 @@
   - router-side USB-backed reports в `/opt/var/log/router_configuration/reports/`
 - traffic-отчёты приведены к более стабильной форме секций
 - fixture/smoke тесты для health-reporting уже добавлены
+- growth trends и интерпретация роста уже встроены в health/capacity слой
+- peer-level short summaries для `WireGuard server` и `Tailscale` уже встроены в traffic-отчёты
 
 ## Важное ограничение
 
@@ -112,8 +114,14 @@
 
 Статус:
 
-- основная часть уже реализована
-- осталось только эволюционно улучшать сами проверки и пороги, если появится реальная operational-боль
+- основная часть уже реализована:
+  - `verify.sh` печатает compact summary по умолчанию
+  - `verify.sh --verbose` оставлен для deep diagnostics
+  - drift показывается как human-readable mismatch list, а не как full dump
+  - `Growth Trends` уже встроен в default summary
+  - exit codes уже разделены на `OK / Warning / Critical`
+  - tracked `router-health-latest.md` и local journal дают стабильную точку сравнения
+- в backlog остаётся только эволюционно улучшать сами проверки, тексты предупреждений и пороги, если появится реальная operational-боль
 
 Желаемый результат:
 
@@ -135,11 +143,12 @@
 Статус:
 
 - значимая часть уже реализована:
-  - стабильные секции `Window / Totals / Device Traffic Mix / Top by VPN / Top by Direct WAN / Notes`
+  - стабильные секции `Window / Totals / Device Traffic Mix / Top by VPN / Top by Direct WAN / Top by WG server peers / Top by Tailscale peers / Notes`
   - tracked sanitised `router-health-latest.md`
   - явный LLM-runbook
   - USB-backed health snapshots на роутере
-- в backlog остаются только дальнейшие улучшения формы и интерпретации отчётов
+  - fixture/smoke тесты фиксируют текстовый контракт observability-слоя
+- в backlog остаются только дальнейшие улучшения формы, интерпретации и, при желании, более компактные executive-style summaries
 
 Желаемый результат:
 
@@ -208,9 +217,13 @@
   - `VPN_STATIC_NETS current`
   - manual / auto rule counts
   - delta к последнему сохранённому local snapshot
+  - `Growth Trends` в `verify.sh`
+  - `Growth level` / `Growth note` в `router-health-report`
+  - сохранение capacity/growth snapshot в local journal через `router-health-report --save`
 - backlog здесь сохраняется для следующего шага:
-  - week-over-week trends
-  - более умные growth thresholds
+  - более длинные historical trends beyond local journal cadence
+  - более богатая week-over-week/month-over-month аналитика, если история накопится и это реально понадобится
+  - ещё более умные growth thresholds, если появится реальная operational-боль
   - возможно отдельный compact capacity-only summary
 
 Желаемый результат:

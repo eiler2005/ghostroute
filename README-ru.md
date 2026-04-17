@@ -221,6 +221,7 @@ cp .env.example secrets/router.env
 - `LAN device bytes` — накопленные per-device дельты из router-side mangle accounting (`VPN` / `WAN` / `Other` / upload / download)
 - `Device traffic mix` — явная сводка per-device: сколько прошло `через VPN`, сколько ушло `напрямую в WAN`, плюс топ устройств по обоим направлениям
 - `WireGuard server peers` — per-peer дельты из `wg show wgs1 dump` плюс current/end-of-day conntrack-срез по remote peer'ам на `wgs1`
+- `Top by WG server peers` / `Top by Tailscale peers` — короткие peer-level summary, чтобы сразу видеть самых активных удалённых клиентов без ручного разбора полной таблицы
 - `LAN devices` — текущий срез `conntrack`; столбцы `Total` / `VPN` / `WAN` / `Local` здесь означают число активных соединений, а не байты
 
 По умолчанию отчёты редактируют peer names, hostnames, tunnel addresses и endpoints. `REPORT_REDACT_NAMES=0` используйте только для доверенного локального просмотра.
@@ -256,7 +257,7 @@ cp .env.example secrets/router.env
 Теперь поверх traffic-отчётов есть ещё два безопасных operational-инструмента:
 
 - `./verify.sh`
-  compact summary по секциям `Router`, `Routing Health`, `Catalog Capacity`, `Freshness`, `Drift`, `Result`
+  compact summary по секциям `Router`, `Routing Health`, `Catalog Capacity`, `Growth Trends`, `Freshness`, `Drift`, `Result`
 - `./verify.sh --verbose`
   глубокий live-dump для ручной диагностики
 - `./scripts/router-health-report`
@@ -282,9 +283,10 @@ cp .env.example secrets/router.env
 - текущий health-result
 - живое состояние repo-managed routing-инвариантов
 - ёмкость каталога (`VPN_DOMAINS`, `VPN_STATIC_NETS`, usage/headroom)
+- growth trends относительно последнего сохранённого snapshot и week-old snapshot, если для него уже накопилась история
 - свежесть blocked-list, ipset persistence и traffic snapshots
 - базовые traffic totals и `Device Traffic Mix`
-- growth delta относительно последнего сохранённого snapshot из локального журнала
+- явный `growth level` / `growth note`, чтобы быстро понимать, становится ли рост каталога отдельной operational-темой
 
 Это удобно и для человека, и для LLM:
 
@@ -306,6 +308,7 @@ bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/tr
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
 ./scripts/router-health-report
+./scripts/router-health-report --save
 ```
 
 Эти команды не меняют runtime-конфигурацию роутера. Они только:

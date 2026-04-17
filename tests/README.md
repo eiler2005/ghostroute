@@ -45,6 +45,7 @@ Fixture-based smoke test для health-reporting слоя.
    - достаёт `Router-wide window`
    - достаёт `Per-device byte window`
    - достаёт totals и `Device Traffic Mix`
+   - опирается на то, что peer-top секции (`Top by WG server peers`, `Top by Tailscale peers`) остаются стабильной частью общего summary-контракта
 
    Почему это важно:
    - `router-health-report` не пересчитывает traffic totals сам, а читает стабильный summary из `traffic-report`
@@ -56,6 +57,8 @@ Fixture-based smoke test для health-reporting слоя.
    - действительно рендерит ключевые секции:
      - `Router Health Latest`
      - `Catalog Capacity`
+     - `Growth vs latest saved snapshot`
+     - `Growth level / Growth note`
      - `Freshness`
      - `Traffic Snapshot`
      - `Drift`

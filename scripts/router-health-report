@@ -57,6 +57,24 @@ if [ "$SAVE_MODE" = "1" ]; then
     AUTO_COUNT="$(router_kv_get "$STATE_FILE" AUTO_RULE_COUNT)"
     USAGE_PCT="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f%%", (current / max) * 100 }')"
     HEADROOM="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else print max - current }')"
+    LATEST_DATE="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_DATE)"
+    LATEST_VPN="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_DOMAINS)")"
+    LATEST_MANUAL="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_MANUAL)")"
+    LATEST_AUTO="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_AUTO)")"
+    GROWTH_DELTA="n/a"
+    GROWTH_LEVEL="Unknown"
+    GROWTH_NOTE="n/a"
+
+    if [ -n "$LATEST_VPN" ]; then
+      GROWTH_DELTA="$(awk -v cur="${VPN_CURRENT:-0}" -v prev="${LATEST_VPN:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+      GROWTH_LEVEL="$(router_growth_level "$(router_extract_int "$GROWTH_DELTA")" "$(printf '%s' "$USAGE_PCT" | tr -d '%')" "$VPN_MAX")"
+    fi
+
+    if [ -n "$LATEST_MANUAL" ] && [ -n "$LATEST_AUTO" ]; then
+      RULE_DELTA="$(awk -v cur_m="${MANUAL_COUNT:-0}" -v prev_m="${LATEST_MANUAL:-0}" -v cur_a="${AUTO_COUNT:-0}" -v prev_a="${LATEST_AUTO:-0}" 'BEGIN { printf "%+d", (cur_m + cur_a) - (prev_m + prev_a) }')"
+      AUTO_DELTA="$(awk -v cur="${AUTO_COUNT:-0}" -v prev="${LATEST_AUTO:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+      GROWTH_NOTE="$(router_auto_growth_note "$(router_extract_int "$RULE_DELTA")" "$(router_extract_int "$AUTO_DELTA")")"
+    fi
 
     cat >> "$JOURNAL_FILE" <<EOF
 
@@ -78,6 +96,13 @@ if [ "$SAVE_MODE" = "1" ]; then
 | VPN_STATIC_NETS | ${VPN_STATIC} активных CIDR в ipset |
 | Ручные доменные правила | ${MANUAL_COUNT} |
 | Auto-discovered доменные правила | ${AUTO_COUNT} |
+
+### Growth note [operational]
+
+- previous saved snapshot: ${LATEST_DATE:-n/a}
+- VPN_DOMAINS delta vs previous snapshot: ${GROWTH_DELTA}
+- growth level: ${GROWTH_LEVEL}
+- growth note: ${GROWTH_NOTE}
 
 ### Health snapshot [operational]
 

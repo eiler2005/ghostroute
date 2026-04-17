@@ -159,10 +159,13 @@ Common patterns:
   - на месте ли `RC_VPN_ROUTE`, `ip rule`, DNS routing
 - `Catalog Capacity`
   - не вырос ли `VPN_DOMAINS` неожиданно сильно после нового семейства
+  - что пишет `Growth Trends` / `Growth note`
 - `Traffic Snapshot`
   - начал ли сервис реально давать `VPN`-трафик
 - `Device Traffic Mix`
   - не ушёл ли тестируемый клиент в direct `WAN`
+- `Top by WG server peers`
+  - если тест идёт через raw `WireGuard server`, видно ли это сразу в peer-level summary
 
 Если нужно сохранить понятный snapshot для следующего агента/LLM:
 

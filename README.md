@@ -247,6 +247,7 @@ Important notes:
 - `LAN device bytes` — cumulative per-device deltas from router-side mangle accounting (`VPN` / `WAN` / `Other` / upload / download)
 - `Device traffic mix` — explicit per-device summary of `Via VPN` vs `Direct WAN`, plus top devices by VPN bytes and direct-WAN bytes
 - `WireGuard server peers` — per-peer deltas from `wg show wgs1 dump`, plus current/end-of-day conntrack snapshots for remote peers on `wgs1`
+- `Top by WG server peers` / `Top by Tailscale peers` — short peer-level summaries that surface the busiest remote clients without scanning the full tables
 - `LAN devices` — current connection snapshot from `conntrack` (`Total` / `VPN` / `WAN` / `Local` are active connection counts, not bytes)
 
 By default, report output redacts peer names, LAN hostnames, tunnel addresses, and endpoints. Use `REPORT_REDACT_NAMES=0` only for trusted local inspection.
@@ -286,7 +287,7 @@ For `week/month`, router-wide totals may cover a wider window than `LAN device b
 On top of the traffic reports there are now two safe operational commands:
 
 - `./verify.sh`
-  compact summary grouped into `Router`, `Routing Health`, `Catalog Capacity`, `Freshness`, `Drift`, `Result`
+  compact summary grouped into `Router`, `Routing Health`, `Catalog Capacity`, `Growth Trends`, `Freshness`, `Drift`, `Result`
 - `./verify.sh --verbose`
   deeper live diagnostic dump
 - `./scripts/router-health-report`
@@ -311,9 +312,10 @@ Quick commands:
 
 - repo-managed routing invariants
 - catalog capacity and headroom
+- growth trends against the latest saved snapshot and week-old snapshot when history exists
 - freshness of blocked-list, ipset persistence, and traffic snapshots
 - base traffic totals and device traffic mix
-- growth deltas against the latest saved local journal snapshot
+- explicit growth level / growth note so you can quickly tell whether auto-catalog growth is becoming operationally relevant
 
 This gives a safe two-layer operational model:
 
@@ -335,6 +337,7 @@ bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/tr
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
 ./scripts/router-health-report
+./scripts/router-health-report --save
 ```
 
 These commands do not change router runtime config. They only:

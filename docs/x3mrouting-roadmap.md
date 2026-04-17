@@ -24,6 +24,7 @@ Domain discovery — автоматический и ручной процесс
 - число manual и auto rules
 - свежесть blocked-list
 - рост каталога относительно последнего сохранённого snapshot
+- `growth level` / `growth note`, чтобы быстро понять, не стал ли auto-catalog источником разрастания
 
 ## Два режима обнаружения
 
@@ -191,6 +192,7 @@ CDN и infrastructure-домены, которые не имеет смысла 
 - manual rule count
 - auto-discovered rule count
 - growth vs latest saved snapshot
+- growth level / growth note
 
 Где хранится последнее sanitised состояние:
 

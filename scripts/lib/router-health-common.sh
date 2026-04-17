@@ -121,6 +121,69 @@ router_capacity_level() {
     }'
 }
 
+router_extract_int() {
+  local value="${1:-}"
+
+  awk -v value="$value" '
+    BEGIN {
+      if (match(value, /-?[0-9]+/)) print substr(value, RSTART, RLENGTH);
+      else print "";
+    }'
+}
+
+router_growth_level() {
+  local delta="${1:-}"
+  local usage="${2:-}"
+  local maxelem="${3:-65536}"
+
+  awk -v delta="$delta" -v usage="$usage" -v maxelem="$maxelem" '
+    BEGIN {
+      if (delta == "" || delta == "n/a") {
+        print "Unknown"
+      } else if (usage != "" && usage != "n/a" && usage + 0 >= 50) {
+        print "Critical"
+      } else if ((delta + 0) >= (maxelem + 0) * 0.10) {
+        print "Critical"
+      } else if (usage != "" && usage != "n/a" && usage + 0 >= 30) {
+        print "Warning"
+      } else if ((delta + 0) >= (maxelem + 0) * 0.05) {
+        print "Warning"
+      } else if (usage != "" && usage != "n/a" && usage + 0 >= 20) {
+        print "Informational"
+      } else if ((delta + 0) >= (maxelem + 0) * 0.01) {
+        print "Informational"
+      } else if ((delta + 0) > 0) {
+        print "Stable growth"
+      } else if ((delta + 0) == 0) {
+        print "Stable"
+      } else {
+        print "Contracted"
+      }
+    }'
+}
+
+router_auto_growth_note() {
+  local total_delta="${1:-}"
+  local auto_delta="${2:-}"
+
+  awk -v total_delta="$total_delta" -v auto_delta="$auto_delta" '
+    BEGIN {
+      if (total_delta == "" || auto_delta == "" || total_delta == "n/a" || auto_delta == "n/a") {
+        print "n/a"
+      } else if (auto_delta + 0 <= 0) {
+        print "auto-catalog growth is not the current driver"
+      } else if (total_delta + 0 <= 0) {
+        print "auto-catalog grew while total catalog stayed flat/contracted"
+      } else if ((auto_delta + 0) >= (total_delta + 0) * 0.75) {
+        print "auto-catalog explains most recent rule growth"
+      } else if ((auto_delta + 0) >= (total_delta + 0) * 0.50) {
+        print "auto-catalog explains a large share of recent rule growth"
+      } else {
+        print "manual/static changes explain most recent rule growth"
+      }
+    }'
+}
+
 router_freshness_level() {
   local epoch="${1:-0}"
   local warn_after="${2:-0}"
@@ -378,6 +441,12 @@ router_render_health_markdown() {
   local blocked_level persist_level iface_level tailscale_level wgs1_level daily_level
   local latest_date latest_vpn latest_static latest_manual latest_auto
   local week_date week_vpn week_static week_manual week_auto
+  local latest_vpn_num latest_static_num latest_manual_num latest_auto_num
+  local week_vpn_num week_static_num week_manual_num week_auto_num
+  local latest_vpn_delta latest_static_delta latest_manual_delta latest_auto_delta
+  local week_vpn_delta week_static_delta week_manual_delta week_auto_delta
+  local latest_rule_total_delta week_rule_total_delta
+  local latest_growth_level week_growth_level latest_auto_note week_auto_note
   local traffic_router_window traffic_device_window traffic_wan traffic_vpn traffic_wgs1 traffic_ts traffic_share traffic_device_total traffic_device_vpn traffic_device_wan traffic_device_other
   local result_level
   local -a drift_lines
@@ -430,6 +499,63 @@ router_render_health_markdown() {
   week_static="$(router_kv_get "$history_file" HISTORY_WEEK_VPN_STATIC)"
   week_manual="$(router_kv_get "$history_file" HISTORY_WEEK_MANUAL)"
   week_auto="$(router_kv_get "$history_file" HISTORY_WEEK_AUTO)"
+
+  latest_vpn_num="$(router_extract_int "$latest_vpn")"
+  latest_static_num="$(router_extract_int "$latest_static")"
+  latest_manual_num="$(router_extract_int "$latest_manual")"
+  latest_auto_num="$(router_extract_int "$latest_auto")"
+  week_vpn_num="$(router_extract_int "$week_vpn")"
+  week_static_num="$(router_extract_int "$week_static")"
+  week_manual_num="$(router_extract_int "$week_manual")"
+  week_auto_num="$(router_extract_int "$week_auto")"
+
+  latest_vpn_delta="n/a"
+  latest_static_delta="n/a"
+  latest_manual_delta="n/a"
+  latest_auto_delta="n/a"
+  latest_rule_total_delta="n/a"
+  week_vpn_delta="n/a"
+  week_static_delta="n/a"
+  week_manual_delta="n/a"
+  week_auto_delta="n/a"
+  week_rule_total_delta="n/a"
+
+  if [ -n "$latest_vpn_num" ]; then
+    latest_vpn_delta="$(awk -v cur="${vpn_current:-0}" -v prev="${latest_vpn_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$latest_static_num" ]; then
+    latest_static_delta="$(awk -v cur="${vpn_static_current:-0}" -v prev="${latest_static_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$latest_manual_num" ]; then
+    latest_manual_delta="$(awk -v cur="${manual_count:-0}" -v prev="${latest_manual_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$latest_auto_num" ]; then
+    latest_auto_delta="$(awk -v cur="${auto_count:-0}" -v prev="${latest_auto_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$latest_manual_num" ] && [ -n "$latest_auto_num" ]; then
+    latest_rule_total_delta="$(awk -v cur_m="${manual_count:-0}" -v prev_m="${latest_manual_num:-0}" -v cur_a="${auto_count:-0}" -v prev_a="${latest_auto_num:-0}" 'BEGIN { printf "%+d", (cur_m + cur_a) - (prev_m + prev_a) }')"
+  fi
+
+  if [ -n "$week_vpn_num" ]; then
+    week_vpn_delta="$(awk -v cur="${vpn_current:-0}" -v prev="${week_vpn_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$week_static_num" ]; then
+    week_static_delta="$(awk -v cur="${vpn_static_current:-0}" -v prev="${week_static_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$week_manual_num" ]; then
+    week_manual_delta="$(awk -v cur="${manual_count:-0}" -v prev="${week_manual_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$week_auto_num" ]; then
+    week_auto_delta="$(awk -v cur="${auto_count:-0}" -v prev="${week_auto_num:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  fi
+  if [ -n "$week_manual_num" ] && [ -n "$week_auto_num" ]; then
+    week_rule_total_delta="$(awk -v cur_m="${manual_count:-0}" -v prev_m="${week_manual_num:-0}" -v cur_a="${auto_count:-0}" -v prev_a="${week_auto_num:-0}" 'BEGIN { printf "%+d", (cur_m + cur_a) - (prev_m + prev_a) }')"
+  fi
+
+  latest_growth_level="$(router_growth_level "$(router_extract_int "$latest_vpn_delta")" "$usage_pct" "$vpn_max")"
+  week_growth_level="$(router_growth_level "$(router_extract_int "$week_vpn_delta")" "$usage_pct" "$vpn_max")"
+  latest_auto_note="$(router_auto_growth_note "$(router_extract_int "$latest_rule_total_delta")" "$(router_extract_int "$latest_auto_delta")")"
+  week_auto_note="$(router_auto_growth_note "$(router_extract_int "$week_rule_total_delta")" "$(router_extract_int "$week_auto_delta")")"
 
   traffic_router_window="$(router_kv_get "$traffic_file" TRAFFIC_ROUTER_WINDOW)"
   traffic_device_window="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_WINDOW)"
@@ -523,10 +649,12 @@ EOF
 ### Growth vs latest saved snapshot
 
 - Latest saved snapshot: **${latest_date}**
-- VPN_DOMAINS: **${latest_vpn} -> ${vpn_current}** ($(awk -v cur="${vpn_current:-0}" -v prev="${latest_vpn:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- VPN_STATIC_NETS: **${latest_static} -> ${vpn_static_current}** ($(awk -v cur="${vpn_static_current:-0}" -v prev="${latest_static:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- Manual rules: **${latest_manual} -> ${manual_count}** ($(awk -v cur="${manual_count:-0}" -v prev="${latest_manual:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- Auto rules: **${latest_auto} -> ${auto_count}** ($(awk -v cur="${auto_count:-0}" -v prev="${latest_auto:-0}" 'BEGIN { printf "%+d", cur - prev }'))
+- VPN_DOMAINS: **${latest_vpn_num:-n/a} -> ${vpn_current}** (${latest_vpn_delta})
+- VPN_STATIC_NETS: **${latest_static_num:-n/a} -> ${vpn_static_current}** (${latest_static_delta})
+- Manual rules: **${latest_manual_num:-n/a} -> ${manual_count}** (${latest_manual_delta})
+- Auto rules: **${latest_auto_num:-n/a} -> ${auto_count}** (${latest_auto_delta})
+- Growth level: **${latest_growth_level}**
+- Growth note: **${latest_auto_note}**
 EOF
   else
     cat <<EOF
@@ -543,10 +671,12 @@ EOF
 ### Growth vs week-old snapshot
 
 - Week snapshot: **${week_date}**
-- VPN_DOMAINS: **${week_vpn} -> ${vpn_current}** ($(awk -v cur="${vpn_current:-0}" -v prev="${week_vpn:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- VPN_STATIC_NETS: **${week_static} -> ${vpn_static_current}** ($(awk -v cur="${vpn_static_current:-0}" -v prev="${week_static:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- Manual rules: **${week_manual} -> ${manual_count}** ($(awk -v cur="${manual_count:-0}" -v prev="${week_manual:-0}" 'BEGIN { printf "%+d", cur - prev }'))
-- Auto rules: **${week_auto} -> ${auto_count}** ($(awk -v cur="${auto_count:-0}" -v prev="${week_auto:-0}" 'BEGIN { printf "%+d", cur - prev }'))
+- VPN_DOMAINS: **${week_vpn_num:-n/a} -> ${vpn_current}** (${week_vpn_delta})
+- VPN_STATIC_NETS: **${week_static_num:-n/a} -> ${vpn_static_current}** (${week_static_delta})
+- Manual rules: **${week_manual_num:-n/a} -> ${manual_count}** (${week_manual_delta})
+- Auto rules: **${week_auto_num:-n/a} -> ${auto_count}** (${week_auto_delta})
+- Growth level: **${week_growth_level}**
+- Growth note: **${week_auto_note}**
 EOF
   fi
 

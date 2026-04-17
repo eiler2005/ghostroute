@@ -34,6 +34,8 @@ DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
 DEVICE_MIX_TOTALS="$TMPDIR/device-mix-totals.txt"
 DEVICE_TOP_VPN="$TMPDIR/device-top-vpn.txt"
 DEVICE_TOP_WAN="$TMPDIR/device-top-wan.txt"
+WGS1_TOP_SUMMARY="$TMPDIR/wgs1-top-summary.txt"
+TAILSCALE_TOP_SUMMARY="$TMPDIR/tailscale-top-summary.txt"
 LAN_PARSED="$TMPDIR/lan.txt"
 TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
 WGS1_PARSED="$TMPDIR/wgs1.txt"
@@ -670,6 +672,72 @@ if [ -s "$DEVICE_TOP_WAN" ]; then
     NR <= 5 {
       printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), pct($4, $8)
     }' "$DEVICE_TOP_WAN"
+else
+  echo "  none"
+fi
+echo
+echo "=== TOP BY WG SERVER PEERS ==="
+if [ -s "$WGS1_PARSED" ]; then
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    {
+      total = ($3 + 0) + ($4 + 0)
+      if (total > 0) print $1 "|" total "|" $3 "|" $4 "|" $5
+    }' "$WGS1_PARSED" | sort -t'|' -k2,2nr | awk -F'|' '
+      NR <= 5 {
+        printf "  %-30s %10s  (RX %s / TX %s)\n", $1, human_bytes($2), human_bytes($3), human_bytes($4)
+      }
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }' > "$WGS1_TOP_SUMMARY"
+  if [ -s "$WGS1_TOP_SUMMARY" ]; then
+    cat "$WGS1_TOP_SUMMARY"
+  else
+    echo "  none"
+  fi
+else
+  echo "  none"
+fi
+echo
+echo "=== TOP BY TAILSCALE PEERS ==="
+if [ -s "$TAILSCALE_PARSED" ]; then
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    {
+      total = ($3 + 0) + ($4 + 0)
+      if (total > 0) print $1 "|" total "|" $3 "|" $4 "|" $5
+    }' "$TAILSCALE_PARSED" | sort -t'|' -k2,2nr | awk -F'|' '
+      NR <= 5 {
+        printf "  %-30s %10s  (RX %s / TX %s)\n", $1, human_bytes($2), human_bytes($3), human_bytes($4)
+      }
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }' > "$TAILSCALE_TOP_SUMMARY"
+  if [ -s "$TAILSCALE_TOP_SUMMARY" ]; then
+    cat "$TAILSCALE_TOP_SUMMARY"
+  else
+    echo "  none"
+  fi
 else
   echo "  none"
 fi

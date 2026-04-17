@@ -221,8 +221,10 @@ Traffic observability тоже теперь строится вокруг трё
 - `LAN device bytes` — per-device byte deltas по обычным LAN-клиентам (`VPN` / `WAN` / `Other`)
 - `WG server total` — router-wide bytes по `wgs1`
 - `WireGuard server peers` — per-peer transfer deltas из `wg show wgs1 dump`
+- `Top by WG server peers` / `Top by Tailscale peers` — короткие peer-level summaries поверх полных таблиц
 - `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — current/end-of-day conntrack snapshot для remote peer'ов
 - `Catalog Capacity` — live размер `VPN_DOMAINS`, `VPN_STATIC_NETS`, usage/headroom, manual/auto rule counts
+- `Growth Trends` / `Growth level` / `Growth note` — интерпретация того, насколько рост каталога уже стал operational темой
 - `Freshness` — age blocked-list, ipset persistence, traffic snapshots, tailscale/wgs1 artifacts
 - `Drift` — только repo-managed routing-инварианты, а не полный diff живого роутера
 

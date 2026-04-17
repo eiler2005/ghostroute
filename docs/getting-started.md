@@ -162,6 +162,10 @@ VPN_DOMAINS current 7125
 VPN_DOMAINS maxelem 65536
 Usage 10.9%
 
+=== Growth Trends ===
+Latest snapshot 2026-04-17
+VPN_DOMAINS delta +3 (Stable growth)
+
 === Freshness ===
 Blocked list OK (5h 59m)
 ...
@@ -185,6 +189,10 @@ OK
   - `maxelem`
   - usage/headroom
   - число `VPN_STATIC_NETS`, manual rules, auto rules
+- `Growth Trends`:
+  - дельта к последнему сохранённому snapshot
+  - week-over-week дельта, если в локальном журнале уже накопилась история
+  - `growth level` и `growth note`, чтобы быстро понять, стал ли auto-catalog источником роста
 - `Freshness`:
   - blocked list
   - ipset persistence
@@ -213,6 +221,10 @@ OK
 - `VPN total`
 - `WG server total`
 - `Tailscale total`
+- `TOP BY VPN`
+- `TOP BY DIRECT WAN`
+- `TOP BY WG SERVER PEERS`
+- `TOP BY TAILSCALE PEERS`
 - `LAN DEVICES`
 - `WIREGUARD SERVER PEERS`
 - `TAILSCALE PEERS`
@@ -262,7 +274,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 Это полезно для сценария “1–2 кнопки”:
 
 - `./verify.sh` — быстро понять, живы ли инварианты и нет ли drift/freshness problem
-- `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория
+- `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория, а на USB осталось последнее sanitised состояние роутера
 
 ## Шаг 10. Локальные тесты observability-слоя
 
@@ -277,7 +289,8 @@ bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/tr
 
 - shell-синтаксис
 - parser/formatter-логику на fixture'ах
-- что новые stable sections (`Window`, `Totals`, `Device Traffic Mix`, `Notes`) продолжают рендериться корректно
+- что новые stable sections (`Window`, `Totals`, `Device Traffic Mix`, `Top by WG server peers`, `Top by Tailscale peers`, `Notes`) продолжают рендериться корректно
+- что health Markdown не теряет `Growth vs latest saved snapshot` и `Growth level / Growth note`
 
 Подробное описание тестового каталога и того, что именно проверяет каждый fixture/smoke test:
 [../tests/README.md](../tests/README.md)

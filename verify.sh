@@ -151,12 +151,89 @@ elif [ "$capacity_level" = "Watch" ]; then
 fi
 
 latest_snapshot_date="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_DATE)"
+latest_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_DOMAINS)"
+latest_static_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_STATIC)"
+latest_manual_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_MANUAL)"
+latest_auto_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_AUTO)"
+week_snapshot_date="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_DATE)"
+week_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_VPN_DOMAINS)"
+week_static_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_VPN_STATIC)"
+week_manual_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_MANUAL)"
+week_auto_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_AUTO)"
+
+latest_vpn_prev="$(router_extract_int "$latest_vpn_raw")"
+latest_static_prev="$(router_extract_int "$latest_static_raw")"
+latest_manual_prev="$(router_extract_int "$latest_manual_raw")"
+latest_auto_prev="$(router_extract_int "$latest_auto_raw")"
+week_vpn_prev="$(router_extract_int "$week_vpn_raw")"
+week_static_prev="$(router_extract_int "$week_static_raw")"
+week_manual_prev="$(router_extract_int "$week_manual_raw")"
+week_auto_prev="$(router_extract_int "$week_auto_raw")"
+
+latest_vpn_delta="n/a"
+latest_static_delta="n/a"
+latest_manual_delta="n/a"
+latest_auto_delta="n/a"
+latest_rule_total_delta="n/a"
+latest_growth_level="Unknown"
+latest_growth_note="n/a"
+
+week_vpn_delta="n/a"
+week_static_delta="n/a"
+week_manual_delta="n/a"
+week_auto_delta="n/a"
+week_rule_total_delta="n/a"
+week_growth_level="Unknown"
+week_growth_note="n/a"
+
+if [ -n "$latest_vpn_prev" ]; then
+  latest_vpn_delta="$(awk -v cur="${vpn_current:-0}" -v prev="${latest_vpn_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  latest_growth_level="$(router_growth_level "$(router_extract_int "$latest_vpn_delta")" "$usage_pct" "$vpn_max")"
+fi
+if [ -n "$latest_static_prev" ]; then
+  latest_static_delta="$(awk -v cur="${vpn_static:-0}" -v prev="${latest_static_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$latest_manual_prev" ]; then
+  latest_manual_delta="$(awk -v cur="${manual_count:-0}" -v prev="${latest_manual_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$latest_auto_prev" ]; then
+  latest_auto_delta="$(awk -v cur="${auto_count:-0}" -v prev="${latest_auto_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$latest_manual_prev" ] && [ -n "$latest_auto_prev" ]; then
+  latest_rule_total_delta="$(awk -v cur_m="${manual_count:-0}" -v prev_m="${latest_manual_prev:-0}" -v cur_a="${auto_count:-0}" -v prev_a="${latest_auto_prev:-0}" 'BEGIN { printf "%+d", (cur_m + cur_a) - (prev_m + prev_a) }')"
+  latest_growth_note="$(router_auto_growth_note "$(router_extract_int "$latest_rule_total_delta")" "$(router_extract_int "$latest_auto_delta")")"
+fi
+
+if [ -n "$week_vpn_prev" ]; then
+  week_vpn_delta="$(awk -v cur="${vpn_current:-0}" -v prev="${week_vpn_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+  week_growth_level="$(router_growth_level "$(router_extract_int "$week_vpn_delta")" "$usage_pct" "$vpn_max")"
+fi
+if [ -n "$week_static_prev" ]; then
+  week_static_delta="$(awk -v cur="${vpn_static:-0}" -v prev="${week_static_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$week_manual_prev" ]; then
+  week_manual_delta="$(awk -v cur="${manual_count:-0}" -v prev="${week_manual_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$week_auto_prev" ]; then
+  week_auto_delta="$(awk -v cur="${auto_count:-0}" -v prev="${week_auto_prev:-0}" 'BEGIN { printf "%+d", cur - prev }')"
+fi
+if [ -n "$week_manual_prev" ] && [ -n "$week_auto_prev" ]; then
+  week_rule_total_delta="$(awk -v cur_m="${manual_count:-0}" -v prev_m="${week_manual_prev:-0}" -v cur_a="${auto_count:-0}" -v prev_a="${week_auto_prev:-0}" 'BEGIN { printf "%+d", (cur_m + cur_a) - (prev_m + prev_a) }')"
+  week_growth_note="$(router_auto_growth_note "$(router_extract_int "$week_rule_total_delta")" "$(router_extract_int "$week_auto_delta")")"
+fi
+
 if [ -n "$latest_snapshot_date" ]; then
-  latest_vpn="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_DOMAINS)"
-  latest_auto="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_AUTO)"
-  add_info "latest saved catalog snapshot: ${latest_snapshot_date} (VPN_DOMAINS ${latest_vpn}, auto rules ${latest_auto})"
+  add_info "latest saved catalog snapshot: ${latest_snapshot_date} (VPN_DOMAINS ${latest_vpn_raw}, auto rules ${latest_auto_raw})"
 else
   add_info "no prior local journal snapshot found for capacity deltas"
+fi
+
+if [ "$latest_growth_level" = "Critical" ] || [ "$week_growth_level" = "Critical" ]; then
+  add_warning "catalog growth reached critical band (latest ${latest_growth_level}, week ${week_growth_level})"
+elif [ "$latest_growth_level" = "Warning" ] || [ "$week_growth_level" = "Warning" ]; then
+  add_warning "catalog growth reached warning band (latest ${latest_growth_level}, week ${week_growth_level})"
+elif [ "$latest_growth_level" = "Informational" ] || [ "$week_growth_level" = "Informational" ]; then
+  add_info "catalog growth entered informational band (latest ${latest_growth_level}, week ${week_growth_level})"
 fi
 
 echo "=== Router ==="
@@ -187,6 +264,28 @@ printf "%-34s %s B\n" "Memory" "${vpn_mem}"
 printf "%-34s %s\n" "VPN_STATIC_NETS current" "${vpn_static}"
 printf "%-34s %s\n" "Manual rules" "${manual_count}"
 printf "%-34s %s\n" "Auto rules" "${auto_count}"
+echo
+echo "=== Growth Trends ==="
+if [ -n "$latest_snapshot_date" ]; then
+  printf "%-34s %s\n" "Latest snapshot" "${latest_snapshot_date}"
+  printf "%-34s %s (%s)\n" "VPN_DOMAINS delta" "${latest_vpn_delta}" "${latest_growth_level}"
+  printf "%-34s %s\n" "VPN_STATIC_NETS delta" "${latest_static_delta}"
+  printf "%-34s %s\n" "Manual rules delta" "${latest_manual_delta}"
+  printf "%-34s %s\n" "Auto rules delta" "${latest_auto_delta}"
+  printf "%-34s %s\n" "Growth note" "${latest_growth_note}"
+else
+  echo "Latest snapshot:          n/a"
+fi
+if [ -n "$week_snapshot_date" ]; then
+  printf "%-34s %s\n" "Week snapshot" "${week_snapshot_date}"
+  printf "%-34s %s (%s)\n" "VPN_DOMAINS week delta" "${week_vpn_delta}" "${week_growth_level}"
+  printf "%-34s %s\n" "VPN_STATIC_NETS week delta" "${week_static_delta}"
+  printf "%-34s %s\n" "Manual rules week delta" "${week_manual_delta}"
+  printf "%-34s %s\n" "Auto rules week delta" "${week_auto_delta}"
+  printf "%-34s %s\n" "Week growth note" "${week_growth_note}"
+else
+  echo "Week snapshot:            n/a"
+fi
 echo
 echo "=== Freshness ==="
 printf "%-34s %s (%s)\n" "Blocked list" "${blocked_level}" "$(router_human_age "$blocked_age")"

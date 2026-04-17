@@ -62,6 +62,7 @@ ip route get <resolved_ip> mark 0x1000
 
 - не сломаны ли repo-managed hooks
 - не вырос ли каталог неожиданно после нового семейства доменов
+- что пишет `Growth Trends` и не стал ли auto-catalog источником роста
 - свежи ли blocked-list и traffic snapshots
 
 ## Как добавить статическую сеть
@@ -323,6 +324,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - обновит tracked `docs/router-health-latest.md`
 - добавит local snapshot в `docs/vpn-domain-journal.md`
 - сохранит sanitised копию на USB-backed storage роутера
+- заодно зафиксирует текущий `Catalog Capacity` и `Growth vs latest saved snapshot`, чтобы позже было легче понять, повлияло ли новое семейство доменов на рост каталога
 
 ### Как перенести авто-добавленный домен в ручные конфиги
 

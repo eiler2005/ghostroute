@@ -57,6 +57,10 @@
   - `maxelem`
   - usage/headroom
   - manual / auto rule counts
+- `Growth Trends`
+  - дельта к последнему сохранённому snapshot
+  - week-over-week дельта, если history уже накопилась
+  - `growth level` / `growth note`
 - `Freshness`
   - blocked-list
   - ipset persistence file

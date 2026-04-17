@@ -25,6 +25,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - Router
    - Routing Health
    - Catalog Capacity
+   - Growth Trends
    - Freshness
    - Drift
    - Result
@@ -33,9 +34,10 @@ When the user asks for a router traffic report or router health/capacity report 
    - Summary
    - Routing Health
    - Catalog Capacity
-   - Freshness
-   - Traffic Snapshot
-   - Drift
+   - Growth vs latest saved snapshot
+    - Freshness
+    - Traffic Snapshot
+    - Drift
 
 5. For health/capacity answers explicitly mention:
    - VPN_DOMAINS current / maxelem / usage / headroom
@@ -43,6 +45,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - manual rule count
    - auto rule count
    - latest growth delta if present
+   - growth level / growth note if present
    - any warning/critical freshness item
 
 6. In traffic answers always include:
@@ -61,12 +64,14 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention top devices by VPN bytes
    - mention top devices by direct WAN bytes
 
-8. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+8. If the report contains "TOP BY WG SERVER PEERS" or "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer tables.
+
+9. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-9. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+10. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
 
-10. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+11. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
 ```
 
 ## Готовые пользовательские формулировки
@@ -119,9 +124,10 @@ USB-backed destination:
 
 1. `Result`
 2. `Catalog Capacity`
-3. `Freshness`
-4. `Drift`
-5. `Traffic Snapshot` (если пользователь просил ещё и operational picture)
+3. `Growth Trends` / `Growth vs latest saved snapshot`
+4. `Freshness`
+5. `Drift`
+6. `Traffic Snapshot` (если пользователь просил ещё и operational picture)
 
 ### Текущий день
 
@@ -241,6 +247,12 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через VPN?”, начинайте именно с этого блока, а не с сырых строк таблицы.
 
+`TOP BY WG SERVER PEERS` и `TOP BY TAILSCALE PEERS`:
+
+- это короткие peer-level summaries
+- их нужно использовать первыми, если человек спрашивает "какие удалённые клиенты были самыми активными"
+- полные таблицы `WIREGUARD SERVER PEERS` и `TAILSCALE PEERS` нужны уже для точных значений, handshake и last seen
+
 ## Как интерпретировать health-report
 
 ### `Catalog Capacity`
@@ -262,6 +274,8 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - это delta к последнему local journal snapshot
 - это не “за день” и не “за неделю” автоматически
 - `VPN_DOMAINS` — накопительное live-state ipset, которое сохраняется на USB и переживает рестарты
+- `Growth level` — компактная оценка риска по usage/headroom и скорости роста
+- `Growth note` — короткая интерпретация, похоже ли, что именно auto-catalog сейчас даёт основной вклад в рост
 
 ### `Freshness`
 
