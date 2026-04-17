@@ -7,9 +7,12 @@
 Ниже блок, который можно почти без изменений вставлять в системный prompt / AGENTS / CLAUDE для агента, который должен уметь отвечать на запросы вида "дай отчёт за день / неделю / месяц".
 
 ```txt
-When the user asks for a router traffic report in Russian or English:
+When the user asks for a router traffic report or router health/capacity report in Russian or English:
 
 1. Map the request to the correct command:
+   - "проверка роутера", "health", "router health", "состояние роутера", "дрейф", "freshness" -> ./verify.sh
+   - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./scripts/router-health-report
+   - "сохрани health snapshot и обнови журнал", "health report save" -> ./scripts/router-health-report --save
    - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report
    - "вчера", "yesterday" -> ./scripts/traffic-daily-report yesterday
    - specific date like 2026-04-14 -> ./scripts/traffic-daily-report 2026-04-14
@@ -18,7 +21,31 @@ When the user asks for a router traffic report in Russian or English:
 
 2. Default to redacted mode. Use REPORT_REDACT_NAMES=0 only for trusted local inspection when the user explicitly wants device-level identification.
 
-3. In the answer always include:
+3. If the command is ./verify.sh, answer from these sections first:
+   - Router
+   - Routing Health
+   - Catalog Capacity
+   - Freshness
+   - Drift
+   - Result
+
+4. If the command is ./scripts/router-health-report or --save, answer from these sections first:
+   - Summary
+   - Routing Health
+   - Catalog Capacity
+   - Freshness
+   - Traffic Snapshot
+   - Drift
+
+5. For health/capacity answers explicitly mention:
+   - VPN_DOMAINS current / maxelem / usage / headroom
+   - VPN_STATIC_NETS current
+   - manual rule count
+   - auto rule count
+   - latest growth delta if present
+   - any warning/critical freshness item
+
+6. In traffic answers always include:
    - report window from the script output
    - WAN total
    - VPN total
@@ -26,7 +53,7 @@ When the user asks for a router traffic report in Russian or English:
    - Tailscale total when relevant
    - VPN share/WAN
 
-4. If the report contains "DEVICE TRAFFIC MIX (LAN SOURCES)", use that block first for per-device interpretation:
+7. If the report contains "DEVICE TRAFFIC MIX", use that block first for per-device interpretation:
    - mention Per-device byte window
    - mention Device byte total
    - mention Via VPN
@@ -34,12 +61,12 @@ When the user asks for a router traffic report in Russian or English:
    - mention top devices by VPN bytes
    - mention top devices by direct WAN bytes
 
-5. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+8. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-6. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+9. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
 
-7. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+10. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
 ```
 
 ## Готовые пользовательские формулировки
@@ -54,8 +81,47 @@ When the user asks for a router traffic report in Russian or English:
 - `покажи трафик за неделю с устройствами`
 - `покажи сколько прошло через VPN и сколько мимо`
 - `дай разрез по устройствам: VPN / WAN / total`
+- `проверь состояние роутера`
+- `дай health report`
+- `сохрани sanitised snapshot для llm`
 
 ## Что запускать
+
+### Health / capacity / drift
+
+```bash
+./verify.sh
+./verify.sh --verbose
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Когда использовать:
+
+- `./verify.sh`
+  когда нужен быстрый live health-summary по routing-инвариантам, freshness и drift
+- `./verify.sh --verbose`
+  когда нужен подробный низкоуровневый dump для ручной диагностики
+- `./scripts/router-health-report`
+  когда нужен sanitised Markdown-отчёт, который можно сразу читать человеку или LLM
+- `./scripts/router-health-report --save`
+  когда нужно одновременно:
+  - обновить tracked `docs/router-health-latest.md`
+  - записать local snapshot в `docs/vpn-domain-journal.md`
+  - сохранить копию на USB-backed storage роутера
+
+USB-backed destination:
+
+- primary: `/opt/var/log/router_configuration/reports/`
+- fallback: `/jffs/addons/router_configuration/traffic/reports/`
+
+Для ответов по health/capacity начинайте со следующего порядка:
+
+1. `Result`
+2. `Catalog Capacity`
+3. `Freshness`
+4. `Drift`
+5. `Traffic Snapshot` (если пользователь просил ещё и operational picture)
 
 ### Текущий день
 
@@ -174,6 +240,58 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - `Top devices by direct WAN bytes` = устройства, которые больше всего обходили VPN
 
 Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через VPN?”, начинайте именно с этого блока, а не с сырых строк таблицы.
+
+## Как интерпретировать health-report
+
+### `Catalog Capacity`
+
+Это каталог и его текущая ёмкость, а не “трафик за период”.
+
+Нужно проговаривать:
+
+- `VPN_DOMAINS current`
+- `VPN_DOMAINS maxelem`
+- usage %
+- headroom
+- `VPN_STATIC_NETS current`
+- manual rule count
+- auto-discovered rule count
+
+Если в health-report есть блок роста относительно сохранённого snapshot:
+
+- это delta к последнему local journal snapshot
+- это не “за день” и не “за неделю” автоматически
+- `VPN_DOMAINS` — накопительное live-state ipset, которое сохраняется на USB и переживает рестарты
+
+### `Freshness`
+
+`Freshness` показывает, насколько свежие operational artifacts видит скрипт:
+
+- blocked list
+- ipset persistence file
+- interface counters snapshot
+- tailscale snapshot
+- wgs1 snapshot
+- daily close snapshot
+
+Если статус не `OK`, это надо явно сказать человеку, потому что:
+
+- `Warning` / `Critical` означают risk для актуальности observability
+- `Missing` означает, что соответствующий слой snapshots ещё не накопился или отсутствует
+
+### `Drift`
+
+`Drift` — это не “всё подряд отличается”, а только repo-managed инварианты:
+
+- ipset'ы
+- routing hooks
+- `ip rule`
+- DNS redirect для `wgs1`
+
+Если drift пустой, можно честно говорить:
+
+- repo-managed routing layer сейчас на месте
+- проблема, если она есть, вероятнее в данных, freshness или внешнем клиенте, а не в missing hook
 
 Строка `Per-device byte window` важна отдельно:
 

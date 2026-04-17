@@ -4,7 +4,7 @@
 
 ## Цели
 
-`traffic-report` и `traffic-daily-report` отвечают на 7 практических вопросов:
+`traffic-report`, `traffic-daily-report` и `router-health-report` покрывают 8 практических вопросов:
 
 1. Сколько трафика прошло через внешний канал роутера.
 2. Сколько из этого трафика прошло через `WireGuard wgc1`.
@@ -13,6 +13,7 @@
 5. Сколько байт по `Tailscale` прошло у каждого peer'а.
 6. Сколько байт по raw `WireGuard server` прошло у каждого peer'а и какие у него сейчас active conntrack entries.
 7. Какие локальные устройства сейчас активны и сколько у них активных соединений.
+8. Каково текущее health/capacity/freshness-состояние routing-слоя без чтения сырых роутерных дампов.
 
 Скрипты не являются биллинговой системой. Они сочетают:
 
@@ -23,6 +24,12 @@
 - peer-статистику `wg show wgs1 dump`
 
 Поэтому часть метрик точная, а часть является live или end-of-day снимком.
+
+Отдельно поверх traffic-слоя есть sanitised health-report:
+
+- `./verify.sh` — compact live health-summary
+- `./scripts/router-health-report` — Markdown-слой для человека и LLM
+- `./scripts/router-health-report --save` — tracked summary + local journal + USB-backed copy на роутере
 
 ## Компоненты
 
@@ -111,16 +118,87 @@
 5. Считает per-device LAN byte дельты между первым и последним snapshot в выбранном периоде.
 6. Показывает end-of-day или end-of-period `LAN DEVICES` и `WIREGUARD SERVER PEERS` снимки из `daily/YYYY-MM-DD-lan-conntrack.txt`.
 
+### `scripts/router-health-report`
+
+Локальный CLI-скрипт на рабочей машине.
+
+Что делает:
+
+1. Подключается к роутеру по `ssh`.
+2. Снимает repo-managed health-инварианты:
+   - `VPN_DOMAINS`, `VPN_STATIC_NETS`
+   - `RC_VPN_ROUTE`
+   - `ip rule` для `1.1.1.1`, `9.9.9.9`, `fwmark 0x1000`
+   - hooks для `br0`, `wgs1`, `OUTPUT`
+   - DNS redirect для `wgs1`
+3. Снимает `Catalog Capacity`:
+   - `VPN_DOMAINS current`
+   - `maxelem`
+   - usage/headroom
+   - `VPN_STATIC_NETS current`
+   - manual / auto rule counts
+4. Снимает `Freshness` operational artifacts:
+   - blocked list
+   - ipset persistence file
+   - interface counters
+   - Tailscale snapshots
+   - WGS1 snapshots
+   - daily close snapshot
+5. Поверх этого читает `./scripts/traffic-report` и встраивает базовый `Traffic Snapshot`.
+6. Печатает sanitised Markdown с устойчивыми секциями.
+
+В режиме `--save` дополнительно:
+
+- обновляет tracked `docs/router-health-latest.md`
+- аппендит local operational snapshot в `docs/vpn-domain-journal.md`
+- пишет копию на USB-backed router storage:
+  - primary: `/opt/var/log/router_configuration/reports/`
+  - fallback: `/jffs/addons/router_configuration/traffic/reports/`
+
 Примеры:
 
 ```bash
+./verify.sh
+./verify.sh --verbose
 ./scripts/traffic-report
 ./scripts/traffic-daily-report today
 ./scripts/traffic-daily-report yesterday
 ./scripts/traffic-daily-report 2026-04-14
 ./scripts/traffic-daily-report week
 ./scripts/traffic-daily-report month
+./scripts/router-health-report
+./scripts/router-health-report --save
 ```
+
+## Стабильная структура секций
+
+Чтобы LLM и человек читали отчёты одинаково, у traffic-скриптов теперь стабильные блоки:
+
+- `=== WINDOW ===`
+- `=== TOTALS ===`
+- `=== DEVICE TRAFFIC MIX ===`
+- `=== TOP BY VPN ===`
+- `=== TOP BY DIRECT WAN ===`
+- `=== LAN DEVICE BYTES ===`
+- `=== LAN DEVICES ===`
+- `=== WG SERVER CONNECTION SNAPSHOT ===`
+- `=== WG SERVER PEERS ===`
+- `=== TAILSCALE PEERS ===`
+- `=== NOTES ===`
+
+`router-health-report` даёт стабильные Markdown-секции:
+
+- `Summary`
+- `Router`
+- `Routing Health`
+- `Catalog Capacity`
+- `Freshness`
+- `Traffic Snapshot`
+- `Drift`
+- `Notes`
+
+Подробное описание тестового слоя, fixture'ов и причин, почему он разделён на `fixture` и `live smoke`, лежит в:
+[../tests/README.md](../tests/README.md)
 
 ## Как читать метрики
 

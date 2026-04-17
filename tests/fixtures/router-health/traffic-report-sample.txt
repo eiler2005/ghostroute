@@ -1,0 +1,18 @@
+=== WINDOW ===
+Router-wide window:      2026-04-17T00:00:00+0300 -> current router state
+Per-device byte window:  2026-04-17T12:00:00+0300 -> current router state
+
+=== TOTALS ===
+WAN total:               12.34 GiB  (RX 10.00 GiB / TX 2.34 GiB)
+VPN total:               5.67 GiB  (RX 4.00 GiB / TX 1.67 GiB)
+WG server total:         0.45 GiB  (RX 0.20 GiB / TX 0.25 GiB)
+Tailscale total:         0.00 GiB  (RX 0.00 GiB / TX 0.00 GiB)
+VPN share/WAN:           45.9%
+
+=== DEVICE TRAFFIC MIX ===
+Devices in byte view:    7
+Device byte total:       5.80 GiB
+Via VPN:                 5.00 GiB  (86.2%)
+Direct WAN:              700.0 MiB  (11.8%)
+Other:                   120.0 MiB  (2.0%)
+Interpretation:          VPN = traffic via wgc1; Direct WAN = traffic that bypassed VPN.

@@ -150,6 +150,7 @@ scripts/
   domain-report                   # CLI: просмотр/управление авто-добавленными доменами
   traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/WG-server/Tailscale + LAN/WGS snapshots
   traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots, incl. WGS peers
+  router-health-report            # CLI: sanitised health/capacity/traffic summary для человека и LLM
   cron-save-ipset                 # сохранение ipset на диск каждые 6ч
   cron-traffic-snapshot           # сохранение traffic / Tailscale / WGS snapshots каждые 6ч
   cron-traffic-daily-close        # сохранение end-of-day LAN/WGS conntrack snapshot в 23:55
@@ -163,9 +164,10 @@ docs/
   current-routing-explained.md    # полный каталог доменов с пояснениями
   traffic-observability.md        # архитектура traffic-report и сетевых счётчиков
   llm-traffic-runbook.md          # короткая инструкция для LLM / агента
+  router-health-latest.md         # tracked sanitised snapshot последнего сохранённого health-report
 
 deploy.sh                         # деплой на роутер по SSH/SCP
-verify.sh                         # проверка состояния роутера после деплоя
+verify.sh                         # compact health-summary + drift/freshness checks
 .env.example                      # шаблон настроек
 ```
 
@@ -248,6 +250,72 @@ cp .env.example secrets/router.env
 `LAN device bytes` и `Device traffic mix` появятся только после того, как роутер успеет собрать минимум два byte-snapshot внутри дня или периода. До этого в отчёте будет пояснение, что byte baseline ещё не накопился.
 
 Для `week/month` router-wide totals могут покрывать более широкое окно, чем `LAN device bytes`. Поэтому в отчёте теперь есть отдельная строка `Per-device byte window`, которая явно показывает, за какой интервал считается per-device разбивка.
+
+## Health summary и LLM-friendly snapshot
+
+Теперь поверх traffic-отчётов есть ещё два безопасных operational-инструмента:
+
+- `./verify.sh`
+  compact summary по секциям `Router`, `Routing Health`, `Catalog Capacity`, `Freshness`, `Drift`, `Result`
+- `./verify.sh --verbose`
+  глубокий live-dump для ручной диагностики
+- `./scripts/router-health-report`
+  sanitised Markdown-отчёт, понятный человеку и любой LLM
+- `./scripts/router-health-report --save`
+  одновременно:
+  - обновляет tracked [docs/router-health-latest.md](docs/router-health-latest.md)
+  - аппендит локальную operational-запись в `docs/vpn-domain-journal.md`
+  - сохраняет копию на USB-backed storage роутера в `/opt/var/log/router_configuration/reports/`
+    или fallback-путь `/jffs/addons/router_configuration/traffic/reports/`, если Entware недоступен
+
+Быстрые команды:
+
+```bash
+./verify.sh
+./verify.sh --verbose
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Что показывает `router-health-report`:
+
+- текущий health-result
+- живое состояние repo-managed routing-инвариантов
+- ёмкость каталога (`VPN_DOMAINS`, `VPN_STATIC_NETS`, usage/headroom)
+- свежесть blocked-list, ipset persistence и traffic snapshots
+- базовые traffic totals и `Device Traffic Mix`
+- growth delta относительно последнего сохранённого snapshot из локального журнала
+
+Это удобно и для человека, и для LLM:
+
+- tracked `docs/router-health-latest.md` можно безопасно читать из git
+- локальный `docs/vpn-domain-journal.md` остаётся operational-журналом
+- USB-копия на роутере даёт быстрый live-reference даже без локального git-репозитория
+
+LLM/runbook: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+Последний sanitised snapshot: [docs/router-health-latest.md](docs/router-health-latest.md)
+
+## Тесты и smoke-checks
+
+После изменений в observability удобно прогонять:
+
+```bash
+bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+./tests/test-router-health.sh
+./verify.sh
+./scripts/traffic-report
+./scripts/traffic-daily-report week
+./scripts/router-health-report
+```
+
+Эти команды не меняют runtime-конфигурацию роутера. Они только:
+
+- валидируют shell-скрипты
+- проверяют parser/formatter-логику на fixture'ах
+- снимают live state по SSH
+
+Что именно тестируется и почему этот слой разделён на `fixture` и `live smoke`:
+[tests/README.md](tests/README.md)
 
 ---
 
@@ -336,6 +404,7 @@ wg show wgc1
 | [architecture.md](docs/architecture.md) | Детальная архитектура: поток пакетов, DNS upstream, механизм деплоя |
 | [getting-started.md](docs/getting-started.md) | Требования, SSH-настройка, первый деплой, проверка |
 | [domain-management.md](docs/domain-management.md) | Как добавить/удалить домен, конвенции |
+| [future-improvements-backlog.md](docs/future-improvements-backlog.md) | Отложенные улучшения и готовый backlog-контекст для будущего LLM |
 | [telegram-deep-dive.md](docs/telegram-deep-dive.md) | Почему Telegram особенный: DPI, IP-блокировка, подсети |
 | [troubleshooting.md](docs/troubleshooting.md) | Частые проблемы и команды диагностики |
 | [current-routing-explained.md](docs/current-routing-explained.md) | Полный каталог маршрутизируемых доменов |

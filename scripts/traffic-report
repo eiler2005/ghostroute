@@ -7,30 +7,11 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
-[ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+. "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+router_health_load_env
 
-ROUTER_USER="${ROUTER_USER:-admin}"
-ROUTER_PORT="${ROUTER_PORT:-22}"
-CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
-ROUTER="${ROUTER:-}"
-SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${PROJECT_ROOT}/secrets/device-metadata.local.tsv"
-
-SSH_OPTS=(
-  -i "$SSH_IDENTITY_FILE"
-  -p "$ROUTER_PORT"
-  -o ConnectTimeout="$CONNECT_TIMEOUT"
-  -o IdentitiesOnly=yes
-  -o PubkeyAcceptedAlgorithms=+ssh-rsa
-  -o StrictHostKeyChecking=accept-new
-)
-
-if [ -z "$ROUTER" ]; then
-  ROUTER="$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }')" || true
-fi
-[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -612,8 +593,18 @@ apply_device_metadata
 redact_report_tables
 build_device_mix_views
 
-echo "=== TRAFFIC SUMMARY (SINCE ${REPORT_START}) ==="
+ROUTER_WINDOW_LINE="${REPORT_START} -> current router state"
+if [ -s "$LAN_BYTES_PARSED" ] && [ -n "$LAN_BYTES_START" ]; then
+  DEVICE_WINDOW_LINE="${LAN_BYTES_START} -> current router state"
+else
+  DEVICE_WINDOW_LINE="n/a (no byte baseline yet)"
+fi
+
+echo "=== WINDOW ==="
+echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
+echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
 echo
+echo "=== TOTALS ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
 echo "VPN total:               $(human_gib "$VPN_TOTAL")  (RX $(human_gib "$VPN_RX") / TX $(human_gib "$VPN_TX"))"
 echo "WG server total:         $(human_gib "$WGS1_TOTAL")  (RX $(human_gib "$WGS1_RX") / TX $(human_gib "$WGS1_TX"))"
@@ -623,7 +614,67 @@ echo "Tailscale total:         $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib 
 echo "WireGuard peer total:    $(human_gib "$WGS1_PEER_TOTAL")  (RX $(human_gib "$WGS1_PEER_RX_TOTAL") / TX $(human_gib "$WGS1_PEER_TX_TOTAL"))"
 echo "VPN share/WAN:           ${VPN_SHARE}"
 echo
-echo "=== LAN DEVICE BYTES (SINCE FIRST BYTE SNAPSHOT TODAY) ==="
+echo "=== DEVICE TRAFFIC MIX ==="
+if [ -s "$DEVICE_MIX_TOTALS" ]; then
+  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_VPN_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
+  echo "Devices in byte view:    ${DEVICE_COUNT}"
+  echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
+  echo "Via VPN:                 $(human_bytes "$DEVICE_VPN_BYTES")  ($(human_pct "$DEVICE_VPN_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Interpretation:          VPN = traffic via wgc1; Direct WAN = traffic that bypassed VPN."
+else
+  echo "Devices in byte view:    n/a"
+  echo "Device byte total:       n/a"
+  echo "Via VPN:                 n/a"
+  echo "Direct WAN:              n/a"
+  echo "Other:                   n/a"
+  echo "Interpretation:          No per-device byte baseline yet for today."
+fi
+echo
+echo "=== TOP BY VPN ==="
+if [ -s "$DEVICE_TOP_VPN" ]; then
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    function pct(part, total) {
+      if (total <= 0) return "n/a"
+      return sprintf("%.1f%%", (part / total) * 100)
+    }
+    NR <= 5 {
+      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($3), pct($3, $8)
+    }' "$DEVICE_TOP_VPN"
+else
+  echo "  none"
+fi
+echo
+echo "=== TOP BY DIRECT WAN ==="
+if [ -s "$DEVICE_TOP_WAN" ]; then
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    function pct(part, total) {
+      if (total <= 0) return "n/a"
+      return sprintf("%.1f%%", (part / total) * 100)
+    }
+    NR <= 5 {
+      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), pct($4, $8)
+    }' "$DEVICE_TOP_WAN"
+else
+  echo "  none"
+fi
+echo
+echo "=== LAN DEVICE BYTES ==="
 if [ -s "$LAN_BYTES_PARSED" ]; then
   printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "VPN" "WAN" "Other" "Upload" "Download"
   awk -F'|' '
@@ -646,66 +697,8 @@ else
   echo "No LAN byte baseline for today yet. Wait for the next scheduled snapshot or run cron-traffic-snapshot on the router."
 fi
 echo
-echo "=== DEVICE TRAFFIC MIX (LAN SOURCES) ==="
-if [ -s "$DEVICE_MIX_TOTALS" ]; then
-  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_VPN_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
-  echo "Per-device byte window:  ${LAN_BYTES_START} -> current router state"
-  echo "Devices in byte view:    ${DEVICE_COUNT}"
-  echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
-  echo "Via VPN:                 $(human_bytes "$DEVICE_VPN_BYTES")  ($(human_pct "$DEVICE_VPN_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo
-  echo "Top devices by VPN bytes:"
-  if [ -s "$DEVICE_TOP_VPN" ]; then
-    awk -F'|' '
-      function human_bytes(x) {
-        x += 0
-        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
-        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
-        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
-        return sprintf("%d B", x)
-      }
-      function pct(part, total) {
-        if (total <= 0) return "n/a"
-        return sprintf("%.1f%%", (part / total) * 100)
-      }
-      NR <= 5 {
-        printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($3), pct($3, $8)
-      }
-    ' "$DEVICE_TOP_VPN"
-  else
-    echo "  none"
-  fi
-  echo
-  echo "Top devices by direct WAN bytes:"
-  if [ -s "$DEVICE_TOP_WAN" ]; then
-    awk -F'|' '
-      function human_bytes(x) {
-        x += 0
-        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
-        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
-        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
-        return sprintf("%d B", x)
-      }
-      function pct(part, total) {
-        if (total <= 0) return "n/a"
-        return sprintf("%.1f%%", (part / total) * 100)
-      }
-      NR <= 5 {
-        printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), pct($4, $8)
-      }
-    ' "$DEVICE_TOP_WAN"
-  else
-    echo "  none"
-  fi
-  echo
-  echo "This section explains the per-device split: 'VPN' is traffic via wgc1, 'Direct WAN' is traffic that bypassed VPN."
-else
-  echo "No device byte mix is available yet because the router has not accumulated a byte baseline for today."
-fi
-echo
-echo "=== LAN DEVICES (CURRENT CONNECTION SNAPSHOT) ==="
+echo "=== LAN DEVICES ==="
+echo "Snapshot type:           current connection snapshot"
 printf "%-8s  %-18s  %7s  %7s  %7s  %7s\n" "Device" "Host" "Total" "VPN" "WAN" "Local"
 awk -F'|' '
   BEGIN { idx = 0; }
@@ -716,7 +709,8 @@ awk -F'|' '
 echo
 echo "Counts above are active conntrack entries, not cumulative bytes."
 echo
-echo "=== WIREGUARD SERVER PEERS (CURRENT CONNECTION SNAPSHOT) ==="
+echo "=== WG SERVER CONNECTION SNAPSHOT ==="
+echo "Snapshot type:           current connection snapshot"
 if [ -s "$WGS1_CONNTRACK_PARSED" ]; then
   printf "%-8s  %-18s  %7s  %7s  %7s  %7s\n" "Peer" "Name" "Total" "VPN" "WAN" "Local"
   awk -F'|' '
@@ -731,7 +725,8 @@ fi
 echo
 echo "Counts above are active conntrack entries attributed to remote clients on wgs1."
 echo
-echo "=== WIREGUARD SERVER PEERS (SINCE ${REPORT_START}) ==="
+echo "=== WG SERVER PEERS ==="
+echo "Window:                  ${ROUTER_WINDOW_LINE}"
 if [ -s "$WGS1_PARSED" ]; then
   printf "%-20s  %-14s  %12s  %12s  %-25s  %s\n" "Name" "Address" "RX" "TX" "Latest handshake" "Endpoint"
   awk -F'|' '
@@ -748,7 +743,8 @@ echo
 echo "WireGuard rows are per-peer transfer deltas since the first sample today."
 echo "Values under 0.01 GiB are rounded to 0.00 GiB."
 echo
-echo "=== TAILSCALE PEERS (SINCE ${REPORT_START}) ==="
+echo "=== TAILSCALE PEERS ==="
+echo "Window:                  ${ROUTER_WINDOW_LINE}"
 printf "%-22s  %-7s  %12s  %12s  %s\n" "Name" "Online" "RX" "TX" "Last seen"
 awk -F'|' '
   function human_gib(x) {
@@ -761,7 +757,10 @@ awk -F'|' '
 echo
 echo "Tailscale rows are per-peer traffic deltas since the first sample today."
 echo "Values under 0.01 GiB are rounded to 0.00 GiB."
-echo "Per-peer split into router VPN (wgc1) vs direct WAN is not tracked reliably for Tailscale Exit Node traffic."
+echo
+echo "=== NOTES ==="
+echo "- Per-peer split into router VPN (wgc1) vs direct WAN is not tracked reliably for Tailscale Exit Node traffic."
+echo "- Connection snapshot sections show conntrack counts, not bytes."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
-  echo "Peer names, LAN hostnames, tunnel addresses, and endpoints are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
+  echo "- Peer names, LAN hostnames, tunnel addresses, and endpoints are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
 fi

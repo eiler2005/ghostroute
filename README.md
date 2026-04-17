@@ -164,6 +164,7 @@ scripts/
   domain-report                   # CLI tool: view / manage / reset auto-discovered domains
   traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/WG-server/Tailscale totals + LAN/WGS snapshots
   traffic-daily-report            # CLI tool: closed-day report from stored snapshots, incl. WGS peers
+  router-health-report            # CLI tool: sanitised health/capacity/traffic summary for humans and LLMs
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
   cron-traffic-snapshot           # stores traffic counters / Tailscale / WGS snapshots every 6h
   cron-traffic-daily-close        # stores end-of-day LAN/WGS conntrack snapshot at 23:55
@@ -172,14 +173,16 @@ docs/
   architecture.md                 # packet flow, DNS upstream, deployment mechanics (RU)
   getting-started.md              # step-by-step setup from scratch (RU)
   domain-management.md            # how to add/remove domains (RU)
+  future-improvements-backlog.md  # deferred improvements / future LLM handoff context (RU)
   telegram-deep-dive.md           # why Telegram needs special treatment (RU)
   troubleshooting.md              # diagnostics and common issues (RU)
   current-routing-explained.md    # full catalog of routed domains (RU)
   traffic-observability.md        # traffic-report architecture and counter semantics (RU)
   llm-traffic-runbook.md          # minimal instructions for an LLM / agent (RU)
+  router-health-latest.md         # tracked sanitised snapshot of the latest saved health report
 
 deploy.sh                         # idempotent deploy to router via SSH/SCP
-verify.sh                         # validates router state after deploy
+verify.sh                         # compact health-summary + drift/freshness checks
 .env.example                      # configuration template
 ```
 
@@ -277,6 +280,68 @@ Quick commands:
 `LAN device bytes` and `Device traffic mix` appear after the router has collected at least two byte snapshots for the same day/period. Until then, reports show a note that the byte baseline is not available yet.
 
 For `week/month`, router-wide totals may cover a wider window than `LAN device bytes`. In that case the report now prints a dedicated `Per-device byte window` line so you can see exactly what interval the per-device split covers.
+
+### Health summary and LLM-friendly snapshot
+
+On top of the traffic reports there are now two safe operational commands:
+
+- `./verify.sh`
+  compact summary grouped into `Router`, `Routing Health`, `Catalog Capacity`, `Freshness`, `Drift`, `Result`
+- `./verify.sh --verbose`
+  deeper live diagnostic dump
+- `./scripts/router-health-report`
+  sanitised Markdown health snapshot for humans and LLMs
+- `./scripts/router-health-report --save`
+  updates all three layers at once:
+  - tracked [docs/router-health-latest.md](docs/router-health-latest.md)
+  - local operational journal `docs/vpn-domain-journal.md`
+  - router-side USB-backed copy in `/opt/var/log/router_configuration/reports/`
+    or fallback `/jffs/addons/router_configuration/traffic/reports/` when Entware is unavailable
+
+Quick commands:
+
+```bash
+./verify.sh
+./verify.sh --verbose
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+`router-health-report` combines:
+
+- repo-managed routing invariants
+- catalog capacity and headroom
+- freshness of blocked-list, ipset persistence, and traffic snapshots
+- base traffic totals and device traffic mix
+- growth deltas against the latest saved local journal snapshot
+
+This gives a safe two-layer operational model:
+
+- tracked `docs/router-health-latest.md` for repository/LLM consumption
+- local `docs/vpn-domain-journal.md` for operational history
+- router-side USB copy for quick access even without the local git checkout
+
+Runbook: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
+Latest sanitised snapshot: [docs/router-health-latest.md](docs/router-health-latest.md)
+
+### Tests and smoke checks
+
+Recommended safe validation after observability/reporting changes:
+
+```bash
+bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+./tests/test-router-health.sh
+./verify.sh
+./scripts/traffic-report
+./scripts/traffic-daily-report week
+./scripts/router-health-report
+```
+
+These commands do not change router runtime config. They only:
+
+- validate shell syntax
+- smoke-test parser/formatter logic on fixtures
+- read live router state over SSH
 
 ---
 

@@ -1,5 +1,37 @@
 # Диагностика проблем
 
+## Сначала: быстрый health check
+
+Перед точечной диагностикой почти всегда полезно начать с:
+
+```bash
+./verify.sh
+./scripts/router-health-report
+```
+
+Как это читать:
+
+- `Routing Health`
+  показывает, на месте ли repo-managed hooks, `ip rule`, `RC_VPN_ROUTE`, DNS redirect для `wgs1`
+- `Catalog Capacity`
+  показывает, не разросся ли `VPN_DOMAINS` и сколько headroom осталось
+- `Freshness`
+  показывает, насколько свежи blocked-list, ipset persistence и traffic snapshots
+- `Drift`
+  показывает только missing repo-managed invariants, а не “всё подряд отличается”
+
+Если нужно сохранить понятный sanitised snapshot для себя или следующей LLM:
+
+```bash
+./scripts/router-health-report --save
+```
+
+Он обновит:
+
+- tracked `docs/router-health-latest.md`
+- local `docs/vpn-domain-journal.md`
+- router-side USB-backed copy в `/opt/var/log/router_configuration/reports/`
+
 ## Сайт не идёт через VPN
 
 ### Симптом
@@ -143,6 +175,15 @@ cru l | grep save-ipset
 - **Cron не настроен** — перезапустите `services-start`
 - **State-файл не существует** — ещё не было первого сохранения (подождите 6 часов или запустите `cron-save-ipset` вручную)
 - **firewall-start не запускается при загрузке** — проверьте, что файл существует и исполняемый: `ls -la /jffs/scripts/firewall-start`
+
+После этого дополнительно проверьте:
+
+```bash
+./verify.sh
+./scripts/router-health-report
+```
+
+Если `Freshness` показывает старый или missing persistence file, это уже быстрее видно в summary, чем по ручным командам.
 
 ## SSH connection refused
 
@@ -290,6 +331,43 @@ grep "conf-file.*autodiscovered" /etc/dnsmasq.conf
 
 Если строки нет — запустите `./deploy.sh`. Начиная с текущей версии `configs/dnsmasq.conf.add` содержит эту директиву в конце файла.
 
+## verify.sh показывает Warning, но routing вроде работает
+
+### Типичный случай
+
+`verify.sh` сейчас может вернуть `Warning`, даже если основные routing hooks и каталоги живы.
+
+Чаще всего это связано не с поломкой runtime, а с `Freshness`:
+
+- blocked list давно не обновлялся
+- traffic snapshots устарели
+- `WGS1 snapshot` ещё не накопился как отдельный artifact
+
+### Как отличить harmless warning от реальной поломки
+
+Смотрите в таком порядке:
+
+1. `Routing Health`
+   - если всё `OK`, core routing layer на месте
+2. `Drift`
+   - если пусто, missing repo-managed invariants не найдено
+3. `Freshness`
+   - warning здесь означает проблему observability, а не обязательно проблему маршрутизации
+
+Пример:
+
+- `WGS1 snapshot = Missing`
+  это warning слоя observability, если отдельный snapshot-файл ещё не накопился на USB-backed storage
+  Сам `wgs1` routing при этом может работать нормально
+
+### Что делать
+
+- если routing реально работает, просто сохранить новое состояние:
+  ```bash
+  ./scripts/router-health-report --save
+  ```
+- если warning связан с blocked-list или snapshots, дождитесь следующего cron-run или проверьте соответствующий artifact вручную
+
 ---
 
 ## Авто-добавленный домен не работает или добавился лишний
@@ -382,11 +460,25 @@ ip route get 142.250.74.206           # Google
 ip route get 149.154.167.1            # Telegram DC
 ```
 
+Дополнительно:
+
+```bash
+# Compact health-summary
+./verify.sh
+
+# Sanitised Markdown snapshot для человека / LLM
+./scripts/router-health-report
+
+# Сохранить состояние в tracked summary + local journal + USB-backed reports
+./scripts/router-health-report --save
+```
+
 Если `VPN_DOMAINS` заметно растёт:
 
 - До `~10%` лимита `65536` — это комфортный уровень.
 - После `>30%` стоит проверить auto-discovery на слишком широкие семейства и CDN-агрегаты.
 - Для истории и тренда обновляйте локальный `docs/vpn-domain-journal.md`: там хранится operational snapshot по размеру `ipset`.
+- Для tracked sanitised состояния используйте `docs/router-health-latest.md`: его можно безопасно читать из git и передавать LLM.
 
 ## Связанные документы
 

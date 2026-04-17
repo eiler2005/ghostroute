@@ -51,6 +51,19 @@ ip route get <resolved_ip> mark 0x1000
 # Должен показать: ... dev wgc1 ...
 ```
 
+После этого имеет смысл снять и короткий operational summary:
+
+```bash
+./verify.sh
+./scripts/router-health-report
+```
+
+Это помогает сразу увидеть:
+
+- не сломаны ли repo-managed hooks
+- не вырос ли каталог неожиданно после нового семейства доменов
+- свежи ли blocked-list и traffic snapshots
+
 ## Как добавить статическую сеть
 
 Статические сети нужны, когда сервис использует прямые IP-подключения, минуя DNS (как Telegram).
@@ -289,6 +302,7 @@ secrets/no-vpn-ip-ports.local.txt
 
 - `VPN total` — вырос ли router-wide трафик через `wgc1`
 - `WG server total` — если тестируете через raw `WireGuard server`
+- `Device Traffic Mix` — ушёл ли новый трафик через `VPN` или часть пошла напрямую в `WAN`
 - `LAN DEVICES` — появились ли active conntrack entries у локального клиента
 - `WIREGUARD SERVER PEERS` — появились ли active conntrack entries и transfer deltas у remote peer'а
 
@@ -297,6 +311,18 @@ secrets/no-vpn-ip-ports.local.txt
 ```bash
 REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 ```
+
+Если после серии добавлений хотите зафиксировать уже не только traffic, но и состояние каталога:
+
+```bash
+./scripts/router-health-report --save
+```
+
+Эта команда:
+
+- обновит tracked `docs/router-health-latest.md`
+- добавит local snapshot в `docs/vpn-domain-journal.md`
+- сохранит sanitised копию на USB-backed storage роутера
 
 ### Как перенести авто-добавленный домен в ручные конфиги
 
@@ -333,3 +359,5 @@ getdomainnames.sh
 - [telegram-deep-dive.md](telegram-deep-dive.md) — почему для Telegram нужен особый подход
 - [current-routing-explained.md](current-routing-explained.md) — полный список того, что сейчас роутится
 - [x3mrouting-roadmap.md](x3mrouting-roadmap.md) — обнаружение доменов с помощью x3mRouting
+- [traffic-observability.md](traffic-observability.md) — как читать traffic / health / capacity отчёты
+- [llm-traffic-runbook.md](llm-traffic-runbook.md) — готовая инструкция для агента/LLM

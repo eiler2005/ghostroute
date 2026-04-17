@@ -142,3 +142,32 @@ Common patterns:
 - **Auth fails** → missing auth subdomain (often `accounts.`, `auth.`, or `sso.` + main domain)
 - **API works, web UI fails** → missing static asset CDN (often a separate domain like `oaistatic.com`)
 - **DNS resolves but connection fails** → service may be blocked at IP level, not DNS → check if service needs static IP routing
+
+## Operational validation after adding AI/dev domains
+
+После добавления нового AI/dev service-family полезно проверить не только `ipset`, но и общий operational picture:
+
+```bash
+./verify.sh
+./scripts/traffic-report
+./scripts/router-health-report
+```
+
+Что смотреть:
+
+- `Routing Health`
+  - на месте ли `RC_VPN_ROUTE`, `ip rule`, DNS routing
+- `Catalog Capacity`
+  - не вырос ли `VPN_DOMAINS` неожиданно сильно после нового семейства
+- `Traffic Snapshot`
+  - начал ли сервис реально давать `VPN`-трафик
+- `Device Traffic Mix`
+  - не ушёл ли тестируемый клиент в direct `WAN`
+
+Если нужно сохранить понятный snapshot для следующего агента/LLM:
+
+```bash
+./scripts/router-health-report --save
+```
+
+Это обновит tracked `docs/router-health-latest.md` и одновременно сохранит sanitised copy на USB-backed storage роутера.

@@ -146,40 +146,56 @@ ROUTER=<router_lan_ip> ./deploy.sh
 
 ### Что означает вывод verify.sh
 
-```
-== Router ==
-RT-AX88U-Pro              ← модель роутера
-388.7_0_AX-...            ← версия прошивки
+`verify.sh` теперь по умолчанию печатает компактный health-summary:
 
-== Capabilities ==
-Entware: not detected     ← нормально, если USB не подключен
-ipset: ok                 ← необходим для работы
-iptables: ok              ← необходим для работы
+```txt
+=== Router ===
+Product: RT-AX88U_PRO
+Build: 102.7_2
 
-== Routing ==
-9901: from all to 1.1.1.1 lookup wgc1    ← DNS через VPN
-9902: from all to 9.9.9.9 lookup wgc1    ← DNS через VPN
-9910: from all fwmark 0x1000 lookup wgc1  ← помеченный трафик через VPN
-default via 10.x.x.x dev wgc1            ← маршрут VPN (если подключен)
-
-== IPSet ==
-Name: VPN_DOMAINS
-Type: hash:ip             ← набор для доменных IP
+=== Routing Health ===
+VPN_DOMAINS ipset OK
 ...
-Members:                  ← список IP (наполняется по мере DNS-запросов)
 
-Name: VPN_STATIC_NETS
-Type: hash:net            ← набор для CIDR-подсетей
+=== Catalog Capacity ===
+VPN_DOMAINS current 7125
+VPN_DOMAINS maxelem 65536
+Usage 10.9%
+
+=== Freshness ===
+Blocked list OK (5h 59m)
 ...
-Members:                  ← подсети Telegram
+
+=== Drift ===
+No missing repo-managed invariants detected.
+
+=== Result ===
+OK
 ```
 
 Ключевые проверки:
 
-- `ipset: ok` и `iptables: ok` — без них ничего не работает
-- Три `ip rule` (9901, 9902, 9910) — если отсутствуют, трафик не уходит в VPN
-- `VPN_STATIC_NETS` содержит подсети Telegram — если пуст, проверьте `static-networks.txt`
-- Таблица `wgc1` не пуста — если пуста, WireGuard-клиент не подключен
+- `Routing Health`:
+  - `VPN_DOMAINS ipset`, `VPN_STATIC_NETS ipset`, `RC_VPN_ROUTE chain`
+  - `ip rule 1.1.1.1 -> wgc1`, `ip rule 9.9.9.9 -> wgc1`, `ip rule fwmark 0x1000`
+  - hooks для `br0`, `wgs1`, `OUTPUT`
+  - DNS redirect для `wgs1`
+- `Catalog Capacity`:
+  - текущий размер `VPN_DOMAINS`
+  - `maxelem`
+  - usage/headroom
+  - число `VPN_STATIC_NETS`, manual rules, auto rules
+- `Freshness`:
+  - blocked list
+  - ipset persistence
+  - traffic snapshots
+  - Tailscale / WGS1 / daily close artifacts
+
+Если нужен старый развёрнутый dump:
+
+```bash
+./verify.sh --verbose
+```
 
 ## Шаг 8. Проверка traffic observability
 
@@ -225,6 +241,46 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - snapshots пишутся каждые 6 часов
 - close-of-day conntrack snapshot сохраняется в `23:55`
 - поэтому полноценный исторический отчёт по новому каналу `wgs1` появится после первых cron-снимков
+
+## Шаг 9. Проверка health-report и USB-backed snapshot
+
+После базовой проверки стоит снять sanitised health-report, который понятен и человеку, и любой LLM:
+
+```bash
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Что делает `--save`:
+
+- обновляет tracked `docs/router-health-latest.md`
+- добавляет local operational snapshot в `docs/vpn-domain-journal.md`
+- записывает копию на USB-backed storage роутера:
+  - `/opt/var/log/router_configuration/reports/router-health-latest.md`
+  - fallback: `/jffs/addons/router_configuration/traffic/reports/router-health-latest.md`
+
+Это полезно для сценария “1–2 кнопки”:
+
+- `./verify.sh` — быстро понять, живы ли инварианты и нет ли drift/freshness problem
+- `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория
+
+## Шаг 10. Локальные тесты observability-слоя
+
+Эти проверки не меняют runtime-конфигурацию роутера:
+
+```bash
+bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+./tests/test-router-health.sh
+```
+
+Они проверяют:
+
+- shell-синтаксис
+- parser/formatter-логику на fixture'ах
+- что новые stable sections (`Window`, `Totals`, `Device Traffic Mix`, `Notes`) продолжают рендериться корректно
+
+Подробное описание тестового каталога и того, что именно проверяет каждый fixture/smoke test:
+[../tests/README.md](../tests/README.md)
 
 ### Если raw WireGuard server client подключается, но `VPN_DOMAINS` не повторяются
 

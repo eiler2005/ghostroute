@@ -1,0 +1,90 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+
+SAVE_MODE=0
+if [ "${1:-}" = "--save" ]; then
+  SAVE_MODE=1
+elif [ -n "${1:-}" ]; then
+  echo "Usage: ./scripts/router-health-report [--save]" >&2
+  exit 1
+fi
+
+router_health_load_env
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+STATE_FILE="$TMPDIR/router-health-state.env"
+HISTORY_FILE="$TMPDIR/router-health-history.env"
+TRAFFIC_OUTPUT="$TMPDIR/traffic-report.txt"
+TRAFFIC_SUMMARY="$TMPDIR/traffic-summary.env"
+MARKDOWN_OUTPUT="$TMPDIR/router-health-latest.md"
+
+router_collect_health_state "$STATE_FILE"
+router_collect_capacity_history "${PROJECT_ROOT}/docs/vpn-domain-journal.md" "$HISTORY_FILE" "$(date +%F)"
+"${PROJECT_ROOT}/scripts/traffic-report" > "$TRAFFIC_OUTPUT"
+router_extract_traffic_summary "$TRAFFIC_OUTPUT" "$TRAFFIC_SUMMARY"
+router_render_health_markdown "$STATE_FILE" "$HISTORY_FILE" "$TRAFFIC_SUMMARY" > "$MARKDOWN_OUTPUT"
+
+cat "$MARKDOWN_OUTPUT"
+
+if [ "$SAVE_MODE" = "1" ]; then
+  TRACKED_LATEST="${PROJECT_ROOT}/docs/router-health-latest.md"
+  JOURNAL_FILE="${PROJECT_ROOT}/docs/vpn-domain-journal.md"
+  cp "$MARKDOWN_OUTPUT" "$TRACKED_LATEST"
+
+  ROUTER_STATE_DIR="$(router_kv_get "$STATE_FILE" STATE_DIR)"
+  ROUTER_REPORT_DIR="${ROUTER_STATE_DIR}/reports"
+  ROUTER_REPORT_FILE="${ROUTER_REPORT_DIR}/router-health-latest.md"
+  ROUTER_REPORT_TS_FILE="${ROUTER_REPORT_DIR}/router-health-$(date +%Y-%m-%dT%H%M%S%z).md"
+
+  router_ssh "mkdir -p '${ROUTER_REPORT_DIR}'"
+  cat "$MARKDOWN_OUTPUT" | router_ssh "cat > '${ROUTER_REPORT_FILE}'"
+  cat "$MARKDOWN_OUTPUT" | router_ssh "cat > '${ROUTER_REPORT_TS_FILE}'"
+
+  if [ -f "$JOURNAL_FILE" ]; then
+    NOW_DATE="$(date +%F)"
+    NOW_TS="$(date '+%Y-%m-%d %H:%M:%S %z')"
+    VPN_CURRENT="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_CURRENT)"
+    VPN_MAX="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MAX)"
+    VPN_MEM="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MEM)"
+    VPN_STATIC="$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_CURRENT)"
+    MANUAL_COUNT="$(router_kv_get "$STATE_FILE" MANUAL_RULE_COUNT)"
+    AUTO_COUNT="$(router_kv_get "$STATE_FILE" AUTO_RULE_COUNT)"
+    USAGE_PCT="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f%%", (current / max) * 100 }')"
+    HEADROOM="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else print max - current }')"
+
+    cat >> "$JOURNAL_FILE" <<EOF
+
+---
+
+## ${NOW_DATE} — Catalog capacity snapshot
+
+> Live snapshot сохранён локальным router-health-report --save в ${NOW_TS}. Это operational-срез текущего состояния каталога и health-слоя без изменения runtime-конфигурации.
+
+### Capacity snapshot [operational]
+
+| Метрика | Значение |
+|---|---|
+| VPN_DOMAINS — IP в ipset | ${VPN_CURRENT} |
+| Лимит VPN_DOMAINS (maxelem) | ${VPN_MAX} |
+| Использование лимита | ${USAGE_PCT} |
+| Headroom до лимита | ${HEADROOM} IP |
+| Память VPN_DOMAINS | ${VPN_MEM} B |
+| VPN_STATIC_NETS | ${VPN_STATIC} активных CIDR в ipset |
+| Ручные доменные правила | ${MANUAL_COUNT} |
+| Auto-discovered доменные правила | ${AUTO_COUNT} |
+
+### Health snapshot [operational]
+
+- sanitised tracked summary: [router-health-latest.md](router-health-latest.md)
+- router-side USB report: ${ROUTER_REPORT_FILE}
+- local command: ./scripts/router-health-report --save
+- traffic baseline for this save comes from ./scripts/traffic-report
+EOF
+  fi
+fi

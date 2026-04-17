@@ -1,0 +1,79 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+# Minimal assertion helper for section-level contract checks.
+# We intentionally keep this lightweight instead of pulling a test framework:
+# the goal is fast smoke validation of text contracts, not rich test reporting.
+assert_contains() {
+  local file="$1"
+  local pattern="$2"
+  if ! grep -F -- "$pattern" "$file" >/dev/null 2>&1; then
+    echo "Expected pattern not found: $pattern" >&2
+    echo "--- file: $file ---" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+# Key/value assertion for helper outputs rendered as env-like files.
+# This is used for history parsing and traffic-summary extraction.
+assert_kv() {
+  local file="$1"
+  local key="$2"
+  local expected="$3"
+  local value
+  value="$(router_kv_get "$file" "$key")"
+  if [ "$value" != "$expected" ]; then
+    echo "Expected $key=$expected, got $value" >&2
+    exit 1
+  fi
+}
+
+HISTORY_OUT="$TMPDIR/history.env"
+TRAFFIC_OUT="$TMPDIR/traffic.env"
+MARKDOWN_OUT="$TMPDIR/router-health.md"
+
+# 1. History parser contract:
+#    ensure we can read latest and week-old catalog snapshots from the local journal format.
+router_collect_capacity_history \
+  "${PROJECT_ROOT}/tests/fixtures/router-health/journal-sample.md" \
+  "$HISTORY_OUT" \
+  "2026-04-17"
+
+assert_kv "$HISTORY_OUT" "HISTORY_LATEST_DATE" "2026-04-17"
+assert_kv "$HISTORY_OUT" "HISTORY_LATEST_VPN_DOMAINS" "7117"
+assert_kv "$HISTORY_OUT" "HISTORY_WEEK_DATE" "2026-04-10"
+assert_kv "$HISTORY_OUT" "HISTORY_WEEK_VPN_STATIC" "52 активных CIDR в ipset"
+
+# 2. Stable traffic summary contract:
+#    ensure router-health-report can safely consume the compact summary emitted by traffic-report.
+router_extract_traffic_summary \
+  "${PROJECT_ROOT}/tests/fixtures/router-health/traffic-report-sample.txt" \
+  "$TRAFFIC_OUT"
+
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_ROUTER_WINDOW" "2026-04-17T00:00:00+0300 -> current router state"
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_WINDOW" "2026-04-17T12:00:00+0300 -> current router state"
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_VIA_VPN" "5.00 GiB  (86.2%)"
+
+# 3. Markdown renderer contract:
+#    ensure the final sanitised report still exposes the sections relied on by humans and LLMs.
+router_render_health_markdown \
+  "${PROJECT_ROOT}/tests/fixtures/router-health/state-sample.env" \
+  "$HISTORY_OUT" \
+  "$TRAFFIC_OUT" > "$MARKDOWN_OUT"
+
+assert_contains "$MARKDOWN_OUT" "# Router Health Latest"
+assert_contains "$MARKDOWN_OUT" "## Catalog Capacity"
+assert_contains "$MARKDOWN_OUT" "## Freshness"
+assert_contains "$MARKDOWN_OUT" "## Traffic Snapshot"
+assert_contains "$MARKDOWN_OUT" "## Drift"
+assert_contains "$MARKDOWN_OUT" "## Notes"
+
+echo "router-health fixture smoke tests passed"

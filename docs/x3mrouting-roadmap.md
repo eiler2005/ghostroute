@@ -6,6 +6,25 @@ Domain discovery — автоматический и ручной процесс
 
 Нативный pipeline `dnsmasq → ipset → iptables → ip rule → WGC1` остаётся **единственным механизмом маршрутизации**. Discovery только находит домены — routing делает основной pipeline.
 
+## Что уже закрыто вокруг discovery
+
+Вокруг domain discovery теперь появился отдельный operational-слой, который не меняет runtime, но помогает сопровождать каталог:
+
+- `./verify.sh`
+  compact health-summary по routing-инвариантам, capacity и freshness
+- `./scripts/router-health-report`
+  sanitised Markdown snapshot для человека и LLM
+- `./scripts/router-health-report --save`
+  tracked summary + local journal + USB-backed copy на роутере
+
+Это важно для discovery, потому что теперь можно быстро видеть:
+
+- текущий размер `VPN_DOMAINS`
+- usage/headroom относительно `maxelem`
+- число manual и auto rules
+- свежесть blocked-list
+- рост каталога относительно последнего сохранённого snapshot
+
 ## Два режима обнаружения
 
 ### Режим 1: Автоматический (основной)
@@ -152,6 +171,32 @@ CDN и infrastructure-домены, которые не имеет смысла 
 # Сброс: удалить все авто-добавленные домены
 ./scripts/domain-report --reset
 ```
+
+### Capacity / health monitoring каталога
+
+Теперь для каталога есть и безопасный summary-слой:
+
+```bash
+./verify.sh
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Что важно смотреть:
+
+- `VPN_DOMAINS current`
+- `VPN_DOMAINS maxelem`
+- usage/headroom
+- `VPN_STATIC_NETS current`
+- manual rule count
+- auto-discovered rule count
+- growth vs latest saved snapshot
+
+Где хранится последнее sanitised состояние:
+
+- tracked: `docs/router-health-latest.md`
+- local journal: `docs/vpn-domain-journal.md`
+- router-side USB storage: `/opt/var/log/router_configuration/reports/`
 
 ## Почему мы НЕ используем routing-функции x3mRouting
 

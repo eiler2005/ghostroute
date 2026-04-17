@@ -32,6 +32,45 @@
 - заблокированные сервисы у удалённого клиента тоже уходят через `WGC1`
 - всё остальное у удалённого клиента продолжает идти через обычный `WAN`, как и в локальной split-routing схеме
 
+## Как смотреть текущее состояние каталога и routing-layer
+
+Для чтения “что вообще сейчас живо” больше не нужно вручную собирать куски из `ipset`, `iptables` и snapshots.
+
+Базовые команды:
+
+```bash
+./verify.sh
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Что показывает этот слой:
+
+- `Routing Health`
+  - `VPN_DOMAINS`
+  - `VPN_STATIC_NETS`
+  - `RC_VPN_ROUTE`
+  - `ip rule` для DNS и `fwmark 0x1000`
+  - hooks для `br0`, `wgs1`, `OUTPUT`
+- `Catalog Capacity`
+  - текущее число IP в `VPN_DOMAINS`
+  - `maxelem`
+  - usage/headroom
+  - manual / auto rule counts
+- `Freshness`
+  - blocked-list
+  - ipset persistence file
+  - traffic snapshots
+  - Tailscale / WGS1 artifacts
+
+`router-health-report --save` дополнительно:
+
+- обновляет tracked `docs/router-health-latest.md`
+- аппендит local snapshot в `docs/vpn-domain-journal.md`
+- пишет sanitised копию в USB-backed каталог роутера
+
+Это полезно, когда нужно передать состояние следующей LLM без повторного ручного разбора.
+
 ## Что сейчас идёт через VPN
 
 Через VPN сейчас направляются такие доменные семейства:
@@ -113,6 +152,11 @@
 - `wa.me`
 
 Плюс для Telegram дополнительно используются статические IPv4-подсети из `configs/static-networks.txt`.
+
+Operational note:
+
+- число доменных правил в каталоге и число IP в live `VPN_DOMAINS` — это разные сущности
+- для capacity tracking ориентируйтесь на `router-health-report` / `docs/router-health-latest.md`, а не только на длину domain list ниже
 
 ## Как понимать правила dnsmasq
 

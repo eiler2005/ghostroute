@@ -212,6 +212,9 @@ Traffic observability тоже теперь строится вокруг трё
 
 - `traffic-report` — текущий день
 - `traffic-daily-report` — закрытый день / неделя / месяц
+- `verify.sh` — compact live health-summary по routing-инвариантам, ёмкости каталога, freshness и drift
+- `router-health-report` — sanitised Markdown snapshot для человека и LLM
+- `router-health-report --save` — tracked summary + local journal + USB-backed copy на роутере
 
 Ключевые новые метрики:
 
@@ -219,8 +222,34 @@ Traffic observability тоже теперь строится вокруг трё
 - `WG server total` — router-wide bytes по `wgs1`
 - `WireGuard server peers` — per-peer transfer deltas из `wg show wgs1 dump`
 - `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — current/end-of-day conntrack snapshot для remote peer'ов
+- `Catalog Capacity` — live размер `VPN_DOMAINS`, `VPN_STATIC_NETS`, usage/headroom, manual/auto rule counts
+- `Freshness` — age blocked-list, ipset persistence, traffic snapshots, tailscale/wgs1 artifacts
+- `Drift` — только repo-managed routing-инварианты, а не полный diff живого роутера
 
 Подробности: [traffic-observability.md](traffic-observability.md)
+
+### Где хранятся operational artifacts
+
+Проект теперь осознанно использует USB/Entware storage на роутере не только для ipset persistence и traffic snapshots, но и для health-report артефактов.
+
+Основные пути:
+
+- traffic snapshots:
+  - primary: `/opt/var/log/router_configuration`
+  - fallback: `/jffs/addons/router_configuration/traffic`
+- ipset persistence:
+  - primary: `/opt/tmp/VPN_DOMAINS.ipset`
+  - fallback: `/jffs/addons/router_configuration/VPN_DOMAINS.ipset`
+- saved health reports:
+  - primary: `/opt/var/log/router_configuration/reports/router-health-latest.md`
+  - timestamped copies: `/opt/var/log/router_configuration/reports/router-health-<timestamp>.md`
+  - fallback: `/jffs/addons/router_configuration/traffic/reports/...`
+
+Это даёт три уровня observability:
+
+1. live state по SSH (`verify.sh`, `traffic-report`, `router-health-report`)
+2. tracked sanitised snapshot в git: `docs/router-health-latest.md`
+3. router-side USB-backed operational history
 
 ## Персистентность ipset
 
@@ -267,6 +296,8 @@ ipset list VPN_STATIC_NETS | awk '/^Number of entries:/ {print $4}'
 - процент от лимита `65536`
 - объём памяти набора
 - число статических CIDR в `VPN_STATIC_NETS`
+
+`router-health-report --save` теперь умеет обновлять этот local journal автоматически, чтобы следующая LLM или человек могли сравнить live-состояние с последним сохранённым snapshot без повторного ручного анализа.
 
 ## Автоматическое обнаружение доменов
 
