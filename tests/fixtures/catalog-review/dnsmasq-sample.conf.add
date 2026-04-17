@@ -1,0 +1,3 @@
+ipset=/example.com/VPN_DOMAINS
+ipset=/api.example.com/VPN_DOMAINS
+ipset=/github.com/VPN_DOMAINS

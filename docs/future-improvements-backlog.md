@@ -95,6 +95,18 @@
 - отделить truly-required coverage от исторически накопленного
 - оставить большие сети только там, где DNS-based coverage недостаточен
 
+Статус:
+
+- recommendational layer уже реализован:
+  - `./scripts/catalog-review-report`
+  - `./scripts/catalog-review-report --save`
+  - tracked `docs/catalog-review-latest.md`
+  - USB-backed advisory snapshots на роутере
+- текущая реализация ничего не меняет в runtime и не делает cleanup автоматически
+- в backlog остаётся следующий шаг:
+  - живой review widest CIDR и explicit child domains
+  - осторожный cleanup только после smoke-подтверждения, что coverage не потеряется
+
 Желаемый результат:
 
 - routing catalog становится уже и понятнее, без потери нужного покрытия

@@ -151,6 +151,7 @@ scripts/
   traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/WG-server/Tailscale + LAN/WGS snapshots
   traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots, incl. WGS peers
   router-health-report            # CLI: sanitised health/capacity/traffic summary для человека и LLM
+  catalog-review-report           # CLI: advisory review manual domains + static CIDR без runtime-изменений
   cron-save-ipset                 # сохранение ipset на диск каждые 6ч
   cron-traffic-snapshot           # сохранение traffic / Tailscale / WGS snapshots каждые 6ч
   cron-traffic-daily-close        # сохранение end-of-day LAN/WGS conntrack snapshot в 23:55
@@ -165,6 +166,7 @@ docs/
   traffic-observability.md        # архитектура traffic-report и сетевых счётчиков
   llm-traffic-runbook.md          # короткая инструкция для LLM / агента
   router-health-latest.md         # tracked sanitised snapshot последнего сохранённого health-report
+  catalog-review-latest.md        # tracked sanitised advisory snapshot по manual/static coverage
 
 deploy.sh                         # деплой на роутер по SSH/SCP
 verify.sh                         # compact health-summary + drift/freshness checks
@@ -268,6 +270,13 @@ cp .env.example secrets/router.env
   - аппендит локальную operational-запись в `docs/vpn-domain-journal.md`
   - сохраняет копию на USB-backed storage роутера в `/opt/var/log/router_configuration/reports/`
     или fallback-путь `/jffs/addons/router_configuration/traffic/reports/`, если Entware недоступен
+- `./scripts/catalog-review-report`
+  рекомендательный review каталога: подсвечивает широкие static CIDR и child domains, уже покрытые parent-rule, без runtime-изменений
+- `./scripts/catalog-review-report --save`
+  одновременно:
+  - обновляет tracked [docs/catalog-review-latest.md](docs/catalog-review-latest.md)
+  - аппендит локальную operational-запись в `docs/vpn-domain-journal.md`
+  - сохраняет USB-backed copy на роутере
 
 Быстрые команды:
 
@@ -276,6 +285,8 @@ cp .env.example secrets/router.env
 ./verify.sh --verbose
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 Если нужен совсем короткий operational набор “в 1–2 кнопки”:
@@ -316,12 +327,16 @@ LLM/runbook: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+bash -n scripts/catalog-review-report tests/test-catalog-review.sh
 ./tests/test-router-health.sh
+./tests/test-catalog-review.sh
 ./verify.sh
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 Эти команды не меняют runtime-конфигурацию роутера. Они только:

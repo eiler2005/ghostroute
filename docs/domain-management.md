@@ -56,6 +56,7 @@ ip route get <resolved_ip> mark 0x1000
 ```bash
 ./verify.sh
 ./scripts/router-health-report
+./scripts/catalog-review-report
 ```
 
 Это помогает сразу увидеть:
@@ -64,6 +65,7 @@ ip route get <resolved_ip> mark 0x1000
 - не вырос ли каталог неожиданно после нового семейства доменов
 - что пишет `Growth Trends` и не стал ли auto-catalog источником роста
 - свежи ли blocked-list и traffic snapshots
+- нет ли уже явных recommendational cleanup-candidates в manual/static coverage
 
 ## Как добавить статическую сеть
 
@@ -107,6 +109,27 @@ ipset list VPN_STATIC_NETS | grep 203.0.113
 | Сервис с прямыми IP-подключениями (Telegram, imo) | Домены + статические сети |
 | Shared CDN (Cloudflare, Google) | Только домен — статический IP затронет чужой трафик |
 | Конкретный IP, который надо отправить через VPN | Статическая сеть `/32` |
+
+## Как делать cleanup-review без риска
+
+До любых ручных изменений в `dnsmasq.conf.add` или `static-networks.txt` сначала запускайте:
+
+```bash
+./scripts/catalog-review-report
+```
+
+Этот отчёт:
+
+- ничего не меняет в runtime
+- показывает широкие static CIDR как review-candidates
+- показывает explicit child domains, уже покрытые parent-rule
+- помогает отделить documentation-only redundancy от действительно нужного coverage
+
+Если review нужно сохранить:
+
+```bash
+./scripts/catalog-review-report --save
+```
 
 ## Конвенции
 

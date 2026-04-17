@@ -276,6 +276,23 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - `./verify.sh` — быстро понять, живы ли инварианты и нет ли drift/freshness problem
 - `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория, а на USB осталось последнее sanitised состояние роутера
 
+## Шаг 10. Advisory review каталога
+
+Перед cleanup manual/static coverage сначала снимайте recommendational report:
+
+```bash
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
+```
+
+Что это даёт:
+
+- список широких static CIDR для review
+- список child domains, уже покрытых parent-rule
+- tracked `docs/catalog-review-latest.md`
+- USB-backed copy на роутере
+- local journal note без runtime-изменений
+
 ### Быстрая шпаргалка
 
 Если не хочется вспоминать все команды, используйте такой минимум:

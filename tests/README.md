@@ -102,6 +102,22 @@ Fixture-based smoke test для health-reporting слоя.
 
 Подробности по каждому fixture-файлу: [fixtures/router-health/README.md](fixtures/router-health/README.md)
 
+### `tests/test-catalog-review.sh`
+
+Fixture-based smoke test для advisory review слоя `scripts/catalog-review-report`.
+
+Что он проверяет:
+
+1. Что report рендерится без живого роутера.
+2. Что в output есть стабильные секции:
+   - `Static Coverage Review`
+   - `Domain Coverage Review`
+   - `Recommendation Mode`
+3. Что широкий static CIDR попадает в advisory summary.
+4. Что child-domain, уже покрытый parent-rule, попадает в cleanup-candidates.
+
+Подробности по fixture-файлам: [fixtures/catalog-review/README.md](fixtures/catalog-review/README.md)
+
 ## Контракт, который мы защищаем тестами
 
 Тестовый слой по сути защищает три текстовых интерфейса:
@@ -134,12 +150,14 @@ Fixture-based smoke test для health-reporting слоя.
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+bash -n scripts/catalog-review-report tests/test-catalog-review.sh
 ```
 
 Fixture smoke test:
 
 ```bash
 ./tests/test-router-health.sh
+./tests/test-catalog-review.sh
 ```
 
 Ожидаемый успешный вывод:
@@ -165,6 +183,8 @@ Live smoke:
 ./scripts/traffic-daily-report week
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 ## Почему тестовый слой устроен именно так

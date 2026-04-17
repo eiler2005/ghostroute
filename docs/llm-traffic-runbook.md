@@ -13,6 +13,8 @@ When the user asks for a router traffic report or router health/capacity report 
    - "проверка роутера", "health", "router health", "состояние роутера", "дрейф", "freshness" -> ./verify.sh
    - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./scripts/router-health-report
    - "сохрани health snapshot и обнови журнал", "health report save" -> ./scripts/router-health-report --save
+   - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./scripts/catalog-review-report
+   - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./scripts/catalog-review-report --save
    - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, docs/domain-management.md, docs/current-routing-explained.md, docs/traffic-observability.md and answer with a review/plan by default
    - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report
    - "вчера", "yesterday" -> ./scripts/traffic-daily-report yesterday
@@ -40,7 +42,14 @@ When the user asks for a router traffic report or router health/capacity report 
    - Traffic Snapshot
    - Drift
 
-5. For health/capacity answers explicitly mention:
+5. If the command is ./scripts/catalog-review-report or --save, answer from these sections first:
+   - Summary
+   - Static Coverage Review
+   - Domain Coverage Review
+   - Recommendation Mode
+   Explicitly say this is advisory-only and that no runtime changes were applied.
+
+6. For health/capacity answers explicitly mention:
    - VPN_DOMAINS current / maxelem / usage / headroom
    - VPN_STATIC_NETS current
    - manual rule count
@@ -49,7 +58,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - growth level / growth note if present
    - any warning/critical freshness item
 
-6. In traffic answers always include:
+7. In traffic answers always include:
    - report window from the script output
    - WAN total
    - VPN total
@@ -57,7 +66,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - Tailscale total when relevant
    - VPN share/WAN
 
-7. If the report contains "DEVICE TRAFFIC MIX", use that block first for per-device interpretation:
+8. If the report contains "DEVICE TRAFFIC MIX", use that block first for per-device interpretation:
    - mention Per-device byte window
    - mention Device byte total
    - mention Via VPN
@@ -65,16 +74,16 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention top devices by VPN bytes
    - mention top devices by direct WAN bytes
 
-8. If the report contains "TOP BY WG SERVER PEERS" or "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer tables.
+9. If the report contains "TOP BY WG SERVER PEERS" or "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer tables.
 
-9. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+10. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-10. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+11. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
 
-11. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+12. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
 
-12. If the user asks about future optimization of domains/catalog/routing coverage:
+13. If the user asks about future optimization of domains/catalog/routing coverage:
    - start from docs/future-improvements-backlog.md
    - verify what is already implemented vs still future
    - prefer review/plan first, not runtime changes
@@ -114,6 +123,7 @@ When the user asks for a router traffic report or router health/capacity report 
 2. Затем сверить live-state:
    - `./verify.sh`
    - `./scripts/router-health-report`
+   - `./scripts/catalog-review-report`
 3. По умолчанию отдавать:
    - review
    - backlog-status
@@ -126,6 +136,8 @@ When the user asks for a router traffic report or router health/capacity report 
 - manual / auto rule counts
 - `growth level` / `growth note`
 - нет ли признаков, что auto-catalog стал источником разрастания
+- какие broad static CIDR сейчас крупнейшие
+- какие child domains уже покрыты parent-rule и выглядят как cleanup-candidates
 - что уже закрыто в backlog, а что остаётся future
 
 ### Health / capacity / drift
@@ -135,6 +147,8 @@ When the user asks for a router traffic report or router health/capacity report 
 ./verify.sh --verbose
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 Минимальный рекомендуемый набор команд для типового workflow:

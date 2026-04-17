@@ -32,6 +32,8 @@
 - `./verify.sh` — compact live health-summary
 - `./scripts/router-health-report` — Markdown-слой для человека и LLM
 - `./scripts/router-health-report --save` — tracked summary + local journal + USB-backed copy на роутере
+- `./scripts/catalog-review-report` — advisory review manual domains + static CIDR coverage
+- `./scripts/catalog-review-report --save` — tracked summary + local journal + USB-backed copy на роутере
 
 ## Компоненты
 
@@ -159,6 +161,27 @@
   - primary: `/opt/var/log/router_configuration/reports/`
   - fallback: `/jffs/addons/router_configuration/traffic/reports/`
 
+### `scripts/catalog-review-report`
+
+Локальный CLI-скрипт для recommendational review слоя.
+
+Что делает:
+
+1. Читает manual domain catalog из `configs/dnsmasq.conf.add`.
+2. Читает static CIDR catalog из `configs/static-networks.txt`.
+3. Снимает live counts `VPN_DOMAINS` / `VPN_STATIC_NETS` / manual / auto через `router_collect_health_state`.
+4. Строит sanitised Markdown review:
+   - `Summary`
+   - `Static Coverage Review`
+   - `Domain Coverage Review`
+   - `Recommendation Mode`
+
+В режиме `--save`:
+
+- обновляет tracked `docs/catalog-review-latest.md`
+- аппендит local operational note в `docs/vpn-domain-journal.md`
+- пишет USB-backed copy на роутере
+
 Примеры:
 
 ```bash
@@ -172,6 +195,8 @@
 ./scripts/traffic-daily-report month
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 ## Стабильная структура секций

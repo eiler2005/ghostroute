@@ -165,6 +165,7 @@ scripts/
   traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/WG-server/Tailscale totals + LAN/WGS snapshots
   traffic-daily-report            # CLI tool: closed-day report from stored snapshots, incl. WGS peers
   router-health-report            # CLI tool: sanitised health/capacity/traffic summary for humans and LLMs
+  catalog-review-report           # CLI tool: advisory review of manual domains + static CIDR coverage
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
   cron-traffic-snapshot           # stores traffic counters / Tailscale / WGS snapshots every 6h
   cron-traffic-daily-close        # stores end-of-day LAN/WGS conntrack snapshot at 23:55
@@ -180,6 +181,7 @@ docs/
   traffic-observability.md        # traffic-report architecture and counter semantics (RU)
   llm-traffic-runbook.md          # minimal instructions for an LLM / agent (RU)
   router-health-latest.md         # tracked sanitised snapshot of the latest saved health report
+  catalog-review-latest.md        # tracked sanitised advisory snapshot for catalog cleanup review
 
 deploy.sh                         # idempotent deploy to router via SSH/SCP
 verify.sh                         # compact health-summary + drift/freshness checks
@@ -298,6 +300,14 @@ On top of the traffic reports there are now two safe operational commands:
   - local operational journal `docs/vpn-domain-journal.md`
   - router-side USB-backed copy in `/opt/var/log/router_configuration/reports/`
     or fallback `/jffs/addons/router_configuration/traffic/reports/` when Entware is unavailable
+- `./scripts/catalog-review-report`
+  advisory-only catalog review: highlights broad static CIDRs and parent-covered child domains without changing runtime config
+- `./scripts/catalog-review-report --save`
+  updates:
+  - tracked [docs/catalog-review-latest.md](docs/catalog-review-latest.md)
+  - local operational journal `docs/vpn-domain-journal.md`
+  - router-side USB-backed copy in `/opt/var/log/router_configuration/reports/`
+    or fallback `/jffs/addons/router_configuration/traffic/reports/`
 
 Quick commands:
 
@@ -306,6 +316,8 @@ Quick commands:
 ./verify.sh --verbose
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 `router-health-report` combines:
@@ -332,12 +344,16 @@ Recommended safe validation after observability/reporting changes:
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+bash -n scripts/catalog-review-report tests/test-catalog-review.sh
 ./tests/test-router-health.sh
+./tests/test-catalog-review.sh
 ./verify.sh
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+./scripts/catalog-review-report
+./scripts/catalog-review-report --save
 ```
 
 These commands do not change router runtime config. They only:

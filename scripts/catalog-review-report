@@ -1,0 +1,268 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+
+SAVE_MODE=0
+if [ "${1:-}" = "--save" ]; then
+  SAVE_MODE=1
+elif [ -n "${1:-}" ]; then
+  echo "Usage: ./scripts/catalog-review-report [--save]" >&2
+  exit 1
+fi
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+STATE_FILE="$TMPDIR/catalog-review-state.env"
+MARKDOWN_OUTPUT="$TMPDIR/catalog-review-latest.md"
+
+DNSMASQ_FILE="${CATALOG_REVIEW_DNSMASQ_FILE:-${PROJECT_ROOT}/configs/dnsmasq.conf.add}"
+STATIC_FILE="${CATALOG_REVIEW_STATIC_FILE:-${PROJECT_ROOT}/configs/static-networks.txt}"
+JOURNAL_FILE="${CATALOG_REVIEW_JOURNAL_FILE:-${PROJECT_ROOT}/docs/vpn-domain-journal.md}"
+
+if [ -n "${CATALOG_REVIEW_STATE_FILE:-}" ]; then
+  cp "${CATALOG_REVIEW_STATE_FILE}" "$STATE_FILE"
+else
+  router_health_load_env
+  router_collect_health_state "$STATE_FILE"
+fi
+
+ruby - "$DNSMASQ_FILE" "$STATIC_FILE" "$STATE_FILE" <<'RUBY' > "$MARKDOWN_OUTPUT"
+require "time"
+
+dnsmasq_file, static_file, state_file = ARGV
+
+def load_state(path)
+  state = {}
+  File.foreach(path) do |line|
+    key, value = line.strip.split("=", 2)
+    next if key.nil? || value.nil?
+    state[key] = value
+  end
+  state
+end
+
+def prefix_priority(prefix)
+  return "High" if prefix <= 12
+  return "Medium" if prefix <= 16
+  return "Low" if prefix <= 18
+  "Info"
+end
+
+def addr_count(prefix)
+  2**(32 - prefix)
+end
+
+def human_int(n)
+  n.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+end
+
+domains = []
+File.foreach(dnsmasq_file) do |line|
+  next unless line.start_with?("ipset=/")
+  domain = line.sub("ipset=/", "").sub(%r{/VPN_DOMAINS.*$}, "").strip
+  next if domain.empty?
+  domains << domain
+end
+domains.uniq!
+
+domain_set = domains.each_with_object({}) { |domain, memo| memo[domain] = true }
+covered_children = domains.map do |domain|
+  labels = domain.split(".")
+  parent = nil
+  1.upto(labels.length - 2) do |idx|
+    candidate = labels[idx..].join(".")
+    if domain_set[candidate]
+      parent = candidate
+      break
+    end
+  end
+  parent ? { "domain" => domain, "parent" => parent } : nil
+end.compact
+
+family_counts = Hash.new(0)
+domains.each do |domain|
+  labels = domain.split(".")
+  family = if labels.length >= 2
+             labels.last(2).join(".")
+           else
+             domain
+           end
+  family_counts[family] += 1
+end
+
+static_lines = File.readlines(static_file)
+section_titles = {}
+static_lines.each_with_index do |line, idx|
+  stripped = line.strip
+  next unless stripped =~ /^#\s*=+/
+  title_line = static_lines[idx + 1]
+  closing_line = static_lines[idx + 2]
+  next if title_line.nil? || closing_line.nil?
+  title_stripped = title_line.strip
+  closing_stripped = closing_line.strip
+  next unless title_stripped.start_with?("# ")
+  next unless closing_stripped =~ /^#\s*=+/
+  title = title_stripped.sub(/^#\s+/, "").strip
+  next if title.empty?
+  section_titles[idx + 1] = title
+end
+
+static_entries = []
+section = "Uncategorized"
+static_lines.each_with_index do |line, idx|
+  stripped = line.strip
+  section = section_titles[idx] if section_titles[idx]
+  next if stripped.empty? || stripped.start_with?("#")
+  cidr = stripped.split(/\s+/, 2).first
+  next unless cidr =~ /\A\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}\z/
+  prefix = cidr.split("/").last.to_i
+  addresses = addr_count(prefix)
+  static_entries << {
+    "cidr" => cidr,
+    "prefix" => prefix,
+    "addresses" => addresses,
+    "priority" => prefix_priority(prefix),
+    "section" => section
+  }
+end
+
+section_summaries = static_entries.each_with_object(Hash.new { |memo, key| memo[key] = { "count" => 0, "addresses" => 0 } }) do |entry, memo|
+  memo[entry["section"]]["count"] += 1
+  memo[entry["section"]]["addresses"] += entry["addresses"]
+end
+
+wide_candidates = static_entries.select { |entry| entry["prefix"] <= 18 }.sort_by { |entry| [-entry["addresses"], entry["cidr"]] }
+family_rollups = family_counts.sort_by { |family, count| [-count, family] }.first(8)
+
+state = load_state(state_file)
+vpn_current = state["VPN_DOMAINS_CURRENT"] || "n/a"
+vpn_max = state["VPN_DOMAINS_MAX"] || "n/a"
+vpn_static_current = state["VPN_STATIC_NETS_CURRENT"] || "n/a"
+manual_count = state["MANUAL_RULE_COUNT"] || domains.length.to_s
+auto_count = state["AUTO_RULE_COUNT"] || "n/a"
+
+usage = if vpn_current =~ /\A\d+\z/ && vpn_max =~ /\A\d+\z/ && vpn_max.to_i > 0
+          format("%.1f%%", (vpn_current.to_f / vpn_max.to_f) * 100.0)
+        else
+          "n/a"
+        end
+
+largest_section = section_summaries.max_by { |_, summary| summary["addresses"] }
+
+puts "# Catalog Review Latest"
+puts
+puts "- Generated: #{Time.now.iso8601}"
+puts "- Mode: advisory only — no runtime changes, no deploy side effects, no automatic cleanup"
+puts
+puts "## Summary"
+puts
+puts "- Manual domain rules in repo: #{manual_count}"
+puts "- Auto-discovered rules on router: #{auto_count}"
+puts "- Live `VPN_DOMAINS`: #{vpn_current} / #{vpn_max} (#{usage})"
+puts "- Live `VPN_STATIC_NETS`: #{vpn_static_current}"
+puts "- Static CIDR lines in repo: #{static_entries.length}"
+puts "- Broad static review candidates (`/18` or broader): #{wide_candidates.length}"
+puts "- Parent-covered child domain candidates: #{covered_children.length}"
+if largest_section
+  puts "- Largest static section by estimated IPv4 space: #{largest_section[0]} (#{largest_section[1]["count"]} CIDR, #{human_int(largest_section[1]["addresses"])} IP)"
+end
+puts
+puts "## Static Coverage Review"
+puts
+puts "### Section summary"
+puts
+puts "| Section | CIDR count | Estimated IPv4 space |"
+puts "|---|---:|---:|"
+section_summaries.sort_by { |section_name, summary| [-summary["addresses"], section_name] }.each do |section_name, summary|
+  puts "| #{section_name} | #{summary["count"]} | #{human_int(summary["addresses"])} |"
+end
+puts
+puts "### Broad CIDR review candidates"
+puts
+if wide_candidates.empty?
+  puts "- No `/18`-or-broader static CIDRs found."
+else
+  wide_candidates.first(12).each do |entry|
+    puts "- #{entry["priority"]}: `#{entry["cidr"]}` in **#{entry["section"]}** — #{human_int(entry["addresses"])} IPv4 addresses"
+  end
+end
+puts
+puts "## Domain Coverage Review"
+puts
+puts "### Largest explicit domain families"
+puts
+if family_rollups.empty?
+  puts "- No manual domain rules found."
+else
+  family_rollups.each do |family, count|
+    puts "- `#{family}` — #{count} explicit rule#{count == 1 ? "" : "s"}"
+  end
+end
+puts
+puts "### Parent-covered child domain candidates"
+puts
+if covered_children.empty?
+  puts "- No child domains are already covered by a configured parent rule."
+else
+  covered_children.first(20).each do |item|
+    puts "- `#{item["domain"]}` is already covered by `#{item["parent"]}`"
+  end
+  if covered_children.length > 20
+    puts "- ... and #{covered_children.length - 20} more"
+  end
+  puts
+  puts "Recommendation note: these are **cleanup candidates only**. Keep explicit child rules if they improve readability, document intent, or protect against future family splits."
+end
+puts
+puts "## Recommendation Mode"
+puts
+puts "1. Review the widest static CIDRs first and confirm they still solve a real non-DNS traffic problem."
+puts "2. Treat parent-covered child domains as readability-vs-minimalism decisions, not automatic removals."
+puts "3. Prefer narrowing static coverage only after a live smoke test proves DNS-based coverage is enough."
+puts "4. Make any future cleanup behind `deploy -> verify.sh -> router-health-report --save`."
+RUBY
+
+cat "$MARKDOWN_OUTPUT"
+
+if [ "$SAVE_MODE" = "1" ]; then
+  TRACKED_LATEST="${PROJECT_ROOT}/docs/catalog-review-latest.md"
+  cp "$MARKDOWN_OUTPUT" "$TRACKED_LATEST"
+
+  if [ -z "${CATALOG_REVIEW_STATE_FILE:-}" ]; then
+    ROUTER_STATE_DIR="$(router_kv_get "$STATE_FILE" STATE_DIR)"
+    ROUTER_REPORT_DIR="${ROUTER_STATE_DIR}/reports"
+    ROUTER_REPORT_FILE="${ROUTER_REPORT_DIR}/catalog-review-latest.md"
+    ROUTER_REPORT_TS_FILE="${ROUTER_REPORT_DIR}/catalog-review-$(date +%Y-%m-%dT%H%M%S%z).md"
+
+    router_ssh "mkdir -p '${ROUTER_REPORT_DIR}'"
+    cat "$MARKDOWN_OUTPUT" | router_ssh "cat > '${ROUTER_REPORT_FILE}'"
+    cat "$MARKDOWN_OUTPUT" | router_ssh "cat > '${ROUTER_REPORT_TS_FILE}'"
+  else
+    ROUTER_REPORT_FILE="n/a (fixture mode)"
+  fi
+
+  if [ -f "$JOURNAL_FILE" ]; then
+    NOW_DATE="$(date +%F)"
+    NOW_TS="$(date '+%Y-%m-%d %H:%M:%S %z')"
+    BROAD_COUNT="$(ruby -e 'count = 0; File.foreach(ARGV[0]) { |line| count += 1 if line.start_with?("- High:", "- Medium:", "- Low:") }; puts count' "$MARKDOWN_OUTPUT")"
+    COVERED_COUNT="$(ruby -e 'flag = false; count = 0; File.foreach(ARGV[0]) do |line|; flag = true if line.strip == "### Parent-covered child domain candidates"; next unless flag; count += 1 if line.start_with?("- `") && line.include?(" is already covered by "); end; puts count' "$MARKDOWN_OUTPUT")"
+    cat >> "$JOURNAL_FILE" <<EOF
+
+---
+
+## ${NOW_DATE} — Catalog review snapshot
+
+> Advisory-only snapshot сохранён через \`./scripts/catalog-review-report --save\` в ${NOW_TS}. Никаких runtime-изменений этот review не вносит.
+
+- broad static review candidates: ${BROAD_COUNT}
+- parent-covered child domain candidates: ${COVERED_COUNT}
+- tracked summary: [catalog-review-latest.md](catalog-review-latest.md)
+- router-side USB report: ${ROUTER_REPORT_FILE}
+- next safe step: review recommendations first, then change config only behind smoke tests
+EOF
+  fi
+fi
