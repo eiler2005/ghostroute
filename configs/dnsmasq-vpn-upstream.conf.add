@@ -206,6 +206,10 @@ server=/example-provider-cloud.invalid/9.9.9.9@wgc1
 server=/smithery.ai/1.1.1.1@wgc1
 server=/smithery.ai/9.9.9.9@wgc1
 
+# cobalt.tools
+server=/cobalt.tools/1.1.1.1@wgc1
+server=/cobalt.tools/9.9.9.9@wgc1
+
 # Wispr Flow
 server=/wisprflow.ai/1.1.1.1@wgc1
 server=/wisprflow.ai/9.9.9.9@wgc1

@@ -124,7 +124,7 @@ dnsmasq.log (все DNS-запросы)
 | Видео | YouTube (все поддомены + CDN) |
 | Мессенджеры | Telegram (домены + IP-подсети по ASN), imo (imo.im + PageBites IP-подсети), WhatsApp |
 | Соцсети | Instagram, Facebook / Messenger, Twitter / X, TikTok, LinkedIn |
-| Прочее | Apple Podcasts, Atlassian |
+| Прочее | Apple Podcasts, Atlassian, cobalt.tools |
 
 Плюс домены, обнаруженные автоматически.
 
