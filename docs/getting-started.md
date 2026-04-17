@@ -276,6 +276,27 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - `./verify.sh` — быстро понять, живы ли инварианты и нет ли drift/freshness problem
 - `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория, а на USB осталось последнее sanitised состояние роутера
 
+### Быстрая шпаргалка
+
+Если не хочется вспоминать все команды, используйте такой минимум:
+
+```bash
+# 1. Быстрый health-check
+./verify.sh
+
+# 2. Сохранить понятный snapshot для себя, USB и любой LLM
+./scripts/router-health-report --save
+
+# 3. Трафик за сегодня
+./scripts/traffic-report
+
+# 4. Трафик за неделю / месяц
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
+```
+
+Именно эти команды сейчас покрывают почти весь типовой operational workflow.
+
 ## Шаг 10. Локальные тесты observability-слоя
 
 Эти проверки не меняют runtime-конфигурацию роутера:

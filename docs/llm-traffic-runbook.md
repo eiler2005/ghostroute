@@ -13,6 +13,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - "проверка роутера", "health", "router health", "состояние роутера", "дрейф", "freshness" -> ./verify.sh
    - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./scripts/router-health-report
    - "сохрани health snapshot и обнови журнал", "health report save" -> ./scripts/router-health-report --save
+   - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, docs/domain-management.md, docs/current-routing-explained.md, docs/traffic-observability.md and answer with a review/plan by default
    - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report
    - "вчера", "yesterday" -> ./scripts/traffic-daily-report yesterday
    - specific date like 2026-04-14 -> ./scripts/traffic-daily-report 2026-04-14
@@ -35,9 +36,9 @@ When the user asks for a router traffic report or router health/capacity report 
    - Routing Health
    - Catalog Capacity
    - Growth vs latest saved snapshot
-    - Freshness
-    - Traffic Snapshot
-    - Drift
+   - Freshness
+   - Traffic Snapshot
+   - Drift
 
 5. For health/capacity answers explicitly mention:
    - VPN_DOMAINS current / maxelem / usage / headroom
@@ -72,6 +73,12 @@ When the user asks for a router traffic report or router health/capacity report 
 10. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
 
 11. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+
+12. If the user asks about future optimization of domains/catalog/routing coverage:
+   - start from docs/future-improvements-backlog.md
+   - verify what is already implemented vs still future
+   - prefer review/plan first, not runtime changes
+   - do not change live router config unless the user explicitly asks for implementation
 ```
 
 ## Готовые пользовательские формулировки
@@ -89,8 +96,37 @@ When the user asks for a router traffic report or router health/capacity report 
 - `проверь состояние роутера`
 - `дай health report`
 - `сохрани sanitised snapshot для llm`
+- `посмотри как оптимизировать каталог доменов`
+- `сделай review vpn domains backlog`
+- `проверь не разросся ли auto-catalog и что с этим делать`
 
 ## Что запускать
+
+### Future: оптимизация доменов и каталога
+
+Если пользователь спрашивает не про текущий traffic/health, а про будущую оптимизацию доменов, coverage или каталога:
+
+1. Сначала читать:
+   - `docs/future-improvements-backlog.md`
+   - `docs/domain-management.md`
+   - `docs/current-routing-explained.md`
+   - `docs/traffic-observability.md`
+2. Затем сверить live-state:
+   - `./verify.sh`
+   - `./scripts/router-health-report`
+3. По умолчанию отдавать:
+   - review
+   - backlog-status
+   - безопасный пошаговый план
+4. Не менять runtime по умолчанию, если пользователь явно не попросил implementation.
+
+Что особенно важно проговаривать:
+
+- `VPN_DOMAINS current / maxelem / usage / headroom`
+- manual / auto rule counts
+- `growth level` / `growth note`
+- нет ли признаков, что auto-catalog стал источником разрастания
+- что уже закрыто в backlog, а что остаётся future
 
 ### Health / capacity / drift
 
@@ -99,6 +135,23 @@ When the user asks for a router traffic report or router health/capacity report 
 ./verify.sh --verbose
 ./scripts/router-health-report
 ./scripts/router-health-report --save
+```
+
+Минимальный рекомендуемый набор команд для типового workflow:
+
+```bash
+# Быстрый health
+./verify.sh
+
+# Сохранить sanitised snapshot для человека, LLM и USB-backed storage
+./scripts/router-health-report --save
+
+# Сегодняшний трафик
+./scripts/traffic-report
+
+# Недельный / месячный трафик
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
 ```
 
 Когда использовать:

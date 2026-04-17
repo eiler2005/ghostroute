@@ -278,6 +278,19 @@ cp .env.example secrets/router.env
 ./scripts/router-health-report --save
 ```
 
+Если нужен совсем короткий operational набор “в 1–2 кнопки”:
+
+```bash
+# health
+./verify.sh
+./scripts/router-health-report --save
+
+# traffic
+./scripts/traffic-report
+./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
+```
+
 Что показывает `router-health-report`:
 
 - текущий health-result
