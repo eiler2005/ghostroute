@@ -48,6 +48,12 @@
 - JSON-снимок `tailscale status --json`
 - raw-снимок `wg show wgs1 dump`
 
+Практическая заметка:
+
+- для `wg` здесь лучше использовать явный путь к бинарнику
+- это важно для router cron / busybox `sh`, где shell builtin lookup может вести себя не так, как в интерактивной сессии
+- если `WG server total` ненулевой, а peer breakdown пустой, первым делом проверяйте, что в `wgs1/` вообще появляются `.dump` snapshots
+
 Куда сохраняет:
 
 - если есть `Entware`: `/opt/var/log/router_configuration`
@@ -273,6 +279,9 @@
 Это не:
 
 - per-peer breakdown само по себе
+- не гарантия, что per-peer таблица уже доступна в этом же окне
+
+Если `WG server total > 0`, но `Top by WG server peers` пуст и `WireGuard peer total = 0.00 GiB`, это обычно означает missing `wgs1` snapshots или отсутствие usable peer baseline в выбранном окне, а не отсутствие `wgs1` traffic как такового.
 
 ### `LAN bridge`
 

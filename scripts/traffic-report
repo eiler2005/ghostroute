@@ -589,6 +589,10 @@ TAILSCALE_TOTAL=$(( TAILSCALE_RX_TOTAL + TAILSCALE_TX_TOTAL ))
 WGS1_PEER_RX_TOTAL="$(awk -F'|' '{ sum += ($3 + 0) } END { print sum + 0 }' "$WGS1_PARSED")"
 WGS1_PEER_TX_TOTAL="$(awk -F'|' '{ sum += ($4 + 0) } END { print sum + 0 }' "$WGS1_PARSED")"
 WGS1_PEER_TOTAL=$(( WGS1_PEER_RX_TOTAL + WGS1_PEER_TX_TOTAL ))
+WGS1_PEER_BREAKDOWN_WARNING=""
+if [ "${WGS1_TOTAL:-0}" -gt 0 ] && [ "${WGS1_PEER_TOTAL:-0}" -eq 0 ]; then
+  WGS1_PEER_BREAKDOWN_WARNING="WG server total is non-zero, but per-peer WireGuard deltas are unavailable in this window. This usually means missing wgs1 snapshots or no usable peer baseline yet."
+fi
 
 build_device_metadata_map
 apply_device_metadata
@@ -806,6 +810,9 @@ if [ -s "$WGS1_PARSED" ]; then
     }' "$WGS1_PARSED"
 else
   echo "No WireGuard server peer snapshots found yet."
+  if [ -n "$WGS1_PEER_BREAKDOWN_WARNING" ]; then
+    echo "Warning:                 ${WGS1_PEER_BREAKDOWN_WARNING}"
+  fi
 fi
 echo
 echo "WireGuard rows are per-peer transfer deltas since the first sample today."
@@ -829,6 +836,9 @@ echo
 echo "=== NOTES ==="
 echo "- Per-peer split into router VPN (wgc1) vs direct WAN is not tracked reliably for Tailscale Exit Node traffic."
 echo "- Connection snapshot sections show conntrack counts, not bytes."
+if [ -n "$WGS1_PEER_BREAKDOWN_WARNING" ]; then
+  echo "- ${WGS1_PEER_BREAKDOWN_WARNING}"
+fi
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
   echo "- Peer names, LAN hostnames, tunnel addresses, and endpoints are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
 fi

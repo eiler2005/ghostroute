@@ -363,6 +363,7 @@ grep "conf-file.*autodiscovered" /etc/dnsmasq.conf
 - `WGS1 snapshot = Missing`
   это warning слоя observability, если отдельный snapshot-файл ещё не накопился на USB-backed storage
   Сам `wgs1` routing при этом может работать нормально
+- если одновременно `WG server total` уже ненулевой, а `Top by WG server peers` пуст / `WireGuard peer total = 0.00 GiB`, это обычно означает, что router-wide байты по `wgs1` есть, но per-peer breakdown не из чего собрать
 
 ### Что делать
 
@@ -370,6 +371,7 @@ grep "conf-file.*autodiscovered" /etc/dnsmasq.conf
   ```bash
   ./scripts/router-health-report --save
   ```
+- если `WGS1 snapshot` долго остаётся `Missing`, проверьте `/jffs/scripts/cron-traffic-snapshot`: он должен реально писать `wgs1/<timestamp>.dump` и не полагаться на shell builtin lookup для `wg`
 - если warning связан с blocked-list или snapshots, дождитесь следующего cron-run или проверьте соответствующий artifact вручную
 
 ---

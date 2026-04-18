@@ -24,8 +24,16 @@ if [ -x /opt/bin/tailscale ]; then
   /opt/bin/tailscale status --json > "$TAILSCALE_DIR/$timestamp.json" 2>/dev/null || true
 fi
 
-if command -v wg >/dev/null 2>&1; then
-  wg show wgs1 dump > "$WGS1_DIR/$timestamp.dump" 2>/dev/null || true
+WG_BIN=""
+for candidate in /usr/sbin/wg /opt/bin/wg /usr/bin/wg /bin/wg; do
+  if [ -x "$candidate" ]; then
+    WG_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -n "$WG_BIN" ]; then
+  "$WG_BIN" show wgs1 dump > "$WGS1_DIR/$timestamp.dump" 2>/dev/null || true
 fi
 
 if [ -x /jffs/scripts/lan-device-counters-snapshot ]; then

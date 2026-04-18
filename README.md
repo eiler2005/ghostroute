@@ -167,7 +167,7 @@ scripts/
   router-health-report            # CLI tool: sanitised health/capacity/traffic summary for humans and LLMs
   catalog-review-report           # CLI tool: advisory review of manual domains + static CIDR coverage
   cron-save-ipset                 # saves VPN_DOMAINS ipset to disk every 6h
-  cron-traffic-snapshot           # stores traffic counters / Tailscale / WGS snapshots every 6h
+  cron-traffic-snapshot           # stores traffic counters / Tailscale / WGS snapshots every 6h; uses explicit wg binary lookup for router cron compatibility
   cron-traffic-daily-close        # stores end-of-day LAN/WGS conntrack snapshot at 23:55
 
 docs/
@@ -265,6 +265,8 @@ If you want trusted local reports to show your own device aliases and generic ty
 The `secrets/` directory is gitignored, so these overrides stay local. With redaction enabled, reports still show `lan-host-*`.
 
 For raw `WireGuard server` peers, the router can report both per-peer transfer counters and current conntrack snapshots because decrypted traffic keeps the peer tunnel address from `wgs1` when it enters `PREROUTING`.
+
+If `WG server total` is non-zero but `Top by WG server peers` is empty and `WireGuard peer total` stays at `0.00 GiB`, treat that as a missing `wgs1` snapshot / baseline problem rather than proof that no peer used the tunnel.
 
 For `Tailscale Exit Node`, the router can reliably report **per-peer Tailscale bytes**, but it cannot reliably split each peer's bytes into `through wgc1` vs `direct WAN` after userspace proxying. Treat `VPN total` as the router-wide VPN volume, not a per-peer Tailscale breakdown.
 

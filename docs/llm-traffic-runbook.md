@@ -120,10 +120,9 @@ When the user asks for a router traffic report or router health/capacity report 
    - `docs/domain-management.md`
    - `docs/current-routing-explained.md`
    - `docs/traffic-observability.md`
-2. Затем сверить live-state:
-   - `./verify.sh`
-   - `./scripts/router-health-report`
-   - `./scripts/catalog-review-report`
+2. Затем проверить, что уже реализовано, а что всё ещё остаётся future:
+   - сначала по самим документам и backlog
+   - при необходимости дополнительно через `./verify.sh`, `./scripts/router-health-report`, `./scripts/catalog-review-report`
 3. По умолчанию отдавать:
    - review
    - backlog-status
@@ -133,8 +132,11 @@ When the user asks for a router traffic report or router health/capacity report 
 Что особенно важно проговаривать:
 
 - `VPN_DOMAINS current / maxelem / usage / headroom`
+- `VPN_STATIC_NETS current`
 - manual / auto rule counts
+- latest growth delta
 - `growth level` / `growth note`
+- есть ли warning/critical item в `Freshness`
 - нет ли признаков, что auto-catalog стал источником разрастания
 - какие broad static CIDR сейчас крупнейшие
 - какие child domains уже покрыты parent-rule и выглядят как cleanup-candidates
@@ -187,14 +189,30 @@ USB-backed destination:
 - primary: `/opt/var/log/router_configuration/reports/`
 - fallback: `/jffs/addons/router_configuration/traffic/reports/`
 
-Для ответов по health/capacity начинайте со следующего порядка:
+Для ответов по health/capacity придерживайтесь порядка секций самого отчёта:
 
-1. `Result`
-2. `Catalog Capacity`
-3. `Growth Trends` / `Growth vs latest saved snapshot`
-4. `Freshness`
-5. `Drift`
-6. `Traffic Snapshot` (если пользователь просил ещё и operational picture)
+1. Для `./verify.sh`:
+   - `Router`
+   - `Routing Health`
+   - `Catalog Capacity`
+   - `Growth Trends`
+   - `Freshness`
+   - `Drift`
+   - `Result`
+2. Для `./scripts/router-health-report` и `--save`:
+   - `Summary`
+   - `Routing Health`
+   - `Catalog Capacity`
+   - `Growth vs latest saved snapshot`
+   - `Freshness`
+   - `Traffic Snapshot`
+   - `Drift`
+3. Для `./scripts/catalog-review-report` и `--save`:
+   - `Summary`
+   - `Static Coverage Review`
+   - `Domain Coverage Review`
+   - `Recommendation Mode`
+   - явно говорить, что это advisory-only review и runtime changes не применялись
 
 ### Текущий день
 
