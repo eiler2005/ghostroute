@@ -138,7 +138,7 @@ Manually curated domain families, each with VPN DNS upstream + ipset rules:
 | Video | YouTube (all subdomains + CDN) |
 | Messengers | Telegram (domains + ASN-based IP ranges), imo (imo.im + PageBites IP ranges), WhatsApp |
 | Social | Instagram, Facebook / Messenger, Twitter / X, TikTok, LinkedIn |
-| Other | Apple Podcasts, Atlassian, cobalt.tools |
+| Other | Apple Podcasts / iCloud, Atlassian, cobalt.tools |
 
 Plus dynamically discovered domains filtered by the community blocked list.
 

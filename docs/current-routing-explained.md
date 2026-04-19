@@ -140,7 +140,14 @@
 - `itunes.apple.com`
 - `aaplimg.com`
 - `media.apple.com`
+- `icloud.com`
+- `icloud.apple.com`
 - `icloud-content.com`
+- `apple-cloudkit.com`
+- `apple-livephotoskit.com`
+- `cdn-apple.com`
+- `gc.apple.com`
+- `iwork.apple.com`
 - `acast.com`
 - `acast.cloud`
 - `omny.fm`
@@ -348,6 +355,27 @@ ipset=/youtube.com/VPN_DOMAINS
   контентные хосты Apple, встречающиеся в media/download сценариях
 - `acast.com`, `acast.cloud`, `omny.fm`, `tritondigital.com`, `podtrac.com`, `pscrb.fm`
   внешние подкастовые CDN, redirect и measurement-хосты, которые Apple Podcasts использует уже на этапе реального получения эпизода
+
+### iCloud
+
+- `icloud.com`
+  основной iCloud domain family и все `*.icloud.com` поддомены, включая `mask.icloud.com`, `mask-h2.icloud.com`, `mask-api.icloud.com`, `probe.icloud.com`, `pong.icloud.com`, `metrics.icloud.com`
+- `icloud.apple.com`
+  дополнительные iCloud web/API-хосты Apple
+- `icloud-content.com`
+  контентные iCloud/media-хосты Apple
+- `apple-cloudkit.com`
+  CloudKit-сервисы и связанные `*.apple-cloudkit.com`
+- `apple-livephotoskit.com`
+  Live Photos cloud services и связанные `*.apple-livephotoskit.com`
+- `cdn-apple.com`
+  часть iCloud CDN / service delivery endpoints Apple
+- `gc.apple.com`
+  дополнительные iCloud service endpoints Apple
+- `iwork.apple.com`
+  iWork documents в iCloud
+
+China-only семейства вроде `*.icloud.com.cn` и `*.apzones.com` в этот набор намеренно не включены.
 
 Важно:
 для YouTube не существует маленького “одного домена”.
