@@ -1,0 +1,10 @@
+Apr 21 05:00:42 dnsmasq[123]: query[HTTPS] stocks-data-service.v.aaplimg.com from 192.168.50.34
+Apr 21 05:00:42 dnsmasq[123]: query[A] stocks-data-service.v.aaplimg.com from 192.168.50.34
+Apr 21 05:01:07 dnsmasq[123]: query[A] main.vscode-cdn.net from 192.168.50.34
+Apr 21 05:02:10 dnsmasq[123]: query[A] ab.chatgpt.com from 192.168.50.34
+Apr 21 05:03:10 dnsmasq[123]: query[A] gateway.fe2.apple-dns.net from 192.168.50.30
+Apr 21 05:03:44 dnsmasq[123]: query[AAAA] gateway.fe2.apple-dns.net from 192.168.50.30
+Apr 21 05:05:00 dnsmasq[123]: query[A] api.github.com from 192.168.50.36
+Apr 21 05:08:00 dnsmasq[123]: query[A] www.dropbox.com from 192.168.50.36
+Apr 21 05:59:58 dnsmasq[123]: query[A] stocks-data-service.v.aaplimg.com from 192.168.50.34
+Apr 21 05:59:59 dnsmasq[123]: reply stocks-data-service.v.aaplimg.com is 17.253.37.210

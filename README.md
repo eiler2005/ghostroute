@@ -40,6 +40,7 @@ The core insight: instead of trying to define "what is Russian" (impossible to e
 - **ipset persistence** — firewall sets are saved to USB storage via cron and restored after reboots
 - **Remote access via WireGuard server or Tailscale** — raw `wgs1` clients with a public IPv4 and optional `Tailscale Exit Node` both honor `VPN_DOMAINS` / `VPN_STATIC_NETS`
 - **Peer-level observability** — `traffic-report` / `traffic-daily-report` show router-wide totals plus per-peer deltas for both `Tailscale` and raw `WireGuard server` clients
+- **Hourly DNS forensics** — `domain-auto-add.sh` stores per-hour top DNS by client IP so later investigations can answer “which client was active around 5 AM?” even after `dnsmasq.log` rotates
 
 ---
 
@@ -75,9 +76,10 @@ Raw `WireGuard server` clients also have plain DNS (`tcp/udp 53`) redirected to 
 ### Auto-discovery pipeline
 
 ```
-/opt/var/log/dnsmasq.log   ←  all DNS queries (rotated daily)
+/opt/var/log/dnsmasq.log   ←  all DNS queries (rotated hourly by domain-auto-add.sh)
           │
           │  domain-auto-add.sh  (cron, every hour)
+          │  ├─ save hourly DNS forensics snapshot by client IP
           ▼
     Extract unique domains
           │
@@ -162,6 +164,7 @@ scripts/
   domain-auto-add.sh              # auto-discovery: DNS log → blocked-list check → dnsmasq config
   update-blocked-list.sh          # downloads blocked domain list daily via VPN
   domain-report                   # CLI tool: view / manage / reset auto-discovered domains
+  dns-forensics-report            # CLI tool: inspect hourly top DNS by client IP from saved forensic snapshots
   traffic-report                  # CLI tool: today's WAN/Wi-Fi/VPN/WG-server/Tailscale totals + LAN/WGS snapshots
   traffic-daily-report            # CLI tool: closed-day report from stored snapshots, incl. WGS peers
   router-health-report            # CLI tool: sanitised health/capacity/traffic summary for humans and LLMs
@@ -346,9 +349,10 @@ Recommended safe validation after observability/reporting changes:
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-bash -n scripts/catalog-review-report tests/test-catalog-review.sh
+bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
 ./tests/test-router-health.sh
 ./tests/test-catalog-review.sh
+./tests/test-dns-forensics.sh
 ./verify.sh
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
@@ -372,6 +376,15 @@ These commands do not change router runtime config. They only:
 # Summary: auto-added domains + last run report
 ./scripts/domain-report
 
+# Latest hourly DNS forensics snapshot
+./scripts/dns-forensics-report
+
+# Specific hour, e.g. around 5 AM
+./scripts/dns-forensics-report 2026-04-21T05
+
+# Drill down into one client inside that hour
+./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+
 # Full activity log (what was seen, what was added)
 ./scripts/domain-report --log
 
@@ -389,6 +402,13 @@ These commands do not change router runtime config. They only:
 ```
 
 To add a domain permanently, edit `configs/dnsmasq.conf.add` and `configs/dnsmasq-vpn-upstream.conf.add`, then re-run `./deploy.sh`.
+
+DNS forensics snapshots are stored on the router under:
+
+- `/opt/var/log/router_configuration/dns-forensics/` when Entware/USB storage is available
+- `/jffs/addons/router_configuration/dns-forensics/` as fallback
+
+These snapshots show DNS interest and likely service families per client for a one-hour window. They are strong forensic hints, but they are not byte counters by themselves.
 
 ## Adding a New Domain Manually
 

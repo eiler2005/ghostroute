@@ -21,6 +21,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - specific date like 2026-04-14 -> ./scripts/traffic-daily-report 2026-04-14
    - "неделя", "за неделю", "week" -> ./scripts/traffic-daily-report week
    - "месяц", "за месяц", "month" -> ./scripts/traffic-daily-report month
+   - "что было в 5 утра", "кто шумел ночью", "what happened around 5am", "dns forensics", "who queried what", "что скачивали" -> ./scripts/dns-forensics-report <hour-prefix> and correlate with ./scripts/traffic-report or ./scripts/traffic-daily-report
 
 2. Default to redacted mode. Use REPORT_REDACT_NAMES=0 only for trusted local inspection when the user explicitly wants device-level identification.
 
@@ -151,6 +152,9 @@ When the user asks for a router traffic report or router health/capacity report 
 ./scripts/router-health-report --save
 ./scripts/catalog-review-report
 ./scripts/catalog-review-report --save
+./scripts/dns-forensics-report
+./scripts/dns-forensics-report 2026-04-21T05
+./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
 ```
 
 Минимальный рекомендуемый набор команд для типового workflow:
@@ -238,6 +242,26 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - какие LAN-устройства уже дали заметный объём трафика и в какой канал он ушёл
 - какие локальные устройства активны прямо сейчас
 - какие raw `WireGuard server` peer'ы сейчас активны
+
+### Почасовой forensic DNS-срез
+
+```bash
+./scripts/dns-forensics-report
+./scripts/dns-forensics-report 2026-04-21T05
+./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+```
+
+Использовать, когда нужен ответ:
+
+- что происходило около конкретного часа, например `05:00`
+- какие клиенты были самыми активными по DNS в этот час
+- какие raw domains и service families чаще всего запрашивал конкретный клиент
+
+Что важно проговаривать:
+
+- это hourly DNS-interest snapshot, а не byte accounting
+- такие данные хорошо объясняют вероятный сервис/тип активности
+- но для утверждения про объём трафика их нужно сверять с `traffic-report` / `traffic-daily-report`
 
 ### Закрытый дневной отчёт
 
@@ -427,6 +451,17 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - сколько у peer'а было active conntrack entries в `VPN` / `WAN` / `Local`
 
 Но это всё равно не полноценный NetFlow/pcap учёт на каждый запрос.
+
+Для hourly DNS forensics тоже нельзя честно говорить:
+
+- что топ-DNS домен автоматически означает такой же top по байтам
+- что один CDN hostname сам по себе доказывает конкретный файл или приложение
+
+Можно говорить только:
+
+- какой клиент в этот час чаще всего делал DNS-запросы
+- какие домены и доменные семейства у него преобладали
+- какие это даёт правдоподобные гипотезы о типе активности
 
 ## Как отвечать пользователю
 

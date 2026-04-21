@@ -1,0 +1,23 @@
+SNAPSHOT|2026-04-21T06:00:30+0300
+WINDOW|2026-04-21T05|Apr 21|05:00:42|05:59:58|1759|3
+CLIENT|1|192.168.50.34|?|920|145|aaplimg.com|210
+TOPDOMAIN|192.168.50.34|1|142|stocks-data-service.v.aaplimg.com
+TOPDOMAIN|192.168.50.34|2|35|main.vscode-cdn.net
+TOPDOMAIN|192.168.50.34|3|27|ab.chatgpt.com
+TOPFAMILY|192.168.50.34|1|210|aaplimg.com
+TOPFAMILY|192.168.50.34|2|35|vscode-cdn.net
+TOPFAMILY|192.168.50.34|3|31|chatgpt.com
+CLIENT|2|192.168.50.30|iPhone|420|78|apple.com|80
+TOPDOMAIN|192.168.50.30|1|25|gateway.fe2.apple-dns.net
+TOPDOMAIN|192.168.50.30|2|14|mobile.events.data.microsoft.com
+TOPDOMAIN|192.168.50.30|3|9|www.outlook.com
+TOPFAMILY|192.168.50.30|1|80|apple.com
+TOPFAMILY|192.168.50.30|2|23|microsoft.com
+TOPFAMILY|192.168.50.30|3|9|outlook.com
+CLIENT|3|192.168.50.36|Mac|220|41|github.com|22
+TOPDOMAIN|192.168.50.36|1|9|api.github.com
+TOPDOMAIN|192.168.50.36|2|8|www.dropbox.com
+TOPDOMAIN|192.168.50.36|3|6|miro.com
+TOPFAMILY|192.168.50.36|1|22|github.com
+TOPFAMILY|192.168.50.36|2|18|dropbox.com
+TOPFAMILY|192.168.50.36|3|11|miro.com

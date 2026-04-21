@@ -4,7 +4,7 @@
 
 ## Цели
 
-`traffic-report`, `traffic-daily-report` и `router-health-report` покрывают 10 практических вопросов:
+`traffic-report`, `traffic-daily-report` и `router-health-report` покрывают 11 практических вопросов:
 
 1. Сколько трафика прошло через внешний канал роутера.
 2. Сколько из этого трафика прошло через `WireGuard wgc1`.
@@ -16,6 +16,7 @@
 8. Каково текущее health/capacity/freshness-состояние routing-слоя без чтения сырых роутерных дампов.
 9. Какие remote `WireGuard server` peer'ы были самыми активными за окно отчёта.
 10. Какие `Tailscale` peer'ы дали заметный трафик, не сканируя полную peer-таблицу.
+11. Какие клиенты были DNS-активны в конкретный час и какие сервисы они чаще всего резолвили во время пика.
 
 Скрипты не являются биллинговой системой. Они сочетают:
 
@@ -34,6 +35,7 @@
 - `./scripts/router-health-report --save` — tracked summary + local journal + USB-backed copy на роутере
 - `./scripts/catalog-review-report` — advisory review manual domains + static CIDR coverage
 - `./scripts/catalog-review-report --save` — tracked summary + local journal + USB-backed copy на роутере
+- `./scripts/dns-forensics-report` — hourly DNS forensics по client IP из сохранённых snapshot'ов
 
 ## Компоненты
 
@@ -95,6 +97,33 @@
 - `daily/YYYY-MM-DD-lan-conntrack.txt`
 
 Этот файл используется и для локальных устройств из текущего `dnsmasq.leases`, и для remote `WireGuard server` peer'ов из текущего `wgs1` peer-map.
+
+### Hourly DNS forensics snapshots
+
+Этот слой собирается не отдельным cron-скриптом, а внутри `domain-auto-add.sh`, потому что именно он видит полный `dnsmasq.log` до очередной ротации.
+
+Что сохраняет:
+
+- top clients by DNS query count за последний час
+- per-client top raw domains
+- per-client top domain families
+- окно наблюдения (`Window key`, `from`, `to`) и общее число DNS-запросов
+
+Куда сохраняет:
+
+- primary: `/opt/var/log/router_configuration/dns-forensics/`
+- fallback: `/jffs/addons/router_configuration/dns-forensics/`
+
+Формат:
+
+- один TSV snapshot на каждый hourly run `domain-auto-add.sh`
+- имя файла начинается с `YYYY-MM-DDTHH`, где `HH` — час начала observed window
+
+Практический смысл:
+
+- когда человек спрашивает «что было около 5 утра», этот слой помогает понять, какие клиенты и доменные семейства были активны в нужный час
+- это forensic hint по DNS-интересу, а не прямое доказательство объёма байтов
+- интерпретировать его лучше вместе с `traffic-report` / `traffic-daily-report`
 
 ### `scripts/traffic-report`
 
@@ -199,6 +228,9 @@
 ./scripts/traffic-daily-report 2026-04-14
 ./scripts/traffic-daily-report week
 ./scripts/traffic-daily-report month
+./scripts/dns-forensics-report
+./scripts/dns-forensics-report 2026-04-21T05
+./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
 ./scripts/router-health-report
 ./scripts/router-health-report --save
 ./scripts/catalog-review-report
@@ -475,6 +507,7 @@ Remote peer
 - закрытый день: `./scripts/traffic-daily-report YYYY-MM-DD`
 - текущая неделя: `./scripts/traffic-daily-report week`
 - текущий месяц: `./scripts/traffic-daily-report month`
+- forensic hourly DNS drilldown: `./scripts/dns-forensics-report [YYYY-MM-DDTHH] [--ip <client-ip>]`
 
 Если нужен per-device объём по обычным LAN-клиентам:
 
@@ -491,3 +524,11 @@ Remote peer
 - смотрите `Tailscale total`
 - смотрите `TAILSCALE PEERS`
 - помните, что per-peer split `VPN` vs `WAN` там принципиально неточный
+
+Если задача именно forensic и вопрос звучит как:
+
+- «что скачивали в 5 утра»
+- «кто был самым активным по DNS в это окно»
+- «какие сервисы запрашивал клиент во время пика»
+
+Тогда начинайте с `./scripts/dns-forensics-report` для нужного часа, а затем сверяйте этот ответ с байтовыми totals из `traffic-report` / `traffic-daily-report`.

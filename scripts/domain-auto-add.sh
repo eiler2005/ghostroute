@@ -7,16 +7,21 @@
 #       • Заголовок запуска с временем и статистикой периода
 #       • Только добавленные домены (по одной строке каждый)
 #       • Итоговая строка: добавлено / уже было / пропущено
+#   - Saves an hourly DNS forensics snapshot keyed by client IP
 #
 # View log on Mac:  ./scripts/domain-report --log
 # Reset auto-adds:  ./scripts/domain-report --reset
 
-LOG=/opt/var/log/dnsmasq.log
-ACTIVITY=/opt/var/log/domain-activity.log
-MANAGED=/jffs/configs/dnsmasq.conf.add
-AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
-NO_VPN=/jffs/configs/domains-no-vpn.txt
-BLOCKED_LIST=/opt/tmp/blocked-domains.lst
+STATE_DIR_DEFAULT=/jffs/addons/router_configuration/dns-forensics
+[ -x /opt/bin/opkg ] && STATE_DIR_DEFAULT=/opt/var/log/router_configuration/dns-forensics
+LOG="${DOMAIN_AUTO_ADD_LOG_FILE:-/opt/var/log/dnsmasq.log}"
+ACTIVITY="${DOMAIN_AUTO_ADD_ACTIVITY_LOG_FILE:-/opt/var/log/domain-activity.log}"
+MANAGED="${DOMAIN_AUTO_ADD_MANAGED_FILE:-/jffs/configs/dnsmasq.conf.add}"
+AUTO="${DOMAIN_AUTO_ADD_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+NO_VPN="${DOMAIN_AUTO_ADD_NO_VPN_FILE:-/jffs/configs/domains-no-vpn.txt}"
+BLOCKED_LIST="${DOMAIN_AUTO_ADD_BLOCKED_LIST_FILE:-/opt/tmp/blocked-domains.lst}"
+LEASES_FILE="${DOMAIN_AUTO_ADD_LEASES_FILE:-/var/lib/misc/dnsmasq.leases}"
+FORENSICS_DIR="${DOMAIN_AUTO_ADD_FORENSICS_DIR:-$STATE_DIR_DEFAULT}"
 VPN_IPSET=VPN_DOMAINS
 VPN_IFACE=wgc1
 MIN_COUNT=1
@@ -26,6 +31,10 @@ PROBE_HISTORY_STATE=/opt/tmp/domain-auto-add-probe-history.tsv
 CANDIDATE_WINDOW_24H_SEC=86400
 CANDIDATE_WINDOW_7D_SEC=604800
 CANDIDATE_RETENTION_SEC=$CANDIDATE_WINDOW_7D_SEC
+FORENSICS_RETENTION_DAYS=30
+FORENSICS_TOP_CLIENTS=8
+FORENSICS_TOP_DOMAINS=8
+FORENSICS_TOP_FAMILIES=6
 
 # "User interest" signal: domain is repeatedly requested by user devices
 # across multiple days, even if current 24h volume is low.
@@ -98,6 +107,151 @@ get_family_domain() {
   else
     printf '%s\n' "$domain"
   fi
+}
+
+month_to_number() {
+  case "$1" in
+    Jan) printf '01\n' ;;
+    Feb) printf '02\n' ;;
+    Mar) printf '03\n' ;;
+    Apr) printf '04\n' ;;
+    May) printf '05\n' ;;
+    Jun) printf '06\n' ;;
+    Jul) printf '07\n' ;;
+    Aug) printf '08\n' ;;
+    Sep) printf '09\n' ;;
+    Oct) printf '10\n' ;;
+    Nov) printf '11\n' ;;
+    Dec) printf '12\n' ;;
+    *) printf '00\n' ;;
+  esac
+}
+
+write_dns_forensics_snapshot() {
+  [ -f "$LOG" ] || return 0
+
+  FORENSICS_LEASES_INPUT="$LEASES_FILE"
+  [ -f "$FORENSICS_LEASES_INPUT" ] || FORENSICS_LEASES_INPUT=/dev/null
+
+  FORENSICS_RAW=/tmp/daa-forensics-raw.$$
+  FORENSICS_CLIENTS=/tmp/daa-forensics-clients.$$
+  FORENSICS_CLIENTS_TOP=/tmp/daa-forensics-clients-top.$$
+  FORENSICS_DOMAINS=/tmp/daa-forensics-domains.$$
+  FORENSICS_FAMILIES=/tmp/daa-forensics-families.$$
+  FORENSICS_SNAPSHOT=/tmp/daa-forensics-snapshot.$$
+  : > "$FORENSICS_RAW"; : > "$FORENSICS_CLIENTS"; : > "$FORENSICS_CLIENTS_TOP"; : > "$FORENSICS_DOMAINS"; : > "$FORENSICS_FAMILIES"; : > "$FORENSICS_SNAPSHOT"
+
+  awk '
+    function family_domain(domain, n, parts) {
+      n = split(domain, parts, ".")
+      if (n >= 2) return parts[n - 1] "." parts[n]
+      return domain
+    }
+    NR == FNR {
+      if (NF >= 4) {
+        host = $4
+        if (host == "" || host == "*") host = "?"
+        hosts[$3] = host
+      }
+      next
+    }
+    / query\[/ && / from / && NF >= 8 {
+      domain = $6
+      client = $8
+      if (domain == "" || client == "") next
+      total[client]++
+      domain_key = client SUBSEP domain
+      if (!(domain_key in seen_domain)) {
+        seen_domain[domain_key] = 1
+        unique_domains[client]++
+      }
+      domain_count[domain_key]++
+      family = family_domain(domain)
+      family_count[client SUBSEP family]++
+      if (!(client in hosts)) hosts[client] = "?"
+    }
+    END {
+      for (client in total) {
+        printf "CLIENT_RAW|%s|%s|%d|%d\n", client, hosts[client], total[client], unique_domains[client] + 0
+      }
+      for (domain_key in domain_count) {
+        split(domain_key, parts, SUBSEP)
+        printf "DOMAIN_RAW|%s|%d|%s\n", parts[1], domain_count[domain_key], parts[2]
+      }
+      for (family_key in family_count) {
+        split(family_key, parts, SUBSEP)
+        printf "FAMILY_RAW|%s|%d|%s\n", parts[1], family_count[family_key], parts[2]
+      }
+    }
+  ' "$FORENSICS_LEASES_INPUT" "$LOG" > "$FORENSICS_RAW"
+
+  grep '^CLIENT_RAW|' "$FORENSICS_RAW" | sort -t'|' -k4,4nr -k5,5nr -k2,2 > "$FORENSICS_CLIENTS"
+  grep '^DOMAIN_RAW|' "$FORENSICS_RAW" | sort -t'|' -k2,2 -k3,3nr -k4,4 > "$FORENSICS_DOMAINS"
+  grep '^FAMILY_RAW|' "$FORENSICS_RAW" | sort -t'|' -k2,2 -k3,3nr -k4,4 > "$FORENSICS_FAMILIES"
+
+  if [ ! -s "$FORENSICS_CLIENTS" ]; then
+    rm -f "$FORENSICS_RAW" "$FORENSICS_CLIENTS" "$FORENSICS_CLIENTS_TOP" "$FORENSICS_DOMAINS" "$FORENSICS_FAMILIES" "$FORENSICS_SNAPSHOT"
+    return 0
+  fi
+
+  mkdir -p "$FORENSICS_DIR"
+
+  total_queries=$(awk -F'|' '{ sum += $4 + 0 } END { print sum + 0 }' "$FORENSICS_CLIENTS")
+  client_count=$(wc -l < "$FORENSICS_CLIENTS" 2>/dev/null | tr -d ' ')
+  client_count=${client_count:-0}
+
+  month_name=$(printf '%s\n' "$DATE_HDR" | awk '{ print $1 }')
+  day_number=$(printf '%s\n' "$DATE_HDR" | awk '{ if ($2 ~ /^[0-9]+$/) printf "%02d\n", $2; else print "00" }')
+  month_number=$(month_to_number "$month_name")
+  window_hour=${LOG_FROM%%:*}
+  [ "$window_hour" = "$LOG_FROM" ] && window_hour=00
+  window_key="$(date '+%Y')-${month_number}-${day_number}T${window_hour}"
+  snapshot_ts=$(date '+%Y-%m-%dT%H:%M:%S%z')
+  snapshot_file="${FORENSICS_DIR}/${window_key}-${snapshot_ts}.tsv"
+
+  head -n "$FORENSICS_TOP_CLIENTS" "$FORENSICS_CLIENTS" > "$FORENSICS_CLIENTS_TOP"
+
+  {
+    printf 'SNAPSHOT|%s\n' "$snapshot_ts"
+    printf 'WINDOW|%s|%s|%s|%s|%s|%s\n' \
+      "$window_key" "$DATE_HDR" "$LOG_FROM" "$LOG_TO" "$total_queries" "$client_count"
+    rank=0
+    while IFS='|' read -r _ client_ip host query_count unique_domains; do
+      [ -n "$client_ip" ] || continue
+      rank=$((rank + 1))
+      top_family_info=$(awk -F'|' -v client_ip="$client_ip" '$2 == client_ip { print $4 "|" $3; exit }' "$FORENSICS_FAMILIES")
+      top_family=-
+      top_family_count=0
+      if [ -n "$top_family_info" ]; then
+        top_family=${top_family_info%%|*}
+        top_family_count=${top_family_info##*|}
+      fi
+      printf 'CLIENT|%d|%s|%s|%s|%s|%s|%s\n' \
+        "$rank" "$client_ip" "$host" "$query_count" "$unique_domains" "$top_family" "$top_family_count"
+      awk -F'|' -v client_ip="$client_ip" -v max_rows="$FORENSICS_TOP_DOMAINS" '
+        BEGIN { rank = 0 }
+        $2 == client_ip && rank < max_rows {
+          rank++
+          printf "TOPDOMAIN|%s|%d|%s|%s\n", client_ip, rank, $3, $4
+        }
+      ' "$FORENSICS_DOMAINS"
+      awk -F'|' -v client_ip="$client_ip" -v max_rows="$FORENSICS_TOP_FAMILIES" '
+        BEGIN { rank = 0 }
+        $2 == client_ip && rank < max_rows {
+          rank++
+          printf "TOPFAMILY|%s|%d|%s|%s\n", client_ip, rank, $3, $4
+        }
+      ' "$FORENSICS_FAMILIES"
+    done < "$FORENSICS_CLIENTS_TOP"
+  } > "$FORENSICS_SNAPSHOT"
+
+  mv "$FORENSICS_SNAPSHOT" "$snapshot_file"
+
+  find "$FORENSICS_DIR" -name '*.tsv' -mtime +"$FORENSICS_RETENTION_DAYS" -print 2>/dev/null | while IFS= read -r old_file; do
+    [ -n "$old_file" ] && rm -f "$old_file"
+  done
+
+  rm -f "$FORENSICS_RAW" "$FORENSICS_CLIENTS" "$FORENSICS_CLIENTS_TOP" "$FORENSICS_DOMAINS" "$FORENSICS_FAMILIES" "$FORENSICS_SNAPSHOT"
 }
 
 extract_ipset_domains() {
@@ -346,8 +500,8 @@ CANDIDATE_CUTOFF_7D_EPOCH=$((CURRENT_EPOCH - CANDIDATE_WINDOW_7D_SEC))
 CANDIDATE_RETENTION_CUTOFF_EPOCH=$((CURRENT_EPOCH - CANDIDATE_RETENTION_SEC))
 [ "$CANDIDATE_RETENTION_CUTOFF_EPOCH" -ge 0 ] 2>/dev/null || CANDIDATE_RETENTION_CUTOFF_EPOCH=0
 
-if [ "$MODE" != "--cleanup-only" ] && [ "$MODE" != "run" ] && [ -n "$MODE" ]; then
-  echo "Usage: $0 [--cleanup-only]" >&2
+if [ "$MODE" != "--cleanup-only" ] && [ "$MODE" != "--forensics-only" ] && [ "$MODE" != "run" ] && [ -n "$MODE" ]; then
+  echo "Usage: $0 [--cleanup-only] [--forensics-only]" >&2
   exit 1
 fi
 
@@ -365,6 +519,12 @@ fi
 
 if [ "$MODE" = "run" ] && [ ! -f "$LOG" ]; then
   logger -t domain-auto-add "No log at $LOG — is dnsmasq logging enabled?"
+  exit 0
+fi
+
+write_dns_forensics_snapshot
+
+if [ "$MODE" = "--forensics-only" ]; then
   exit 0
 fi
 

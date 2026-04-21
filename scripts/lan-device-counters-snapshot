@@ -29,7 +29,6 @@ awk '
     bytes_field = $1
     sub(/^\[[0-9]+:/, "", bytes_field)
     sub(/\]$/, "", bytes_field)
-    bytes = bytes_field + 0
 
     ip = ""
     iface = ""
@@ -49,21 +48,29 @@ awk '
     else channel = "other"
 
     ips[ip] = 1
-    counters[ip, direction, channel] = bytes
+    # Keep raw byte counters as strings here. BusyBox awk can clamp large
+    # numeric values around 2^31-1 when coerced too early.
+    counters[ip, direction, channel] = bytes_field
   }
   END {
     for (ip in ips) {
       host = hosts[ip]
       if (host == "") host = "?"
-      printf "%s|%s|%d|%d|%d|%d|%d|%d\n",
+      vpn_up = counters[ip, "up", "vpn"];     if (vpn_up == "") vpn_up = "0"
+      vpn_down = counters[ip, "down", "vpn"]; if (vpn_down == "") vpn_down = "0"
+      wan_up = counters[ip, "up", "wan"];     if (wan_up == "") wan_up = "0"
+      wan_down = counters[ip, "down", "wan"]; if (wan_down == "") wan_down = "0"
+      other_up = counters[ip, "up", "other"]; if (other_up == "") other_up = "0"
+      other_down = counters[ip, "down", "other"]; if (other_down == "") other_down = "0"
+      printf "%s|%s|%s|%s|%s|%s|%s|%s\n",
         ip,
         host,
-        counters[ip, "up", "vpn"] + 0,
-        counters[ip, "down", "vpn"] + 0,
-        counters[ip, "up", "wan"] + 0,
-        counters[ip, "down", "wan"] + 0,
-        counters[ip, "up", "other"] + 0,
-        counters[ip, "down", "other"] + 0
+        vpn_up,
+        vpn_down,
+        wan_up,
+        wan_down,
+        other_up,
+        other_down
     }
   }
 ' "$LEASES_FILE" "$TMP_RULES" | sort -t'|' -k1,1

@@ -118,6 +118,26 @@ Fixture-based smoke test для advisory review слоя `scripts/catalog-review
 
 Подробности по fixture-файлам: [fixtures/catalog-review/README.md](fixtures/catalog-review/README.md)
 
+### `tests/test-dns-forensics.sh`
+
+Fixture-based smoke test для hourly DNS forensic слоя.
+
+Что он проверяет:
+
+1. Что `domain-auto-add.sh --forensics-only` умеет из sample `dnsmasq` log собрать hourly forensic snapshot.
+2. Что snapshot содержит стабильные record types:
+   - `WINDOW`
+   - `CLIENT`
+   - `TOPDOMAIN`
+   - `TOPFAMILY`
+3. Что `scripts/dns-forensics-report` умеет читать fixture snapshot и рендерить:
+   - `Top Clients`
+   - client-level drilldown
+   - `Notes`
+4. Что локальная device metadata override корректно подменяет label для известных IP.
+
+Подробности по fixture-файлам: [fixtures/dns-forensics/README.md](fixtures/dns-forensics/README.md)
+
 ## Контракт, который мы защищаем тестами
 
 Тестовый слой по сути защищает три текстовых интерфейса:
@@ -150,7 +170,7 @@ Fixture-based smoke test для advisory review слоя `scripts/catalog-review
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-bash -n scripts/catalog-review-report tests/test-catalog-review.sh
+bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
 ```
 
 Fixture smoke test:
@@ -158,6 +178,7 @@ Fixture smoke test:
 ```bash
 ./tests/test-router-health.sh
 ./tests/test-catalog-review.sh
+./tests/test-dns-forensics.sh
 ```
 
 Ожидаемый успешный вывод:

@@ -91,6 +91,8 @@ dnsmasq.log (все DNS-запросы)
 
 Список заблокированных доменов (~500 ключевых сервисов) скачивается ежедневно через VPN-туннель скриптом `update-blocked-list.sh`.
 
+Параллельно каждый hourly run сохраняет forensic snapshot в формате `top DNS by client IP`, чтобы потом можно было разбирать вопросы вида «что происходило около 5 утра» даже после ротации `dnsmasq.log`.
+
 Когда домен проходит auto-discovery, скрипт пишет **service-family domain**:
 - обычные поддомены обычно сворачиваются в registrable domain (`api.example-provider.invalid` → `example-provider.invalid`)
 - dynamic DNS с IP-encoded family label сохраняет более узкое семейство (`openclaw.203-0-113-10.sslip.io` → `203-0-113-10.sslip.io`)
@@ -148,6 +150,7 @@ scripts/
   domain-auto-add.sh              # авто-обнаружение доменов (cron, каждый час)
   update-blocked-list.sh          # скачивание списка блокировок (cron, раз в сутки)
   domain-report                   # CLI: просмотр/управление авто-добавленными доменами
+  dns-forensics-report            # CLI: почасовой forensic-отчёт top DNS по client IP
   traffic-report                  # CLI: итоги за сегодня по WAN/Wi-Fi/VPN/WG-server/Tailscale + LAN/WGS snapshots
   traffic-daily-report            # CLI: закрытый дневной отчёт из сохранённых snapshots, incl. WGS peers
   router-health-report            # CLI: sanitised health/capacity/traffic summary для человека и LLM
@@ -327,9 +330,10 @@ LLM/runbook: [docs/llm-traffic-runbook.md](docs/llm-traffic-runbook.md)
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-bash -n scripts/catalog-review-report tests/test-catalog-review.sh
+bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
 ./tests/test-router-health.sh
 ./tests/test-catalog-review.sh
+./tests/test-dns-forensics.sh
 ./verify.sh
 ./scripts/traffic-report
 ./scripts/traffic-daily-report week
@@ -356,6 +360,15 @@ bash -n scripts/catalog-review-report tests/test-catalog-review.sh
 # Сводка: авто-добавленные домены + последний запуск
 ./scripts/domain-report
 
+# Последний hourly DNS forensic snapshot
+./scripts/dns-forensics-report
+
+# Конкретный час, например около 5 утра
+./scripts/dns-forensics-report 2026-04-21T05
+
+# Один клиент внутри этого часа
+./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+
 # Полный лог активности
 ./scripts/domain-report --log
 
@@ -371,6 +384,13 @@ bash -n scripts/catalog-review-report tests/test-catalog-review.sh
 # Удалить все авто-добавленные домены и перезапустить dnsmasq
 ./scripts/domain-report --reset
 ```
+
+Forensic snapshots на роутере сохраняются в:
+
+- `/opt/var/log/router_configuration/dns-forensics/` при наличии Entware/USB storage
+- `/jffs/addons/router_configuration/dns-forensics/` как fallback
+
+Важно: это forensic-подсказка по DNS-интересу клиента за час, а не прямой байтовый учёт.
 
 ### Добавить домен вручную
 
