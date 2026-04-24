@@ -96,6 +96,14 @@ iface_level="$(router_freshness_level "$iface_age" 28800 86400)"
 tailscale_level="$(router_freshness_level "$tailscale_age" 28800 86400)"
 wgs1_level="$(router_freshness_level "$wgs1_age" 28800 86400)"
 daily_level="$(router_freshness_level "$daily_age" 129600 259200)"
+ipv6_policy_mode="$(router_ipv6_policy_mode "$STATE_FILE")"
+ipv6_policy_level="$(router_ipv6_policy_level "$STATE_FILE")"
+ipv6_policy_note="$(router_ipv6_policy_note "$STATE_FILE")"
+ipv6_runtime_present="$(router_ipv6_runtime_present "$STATE_FILE")"
+ipv6_lan_wan_present="$(router_ipv6_lan_wan_present "$STATE_FILE")"
+ipv6_wgc1_path_present="$(router_ipv6_wgc1_path_present "$STATE_FILE")"
+wgs1_snapshot_state="$(router_wgs1_snapshot_state "$STATE_FILE" "$wgs1_level")"
+wgs1_snapshot_note="$(router_wgs1_snapshot_note "$STATE_FILE" "$wgs1_level")"
 
 declare -a critical_items=()
 declare -a warning_items=()
@@ -131,6 +139,12 @@ add_info() {
 [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "1" ] || add_critical "missing wgs1 udp/53 -> dnsmasq redirect"
 [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "1" ] || add_critical "missing wgs1 tcp/53 -> dnsmasq redirect"
 
+if [ "$ipv6_policy_level" = "Critical" ]; then
+  add_critical "IPv6 policy drift: ${ipv6_policy_note}"
+elif [ "$ipv6_policy_level" = "Warning" ]; then
+  add_warning "IPv6 policy warning: ${ipv6_policy_note}"
+fi
+
 [ "$(router_kv_get "$STATE_FILE" CRON_SAVE_IPSET)" = "1" ] || add_warning "missing SaveIPSet cron job"
 [ "$(router_kv_get "$STATE_FILE" CRON_TRAFFIC_SNAPSHOT)" = "1" ] || add_warning "missing TrafficSnapshot cron job"
 [ "$(router_kv_get "$STATE_FILE" CRON_TRAFFIC_DAILY_CLOSE)" = "1" ] || add_warning "missing TrafficDailyClose cron job"
@@ -141,8 +155,19 @@ add_info() {
 [ "$persist_level" = "OK" ] || add_warning "ipset persistence freshness is ${persist_level} ($(router_human_age "$persist_age"))"
 [ "$iface_level" = "OK" ] || add_warning "traffic snapshot freshness is ${iface_level} ($(router_human_age "$iface_age"))"
 [ "$tailscale_level" = "OK" ] || add_warning "tailscale snapshot freshness is ${tailscale_level} ($(router_human_age "$tailscale_age"))"
-[ "$wgs1_level" = "OK" ] || add_warning "wgs1 snapshot freshness is ${wgs1_level} ($(router_human_age "$wgs1_age"))"
 [ "$daily_level" = "OK" ] || add_warning "daily close snapshot freshness is ${daily_level} ($(router_human_age "$daily_age"))"
+
+case "$wgs1_snapshot_state" in
+  "Capability problem")
+    add_warning "wgs1 snapshot collection capability problem (${wgs1_snapshot_note})"
+    ;;
+  "Missing")
+    add_warning "wgs1 snapshot missing (${wgs1_snapshot_note})"
+    ;;
+  "Stale")
+    add_warning "wgs1 snapshot freshness is ${wgs1_level} ($(router_human_age "$wgs1_age"))"
+    ;;
+esac
 
 if [ "$capacity_level" = "Warning" ] || [ "$capacity_level" = "Critical" ]; then
   add_warning "catalog usage level is ${capacity_level} at ${usage_pct}%"
@@ -254,6 +279,16 @@ printf "%-34s %s\n" "OUTPUT hook" "$( [ "$(router_kv_get "$STATE_FILE" HOOK_OUTP
 printf "%-34s %s\n" "wgs1 udp/53 redirect" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "wgs1 tcp/53 redirect" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "1" ] && echo OK || echo MISSING )"
 echo
+echo "=== IPv6 Policy ==="
+printf "%-34s %s\n" "Policy mode" "${ipv6_policy_mode}"
+printf "%-34s %s\n" "Status" "${ipv6_policy_level}"
+printf "%-34s %s\n" "Merlin UI setting" "$(router_kv_get "$STATE_FILE" IPV6_SERVICE)"
+printf "%-34s %s\n" "Live IPv6 on LAN/WAN" "$( [ "$ipv6_lan_wan_present" = "1" ] && echo DETECTED || echo NONE )"
+printf "%-34s %s\n" "Live IPv6 path on wgc1" "$( [ "$ipv6_wgc1_path_present" = "1" ] && echo DETECTED || echo NONE )"
+printf "%-34s %s\n" "Live IPv6 runtime anywhere" "$( [ "$ipv6_runtime_present" = "1" ] && echo DETECTED || echo NONE )"
+printf "%-34s %s\n" "Recommendation" "Keep IPv6 -> Отключить"
+echo "Note:                    ${ipv6_policy_note}"
+echo
 echo "=== Catalog Capacity ==="
 printf "%-34s %s\n" "VPN_DOMAINS current" "${vpn_current}"
 printf "%-34s %s\n" "VPN_DOMAINS maxelem" "${vpn_max}"
@@ -294,6 +329,11 @@ printf "%-34s %s (%s)\n" "Interface counters snapshot" "${iface_level}" "$(route
 printf "%-34s %s (%s)\n" "Tailscale snapshot" "${tailscale_level}" "$(router_human_age "$tailscale_age")"
 printf "%-34s %s (%s)\n" "WGS1 snapshot" "${wgs1_level}" "$(router_human_age "$wgs1_age")"
 printf "%-34s %s (%s)\n" "Daily close snapshot" "${daily_level}" "$(router_human_age "$daily_age")"
+echo
+echo "=== WGS1 Observability ==="
+printf "%-34s %s\n" "Snapshot artifact" "${wgs1_snapshot_state}"
+printf "%-34s %s\n" "Collection capability" "$( [ "$(router_wgs1_collection_problem "$STATE_FILE")" = "1" ] && echo PROBLEM || echo OK )"
+echo "Note:                    ${wgs1_snapshot_note}"
 echo
 echo "=== Drift ==="
 if [ "$critical_count" -eq 0 ] && [ "$warning_count" -eq 0 ]; then

@@ -52,6 +52,9 @@
   - `RC_VPN_ROUTE`
   - `ip rule` для DNS и `fwmark 0x1000`
   - hooks для `br0`, `wgs1`, `OUTPUT`
+- `IPv6 Policy`
+  - текущий supported mode: `IPv6 disabled`
+  - drift, если IPv6 включили частично и `wgc1` остался без live IPv6-path
 - `Catalog Capacity`
   - текущее число IP в `VPN_DOMAINS`
   - `maxelem`
@@ -66,6 +69,10 @@
   - ipset persistence file
   - traffic snapshots
   - Tailscale / WGS1 artifacts
+- `WGS1 Observability`
+  - fresh snapshot vs missing artifact
+  - collection capability problem (`wg` / runtime / cron path)
+  - no usable peer baseline в текущем traffic window
 
 `router-health-report --save` дополнительно:
 

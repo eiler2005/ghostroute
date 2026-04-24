@@ -125,13 +125,20 @@ IPv6-подсети Telegram задокументированы в `static-netwo
 # 2a0a:f280::/29
 ```
 
-Для активации IPv6-роутинга нужно:
+Текущий supported mode в проекте: **IPv6 disabled**.
 
-1. Убедиться, что WGC1 несёт IPv6-трафик (`ip -6 route show table wgc1` показывает маршруты)
-2. Раскомментировать закомментированный блок IPv6 в `scripts/firewall-start`
-3. Раскомментировать блок IPv6 в `scripts/nat-start`
-4. Раскомментировать IPv6-подсети в `configs/static-networks.txt`
-5. Задеплоить
+Важно:
+
+- одного “раскомментировать несколько блоков” недостаточно
+- включение IPv6 только в Merlin UI без полноценного `wgc1` IPv6-path создаёт риск bypass мимо repo-managed split-routing
+- generic IPv6 residue в Merlin / `ip6tables` / `AllowedIPs = ::/0` сам по себе не означает, что dual-stack routing уже готов
+
+Dual-stack здесь рассматривается только как **отдельный будущий проект**, и стартовать его имеет смысл только после одновременного выполнения условий:
+
+1. В Merlin реально включён IPv6
+2. На LAN есть live IPv6 runtime
+3. `wgc1` получил live IPv6 address/route (`ip -6 route show table wgc1` не пуст)
+4. После этого отдельно реализован и проверен repo-managed IPv6 routing layer
 
 ## Как обновлять подсети
 

@@ -294,7 +294,7 @@ For `week/month`, router-wide totals may cover a wider window than `LAN device b
 On top of the traffic reports there are now two safe operational commands:
 
 - `./verify.sh`
-  compact summary grouped into `Router`, `Routing Health`, `Catalog Capacity`, `Growth Trends`, `Freshness`, `Drift`, `Result`
+  compact summary grouped into `Router`, `Routing Health`, `IPv6 Policy`, `Catalog Capacity`, `Growth Trends`, `Freshness`, `WGS1 Observability`, `Drift`, `Result`
 - `./verify.sh --verbose`
   deeper live diagnostic dump
 - `./scripts/router-health-report`
@@ -328,11 +328,25 @@ Quick commands:
 `router-health-report` combines:
 
 - repo-managed routing invariants
+- explicit IPv6 policy state (`IPv6 disabled` is the current supported mode)
 - catalog capacity and headroom
 - growth trends against the latest saved snapshot and week-old snapshot when history exists
 - freshness of blocked-list, ipset persistence, and traffic snapshots
+- explicit `wgs1` observability semantics: fresh snapshot vs missing artifact vs collection capability problem vs no usable peer baseline in the current traffic window
 - base traffic totals and device traffic mix
 - explicit growth level / growth note so you can quickly tell whether auto-catalog growth is becoming operationally relevant
+
+Current safety default:
+
+- keep Merlin UI at `IPv6 -> Отключить`
+- do not treat the commented IPv6 blocks in repo scripts as a ready dual-stack implementation
+- after remote-access or routing changes, check `./verify.sh` and `./scripts/traffic-report`
+
+Current hardening baseline for public `wgs1`:
+
+- WAN admin UI off
+- WAN SSH off unless you explicitly need it
+- no traffic-disguise claims here: this layer is about leak closure, drift detection, and lower attack surface
 
 This gives a safe two-layer operational model:
 

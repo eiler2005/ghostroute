@@ -228,6 +228,213 @@ router_human_age() {
     }'
 }
 
+router_is_one() {
+  [ "${1:-0}" = "1" ]
+}
+
+router_ipv6_runtime_present() {
+  local state_file="$1"
+
+  if router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_BR0)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_WAN0)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_WGC1)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_WGS1)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ROUTE_MAIN)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ROUTE_WGC1)"; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
+router_ipv6_lan_wan_present() {
+  local state_file="$1"
+
+  if router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_BR0)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_WAN0)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ROUTE_MAIN)"; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
+router_ipv6_wgc1_path_present() {
+  local state_file="$1"
+
+  if router_is_one "$(router_kv_get "$state_file" IPV6_ADDR_WGC1)" ||
+    router_is_one "$(router_kv_get "$state_file" IPV6_ROUTE_WGC1)"; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
+router_ipv6_all_disable_flags_set() {
+  local state_file="$1"
+
+  if [ "$(router_kv_get "$state_file" IPV6_DISABLE_ALL)" = "1" ] &&
+    [ "$(router_kv_get "$state_file" IPV6_DISABLE_DEFAULT)" = "1" ] &&
+    [ "$(router_kv_get "$state_file" IPV6_DISABLE_BR0)" = "1" ] &&
+    [ "$(router_kv_get "$state_file" IPV6_DISABLE_WAN0)" = "1" ] &&
+    [ "$(router_kv_get "$state_file" IPV6_DISABLE_WGC1)" = "1" ] &&
+    [ "$(router_kv_get "$state_file" IPV6_DISABLE_WGS1)" = "1" ]; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
+router_ipv6_policy_mode() {
+  local state_file="$1"
+  local service
+  local runtime_present
+  local lan_wan_present
+  local wgc1_path_present
+
+  service="$(router_kv_get "$state_file" IPV6_SERVICE)"
+  runtime_present="$(router_ipv6_runtime_present "$state_file")"
+  lan_wan_present="$(router_ipv6_lan_wan_present "$state_file")"
+  wgc1_path_present="$(router_ipv6_wgc1_path_present "$state_file")"
+
+  if [ "${service:-disabled}" = "disabled" ]; then
+    printf 'Disabled\n'
+  elif [ "$runtime_present" != "1" ]; then
+    printf 'Enabled in UI only\n'
+  elif [ "$lan_wan_present" = "1" ] && [ "$wgc1_path_present" != "1" ]; then
+    printf 'Partial enable\n'
+  else
+    printf 'Runtime drift\n'
+  fi
+}
+
+router_ipv6_policy_level() {
+  local state_file="$1"
+  local service
+  local runtime_present
+  local lan_wan_present
+  local wgc1_path_present
+  local all_disable_flags
+
+  service="$(router_kv_get "$state_file" IPV6_SERVICE)"
+  runtime_present="$(router_ipv6_runtime_present "$state_file")"
+  lan_wan_present="$(router_ipv6_lan_wan_present "$state_file")"
+  wgc1_path_present="$(router_ipv6_wgc1_path_present "$state_file")"
+  all_disable_flags="$(router_ipv6_all_disable_flags_set "$state_file")"
+
+  if [ "${service:-disabled}" = "disabled" ] && [ "$runtime_present" != "1" ] && [ "$all_disable_flags" = "1" ]; then
+    printf 'OK\n'
+  elif [ "${service:-disabled}" = "disabled" ] && [ "$runtime_present" != "1" ]; then
+    printf 'Warning\n'
+  elif [ "$lan_wan_present" = "1" ] && [ "$wgc1_path_present" != "1" ]; then
+    printf 'Critical\n'
+  else
+    printf 'Warning\n'
+  fi
+}
+
+router_ipv6_policy_note() {
+  local state_file="$1"
+  local service
+  local runtime_present
+  local lan_wan_present
+  local wgc1_path_present
+  local all_disable_flags
+
+  service="$(router_kv_get "$state_file" IPV6_SERVICE)"
+  runtime_present="$(router_ipv6_runtime_present "$state_file")"
+  lan_wan_present="$(router_ipv6_lan_wan_present "$state_file")"
+  wgc1_path_present="$(router_ipv6_wgc1_path_present "$state_file")"
+  all_disable_flags="$(router_ipv6_all_disable_flags_set "$state_file")"
+
+  if [ "${service:-disabled}" = "disabled" ] && [ "$runtime_present" != "1" ] && [ "$all_disable_flags" = "1" ]; then
+    printf 'IPv6 is disabled in Merlin and no live IPv6 runtime was detected. Safe UI setting remains: IPv6 -> Отключить.\n'
+  elif [ "${service:-disabled}" = "disabled" ] && [ "$runtime_present" != "1" ]; then
+    printf 'Merlin reports IPv6 disabled, but one or more kernel disable flags drifted away from the expected all-1 state. Keep IPv6 -> Отключить and treat this as policy drift.\n'
+  elif [ "${service:-disabled}" != "disabled" ] && [ "$runtime_present" != "1" ]; then
+    printf 'IPv6 is enabled in Merlin UI, but no live IPv6 runtime was detected yet. Keep IPv6 -> Отключить until a separate dual-stack project exists.\n'
+  elif [ "$lan_wan_present" = "1" ] && [ "$wgc1_path_present" != "1" ]; then
+    printf 'LAN/WAN IPv6 is active, but wgc1 has no live IPv6 address/route. This can bypass repo-managed VPN routing.\n'
+  else
+    printf 'IPv6 runtime exists, but the repo still has no active dual-stack routing layer. Treat this as drift until a separate dual-stack project exists.\n'
+  fi
+}
+
+router_wgs1_collection_problem() {
+  local state_file="$1"
+
+  if [ "$(router_kv_get "$state_file" WG_BIN_FOUND)" != "1" ] ||
+    [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" != "1" ] ||
+    [ "$(router_kv_get "$state_file" WGS1_CURRENT_DUMP_OK)" != "1" ]; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
+router_wgs1_snapshot_state() {
+  local state_file="$1"
+  local freshness_level="${2:-OK}"
+
+  if [ "$(router_wgs1_collection_problem "$state_file")" = "1" ]; then
+    printf 'Capability problem\n'
+  elif [ "$(router_kv_get "$state_file" LATEST_WGS1_EXISTS)" != "1" ] ||
+    [ "$(router_kv_get "$state_file" LATEST_WGS1_HAS_DATA)" != "1" ]; then
+    printf 'Missing\n'
+  elif [ "$freshness_level" != "OK" ]; then
+    printf 'Stale\n'
+  else
+    printf 'Fresh and usable\n'
+  fi
+}
+
+router_wgs1_snapshot_note() {
+  local state_file="$1"
+  local freshness_level="${2:-OK}"
+  local state
+
+  state="$(router_wgs1_snapshot_state "$state_file" "$freshness_level")"
+
+  case "$state" in
+    "Capability problem")
+      printf 'wgs1 snapshot collection cannot run cleanly. Check wg binary lookup, wgs1 interface/runtime, and cron execution path.\n'
+      ;;
+    "Missing")
+      printf 'No saved wgs1 dump artifact has accumulated yet. Router-wide wgs1 totals can still exist before the first usable per-peer baseline appears.\n'
+      ;;
+    "Stale")
+      printf 'A saved wgs1 dump exists, but its freshness is outside the expected snapshot window.\n'
+      ;;
+    *)
+      printf 'Fresh raw wgs1 dump snapshots are available for peer breakdowns.\n'
+      ;;
+  esac
+}
+
+router_wgs1_window_state() {
+  local traffic_file="$1"
+  local warning_text
+
+  warning_text="$(router_kv_get "$traffic_file" TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING)"
+  if [ -n "$warning_text" ]; then
+    printf 'No usable peer baseline in current traffic window\n'
+  else
+    printf 'Usable\n'
+  fi
+}
+
+router_wgs1_window_note() {
+  local traffic_file="$1"
+  local warning_text
+
+  warning_text="$(router_kv_get "$traffic_file" TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING)"
+  if [ -n "$warning_text" ]; then
+    printf '%s\n' "$warning_text"
+  else
+    printf 'Per-peer WireGuard deltas are available for the current traffic window.\n'
+  fi
+}
+
 router_collect_health_state() {
   local outfile="$1"
   router_health_load_env || return 1
@@ -257,6 +464,20 @@ bool_grep() {
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null 2>&1 && printf '1\n' || printf '0\n'
 }
 
+bool_nonempty() {
+  local value="$1"
+  [ -n "$value" ] && printf '1\n' || printf '0\n'
+}
+
+sysctl_value() {
+  local path="$1"
+  if [ -f "$path" ]; then
+    cat "$path" 2>/dev/null || printf 'missing\n'
+  else
+    printf 'missing\n'
+  fi
+}
+
 now_epoch=$(date +%s)
 state_dir="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && state_dir="/opt/var/log/router_configuration"
@@ -281,6 +502,28 @@ output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
 ip_rules=$(ip rule show 2>/dev/null || true)
 chain_rules=$(iptables -t mangle -S RC_VPN_ROUTE 2>/dev/null || true)
+ipv6_service=$(nvram get ipv6_service 2>/dev/null || true)
+ipv6_addr_br0=$(ip -6 -o addr show dev br0 2>/dev/null || true)
+ipv6_addr_wan0=$(ip -6 -o addr show dev wan0 2>/dev/null || true)
+ipv6_addr_wgc1=$(ip -6 -o addr show dev wgc1 2>/dev/null || true)
+ipv6_addr_wgs1=$(ip -6 -o addr show dev wgs1 2>/dev/null || true)
+ipv6_route_main=$(ip -6 route show 2>/dev/null || true)
+ipv6_route_wgc1=$(ip -6 route show table wgc1 2>/dev/null || true)
+wg_bin=""
+for candidate in /usr/sbin/wg /opt/bin/wg /usr/bin/wg /bin/wg; do
+  if [ -x "$candidate" ]; then
+    wg_bin="$candidate"
+    break
+  fi
+done
+wgs1_iface_exists=0
+[ -d /sys/class/net/wgs1 ] && wgs1_iface_exists=1
+wgs1_current_dump_ok=0
+if [ -n "$wg_bin" ] && [ "$wgs1_iface_exists" = "1" ]; then
+  if "$wg_bin" show wgs1 dump >/dev/null 2>&1; then
+    wgs1_current_dump_ok=1
+  fi
+fi
 
 blocked_file="/opt/tmp/blocked-domains.lst"
 persist_file=""
@@ -296,6 +539,12 @@ latest_tailscale=$(latest_file "$state_dir/tailscale/*.json")
 latest_wgs1=$(latest_file "$state_dir/wgs1/*.dump")
 latest_daily=$(latest_file "$state_dir/daily/*-lan-conntrack.txt")
 interface_counters="$state_dir/interface-counters.tsv"
+latest_wgs1_exists=0
+latest_wgs1_has_data=0
+if [ -n "$latest_wgs1" ] && [ -f "$latest_wgs1" ]; then
+  latest_wgs1_exists=1
+  [ -s "$latest_wgs1" ] && latest_wgs1_has_data=1
+fi
 
 printf 'NOW_EPOCH=%s\n' "$now_epoch"
 printf 'ROUTER_PRODUCT=%s\n' "$(nvram get productid 2>/dev/null || true)"
@@ -312,6 +561,22 @@ printf 'VPN_STATIC_NETS_EXISTS=%s\n' "$vpn_static_exists"
 printf 'VPN_STATIC_NETS_CURRENT=%s\n' "${vpn_static_current:-0}"
 printf 'MANUAL_RULE_COUNT=%s\n' "${manual_count:-0}"
 printf 'AUTO_RULE_COUNT=%s\n' "${auto_count:-0}"
+printf 'IPV6_SERVICE=%s\n' "${ipv6_service:-disabled}"
+printf 'IPV6_DISABLE_ALL=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/all/disable_ipv6)"
+printf 'IPV6_DISABLE_DEFAULT=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/default/disable_ipv6)"
+printf 'IPV6_DISABLE_BR0=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/br0/disable_ipv6)"
+printf 'IPV6_DISABLE_WAN0=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/wan0/disable_ipv6)"
+printf 'IPV6_DISABLE_WGC1=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/wgc1/disable_ipv6)"
+printf 'IPV6_DISABLE_WGS1=%s\n' "$(sysctl_value /proc/sys/net/ipv6/conf/wgs1/disable_ipv6)"
+printf 'IPV6_ADDR_BR0=%s\n' "$(bool_nonempty "$ipv6_addr_br0")"
+printf 'IPV6_ADDR_WAN0=%s\n' "$(bool_nonempty "$ipv6_addr_wan0")"
+printf 'IPV6_ADDR_WGC1=%s\n' "$(bool_nonempty "$ipv6_addr_wgc1")"
+printf 'IPV6_ADDR_WGS1=%s\n' "$(bool_nonempty "$ipv6_addr_wgs1")"
+printf 'IPV6_ROUTE_MAIN=%s\n' "$(bool_nonempty "$ipv6_route_main")"
+printf 'IPV6_ROUTE_WGC1=%s\n' "$(bool_nonempty "$ipv6_route_wgc1")"
+printf 'WG_BIN_FOUND=%s\n' "$( [ -n "$wg_bin" ] && printf '1\n' || printf '0\n' )"
+printf 'WGS1_IFACE_EXISTS=%s\n' "$wgs1_iface_exists"
+printf 'WGS1_CURRENT_DUMP_OK=%s\n' "$wgs1_current_dump_ok"
 
 printf 'RULE_DNS_1111=%s\n' "$(bool_grep "$ip_rules" 'to 1.1.1.1 lookup wgc1')"
 printf 'RULE_DNS_9999=%s\n' "$(bool_grep "$ip_rules" 'to 9.9.9.9 lookup wgc1')"
@@ -338,6 +603,8 @@ printf 'INTERFACE_COUNTERS_EPOCH=%s\n' "$(file_epoch "$interface_counters")"
 printf 'LATEST_TAILSCALE_FILE=%s\n' "$latest_tailscale"
 printf 'LATEST_TAILSCALE_EPOCH=%s\n' "$(file_epoch "$latest_tailscale")"
 printf 'LATEST_WGS1_FILE=%s\n' "$latest_wgs1"
+printf 'LATEST_WGS1_EXISTS=%s\n' "$latest_wgs1_exists"
+printf 'LATEST_WGS1_HAS_DATA=%s\n' "$latest_wgs1_has_data"
 printf 'LATEST_WGS1_EPOCH=%s\n' "$(file_epoch "$latest_wgs1")"
 printf 'LATEST_DAILY_FILE=%s\n' "$latest_daily"
 printf 'LATEST_DAILY_EPOCH=%s\n' "$(file_epoch "$latest_daily")"
@@ -360,6 +627,14 @@ router_extract_traffic_summary() {
     /^Via VPN:/              { key = "TRAFFIC_DEVICE_VIA_VPN"; value = substr($0, index($0, ":") + 1) }
     /^Direct WAN:/           { key = "TRAFFIC_DEVICE_DIRECT_WAN"; value = substr($0, index($0, ":") + 1) }
     /^Other:/                { key = "TRAFFIC_DEVICE_OTHER"; value = substr($0, index($0, ":") + 1) }
+    /^Warning:[[:space:]]+WG server total is non-zero,/ {
+      key = "TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING"
+      value = substr($0, index($0, ":") + 1)
+    }
+    /^- WG server total is non-zero,/ {
+      key = "TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING"
+      value = substr($0, 3)
+    }
     key != "" {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       print key "=" value
@@ -439,6 +714,8 @@ router_render_health_markdown() {
   local blocked_epoch persist_epoch iface_epoch tailscale_epoch wgs1_epoch daily_epoch
   local blocked_age persist_age iface_age tailscale_age wgs1_age daily_age
   local blocked_level persist_level iface_level tailscale_level wgs1_level daily_level
+  local ipv6_policy_mode ipv6_policy_level ipv6_policy_note ipv6_runtime_present ipv6_lan_wan_present ipv6_wgc1_path_present
+  local wgs1_snapshot_state wgs1_snapshot_note wgs1_window_state wgs1_window_note
   local latest_date latest_vpn latest_static latest_manual latest_auto
   local week_date week_vpn week_static week_manual week_auto
   local latest_vpn_num latest_static_num latest_manual_num latest_auto_num
@@ -488,6 +765,14 @@ router_render_health_markdown() {
   tailscale_level="$(router_freshness_level "$tailscale_age" 28800 86400)"
   wgs1_level="$(router_freshness_level "$wgs1_age" 28800 86400)"
   daily_level="$(router_freshness_level "$daily_age" 129600 259200)"
+  ipv6_policy_mode="$(router_ipv6_policy_mode "$state_file")"
+  ipv6_policy_level="$(router_ipv6_policy_level "$state_file")"
+  ipv6_policy_note="$(router_ipv6_policy_note "$state_file")"
+  ipv6_runtime_present="$(router_ipv6_runtime_present "$state_file")"
+  ipv6_lan_wan_present="$(router_ipv6_lan_wan_present "$state_file")"
+  ipv6_wgc1_path_present="$(router_ipv6_wgc1_path_present "$state_file")"
+  wgs1_snapshot_state="$(router_wgs1_snapshot_state "$state_file" "$wgs1_level")"
+  wgs1_snapshot_note="$(router_wgs1_snapshot_note "$state_file" "$wgs1_level")"
 
   latest_date="$(router_kv_get "$history_file" HISTORY_LATEST_DATE)"
   latest_vpn="$(router_kv_get "$history_file" HISTORY_LATEST_VPN_DOMAINS)"
@@ -568,6 +853,8 @@ router_render_health_markdown() {
   traffic_device_vpn="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_VIA_VPN)"
   traffic_device_wan="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_DIRECT_WAN)"
   traffic_device_other="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_OTHER)"
+  wgs1_window_state="$(router_wgs1_window_state "$traffic_file")"
+  wgs1_window_note="$(router_wgs1_window_note "$traffic_file")"
 
   drift_lines=()
   [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("VPN_DOMAINS ipset missing")
@@ -581,11 +868,16 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "1" ] || drift_lines+=("missing OUTPUT -> RC_VPN_ROUTE hook")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] || drift_lines+=("missing wgs1 udp/53 -> dnsmasq redirect")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] || drift_lines+=("missing wgs1 tcp/53 -> dnsmasq redirect")
+  if [ "$ipv6_policy_level" = "Critical" ]; then
+    drift_lines+=("IPv6 policy drift: ${ipv6_policy_note}")
+  elif [ "$ipv6_policy_level" = "Warning" ]; then
+    drift_lines+=("IPv6 policy warning: ${ipv6_policy_note}")
+  fi
 
   result_level="OK"
-  if [ "${#drift_lines[@]}" -gt 0 ] || [ "$capacity_level" = "Critical" ] || [ "$blocked_level" = "Critical" ] || [ "$persist_level" = "Critical" ] || [ "$iface_level" = "Critical" ] || [ "$tailscale_level" = "Critical" ] || [ "$wgs1_level" = "Critical" ] || [ "$daily_level" = "Critical" ]; then
+  if [ "${#drift_lines[@]}" -gt 0 ] || [ "$capacity_level" = "Critical" ] || [ "$blocked_level" = "Critical" ] || [ "$persist_level" = "Critical" ] || [ "$iface_level" = "Critical" ] || [ "$tailscale_level" = "Critical" ] || [ "$wgs1_level" = "Critical" ] || [ "$daily_level" = "Critical" ] || [ "$ipv6_policy_level" = "Critical" ]; then
     result_level="Critical"
-  elif [ "$capacity_level" = "Warning" ] || [ "$blocked_level" = "Warning" ] || [ "$persist_level" = "Warning" ] || [ "$iface_level" = "Warning" ] || [ "$tailscale_level" = "Warning" ] || [ "$wgs1_level" = "Warning" ] || [ "$daily_level" = "Warning" ] || [ "$blocked_level" = "Missing" ] || [ "$persist_level" = "Missing" ] || [ "$iface_level" = "Missing" ] || [ "$tailscale_level" = "Missing" ] || [ "$wgs1_level" = "Missing" ] || [ "$daily_level" = "Missing" ]; then
+  elif [ "$capacity_level" = "Warning" ] || [ "$blocked_level" = "Warning" ] || [ "$persist_level" = "Warning" ] || [ "$iface_level" = "Warning" ] || [ "$tailscale_level" = "Warning" ] || [ "$wgs1_level" = "Warning" ] || [ "$daily_level" = "Warning" ] || [ "$blocked_level" = "Missing" ] || [ "$persist_level" = "Missing" ] || [ "$iface_level" = "Missing" ] || [ "$tailscale_level" = "Missing" ] || [ "$wgs1_level" = "Missing" ] || [ "$daily_level" = "Missing" ] || [ "$ipv6_policy_level" = "Warning" ]; then
     result_level="Warning"
   elif [ "$capacity_level" = "Watch" ]; then
     result_level="Watch"
@@ -627,6 +919,17 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | OUTPUT -> RC_VPN_ROUTE | $( [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | wgs1 udp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | wgs1 tcp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+
+## IPv6 Policy
+
+- Policy mode: **${ipv6_policy_mode}**
+- Status: **${ipv6_policy_level}**
+- Merlin UI setting: **$(router_kv_get "$state_file" IPV6_SERVICE)**
+- Live IPv6 on LAN/WAN: **$( [ "$ipv6_lan_wan_present" = "1" ] && printf 'Detected' || printf 'Not detected' )**
+- Live IPv6 path on wgc1: **$( [ "$ipv6_wgc1_path_present" = "1" ] && printf 'Detected' || printf 'Not detected' )**
+- Live IPv6 runtime anywhere: **$( [ "$ipv6_runtime_present" = "1" ] && printf 'Detected' || printf 'Not detected' )**
+- Recommendation: **Keep Merlin UI at IPv6 -> Отключить until a separate dual-stack project exists.**
+- Note: **${ipv6_policy_note}**
 
 ## Catalog Capacity
 
@@ -693,6 +996,14 @@ EOF
 | WGS1 snapshot | $(router_human_age "$wgs1_age") | ${wgs1_level} |
 | Daily close snapshot | $(router_human_age "$daily_age") | ${daily_level} |
 
+## WGS1 Observability
+
+- Snapshot artifact: **${wgs1_snapshot_state}**
+- Collection capability: **$( [ "$(router_wgs1_collection_problem "$state_file")" = "1" ] && printf 'Problem detected' || printf 'OK' )**
+- Window peer baseline: **${wgs1_window_state}**
+- Snapshot note: **${wgs1_snapshot_note}**
+- Window note: **${wgs1_window_note}**
+
 ## Traffic Snapshot
 
 - Router-wide window: **${traffic_router_window:-n/a}**
@@ -727,6 +1038,7 @@ EOF
 ## Notes
 
 - This report is sanitised for repository storage and LLM consumption.
+- Security goal here is leak closure, drift detection, and lower attack surface, not traffic disguise.
 - VPN_DOMAINS is a live accumulated ipset state, not a day-only metric.
 - Growth deltas come from saved journal snapshots when available; otherwise they stay n/a.
 EOF
