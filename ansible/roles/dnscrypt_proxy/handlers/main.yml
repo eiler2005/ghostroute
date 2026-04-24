@@ -1,0 +1,2 @@
+- name: restart dnscrypt
+  ansible.builtin.raw: "{{ dnscrypt_init_path }} restart"

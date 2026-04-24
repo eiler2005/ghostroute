@@ -1,0 +1,50 @@
+#!/bin/sh
+NAME="dnscrypt-proxy"
+DAEMON="{{ dnscrypt_bin_path }}"
+CONFIG="{{ dnscrypt_config_path }}"
+PIDFILE="/opt/var/run/dnscrypt-proxy.pid"
+LOGFILE="/opt/var/log/dnscrypt-proxy.log"
+
+start() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "$NAME already running"
+        return 0
+    fi
+    mkdir -p /opt/var/run /opt/var/log /opt/var/cache/dnscrypt-proxy
+    nohup "$DAEMON" -config "$CONFIG" -logfile "$LOGFILE" >> "$LOGFILE" 2>&1 &
+    echo $! > "$PIDFILE"
+    sleep 2
+    kill -0 "$(cat "$PIDFILE")" 2>/dev/null && echo "$NAME started" || {
+        echo "$NAME failed to start"
+        tail -n 20 "$LOGFILE" 2>/dev/null || true
+        return 1
+    }
+}
+
+stop() {
+    if [ -f "$PIDFILE" ]; then
+        kill "$(cat "$PIDFILE")" 2>/dev/null || true
+        rm -f "$PIDFILE"
+    fi
+    echo "$NAME stopped"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "running"
+    else
+        echo "stopped"
+        return 1
+    fi
+}
+
+case "$1" in
+  start|stop|restart|status) "$1" ;;
+  *) echo "usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac

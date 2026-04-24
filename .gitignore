@@ -23,10 +23,17 @@ id_ecdsa
 docs/vpn-domain-journal.md
 
 # Локальные secrets / overrides с персональными IP, ключами и bypass-правилами
-secrets/
+/secrets/
+/ansible/secrets/*.yml
+!/ansible/secrets/*.yml.example
+/ansible/secrets/.stealth.generated.yml
+/ansible/out/clients/*
+!/ansible/out/clients/.gitkeep
+ansible/*.retry
 
 # macOS
 .DS_Store
+__pycache__/
 
 # Редакторы
 *.swp

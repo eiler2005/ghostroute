@@ -1,0 +1,135 @@
+- name: Ensure xray volumes dir
+  ansible.builtin.file:
+    path: "{{ stealth_stack_dir }}/xray/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [db, cert]
+
+- name: Render docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ stealth_stack_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: compose up
+
+- name: Force bring stack up
+  community.docker.docker_compose_v2:
+    project_src: "{{ stealth_stack_dir }}"
+    state: present
+    pull: missing
+
+- name: Read current 3x-ui panel settings
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - xray
+      - /app/x-ui
+      - setting
+      - -show
+      - "true"
+  register: xui_settings
+  changed_when: false
+
+- name: Parse current 3x-ui settings
+  ansible.builtin.set_fact:
+    _xui_desired_base_path: "{{ xui_admin_web_path | regex_replace('^/+', '') | regex_replace('/+$', '') }}"
+    _xui_desired_path: "{{ xui_admin_web_path | regex_replace('/+$', '') if xui_admin_web_path != '/' else '/' }}"
+    _xui_current_port: "{{ (xui_settings.stdout | regex_search('port:\\s+(\\d+)', '\\1') | first | default('2053')) | int }}"
+    _xui_current_path: "{{ ((xui_settings.stdout | regex_search('webBasePath:\\s+(\\S+)', '\\1') | first | default('/')) | regex_replace('/+$', '')) or '/' }}"
+    _xui_has_default_credential: "{{ (xui_settings.stdout | regex_search('hasDefaultCredential:\\s+(\\S+)', '\\1') | first | default('false')) == 'true' }}"
+
+- name: Apply desired 3x-ui settings when panel config drift is detected
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - xray
+      - /app/x-ui
+      - setting
+      - -username
+      - "{{ xui_admin_username }}"
+      - -password
+      - "{{ xui_admin_password }}"
+      - -port
+      - "{{ xui_admin_web_port | string }}"
+      - -webBasePath
+      - "{{ _xui_desired_base_path }}"
+  register: xui_apply_settings_initial
+  changed_when: true
+  when:
+    - _xui_current_port != (xui_admin_web_port | int)
+      or _xui_current_path != _xui_desired_path
+      or _xui_has_default_credential
+  no_log: true
+
+- name: Restart xray container after initial 3x-ui settings update
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xui_apply_settings_initial is changed
+
+- name: Wait for desired 3x-ui panel port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ xui_admin_web_port }}"
+    timeout: 60
+
+- name: Probe 3x-ui login with desired credentials
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ xui_admin_username }}"
+      password: "{{ xui_admin_password }}"
+    status_code: 200
+    return_content: true
+  register: xui_login_probe
+  failed_when: false
+  no_log: true
+
+- name: Force desired 3x-ui credentials when login probe still fails
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - xray
+      - /app/x-ui
+      - setting
+      - -username
+      - "{{ xui_admin_username }}"
+      - -password
+      - "{{ xui_admin_password }}"
+      - -port
+      - "{{ xui_admin_web_port | string }}"
+      - -webBasePath
+      - "{{ _xui_desired_base_path }}"
+  register: xui_apply_settings_forced
+  changed_when: true
+  when: not (xui_login_probe.json.success | default(false))
+  no_log: true
+
+- name: Restart xray container after forced 3x-ui credential reset
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xui_apply_settings_forced is changed
+
+- name: Wait for 3x-ui to be ready with desired credentials
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ xui_admin_username }}"
+      password: "{{ xui_admin_password }}"
+    status_code: 200
+    return_content: true
+  register: xui_health
+  retries: 30
+  delay: 2
+  until: xui_health.json.success | default(false)
+  no_log: true
+
+- name: Seed Reality inbound (first run)
+  ansible.builtin.include_tasks: seed_reality.yml
+  when: reality_server_public_key | length == 0

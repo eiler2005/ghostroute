@@ -4,7 +4,7 @@
 
 Domain discovery — автоматический и ручной процесс нахождения новых доменов для маршрутизации через VPN.
 
-Нативный pipeline `dnsmasq → ipset → iptables → ip rule → WGC1` остаётся **единственным механизмом маршрутизации**. Discovery только находит домены — routing делает основной pipeline.
+Нативный discovery pipeline `dnsmasq → ipset` остаётся источником доменных наборов. Дальше routing зависит от источника: LAN TCP уходит через REDIRECT `:<lan-redirect-port>` в Reality, remote `wgs1` клиенты остаются на mark `0x1000` → `wgc1`.
 
 ## Что уже закрыто вокруг discovery
 
@@ -52,8 +52,8 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
 7. Перед записью делает повторный suffix coverage check — если write-domain уже покрыт, новая child-запись не создаётся
 8. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
    - `ipset=/<domain>/VPN_DOMAINS`
-   - `server=/<domain>/1.1.1.1@wgc1`
-   - `server=/<domain>/9.9.9.9@wgc1`
+   - `ipset=/<domain>/STEALTH_DOMAINS`
+   - legacy `server=...@wgc1` entries are no longer written
 9. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
 
 Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
@@ -77,7 +77,7 @@ getdomainnames.sh
 # x3mRouting ALL 1 YOUTUBE autoscan=youtube
 ```
 
-Ручной режим полезен, когда нужно разобраться, какие домены использует конкретный сервис (YouTube, TikTok, Instagram). Результаты анализируются вручную и переносятся в `configs/dnsmasq.conf.add` и `configs/dnsmasq-vpn-upstream.conf.add`.
+Ручной режим полезен, когда нужно разобраться, какие домены использует конкретный сервис (YouTube, TikTok, Instagram). Результаты анализируются вручную и переносятся в `configs/dnsmasq.conf.add` и `configs/dnsmasq-stealth.conf.add`. Legacy per-domain upstream файл не используется для новых правил.
 
 ## Исключения
 
@@ -243,3 +243,4 @@ x3mRouting умеет строить полный routing pipeline (ipset → ip
 - [architecture.md](architecture.md) — как устроена маршрутизация и где место auto-discovery
 - [domain-management.md](domain-management.md) — как добавлять домены вручную и работать с авто-добавленными
 - [current-routing-explained.md](current-routing-explained.md) — полный список роутимых доменов
+- [remote-access-overlay-migration.md](remote-access-overlay-migration.md) — planning-only future direction по замене публичного `wgs1` на overlay / zero-trust remote access слой

@@ -1,0 +1,36 @@
+#!/bin/sh
+# Weekly blocklist refresh — light Pi-hole substitute on router.
+set -e
+
+OUT={{ blocklist_output }}
+TMP=/tmp/blocklists.raw
+
+mkdir -p "$(dirname $OUT)"
+> $TMP
+
+# StevenBlack — unified hosts (ads + malware)
+curl -sfL --max-time 60 \
+  https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts >> $TMP || true
+
+# Firebog — tracking (AdGuard)
+curl -sfL --max-time 60 \
+  https://v.firebog.net/hosts/AdguardDNS.txt >> $TMP || true
+
+# Convert to dnsmasq address= format; skip localhost/commented lines.
+awk '
+  /^0\.0\.0\.0\s+/ { print "address=/" $2 "/0.0.0.0" }
+  /^127\.0\.0\.1\s+/ { if ($2 != "localhost") print "address=/" $2 "/0.0.0.0" }
+  !/^0\.0\.0\.0/ && !/^127\.0\.0\.1/ && !/^#/ && NF==1 { print "address=/" $1 "/0.0.0.0" }
+' $TMP | sort -u > $OUT.tmp
+
+# Sanity: must have at least 10k entries
+WC=$(wc -l < $OUT.tmp)
+if [ "$WC" -lt 10000 ]; then
+  echo "blocklist-update: suspicious low entry count ($WC), keeping previous" >&2
+  rm -f $OUT.tmp
+  exit 1
+fi
+
+mv $OUT.tmp $OUT
+/sbin/service restart_dnsmasq
+echo "blocklist-update: OK ($WC entries)"

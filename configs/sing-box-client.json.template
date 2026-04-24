@@ -1,0 +1,53 @@
+{
+  "log": {
+    "level": "info",
+    "output": "/opt/var/log/sing-box.log",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "redirect",
+      "tag": "redirect-in",
+      "listen": "0.0.0.0",
+      "listen_port": <lan-redirect-port>,
+      "sniff": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "reality-out",
+      "server": "<vps_ip>",
+      "server_port": 443,
+      "uuid": "<router_uuid>",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "<reality_public_key>",
+          "short_id": "<router_short_id>"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "inbound": "redirect-in",
+        "outbound": "reality-out"
+      }
+    ],
+    "final": "direct-out"
+  }
+}

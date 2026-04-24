@@ -1,549 +1,151 @@
 # Current Routing Explained
 
-## Что уже сделано
+## Что сейчас сделано
 
-На роутере уже работает выборочная отправка трафика через `WireGuard WGC1`.
+GhostRoute больше не является схемой “все выбранные домены через `wgc1`”. Текущая модель:
 
-Схема такая:
+```text
+LAN/Wi-Fi TCP           -> Channel B -> sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS
+LAN/Wi-Fi UDP/443       -> rejected for managed destinations, forcing TCP fallback
+router OUTPUT           -> main routing unless explicitly proxied for diagnostics
+Remote WireGuard clients  -> Channel A reserve -> wgc1
+```
 
-1. Устройство в сети открывает сайт.
-2. `dnsmasq` на роутере видит DNS-запрос.
-3. Если домен входит в наши правила, его IP попадает в `VPN_DOMAINS`.
-4. `iptables` помечает трафик к этим IP.
-5. `ip rule` отправляет помеченные пакеты в таблицу `wgc1`.
-6. Трафик уходит через WireGuard.
+| Источник | Домены | Static CIDR | Egress |
+|---|---|---|---|
+| `br0` | `STEALTH_DOMAINS` | `VPN_STATIC_NETS` | sing-box REDIRECT `:<lan-redirect-port>` |
+| `OUTPUT` | не прозрачно перехватывается | не прозрачно перехватывается | main routing / explicit proxy only |
+| `wgs1` | `VPN_DOMAINS` | `VPN_STATIC_NETS` | `wgc1` |
 
-Для обычных LAN-устройств эта маркировка срабатывает в `PREROUTING` на `br0`.
-Для raw `WireGuard server` клиентов та же логика теперь срабатывает в `PREROUTING` на `wgs1`.
-Для `Tailscale Exit Node` трафик выглядит как локально сгенерированный на самом роутере, поэтому дополнительно используется такой же хук в `OUTPUT`.
+## Почему два доменных набора
 
-Отдельно для Telegram и imo добавлен ещё один набор: `VPN_STATIC_NETS`.
-Он нужен потому, что этим мессенджерам одних доменов не всегда достаточно: часть трафика идёт и через собственные IP-подсети.
+`dnsmasq` умеет добавлять результат DNS-резолва в `ipset`. Поэтому один и тот же managed domain catalog представлен двумя наборами:
 
-Для всех доменных семейств, которые мы ведём через VPN, добавлен ещё и отдельный upstream DNS через `WireGuard`.
-Это нужно потому, что обычные DNS провайдера могут отдавать локализованные российские CDN/IP-адреса, даже когда сам трафик уже должен идти через managed VPN path.
-Именно на TikTok эта проблема проявилась первой, но логика актуальна и для других сервисов.
-Отдельно выяснилось, что DNS самого VPN-провайдера `10.254.254.254` часть доменов резолвит нестабильно, поэтому для VPN-доменов используется пара публичных резолверов `1.1.1.1` и `9.9.9.9`.
-Чтобы эти запросы не ушли через обычный WAN, на роутере добавлены отдельные `ip rule` и они тоже принудительно отправляются в таблицу `wgc1`.
+```text
+ipset=/youtube.com/VPN_DOMAINS
+ipset=/youtube.com/STEALTH_DOMAINS
+```
 
-Практический смысл этого дополнения:
+Первый нужен для remote-клиентов на `wgs1`, второй — для домашней сети и самого роутера.
 
-- локальные устройства в `Wi-Fi/LAN`, raw клиенты `WireGuard server` и клиенты `Tailscale Exit Node` используют один и тот же список `VPN_DOMAINS`
-- заблокированные сервисы у удалённого клиента тоже уходят через `WGC1`
-- всё остальное у удалённого клиента продолжает идти через обычный `WAN`, как и в локальной split-routing схеме
+`ipset=/youtube.com/STEALTH_DOMAINS` покрывает:
 
-## Как смотреть текущее состояние каталога и routing-layer
+- `youtube.com`
+- `www.youtube.com`
+- `music.youtube.com`
+- любые будущие `*.youtube.com`
 
-Для чтения “что вообще сейчас живо” больше не нужно вручную собирать куски из `ipset`, `iptables` и snapshots.
+## DNS
 
-Базовые команды:
+Текущая supported-схема:
+
+```text
+dnsmasq -> dnscrypt-proxy 127.0.0.1:5354
+```
+
+Legacy per-domain upstreams через `@wgc1` отключены. Если в старых заметках встречается пример:
+
+```text
+server=/example.com/1.1.1.1@wgc1
+```
+
+считайте его историческим. Новые домены так не добавляются.
+
+## Текущие managed domain families
+
+Источник правды:
+
+```text
+configs/dnsmasq.conf.add
+configs/dnsmasq-stealth.conf.add
+```
+
+Основные категории:
+
+| Категория | Примеры |
+|---|---|
+| AI tools | Anthropic/Claude, OpenAI/ChatGPT, Google AI Studio, NotebookLM, Smithery, Wispr Flow |
+| Dev tools | GitHub, GitLab, Bitbucket, Azure DevOps, Visual Studio |
+| Video/media | YouTube, Googlevideo, TikTok/ByteDance families, LiveTV |
+| Messengers | Telegram, WhatsApp, imo |
+| Social | Instagram, Facebook/Messenger, X/Twitter, LinkedIn |
+| Apple | Podcasts, iCloud, App Store/media families |
+| Other | Atlassian, VPS, cobalt.tools, RedShield |
+
+Не копируйте список вручную из этого документа для изменения runtime. Меняйте config files и затем запускайте deploy/verify.
+
+## Static networks
+
+`configs/static-networks.txt` содержит CIDR ranges для direct-IP flows.
+
+Важно: набор называется `VPN_STATIC_NETS` исторически, но egress зависит от источника:
+
+```text
+br0  TCP     -> VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
+br0  UDP/443 -> VPN_STATIC_NETS -> REJECT, чтобы приложение ушло на TCP
+wgs1         -> VPN_STATIC_NETS -> 0x1000 -> wgc1
+```
+
+## Как проверить live state
 
 ```bash
 ./verify.sh
 ./scripts/router-health-report
-./scripts/router-health-report --save
 ```
 
-Что показывает этот слой:
+На роутере:
 
-- `Routing Health`
-  - `VPN_DOMAINS`
-  - `VPN_STATIC_NETS`
-  - `RC_VPN_ROUTE`
-  - `ip rule` для DNS и `fwmark 0x1000`
-  - hooks для `br0`, `wgs1`, `OUTPUT`
-- `IPv6 Policy`
-  - текущий supported mode: `IPv6 disabled`
-  - drift, если IPv6 включили частично и `wgc1` остался без live IPv6-path
-- `Catalog Capacity`
-  - текущее число IP в `VPN_DOMAINS`
-  - `maxelem`
-  - usage/headroom
-  - manual / auto rule counts
-- `Growth Trends`
-  - дельта к последнему сохранённому snapshot
-  - week-over-week дельта, если history уже накопилась
-  - `growth level` / `growth note`
-- `Freshness`
-  - blocked-list
-  - ipset persistence file
-  - traffic snapshots
-  - Tailscale / WGS1 artifacts
-- `WGS1 Observability`
-  - fresh snapshot vs missing artifact
-  - collection capability problem (`wg` / runtime / cron path)
-  - no usable peer baseline в текущем traffic window
+```sh
+iptables -t nat -S PREROUTING | grep <lan-redirect-port>
+iptables -S FORWARD | grep 'dport 443'
+netstat -nlp | grep <lan-redirect-port>
+iptables -t mangle -S PREROUTING | grep RC_VPN_ROUTE
+iptables -t mangle -S RC_VPN_ROUTE
+ip rule show | grep -E '0x1000|0x2000'
+ip route show table 200 || true
+ip route show table wgc1
+ipset list STEALTH_DOMAINS | awk '/^Number of entries:/ {print $4}'
+ipset list VPN_DOMAINS | awk '/^Number of entries:/ {print $4}'
+```
 
-`router-health-report --save` дополнительно:
+Expected:
 
-- обновляет tracked `docs/router-health-latest.md`
-- аппендит local snapshot в `docs/vpn-domain-journal.md`
-- пишет sanitised копию в USB-backed каталог роутера
+- `br0` TCP REDIRECT rules mention `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- `br0` UDP/443 reject rules exist for the same sets.
+- `wgs1` rule enters `RC_VPN_ROUTE`.
+- no legacy `0x2000`, table `200 -> singbox0`, or live `singbox0`.
+- table `wgc1` exists for old reserve path.
 
-Это полезно, когда нужно передать состояние следующей LLM без повторного ручного разбора.
-
-## Что сейчас идёт через VPN
-
-Через VPN сейчас направляются такие доменные семейства:
-
-- `atlassian.com`
-- `anthropic.com`
-- `aistudio.google.com`
-- `chatgpt.com`
-- `claude.ai`
-- `claude.com`
-- `ai.google.dev`
-- `generativelanguage.googleapis.com`
-- `github.com`
-- `api.github.com`
-- `githubstatus.com`
-- `raw.githubusercontent.com`
-- `objects.githubusercontent.com`
-- `githubusercontent.com`
-- `codeload.github.com`
-- `gitlab.com`
-- `gitlab-static.net`
-- `bitbucket.org`
-- `dev.azure.com`
-- `visualstudio.com`
-- `google.com`
-- `linkedin.com`
-- `twitter.com`
-- `x.com`
-- `twimg.com`
-- `t.co`
-- `notebooklm.google.com`
-- `tiktok.com`
-- `tiktokv.com`
-- `tiktokcdn.com`
-- `tiktokcdn-us.com`
-- `tiktokcdn-eu.com`
-- `byteoversea.com`
-- `ibytedtos.com`
-- `byteimg.com`
-- `muscdn.com`
-- `ttwstatic.com`
-- `youtube.com`
-- `youtu.be`
-- `googlevideo.com`
-- `ytimg.com`
-- `ggpht.com`
-- `youtubei.googleapis.com`
-- `telegram.org`
-- `t.me`
-- `telegram.me`
-- `telegra.ph`
-- `telesco.pe`
-- `cdn-telegram.org`
-- `telegram-cdn.org`
-- `tg.dev`
-- `instagram.com`
-- `cdninstagram.com`
-- `fbcdn.net`
-- `fbsbx.com`
-- `podcasts.apple.com`
-- `apps.apple.com`
-- `mzstatic.com`
-- `itunes.apple.com`
-- `aaplimg.com`
-- `media.apple.com`
-- `icloud.com`
-- `icloud.apple.com`
-- `icloud-content.com`
-- `apple-cloudkit.com`
-- `apple-livephotoskit.com`
-- `cdn-apple.com`
-- `gc.apple.com`
-- `iwork.apple.com`
-- `acast.com`
-- `acast.cloud`
-- `omny.fm`
-- `tritondigital.com`
-- `podtrac.com`
-- `pscrb.fm`
-- `cobalt.tools`
-- `openai.com`
-- `oaistatic.com`
-- `oaiusercontent.com`
-- `redshieldvpn.com`
-- `whatsapp.com`
-- `whatsapp.net`
-- `wa.me`
-
-Плюс для Telegram дополнительно используются статические IPv4-подсети из `configs/static-networks.txt`.
-
-Operational note:
-
-- число доменных правил в каталоге и число IP в live `VPN_DOMAINS` — это разные сущности
-- для capacity tracking ориентируйтесь на `router-health-report` / `docs/router-health-latest.md`, а не только на длину domain list ниже
-
-## Как понимать правила dnsmasq
-
-Строка такого вида:
+## Как добавить домен
 
 ```text
-ipset=/youtube.com/VPN_DOMAINS
+# configs/dnsmasq.conf.add
+ipset=/example.com/VPN_DOMAINS
+
+# configs/dnsmasq-stealth.conf.add
+ipset=/example.com/STEALTH_DOMAINS
 ```
 
-не означает только один домен `youtube.com`.
-Она означает:
+Deploy:
 
-- `youtube.com`
-- и любые поддомены вида `*.youtube.com`
-
-То есть правило покрывает не один хост, а всё семейство домена.
-
-Поэтому вручную перечислять все возможные поддомены обычно не нужно.
-Если сервис завтра создаст новый поддомен внутри того же доменного суффикса, правило его тоже поймает.
-
-## Что покрывает каждая строка
-
-Ниже не “полный список всех когда-либо существовавших хостов”, а именно смысл каждого суффиксного правила.
-
-### Atlassian
-
-- `atlassian.com`
-- примеры: `www.atlassian.com`, `id.atlassian.com`, `admin.atlassian.com`, `support.atlassian.com`
-
-### Anthropic / Claude Code
-
-- `anthropic.com`
-- примеры: `api.anthropic.com`, `console.anthropic.com`, будущие `*.anthropic.com`
-- `claude.ai`
-  доменное семейство Claude web и связанных хостов `*.claude.ai`
-
-### Google AI Studio / NotebookLM / Gemini API
-
-- `aistudio.google.com`
-  web-интерфейс Google AI Studio
-- `notebooklm.google.com`
-  web-интерфейс NotebookLM
-- `ai.google.dev`
-  документация и web-интерфейсы Google AI Developers
-- `generativelanguage.googleapis.com`
-  Gemini API endpoint
-- `google.com`
-  вход, сессии и связанные `*.google.com` поддомены
-
-### GitHub / GitHub CLI
-
-- `github.com`
-  основной web, device-flow login и HTTPS git-операции
-- `api.github.com`
-  API-вызовы GitHub CLI, проверка пользователя и служебные запросы
-- `githubstatus.com`
-  status page, на которую GitHub CLI ссылается в диагностике проблем
-- `raw.githubusercontent.com`
-  raw-файлы и bootstrap-скрипты
-- `objects.githubusercontent.com`
-  release assets и объекты GitHub
-- `githubusercontent.com`
-  широкий домен для пользовательского и служебного GitHub-контента
-- `codeload.github.com`
-  архивы репозиториев и исходников
-
-### GitLab / Bitbucket / Azure DevOps
-
-- `gitlab.com`
-  web, auth, HTTPS git-операции и `altssh.gitlab.com`
-- `gitlab-static.net`
-  статические ресурсы GitLab web
-- `bitbucket.org`
-  Bitbucket Cloud web, API-поддомены и alt SSH-поддомены
-- `dev.azure.com`
-  Azure DevOps repos и SSH/HTTPS git endpoints
-- `visualstudio.com`
-  legacy Azure DevOps / Visual Studio Team Services URLs
-
-### ChatGPT
-
-- `chatgpt.com`
-- примеры: `chatgpt.com`, `www.chatgpt.com`, любые будущие `*.chatgpt.com`
-
-### Claude
-
-- `claude.com`
-- примеры: `claude.com`, `www.claude.com`, любые будущие `*.claude.com`
-
-### Google
-
-- `google.com`
-- примеры: `www.google.com`, `accounts.google.com`, `mail.google.com`, `drive.google.com`
-
-### LinkedIn
-
-- `linkedin.com`
-- примеры: `www.linkedin.com`, `static.linkedin.com`, `media.linkedin.com`
-
-### Twitter / X
-
-- `twitter.com`
-- примеры: `twitter.com`, `www.twitter.com`, `mobile.twitter.com`
-- `x.com`
-  новый основной домен X/Twitter и связанные `*.x.com` хосты
-- `twimg.com`
-  статика, скрипты, картинки и видео-хосты X/Twitter (`abs.twimg.com`, `pbs.twimg.com`, `video.twimg.com`)
-- `t.co`
-  короткие ссылки и redirect-домен X/Twitter
-
-### TikTok и связанные домены
-
-- `tiktok.com`
-  основной сайт и web-входы TikTok
-- `tiktokv.com`
-  media и app/service endpoints TikTok
-- `tiktokcdn.com`
-  CDN-домены TikTok
-- `tiktokcdn-us.com`
-  CDN-домены TikTok для US/глобальных узлов
-- `tiktokcdn-eu.com`
-  CDN-домены TikTok для EU-узлов
-- `byteoversea.com`
-  связанные ByteDance/TikTok сервисные домены
-- `ibytedtos.com`
-  object storage и media/service endpoints ByteDance
-- `byteimg.com`
-  изображения и статические ресурсы ByteDance/TikTok
-- `muscdn.com`
-  media/CDN-домены, которые часто встречаются у TikTok-экосистемы
-- `ttwstatic.com`
-  дополнительные статические ресурсы TikTok web/app
-
-Важно:
-для TikTok, как и для YouTube, одного домена обычно недостаточно.
-Нужны соседние CDN и service families.
-
-Дополнительно:
-для всех VPN-доменов настроен отдельный DNS upstream через `1.1.1.1@wgc1` и `9.9.9.9@wgc1`, а также отдельные `ip rule` для самих DNS-резолверов, чтобы резолв не шёл через локальные DNS провайдера и не зависел от неполного DNS VPN-провайдера.
-
-Технически это хранится так:
-
-- в проекте upstream-правила лежат отдельно в `configs/dnsmasq-vpn-upstream.conf.add`
-- при деплое они встраиваются в `/jffs/configs/dnsmasq.conf.add`
-
-Это сделано потому, что на Merlin в рабочий конфиг `dnsmasq` автоматически попадает именно `dnsmasq.conf.add`.
-
-Практический смысл такой:
-
-- сайт из VPN-списка не только уходит через `WGC1`
-- его DNS-ответ тоже приходит не от локального RU-DNS провайдера
-- это уменьшает шанс, что сервис даст российский CDN или российскую географию выдачи
-
-### YouTube и связанные домены
-
-- `youtube.com`
-  примеры: `www.youtube.com`, `m.youtube.com`, `studio.youtube.com`, `music.youtube.com`
-- `youtu.be`
-  короткие ссылки YouTube
-- `googlevideo.com`
-  видеостримы и media endpoints YouTube
-- `ytimg.com`
-  картинки, превью, статические ресурсы YouTube
-- `ggpht.com`
-  изображения и media-хосты Google/YouTube
-- `youtubei.googleapis.com`
-  API-вызовы YouTube-клиентов
-
-### Apple Podcasts
-
-- `podcasts.apple.com`
-  витрина Apple Podcasts и связанные `*.podcasts.apple.com` API-хосты
-- `apps.apple.com`
-  App Store / AMP API-хосты Apple (`amp-api*.apps.apple.com`), которые iPhone использует для контента и дополнительных app features
-- `itunes.apple.com`
-  bag/auth/playback/entitlements-хосты Apple и любые будущие `*.itunes.apple.com`
-- `mzstatic.com`
-  статика, обложки и часть контент-ассетов Apple
-- `aaplimg.com`
-  CNAME-целевые хосты Apple, на которые часто указывают `*.apple.com` и `*.itunes.apple.com`
-- `media.apple.com`
-  дополнительные media/API-хосты Apple
-- `icloud-content.com`
-  контентные хосты Apple, встречающиеся в media/download сценариях
-- `acast.com`, `acast.cloud`, `omny.fm`, `tritondigital.com`, `podtrac.com`, `pscrb.fm`
-  внешние подкастовые CDN, redirect и measurement-хосты, которые Apple Podcasts использует уже на этапе реального получения эпизода
-
-### iCloud
-
-- `icloud.com`
-  основной iCloud domain family и все `*.icloud.com` поддомены, включая `mask.icloud.com`, `mask-h2.icloud.com`, `mask-api.icloud.com`, `probe.icloud.com`, `pong.icloud.com`, `metrics.icloud.com`
-- `icloud.apple.com`
-  дополнительные iCloud web/API-хосты Apple
-- `icloud-content.com`
-  контентные iCloud/media-хосты Apple
-- `apple-cloudkit.com`
-  CloudKit-сервисы и связанные `*.apple-cloudkit.com`
-- `apple-livephotoskit.com`
-  Live Photos cloud services и связанные `*.apple-livephotoskit.com`
-- `cdn-apple.com`
-  часть iCloud CDN / service delivery endpoints Apple
-- `gc.apple.com`
-  дополнительные iCloud service endpoints Apple
-- `iwork.apple.com`
-  iWork documents в iCloud
-
-China-only семейства вроде `*.icloud.com.cn` и `*.apzones.com` в этот набор намеренно не включены.
-
-Важно:
-для YouTube не существует маленького “одного домена”.
-Нужны именно доменные семейства и связанные CDN-домены, поэтому список шире.
-
-### Telegram
-
-Telegram — самый сложный сервис для маршрутизации, потому что использует и домены, и прямые IP-подключения. Подробный разбор: [telegram-deep-dive.md](telegram-deep-dive.md).
-
-**Core:**
-
-- `telegram.org`
-  примеры: `telegram.org`, `web.telegram.org`, `desktop.telegram.org`, `api.telegram.org`
-- `telegram.com`
-  альтернативный домен (редирект на telegram.org)
-- `t.me`
-  короткие ссылки Telegram
-- `telegram.me`
-  старый короткий домен Telegram, который всё ещё встречается
-- `telegra.ph`
-  Telegraph / статьи и часть Telegram-ссылок на контент
-- `telesco.pe`
-  web-представление некоторых публичных Telegram media links
-- `tg.dev`
-  технические и служебные хосты Telegram
-
-**CDN:**
-
-- `cdn-telegram.org`
-  media/CDN-хосты Telegram, которые встречаются у публичных файлов и web media links
-- `telegram-cdn.org`
-  соседнее Telegram CDN-семейство для media-хостов и прямых файловых ссылок
-
-**Экосистема:**
-
-- `fragment.com`
-  маркетплейс юзернеймов и номеров Telegram
-- `graph.org`
-  альтернативный домен Telegraph
-- `contest.com`
-  платформа конкурсов Telegram
-- `comments.app`
-  виджет комментариев для каналов
-- `usercontent.dev`
-  доставка пользовательского контента
-- `tdesktop.com`
-  домен Telegram Desktop
-
-Важно:
-для Telegram одних доменов часто недостаточно.
-Поэтому дополнительно добавлены статические IPv4-подсети: официальные из `core.telegram.org/resources/cidr.txt`, AS62041 peering/CDN-подсети для медиа-доставки в России, и несколько legacy/observed подсетей.
-
-### Instagram
-
-- `instagram.com`
-- примеры: `www.instagram.com`, `i.instagram.com`, `help.instagram.com`
-- `cdninstagram.com`
-  CDN и media-хосты Instagram
-- `fbcdn.net`
-  видео, изображения и CDN-хосты Meta/Instagram
-- `fbsbx.com`
-  вспомогательные file/media endpoints Meta
-
-### OpenAI / ChatGPT assets
-
-- `openai.com`
-  примеры: `openai.com`, `auth.openai.com`, `platform.openai.com`
-- `oaistatic.com`
-  статические ресурсы OpenAI
-- `oaiusercontent.com`
-  пользовательский и служебный контент OpenAI
-
-### Wispr Flow
-
-- `wisprflow.ai`
-  основной домен Wispr Flow и все поддомены `*.wisprflow.ai`, включая сайт, docs, `api.wisprflow.ai`, `api-east.wisprflow.ai`, `cloud.wisprflow.ai`, `platform.wisprflow.ai`
-- `api.wisprflow.com`
-  отдельный официальный домен Wispr для части backend/email delivery
-- `wisprflow.onelink.me`
-  download / deep-link домен для установки приложения
-
-### cobalt.tools
-
-- `cobalt.tools`
-  основной домен cobalt и все поддомены `*.cobalt.tools`, включая `api.cobalt.tools`
-
-### RedShield VPN
-
-- `redshieldvpn.com`
-  сайт VPN-провайдера: личный кабинет, конфигурации, поддержка
-
-### WhatsApp
-
-- `whatsapp.com`
-  примеры: `whatsapp.com`, `web.whatsapp.com`, `faq.whatsapp.com`
-- `whatsapp.net`
-  серверы мессенджера и media CDN: `mmg.whatsapp.net`, `scdn.whatsapp.net`, `media-*.whatsapp.net`
-- `wa.me`
-  короткие ссылки для контактов и чатов
-
-Примечание:
-Media-контент WhatsApp (изображения, видео, документы) отдаётся через `fbcdn.net` и `fbsbx.com`,
-которые уже добавлены в конфиг как часть семейства Instagram / Meta CDN.
-
-### imo
-
-- `imo.im`
-  основной домен imo и его поддомены, включая `auth.imo.im`, `beta.imo.im`, `tunnel.imo.im`, `fra-tunnel.imo.im`
-
-Примечание:
-для imo добавлены и статические IPv4-подсети `AS36131 / PageBites`, потому что часть user traffic / tunnel entrypoints использует выделенные сети сервиса и не всегда повторяет чисто доменный сценарий.
-
-## Чего это не покрывает автоматически
-
-Правило по домену не покрывает соседний домен другого суффикса.
-
-Например:
-
-- `youtube.com` не покрывает `googlevideo.com`
-- `chatgpt.com` не покрывает `openai.com`
-- `telegram.org` не покрывает прямые Telegram IP-подсети
-- `imo.im` не покрывает прямые PageBites IP-подсети
-
-Поэтому для некоторых сервисов нужен набор из нескольких доменных семейств, а иногда и статические сети.
-
-## Почему это всё равно нормально
-
-Идея не в том, чтобы собрать “все IP навсегда”.
-Идея в том, чтобы покрыть нужные доменные семейства.
-IP-адреса внутри этих семейств может менять сам сервис, а `dnsmasq` будет заново добавлять их в `ipset`.
-
-## Автоматическое обнаружение доменов
-
-Список ручных доменов выше дополняется автоматически обнаруженными.
-
-Скрипт `domain-auto-add.sh` запускается каждый час через cron. Каждый домен из DNS-лога проходит фильтры:
-
-1. Пропускает системные домены, CDN-инфраструктуру (`cloudfront.net`, `akamaiedge.net` и др.), российские TLD, домены из `domains-no-vpn.txt`, уже добавленные
-2. **Реестр РКН** (`blocked-domains.lst`) — добавляются только заблокированные в РФ; остальные → кандидаты
-3. **ISP-проба** кандидатов — пороги считаются по двум окнам: `count24h` (обычные `>=3`, короткие/входные и IP-encoded family `>=1`) и `user-interest` (`count7d >= 10` + `active_days7d >= 2`). Отбор: `2 interest + 10 top-score + 4` из fair-очереди “давно/никогда не пробовались”. `HTTP 000` → добавляется как **geo-blocked** (сайт блокирует российские IP сам)
-4. Перед записью чистит `dnsmasq-autodiscovered.conf.add` от child-записей, уже покрытых родительским правилом
-5. Записывает **service-family domain** — обычно registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), а для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
-
-Это значит, что если ручной конфиг уже содержит `fbcdn.net`, новые `*.fbcdn.net` в auto-файл больше не попадают, а старые точечные записи cleanup вычищает.
-
-Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
-
-Авто-добавленные домены не хранятся в git, но работают наравне с ручными.
-
-Просмотр:
 ```bash
-./scripts/domain-report --all   # все авто-добавленные домены
-./scripts/domain-report --log   # лог активности
+ROUTER=192.168.50.1 ./deploy.sh
+cd ansible && ansible-playbook playbooks/20-stealth-router.yml
+ansible-playbook playbooks/99-verify.yml
 ```
 
-Для ручного анализа конкретного сервиса доступны утилиты `getdomainnames.sh` и `autoscan` из x3mRouting. Routing-функции x3mRouting не используются (заточены под OpenVPN).
+## Как читать health-report
 
-Подробности: [x3mrouting-roadmap.md](x3mrouting-roadmap.md).
+`router-health-report` проверяет новую норму:
 
-## Связанные документы
+- `STEALTH_DOMAINS` exists.
+- sing-box REDIRECT listener `:<lan-redirect-port>` exists.
+- `br0` TCP REDIRECT rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- `br0` UDP/443 reject rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- legacy `0x2000 -> table 200 -> singbox0` is absent.
+- `br0 -> RC_VPN_ROUTE` disabled.
+- `OUTPUT -> RC_VPN_ROUTE` disabled.
+- `wgs1 -> RC_VPN_ROUTE` enabled.
+- `wgs1 -> STEALTH_DOMAINS` disabled.
 
-- [architecture.md](architecture.md) — как устроена маршрутизация на системном уровне
-- [domain-management.md](domain-management.md) — как добавлять и удалять домены
-- [telegram-deep-dive.md](telegram-deep-dive.md) — подробности по Telegram (подсети, DPI, CDN)
+Это намеренно: если LAN снова окажется на `wgc1`, health-report должен показать drift.

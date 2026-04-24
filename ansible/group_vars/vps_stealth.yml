@@ -1,0 +1,21 @@
+stealth_stack_dir: /opt/stealth
+caddy_dockerfile: caddy/Dockerfile
+caddy_caddyfile: caddy/Caddyfile
+caddy_image_tag: caddy-l4:local
+xui_image: "ghcr.io/mhsanaei/3x-ui:latest"
+
+# Actual VPS currently has host-level Caddy already bound on :80/:443 for an
+# existing site. Real hostnames, upstream ports and certificate paths are kept
+# in ansible-vault (`ansible/secrets/stealth.yml`), not in git.
+# In this mode we extend that Caddy with the layer4 plugin and a listener wrapper
+# instead of starting a second public-facing Caddy container.
+stealth_caddy_mode: system_listener_wrapper
+system_caddy_target_version: "v2.11.1"
+system_caddy_binary_path: /usr/bin/caddy
+system_caddy_backup_path: /usr/bin/caddy.router-configuration.bak
+system_caddyfile_path: /etc/caddy/Caddyfile
+system_caddy_site_host: "{{ vault_system_caddy_site_host | default(system_caddy_site_host_secret | default('example.invalid')) }}"
+system_caddy_site_upstream: "{{ vault_system_caddy_site_upstream | default(system_caddy_site_upstream_secret | default('127.0.0.1:8080')) }}"
+system_caddy_cert_file: "{{ vault_system_caddy_cert_file | default(system_caddy_cert_file_secret | default('/etc/caddy/certs/example-fullchain.pem')) }}"
+system_caddy_key_file: "{{ vault_system_caddy_key_file | default(system_caddy_key_file_secret | default('/etc/caddy/certs/example-privkey.pem')) }}"
+system_caddy_client_ca_file: "{{ vault_system_caddy_client_ca_file | default(system_caddy_client_ca_file_secret | default('/etc/caddy/certs/example-access-ca.crt')) }}"

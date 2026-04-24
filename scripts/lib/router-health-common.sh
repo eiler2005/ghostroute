@@ -493,6 +493,10 @@ vpn_static_current=$(ipset list VPN_STATIC_NETS 2>/dev/null | awk '/^Number of e
 vpn_static_exists=0
 [ -n "${vpn_static_current:-}" ] && vpn_static_exists=1
 
+stealth_current=$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
+stealth_exists=0
+[ -n "${stealth_current:-}" ] && stealth_exists=1
+
 manual_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq.conf.add 2>/dev/null || printf '0\n')
 auto_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq-autodiscovered.conf.add 2>/dev/null || printf '0\n')
 
@@ -500,7 +504,10 @@ cron_list=$(cru l 2>/dev/null || true)
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
+filter_forward=$(iptables -S FORWARD 2>/dev/null || true)
+listen_sockets=$(netstat -nlp 2>/dev/null || true)
 ip_rules=$(ip rule show 2>/dev/null || true)
+route_table_200=$(ip route show table 200 2>/dev/null || true)
 chain_rules=$(iptables -t mangle -S RC_VPN_ROUTE 2>/dev/null || true)
 ipv6_service=$(nvram get ipv6_service 2>/dev/null || true)
 ipv6_addr_br0=$(ip -6 -o addr show dev br0 2>/dev/null || true)
@@ -559,6 +566,8 @@ printf 'VPN_DOMAINS_MAX=%s\n' "${vpn_max:-65536}"
 printf 'VPN_DOMAINS_MEM=%s\n' "${vpn_mem:-0}"
 printf 'VPN_STATIC_NETS_EXISTS=%s\n' "$vpn_static_exists"
 printf 'VPN_STATIC_NETS_CURRENT=%s\n' "${vpn_static_current:-0}"
+printf 'STEALTH_DOMAINS_EXISTS=%s\n' "$stealth_exists"
+printf 'STEALTH_DOMAINS_CURRENT=%s\n' "${stealth_current:-0}"
 printf 'MANUAL_RULE_COUNT=%s\n' "${manual_count:-0}"
 printf 'AUTO_RULE_COUNT=%s\n' "${auto_count:-0}"
 printf 'IPV6_SERVICE=%s\n' "${ipv6_service:-disabled}"
@@ -581,10 +590,20 @@ printf 'WGS1_CURRENT_DUMP_OK=%s\n' "$wgs1_current_dump_ok"
 printf 'RULE_DNS_1111=%s\n' "$(bool_grep "$ip_rules" 'to 1.1.1.1 lookup wgc1')"
 printf 'RULE_DNS_9999=%s\n' "$(bool_grep "$ip_rules" 'to 9.9.9.9 lookup wgc1')"
 printf 'RULE_MARK_0X1000=%s\n' "$(bool_grep "$ip_rules" 'fwmark 0x1000/0x1000 lookup wgc1')"
+printf 'RULE_MARK_0X2000=%s\n' "$(bool_grep "$ip_rules" 'fwmark 0x2000')"
+printf 'ROUTE_TABLE_200_SINGBOX=%s\n' "$(bool_grep "$route_table_200" 'default dev singbox0')"
 printf 'CHAIN_RC_VPN_ROUTE=%s\n' "$( [ -n "$chain_rules" ] && printf '1\n' || printf '0\n' )"
 printf 'HOOK_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i br0 -j RC_VPN_ROUTE')"
 printf 'HOOK_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -j RC_VPN_ROUTE')"
 printf 'HOOK_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -j RC_VPN_ROUTE')"
+printf 'HOOK_STEALTH_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i br0 -m set --match-set STEALTH_DOMAINS dst')"
+printf 'HOOK_STEALTH_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -m set --match-set STEALTH_DOMAINS dst')"
+printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m set --match-set STEALTH_DOMAINS dst')"
+printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
+printf 'CHANNEL_B_REDIRECT_STEALTH=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports <lan-redirect-port>')"
+printf 'CHANNEL_B_REDIRECT_STATIC=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports <lan-redirect-port>')"
+printf 'CHANNEL_B_REJECT_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT')"
+printf 'CHANNEL_B_REJECT_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j REJECT')"
 printf 'DNS_REDIRECT_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
 printf 'DNS_REDIRECT_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53')"
 
@@ -859,13 +878,22 @@ router_render_health_markdown() {
   drift_lines=()
   [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("VPN_DOMAINS ipset missing")
   [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] || drift_lines+=("VPN_STATIC_NETS ipset missing")
+  [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("STEALTH_DOMAINS ipset missing")
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] || drift_lines+=("mangle chain RC_VPN_ROUTE missing")
-  [ "$(router_kv_get "$state_file" RULE_DNS_1111)" = "1" ] || drift_lines+=("missing ip rule for 1.1.1.1 -> wgc1")
-  [ "$(router_kv_get "$state_file" RULE_DNS_9999)" = "1" ] || drift_lines+=("missing ip rule for 9.9.9.9 -> wgc1")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] || drift_lines+=("missing ip rule for fwmark 0x1000 -> wgc1")
-  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "1" ] || drift_lines+=("missing PREROUTING br0 -> RC_VPN_ROUTE hook")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STATIC)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for VPN_STATIC_NETS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "1" ] || drift_lines+=("missing UDP/443 reject for STEALTH_DOMAINS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "1" ] || drift_lines+=("missing UDP/443 reject for VPN_STATIC_NETS")
+  [ "$(router_kv_get "$state_file" RULE_MARK_0X2000)" = "0" ] || drift_lines+=("legacy fwmark 0x2000 -> table 200 rule should be absent")
+  [ "$(router_kv_get "$state_file" ROUTE_TABLE_200_SINGBOX)" = "0" ] || drift_lines+=("legacy table 200 -> singbox0 route should be absent")
+  [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy mangle br0 -> STEALTH_DOMAINS hook should be absent")
+  [ "$(router_kv_get "$state_file" HOOK_STEALTH_OUTPUT)" = "0" ] || drift_lines+=("legacy mangle OUTPUT -> STEALTH_DOMAINS hook should be absent")
+  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy br0 -> RC_VPN_ROUTE hook should be disabled")
   [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "1" ] || drift_lines+=("missing PREROUTING wgs1 -> RC_VPN_ROUTE hook")
-  [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "1" ] || drift_lines+=("missing OUTPUT -> RC_VPN_ROUTE hook")
+  [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "0" ] || drift_lines+=("legacy OUTPUT -> RC_VPN_ROUTE hook should be disabled")
+  [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] || drift_lines+=("wgs1 should not be hooked into STEALTH_DOMAINS")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] || drift_lines+=("missing wgs1 udp/53 -> dnsmasq redirect")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] || drift_lines+=("missing wgs1 tcp/53 -> dnsmasq redirect")
   if [ "$ipv6_policy_level" = "Critical" ]; then
@@ -910,13 +938,22 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 |---|---|
 | VPN_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | VPN_STATIC_NETS ipset | $( [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| STEALTH_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | RC_VPN_ROUTE chain | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| ip rule 1.1.1.1 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_DNS_1111)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| ip rule 9.9.9.9 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_DNS_9999)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | ip rule fwmark 0x1000 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| PREROUTING br0 -> RC_VPN_ROUTE | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| LAN TCP REDIRECT -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STATIC)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| UDP/443 reject -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| UDP/443 reject -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| legacy ip rule fwmark 0x2000 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X2000)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| legacy table 200 -> singbox0 absent | $( [ "$(router_kv_get "$state_file" ROUTE_TABLE_200_SINGBOX)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| legacy mangle br0 -> STEALTH_DOMAINS absent | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| legacy mangle OUTPUT -> STEALTH_DOMAINS absent | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_OUTPUT)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| PREROUTING br0 -> RC_VPN_ROUTE disabled | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | PREROUTING wgs1 -> RC_VPN_ROUTE | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| OUTPUT -> RC_VPN_ROUTE | $( [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| OUTPUT -> RC_VPN_ROUTE disabled | $( [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| PREROUTING wgs1 -> STEALTH_DOMAINS disabled | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | wgs1 udp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | wgs1 tcp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 

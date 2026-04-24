@@ -1,0 +1,72 @@
+#!/bin/sh
+# Entware init for sing-box
+NAME="sing-box"
+DAEMON="{{ singbox_bin_path }}"
+CONFIG="{{ singbox_config_path }}"
+PIDFILE="/opt/var/run/sing-box.pid"
+WORKDIR="/opt/var/lib/sing-box"
+LOCKDIR="/opt/var/run/sing-box.lock"
+
+lock() {
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        mkdir "$LOCKDIR" 2>/dev/null && return 0
+        sleep 1
+    done
+    echo "$NAME lock busy"
+    return 1
+}
+
+unlock() {
+    rmdir "$LOCKDIR" 2>/dev/null || true
+}
+
+start() {
+    lock || return 1
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "$NAME already running"
+        unlock
+        return 0
+    fi
+    EXISTING_PID="$(pidof "$NAME" 2>/dev/null | awk '{print $1}')"
+    if [ -n "$EXISTING_PID" ]; then
+        echo "$EXISTING_PID" > "$PIDFILE"
+        echo "$NAME already running (pid $EXISTING_PID)"
+        unlock
+        return 0
+    fi
+    if ip link show {{ singbox_tun_name }} >/dev/null 2>&1; then
+        ip link delete {{ singbox_tun_name }} 2>/dev/null || true
+        sleep 2
+    fi
+    mkdir -p /opt/var/run /opt/var/log "$WORKDIR"
+    nohup "$DAEMON" run -D "$WORKDIR" -c "$CONFIG" >> "{{ singbox_log_path }}" 2>&1 </dev/null &
+    echo $! > "$PIDFILE"
+    sleep 5
+    kill -0 $(cat "$PIDFILE") 2>/dev/null && echo "$NAME started (pid $(cat $PIDFILE))" || echo "failed to start"
+    unlock
+}
+stop() {
+    lock || return 1
+    [ -f "$PIDFILE" ] && kill $(cat "$PIDFILE") 2>/dev/null
+    killall "$NAME" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pidof "$NAME" >/dev/null 2>&1 || break
+        sleep 1
+    done
+    ip link delete {{ singbox_tun_name }} 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+        ip link show {{ singbox_tun_name }} >/dev/null 2>&1 || break
+        sleep 1
+    done
+    rm -f "$PIDFILE"
+    echo "$NAME stopped"
+    unlock
+}
+restart() { stop; sleep 3; start; }
+status() {
+    [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null && echo "running" || echo "stopped"
+}
+case "$1" in
+  start|stop|restart|status) $1 ;;
+  *) echo "usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac

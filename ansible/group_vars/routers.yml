@@ -1,0 +1,26 @@
+# Legacy TUN interface name kept only for cleanup and verification of absence.
+singbox_tun_name: singbox0
+singbox_tun_addr_v4: "172.19.0.1/30"
+singbox_tun_mtu: 1400
+singbox_bin_path: /opt/bin/sing-box
+singbox_log_path: /opt/var/log/sing-box.log
+singbox_config_path: /opt/etc/sing-box/config.json
+singbox_init_path: /opt/etc/init.d/S99sing-box
+singbox_redirect_port: <lan-redirect-port>
+
+dnscrypt_port: 5354
+dnscrypt_listen: "127.0.0.1:5354"
+dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy
+dnscrypt_config_path: /opt/etc/dnscrypt-proxy.toml
+dnscrypt_init_path: /opt/etc/init.d/S09dnscrypt-proxy2
+
+stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
+stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
+stealth_test_domain: ifconfig.me
+stealth_test_upstream: 1.1.1.1
+stealth_static_source_ipset: VPN_STATIC_NETS
+stealth_channel_b_lan_enabled: true
+firewall_start_hook: /jffs/scripts/firewall-start
+services_start_hook: /jffs/scripts/services-start
+blocklist_update_script: /jffs/scripts/blocklist-update.sh
+blocklist_output: /opt/etc/dnsmasq.d/blocklists.conf.auto

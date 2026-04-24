@@ -349,7 +349,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 Раздел `DEVICE TRAFFIC MIX (LAN SOURCES)`:
 
 - это короткая interpretive summary над теми же `LAN DEVICE BYTES`
-- `Via VPN` = сумма per-device байтов, прошедших через `wgc1`
+- `Via VPN` = historical label для per-device байтов, прошедших через repo-managed routed path; в текущей схеме для LAN это прежде всего Channel B через REDIRECT `:<lan-redirect-port>`, а не обязательно `wgc1`
 - `Direct WAN` = сумма per-device байтов, ушедших напрямую мимо VPN
 - `Top devices by VPN bytes` = устройства с наибольшим объёмом VPN-трафика
 - `Top devices by direct WAN bytes` = устройства, которые больше всего обходили VPN
@@ -422,7 +422,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - в `week/month` это окно может быть уже, чем общий `Window start .. Window end`
 - если история per-device счётчиков начала собираться позже, обязательно проговаривайте это явно в ответе
 
-`Other` означает трафик LAN-устройства, который не попал в `wgc1` или `wan0` по нашей грубой классификации. Обычно туда попадает локальная сеть, межLAN-трафик и прочие не-внешние направления.
+`Other` означает трафик LAN-устройства, который не попал в распознанный routed path или `wan0` по нашей грубой классификации. Обычно туда попадает локальная сеть, межLAN-трафик и прочие не-внешние направления.
 
 Раздел `WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
 
@@ -437,13 +437,13 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 Для `Tailscale Exit Node` нельзя честно говорить:
 
-- сколько именно у `iphone-11` прошло через `wgc1`
+- сколько именно у `iphone-11` прошло через конкретный upstream (`wgc1` или REDIRECT/Reality), если этот peer пришёл через userspace proxy и нет отдельной per-peer разбивки по egress
 - а сколько именно у того же `iphone-11` прошло напрямую через `WAN`
 
 Можно говорить только:
 
 - сколько peer передал по `Tailscale` всего
-- сколько роутер в целом передал через `wgc1`
+- сколько роутер в целом передал через наблюдаемые интерфейсы/counters (`wgc1`, REDIRECT/sing-box, WAN), если соответствующие counters есть в отчёте
 
 Для raw `WireGuard server` говорить можно точнее:
 

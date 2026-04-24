@@ -1,0 +1,23 @@
+{
+  # Global options; no admin API exposed externally.
+  admin off
+  # L4 app configuration.
+  layer4 {
+    :443 {
+      @reality tls sni {{ reality_server_names[0] }}
+      route @reality {
+        proxy 127.0.0.1:8443
+      }
+      # Future L7 web сервисы добавляются сюда:
+      # @web tls sni web.example.ru
+      # route @web { proxy 127.0.0.1:8444 }
+
+      # Default: отправляем в Xray, чей Reality fallback на dest проксирует
+      # не-Reality трафик на настоящий www.microsoft.com. Это даёт единое
+      # индистингуишабл поведение для сторонних сканеров.
+      route {
+        proxy 127.0.0.1:8443
+      }
+    }
+  }
+}

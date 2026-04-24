@@ -1,0 +1,38 @@
+- name: Preflight router (install Entware packages if missing)
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Ensure bash + python3 via opkg
+      ansible.builtin.raw: |
+        /opt/bin/opkg list-installed | grep -q '^bash ' || /opt/bin/opkg install bash
+        /opt/bin/opkg list-installed | grep -q '^python3 ' || /opt/bin/opkg install python3
+      changed_when: false
+
+- name: Deploy stealth client on router
+  hosts: routers
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  roles:
+    - singbox_client
+    - stealth_routing
+    - dnscrypt_proxy
+    - dnsmasq_blocklists
+  post_tasks:
+    - name: Restart sing-box after all router service restarts
+      ansible.builtin.raw: |
+        {{ singbox_init_path }} restart
+        sleep 3
+      changed_when: false
+      when: stealth_channel_b_lan_enabled | bool
+
+    - name: Re-apply stealth routing after final sing-box restart
+      ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false
+      when: stealth_channel_b_lan_enabled | bool

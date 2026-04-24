@@ -1,0 +1,15 @@
+- name: restart docker caddy
+  listen: restart caddy
+  when: stealth_caddy_mode == 'docker_sidecar'
+  community.docker.docker_compose_v2:
+    project_src: "{{ stealth_stack_dir }}"
+    services: [caddy]
+    state: present
+    recreate: always
+
+- name: restart system caddy
+  listen: restart caddy
+  when: stealth_caddy_mode == 'system_listener_wrapper'
+  ansible.builtin.service:
+    name: caddy
+    state: restarted

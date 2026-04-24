@@ -1,0 +1,47 @@
+{
+  "log": {
+    "level": "info",
+    "output": "{{ singbox_log_path }}",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "redirect",
+      "tag": "redirect-in",
+      "listen": "0.0.0.0",
+      "listen_port": {{ singbox_redirect_port }},
+      "sniff": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "reality-out",
+      "server": "{{ vps_ssh_host }}",
+      "server_port": 443,
+      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ reality_server_names[0] }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ reality_server_public_key }}",
+          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
+        }
+      }
+    },
+    { "type": "direct", "tag": "direct-out" }
+  ],
+  "route": {
+    "rules": [
+      { "inbound": "redirect-in", "outbound": "reality-out" }
+    ],
+    "final": "direct-out"
+  }
+}

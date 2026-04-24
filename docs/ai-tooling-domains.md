@@ -2,7 +2,7 @@
 
 This document explains which domains each service uses and why they need to be routed through VPN. Useful when diagnosing issues or adding similar services.
 
-All domains listed here are included in `configs/dnsmasq.conf.add` (ipset rules) and `configs/dnsmasq-vpn-upstream.conf.add` (VPN DNS upstream).
+All domains listed here are included in `configs/dnsmasq.conf.add` (`VPN_DOMAINS` for remote `wgs1` clients) and `configs/dnsmasq-stealth.conf.add` (`STEALTH_DOMAINS` for LAN Channel B). Legacy per-domain VPN DNS upstream rules are retired.
 
 ---
 
@@ -133,7 +133,8 @@ tail -f /opt/var/log/dnsmasq.log | grep 'query\[A\]'
 # Then check if those IPs made it into the ipset
 ipset list VPN_DOMAINS | grep <IP>
 
-# Check if traffic is actually routed via VPN
+# Check current paths
+iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
 ip route get <IP> mark 0x1000
 ```
 
@@ -156,7 +157,7 @@ Common patterns:
 Что смотреть:
 
 - `Routing Health`
-  - на месте ли `RC_VPN_ROUTE`, `ip rule`, DNS routing
+  - на месте ли `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, `RC_VPN_ROUTE`, DNS через `127.0.0.1:5354`
 - `Catalog Capacity`
   - не вырос ли `VPN_DOMAINS` неожиданно сильно после нового семейства
   - что пишет `Growth Trends` / `Growth note`

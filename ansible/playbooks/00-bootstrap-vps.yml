@@ -1,0 +1,51 @@
+- name: Bootstrap VPS prerequisites
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Ensure python3, python3-docker, python3-pyyaml, docker compose plugin
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-docker
+          - python3-yaml
+          - docker-compose-plugin
+          - git
+          - golang-go
+          - curl
+          - jq
+          - qrencode
+        state: present
+        update_cache: true
+
+    - name: Ensure stealth stack dir
+      ansible.builtin.file:
+        path: "{{ stealth_stack_dir }}"
+        state: directory
+        owner: "{{ vps_ssh_user }}"
+        group: "{{ vps_ssh_user }}"
+        mode: "0755"
+
+    - name: Preflight — port 443/tcp must be free
+      ansible.builtin.shell: "ss -tlnp '( sport = :443 )' | awk 'NR>1'"
+      register: port443
+      changed_when: false
+
+    - name: Fail if 443 already bound by something not ours
+      ansible.builtin.fail:
+        msg: "Port 443 is already bound. Audit before proceeding: {{ port443.stdout }}"
+      when:
+        - port443.stdout | length > 0
+        - stealth_caddy_mode == 'docker_sidecar'
+        - "'caddy' not in port443.stdout"
+
+    - name: Fail if host Caddy mode is selected but 443 is not owned by Caddy
+      ansible.builtin.fail:
+        msg: "Expected host-level Caddy on :443, got: {{ port443.stdout }}"
+      when:
+        - stealth_caddy_mode == 'system_listener_wrapper'
+        - port443.stdout | length > 0
+        - "'caddy' not in port443.stdout"

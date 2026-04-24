@@ -1,0 +1,138 @@
+- name: Verify stealth channel — VPS side
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Host Caddy has layer4 module
+      ansible.builtin.shell: "caddy list-modules | grep -q '^layer4$'"
+      changed_when: false
+      when: stealth_caddy_mode == 'system_listener_wrapper'
+
+    - name: Caddy listening on :443
+      ansible.builtin.shell: "ss -tlnp '( sport = :443 )' | grep -q caddy"
+      changed_when: false
+
+    - name: Xray listening on 127.0.0.1:8443
+      ansible.builtin.shell: "ss -tlnp '( sport = :8443 )' | grep -q '127.0.0.1:8443'"
+      changed_when: false
+
+    - name: maxtg_bridge container still running
+      ansible.builtin.shell: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q deploy-bridge-1"
+      changed_when: false
+
+    - name: Shared OpenClaw site still requires mTLS after Caddy restart
+      ansible.builtin.shell: |
+        (curl -k -I -sS --max-time 10 \
+          --resolve {{ system_caddy_site_host }}:443:127.0.0.1 \
+          https://{{ system_caddy_site_host }}/ || true) 2>&1
+      register: probe
+      changed_when: false
+    - ansible.builtin.assert:
+        that:
+          - "'HTTP/' not in (probe.stdout + probe.stderr)"
+          - >-
+            'certificate required' in (probe.stdout + probe.stderr)
+            or 'tlsv1 alert' in (probe.stdout + probe.stderr)
+            or 'alert certificate' in (probe.stdout + probe.stderr)
+        fail_msg: "OpenClaw mTLS probe no longer behaves as expected: {{ probe.stdout }} {{ probe.stderr }}"
+
+    - name: 3x-ui login page reachable on localhost-only admin port
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/"
+        method: GET
+        status_code: 200
+      changed_when: false
+
+- name: Verify stealth channel — router side
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Run stealth-route-init before assertions
+      ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false
+
+    - name: sing-box redirect listener is running
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ singbox_redirect_port }} '"
+      changed_when: false
+
+    - name: sing-box uses REDIRECT inbound for stable LAN TCP through Channel B
+      ansible.builtin.shell: |
+        grep -q '"type": "redirect"' {{ singbox_config_path }} &&
+        grep -q '"listen_port": {{ singbox_redirect_port }}' {{ singbox_config_path }}
+      changed_when: false
+
+    - name: reverse path filtering is disabled for LAN redirect routing
+      ansible.builtin.shell: |
+        [ "$(cat /proc/sys/net/ipv4/conf/all/rp_filter)" = "0" ] &&
+        [ "$(cat /proc/sys/net/ipv4/conf/default/rp_filter)" = "0" ] &&
+        [ "$(cat /proc/sys/net/ipv4/conf/br0/rp_filter)" = "0" ]
+      changed_when: false
+
+    - name: ipset STEALTH_DOMAINS exists
+      ansible.builtin.shell: "ipset list -n | grep -q '^{{ stealth_ipset_name }}$'"
+      changed_when: false
+
+    - name: LAN TCP redirect routes STEALTH_DOMAINS to Channel B
+      ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_ipset_name }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
+      changed_when: false
+
+    - name: LAN TCP redirect routes shared static nets to Channel B
+      ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_static_source_ipset }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
+      changed_when: false
+
+    - name: Remote wgs1 clients are not hooked into Channel B
+      ansible.builtin.shell: "! iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 .*match-set {{ stealth_ipset_name }} dst'"
+      changed_when: false
+
+    - name: old Channel B TUN policy route is absent
+      ansible.builtin.shell: |
+        ! ip rule show | grep -q 'fwmark {{ stealth_fwmark }} .*lookup' &&
+        ! ip route show table {{ stealth_route_table }} | grep -q '{{ singbox_tun_name }}'
+      changed_when: false
+
+    - name: LAN QUIC fallback is enforced for Channel B destinations
+      ansible.builtin.shell: |
+        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_ipset_name }} dst .*REJECT' &&
+        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*REJECT'
+      changed_when: false
+
+    - name: stale singbox0 TUN interface is absent
+      ansible.builtin.shell: "! ip -br a show {{ singbox_tun_name }} >/dev/null 2>&1"
+      changed_when: false
+
+    - name: Resolve test stealth domain to populate ipset
+      ansible.builtin.raw: "nslookup {{ stealth_test_domain }} 127.0.0.1 >/dev/null 2>&1 || true"
+      changed_when: false
+
+    - name: STEALTH_DOMAINS ipset has at least one populated entry
+      ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
+      changed_when: false
+
+    - name: wgs1 peers still healthy (regression)
+      ansible.builtin.shell: "wg show wgs1 latest-handshakes | awk '{print $2}' | sort -n | tail -1"
+      register: wgs1_last
+      changed_when: false
+    - ansible.builtin.debug:
+        msg: "wgs1 most recent handshake (epoch): {{ wgs1_last.stdout }}"
+
+    - name: dnscrypt-proxy listening on configured port
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ dnscrypt_port }} '"
+      changed_when: false
+
+    - name: dnsmasq upstream points to dnscrypt-proxy
+      ansible.builtin.shell: "grep -q '^server=127.0.0.1#{{ dnscrypt_port }}$' /jffs/configs/dnsmasq.conf.add"
+      changed_when: false
+
+    - name: WGC1 reserve hook is limited to remote WireGuard clients
+      ansible.builtin.shell: |
+        iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 -j RC_VPN_ROUTE' &&
+        ! iptables -t mangle -S PREROUTING | grep -q -- '-i br0 -j RC_VPN_ROUTE' &&
+        ! iptables -t mangle -S OUTPUT | grep -q -- '-j RC_VPN_ROUTE'
+      changed_when: false

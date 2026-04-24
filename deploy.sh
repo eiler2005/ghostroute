@@ -36,18 +36,44 @@ SCP_OPTS=(
 )
 
 detect_router_ip() {
+  local route_gateway=""
+  local route_iface=""
+
   if [ -n "$ROUTER" ]; then
     printf '%s\n' "$ROUTER"
     return 0
   fi
 
   if command -v route >/dev/null 2>&1; then
-    route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }'
+    route_gateway="$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }')"
+    route_iface="$(route -n get default 2>/dev/null | awk '/interface:/ { print $2; exit }')"
+    if [ -n "$route_gateway" ] && [ -n "$route_iface" ] && [[ ! "$route_iface" =~ ^utun ]]; then
+      printf '%s\n' "$route_gateway"
+      return 0
+    fi
+  fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -rn 2>/dev/null | awk '
+      $1 == "default" &&
+      $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ &&
+      $4 !~ /^(utun|wg|tailscale|tun|tap)/ {
+        print $2
+        exit
+      }
+    '
     return 0
   fi
 
   if command -v ip >/dev/null 2>&1; then
-    ip route show default 2>/dev/null | awk '/default/ { print $3; exit }'
+    ip route show default 2>/dev/null | awk '
+      $1 == "default" &&
+      $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ &&
+      $5 !~ /^(wg|tailscale|tun|tap)/ {
+        print $3
+        exit
+      }
+    '
     return 0
   fi
 
@@ -85,6 +111,7 @@ fi
 
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add"
+require_local_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/static-networks.txt"
 require_local_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt"
 require_local_file "${PROJECT_ROOT}/scripts/firewall-start"
@@ -116,6 +143,7 @@ ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' '${REMOTE_
 
 upload_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add" "${REMOTE_STAGE}/configs/dnsmasq.conf.add"
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-vpn-upstream.conf.add"
+upload_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-stealth.conf.add"
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
 upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
 if [ -f "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" ]; then
@@ -223,6 +251,11 @@ merge_managed_block \
   "$REMOTE_STAGE/configs/dnsmasq-vpn-upstream.conf.add" \
   /jffs/configs/dnsmasq.conf.add \
   "router_configuration dnsmasq-vpn-upstream.conf.add"
+
+merge_managed_block \
+  "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" \
+  /jffs/configs/dnsmasq.conf.add \
+  "router_configuration dnsmasq-stealth.conf.add"
 
 rm -f /jffs/configs/dnsmasq-vpn-upstream.conf.add
 

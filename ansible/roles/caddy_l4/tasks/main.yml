@@ -1,0 +1,91 @@
+- name: Manage dedicated Docker Caddy for standalone stealth mode
+  when: stealth_caddy_mode == 'docker_sidecar'
+  block:
+    - name: Ensure caddy subdir
+      ansible.builtin.file:
+        path: "{{ stealth_stack_dir }}/caddy"
+        state: directory
+        owner: "{{ vps_ssh_user }}"
+        mode: "0755"
+
+    - name: Copy Caddy Dockerfile
+      ansible.builtin.template:
+        src: Dockerfile.j2
+        dest: "{{ stealth_stack_dir }}/caddy/Dockerfile"
+        mode: "0644"
+
+    - name: Copy Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: "{{ stealth_stack_dir }}/caddy/Caddyfile"
+        mode: "0644"
+      notify: restart caddy
+
+    - name: Build caddy-l4 image on VPS
+      community.docker.docker_image:
+        name: "{{ caddy_image_tag }}"
+        source: build
+        build:
+          path: "{{ stealth_stack_dir }}/caddy"
+          pull: true
+        force_source: false
+
+- name: Manage host-level Caddy with layer4 listener wrapper
+  when: stealth_caddy_mode == 'system_listener_wrapper'
+  block:
+    - name: Check whether host Caddy already includes layer4
+      ansible.builtin.command: "{{ system_caddy_binary_path }} list-modules"
+      register: caddy_modules
+      changed_when: false
+
+    - name: Capture current Caddy version
+      ansible.builtin.command: "{{ system_caddy_binary_path }} version"
+      register: caddy_version
+      changed_when: false
+
+    - name: Backup stock Caddy binary before first layer4 build
+      ansible.builtin.copy:
+        src: "{{ system_caddy_binary_path }}"
+        dest: "{{ system_caddy_backup_path }}"
+        remote_src: true
+        mode: "0755"
+        force: false
+      when: "'layer4' not in caddy_modules.stdout"
+
+    - name: Ensure xcaddy is installed
+      ansible.builtin.shell: |
+        test -x /usr/local/bin/xcaddy || \
+          GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+      args:
+        creates: /usr/local/bin/xcaddy
+      when: "'layer4' not in caddy_modules.stdout"
+
+    - name: Build host Caddy with layer4 plugin
+      ansible.builtin.shell: |
+        set -e
+        TMPDIR="$(mktemp -d)"
+        trap 'rm -rf "$TMPDIR"' EXIT
+        cd "$TMPDIR"
+        /usr/local/bin/xcaddy build "{{ system_caddy_target_version }}" --with github.com/mholt/caddy-l4
+        install -m 0755 caddy "{{ system_caddy_binary_path }}"
+      when: "'layer4' not in caddy_modules.stdout"
+      notify: restart caddy
+
+    - name: Render host Caddyfile with layer4 wrapper
+      ansible.builtin.template:
+        src: SystemCaddyfile.j2
+        dest: "{{ system_caddyfile_path }}"
+        mode: "0644"
+        backup: true
+      notify: restart caddy
+
+    - name: Validate host Caddy configuration
+      ansible.builtin.command:
+        argv:
+          - "{{ system_caddy_binary_path }}"
+          - validate
+          - --config
+          - "{{ system_caddyfile_path }}"
+          - --adapter
+          - caddyfile
+      changed_when: false

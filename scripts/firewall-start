@@ -9,7 +9,8 @@ STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
 PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
 ROUTING_CHAIN="RC_VPN_ROUTE"
 
-# Create/restore the VPN target sets and mark matching LAN traffic for WGC1.
+# Create/restore the legacy VPN target sets. WGC1 is intentionally kept as a
+# reserve path for raw WireGuard server clients only (wgs1).
 ipset create VPN_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
 ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
 [ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
@@ -52,15 +53,11 @@ fi
 
 iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
 iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
-iptables -t mangle -A PREROUTING -i br0 -j "$ROUTING_CHAIN"
 iptables -t mangle -A PREROUTING -i wgs1 -j "$ROUTING_CHAIN"
-# Tailscale exit-node traffic is generated locally on the router, so it
-# bypasses the LAN PREROUTING hook. Mirror the same destination-based marking
-# in OUTPUT to keep router-originated and userspace-proxied flows on WGC1.
-# Raw WireGuard server clients arrive on wgs1, so mirror the same hook there
-# to give remote full-tunnel clients the same VPN_DOMAINS/VPN_STATIC_NETS
-# split-routing behavior as ordinary LAN devices.
-iptables -t mangle -A OUTPUT -j "$ROUTING_CHAIN"
+# LAN (br0) traffic is handled by Channel B in stealth-route-init.sh:
+# TCP is redirected to sing-box :<lan-redirect-port>, and UDP/443 is rejected to force
+# client fallback away from QUIC. Router OUTPUT is not transparently captured.
+# Only raw WireGuard server clients arrive on wgs1 and keep the old WGC1 split.
 
 # Keep per-device LAN byte accounting chains up to date without resetting
 # their counters during ordinary refreshes.

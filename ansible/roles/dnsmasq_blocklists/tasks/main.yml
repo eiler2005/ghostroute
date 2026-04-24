@@ -1,0 +1,23 @@
+- name: Install blocklist update script
+  ansible.builtin.template:
+    src: blocklist-update.sh.j2
+    dest: "{{ blocklist_update_script }}"
+    mode: "0755"
+
+- name: Add weekly cron entry
+  ansible.builtin.raw: |
+    cru d BlocklistUpdate 2>/dev/null || true
+    cru a BlocklistUpdate "17 4 * * 0 {{ blocklist_update_script }}"
+  changed_when: false
+
+- name: Initial run to generate blocklist
+  ansible.builtin.raw: "{{ blocklist_update_script }}"
+  changed_when: false
+
+- name: Include auto-generated blocklists in dnsmasq
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch $CONF
+    grep -q '^conf-file={{ blocklist_output }}$' $CONF || \
+      echo 'conf-file={{ blocklist_output }}' >> $CONF
+    service restart_dnsmasq

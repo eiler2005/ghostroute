@@ -1,179 +1,23 @@
 # Tests
 
-Этот каталог покрывает **безопасный observability / health-reporting слой**, который работает поверх живой конфигурации роутера и не меняет runtime.
+The test layer covers safe parser/renderer/reporting behavior. It does not emulate the ASUS/Merlin runtime.
 
-Главная идея:
+## Current Runtime Contract
 
-- не тестировать `dnsmasq`, `iptables`, `ip rule` через локальные unit-тесты
-- тестировать parser/formatter-логику и стабильность CLI-слоя
-- оставлять live-проверки отдельным smoke-этапом
+Docs and health tests should assume the current production policy:
 
-Иными словами:
-
-- `tests/` проверяет, что мы **правильно читаем, интерпретируем и рендерим уже собранные данные**
-- `tests/` не пытается эмулировать весь роутер ASUS/Merlin локально
-- фактическое состояние роутера подтверждается отдельными live-командами
-
-## Что здесь есть
-
-### `tests/test-router-health.sh`
-
-Fixture-based smoke test для health-reporting слоя.
-
-Это не unit-тест в строгом framework-смысле, а короткий shell smoke-test, который специально:
-
-- быстрый
-- без внешних зависимостей
-- не требует живого роутера
-- падает сразу при первом несоответствии
-
-Что он проверяет:
-
-1. `router_collect_capacity_history`
-   - умеет читать локальный journal snapshot
-   - достаёт latest snapshot
-   - достаёт week-old snapshot
-   - не ломается на формате таблицы capacity snapshot
-
-   Почему это важно:
-   - health-report опирается на local journal для growth delta
-   - если parser этого блока ломается, `router-health-report` перестаёт честно показывать рост каталога
-   - такие поломки легко случайно внести обычной правкой текста в journal section
-
-2. `router_extract_traffic_summary`
-   - умеет парсить стабильные секции из `traffic-report`
-   - достаёт `Router-wide window`
-   - достаёт `Per-device byte window`
-   - достаёт totals и `Device Traffic Mix`
-   - опирается на то, что peer-top секции (`Top by WG server peers`, `Top by Tailscale peers`) остаются стабильной частью общего summary-контракта
-
-   Почему это важно:
-   - `router-health-report` не пересчитывает traffic totals сам, а читает стабильный summary из `traffic-report`
-   - если сломается парсинг этих строк, health-report станет давать пустые или вводящие в заблуждение traffic sections
-   - это как раз тот тип regressions, который тяжело заметить “на глаз”, если не иметь fixture-теста
-
-3. `router_render_health_markdown`
-   - собирает итоговый sanitised Markdown
-   - действительно рендерит ключевые секции:
-     - `Router Health Latest`
-     - `Catalog Capacity`
-     - `Growth vs latest saved snapshot`
-     - `Growth level / Growth note`
-     - `Freshness`
-     - `Traffic Snapshot`
-     - `Drift`
-     - `Notes`
-
-Зачем это нужно:
-
-- чтобы refactor helper-логики не ломал формат health-report
-- чтобы LLM и человек продолжали видеть устойчивую структуру секций
-- чтобы parser для journal/traffic-summary не “тихо” развалился после правок текста
-
-Что именно этот тест сознательно НЕ проверяет:
-
-- числовую “истинность” live-данных роутера
-- что `ssh` вообще доступен
-- что на роутере есть нужные файлы snapshots
-- что маршрутизация реально применена в kernel
-
-Это сделано специально: иначе локальный тест стал бы хрупким и зависимым от текущего состояния домашней сети.
-
-### `tests/fixtures/router-health/`
-
-Фикстуры для smoke-теста:
-
-- `journal-sample.md`
-  sample local journal с capacity snapshots
-- `traffic-report-sample.txt`
-  sample stable traffic-report output
-- `state-sample.env`
-  sample key=value state для markdown renderer
-
-Зачем фикстуры нужны:
-
-- они позволяют тестировать formatting/parsing без живого роутера
-- тесты остаются быстрыми и воспроизводимыми
-- можно безопасно дорабатывать renderer, не трогая runtime
-- они фиксируют **контракт формата** между:
-  - local journal
-  - traffic-report stable summary
-  - health markdown renderer
-
-Подробности по каждому fixture-файлу: [fixtures/router-health/README.md](fixtures/router-health/README.md)
-
-### `tests/test-catalog-review.sh`
-
-Fixture-based smoke test для advisory review слоя `scripts/catalog-review-report`.
-
-Что он проверяет:
-
-1. Что report рендерится без живого роутера.
-2. Что в output есть стабильные секции:
-   - `Static Coverage Review`
-   - `Domain Coverage Review`
-   - `Recommendation Mode`
-3. Что широкий static CIDR попадает в advisory summary.
-4. Что child-domain, уже покрытый parent-rule, попадает в cleanup-candidates.
-
-Подробности по fixture-файлам: [fixtures/catalog-review/README.md](fixtures/catalog-review/README.md)
-
-### `tests/test-dns-forensics.sh`
-
-Fixture-based smoke test для hourly DNS forensic слоя.
-
-Что он проверяет:
-
-1. Что `domain-auto-add.sh --forensics-only` умеет из sample `dnsmasq` log собрать hourly forensic snapshot.
-2. Что snapshot содержит стабильные record types:
-   - `WINDOW`
-   - `CLIENT`
-   - `TOPDOMAIN`
-   - `TOPFAMILY`
-3. Что `scripts/dns-forensics-report` умеет читать fixture snapshot и рендерить:
-   - `Top Clients`
-   - client-level drilldown
-   - `Notes`
-4. Что локальная device metadata override корректно подменяет label для известных IP.
-
-Подробности по fixture-файлам: [fixtures/dns-forensics/README.md](fixtures/dns-forensics/README.md)
-
-## Контракт, который мы защищаем тестами
-
-Тестовый слой по сути защищает три текстовых интерфейса:
-
-1. `docs/vpn-domain-journal.md` как источник saved capacity snapshots
-2. `traffic-report` / `traffic-daily-report` как stable text summaries
-3. `router-health-report` как sanitised Markdown output для человека и LLM
-
-Если один из этих интерфейсов ломается, последствия такие:
-
-- LLM начинает неверно интерпретировать состояние роутера
-- tracked `docs/router-health-latest.md` теряет полезность
-- growth deltas по каталогу становятся пустыми или ложными
-- operational troubleshooting становится медленнее
-
-## Что эти тесты НЕ проверяют
-
-Они не проверяют:
-
-- живой `ssh` до роутера
-- фактическое состояние `ipset` / `iptables` / `ip rule`
-- что `dnsmasq` уже применил правила
-- что WGC1/WGS1 реально передаёт трафик
-
-Для этого нужны отдельные live smoke-команды.
-
-## Как запускать
-
-Синтаксис shell-скриптов:
-
-```bash
-bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
+```text
+br0 TCP     -> STEALTH_DOMAINS / VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
+br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> REJECT, forcing TCP fallback
+OUTPUT      -> main routing by default; explicit proxy only for router-local diagnostics
+wgs1        -> VPN_DOMAINS / VPN_STATIC_NETS    -> 0x1000 -> table wgc1
 ```
 
-Fixture smoke test:
+Legacy expectations such as `br0 -> RC_VPN_ROUTE`, `OUTPUT -> RC_VPN_ROUTE`, or per-domain `@wgc1` DNS upstreams are not the normal state anymore.
+
+## What Tests Cover
+
+### Fixture tests
 
 ```bash
 ./tests/test-router-health.sh
@@ -181,61 +25,70 @@ Fixture smoke test:
 ./tests/test-dns-forensics.sh
 ```
 
-Ожидаемый успешный вывод:
+These tests validate:
 
-```txt
-router-health fixture smoke tests passed
+- stable parsing of saved health/journal/report text
+- stable Markdown rendering for humans and LLMs
+- catalog review output shape
+- DNS forensics snapshot/report formatting
+
+They do not connect to the router.
+
+### Syntax checks
+
+```bash
+bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
+bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
+sh -n scripts/firewall-start scripts/nat-start scripts/domain-auto-add.sh
 ```
 
-Если тест падает:
+### Ansible syntax
 
-- сначала посмотрите, на каком `assert_*` он остановился
-- затем сравните:
-  - что изменилось в `scripts/lib/router-health-common.sh`
-  - не поменялся ли формат stable sections в `traffic-report`
-  - не поменялся ли формат capacity snapshot в journal
+```bash
+cd ansible
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook --syntax-check playbooks/99-verify.yml
+```
 
-Live smoke:
+### Live smoke
+
+Live smoke reads the router/VPS and may require network access:
 
 ```bash
 ./verify.sh
-./verify.sh --verbose
-./scripts/traffic-report
-./scripts/traffic-daily-report week
 ./scripts/router-health-report
-./scripts/router-health-report --save
-./scripts/catalog-review-report
-./scripts/catalog-review-report --save
+./scripts/traffic-report
+cd ansible && ansible-playbook playbooks/99-verify.yml
 ```
 
-## Почему тестовый слой устроен именно так
+Expected health semantics:
 
-Проект управляет домашним роутером и живым routing runtime. Поэтому безопаснее разделять проверки на два уровня:
+- `STEALTH_DOMAINS` exists.
+- sing-box REDIRECT listener on `:<lan-redirect-port>` exists.
+- LAN TCP REDIRECT rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- LAN UDP/443 reject rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- legacy `fwmark 0x2000`, table `200`, and `singbox0` are absent.
+- `br0 -> RC_VPN_ROUTE` is disabled.
+- `OUTPUT -> RC_VPN_ROUTE` is disabled.
+- `wgs1 -> RC_VPN_ROUTE` is enabled.
+- `wgs1 -> STEALTH_DOMAINS` is disabled.
 
-1. `fixture + syntax`
-   - быстрые
-   - повторяемые
-   - не трогают роутер
+## What Tests Do Not Cover
 
-2. `live smoke`
-   - читают реальное состояние роутера
-   - подтверждают, что observability-слой совпадает с живой системой
-   - не меняют runtime-конфигурацию
+- Real packet forwarding correctness.
+- Real Caddy/Xray handshakes.
+- Actual client QR usability.
+- Live secrets/vault values.
+- Provider-side blocking behavior.
 
-Такой баланс даёт полезную автоматизацию без лишнего риска для рабочего роутера.
+Use `ansible/playbooks/99-verify.yml` plus manual client checks for those.
 
-## Что делать при расширении тестов
+## Documentation Consistency Check
 
-Если добавляете новый stable block в `router-health-report` или меняете текстовый контракт:
+After documentation updates:
 
-1. сначала обновите соответствующий fixture
-2. потом обновите `tests/test-router-health.sh`
-3. затем прогоните:
-   ```bash
-   ./tests/test-router-health.sh
-   ./verify.sh
-   ./scripts/router-health-report
-   ```
-4. только после этого меняйте документацию под новый формат
+```bash
+rg '@wgc1|OUTPUT -j RC_VPN_ROUTE|PREROUTING -i br0 -j RC_VPN_ROUTE|server=/.*@wgc1' README*.md docs CLAUDE.md
+```
 
-Это помогает держать единый контракт между кодом, docs и live-операциями.
+Remaining matches must be explicitly marked as legacy, retired, rollback-only, or historical.

@@ -1,0 +1,129 @@
+# Channel B domain catalog: same managed domains as VPN_DOMAINS.
+# Current routing policy:
+#   - br0 TCP -> STEALTH_DOMAINS/VPN_STATIC_NETS -> REDIRECT :<lan-redirect-port> -> sing-box -> Reality
+#   - br0 UDP/443 -> REJECT for the same sets, forcing TCP fallback
+#   - wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> wgc1
+
+ipset=/atlassian.com/STEALTH_DOMAINS
+ipset=/anthropic.com/STEALTH_DOMAINS
+ipset=/chatgpt.com/STEALTH_DOMAINS
+ipset=/claude.ai/STEALTH_DOMAINS
+ipset=/claude.com/STEALTH_DOMAINS
+ipset=/aistudio.google.com/STEALTH_DOMAINS
+ipset=/notebooklm.google.com/STEALTH_DOMAINS
+ipset=/ai.google.dev/STEALTH_DOMAINS
+ipset=/generativelanguage.googleapis.com/STEALTH_DOMAINS
+ipset=/github.com/STEALTH_DOMAINS
+ipset=/api.github.com/STEALTH_DOMAINS
+ipset=/githubstatus.com/STEALTH_DOMAINS
+ipset=/raw.githubusercontent.com/STEALTH_DOMAINS
+ipset=/objects.githubusercontent.com/STEALTH_DOMAINS
+ipset=/githubusercontent.com/STEALTH_DOMAINS
+ipset=/codeload.github.com/STEALTH_DOMAINS
+ipset=/gitlab.com/STEALTH_DOMAINS
+ipset=/gitlab-static.net/STEALTH_DOMAINS
+ipset=/bitbucket.org/STEALTH_DOMAINS
+ipset=/dev.azure.com/STEALTH_DOMAINS
+ipset=/visualstudio.com/STEALTH_DOMAINS
+ipset=/google.com/STEALTH_DOMAINS
+ipset=/linkedin.com/STEALTH_DOMAINS
+ipset=/twitter.com/STEALTH_DOMAINS
+ipset=/x.com/STEALTH_DOMAINS
+ipset=/twimg.com/STEALTH_DOMAINS
+ipset=/t.co/STEALTH_DOMAINS
+ipset=/tiktok.com/STEALTH_DOMAINS
+ipset=/tiktokv.com/STEALTH_DOMAINS
+ipset=/tiktokcdn.com/STEALTH_DOMAINS
+ipset=/tiktokcdn-us.com/STEALTH_DOMAINS
+ipset=/tiktokcdn-eu.com/STEALTH_DOMAINS
+ipset=/byteoversea.com/STEALTH_DOMAINS
+ipset=/ibytedtos.com/STEALTH_DOMAINS
+ipset=/byteimg.com/STEALTH_DOMAINS
+ipset=/muscdn.com/STEALTH_DOMAINS
+ipset=/ttwstatic.com/STEALTH_DOMAINS
+ipset=/youtube.com/STEALTH_DOMAINS
+ipset=/youtu.be/STEALTH_DOMAINS
+ipset=/googlevideo.com/STEALTH_DOMAINS
+ipset=/ytimg.com/STEALTH_DOMAINS
+ipset=/ggpht.com/STEALTH_DOMAINS
+ipset=/youtubei.googleapis.com/STEALTH_DOMAINS
+# ==========================================================================
+# Telegram (домены + см. также configs/static-networks.txt для IP-подсетей)
+# ==========================================================================
+# Telegram core
+ipset=/telegram.org/STEALTH_DOMAINS
+ipset=/telegram.com/STEALTH_DOMAINS
+ipset=/t.me/STEALTH_DOMAINS
+ipset=/telegram.me/STEALTH_DOMAINS
+ipset=/telegra.ph/STEALTH_DOMAINS
+ipset=/telesco.pe/STEALTH_DOMAINS
+ipset=/tg.dev/STEALTH_DOMAINS
+# Telegram CDN
+ipset=/cdn-telegram.org/STEALTH_DOMAINS
+ipset=/telegram-cdn.org/STEALTH_DOMAINS
+# Telegram ecosystem
+ipset=/fragment.com/STEALTH_DOMAINS
+ipset=/graph.org/STEALTH_DOMAINS
+ipset=/contest.com/STEALTH_DOMAINS
+ipset=/comments.app/STEALTH_DOMAINS
+ipset=/usercontent.dev/STEALTH_DOMAINS
+ipset=/tdesktop.com/STEALTH_DOMAINS
+# Telegram extra domains (source: github.com/RockBlack-VPN/ip-address telegram_domain)
+ipset=/tx.me/STEALTH_DOMAINS
+ipset=/telega.one/STEALTH_DOMAINS
+ipset=/telegram.dog/STEALTH_DOMAINS
+ipset=/telegram.space/STEALTH_DOMAINS
+ipset=/instagram.com/STEALTH_DOMAINS
+ipset=/cdninstagram.com/STEALTH_DOMAINS
+ipset=/fbcdn.net/STEALTH_DOMAINS
+ipset=/fbsbx.com/STEALTH_DOMAINS
+ipset=/facebook.com/STEALTH_DOMAINS
+ipset=/fb.com/STEALTH_DOMAINS
+ipset=/messenger.com/STEALTH_DOMAINS
+# LiveTV (sports streaming)
+ipset=/livetv.sx/STEALTH_DOMAINS
+# Apple Podcasts
+ipset=/podcasts.apple.com/STEALTH_DOMAINS
+ipset=/apps.apple.com/STEALTH_DOMAINS
+ipset=/mzstatic.com/STEALTH_DOMAINS
+ipset=/itunes.apple.com/STEALTH_DOMAINS
+ipset=/aaplimg.com/STEALTH_DOMAINS
+ipset=/media.apple.com/STEALTH_DOMAINS
+ipset=/icloud.com/STEALTH_DOMAINS
+ipset=/icloud.apple.com/STEALTH_DOMAINS
+ipset=/icloud-content.com/STEALTH_DOMAINS
+ipset=/apple-cloudkit.com/STEALTH_DOMAINS
+ipset=/apple-livephotoskit.com/STEALTH_DOMAINS
+ipset=/cdn-apple.com/STEALTH_DOMAINS
+ipset=/gc.apple.com/STEALTH_DOMAINS
+ipset=/iwork.apple.com/STEALTH_DOMAINS
+ipset=/acast.com/STEALTH_DOMAINS
+ipset=/acast.cloud/STEALTH_DOMAINS
+ipset=/omny.fm/STEALTH_DOMAINS
+ipset=/tritondigital.com/STEALTH_DOMAINS
+ipset=/podtrac.com/STEALTH_DOMAINS
+ipset=/pscrb.fm/STEALTH_DOMAINS
+# VPS (robot.example-provider.invalid, console.example-provider.invalid blocked by ISP; not in antifilter)
+ipset=/example-provider.invalid/STEALTH_DOMAINS
+ipset=/example-provider-cloud.invalid/STEALTH_DOMAINS
+# Smithery (MCP registry)
+ipset=/smithery.ai/STEALTH_DOMAINS
+# cobalt.tools (site + API; parent domain covers api.cobalt.tools and future subdomains)
+ipset=/cobalt.tools/STEALTH_DOMAINS
+# Wispr Flow (site, docs, auth, API, cloud sync)
+ipset=/wisprflow.ai/STEALTH_DOMAINS
+ipset=/api.wisprflow.com/STEALTH_DOMAINS
+ipset=/wisprflow.onelink.me/STEALTH_DOMAINS
+# imo Messenger (official domain family; covers auth/beta/tunnel subdomains)
+ipset=/imo.im/STEALTH_DOMAINS
+ipset=/redshieldvpn.com/STEALTH_DOMAINS
+# WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
+ipset=/whatsapp.com/STEALTH_DOMAINS
+ipset=/whatsapp.net/STEALTH_DOMAINS
+ipset=/wa.me/STEALTH_DOMAINS
+ipset=/wl.co/STEALTH_DOMAINS
+ipset=/openai.com/STEALTH_DOMAINS
+ipset=/oaistatic.com/STEALTH_DOMAINS
+ipset=/oaiusercontent.com/STEALTH_DOMAINS
+
+# Load auto-discovered domains (written by domain-auto-add.sh every 4h)

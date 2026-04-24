@@ -1,0 +1,68 @@
+- name: Detect WAN interface and gateway
+  ansible.builtin.raw: |
+    echo "wan_if=$(nvram get wan0_ifname)"
+    echo "wan_gw=$(nvram get wan0_gateway)"
+  register: wan_detect
+  changed_when: false
+
+- name: Parse WAN facts
+  ansible.builtin.set_fact:
+    wan_if: "{{ (wan_detect.stdout | regex_search('wan_if=(\\S+)', '\\1')) | first }}"
+    wan_gw: "{{ (wan_detect.stdout | regex_search('wan_gw=(\\S+)', '\\1')) | first }}"
+
+- name: Install stealth-route-init.sh
+  ansible.builtin.template:
+    src: stealth-route-init.sh.j2
+    dest: "{{ stealth_route_init_script }}"
+    mode: "0755"
+
+- name: Install dnsmasq stealth catalog
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/dnsmasq-stealth.conf.add') }}"
+    dest: "{{ stealth_dnsmasq_conf_path }}"
+    mode: "0644"
+
+- name: Ensure stale firewall-start stealth hook is absent
+  ansible.builtin.raw: |
+    mkdir -p /jffs/scripts
+    touch {{ firewall_start_hook }}
+    chmod +x {{ firewall_start_hook }}
+    sed -i '\|{{ stealth_route_init_script }}|d' {{ firewall_start_hook }}
+
+- name: Enable firewall-start stealth hook when Channel B owns LAN
+  ansible.builtin.raw: |
+    grep -qx '{{ stealth_route_init_script }}' {{ firewall_start_hook }} || \
+      echo '{{ stealth_route_init_script }}' >> {{ firewall_start_hook }}
+  when: stealth_channel_b_lan_enabled | bool
+
+- name: Ensure services-start hook starts singbox on boot
+  ansible.builtin.raw: |
+    touch {{ services_start_hook }}
+    chmod +x {{ services_start_hook }}
+    sed -i '\|/opt/etc/init.d/S99singbox start|d' {{ services_start_hook }}
+    grep -q '# BEGIN stealth-singbox-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
+    # BEGIN stealth-singbox-bootstrap
+    /sbin/modprobe tun >/dev/null 2>&1 || true
+    mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+    chmod 666 /dev/net/tun
+    {{ singbox_init_path }} start
+    # END stealth-singbox-bootstrap
+    EOF
+
+- name: Ensure dnsmasq loads stealth catalog
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch $CONF
+    grep -q '^conf-file={{ stealth_dnsmasq_conf_path }}$' $CONF || \
+      echo 'conf-file={{ stealth_dnsmasq_conf_path }}' >> $CONF
+    service restart_dnsmasq
+
+- name: Resolve test stealth domain through router dnsmasq to populate ipset
+  ansible.builtin.raw: |
+    nslookup {{ stealth_test_domain }} 127.0.0.1 >/dev/null 2>&1 || true
+
+- name: Run stealth-route-init now
+  ansible.builtin.raw: "{{ stealth_route_init_script }}"
+  changed_when: false
+  when: stealth_channel_b_lan_enabled | bool

@@ -1,0 +1,6 @@
+# Non-secret shared vars.
+project: router-stealth
+# Legacy TUN cleanup/drift-detection values. Current Channel B uses REDIRECT.
+stealth_fwmark: "0x2000"
+stealth_route_table: 200
+stealth_ipset_name: STEALTH_DOMAINS

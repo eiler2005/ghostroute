@@ -1,374 +1,240 @@
 # Быстрый старт
 
-## Требования
+Пошаговая настройка текущей production-схемы GhostRoute.
 
-- Роутер ASUS RT-AX88U Pro (или совместимый) с прошивкой Asuswrt-Merlin `3006.x`
-- WireGuard-клиент `WGC1` настроен и подключен на роутере
-- SSH включен на роутере (Administration → System → Enable SSH)
-- macOS или Linux с установленными `ssh`, `scp`, `nc`
-- SSH-ключ на вашей машине (по умолчанию `~/.ssh/id_rsa`)
+## 1. Что должно быть готово
 
-## Шаг 1. Подготовка роутера
+### Роутер
 
-### Включить WireGuard
+- ASUS RT-AX88U Pro или совместимый Asuswrt-Merlin `3006.x`.
+- SSH включен: `Administration -> System -> Enable SSH -> LAN only`.
+- JFFS custom scripts включены.
+- Entware установлен на USB.
+- Старый WireGuard client `wgc1` настроен и подключен, если нужны remote `wgs1` клиенты через резервный канал.
+- WireGuard VPN Server на роутере (`wgs1`) включен, если используются удаленные iPhone/MacBook через роутер.
 
-В web-интерфейсе роутера:
+### VPS
 
-1. VPN → VPN Client → WireGuard
-2. Настроить профиль WGC1 с конфигурацией вашего VPN-провайдера
-3. Подключить и убедиться, что статус — Connected
+- VPS/Ubuntu host доступен по SSH.
+- Docker Compose установлен.
+- Общий Caddy на `:443` используется как system listener with layer4 plugin.
+- Xray/3x-ui stack живет отдельно в `/opt/stealth`.
 
-### Включить SSH
+### Control machine
 
-В web-интерфейсе роутера:
-
-1. Administration → System → Service
-2. Enable SSH: **LAN only**
-3. SSH port: **22** (или другой по желанию)
-4. Allow SSH password login: **Yes** (на время настройки)
-5. Apply
-
-## Шаг 2. Настройка SSH-ключа
-
-Если SSH-ключ уже есть, пропустите этот шаг.
-
-```bash
-# Генерация ключа (если нет)
-ssh-keygen -t rsa -b 4096
-
-# Копирование публичного ключа на роутер
-cat ~/.ssh/id_rsa.pub | ssh admin@<router_ip> \
-  "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-```
-
-Merlin использует dropbear, который может не поддерживать новые алгоритмы. Скрипты деплоя уже включают параметр `PubkeyAcceptedAlgorithms=+ssh-rsa` для совместимости.
-
-### Проверка подключения
-
-```bash
-ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@<router_ip>
-```
-
-## Шаг 3. Клонирование репозитория
-
-```bash
-git clone <url_репозитория>
-cd router_configuration
-```
-
-## Шаг 4. Entware + автоматическое обнаружение доменов (опционально)
-
-Для автоматического обнаружения новых доменов нужен Entware на USB-накопителе.
-
-### Требования
-
-- USB-накопитель, отформатированный в **ext4** (не NTFS, не FAT32)
-- Накопитель подключён и смонтирован в `/tmp/mnt/<метка>`
-
-### Установка Entware через amtm
-
-```bash
-ssh admin@<router_ip>
-amtm
-# → выбрать установку Entware
-```
-
-После установки Entware:
-
-```bash
-which opkg   # должен вернуть /opt/bin/opkg
-ls /opt/bin  # утилиты Entware
-```
-
-### Что это даёт
-
-После установки Entware и деплоя с `ENABLE_DNSMASQ_LOGGING=1`:
-
-- DNS-лог пишется в `/opt/var/log/dnsmasq.log`
-- `domain-auto-add.sh` каждый час автоматически добавляет новые домены в VPN
-- ipset-состояние хранится на USB (`/opt/tmp/VPN_DOMAINS.ipset`) — меньше износ JFFS
-
-Подробности: [x3mrouting-roadmap.md](x3mrouting-roadmap.md)
+- macOS/Linux.
+- `ssh`, `scp`, `nc`.
+- Ansible.
+- `qrencode` для генерации QR.
+- SSH-ключи к роутеру и VPS.
+- `~/.vault_pass.txt` для Ansible Vault.
 
 ---
 
-## Шаг 5. Настройка локальных secrets (опционально, но рекомендуется)
+## 2. SSH к роутеру
 
-Для удобства создайте файл `secrets/router.env` на основе шаблона и заполните своими значениями:
+В web UI роутера:
+
+```text
+Administration -> System -> Service
+Enable SSH: LAN only
+Allow SSH password login: Yes during setup, optional later
+SSH port: 22
+```
+
+Проверка:
+
+```bash
+ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@192.168.50.1
+```
+
+`deploy.sh` уже использует compatibility options для Merlin/dropbear.
+
+---
+
+## 3. Локальные secrets
+
+Router deploy secrets:
 
 ```bash
 mkdir -p secrets
 cp .env.example secrets/router.env
-# Отредактируйте secrets/router.env и раскомментируйте нужные переменные
 ```
 
-Директория `secrets/` добавлена в `.gitignore` и **никогда не попадёт в git**.
-Для обратной совместимости скрипты всё ещё читают `.env`, если `secrets/router.env` отсутствует.
+Минимально полезно указать:
 
-## Шаг 6. Деплой
-
-```bash
-./deploy.sh
+```text
+ROUTER=192.168.50.1
+ROUTER_USER=admin
+SSH_IDENTITY_FILE=/Users/<user>/.ssh/id_rsa
 ```
 
-Скрипт автоматически загружает `secrets/router.env` и определяет IP роутера из default gateway. Если нужно указать IP вручную без локального secrets-файла:
+Stealth secrets:
 
 ```bash
-ROUTER=<router_lan_ip> ./deploy.sh
+./scripts/init-stealth-vault.sh
 ```
 
-Все поддерживаемые переменные окружения:
-
-| Переменная | По умолчанию | Описание |
-|---|---|---|
-| `ROUTER` | auto (default gateway) | IP роутера |
-| `ROUTER_USER` | `admin` | SSH-пользователь |
-| `ROUTER_PORT` | `22` | SSH-порт |
-| `SSH_IDENTITY_FILE` | `~/.ssh/id_rsa` | Путь к SSH-ключу |
-| `CONNECT_TIMEOUT` | `5` | Таймаут подключения (секунды) |
-| `ENABLE_DNSMASQ_LOGGING` | `1` | DNS-логирование для auto-discovery (`0` — выключить) |
-
-### Что делает deploy.sh
-
-1. Определяет IP роутера
-2. Проверяет доступность SSH
-3. Загружает конфиги и скрипты на роутер по SCP
-4. Создаёт бэкапы существующих файлов
-5. Встраивает конфигурацию через managed-блоки (безопасно повторяемо)
-6. Запускает скрипты и перезапускает dnsmasq
-7. Предупреждает, если WGC1 не подключен
-
-## Шаг 7. Проверка
+или вручную:
 
 ```bash
+cd ansible
+ansible-vault edit secrets/stealth.yml
+```
+
+В документации и чатах допускаются только fake-примеры:
+
+```yaml
+router_ssh_host: "192.168.50.1"
+reality_server_public_key: "FAKE_PUBLIC_KEY"
+clients:
+  - name: "iphone-1"
+    uuid: "00000000-0000-4000-8000-000000000001"
+    short_id: "FAKE_SHORT_ID"
+```
+
+---
+
+## 4. Deploy VPS
+
+```bash
+cd ansible
+ansible-playbook playbooks/00-bootstrap-vps.yml
+ansible-playbook playbooks/10-stealth-vps.yml
+```
+
+Этот шаг управляет:
+
+- Caddy L4 integration.
+- Xray/3x-ui Reality inbound.
+- `/opt/stealth` Docker Compose.
+- UFW rules.
+- 3x-ui clients from vault.
+
+---
+
+## 5. Deploy Router Base Layer
+
+```bash
+cd ..
+ROUTER=192.168.50.1 ./deploy.sh
+```
+
+Этот шаг доставляет и применяет:
+
+- `dnsmasq.conf.add`
+- `dnsmasq-stealth.conf.add`
+- retired `dnsmasq-vpn-upstream.conf.add` compatibility block
+- `static-networks.txt`
+- `firewall-start`
+- `nat-start`
+- cron/reporting scripts
+- `domain-auto-add.sh`
+
+---
+
+## 6. Deploy Router Stealth Layer
+
+```bash
+cd ansible
+ansible-playbook playbooks/20-stealth-router.yml
+```
+
+Этот шаг управляет:
+
+- `sing-box`
+- sing-box REDIRECT inbound on `0.0.0.0:<lan-redirect-port>`
+- `dnscrypt-proxy` on `127.0.0.1:5354`
+- `STEALTH_DOMAINS`
+- LAN TCP REDIRECT and UDP/443 fallback rules
+- `/jffs/scripts/stealth-route-init.sh`
+
+---
+
+## 7. Generate QR Profiles
+
+```bash
+ansible-playbook playbooks/30-generate-client-profiles.yml
+```
+
+Результат:
+
+```text
+ansible/out/clients/iphone-1.png
+ansible/out/clients/iphone-1.conf
+...
+ansible/out/clients/macbook.png
+ansible/out/clients/qr-index.html
+```
+
+Откройте `ansible/out/clients/qr-index.html` локально и сканируйте QR с нужных устройств.
+
+---
+
+## 8. Verify
+
+```bash
+ansible-playbook playbooks/99-verify.yml
+cd ..
 ./verify.sh
-```
-
-### Что означает вывод verify.sh
-
-`verify.sh` теперь по умолчанию печатает компактный health-summary:
-
-```txt
-=== Router ===
-Product: RT-AX88U_PRO
-Build: 102.7_2
-
-=== Routing Health ===
-VPN_DOMAINS ipset OK
-...
-
-=== Catalog Capacity ===
-VPN_DOMAINS current 7125
-VPN_DOMAINS maxelem 65536
-Usage 10.9%
-
-=== Growth Trends ===
-Latest snapshot 2026-04-17
-VPN_DOMAINS delta +3 (Stable growth)
-
-=== Freshness ===
-Blocked list OK (5h 59m)
-...
-
-=== Drift ===
-No missing repo-managed invariants detected.
-
-=== Result ===
-OK
-```
-
-Ключевые проверки:
-
-- `Routing Health`:
-  - `VPN_DOMAINS ipset`, `VPN_STATIC_NETS ipset`, `RC_VPN_ROUTE chain`
-  - `ip rule 1.1.1.1 -> wgc1`, `ip rule 9.9.9.9 -> wgc1`, `ip rule fwmark 0x1000`
-  - hooks для `br0`, `wgs1`, `OUTPUT`
-  - DNS redirect для `wgs1`
-- `Catalog Capacity`:
-  - текущий размер `VPN_DOMAINS`
-  - `maxelem`
-  - usage/headroom
-  - число `VPN_STATIC_NETS`, manual rules, auto rules
-- `Growth Trends`:
-  - дельта к последнему сохранённому snapshot
-  - week-over-week дельта, если в локальном журнале уже накопилась история
-  - `growth level` и `growth note`, чтобы быстро понять, стал ли auto-catalog источником роста
-- `Freshness`:
-  - blocked list
-  - ipset persistence
-  - traffic snapshots
-  - Tailscale / WGS1 / daily close artifacts
-
-Если нужен старый развёрнутый dump:
-
-```bash
-./verify.sh --verbose
-```
-
-## Шаг 8. Проверка traffic observability
-
-После первого деплоя полезно сразу проверить, что отчёты и snapshots работают.
-
-### Текущий день
-
-```bash
-./scripts/traffic-report
-```
-
-Что должно быть в выводе:
-
-- `WAN total`
-- `VPN total`
-- `WG server total`
-- `Tailscale total`
-- `TOP BY VPN`
-- `TOP BY DIRECT WAN`
-- `TOP BY WG SERVER PEERS`
-- `TOP BY TAILSCALE PEERS`
-- `LAN DEVICES`
-- `WIREGUARD SERVER PEERS`
-- `TAILSCALE PEERS`
-
-По умолчанию имена peer'ов, hostnames, tunnel addresses и endpoints в отчёте **редактируются**.
-
-Если нужен полный локальный просмотр без редактирования:
-
-```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report
-```
-
-Используйте этот режим только в доверенной локальной среде и не вставляйте сырой вывод в git / публичные заметки.
-
-### Закрытый день / период
-
-```bash
-./scripts/traffic-daily-report today
-./scripts/traffic-daily-report yesterday
-./scripts/traffic-daily-report week
-./scripts/traffic-daily-report month
-```
-
-Что важно:
-
-- snapshots пишутся каждые 6 часов
-- close-of-day conntrack snapshot сохраняется в `23:55`
-- поэтому полноценный исторический отчёт по новому каналу `wgs1` появится после первых cron-снимков
-
-## Шаг 9. Проверка health-report и USB-backed snapshot
-
-После базовой проверки стоит снять sanitised health-report, который понятен и человеку, и любой LLM:
-
-```bash
 ./scripts/router-health-report
-./scripts/router-health-report --save
 ```
 
-Что делает `--save`:
+Expected current routing state:
 
-- обновляет tracked `docs/router-health-latest.md`
-- добавляет local operational snapshot в `docs/vpn-domain-journal.md`
-- записывает копию на USB-backed storage роутера:
-  - `/opt/var/log/router_configuration/reports/router-health-latest.md`
-  - fallback: `/jffs/addons/router_configuration/traffic/reports/router-health-latest.md`
-
-Это полезно для сценария “1–2 кнопки”:
-
-- `./verify.sh` — быстро понять, живы ли инварианты и нет ли drift/freshness problem
-- `./scripts/router-health-report --save` — сохранить текущее состояние так, чтобы его могла читать любая LLM из репозитория, а на USB осталось последнее sanitised состояние роутера
-
-## Шаг 10. Advisory review каталога
-
-Перед cleanup manual/static coverage сначала снимайте recommendational report:
-
-```bash
-./scripts/catalog-review-report
-./scripts/catalog-review-report --save
+```text
+br0 TCP     -> STEALTH_DOMAINS / VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
+br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> REJECT -> TCP fallback
+OUTPUT      -> main routing by default; explicit proxy only for diagnostics
+wgs1        -> VPN_DOMAINS / VPN_STATIC_NETS    -> 0x1000 -> table wgc1 -> wgc1
 ```
 
-Что это даёт:
+Manual router checks:
 
-- список широких static CIDR для review
-- список child domains, уже покрытых parent-rule
-- tracked `docs/catalog-review-latest.md`
-- USB-backed copy на роутере
-- local journal note без runtime-изменений
-
-### Быстрая шпаргалка
-
-Если не хочется вспоминать все команды, используйте такой минимум:
-
-```bash
-# 1. Быстрый health-check
-./verify.sh
-
-# 2. Сохранить понятный snapshot для себя, USB и любой LLM
-./scripts/router-health-report --save
-
-# 3. Трафик за сегодня
-./scripts/traffic-report
-
-# 4. Трафик за неделю / месяц
-./scripts/traffic-daily-report week
-./scripts/traffic-daily-report month
+```sh
+netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
+iptables -t nat -S PREROUTING | grep <lan-redirect-port>
+iptables -S FORWARD | grep 'dport 443'
+iptables -t mangle -S PREROUTING | grep RC_VPN_ROUTE
+ip rule show | grep -E '0x1000|0x2000'
+ip route show table wgc1
+grep '@wgc1' /jffs/configs/dnsmasq.conf.add
 ```
 
-Именно эти команды сейчас покрывают почти весь типовой operational workflow.
+`grep '@wgc1'` должен быть пустым для active dnsmasq config.
 
-## Шаг 10. Локальные тесты observability-слоя
+---
 
-Эти проверки не меняют runtime-конфигурацию роутера:
+## 9. First Functional Checks
 
-```bash
-bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-./tests/test-router-health.sh
+Warm ipsets:
+
+```sh
+nslookup youtube.com 127.0.0.1
+nslookup ifconfig.me 127.0.0.1
 ```
 
-Они проверяют:
+Check LAN path:
 
-- shell-синтаксис
-- parser/formatter-логику на fixture'ах
-- что новые stable sections (`Window`, `Totals`, `Device Traffic Mix`, `Top by WG server peers`, `Top by Tailscale peers`, `Notes`) продолжают рендериться корректно
-- что health Markdown не теряет `Growth vs latest saved snapshot` и `Growth level / Growth note`
-
-Подробное описание тестового каталога и того, что именно проверяет каждый fixture/smoke test:
-[../tests/README.md](../tests/README.md)
-
-### Если raw WireGuard server client подключается, но `VPN_DOMAINS` не повторяются
-
-Проверьте, что в `firewall-start` есть hook:
-
-```bash
-iptables -t mangle -S | grep 'PREROUTING -i wgs1 -j RC_VPN_ROUTE'
+```sh
+ipset list STEALTH_DOMAINS | awk '/^Number of entries:/ {print $4}'
+iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
+tail -100 /opt/var/log/sing-box.log | grep redirect-in
 ```
 
-Если его нет — заново запустите `./deploy.sh`.
+Check remote `wgs1` path:
 
-Если hook на месте, а по `Wi-Fi/LAN` всё работает, но через raw `WireGuard server` у клиента:
-
-- открывается обычный интернет,
-- `claude.ai` / `chatgpt.com` / другие VPN-домены не идут через VPN,
-- появляется `dns resolution failure`,
-
-проверьте следующий слой:
-
-```bash
-wg show wgs1
-wg show wgs1 dump
-iptables -t nat -L PREROUTING -v -n | egrep 'wgs1|dpt:53|REDIRECT'
-tail -n 100 /opt/var/log/dnsmasq.log | grep '10.6.0.'
+```sh
+wg show wgs1 latest-handshakes
+ipset list VPN_DOMAINS | awk '/^Number of entries:/ {print $4}'
+ip route get <resolved-ip> mark 0x1000
 ```
 
-Как читать результат:
+---
 
-- если у peer `endpoint=(none)` и `rx/tx=0`, проблема ещё до split-routing: клиентский туннель реально не несёт данные
-- если `wgs1` жив, но нет DNS-запросов от `10.6.0.x`, клиент не использует DNS роутера внутри туннеля
-- если счётчики `REDIRECT ... wgs1 ... dpt:53` растут, raw-клиентский DNS уже принудительно попадает в локальный `dnsmasq`
+## 10. What To Read Next
 
-## Дальнейшие действия
-
-- [Как добавить или удалить домен](domain-management.md)
-- [Как устроена архитектура](architecture.md)
-- [Как читать traffic-отчёты](traffic-observability.md)
-- [LLM-инструкция по запуску traffic-скриптов и готовый prompt для отчётов за день / неделю / месяц](llm-traffic-runbook.md)
-- [Что делать, если что-то не работает](troubleshooting.md)
-- [Подробности про Telegram](telegram-deep-dive.md)
+- [architecture.md](architecture.md)
+- [channel-routing-operations.md](channel-routing-operations.md)
+- [domain-management.md](domain-management.md)
+- [troubleshooting.md](troubleshooting.md)

@@ -1,0 +1,11 @@
+- name: Allow inbound 443/tcp for Caddy
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: Ensure SSH allow rule still present (safety check)
+  ansible.builtin.shell: "ufw status | grep -E '22(/tcp)?\\s+ALLOW'"
+  register: ssh_rule
+  changed_when: false
+  failed_when: ssh_rule.rc != 0

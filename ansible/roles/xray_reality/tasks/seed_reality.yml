@@ -1,0 +1,209 @@
+- name: Login to 3x-ui and capture session
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ xui_admin_username }}"
+      password: "{{ xui_admin_password }}"
+    return_content: true
+    status_code: 200
+  register: xui_login
+  failed_when: not (xui_login.json.success | default(false))
+  no_log: true
+
+- name: List existing 3x-ui inbounds
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/panel/api/inbounds/list"
+    method: GET
+    headers:
+      Cookie: "{{ xui_login.cookies_string }}"
+    return_content: true
+    status_code: 200
+  register: xui_inbounds
+  failed_when: not (xui_inbounds.json.success | default(false))
+  no_log: true
+
+- name: Capture existing stealth Reality inbound if present
+  ansible.builtin.set_fact:
+    _existing_stealth_inbound: "{{ (xui_inbounds.json.obj | selectattr('remark', 'equalto', 'stealth-reality') | list | first) | default({}) }}"
+    _has_existing_stealth_inbound: "{{ (xui_inbounds.json.obj | selectattr('remark', 'equalto', 'stealth-reality') | list | length) > 0 }}"
+
+- name: Parse existing inbound stream settings
+  ansible.builtin.set_fact:
+    _existing_stream_settings: "{{ (_existing_stealth_inbound.streamSettings | default('{}')) | from_json }}"
+  when: _has_existing_stealth_inbound
+  no_log: true
+
+- name: Generate Reality x25519 keypair via Xray binary
+  ansible.builtin.shell: |
+    docker exec xray /app/bin/xray-linux-amd64 x25519
+  register: xray_x25519
+  changed_when: false
+  when: not _has_existing_stealth_inbound
+
+- name: Parse public/private keys from xray output
+  ansible.builtin.set_fact:
+    _reality_priv: "{{ xray_x25519.stdout | regex_search('PrivateKey:\\s*(\\S+)', '\\1') | first }}"
+    _reality_pub:  "{{ xray_x25519.stdout | regex_search('PublicKey\\):\\s*(\\S+)', '\\1') | first }}"
+  when: not _has_existing_stealth_inbound
+  no_log: true
+
+- name: Generate 8 short IDs
+  ansible.builtin.set_fact:
+    _reality_sids: "{{ lookup('ansible.builtin.pipe', 'for i in $(seq 1 8); do openssl rand -hex 8; done').splitlines() }}"
+  when: not _has_existing_stealth_inbound
+
+- name: Recover Reality private key and short IDs from existing inbound
+  ansible.builtin.set_fact:
+    _reality_priv: "{{ _existing_stream_settings.realitySettings.privateKey }}"
+    _reality_sids: "{{ _existing_stream_settings.realitySettings.shortIds }}"
+  when: _has_existing_stealth_inbound
+  no_log: true
+
+- name: Normalize existing Reality inbound listen address for Docker publishing
+  ansible.builtin.shell: |
+    set -e
+    docker exec xray python3 -c '
+    import sqlite3
+    db = "/etc/x-ui/x-ui.db"
+    con = sqlite3.connect(db)
+    cur = con.execute("update inbounds set listen = ? where remark = ? and listen != ?", ("0.0.0.0", "stealth-reality", "0.0.0.0"))
+    con.commit()
+    print(cur.rowcount)
+    '
+  register: xui_listen_normalize
+  changed_when: xui_listen_normalize.stdout | trim != "0"
+  when: _has_existing_stealth_inbound
+
+- name: Restart xray container after Reality listen normalization
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xui_listen_normalize is changed
+
+- name: Derive Reality public key from existing private key
+  ansible.builtin.shell: |
+    docker exec xray /app/bin/xray-linux-amd64 x25519 -i "{{ _reality_priv }}"
+  register: xray_existing_x25519
+  changed_when: false
+  when: _has_existing_stealth_inbound
+  no_log: true
+
+- name: Parse public key from existing Reality private key
+  ansible.builtin.set_fact:
+    _reality_pub: "{{ xray_existing_x25519.stdout | regex_search('PublicKey\\):\\s*(\\S+)', '\\1') | first }}"
+  when: _has_existing_stealth_inbound
+  no_log: true
+
+- name: Build 3x-ui VLESS clients payload
+  ansible.builtin.set_fact:
+    _xui_clients_payload: >-
+      {{
+        (_xui_clients_payload | default([])) + [
+          {
+            'id': item.uuid,
+            'email': item.email,
+            'flow': 'xtls-rprx-vision',
+            'enable': true,
+            'limitIp': 0,
+            'totalGB': 0,
+            'expiryTime': 0,
+            'reset': 0,
+            'subId': item.uuid | regex_replace('-', '') | truncate(16, true, '')
+          }
+        ]
+      }}
+  loop: "{{ clients }}"
+  when: not _has_existing_stealth_inbound
+
+- name: Create inbound via 3x-ui API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/panel/api/inbounds/add"
+    method: POST
+    headers:
+      Cookie: "{{ xui_login.cookies_string }}"
+    body_format: json
+    body:
+      enable: true
+      remark: "stealth-reality"
+      listen: "0.0.0.0"
+      port: 8443
+      protocol: "vless"
+      settings: "{{ _inbound_settings | to_json }}"
+      streamSettings: "{{ _stream_settings | to_json }}"
+      sniffing: '{"enabled": true, "destOverride": ["http","tls"]}'
+    status_code: [200]
+    return_content: true
+  vars:
+    _inbound_settings:
+      clients: "{{ _xui_clients_payload }}"
+      decryption: "none"
+      fallbacks: []
+    _stream_settings:
+      network: "tcp"
+      security: "reality"
+      realitySettings:
+        show: false
+        dest: "{{ reality_dest }}"
+        xver: 0
+        serverNames: "{{ reality_server_names }}"
+        privateKey: "{{ _reality_priv }}"
+        shortIds: "{{ _reality_sids }}"
+      tcpSettings:
+        header:
+          type: "none"
+  register: xui_add_inbound
+  failed_when: not (xui_add_inbound.json.success | default(false))
+  when: not _has_existing_stealth_inbound
+  no_log: true
+
+- name: Ensure generated short IDs cover all clients
+  ansible.builtin.assert:
+    that:
+      - (_reality_sids | length) >= (clients | length)
+    fail_msg: "Reality short_ids are fewer than configured clients."
+
+- name: Build clients list with assigned Reality short IDs
+  ansible.builtin.set_fact:
+    _clients_with_short_ids: "{{ (_clients_with_short_ids | default([])) + [ item | combine({'short_id': _reality_sids[ansible_loop.index0]}) ] }}"
+  loop: "{{ clients }}"
+  loop_control:
+    extended: true
+  no_log: true
+
+- name: Render updated stealth secrets plaintext locally
+  ansible.builtin.template:
+    src: stealth-secrets.yml.j2
+    dest: "{{ playbook_dir }}/../secrets/.stealth.generated.yml"
+    mode: "0600"
+  vars:
+    template_reality_server_private_key: "{{ _reality_priv }}"
+    template_reality_server_public_key: "{{ _reality_pub }}"
+    template_reality_short_ids: "{{ _reality_sids }}"
+    template_clients: "{{ _clients_with_short_ids }}"
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Encrypt updated stealth secrets locally
+  ansible.builtin.shell: |
+    set -euo pipefail
+    plain="{{ playbook_dir }}/../secrets/.stealth.generated.yml"
+    target="{{ playbook_dir }}/../secrets/stealth.yml"
+    tmp="$(mktemp "{{ playbook_dir }}/../secrets/stealth.yml.XXXXXX")"
+    trap 'rm -f "$plain" "$tmp"' EXIT
+    ANSIBLE_CONFIG="{{ playbook_dir }}/../ansible.cfg" \
+      ansible-vault encrypt \
+      --vault-password-file ~/.vault_pass.txt \
+      --encrypt-vault-id default \
+      --output "$tmp" \
+      "$plain"
+    mv "$tmp" "$target"
+    rm -f "$plain"
+    trap - EXIT
+  args:
+    executable: /bin/bash
+    chdir: "{{ playbook_dir }}/.."
+  delegate_to: localhost
+  become: false
+  no_log: true

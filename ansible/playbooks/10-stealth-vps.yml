@@ -1,0 +1,11 @@
+- name: Deploy stealth stack on VPS
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  roles:
+    - caddy_l4
+    - xray_reality
+    - ufw_stealth

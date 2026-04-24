@@ -1,0 +1,17 @@
+listen_addresses = ['{{ dnscrypt_listen }}']
+server_names = ['cloudflare', 'quad9-doh-ip4-port443-filter-pri', 'nextdns-ultralow']
+require_dnssec = false
+require_nolog = true
+require_nofilter = false
+dnscrypt_servers = false
+doh_servers = true
+ipv4_servers = true
+ipv6_servers = false
+timeout = 5000
+keepalive = 30
+
+[sources.'public-resolvers']
+  urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md']
+  cache_file = '/opt/var/cache/dnscrypt-proxy/public-resolvers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72

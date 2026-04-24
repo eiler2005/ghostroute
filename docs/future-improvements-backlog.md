@@ -6,16 +6,20 @@
 
 ## Текущий статус
 
-На момент фиксации backlog система работает в ожидаемой схеме:
+На момент актуализации backlog система работает в двухканальной схеме:
 
-- `VPN_DOMAINS` и `VPN_STATIC_NETS` используются как основной routing catalog
-- `RC_VPN_ROUTE` обслуживает три входящих пути:
+- `STEALTH_DOMAINS` и `VPN_STATIC_NETS` обслуживают LAN traffic:
   - `br0` — обычные LAN / Wi-Fi клиенты
-  - `wgs1` — raw `WireGuard server` клиенты
-  - `OUTPUT` — router-generated traffic
-- `wgc1` используется как основной VPN uplink
+  - TCP egress: nat `REDIRECT :<lan-redirect-port>` → sing-box → VLESS+Reality
+  - UDP/443: REJECT для managed destinations, чтобы клиенты fallback'ились с QUIC на TCP
+  - router `OUTPUT` по умолчанию не перехватывается, чтобы не создать loop для sing-box outbound
+- `VPN_DOMAINS` и `VPN_STATIC_NETS` обслуживают remote `WireGuard server` clients:
+  - `wgs1` — raw remote clients
+  - egress: `0x1000` → table `wgc1`
+- `wgc1` больше не основной LAN uplink; это reserve/legacy канал для remote `wgs1` clients
 - для `wgs1` есть DNS-capture в локальный `dnsmasq`
-- traffic observability и device mix reporting работают
+- DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:5354`
+- traffic observability и device mix reporting работают с этой новой routing matrix
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -242,6 +246,42 @@
 
 - даже при текущем комфортном уровне заполнения можно быстро видеть тренд, headroom и момент, когда каталог действительно начинает требовать cleanup или пересмотра правил
 
+### 8. Свести публичный `wgs1` к backup и позже убрать WAN ingress
+
+Проблема:
+
+- сейчас raw `WireGuard server` на `wgs1` остаётся публичным WAN ingress
+- это повышает внешнюю поверхность даже при рабочем routing-layer и хорошем health/observability
+- для регулярного remote access удобнее иметь отдельный overlay / zero-trust access path, а не зависеть от публичного `wgs1`
+
+Что улучшить:
+
+- рассмотреть migration path на альтернативный remote-access слой:
+  - `ZeroTier`
+  - `NetBird`
+  - `OpenZiti`
+- сначала держать новую схему параллельно с `wgs1`
+- затем перевести существующих `wgs1` клиентов на новую схему
+- после успешной миграции выключить публичный `wgs1` на WAN или оставить только как строго временный аварийный backup
+
+Статус:
+
+- planning-only analysis уже зафиксирован в отдельном документе:
+  - [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
+- там сохранены:
+  - live observations по текущему `wgs1` surface
+  - shortlist кандидатов
+  - iPhone onboarding notes
+  - migration plans для `ZeroTier`, `NetBird`, `OpenZiti`
+- backlog здесь **не означает обязательное внедрение**
+- это отдельное future direction, к которому имеет смысл возвращаться только если действительно есть цель убрать публичный `wgs1` из роли основного ingress
+
+Желаемый результат:
+
+- основной remote access больше не зависит от публичного `wgs1`
+- старые `wgs1` клиенты аккуратно мигрированы
+- внешний surface роутера становится меньше без слома текущего routing catalog
+
 ## Что не делать по умолчанию
 
 Без отдельного решения не стоит:
@@ -267,4 +307,5 @@
 - [domain-management.md](domain-management.md)
 - [traffic-observability.md](traffic-observability.md)
 - [llm-traffic-runbook.md](llm-traffic-runbook.md)
+- [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
 - [x3mrouting-roadmap.md](x3mrouting-roadmap.md)

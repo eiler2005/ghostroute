@@ -1,0 +1,15 @@
+all:
+  children:
+    vps_stealth:
+      hosts:
+        VPS-hel1:
+          ansible_host: "{{ vps_ssh_host }}"
+          ansible_user: "{{ vps_ssh_user }}"
+          ansible_python_interpreter: /usr/bin/python3
+    routers:
+      hosts:
+        router-home:
+          ansible_host: "{{ router_ssh_host }}"
+          ansible_user: "{{ router_ssh_user }}"
+          ansible_shell_executable: /bin/sh
+          ansible_python_interpreter: /opt/bin/python3

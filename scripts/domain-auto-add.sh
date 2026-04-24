@@ -2,7 +2,7 @@
 # Automatic domain routing — runs every hour via cron.
 #
 # For each domain queried >= MIN_COUNT times in the dnsmasq log:
-#   - Adds ipset + server entries to dnsmasq-autodiscovered.conf.add
+#   - Adds VPN_DOMAINS + STEALTH_DOMAINS ipset entries to dnsmasq-autodiscovered.conf.add
 #   - Writes a compact activity log to /opt/var/log/domain-activity.log:
 #       • Заголовок запуска с временем и статистикой периода
 #       • Только добавленные домены (по одной строке каждый)
@@ -23,7 +23,7 @@ BLOCKED_LIST="${DOMAIN_AUTO_ADD_BLOCKED_LIST_FILE:-/opt/tmp/blocked-domains.lst}
 LEASES_FILE="${DOMAIN_AUTO_ADD_LEASES_FILE:-/var/lib/misc/dnsmasq.leases}"
 FORENSICS_DIR="${DOMAIN_AUTO_ADD_FORENSICS_DIR:-$STATE_DIR_DEFAULT}"
 VPN_IPSET=VPN_DOMAINS
-VPN_IFACE=wgc1
+STEALTH_IPSET=STEALTH_DOMAINS
 MIN_COUNT=1
 MODE="${1:-run}"
 CANDIDATE_EVENTS_STATE=/opt/tmp/domain-auto-add-candidate-events.tsv
@@ -316,9 +316,8 @@ rewrite_auto_file_from_list() {
     printf '# normalized by domain-auto-add.sh at %s\n' "$NOW"
     while IFS= read -r kept_domain; do
       [ -n "$kept_domain" ] || continue
-      printf 'ipset=/%s/%s\n'          "$kept_domain" "$VPN_IPSET"
-      printf 'server=/%s/1.1.1.1@%s\n' "$kept_domain" "$VPN_IFACE"
-      printf 'server=/%s/9.9.9.9@%s\n' "$kept_domain" "$VPN_IFACE"
+      printf 'ipset=/%s/%s\n' "$kept_domain" "$VPN_IPSET"
+      printf 'ipset=/%s/%s\n' "$kept_domain" "$STEALTH_IPSET"
     done < "$keep_list"
   } > "$tmp_auto"
   mv "$tmp_auto" "$AUTO"
@@ -675,9 +674,8 @@ grep "query\[A" "$LOG" \
       # Add to dnsmasq autodiscovered config
       {
         printf '\n# auto-added %s (queries: %d, from: %s)\n' "$NOW" "$count" "$srcs"
-        printf 'ipset=/%s/%s\n'          "$write_domain" "$VPN_IPSET"
-        printf 'server=/%s/1.1.1.1@%s\n' "$write_domain" "$VPN_IFACE"
-        printf 'server=/%s/9.9.9.9@%s\n' "$write_domain" "$VPN_IFACE"
+        printf 'ipset=/%s/%s\n' "$write_domain" "$VPN_IPSET"
+        printf 'ipset=/%s/%s\n' "$write_domain" "$STEALTH_IPSET"
       } >> "$AUTO"
 
       # One line per added domain for the activity log

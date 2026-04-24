@@ -1,0 +1,59 @@
+- name: Ensure sing-box installed via Entware
+  ansible.builtin.raw: |
+    if ! /opt/bin/opkg list-installed | grep -Eq '^sing-box(-go)? '; then
+      /opt/bin/opkg update
+      /opt/bin/opkg install sing-box
+    fi
+  register: sb_install
+  changed_when: "'Installing' in sb_install.stdout"
+
+- name: Ensure sing-box version >= 1.9 (required for Reality utls)
+  ansible.builtin.raw: |
+    V=$({{ singbox_bin_path }} version 2>/dev/null | head -1 | awk '{print $3}')
+    echo "${V}"
+  register: sb_ver
+  changed_when: false
+
+- name: Warn if sing-box version outdated
+  ansible.builtin.debug:
+    msg: |
+      sing-box version: {{ sb_ver.stdout }}.
+      If < 1.9, manually fetch aarch64 binary from
+      https://github.com/SagerNet/sing-box/releases and place at {{ singbox_bin_path }}.
+
+- name: Ensure sing-box config dir
+  ansible.builtin.file:
+    path: "{{ singbox_config_path | dirname }}"
+    state: directory
+
+- name: Ensure /dev/net/tun exists for sing-box TUN inbound
+  ansible.builtin.raw: |
+    /sbin/modprobe tun 2>/dev/null || true
+    mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+    chmod 666 /dev/net/tun
+  changed_when: false
+
+- name: Render sing-box config
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ singbox_config_path }}"
+    mode: "0600"
+  notify: restart singbox
+
+- name: Validate sing-box config before restart
+  ansible.builtin.raw: "{{ singbox_bin_path }} check -C {{ singbox_config_path | dirname }}"
+  changed_when: false
+
+- name: Install stable sing-box init script
+  ansible.builtin.template:
+    src: S99singbox.j2
+    dest: "{{ singbox_init_path }}"
+    mode: "0755"
+
+- name: Enable + start singbox
+  ansible.builtin.raw: |
+    {{ singbox_init_path }} enable >/dev/null 2>&1 || true
+    {{ singbox_init_path }} restart
+  register: sb_start
+  changed_when: false

@@ -1,0 +1,38 @@
+- name: Generate VLESS client profiles and QR PNG files
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../secrets/stealth.yml
+  vars:
+    out_dir: "{{ playbook_dir }}/../out/clients"
+    reality_sni: "{{ reality_server_names[0] }}"
+  tasks:
+    - name: Ensure output dir
+      ansible.builtin.file:
+        path: "{{ out_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render VLESS URI for each client
+      ansible.builtin.copy:
+        dest: "{{ out_dir }}/{{ item.name }}.conf"
+        mode: "0600"
+        content: |
+          vless://{{ item.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
+      loop: "{{ clients }}"
+
+    - name: Render QR PNG for each client
+      ansible.builtin.shell: |
+        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        qrencode -t PNG -o "{{ out_dir }}/{{ item.name }}.png" -r "{{ out_dir }}/{{ item.name }}.conf"
+      loop: "{{ clients }}"
+      when: item.name != 'router'   # router imports config directly, QR не нужен
+
+    - name: Inform user
+      ansible.builtin.debug:
+        msg: |
+          Client profiles generated in {{ out_dir }}.
+          Distribute .png QR codes over secure channel only (Signal / AirDrop).
+          These contain UUIDs that grant access to Reality inbound.

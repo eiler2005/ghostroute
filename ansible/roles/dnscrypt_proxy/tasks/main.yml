@@ -1,0 +1,56 @@
+- name: Install dnscrypt-proxy2 via Entware
+  ansible.builtin.raw: |
+    /opt/bin/opkg list-installed | grep -q '^dnscrypt-proxy2 ' || /opt/bin/opkg install dnscrypt-proxy2
+
+- name: Ensure dnscrypt cache dir exists
+  ansible.builtin.file:
+    path: /opt/var/cache/dnscrypt-proxy
+    state: directory
+
+- name: Ensure dnscrypt run/log dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - /opt/var/run
+    - /opt/var/log
+
+- name: Render dnscrypt-proxy.toml
+  ansible.builtin.template:
+    src: dnscrypt-proxy.toml.j2
+    dest: "{{ dnscrypt_config_path }}"
+    mode: "0644"
+  notify: restart dnscrypt
+
+- name: Install dnscrypt init script
+  ansible.builtin.template:
+    src: S09dnscrypt-proxy2.j2
+    dest: "{{ dnscrypt_init_path }}"
+    mode: "0755"
+  notify: restart dnscrypt
+
+- name: Enable dnscrypt-proxy service
+  ansible.builtin.raw: |
+    {{ dnscrypt_init_path }} restart
+  changed_when: false
+
+- name: Ensure services-start hook starts dnscrypt on boot
+  ansible.builtin.raw: |
+    touch {{ services_start_hook }}
+    chmod +x {{ services_start_hook }}
+    sed -i '\|/opt/etc/init.d/S09dnscrypt-proxy2 start|d' {{ services_start_hook }}
+    grep -q '# BEGIN stealth-dnscrypt-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
+    # BEGIN stealth-dnscrypt-bootstrap
+    {{ dnscrypt_init_path }} start
+    # END stealth-dnscrypt-bootstrap
+    EOF
+
+- name: Update dnsmasq upstream to use dnscrypt-proxy (for non-VPN / non-STEALTH)
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch $CONF
+    sed -i '\|^server=127.0.0.1#5353$|d' $CONF
+    sed -i '\|^server=127.0.0.1#{{ dnscrypt_port }}$|d' $CONF
+    echo 'server=127.0.0.1#{{ dnscrypt_port }}' >> $CONF
+    grep -q '^no-resolv$' $CONF || echo 'no-resolv' >> $CONF
+    service restart_dnsmasq

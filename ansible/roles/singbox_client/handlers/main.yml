@@ -1,0 +1,4 @@
+- name: restart singbox
+  ansible.builtin.raw: |
+    {{ singbox_init_path }} enable >/dev/null 2>&1 || true
+    {{ singbox_init_path }} restart
