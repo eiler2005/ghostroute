@@ -61,8 +61,8 @@ Expected:
 0.0.0.0:<lan-redirect-port> ... LISTEN ... sing-box
 -A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports <lan-redirect-port>
 -A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports <lan-redirect-port>
--A FORWARD -i br0 -p udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT
--A FORWARD -i br0 -p udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j REJECT
+-A FORWARD -i br0 -p udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j DROP
+-A FORWARD -i br0 -p udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP
 ```
 
 Must not exist in current policy:
@@ -271,7 +271,7 @@ Security rule:
 Fake example:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=www.microsoft.com&fp=chrome#example-client
+vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=chrome#example-client
 ```
 
 ---

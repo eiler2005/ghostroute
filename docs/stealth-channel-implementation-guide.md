@@ -14,7 +14,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
-| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 reject | sing-box redirect -> Reality |
+| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | sing-box redirect -> Reality |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Remote WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | `wgc1` |
 
@@ -23,6 +23,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 ```text
 VPS VPS
   -> system Caddy v2 with layer4 plugin on :443
+  -> generic :443 fallback site exists only to bind the public listener
   -> Reality traffic routed to Xray/3x-ui on 127.0.0.1:8443
   -> Xray/3x-ui stack lives under /opt/stealth
   -> existing services keep using shared system Caddy
@@ -32,7 +33,8 @@ This is intentionally not a fully isolated Docker-only ingress. The compromise i
 
 - Xray/3x-ui are isolated in `/opt/stealth` Docker Compose.
 - Port `443` remains owned by the shared system Caddy.
-- Caddy L4 routes traffic without moving existing web services into this project.
+- Caddy L4 routes Reality traffic without exposing OpenClaw on public `:443`.
+- The `:443` fallback site must remain present; the layer4 listener wrapper alone does not create a public listener.
 
 ### Router side
 
@@ -40,9 +42,10 @@ This is intentionally not a fully isolated Docker-only ingress. The compromise i
 Merlin router
   -> dnsmasq fills VPN_DOMAINS and STEALTH_DOMAINS
   -> dnscrypt-proxy listens on 127.0.0.1:5354
+  -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:1080
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
-  -> stealth-route-init.sh rejects matching br0 UDP/443 to force TCP fallback
+  -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
   -> legacy 0x2000/table 200/singbox0 state is removed
 ```
 
@@ -152,9 +155,9 @@ xui_admin_password: "FAKE_PASSWORD"
 xui_admin_web_path: "/FAKE_ADMIN_PATH"
 xui_admin_web_port: <xui-admin-port>
 
-reality_dest: "www.microsoft.com:443"
+reality_dest: "gateway.icloud.com:443"
 reality_server_names:
-  - "www.microsoft.com"
+  - "gateway.icloud.com"
 reality_server_private_key: "FAKE_PRIVATE_KEY"
 reality_server_public_key: "FAKE_PUBLIC_KEY"
 reality_short_ids:
@@ -284,7 +287,7 @@ Shared CIDR catalog:
 
 ```text
 br0 TCP     -> REDIRECT :<lan-redirect-port> -> sing-box -> Reality
-br0 UDP/443 -> REJECT -> TCP fallback
+br0 UDP/443 -> DROP -> TCP fallback
 wgs1        -> 0x1000 -> wgc1
 ```
 
@@ -313,7 +316,9 @@ Expected:
 - Caddy has layer4 module.
 - Caddy listens on `:443`.
 - Xray listens on `127.0.0.1:8443`.
-- Existing shared Caddy site behavior is preserved.
+- Generic non-Reality fallback on `:443` exists, but OpenClaw is not exposed there.
+- Old OpenClaw SNI does not return the OpenClaw certificate.
+- `gateway.icloud.com` SNI returns the real Apple certificate through Reality fallback.
 - 3x-ui admin is only reachable through localhost-bound admin port.
 
 ### Router
@@ -326,14 +331,25 @@ ansible-playbook playbooks/99-verify.yml --limit routers
 Expected:
 
 - sing-box REDIRECT listener exists on `0.0.0.0:<lan-redirect-port>`.
+- sing-box SOCKS listener exists on `127.0.0.1:1080` for dnscrypt-proxy.
+- `dnscrypt-proxy.toml` has `proxy = 'socks5://127.0.0.1:1080'`.
+- sing-box config has explicit keepalive / no-multiplex tuning.
+- `cru l` contains `/jffs/scripts/singbox-watchdog.sh`.
+- `nvram get ipv6_service` returns `disabled`.
+- `ip -6 addr show dev br0` shows no global unicast IPv6 addresses.
 - `STEALTH_DOMAINS` exists and can be populated.
 - `br0` TCP to `STEALTH_DOMAINS` and `VPN_STATIC_NETS` redirects to `:<lan-redirect-port>`.
-- `br0` UDP/443 to those sets is rejected to force TCP fallback.
+- `br0` UDP/443 to those sets is silently dropped to force TCP fallback.
 - `wgs1` is not hooked into Channel B.
 - legacy `0x2000`, table `200`, and `singbox0` are absent.
 - dnscrypt-proxy listens on configured port.
 - dnsmasq upstream points to `127.0.0.1#5354`.
+- OpenClaw has no router DNS override in SSH-only mode.
+- Router can connect to the VPS cover port: `echo | nc -w 3 198.51.100.10 443` exits `0`.
+- sing-box logs have no fresh `connection refused` to `198.51.100.10:443`.
+- sing-box logs have no fresh `x509: certificate is valid for ... microsoft.com, not gateway.icloud.com`.
 - WGC1 reserve hook is limited to remote WireGuard clients.
+- `domain-auto-add.sh` default-skips when `/opt/tmp/blocked-domains.lst` is missing or empty.
 
 ---
 
@@ -349,6 +365,28 @@ iptables -t nat -S PREROUTING | grep <lan-redirect-port>
 iptables -S FORWARD | grep 'dport 443'
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
 ```
+
+### SNI rotation partially applied
+
+Symptoms:
+
+```text
+dial tcp 198.51.100.10:443: connect: connection refused
+x509: certificate is valid for ... microsoft.com, not gateway.icloud.com
+```
+
+Checks:
+
+```sh
+echo | nc -w 3 198.51.100.10 443
+tail -100 /opt/var/log/sing-box.log | grep -E 'connection refused|x509'
+```
+
+Fix:
+
+- If `nc` fails, verify Caddy has a fallback site on `:443` and is running.
+- If logs mention Microsoft certificates, sync the existing 3x-ui/Xray Reality inbound to `gateway.icloud.com:443` and restart `xray`.
+- Regenerate and redistribute client QR codes after the SNI change.
 
 ### Remote WireGuard client does not use WGC1
 
@@ -372,6 +410,24 @@ netstat -nlp 2>/dev/null | grep ':5354 '
 ```
 
 There should be no active `@wgc1` DNS upstream entries.
+
+### OpenClaw private access
+
+OpenClaw is intentionally hidden from public DNS and is not served by public Caddy. Open an SSH tunnel first:
+
+```bash
+ssh -N -L 18789:127.0.0.1:18789 \
+  -o ProxyCommand='ssh admin@192.168.50.1 nc -w 120 %h %p' \
+  deploy@198.51.100.10
+```
+
+Then open:
+
+```text
+http://127.0.0.1:18789/
+```
+
+This keeps OpenClaw off public DNS and off the shared public `:443` Caddy surface.
 
 ---
 

@@ -71,6 +71,32 @@
       when: "'layer4' not in caddy_modules.stdout"
       notify: restart caddy
 
+    - name: Ensure private OpenClaw certificate directory exists
+      when: system_caddy_site_enabled | bool
+      ansible.builtin.file:
+        path: "{{ system_caddy_cert_file | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Generate private OpenClaw self-signed certificate if missing
+      when:
+        - system_caddy_site_enabled | bool
+        - system_caddy_site_host is match('.*\\.home\\.arpa$')
+      ansible.builtin.shell: |
+        set -euo pipefail
+        openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+          -keyout "{{ system_caddy_key_file }}" \
+          -out "{{ system_caddy_cert_file }}" \
+          -subj "/CN={{ system_caddy_site_host }}" \
+          -addext "subjectAltName=DNS:{{ system_caddy_site_host }}"
+        chown caddy:caddy "{{ system_caddy_key_file }}" "{{ system_caddy_cert_file }}"
+        chmod 0640 "{{ system_caddy_key_file }}"
+        chmod 0644 "{{ system_caddy_cert_file }}"
+      args:
+        creates: "{{ system_caddy_cert_file }}"
+        executable: /bin/bash
+      notify: restart caddy
+
     - name: Render host Caddyfile with layer4 wrapper
       ansible.builtin.template:
         src: SystemCaddyfile.j2

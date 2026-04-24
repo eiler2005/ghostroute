@@ -1,0 +1,37 @@
+#!/bin/sh
+# Restart sing-box only after repeated local listener failures.
+
+PORT={{ singbox_redirect_port }}
+INIT={{ singbox_init_path }}
+STATE_FILE=/opt/tmp/singbox-watchdog.state
+FAIL_LIMIT=2
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+if command -v nc >/dev/null 2>&1; then
+  NC=nc
+elif [ -x /opt/bin/nc ]; then
+  NC=/opt/bin/nc
+else
+  logger -t singbox-watchdog "nc not found; skipping probe"
+  exit 0
+fi
+
+if "$NC" -z -w 2 127.0.0.1 "$PORT" >/dev/null 2>&1; then
+  echo 0 > "$STATE_FILE"
+  exit 0
+fi
+
+FAILS=0
+[ -f "$STATE_FILE" ] && FAILS="$(cat "$STATE_FILE" 2>/dev/null || echo 0)"
+case "$FAILS" in
+  ''|*[!0-9]*) FAILS=0 ;;
+esac
+FAILS=$((FAILS + 1))
+echo "$FAILS" > "$STATE_FILE"
+
+if [ "$FAILS" -ge "$FAIL_LIMIT" ]; then
+  logger -t singbox-watchdog "sing-box 127.0.0.1:$PORT unresponsive ($FAILS checks); restarting"
+  "$INIT" restart >/dev/null 2>&1 || logger -t singbox-watchdog "restart command failed"
+  echo 0 > "$STATE_FILE"
+fi

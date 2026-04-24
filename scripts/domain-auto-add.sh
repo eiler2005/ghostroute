@@ -623,41 +623,46 @@ grep "query\[A" "$LOG" \
              | awk '{print $8}' | sort -u | tr '\n' ',' | sed 's/,$//')
 
       # Check against blocked domains list — only add known-blocked domains.
-      # If the list doesn't exist (not yet downloaded), fall back to old behavior (add all).
-      if [ -f "$BLOCKED_LIST" ]; then
-        if ! grep -qFx "$domain" "$BLOCKED_LIST" \
-           && ! grep -qFx "$parent" "$BLOCKED_LIST" \
-           && ! grep -qFx "$reg_domain" "$BLOCKED_LIST" \
-           && ! grep -qFx "$family_domain" "$BLOCKED_LIST"; then
-          printf '  ? %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$CANDIDATES"
-          # Save raw data for ISP probe.
-          # Short "entry" domains (for example www.ig.com) get a higher score so
-          # they can be probed even after a single observed query. Dynamic DNS
-          # names with IP-encoded family labels get the same treatment.
-          num_devs=$(echo "$srcs" | tr ',' '\n' | grep -c '.')
-          reg_label=${reg_domain%%.*}
-          reg_len=${#reg_label}
-          dot_count=$(echo "$domain" | tr -cd '.' | wc -c)
-          probe_score=$count
-          case "$domain" in
-            www.*) probe_score=$((probe_score + 500)) ;;
-          esac
-          if [ "$reg_len" -le 3 ]; then
-            probe_score=$((probe_score + 300))
-          elif [ "$reg_len" -le 4 ]; then
-            probe_score=$((probe_score + 200))
-          fi
-          if [ "$dot_count" -le 1 ]; then
-            probe_score=$((probe_score + 100))
-          fi
-          if [ "$family_domain" != "$reg_domain" ]; then
-            probe_score=$((probe_score + 700))
-          fi
-          printf '%d %d %d %s\n' "$probe_score" "$count" "$num_devs" "$domain" >> "$CANDIDATES_PROBE"
-          printf '%s\t%s\t%s\n' "$CURRENT_EPOCH" "$domain" "$count" >> "$CANDIDATE_EVENTS_NEW"
-          echo 1 >> "$CNT_CND"
-          continue
+      # If the list is missing/empty, default-skip to avoid polluting the
+      # stealth catalog with ordinary browsing noise.
+      if [ ! -s "$BLOCKED_LIST" ]; then
+        logger -t domain-auto-add "blocked-domains.lst missing or empty; skipping auto-add of '$domain'"
+        echo 1 >> "$CNT_SKP"
+        continue
+      fi
+
+      if ! grep -qFx "$domain" "$BLOCKED_LIST" \
+         && ! grep -qFx "$parent" "$BLOCKED_LIST" \
+         && ! grep -qFx "$reg_domain" "$BLOCKED_LIST" \
+         && ! grep -qFx "$family_domain" "$BLOCKED_LIST"; then
+        printf '  ? %-48s %3d запр  [%s]\n' "$domain" "$count" "$srcs" >> "$CANDIDATES"
+        # Save raw data for ISP probe.
+        # Short "entry" domains (for example www.ig.com) get a higher score so
+        # they can be probed even after a single observed query. Dynamic DNS
+        # names with IP-encoded family labels get the same treatment.
+        num_devs=$(echo "$srcs" | tr ',' '\n' | grep -c '.')
+        reg_label=${reg_domain%%.*}
+        reg_len=${#reg_label}
+        dot_count=$(echo "$domain" | tr -cd '.' | wc -c)
+        probe_score=$count
+        case "$domain" in
+          www.*) probe_score=$((probe_score + 500)) ;;
+        esac
+        if [ "$reg_len" -le 3 ]; then
+          probe_score=$((probe_score + 300))
+        elif [ "$reg_len" -le 4 ]; then
+          probe_score=$((probe_score + 200))
         fi
+        if [ "$dot_count" -le 1 ]; then
+          probe_score=$((probe_score + 100))
+        fi
+        if [ "$family_domain" != "$reg_domain" ]; then
+          probe_score=$((probe_score + 700))
+        fi
+        printf '%d %d %d %s\n' "$probe_score" "$count" "$num_devs" "$domain" >> "$CANDIDATES_PROBE"
+        printf '%s\t%s\t%s\n' "$CURRENT_EPOCH" "$domain" "$count" >> "$CANDIDATE_EVENTS_NEW"
+        echo 1 >> "$CNT_CND"
+        continue
       fi
 
       # Prefer a service-family domain for subdomains, but keep IP-encoded
@@ -849,8 +854,8 @@ n_cln=$(wc -l < "$CNT_CLN"  2>/dev/null | tr -d ' '); n_cln=${n_cln:-0}
 
   printf '│\n'
   BL_STATUS=""
-  [ -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: $(wc -l < "$BLOCKED_LIST" | tr -d ' ')"
-  [ ! -f "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: нет (fallback)"
+  [ -s "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: $(wc -l < "$BLOCKED_LIST" | tr -d ' ')"
+  [ ! -s "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: нет (auto-add default-skip)"
   printf '│ Итог: +%d добавлено  |  +%d geo  |  -%d cleanup  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
     "$n_add" "$n_geo" "$n_cln" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
   printf '└─────────────────────────────────────────────────────────────\n'

@@ -11,6 +11,13 @@
       "listen": "0.0.0.0",
       "listen_port": {{ singbox_redirect_port }},
       "sniff": true
+    },
+    {
+      "type": "socks",
+      "tag": "dnscrypt-socks-in",
+      "listen": "127.0.0.1",
+      "listen_port": {{ singbox_dnscrypt_socks_port }},
+      "sniff": false
     }
   ],
   "outbounds": [
@@ -22,6 +29,12 @@
       "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
       "flow": "xtls-rprx-vision",
       "packet_encoding": "xudp",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
       "tls": {
         "enabled": true,
         "server_name": "{{ reality_server_names[0] }}",
@@ -40,7 +53,8 @@
   ],
   "route": {
     "rules": [
-      { "inbound": "redirect-in", "outbound": "reality-out" }
+      { "inbound": "redirect-in", "outbound": "reality-out" },
+      { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }
     ],
     "final": "direct-out"
   }

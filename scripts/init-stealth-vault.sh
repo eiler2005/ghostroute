@@ -123,10 +123,10 @@ vps_ssh_host: "${vps_host}"
 vps_ssh_user: "${vps_user}"
 
 # Existing shared Caddy/OpenClaw site values. Replace placeholders before deploy.
-system_caddy_site_host: "<existing_caddy_site_host>"
+system_caddy_site_host: "openclaw.home.arpa"
 system_caddy_site_upstream: "127.0.0.1:<existing_local_port>"
-system_caddy_cert_file: "/etc/caddy/certs/<site>-fullchain.pem"
-system_caddy_key_file: "/etc/caddy/certs/<site>-privkey.pem"
+system_caddy_cert_file: "/etc/caddy/certs/openclaw-home-arpa-fullchain.pem"
+system_caddy_key_file: "/etc/caddy/certs/openclaw-home-arpa-privkey.pem"
 system_caddy_client_ca_file: "/etc/caddy/certs/<site>-access-ca.crt"
 
 # ===== 3x-ui admin =====
@@ -136,9 +136,9 @@ xui_admin_web_path: "${xui_web_path}"
 xui_admin_web_port: <xui-admin-port>
 
 # ===== Reality server =====
-reality_dest: "www.microsoft.com:443"
+reality_dest: "gateway.icloud.com:443"
 reality_server_names:
-  - "www.microsoft.com"
+  - "gateway.icloud.com"
 reality_server_private_key: ""
 reality_server_public_key: ""
 reality_short_ids:

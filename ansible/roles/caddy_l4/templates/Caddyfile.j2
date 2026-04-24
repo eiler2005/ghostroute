@@ -13,7 +13,7 @@
       # route @web { proxy 127.0.0.1:8444 }
 
       # Default: отправляем в Xray, чей Reality fallback на dest проксирует
-      # не-Reality трафик на настоящий www.microsoft.com. Это даёт единое
+      # не-Reality трафик на настоящий cover-SNI. Это даёт единое
       # индистингуишабл поведение для сторонних сканеров.
       route {
         proxy 127.0.0.1:8443

@@ -11,7 +11,7 @@
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` обслуживают LAN traffic:
   - `br0` — обычные LAN / Wi-Fi клиенты
   - TCP egress: nat `REDIRECT :<lan-redirect-port>` → sing-box → VLESS+Reality
-  - UDP/443: REJECT для managed destinations, чтобы клиенты fallback'ились с QUIC на TCP
+  - UDP/443: DROP для managed destinations, чтобы клиенты fallback'ились с QUIC на TCP
   - router `OUTPUT` по умолчанию не перехватывается, чтобы не создать loop для sing-box outbound
 - `VPN_DOMAINS` и `VPN_STATIC_NETS` обслуживают remote `WireGuard server` clients:
   - `wgs1` — raw remote clients

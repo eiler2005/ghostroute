@@ -1,5 +1,6 @@
 listen_addresses = ['{{ dnscrypt_listen }}']
 server_names = ['cloudflare', 'quad9-doh-ip4-port443-filter-pri', 'nextdns-ultralow']
+proxy = 'socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}'
 require_dnssec = false
 require_nolog = true
 require_nofilter = false

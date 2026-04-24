@@ -133,3 +133,62 @@
 - name: Seed Reality inbound (first run)
   ansible.builtin.include_tasks: seed_reality.yml
   when: reality_server_public_key | length == 0
+
+- name: Sync existing Reality inbound cover SNI
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker exec -i \
+      -e REALITY_DEST={{ reality_dest | quote }} \
+      -e REALITY_SERVER_NAMES={{ reality_server_names | to_json | quote }} \
+      xray python3 - <<'PY'
+    import json
+    import os
+    import sqlite3
+
+    db = "/etc/x-ui/x-ui.db"
+    dest = os.environ["REALITY_DEST"]
+    server_names = json.loads(os.environ["REALITY_SERVER_NAMES"])
+
+    con = sqlite3.connect(db)
+    cols = {row[1] for row in con.execute("pragma table_info(inbounds)")}
+    stream_col = "stream_settings" if "stream_settings" in cols else "streamSettings"
+
+    row = con.execute(
+        f"select id, {stream_col} from inbounds where remark = ?",
+        ("stealth-reality",),
+    ).fetchone()
+    if not row:
+        raise SystemExit("stealth-reality inbound not found")
+
+    inbound_id, stream_raw = row
+    stream = json.loads(stream_raw or "{}")
+    reality = stream.setdefault("realitySettings", {})
+
+    changed = False
+    if reality.get("dest") != dest:
+        reality["dest"] = dest
+        changed = True
+    if reality.get("serverNames") != server_names:
+        reality["serverNames"] = server_names
+        changed = True
+
+    if changed:
+        con.execute(
+            f"update inbounds set {stream_col} = ? where id = ?",
+            (json.dumps(stream, separators=(",", ":")), inbound_id),
+        )
+        con.commit()
+        print("changed")
+    else:
+        print("ok")
+    PY
+  args:
+    executable: /bin/bash
+  register: xray_reality_sni_sync
+  changed_when: xray_reality_sni_sync.stdout | trim == "changed"
+  when: reality_server_public_key | length > 0
+
+- name: Restart xray after existing Reality inbound SNI sync
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xray_reality_sni_sync is changed

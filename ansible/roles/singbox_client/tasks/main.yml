@@ -51,6 +51,26 @@
     dest: "{{ singbox_init_path }}"
     mode: "0755"
 
+- name: Install sing-box watchdog
+  ansible.builtin.template:
+    src: singbox-watchdog.sh.j2
+    dest: "{{ singbox_watchdog_path }}"
+    mode: "0755"
+
+- name: Add cron entry for sing-box watchdog
+  ansible.builtin.raw: |
+    if command -v cru >/dev/null 2>&1; then
+      cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
+    else
+      CRON=/var/spool/cron/crontabs/admin
+      mkdir -p "$(dirname "$CRON")"
+      touch "$CRON"
+      grep -v '{{ singbox_watchdog_path }}' "$CRON" > "$CRON.tmp" || true
+      mv "$CRON.tmp" "$CRON"
+      echo "* * * * * {{ singbox_watchdog_path }}" >> "$CRON"
+    fi
+  changed_when: false
+
 - name: Enable + start singbox
   ansible.builtin.raw: |
     {{ singbox_init_path }} enable >/dev/null 2>&1 || true

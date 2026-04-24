@@ -50,11 +50,13 @@ iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j R
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
 # 4. filter: force QUIC/HTTP3 fallback to TCP for Channel B.
-# VLESS+Reality TCP is the stable path; rejecting UDP/443 makes iOS/YouTube
-# retry over ordinary TLS instead of black-holing video traffic through XUDP.
+# VLESS+Reality TCP is the stable path. Silently dropping UDP/443 avoids the
+# local ICMP port-unreachable signature created by REJECT.
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
-iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable
-iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j REJECT --reject-with icmp-port-unreachable
+iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP 2>/dev/null || true
+iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
+iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP
+iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP
 
 echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, vps=$VPS_IP via normal WAN)"

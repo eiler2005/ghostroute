@@ -20,6 +20,9 @@
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   roles:
+    - role: ipv6_kill
+      tags:
+        - ipv6_kill
     - singbox_client
     - stealth_routing
     - dnscrypt_proxy

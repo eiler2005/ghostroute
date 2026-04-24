@@ -501,6 +501,8 @@ manual_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq.conf.add 2>/dev/null || p
 auto_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq-autodiscovered.conf.add 2>/dev/null || printf '0\n')
 
 cron_list=$(cru l 2>/dev/null || true)
+dnscrypt_config=$(cat /opt/etc/dnscrypt-proxy.toml 2>/dev/null || true)
+singbox_config=$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
@@ -600,8 +602,13 @@ printf 'HOOK_STEALTH_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A 
 printf 'HOOK_STEALTH_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -m set --match-set STEALTH_DOMAINS dst')"
 printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m set --match-set STEALTH_DOMAINS dst')"
 printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
+printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '127.0.0.1:1080')"
+printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" 'socks5://127.0.0.1:1080')"
+printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
 printf 'CHANNEL_B_REDIRECT_STEALTH=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports <lan-redirect-port>')"
 printf 'CHANNEL_B_REDIRECT_STATIC=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports <lan-redirect-port>')"
+printf 'CHANNEL_B_DROP_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j DROP')"
+printf 'CHANNEL_B_DROP_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP')"
 printf 'CHANNEL_B_REJECT_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT')"
 printf 'CHANNEL_B_REJECT_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j REJECT')"
 printf 'DNS_REDIRECT_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
@@ -611,6 +618,7 @@ printf 'CRON_SAVE_IPSET=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-save
 printf 'CRON_TRAFFIC_SNAPSHOT=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-snapshot')"
 printf 'CRON_TRAFFIC_DAILY_CLOSE=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-daily-close')"
 printf 'CRON_DOMAIN_AUTO_ADD=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/domain-auto-add.sh')"
+printf 'CRON_SINGBOX_WATCHDOG=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/singbox-watchdog.sh')"
 printf 'CRON_UPDATE_BLOCKED=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/update-blocked-list.sh')"
 
 printf 'BLOCKED_FILE=%s\n' "$blocked_file"
@@ -882,10 +890,15 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] || drift_lines+=("mangle chain RC_VPN_ROUTE missing")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] || drift_lines+=("missing ip rule for fwmark 0x1000 -> wgc1")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener on 127.0.0.1:1080")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STATIC)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for VPN_STATIC_NETS")
-  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "1" ] || drift_lines+=("missing UDP/443 reject for STEALTH_DOMAINS")
-  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "1" ] || drift_lines+=("missing UDP/443 reject for VPN_STATIC_NETS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_DROP_QUIC_STEALTH)" = "1" ] || drift_lines+=("missing UDP/443 DROP for STEALTH_DOMAINS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_DROP_QUIC_STATIC)" = "1" ] || drift_lines+=("missing UDP/443 DROP for VPN_STATIC_NETS")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "0" ] || drift_lines+=("UDP/443 REJECT for STEALTH_DOMAINS should be absent")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "0" ] || drift_lines+=("UDP/443 REJECT for VPN_STATIC_NETS should be absent")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X2000)" = "0" ] || drift_lines+=("legacy fwmark 0x2000 -> table 200 rule should be absent")
   [ "$(router_kv_get "$state_file" ROUTE_TABLE_200_SINGBOX)" = "0" ] || drift_lines+=("legacy table 200 -> singbox0 route should be absent")
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy mangle br0 -> STEALTH_DOMAINS hook should be absent")
@@ -896,6 +909,7 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] || drift_lines+=("wgs1 should not be hooked into STEALTH_DOMAINS")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] || drift_lines+=("missing wgs1 udp/53 -> dnsmasq redirect")
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] || drift_lines+=("missing wgs1 tcp/53 -> dnsmasq redirect")
+  [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] || drift_lines+=("missing sing-box watchdog cron")
   if [ "$ipv6_policy_level" = "Critical" ]; then
     drift_lines+=("IPv6 policy drift: ${ipv6_policy_note}")
   elif [ "$ipv6_policy_level" = "Warning" ]; then
@@ -942,10 +956,15 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | RC_VPN_ROUTE chain | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | ip rule fwmark 0x1000 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel B dnscrypt SOCKS listener :1080 | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STATIC)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| UDP/443 reject -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| UDP/443 reject -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| UDP/443 DROP -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DROP_QUIC_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| UDP/443 DROP -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DROP_QUIC_STATIC)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| UDP/443 REJECT absent -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STEALTH)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
+| UDP/443 REJECT absent -> VPN_STATIC_NETS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REJECT_QUIC_STATIC)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | legacy ip rule fwmark 0x2000 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X2000)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | legacy table 200 -> singbox0 absent | $( [ "$(router_kv_get "$state_file" ROUTE_TABLE_200_SINGBOX)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | legacy mangle br0 -> STEALTH_DOMAINS absent | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
@@ -956,6 +975,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | PREROUTING wgs1 -> STEALTH_DOMAINS disabled | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | wgs1 udp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | wgs1 tcp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| sing-box watchdog cron | $( [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 
 ## IPv6 Policy
 

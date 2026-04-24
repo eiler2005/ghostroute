@@ -71,7 +71,7 @@ This removes generated files under `ansible/out/clients/` and keeps only `.gitke
 Fake URI shape:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=www.microsoft.com&fp=chrome#example-client
+vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=chrome#example-client
 ```
 
 Never replace this fake example with a real URI in documentation.

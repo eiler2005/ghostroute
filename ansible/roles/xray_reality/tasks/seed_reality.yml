@@ -115,6 +115,7 @@
       }}
   loop: "{{ clients }}"
   when: not _has_existing_stealth_inbound
+  no_log: true
 
 - name: Create inbound via 3x-ui API
   ansible.builtin.uri:
