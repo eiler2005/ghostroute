@@ -4,7 +4,7 @@
 # /jffs/configs/dnsmasq.conf.add as server=127.0.0.1#5354.
 # Data-path selection is done by ingress:
 #   - br0 TCP: STEALTH_DOMAINS / VPN_STATIC_NETS -> REDIRECT :<lan-redirect-port> -> Reality
-#   - br0 UDP/443: REJECT for the same sets, forcing TCP fallback
+#   - br0 UDP/443: DROP for the same sets, forcing TCP fallback
 #   - wgs1 remote WireGuard clients: VPN_DOMAINS / VPN_STATIC_NETS -> wgc1
 #
 # Keep this file intentionally light because deploy.sh still merges its managed

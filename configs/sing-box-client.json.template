@@ -24,7 +24,7 @@
       "packet_encoding": "xudp",
       "tls": {
         "enabled": true,
-        "server_name": "www.microsoft.com",
+        "server_name": "gateway.icloud.com",
         "utls": {
           "enabled": true,
           "fingerprint": "chrome"

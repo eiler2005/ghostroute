@@ -88,6 +88,10 @@ googlevideo.com         — video stream delivery (primary CDN)
 ytimg.com               — thumbnails, images, UI assets
 ggpht.com               — legacy image CDN (still used for some thumbnails)
 youtubei.googleapis.com — YouTube internal API (used by the player)
+youtube.googleapis.com  — YouTube Data/API calls used by apps
+jnn-pa.googleapis.com   — YouTube playback/network assistant endpoint
+www.googleapis.com      — generic Google API host used by iOS YouTube flows
+youtube-nocookie.com    — embedded/privacy-enhanced player variant
 ```
 
 **Why so many domains?** YouTube's video delivery is split across several CDNs. Without `googlevideo.com`, the page loads but videos won't play. Without `youtubei.googleapis.com`, the player won't initialize in some clients.

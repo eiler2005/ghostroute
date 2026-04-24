@@ -1,5 +1,5 @@
 {
-    servers {
+    servers :443 {
         protocols h1
         listener_wrappers {
             layer4 {
@@ -13,11 +13,16 @@
     }
 }
 
-http://{{ system_caddy_site_host }} {
-    redir https://{{ system_caddy_site_host }}{uri} 301
+:443 {
+    # Fallback site only creates the public TLS listener. Reality traffic is
+    # intercepted by the layer4 wrapper above before Caddy's HTTP app handles it.
+    tls internal
+    respond 404
 }
 
-{{ system_caddy_site_host }} {
+{% if system_caddy_site_enabled | bool %}
+https://{{ system_caddy_site_host }}:{{ system_caddy_site_port | default(9443) }} {
+    bind 127.0.0.1
     tls {{ system_caddy_cert_file }} {{ system_caddy_key_file }} {
         client_auth {
             mode require_and_verify
@@ -44,3 +49,4 @@ http://{{ system_caddy_site_host }} {
         }
     }
 }
+{% endif %}

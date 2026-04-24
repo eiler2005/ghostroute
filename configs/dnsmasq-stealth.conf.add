@@ -1,7 +1,7 @@
 # Channel B domain catalog: same managed domains as VPN_DOMAINS.
 # Current routing policy:
 #   - br0 TCP -> STEALTH_DOMAINS/VPN_STATIC_NETS -> REDIRECT :<lan-redirect-port> -> sing-box -> Reality
-#   - br0 UDP/443 -> REJECT for the same sets, forcing TCP fallback
+#   - br0 UDP/443 -> DROP for the same sets, forcing TCP fallback
 #   - wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> wgc1
 
 ipset=/atlassian.com/STEALTH_DOMAINS
@@ -47,6 +47,10 @@ ipset=/googlevideo.com/STEALTH_DOMAINS
 ipset=/ytimg.com/STEALTH_DOMAINS
 ipset=/ggpht.com/STEALTH_DOMAINS
 ipset=/youtubei.googleapis.com/STEALTH_DOMAINS
+ipset=/youtube.googleapis.com/STEALTH_DOMAINS
+ipset=/jnn-pa.googleapis.com/STEALTH_DOMAINS
+ipset=/www.googleapis.com/STEALTH_DOMAINS
+ipset=/youtube-nocookie.com/STEALTH_DOMAINS
 # ==========================================================================
 # Telegram (домены + см. также configs/static-networks.txt для IP-подсетей)
 # ==========================================================================

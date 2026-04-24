@@ -55,8 +55,8 @@ iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_DOMAINS dst -j MAR
 iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
 iptables -t mangle -A PREROUTING -i wgs1 -j "$ROUTING_CHAIN"
 # LAN (br0) traffic is handled by Channel B in stealth-route-init.sh:
-# TCP is redirected to sing-box :<lan-redirect-port>, and UDP/443 is rejected to force
-# client fallback away from QUIC. Router OUTPUT is not transparently captured.
+# TCP is redirected to sing-box :<lan-redirect-port>, and UDP/443 is silently dropped to
+# force client fallback away from QUIC. Router OUTPUT is not transparently captured.
 # Only raw WireGuard server clients arrive on wgs1 and keep the old WGC1 split.
 
 # Keep per-device LAN byte accounting chains up to date without resetting

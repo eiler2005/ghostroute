@@ -148,7 +148,7 @@ ls -la ansible/out/clients
 Fake URI example for shape only:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=www.microsoft.com&fp=chrome#debug-placeholder
+vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=chrome#debug-placeholder
 ```
 
 Do not paste real URI/QR payload into docs or chat.

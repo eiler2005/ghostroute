@@ -51,6 +51,10 @@
     touch $CONF
     sed -i '\|^server=127.0.0.1#5353$|d' $CONF
     sed -i '\|^server=127.0.0.1#{{ dnscrypt_port }}$|d' $CONF
+    sed -i '\|^address=/{{ system_caddy_site_host }}/|d' $CONF
     echo 'server=127.0.0.1#{{ dnscrypt_port }}' >> $CONF
+    {% if system_caddy_site_enabled | default(false) | bool %}
+    echo 'address=/{{ system_caddy_site_host }}/{{ vps_ssh_host }}' >> $CONF
+    {% endif %}
     grep -q '^no-resolv$' $CONF || echo 'no-resolv' >> $CONF
     service restart_dnsmasq

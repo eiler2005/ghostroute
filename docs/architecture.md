@@ -22,7 +22,8 @@ Setup:
   This path bypasses the home router and does not expose home LAN access by itself.
 - DNS:
   dnsmasq fills both ipsets and sends upstream queries to dnscrypt-proxy
-  on 127.0.0.1:5354.
+  on 127.0.0.1:5354; dnscrypt-proxy sends DoH through sing-box SOCKS
+  on 127.0.0.1:1080, so resolver traffic follows the same Reality cover.
 - Automation:
   deploy.sh manages router base scripts/catalogs; Ansible manages VPS,
   sing-box, dnscrypt-proxy, REDIRECT rules, verification and QR generation.
@@ -50,6 +51,7 @@ dnsmasq
   -> fills STEALTH_DOMAINS from configs/dnsmasq-stealth.conf.add
   -> includes auto-discovered domains from /jffs/configs/dnsmasq-autodiscovered.conf.add
   -> upstream DNS via dnscrypt-proxy 127.0.0.1:5354
+  -> dnscrypt-proxy DoH egress via sing-box SOCKS 127.0.0.1:1080
 
 firewall-start
   -> creates/restores VPN_DOMAINS
@@ -200,7 +202,7 @@ configs/static-networks.txt
 
 ```text
 br0 TCP     -> nat REDIRECT :<lan-redirect-port> -> sing-box redirect -> Reality
-br0 UDP/443 -> REJECT -> client fallback to TCP
+br0 UDP/443 -> DROP -> client fallback to TCP
 wgs1        -> mark 0x1000 -> wgc1
 ```
 
@@ -237,19 +239,19 @@ server=/example.com/9.9.9.9@wgc1
 На VPS используется компромиссная production-схема:
 
 ```text
-system Caddy :443 with layer4 plugin
+system Caddy :443 with layer4 plugin and generic fallback site
   -> routes Reality traffic to Xray on 127.0.0.1:8443
 
 /opt/stealth
   -> Docker Compose for xray / 3x-ui side
 ```
 
-Общий Caddy остается системным и обслуживает существующие сервисы. Xray/3x-ui живут отдельно в `/opt/stealth`, чтобы не смешивать app stacks.
+Общий Caddy остается системным. Public `:443` держит только Reality L4 routing и generic fallback; OpenClaw не публикуется через Caddy и доступен только через SSH tunnel. Xray/3x-ui живут отдельно в `/opt/stealth`, чтобы не смешивать app stacks.
 
 Reality profiles:
 
 ```text
-vless://<FAKE-UUID>@<FAKE-HOST>:443?type=tcp&security=reality&pbk=<FAKE-PUBLIC-KEY>&sid=<FAKE-SHORT-ID>&sni=www.microsoft.com&fp=chrome#iphone-placeholder
+vless://<FAKE-UUID>@<FAKE-HOST>:443?type=tcp&security=reality&pbk=<FAKE-PUBLIC-KEY>&sid=<FAKE-SHORT-ID>&sni=gateway.icloud.com&fp=chrome#iphone-placeholder
 ```
 
 Это пример формата, не реальный профиль.

@@ -26,9 +26,11 @@ docs/vpn-domain-journal.md
 /secrets/
 /ansible/secrets/*.yml
 !/ansible/secrets/*.yml.example
+/ansible/secrets/*.backup-*
 /ansible/secrets/.stealth.generated.yml
 /ansible/out/clients/*
 !/ansible/out/clients/.gitkeep
+/ansible/out/clients-backup-*/
 ansible/*.retry
 
 # macOS

@@ -89,7 +89,7 @@ Expected:
 
 ```text
 br0 TCP     -> VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
-br0 UDP/443 -> VPN_STATIC_NETS -> REJECT -> client fallback to TCP
+br0 UDP/443 -> VPN_STATIC_NETS -> DROP -> client fallback to TCP
 wgs1        -> VPN_STATIC_NETS -> 0x1000 -> wgc1
 ```
 

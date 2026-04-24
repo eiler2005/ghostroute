@@ -41,6 +41,10 @@ ipset=/googlevideo.com/VPN_DOMAINS
 ipset=/ytimg.com/VPN_DOMAINS
 ipset=/ggpht.com/VPN_DOMAINS
 ipset=/youtubei.googleapis.com/VPN_DOMAINS
+ipset=/youtube.googleapis.com/VPN_DOMAINS
+ipset=/jnn-pa.googleapis.com/VPN_DOMAINS
+ipset=/www.googleapis.com/VPN_DOMAINS
+ipset=/youtube-nocookie.com/VPN_DOMAINS
 # ==========================================================================
 # Telegram (домены + см. также configs/static-networks.txt для IP-подсетей)
 # ==========================================================================

@@ -184,7 +184,7 @@ Expected current routing state:
 
 ```text
 br0 TCP     -> STEALTH_DOMAINS / VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
-br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> REJECT -> TCP fallback
+br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> DROP -> TCP fallback
 OUTPUT      -> main routing by default; explicit proxy only for diagnostics
 wgs1        -> VPN_DOMAINS / VPN_STATIC_NETS    -> 0x1000 -> table wgc1 -> wgc1
 ```

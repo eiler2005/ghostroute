@@ -1,0 +1,3 @@
+---
+- name: restart network
+  ansible.builtin.raw: "service restart_net_and_phy"

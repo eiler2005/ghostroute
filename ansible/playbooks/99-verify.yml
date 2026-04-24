@@ -24,6 +24,7 @@
       changed_when: false
 
     - name: Shared OpenClaw site still requires mTLS after Caddy restart
+      when: system_caddy_site_enabled | default(false) | bool
       ansible.builtin.shell: |
         (curl -k -I -sS --max-time 10 \
           --resolve {{ system_caddy_site_host }}:443:127.0.0.1 \
@@ -38,6 +39,15 @@
             or 'tlsv1 alert' in (probe.stdout + probe.stderr)
             or 'alert certificate' in (probe.stdout + probe.stderr)
         fail_msg: "OpenClaw mTLS probe no longer behaves as expected: {{ probe.stdout }} {{ probe.stderr }}"
+      when: system_caddy_site_enabled | default(false) | bool
+
+    - name: OpenClaw upstream remains localhost-only for SSH tunnel access
+      when: not (system_caddy_site_enabled | default(false) | bool)
+      ansible.builtin.uri:
+        url: "http://{{ system_caddy_site_upstream }}/"
+        method: HEAD
+        status_code: 200
+      changed_when: false
 
     - name: 3x-ui login page reachable on localhost-only admin port
       ansible.builtin.uri:
@@ -56,6 +66,16 @@
   tasks:
     - name: Run stealth-route-init before assertions
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false
+
+    - name: IPv6 is disabled in Merlin
+      ansible.builtin.shell: |
+        [ "$(nvram get ipv6_service)" = "disabled" ]
+      changed_when: false
+
+    - name: LAN bridge has no global IPv6 address
+      ansible.builtin.shell: |
+        ! ip -6 addr show dev br0 2>/dev/null | grep -qE 'inet6 (2|3)[0-9a-f]{1,3}:'
       changed_when: false
 
     - name: sing-box redirect listener is running
@@ -97,10 +117,12 @@
         ! ip route show table {{ stealth_route_table }} | grep -q '{{ singbox_tun_name }}'
       changed_when: false
 
-    - name: LAN QUIC fallback is enforced for Channel B destinations
+    - name: LAN QUIC fallback is silently enforced for Channel B destinations
       ansible.builtin.shell: |
-        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_ipset_name }} dst .*REJECT' &&
-        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*REJECT'
+        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_ipset_name }} dst .*DROP' &&
+        iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*DROP' &&
+        ! iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_ipset_name }} dst .*REJECT' &&
+        ! iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*REJECT'
       changed_when: false
 
     - name: stale singbox0 TUN interface is absent
@@ -126,8 +148,24 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ dnscrypt_port }} '"
       changed_when: false
 
+    - name: sing-box SOCKS listener for dnscrypt-proxy is running
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ singbox_dnscrypt_socks_port }} '"
+      changed_when: false
+
+    - name: dnscrypt-proxy routes DoH through sing-box SOCKS
+      ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"
+      changed_when: false
+
     - name: dnsmasq upstream points to dnscrypt-proxy
       ansible.builtin.shell: "grep -q '^server=127.0.0.1#{{ dnscrypt_port }}$' /jffs/configs/dnsmasq.conf.add"
+      changed_when: false
+
+    - name: OpenClaw private DNS override is absent in SSH-only mode
+      ansible.builtin.shell: "! grep -q '^address=/{{ system_caddy_site_host }}/' /jffs/configs/dnsmasq.conf.add"
+      changed_when: false
+
+    - name: sing-box watchdog cron is installed
+      ansible.builtin.shell: "cru l 2>/dev/null | grep -q '{{ singbox_watchdog_path }}'"
       changed_when: false
 
     - name: WGC1 reserve hook is limited to remote WireGuard clients

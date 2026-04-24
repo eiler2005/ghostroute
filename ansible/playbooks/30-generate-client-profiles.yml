@@ -22,6 +22,7 @@
         content: |
           vless://{{ item.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
       loop: "{{ clients }}"
+      no_log: true
 
     - name: Render QR PNG for each client
       ansible.builtin.shell: |
@@ -29,6 +30,7 @@
         qrencode -t PNG -o "{{ out_dir }}/{{ item.name }}.png" -r "{{ out_dir }}/{{ item.name }}.conf"
       loop: "{{ clients }}"
       when: item.name != 'router'   # router imports config directly, QR не нужен
+      no_log: true
 
     - name: Inform user
       ansible.builtin.debug:
