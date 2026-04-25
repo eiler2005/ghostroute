@@ -7,11 +7,26 @@
 | Source | Egress | Accounting note |
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; REDIRECT counters are now the primary Channel B signal |
+| Remote mobile QR clients | home IP `:443` -> sing-box home Reality inbound -> VPS Reality outbound | LTE carrier sees the home IP; router/VPS counters show the forwarded traffic |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
-| Remote WG clients (`wgs1`) | `wgc1` for matched destinations | Per-peer stats come from `wg show wgs1 dump` |
+| Legacy WG clients (`wgs1`) | `wgc1` for matched destinations | Per-peer stats come from `wg show wgs1 dump` |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
 Historical labels such as `VPN total` may still refer to the old interface counter `wgc1`. Interpret them with the current routing matrix in mind.
+
+## Observer Semantics
+
+`ifconfig.me`, anti-fraud checkers, and "VPN suspicion" pages report the
+website-facing exit. For managed domains that exit is intentionally the VPS
+VPS, so these tools will flag `198.51.100.10` as a datacenter IP. That does
+not contradict the mobile-ingress goal: LTE carriers see the iPhone connecting
+to the home ASUS IP first.
+
+For local Russian services that are not in `STEALTH_DOMAINS` or
+`VPN_STATIC_NETS`, traffic remains direct through the home WAN. Those services
+should see the home Russian IP, not VPS. If a Russian service unexpectedly
+sees VPS, check whether its domain or CDN CIDR was added to the managed
+catalog.
 
 ---
 
@@ -38,8 +53,9 @@ STEALTH_DOMAINS exists
 VPN_DOMAINS exists
 VPN_STATIC_NETS exists
 sing-box REDIRECT listener :<lan-redirect-port> exists
+sing-box home Reality listener :443 exists
 LAN TCP REDIRECT rules exist for STEALTH_DOMAINS and VPN_STATIC_NETS
-LAN UDP/443 reject rules exist for STEALTH_DOMAINS and VPN_STATIC_NETS
+LAN UDP/443 DROP rules exist for STEALTH_DOMAINS and VPN_STATIC_NETS
 legacy fwmark 0x2000/table 200/singbox0 are absent
 fwmark 0x1000/0x1000 -> wgc1
 wgs1 -> RC_VPN_ROUTE enabled

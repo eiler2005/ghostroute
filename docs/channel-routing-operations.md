@@ -6,9 +6,10 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
-| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 reject | sing-box redirect -> VLESS+Reality |
+| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 DROP | sing-box redirect -> VLESS+Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile | TCP/443 to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
-| Remote WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | legacy WGC1 |
+| Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | legacy WGC1 |
 
 DNS is shared:
 
@@ -16,7 +17,7 @@ DNS is shared:
 dnsmasq -> dnscrypt-proxy 127.0.0.1:5354
 ```
 
-Per-domain `@wgc1` DNS upstreams are retired. `wgc1` is still active, but only as the reserve path for remote `wgs1` clients.
+Per-domain `@wgc1` DNS upstreams are retired. `wgc1` is still active, but only as the reserve path for legacy `wgs1` clients. New mobile clients should use the QR profile that points at the home public IP.
 
 ---
 
@@ -80,6 +81,22 @@ ip rule show | grep 0x2000 || true
 ip route show table 200 || true
 ip -br link show singbox0 2>&1 || true
 ```
+
+### Home Reality Mobile Ingress
+
+```sh
+netstat -nlp 2>/dev/null | grep ':443 '
+iptables -S INPUT | grep -- '--dport 443'
+```
+
+Expected:
+
+```text
+0.0.0.0:443 ... LISTEN ... sing-box
+-A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+```
+
+Generated mobile QR profiles (`iphone-*`, `macbook`) must point at the home public IP or home DNS name. The `router` profile is the exception: it points directly at the VPS because it is the router's outbound identity.
 
 ### Channel A Reserve For Remote Clients
 
@@ -280,7 +297,7 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 
 | Symptom | First checks |
 |---|---|
-| LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 reject, sing-box log |
+| LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 DROP, sing-box log |
 | Remote WG client does not use WGC1 | `wgs1 -> RC_VPN_ROUTE`, `VPN_DOMAINS`, `0x1000`, table `wgc1` |
 | DNS looks wrong | `server=127.0.0.1#5354`, dnscrypt listener, no active `@wgc1` |
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |

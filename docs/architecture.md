@@ -2,7 +2,7 @@
 
 ## Коротко
 
-Текущая архитектура — двухканальная:
+Текущая архитектура — Reality-first с отдельным домашним ingress для мобильных клиентов:
 
 ```text
 Statement: GhostRoute делает domain-based routing на роутере, а не на каждом
@@ -16,10 +16,12 @@ Setup:
   -> nat REDIRECT :<lan-redirect-port> -> sing-box -> VLESS+Reality -> VPS.
 - Channel A, reserve for remote WireGuard clients:
   wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> mark 0x1000 -> table wgc1.
-- Direct QR/VLESS clients:
-  client app -> generated QR/VLESS profile -> VPS Caddy :443
-  -> Xray Reality inbound -> Internet.
-  This path bypasses the home router and does not expose home LAN access by itself.
+- Remote mobile QR/VLESS clients:
+  client app -> generated QR/VLESS profile -> home public IP :443
+  -> ASUS sing-box home Reality inbound -> sing-box Reality outbound
+  -> VPS Caddy :443 -> Xray Reality inbound -> Internet.
+  This keeps the LTE carrier-facing endpoint on the Russian home IP while
+  preserving the VPS exit IP for websites.
 - DNS:
   dnsmasq fills both ipsets and sends upstream queries to dnscrypt-proxy
   on 127.0.0.1:5354; dnscrypt-proxy sends DoH through sing-box SOCKS
@@ -34,12 +36,12 @@ sing-box's own outbound connections.
 
 | Источник | Каталог назначения | Механизм | Egress |
 |---|---|---|---|
-| LAN/Wi-Fi (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`, UDP/443 reject | sing-box redirect → Reality |
+| LAN/Wi-Fi (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`, UDP/443 DROP | sing-box redirect → Reality |
 | Router `OUTPUT` | не прозрачно перехватывается | main routing / explicit proxy only | router default |
 | Remote WireGuard server clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` → table `wgc1` | `wgc1` |
-| Direct QR/VLESS clients | generated profile | client-side VLESS+Reality to VPS | Xray Reality inbound |
+| Remote QR/VLESS clients | generated profile | client-side VLESS+Reality to home ASUS :443 | ASUS sing-box → VPS Reality |
 
-`wgc1` больше не является основным egress для домашней LAN. Он сохранен как резервный/legacy канал для клиентов, которые подключаются к встроенному WireGuard server на роутере.
+`wgc1` больше не является основным egress для домашней LAN или мобильных клиентов. Он сохранен как резервный/legacy канал для клиентов, которые подключаются к встроенному WireGuard server на роутере.
 
 ---
 
@@ -61,7 +63,7 @@ firewall-start
 stealth-route-init.sh
   -> creates STEALTH_DOMAINS
   -> redirects matching br0 TCP flows to local sing-box :<lan-redirect-port>
-  -> rejects matching br0 UDP/443 so clients fall back from QUIC to TCP
+  -> silently drops matching br0 UDP/443 so clients fall back from QUIC to TCP
   -> removes legacy 0x2000/table 200/singbox0 state
 
 nat-start
@@ -70,6 +72,7 @@ nat-start
 
 sing-box
   -> redirect inbound on 0.0.0.0:<lan-redirect-port>
+  -> home Reality inbound on 0.0.0.0:443 for remote mobile QR clients
   -> VLESS+Reality outbound to VPS :443
 
 VPS
@@ -131,18 +134,20 @@ iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 5
 
 Это сохраняет `VPN_DOMAINS` для мобильных клиентов даже после reconnect со stale DNS-настройками.
 
-### Direct QR/VLESS client
+### Remote QR/VLESS mobile client
 
 ```text
 iPhone/MacBook outside home
   -> client app imports generated QR/VLESS profile
-  -> VLESS+Reality over TCP/443
+  -> VLESS+Reality over TCP/443 to home public IP
+  -> ASUS sing-box home Reality inbound
+  -> ASUS sing-box Reality outbound
   -> VPS shared Caddy L4
   -> Xray Reality inbound
   -> Internet
 ```
 
-This is not the same as connecting to the home router. It is a direct egress profile for external devices. It does not provide access to home LAN resources unless a separate remote-access overlay is designed and deployed.
+This path enters the home router first, then exits through the VPS. Mobile carriers see the home Russian IP as the VPN endpoint; websites/checkers see the VPS exit IP. It does not provide access to home LAN resources unless a separate remote-access overlay is designed and deployed.
 
 ---
 
@@ -326,6 +331,8 @@ cd ..
 iptables -t nat -S PREROUTING | grep <lan-redirect-port>
 iptables -S FORWARD | grep 'dport 443'
 netstat -nlp | grep <lan-redirect-port>
+netstat -nlp | grep ':443 '
+iptables -S INPUT | grep -- '--dport 443'
 iptables -t mangle -S PREROUTING | grep RC_VPN_ROUTE
 iptables -t mangle -S RC_VPN_ROUTE
 ip rule show
@@ -340,8 +347,10 @@ grep '@wgc1' /jffs/configs/dnsmasq.conf.add
 Expected:
 
 - `PREROUTING -i br0` has TCP REDIRECT rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
-- `FORWARD -i br0` has UDP/443 reject rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- `FORWARD -i br0` has UDP/443 DROP rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
 - sing-box listens on `0.0.0.0:<lan-redirect-port>`.
+- sing-box listens on `0.0.0.0:443` for remote mobile QR clients.
+- router INPUT allows TCP/443 for the home Reality ingress.
 - `PREROUTING -i wgs1 -j RC_VPN_ROUTE` exists.
 - `RC_VPN_ROUTE` marks `VPN_DOMAINS` and `VPN_STATIC_NETS` as `0x1000`.
 - No `PREROUTING -i br0 -j RC_VPN_ROUTE`.

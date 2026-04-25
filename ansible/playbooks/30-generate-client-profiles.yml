@@ -4,10 +4,12 @@
   gather_facts: false
   vars_files:
     - ../group_vars/all.yml
+    - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   vars:
     out_dir: "{{ playbook_dir }}/../out/clients"
     reality_sni: "{{ reality_server_names[0] }}"
+    home_reality_sni: "{{ home_reality_server_names[0] }}"
   tasks:
     - name: Ensure output dir
       ansible.builtin.file:
@@ -20,7 +22,11 @@
         dest: "{{ out_dir }}/{{ item.name }}.conf"
         mode: "0600"
         content: |
+          {% if item.name == 'router' %}
           vless://{{ item.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
+          {% else %}
+          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ home_reality_port }}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ home_reality_sni }}&fp=safari&pbk={{ home_reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
+          {% endif %}
       loop: "{{ clients }}"
       no_log: true
 

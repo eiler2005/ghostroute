@@ -37,11 +37,21 @@ reality_server_names:
 
 ### 0.4 Impact of a rotation
 
-- All 8 client profiles (router + 6 iPhone + 1 MacBook) must be **regenerated and redistributed** (new `sni=` and `pbk=` parameters; public key does not change, only SNI does — but short_id and utls params stay the same; still, the full VLESS URI differs, so QR is new).
+There are now two Reality layers:
+
+1. **Router outbound to VPS** — uses the VPS Reality public key and the VPS
+   cover SNI from this document.
+2. **Remote mobile ingress to home ASUS** — generated iPhone/MacBook QR
+   profiles point at the home public IP on TCP/443 and use the home Reality
+   public key. The router then forwards them through the VPS Reality outbound.
+
+For a VPS SNI rotation:
+
 - Router `sing-box` config is re-rendered by Ansible; ~5 sec service restart.
-- Any existing sessions drop; users reconnect automatically if app is configured to reconnect.
+- Any existing router-to-VPS sessions drop; users reconnect automatically if the app is configured to reconnect.
 - Downtime on router-side stealth channel: ~10 sec.
-- External clients (iPhone, MacBook): require manual re-import of new QR.
+- The router profile used as the outbound identity changes because it points directly at the VPS.
+- Mobile QR profiles should still be regenerated and redistributed after the playbook run so operators do not keep stale QR artifacts, but their first hop remains the home public IP and their `pbk=` remains the home Reality public key unless the home ingress key/SNI was rotated too.
 
 ---
 

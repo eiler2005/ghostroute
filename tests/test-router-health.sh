@@ -84,6 +84,9 @@ router_render_health_markdown \
   "$TRAFFIC_OUT" > "$MARKDOWN_OUT"
 
 assert_contains "$MARKDOWN_OUT" "# Router Health Latest"
+assert_contains "$MARKDOWN_OUT" "## Routing Health"
+assert_contains "$MARKDOWN_OUT" "Home Reality listener :443"
+assert_contains "$MARKDOWN_OUT" "Home Reality INPUT allow :443"
 assert_contains "$MARKDOWN_OUT" "## Catalog Capacity"
 assert_contains "$MARKDOWN_OUT" "### Growth vs latest saved snapshot"
 assert_contains "$MARKDOWN_OUT" "### Growth vs week-old snapshot"

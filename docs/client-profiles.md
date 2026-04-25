@@ -9,14 +9,34 @@ QR/VLESS clients are the third traffic path in the project:
 ```text
 iPhone/MacBook outside home
   -> QR/VLESS profile in a client app
+  -> home ASUS public IP / :443
+  -> sing-box home Reality inbound
+  -> sing-box Reality outbound
   -> VPS VPS / shared Caddy :443
-  -> Xray Reality inbound
+  -> Xray Reality inbound on VPS
   -> Internet
 ```
 
-They do not connect to the ASUS router and do not use `wgs1`, `wgc1`, `VPN_DOMAINS` or `STEALTH_DOMAINS` on the router. They are direct external-device egress profiles.
+They connect to the ASUS router first. This is deliberate: a mobile carrier sees
+the remote device connecting to the home Russian IP, not directly to VPS.
+The final website/checker still sees the VPS exit IP because the router's
+outbound remains Reality-to-VPS.
 
-If a phone/laptop needs access back into the home LAN, use the router WireGuard Server path (`wgs1`) or design a separate remote-access overlay. Do not assume the QR/VLESS profile gives LAN access.
+This is the expected split:
+
+| Observer | Sees |
+|---|---|
+| LTE/mobile carrier | Remote device -> home Russian IP `:443` |
+| Home ISP | ASUS router -> VPS Reality endpoint |
+| Website/checker for managed domains | VPS exit IP / datacenter ASN |
+| Website for non-managed domains | Home Russian WAN IP |
+
+Do not use generic checker results alone to judge the LTE-facing path. A checker
+reports the final website-facing exit IP, not the first hop that the mobile
+carrier observes.
+
+These profiles are for egress, not LAN management. They do not grant general
+home LAN access unless a route is explicitly added later.
 
 ## Security Model
 
@@ -71,7 +91,7 @@ This removes generated files under `ansible/out/clients/` and keeps only `.gitke
 Fake URI shape:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=chrome#example-client
+vless://00000000-0000-4000-8000-000000000000@home.example.invalid:443?type=tcp&security=reality&pbk=FAKE_HOME_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=safari#example-client
 ```
 
 Never replace this fake example with a real URI in documentation.
