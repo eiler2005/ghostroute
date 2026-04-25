@@ -4,7 +4,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 
 **Audience:** future engineer, LLM agent, or operator maintaining the deployed stack.
 **Status:** implemented and verified.
-**Primary goal:** Channel B for LAN/router egress through a VPS VPS while WGC1 remains available for remote `wgs1` clients.
+**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Both paths exit through the VPS VPS while WGC1 remains only a legacy `wgs1` fallback.
 
 ---
 
@@ -15,8 +15,9 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | sing-box redirect -> Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile | TCP/443 to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
-| Remote WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | `wgc1` |
+| Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | `wgc1` |
 
 ### Server side
 
@@ -44,6 +45,7 @@ Merlin router
   -> dnscrypt-proxy listens on 127.0.0.1:5354
   -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:1080
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
+  -> sing-box listens on 0.0.0.0:443 home Reality inbound for remote mobile clients
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
   -> legacy 0x2000/table 200/singbox0 state is removed
@@ -74,9 +76,18 @@ Remote iPhone/MacBook connected to router WireGuard server
   -> table wgc1
   -> legacy WireGuard client WGC1
   -> Internet
+
+Remote iPhone/MacBook using the current QR profile
+  -> home public IP :443
+  -> sing-box home Reality inbound on ASUS
+  -> sing-box Reality outbound
+  -> VPS shared Caddy L4
+  -> Xray Reality inbound
+  -> Internet
 ```
 
-Key invariant: `wgs1` is not hooked into `STEALTH_DOMAINS` in the current production policy. Remote WireGuard-server clients keep the old WGC1 behavior.
+Key invariant: `wgs1` is not hooked into `STEALTH_DOMAINS` in the current production policy. WireGuard-server clients keep the old WGC1 behavior only as a legacy fallback.
+Preferred mobile-client invariant: use the QR profile that points at the home public IP, not the VPS IP. This keeps the LTE carrier-facing endpoint domestic while the final website-facing exit remains VPS.
 
 ---
 
@@ -222,6 +233,7 @@ ansible-playbook playbooks/20-stealth-router.yml
 This manages:
 
 - sing-box package/config/init
+- home Reality inbound on `0.0.0.0:443` for remote mobile QR clients
 - dnscrypt-proxy package/config/init
 - `/jffs/scripts/stealth-route-init.sh`
 - `STEALTH_DOMAINS`
@@ -246,7 +258,7 @@ ansible/out/clients/macbook.png
 ansible/out/clients/qr-index.html
 ```
 
-`router.conf` is for router/service use. Phone/Mac QR files are for external client apps.
+`router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files are for external client apps and point at the home public IP first.
 
 ### 4.5 Verify
 
@@ -331,6 +343,7 @@ ansible-playbook playbooks/99-verify.yml --limit routers
 Expected:
 
 - sing-box REDIRECT listener exists on `0.0.0.0:<lan-redirect-port>`.
+- sing-box home Reality listener exists on `0.0.0.0:443`.
 - sing-box SOCKS listener exists on `127.0.0.1:1080` for dnscrypt-proxy.
 - `dnscrypt-proxy.toml` has `proxy = 'socks5://127.0.0.1:1080'`.
 - sing-box config has explicit keepalive / no-multiplex tuning.

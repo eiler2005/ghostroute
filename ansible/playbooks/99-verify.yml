@@ -152,6 +152,16 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ singbox_dnscrypt_socks_port }} '"
       changed_when: false
 
+    - name: Router-side Reality ingress is listening for remote mobile clients
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_port }} '"
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
+    - name: Router-side Reality ingress is allowed by INPUT firewall
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ home_reality_port }} .*ACCEPT'"
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"
       changed_when: false

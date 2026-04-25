@@ -16,7 +16,11 @@
 - `VPN_DOMAINS` и `VPN_STATIC_NETS` обслуживают remote `WireGuard server` clients:
   - `wgs1` — raw remote clients
   - egress: `0x1000` → table `wgc1`
-- `wgc1` больше не основной LAN uplink; это reserve/legacy канал для remote `wgs1` clients
+- mobile QR clients (`iphone-*`, `macbook`) обслуживаются через home Reality ingress:
+  - first hop: client → домашний белый IP `:443`
+  - router ingress: `sing-box` home Reality inbound
+  - egress: existing `sing-box` Reality outbound → VPS/Xray
+- `wgc1` больше не основной LAN/mobile uplink; это reserve/legacy канал для remote `wgs1` clients
 - для `wgs1` есть DNS-capture в локальный `dnsmasq`
 - DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:5354`
 - traffic observability и device mix reporting работают с этой новой routing matrix
@@ -252,7 +256,8 @@
 
 - сейчас raw `WireGuard server` на `wgs1` остаётся публичным WAN ingress
 - это повышает внешнюю поверхность даже при рабочем routing-layer и хорошем health/observability
-- для регулярного remote access удобнее иметь отдельный overlay / zero-trust access path, а не зависеть от публичного `wgs1`
+- регулярный mobile egress уже переведен на home Reality QR (`client -> ASUS :443 -> VPS`)
+- если нужен именно доступ к домашней LAN, удобнее иметь отдельный overlay / zero-trust access path, а не зависеть от публичного `wgs1`
 
 Что улучшить:
 
@@ -260,8 +265,9 @@
   - `ZeroTier`
   - `NetBird`
   - `OpenZiti`
-- сначала держать новую схему параллельно с `wgs1`
-- затем перевести существующих `wgs1` клиентов на новую схему
+- для обычного mobile egress использовать текущий Reality QR до домашнего IP
+- для LAN remote-access сначала держать новую overlay-схему параллельно с `wgs1`
+- затем перевести существующих `wgs1` клиентов на Reality QR или overlay-схему по назначению
 - после успешной миграции выключить публичный `wgs1` на WAN или оставить только как строго временный аварийный backup
 
 Статус:

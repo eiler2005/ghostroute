@@ -10,6 +10,7 @@ MARK={{ stealth_fwmark }}
 TABLE={{ stealth_route_table }}
 IFACE={{ singbox_tun_name }}
 REDIRECT_PORT={{ singbox_redirect_port }}
+HOME_REALITY_PORT={{ home_reality_port }}
 VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
 WAN_GW={{ wan_gw }}
@@ -46,6 +47,8 @@ ip route flush table "$TABLE" 2>/dev/null || true
 # clients on the old WGC1 reserve channel.
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
+iptables -t nat -D PREROUTING -i wgs1 -p tcp -m set --match-set VPN_DOMAINS dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
+iptables -t nat -D PREROUTING -i wgs1 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
@@ -54,9 +57,19 @@ iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" d
 # local ICMP port-unreachable signature created by REJECT.
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
+iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set VPN_DOMAINS dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
+iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
+iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set VPN_DOMAINS dst -j DROP 2>/dev/null || true
+iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP
+
+# 5. input: allow remote mobile clients to reach the router-side Reality
+# ingress. The inbound itself authenticates with Reality private key, short_id,
+# UUID and VLESS flow; this rule only opens the TCP listener.
+iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT 2>/dev/null || true
+iptables -I INPUT 1 -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT
 
 echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, vps=$VPS_IP via normal WAN)"

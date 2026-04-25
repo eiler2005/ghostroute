@@ -1,7 +1,7 @@
 # Stealth Channel — Security Review & Hardening Implementation Guide
 
 **Audience:** LLM agent or engineer implementing hardening fixes on the deployed `router_configuration` stealth channel.
-**Scope:** Channel B (VLESS+Reality on VPS CX23 `198.51.100.10`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router). Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
+**Scope:** Channel B (VLESS+Reality on VPS CX23 `198.51.100.10`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
 **Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
 **Primary goal (unchanged):** RKN/ISP DPI cannot classify our home traffic as VPN. Everything else is secondary.
 
@@ -49,6 +49,7 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 | §2.4 sing-box watchdog | Applied | `/jffs/scripts/singbox-watchdog.sh` cron installed |
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
 | §2.6 docs/checklists | Applied | `architecture.md`, `stealth-channel-implementation-guide.md`, `failure-modes.md` updated |
+| Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/443; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
 
 ---
 
@@ -902,8 +903,11 @@ curl -6 https://ipv6.google.com  # expect: Network unreachable
 # Channel A regression — wgs1 peer (from phone via wgs1)
 # run through wgs1, visit a youtube URL; expect: works via wgc1 commercial VPN
 
-# External client via QR
-# from iPhone: open V2Box, scan QR, toggle VPN, visit ifconfig.me → 198.51.100.10
+# Remote mobile client via home QR
+# from iPhone: import the regenerated home QR, toggle VPN, visit ifconfig.me.
+# Expected client profile endpoint: home public IP or home DNS name on TCP/443.
+# Expected checker result: 198.51.100.10, because the website sees the VPS exit.
+# Expected mobile-carrier-visible endpoint: home Russian IP, not 198.51.100.10.
 
 # DPI sanity (if RU vantage available)
 # tcpdump | tshark SNI extraction → gateway.icloud.com

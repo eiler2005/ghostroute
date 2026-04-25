@@ -9,6 +9,13 @@ singbox_init_path: /opt/etc/init.d/S99sing-box
 singbox_redirect_port: <lan-redirect-port>
 singbox_dnscrypt_socks_port: 1080
 singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
+home_reality_enabled: true
+home_reality_listen: "0.0.0.0"
+home_reality_port: 443
+home_reality_public_host: "{{ vault_home_reality_public_host | default(home_reality_public_host_secret | default('home.example.invalid')) }}"
+home_reality_dest: "gateway.icloud.com:443"
+home_reality_server_names:
+  - "gateway.icloud.com"
 
 dnscrypt_port: 5354
 dnscrypt_listen: "127.0.0.1:5354"

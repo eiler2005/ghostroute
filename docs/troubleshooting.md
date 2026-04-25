@@ -29,7 +29,7 @@ Expected:
 
 - sing-box слушает `0.0.0.0:<lan-redirect-port>`.
 - `PREROUTING -i br0` redirects TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS` to `:<lan-redirect-port>`.
-- `FORWARD -i br0` rejects UDP/443 for the same sets, forcing QUIC fallback.
+- `FORWARD -i br0` drops UDP/443 for the same sets, forcing QUIC fallback.
 - legacy `0x2000`, table `200`, and `singbox0` are absent.
 
 ### Проверить DNS/ipset
@@ -148,7 +148,7 @@ ls -la ansible/out/clients
 Fake URI example for shape only:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&security=reality&pbk=FAKE_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=chrome#debug-placeholder
+vless://00000000-0000-4000-8000-000000000000@home.example.invalid:443?type=tcp&security=reality&pbk=FAKE_HOME_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=safari#debug-placeholder
 ```
 
 Do not paste real URI/QR payload into docs or chat.
@@ -157,10 +157,11 @@ Common causes:
 
 - wrong client UUID
 - wrong short_id
-- stale Reality public key
+- stale Reality public key (mobile QR uses the home ingress public key; router outbound uses the VPS public key)
 - wrong SNI/server name
-- Caddy layer4 not loaded
-- Xray not listening on `127.0.0.1:8443`
+- home ASUS TCP/443 not reachable from LTE
+- sing-box home Reality inbound not listening on `0.0.0.0:443`
+- Caddy layer4 or VPS Xray broken after the router forwards the session
 
 ---
 
@@ -221,7 +222,7 @@ Interpretation:
 | missing `STEALTH_DOMAINS` | stealth-route-init не применился |
 | missing Channel B REDIRECT listener | sing-box не слушает `:<lan-redirect-port>` |
 | missing LAN TCP REDIRECT | Channel B nat rules не применились |
-| missing UDP/443 reject | QUIC может обходить Reality |
+| missing UDP/443 DROP | QUIC может обходить Reality |
 | legacy `br0 -> RC_VPN_ROUTE` still enabled | старая LAN->WGC1 политика вернулась |
 | legacy `OUTPUT -> RC_VPN_ROUTE` still enabled | router-originated traffic снова идет в WGC1 |
 | missing `wgs1 -> RC_VPN_ROUTE` | remote WG clients потеряли WGC1 split-routing |

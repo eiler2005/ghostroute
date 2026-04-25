@@ -1,6 +1,6 @@
 # GhostRoute
 
-### Маршрутизация доменов на ASUS Merlin: Reality для домашней сети, WGC1 как резерв для remote WireGuard-клиентов
+### Reality-маршрутизация на ASUS Merlin: домашний ingress для мобильных клиентов, Reality egress на VPS
 
 > Домашние устройства работают как обычно. Роутер сам решает, какой канал нужен каждому направлению.
 
@@ -15,10 +15,10 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
 В текущей production-схеме есть три разных пути:
 
 - Домашний Wi-Fi/LAN использует Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
-- Удаленные устройства, подключенные к WireGuard Server на роутере (`wgs1`), остаются на Channel A: `VPN_DOMAINS -> wgc1`.
-- Direct QR/VLESS-клиенты подключаются напрямую к VPS/Xray и не заходят в домашнюю LAN.
+- Удаленные мобильные QR/VLESS-клиенты сначала подключаются к домашнему ASUS: `iPhone/Mac -> домашний белый IP :443 -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
+- Старые устройства через WireGuard Server на роутере (`wgs1`) остаются на Channel A: `VPN_DOMAINS -> wgc1`, пока не будут мигрированы.
 
-`wgc1` больше не является основным каналом для домашней сети. Он сохранен как резерв для remote WireGuard-клиентов.
+`wgc1` больше не является основным каналом для домашней сети. Он сохранен как legacy reserve. Новый мобильный onboarding должен использовать home Reality QR, а не прямой профиль на VPS и не WireGuard.
 
 ---
 
@@ -28,6 +28,7 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
 - Раздельные каталоги для домашней LAN (`STEALTH_DOMAINS`) и remote WireGuard-клиентов (`VPN_DOMAINS`).
 - Общий static CIDR каталог для direct-IP сервисов через `VPN_STATIC_NETS`.
 - VLESS+Reality egress через VPS VPS за общим Caddy L4 на TCP/443.
+- Router-side VLESS+Reality ingress на TCP/443 для удаленных мобильных клиентов: LTE-оператор видит домашний российский IP, а не VPS.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
 - Auto-discovery доменов, который пишет оба набора: `VPN_DOMAINS` и `STEALTH_DOMAINS`.
 - Локальная генерация QR/VLESS-профилей из Ansible Vault.
@@ -69,10 +70,35 @@ Home Wi-Fi / LAN devices
 
 Домашним устройствам не нужны VPN-приложения. Роутер видит DNS-ответы, наполняет `STEALTH_DOMAINS`, перехватывает совпавший TCP-трафик в sing-box и отправляет его через Reality. UDP/443 для managed-направлений отклоняется, чтобы приложения fallback'ились с QUIC на TCP.
 
-### 2. Remote WireGuard-клиенты
+### 2. Remote mobile QR / VLESS-клиенты
 
 ```text
-Remote WireGuard client outside home
+Remote iPhone/MacBook outside home
+      |
+      v
+Client app imports generated QR profile
+      |
+      v
+Home public IP :443
+      |
+      v
+ASUS Router / Merlin
++-- sing-box home Reality inbound
++-- sing-box Reality outbound
+      |
+      v
+VPS VPS / Caddy / Xray
+      |
+      v
+Internet
+```
+
+Мобильный оператор видит подключение телефона к домашнему российскому IP. Сайты/checker всё равно видят VPS exit IP, потому что outbound с роутера остается Reality-to-VPS.
+
+### 3. Legacy WireGuard-клиенты
+
+```text
+Legacy WireGuard client outside home
       |
       v
 Router WireGuard Server (wgs1)
@@ -90,29 +116,7 @@ legacy WireGuard client wgc1
 Internet
 ```
 
-Remote WireGuard-клиенты сохраняют старое поведение WGC1. Это не ломает существующий сценарий для мобильных устройств, пока домашняя LAN уже использует новый Reality-канал.
-
-### 3. Direct QR / VLESS-клиенты
-
-```text
-Direct QR/VLESS client outside home
-      |
-      v
-Client app imports generated QR profile
-      |
-      v
-VLESS+Reality TCP/443
-      |
-      v
-VPS VPS / Caddy / Xray
-      |
-      v
-Internet
-
-Note: this path does not enter the home router or home LAN by itself.
-```
-
-QR-профили - это прямой egress для телефонов и ноутбуков вне дома. Они не подключают устройство к домашней LAN, если отдельно не добавлен remote-access overlay.
+WireGuard оставлен только как compatibility/fallback-путь на период миграции. Предпочтительный мобильный путь теперь — Reality QR до домашнего ASUS.
 
 ---
 
@@ -123,6 +127,7 @@ Router:
   ASUS RT-AX88U Pro + Asuswrt-Merlin
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
+  sing-box home Reality inbound on :443
   dnscrypt-proxy on 127.0.0.1:5354
   WireGuard Server interface: wgs1
   WireGuard Client reserve interface: wgc1
@@ -202,6 +207,8 @@ cd ..
 
 - LAN TCP для `STEALTH_DOMAINS` и `VPN_STATIC_NETS` редиректится на `:<lan-redirect-port>`.
 - LAN UDP/443 для этих наборов отклоняется, чтобы форсировать TCP fallback.
+- Remote QR/VLESS-клиенты подключаются к домашнему белому IP на `:443`, не напрямую к VPS.
+- Router-side `sing-box` принимает `home-reality-in` на `0.0.0.0:443` и отправляет его в существующий Reality outbound.
 - `wgs1` входит в `RC_VPN_ROUTE`.
 - `RC_VPN_ROUTE` маркирует `VPN_DOMAINS` и `VPN_STATIC_NETS` как `0x1000`.
 - Legacy `0x2000`, table `200` и `singbox0` отсутствуют.
@@ -219,6 +226,8 @@ cd ..
 ```
 
 Артефакты лежат в `ansible/out/clients/`: `iphone-*.png`, `macbook.png`, соответствующие `.conf` файлы и локальная галерея `qr-index.html`.
+
+`router.conf` по-прежнему смотрит напрямую на VPS, потому что это identity самого роутера для outbound. `iphone-*` и `macbook` профили сначала смотрят на домашний белый IP.
 
 Нельзя коммитить или вставлять в чат реальные VLESS URI, UUID, Reality keys, short IDs, admin paths или QR payloads. В документации допустимы только fake placeholders.
 

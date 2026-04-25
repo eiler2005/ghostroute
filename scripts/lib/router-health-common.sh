@@ -506,6 +506,7 @@ singbox_config=$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
+filter_input=$(iptables -S INPUT 2>/dev/null || true)
 filter_forward=$(iptables -S FORWARD 2>/dev/null || true)
 listen_sockets=$(netstat -nlp 2>/dev/null || true)
 ip_rules=$(ip rule show 2>/dev/null || true)
@@ -602,6 +603,8 @@ printf 'HOOK_STEALTH_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A 
 printf 'HOOK_STEALTH_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -m set --match-set STEALTH_DOMAINS dst')"
 printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m set --match-set STEALTH_DOMAINS dst')"
 printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
+printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:443')"
+printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" '--dport 443 -j ACCEPT')"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '127.0.0.1:1080')"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" 'socks5://127.0.0.1:1080')"
 printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
@@ -890,6 +893,8 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] || drift_lines+=("mangle chain RC_VPN_ROUTE missing")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] || drift_lines+=("missing ip rule for fwmark 0x1000 -> wgc1")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener on :443")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality :443")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener on 127.0.0.1:1080")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
@@ -956,6 +961,8 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | RC_VPN_ROUTE chain | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | ip rule fwmark 0x1000 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality listener :443 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality INPUT allow :443 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Channel B dnscrypt SOCKS listener :1080 | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
