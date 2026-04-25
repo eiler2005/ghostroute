@@ -9,6 +9,7 @@
   vars:
     out_dir: "{{ playbook_dir }}/../out/clients"
     home_out_dir: "{{ playbook_dir }}/../out/clients-home"
+    emergency_out_dir: "{{ playbook_dir }}/../out/clients-emergency"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
   tasks:
@@ -21,6 +22,12 @@
     - name: Ensure home mobile output dir
       ansible.builtin.file:
         path: "{{ home_out_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Ensure emergency mobile output dir
+      ansible.builtin.file:
+        path: "{{ emergency_out_dir }}"
         state: directory
         mode: "0700"
 
@@ -140,9 +147,68 @@
       tags:
         - home_clients_only
 
+    - name: Render emergency direct-VPS URI for each mobile client
+      ansible.builtin.copy:
+        dest: "{{ emergency_out_dir }}/{{ item.name }}.conf"
+        mode: "0600"
+        content: |
+          vless://{{ item.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}-emergency-direct
+      loop: "{{ emergency_clients | default([]) }}"
+      no_log: true
+      tags:
+        - emergency_clients_only
+
+    - name: Render emergency direct-VPS QR PNG for each mobile client
+      ansible.builtin.shell: |
+        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        qrencode -t PNG -o "{{ emergency_out_dir }}/{{ item.name }}.png" -r "{{ emergency_out_dir }}/{{ item.name }}.conf"
+      loop: "{{ emergency_clients | default([]) }}"
+      no_log: true
+      tags:
+        - emergency_clients_only
+
+    - name: Render emergency direct-VPS QR index
+      ansible.builtin.copy:
+        dest: "{{ emergency_out_dir }}/qr-index.html"
+        mode: "0600"
+        content: |
+          <!doctype html>
+          <html lang="ru">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Emergency Direct-VPS QR Codes</title>
+            <style>
+              body { margin: 0; font-family: system-ui, sans-serif; background: #f7f7f4; color: #1f2528; }
+              main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
+              h1 { margin: 0 0 8px; font-size: 36px; }
+              p { margin: 0 0 24px; color: #566; }
+              .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+              article { border: 1px solid #d8d8cf; border-radius: 8px; background: white; padding: 16px; }
+              h2 { margin: 0 0 12px; font-size: 18px; }
+              img { width: 100%; max-width: 320px; aspect-ratio: 1; display: block; margin: 0 auto; image-rendering: pixelated; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Emergency Direct-VPS QR Codes</h1>
+              <p>Import as disabled/off profiles. Use only when the home relay is unavailable and the VPS is healthy.</p>
+              <section class="grid">
+          {% for client in emergency_clients | default([]) %}
+                <article><h2>{{ client.name }}-emergency-direct</h2><img src="{{ client.name }}.png" alt="{{ client.name }} emergency QR"></article>
+          {% endfor %}
+              </section>
+            </main>
+          </body>
+          </html>
+      no_log: true
+      tags:
+        - emergency_clients_only
+
     - name: Inform user
       ansible.builtin.debug:
         msg: |
           Router profile generated in {{ out_dir }}.
           HOME Reality mobile profiles generated in {{ home_out_dir }}.
-          Direct-VPS mobile profiles are revoked after migration; {{ out_dir }} keeps only router.conf for the router's VPS identity.
+          Emergency direct-VPS mobile profiles generated in {{ emergency_out_dir }}.
+          Emergency profiles must stay disabled in client apps except during a home relay outage.

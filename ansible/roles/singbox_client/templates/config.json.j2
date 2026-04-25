@@ -100,6 +100,11 @@
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
       {
         "inbound": "reality-in",
+        "port": [53, 853],
+        "outbound": "reality-out"
+      },
+      {
+        "inbound": "reality-in",
         "domain_suffix": [
           "vtb.ru",
           "app-analytics-services-att.com",

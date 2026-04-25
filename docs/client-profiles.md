@@ -93,14 +93,73 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 ```bash
 ./scripts/client-profiles home-list
 ./scripts/client-profiles home-open
+./scripts/client-profiles emergency-list
+./scripts/client-profiles emergency-open
 ```
 
 `home-open` opens the local home Reality `qr-index.html` when available.
+`emergency-open` opens the disabled/off direct-VPS fallback profiles.
+
+## Mobile App DNS Settings Critical
+
+The Home Reality QR only hides the first TCP hop if the mobile app owns DNS. If
+iOS resolves `youtube.com` through the LTE carrier before the proxy sees the
+connection, the carrier can still observe DNS interest even though traffic bytes
+go to the home IP.
+
+For each V2Box / FoXray / OneXray device profile:
+
+- DNS mode: Fake-IP, fake DNS, or the app's equivalent tunnel-DNS mode.
+- Override system DNS: ON.
+- Bypass system DNS: ON, when the app exposes this toggle.
+- Do not use the LTE carrier resolver as the active DNS path for the proxy
+  profile.
+
+Manual LTE check:
+
+```text
+1. Disconnect from home Wi-Fi.
+2. Enable the Home Reality profile on LTE.
+3. Open a DNS leak test page.
+4. Expected: resolver is not the LTE carrier resolver.
+5. Optional router log check: no fresh mobile direct-out entries to :53/:853.
+```
+
+Router-side audit helper:
+
+```bash
+ssh admin@192.168.50.1 \
+  'TODAY="$(date +%Y-%m-%d)"; grep " $TODAY " /opt/var/log/sing-box.log |
+   grep "inbound/vless\\[reality-in\\]" -A3 |
+   grep -E "direct\\[direct-out\\].*:(53|853)" || true'
+```
+
+This audit does not prove an LTE DNS leak. It only catches DNS traffic that
+already entered the Home Reality tunnel and then tried to exit via `direct-out`.
+The router `sing-box` config sends tunneled mobile DNS ports `53/853` through
+`reality-out` as a server-side guard.
+
+## Emergency Direct-VPS Profiles
+
+Emergency profiles are separate from normal Home Reality profiles:
+
+```text
+normal:    iPhone -> home ASUS :<home-reality-port> -> split route
+emergency: iPhone -> VPS :443 directly
+```
+
+Use them only when the home relay, home router or home ISP is down and the VPS
+is healthy. Keep them imported but disabled/off in the mobile app.
+
+Trade-off: during emergency use, the LTE carrier sees the device connecting
+directly to the VPS VPS, so the domestic-first-hop billing/privacy property
+does not apply for that period.
 
 ## Clean Local Artifacts
 
 ```bash
 ./scripts/client-profiles home-clean
+./scripts/client-profiles emergency-clean
 ```
 
 This removes generated home mobile files under `ansible/out/clients-home/` and keeps only `.gitkeep`. `ansible/out/clients/router.conf` is the router's VPS identity, not a mobile QR.
@@ -112,6 +171,11 @@ This removes generated home mobile files under `ansible/out/clients-home/` and k
 3. Deploy router changes if the home Reality inbound needs updating.
 4. Regenerate local profiles with `./scripts/client-profiles generate`.
 5. Scan the new QR from the device.
+
+For emergency direct-VPS fallback, add or rotate the matching entry in
+`emergency_clients[]` instead. Its `short_id` must also exist in
+`reality_short_ids`, and the VPS playbook must be applied so the VPS inbound
+keeps `router + emergency_clients[]`.
 
 Fake URI shape:
 

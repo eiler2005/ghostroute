@@ -58,6 +58,15 @@ include in the aggregate dnsmasq config:
 conf-file=/jffs/configs/dnsmasq-stealth.conf.add
 ```
 
+The same repo catalogs feed mobile Home Reality split routing. During deploy,
+`scripts/update-singbox-rule-sets.sh` regenerates sing-box source rule-sets from:
+
+- `configs/dnsmasq-stealth.conf.add` -> `stealth-domains.json`
+- `configs/static-networks.txt` -> `stealth-static.json`
+
+Do not edit `/opt/etc/sing-box/rule-sets/*.json` manually; they are generated
+artifacts and will be overwritten.
+
 ## Проверить домен
 
 На роутере:

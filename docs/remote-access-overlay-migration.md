@@ -1,5 +1,11 @@
 # Remote Access Overlay Migration
 
+> **SUPERSEDED** — Channel A was decommissioned on 2026-04-25. Normal remote
+> mobile egress now uses Home Reality as described in
+> [network-flow-and-observer-model.md](network-flow-and-observer-model.md). This
+> document is retained only as historical planning context for a future remote
+> LAN access project.
+
 Этот документ фиксирует historical варианты замены публичного ingress для `wgs1` на альтернативный remote-access слой.
 
 Важно:
