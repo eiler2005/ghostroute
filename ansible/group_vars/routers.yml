@@ -12,7 +12,7 @@ singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 home_reality_enabled: true
 home_reality_listen: "0.0.0.0"
 home_reality_ingress_port: <home-reality-port>
-home_reality_connlimit_above: 100
+home_reality_connlimit_above: 300
 home_reality_mss: 1360
 # Backward-compatible alias for older docs/scripts; new code should use
 # home_reality_ingress_port.
