@@ -219,13 +219,33 @@
       ansible.builtin.shell: |
         iptables -S INPUT | awk '
           /--dport {{ home_reality_ingress_port }}/ {
-            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above 30/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ home_reality_connlimit_above | default(100) }}/ && $0 ~ /-j DROP/) drop = NR
             if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
           }
           END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
         '
       changed_when: false
       when: home_reality_enabled | default(false) | bool
+
+    - name: Router-side Reality ingress has LTE-safe MSS clamp
+      ansible.builtin.shell: |
+        iptables -t mangle -S PREROUTING |
+          grep -q -- '--dport {{ home_reality_ingress_port }} .*TCPMSS --set-mss {{ home_reality_mss | default(1360) }}'
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
+    - name: Router TCP high-BDP tuning is applied
+      ansible.builtin.shell: |
+        tcp_rmem="$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)"
+        tcp_wmem="$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_wmem 2>/dev/null)"
+        [ "$(cat /proc/sys/net/core/rmem_max 2>/dev/null)" = "{{ router_tcp_rmem_max | default(8388608) }}" ] &&
+        [ "$(cat /proc/sys/net/core/wmem_max 2>/dev/null)" = "{{ router_tcp_wmem_max | default(8388608) }}" ] &&
+        [ "$tcp_rmem" = "{{ router_tcp_rmem | default('4096 262144 8388608') }}" ] &&
+        [ "$tcp_wmem" = "{{ router_tcp_wmem | default('4096 65536 8388608') }}" ] &&
+        [ "$(cat /proc/sys/net/ipv4/tcp_mtu_probing 2>/dev/null)" = "{{ router_tcp_mtu_probing | default(1) }}" ] &&
+        [ "$(cat /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null)" = "{{ router_tcp_slow_start_after_idle | default(0) }}" ]
+      changed_when: false
+      when: router_tcp_perf_tuning_enabled | default(true) | bool
 
     - name: Router-side Reality ingress uses managed split routing
       ansible.builtin.shell: |
