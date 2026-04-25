@@ -144,40 +144,49 @@ reality_server_public_key: ""
 reality_short_ids:
   - ""
 
+# ===== Home Reality ingress on ASUS =====
+vault_home_reality_public_host: "myhome.asuscomm.com"
+home_reality_ingress_port: <home-reality-port>
+home_reality_dest_host: "gateway.icloud.com"
+home_reality_dest_port: 443
+home_reality_server_private_key: ""
+home_reality_server_public_key: ""
+home_reality_server_short_ids:
+  - ""
+
+# Router-side mobile identities. Keep these different from clients[]; mobile
+# clients should authenticate at the home Reality ingress, not at VPS.
+home_clients:
+  - name: "iphone-1"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "iphone-2"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "iphone-3"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "iphone-4"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "iphone-5"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "iphone-6"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+  - name: "macbook"
+    uuid: "$(rand_uuid)"
+    short_id: ""
+
 # ===== Clients =====
+# VPS-side Reality identities. Keep only the router here; mobile identities
+# live in home_clients[] and are relayed through the home router.
 clients:
   - name: "router"
     uuid: "$(rand_uuid)"
     short_id: ""
     email: "router@home.lan"
-  - name: "iphone-1"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-1@home.lan"
-  - name: "iphone-2"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-2@home.lan"
-  - name: "iphone-3"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-3@home.lan"
-  - name: "iphone-4"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-4@home.lan"
-  - name: "iphone-5"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-5@home.lan"
-  - name: "iphone-6"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "iphone-6@home.lan"
-  - name: "macbook"
-    uuid: "$(rand_uuid)"
-    short_id: ""
-    email: "macbook@home.lan"
 
 # ===== Router =====
 router_ssh_host: "${router_ip}"

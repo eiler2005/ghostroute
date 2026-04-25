@@ -30,6 +30,8 @@ docs/vpn-domain-journal.md
 /ansible/secrets/.stealth.generated.yml
 /ansible/out/clients/*
 !/ansible/out/clients/.gitkeep
+/ansible/out/clients-home/*
+!/ansible/out/clients-home/.gitkeep
 /ansible/out/clients-backup-*/
 /ansible/out/clients-home-backup-*/
 ansible/*.retry

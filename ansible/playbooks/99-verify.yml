@@ -107,8 +107,8 @@
       ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_static_source_ipset }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
       changed_when: false
 
-    - name: Remote wgs1 clients are not hooked into Channel B
-      ansible.builtin.shell: "! iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 .*match-set {{ stealth_ipset_name }} dst'"
+    - name: Channel A wgs1 interface is absent after decommission
+      ansible.builtin.shell: "! ip link show wgs1 >/dev/null 2>&1"
       changed_when: false
 
     - name: old Channel B TUN policy route is absent
@@ -137,12 +137,11 @@
       ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
       changed_when: false
 
-    - name: wgs1 peers still healthy (regression)
-      ansible.builtin.shell: "wg show wgs1 latest-handshakes | awk '{print $2}' | sort -n | tail -1"
-      register: wgs1_last
+    - name: Channel A NVRAM services are disabled
+      ansible.builtin.shell: |
+        [ "$(nvram get wgs1_enable)" = "0" ] &&
+        [ "$(nvram get wgc1_enable)" = "0" ]
       changed_when: false
-    - ansible.builtin.debug:
-        msg: "wgs1 most recent handshake (epoch): {{ wgs1_last.stdout }}"
 
     - name: dnscrypt-proxy listening on configured port
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ dnscrypt_port }} '"
@@ -153,12 +152,12 @@
       changed_when: false
 
     - name: Router-side Reality ingress is listening for remote mobile clients
-      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_port }} '"
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_ingress_port }} '"
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
     - name: Router-side Reality ingress is allowed by INPUT firewall
-      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ home_reality_port }} .*ACCEPT'"
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ home_reality_ingress_port }} .*ACCEPT'"
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
@@ -178,9 +177,9 @@
       ansible.builtin.shell: "cru l 2>/dev/null | grep -q '{{ singbox_watchdog_path }}'"
       changed_when: false
 
-    - name: WGC1 reserve hook is limited to remote WireGuard clients
+    - name: Channel A mangle hooks are absent
       ansible.builtin.shell: |
-        iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 -j RC_VPN_ROUTE' &&
+        ! iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S PREROUTING | grep -q -- '-i br0 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S OUTPUT | grep -q -- '-j RC_VPN_ROUTE'
       changed_when: false

@@ -17,7 +17,7 @@ Setup:
 - Channel A, reserve for remote WireGuard clients:
   wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> mark 0x1000 -> table wgc1.
 - Remote mobile QR/VLESS clients:
-  client app -> generated QR/VLESS profile -> home public IP :443
+  client app -> generated QR/VLESS profile -> home public IP :<home-reality-port>
   -> ASUS sing-box home Reality inbound -> sing-box Reality outbound
   -> VPS Caddy :443 -> Xray Reality inbound -> Internet.
   This keeps the LTE carrier-facing endpoint on the Russian home IP while
@@ -39,7 +39,7 @@ sing-box's own outbound connections.
 | LAN/Wi-Fi (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`, UDP/443 DROP | sing-box redirect → Reality |
 | Router `OUTPUT` | не прозрачно перехватывается | main routing / explicit proxy only | router default |
 | Remote WireGuard server clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` → table `wgc1` | `wgc1` |
-| Remote QR/VLESS clients | generated profile | client-side VLESS+Reality to home ASUS :443 | ASUS sing-box → VPS Reality |
+| Remote QR/VLESS clients | generated profile | client-side VLESS+Reality to home ASUS :<home-reality-port> | ASUS sing-box → VPS Reality |
 
 `wgc1` больше не является основным egress для домашней LAN или мобильных клиентов. Он сохранен как резервный/legacy канал для клиентов, которые подключаются к встроенному WireGuard server на роутере.
 
@@ -72,7 +72,7 @@ nat-start
 
 sing-box
   -> redirect inbound on 0.0.0.0:<lan-redirect-port>
-  -> home Reality inbound on 0.0.0.0:443 for remote mobile QR clients
+  -> home Reality inbound on 0.0.0.0:<home-reality-port> for remote mobile QR clients
   -> VLESS+Reality outbound to VPS :443
 
 VPS
@@ -139,7 +139,7 @@ iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 5
 ```text
 iPhone/MacBook outside home
   -> client app imports generated QR/VLESS profile
-  -> VLESS+Reality over TCP/443 to home public IP
+  -> VLESS+Reality over TCP/<home-reality-port> to home public IP
   -> ASUS sing-box home Reality inbound
   -> ASUS sing-box Reality outbound
   -> VPS shared Caddy L4
@@ -225,6 +225,10 @@ clients
   -> dnscrypt-proxy 127.0.0.1:5354
   -> upstream encrypted resolvers
 ```
+
+Because IPv6 is intentionally disabled, dnsmasq keeps `filter-AAAA` enabled.
+LAN clients should not receive IPv6 answers for dual-stack services such as
+YouTube while the active stealth plane is IPv4-only.
 
 Legacy per-domain upstreams вида:
 
@@ -331,8 +335,8 @@ cd ..
 iptables -t nat -S PREROUTING | grep <lan-redirect-port>
 iptables -S FORWARD | grep 'dport 443'
 netstat -nlp | grep <lan-redirect-port>
-netstat -nlp | grep ':443 '
-iptables -S INPUT | grep -- '--dport 443'
+netstat -nlp | grep ':<home-reality-port> '
+iptables -S INPUT | grep -- '--dport <home-reality-port>'
 iptables -t mangle -S PREROUTING | grep RC_VPN_ROUTE
 iptables -t mangle -S RC_VPN_ROUTE
 ip rule show
@@ -349,8 +353,8 @@ Expected:
 - `PREROUTING -i br0` has TCP REDIRECT rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
 - `FORWARD -i br0` has UDP/443 DROP rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
 - sing-box listens on `0.0.0.0:<lan-redirect-port>`.
-- sing-box listens on `0.0.0.0:443` for remote mobile QR clients.
-- router INPUT allows TCP/443 for the home Reality ingress.
+- sing-box listens on `0.0.0.0:<home-reality-port>` for remote mobile QR clients.
+- router INPUT allows TCP/<home-reality-port> for the home Reality ingress.
 - `PREROUTING -i wgs1 -j RC_VPN_ROUTE` exists.
 - `RC_VPN_ROUTE` marks `VPN_DOMAINS` and `VPN_STATIC_NETS` as `0x1000`.
 - No `PREROUTING -i br0 -j RC_VPN_ROUTE`.
@@ -366,7 +370,8 @@ Expected:
 - Do not paste real VLESS URIs or QR payloads.
 - Keep `~/.vault_pass.txt` local and mode `600`.
 - Generated client files under `ansible/out/clients/` are local operational artifacts.
-- IPv6 remains out of scope until a separate dual-stack design exists.
+- IPv6 remains out of scope until a separate dual-stack design exists. Keep
+  Merlin IPv6 disabled and dnsmasq `filter-AAAA` enabled.
 
 ---
 

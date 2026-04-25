@@ -15,7 +15,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | sing-box redirect -> Reality |
-| Remote mobile QR clients | generated VLESS/Reality profile | TCP/443 to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile | TCP/<home-reality-port> to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | `wgc1` |
 
@@ -45,7 +45,7 @@ Merlin router
   -> dnscrypt-proxy listens on 127.0.0.1:5354
   -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:1080
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
-  -> sing-box listens on 0.0.0.0:443 home Reality inbound for remote mobile clients
+  -> sing-box listens on 0.0.0.0:<home-reality-port> home Reality inbound for remote mobile clients
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
   -> legacy 0x2000/table 200/singbox0 state is removed
@@ -78,7 +78,7 @@ Remote iPhone/MacBook connected to router WireGuard server
   -> Internet
 
 Remote iPhone/MacBook using the current QR profile
-  -> home public IP :443
+  -> home public IP :<home-reality-port>
   -> sing-box home Reality inbound on ASUS
   -> sing-box Reality outbound
   -> VPS shared Caddy L4
@@ -233,7 +233,7 @@ ansible-playbook playbooks/20-stealth-router.yml
 This manages:
 
 - sing-box package/config/init
-- home Reality inbound on `0.0.0.0:443` for remote mobile QR clients
+- home Reality inbound on `0.0.0.0:<home-reality-port>` for remote mobile QR clients
 - dnscrypt-proxy package/config/init
 - `/jffs/scripts/stealth-route-init.sh`
 - `STEALTH_DOMAINS`
@@ -250,15 +250,15 @@ Generated local artifacts:
 
 ```text
 ansible/out/clients/router.conf
-ansible/out/clients/iphone-1.conf
-ansible/out/clients/iphone-1.png
+ansible/out/clients-home/iphone-1.conf
+ansible/out/clients-home/iphone-1.png
 ...
-ansible/out/clients/macbook.conf
-ansible/out/clients/macbook.png
-ansible/out/clients/qr-index.html
+ansible/out/clients-home/macbook.conf
+ansible/out/clients-home/macbook.png
+ansible/out/clients-home/qr-index.html
 ```
 
-`router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files are for external client apps and point at the home public IP first.
+`router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files live under `clients-home/`, point at the home public IP first, and use router-side `home_clients[]` identities.
 
 ### 4.5 Verify
 
@@ -343,7 +343,7 @@ ansible-playbook playbooks/99-verify.yml --limit routers
 Expected:
 
 - sing-box REDIRECT listener exists on `0.0.0.0:<lan-redirect-port>`.
-- sing-box home Reality listener exists on `0.0.0.0:443`.
+- sing-box home Reality listener exists on `0.0.0.0:<home-reality-port>`.
 - sing-box SOCKS listener exists on `127.0.0.1:1080` for dnscrypt-proxy.
 - `dnscrypt-proxy.toml` has `proxy = 'socks5://127.0.0.1:1080'`.
 - sing-box config has explicit keepalive / no-multiplex tuning.

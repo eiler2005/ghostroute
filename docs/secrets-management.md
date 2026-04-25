@@ -69,17 +69,18 @@ Use the wrapper:
 
 ```bash
 ./scripts/client-profiles generate
-./scripts/client-profiles list
-./scripts/client-profiles open
-./scripts/client-profiles clean
+./scripts/client-profiles home-list
+./scripts/client-profiles home-open
+./scripts/client-profiles home-clean
 ```
 
 Generated artifacts stay local:
 
 ```text
-ansible/out/clients/<client>.conf
-ansible/out/clients/<client>.png
-ansible/out/clients/qr-index.html
+ansible/out/clients/router.conf
+ansible/out/clients-home/<client>.conf
+ansible/out/clients-home/<client>.png
+ansible/out/clients-home/qr-index.html
 ```
 
 ## Pre-Push Checklist

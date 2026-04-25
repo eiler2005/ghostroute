@@ -11,9 +11,14 @@ singbox_dnscrypt_socks_port: 1080
 singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 home_reality_enabled: true
 home_reality_listen: "0.0.0.0"
-home_reality_port: 443
+home_reality_ingress_port: <home-reality-port>
+# Backward-compatible alias for older docs/scripts; new code should use
+# home_reality_ingress_port.
+home_reality_port: "{{ home_reality_ingress_port }}"
 home_reality_public_host: "{{ vault_home_reality_public_host | default(home_reality_public_host_secret | default('home.example.invalid')) }}"
 home_reality_dest: "gateway.icloud.com:443"
+home_reality_dest_host: "{{ home_reality_dest.split(':')[0] }}"
+home_reality_dest_port: "{{ home_reality_dest.split(':')[1] | int }}"
 home_reality_server_names:
   - "gateway.icloud.com"
 

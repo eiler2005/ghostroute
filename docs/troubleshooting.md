@@ -44,6 +44,51 @@ tail -100 /opt/var/log/sing-box.log | grep redirect-in
 
 ---
 
+## YouTube или другой dual-stack сайт не открывается из домашнего Wi-Fi
+
+Сначала проверьте, что это не слетевшие firewall rules:
+
+```sh
+ROUTER=192.168.50.1 ./verify.sh
+```
+
+Если `verify.sh` показывает missing `LAN TCP REDIRECT`, `UDP/443 DROP` или
+`Home Reality INPUT`, пере-примените router rules:
+
+```sh
+ssh admin@192.168.50.1 '/jffs/scripts/stealth-route-init.sh'
+```
+
+Если rules зелёные, проверьте AAAA leakage при отключённом IPv6:
+
+```sh
+dig @192.168.50.1 youtube.com AAAA +short
+dig @192.168.50.1 youtube.com A +short
+ssh admin@192.168.50.1 'grep "^filter-AAAA$" /jffs/configs/dnsmasq.conf.add'
+```
+
+Expected:
+
+- `AAAA` пустой;
+- `A` возвращает IPv4;
+- `filter-AAAA` присутствует.
+
+Исправление:
+
+```sh
+ssh admin@192.168.50.1 '
+  CONF=/jffs/configs/dnsmasq.conf.add
+  touch "$CONF"
+  sed -i "/^filter-AAAA$/d" "$CONF"
+  echo filter-AAAA >> "$CONF"
+  service restart_dnsmasq
+'
+```
+
+После этого выключите/включите Wi-Fi на клиенте или очистите DNS cache.
+
+---
+
 ## Remote WireGuard client не идет через WGC1 по VPN_DOMAINS
 
 Это относится к клиентам встроенного WireGuard VPN Server на роутере (`wgs1`).
@@ -148,7 +193,7 @@ ls -la ansible/out/clients
 Fake URI example for shape only:
 
 ```text
-vless://00000000-0000-4000-8000-000000000000@home.example.invalid:443?type=tcp&security=reality&pbk=FAKE_HOME_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=safari#debug-placeholder
+vless://00000000-0000-4000-8000-000000000000@home.example.invalid:<home-reality-port>?type=tcp&security=reality&pbk=FAKE_HOME_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=safari#debug-placeholder
 ```
 
 Do not paste real URI/QR payload into docs or chat.
@@ -159,8 +204,8 @@ Common causes:
 - wrong short_id
 - stale Reality public key (mobile QR uses the home ingress public key; router outbound uses the VPS public key)
 - wrong SNI/server name
-- home ASUS TCP/443 not reachable from LTE
-- sing-box home Reality inbound not listening on `0.0.0.0:443`
+- home ASUS TCP/<home-reality-port> not reachable from LTE
+- sing-box home Reality inbound not listening on `0.0.0.0:<home-reality-port>`
 - Caddy layer4 or VPS Xray broken after the router forwards the session
 
 ---
@@ -259,3 +304,6 @@ Merlin/dropbear compatibility:
 Current supported mode: IPv6 disabled.
 
 Do not enable partial IPv6 and assume these IPv4 ipset/fwmark rules will cover it. Dual-stack routing requires a separate design.
+
+When IPv6 is disabled, dnsmasq must keep `filter-AAAA` enabled so LAN clients
+do not receive IPv6 destinations that cannot use the IPv4 stealth path.

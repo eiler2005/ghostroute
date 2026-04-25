@@ -23,7 +23,7 @@ Current user-facing consequences:
 
 | Observer | What they can see |
 |---|---|
-| LTE operator for `iphone-*` QR clients | iPhone connects to the home Russian IP on TCP/443 |
+| LTE operator for `iphone-*` QR clients | iPhone connects to the home Russian IP on TCP/<home-reality-port> |
 | Home ISP | ASUS connects to the VPS IP on TCP/443, with the chosen cover SNI |
 | Websites/checkers for managed domains | VPS exit IP, VPS region, datacenter ASN |
 | Websites for non-managed domains | Home Russian WAN IP |
@@ -38,7 +38,7 @@ two visible Reality layers:
 
 ```text
 iPhone LTE
-  -> home ASUS public IP :443
+  -> home ASUS public IP :<home-reality-port>
   -> sing-box home Reality inbound
   -> sing-box Reality outbound
   -> VPS VPS / Caddy / Xray
@@ -47,7 +47,7 @@ iPhone LTE
 
 | Surface | Path | Config owner | Client artifact impact |
 |---|---|---|---|
-| **Home ingress SNI** | iPhone/Mac -> ASUS `:443` | `ansible/group_vars/routers.yml`: `home_reality_dest`, `home_reality_server_names` | Regenerate and redistribute `iphone-*` / `macbook` QR |
+| **Home ingress SNI** | iPhone/Mac -> ASUS `:<home-reality-port>` | `ansible/group_vars/routers.yml`: `home_reality_dest`, `home_reality_server_names` | Regenerate and redistribute `iphone-*` / `macbook` QR |
 | **VPS outbound SNI** | ASUS -> VPS `:443` | `ansible/secrets/stealth.yml`: `reality_dest`, `reality_server_names` | Re-render router config; regenerate profiles so artifacts stay current |
 
 Default operational rule: rotate both surfaces to the same accepted candidate
@@ -399,14 +399,14 @@ ansible-playbook playbooks/99-verify.yml
 Router live checks:
 
 ```sh
-netstat -nlp 2>/dev/null | grep -E ':(443|<lan-redirect-port>|1080) '
-iptables -S INPUT | grep -- '--dport 443'
+netstat -nlp 2>/dev/null | grep -E ':(<home-reality-port>|<lan-redirect-port>|1080) '
+iptables -S INPUT | grep -- '--dport <home-reality-port>'
 tail -100 /opt/var/log/sing-box.log
 ```
 
 Expected:
 
-- `0.0.0.0:443` is `sing-box` home Reality ingress.
+- `0.0.0.0:<home-reality-port>` is `sing-box` home Reality ingress.
 - `0.0.0.0:<lan-redirect-port>` is `sing-box` REDIRECT inbound.
 - no `UDP/443 REJECT` rules for managed destinations.
 - `iphone-*` logs show `inbound/vless[home-reality-in]` when mobile clients connect.
@@ -416,7 +416,7 @@ Observer sanity:
 | Test | Expected |
 |---|---|
 | iPhone OneXray profile endpoint | home IP or home DNS name, not VPS IP |
-| LTE operator-visible peer | home IP `:443` |
+| LTE operator-visible peer | home IP `:<home-reality-port>` |
 | Website checker for managed domain | VPS exit IP |
 | Local Russian site outside managed lists | home Russian WAN IP |
 
@@ -470,7 +470,7 @@ Append every production rotation here or in `docs/sni-rotation-log.md`.
 than the previous generic Microsoft homepage baseline.
 **Evidence:** local validation and live router checks passed; RU-vantage review
 still recommended after any future rotation.
-**Operational note:** mobile QR clients now connect first to home ASUS `:443`;
+**Operational note:** mobile QR clients now connect first to home ASUS `:<home-reality-port>`;
 website checkers still report the VPS exit for managed domains.
 **Next review:** annual review or earlier if throttling/probing appears.
 

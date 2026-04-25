@@ -256,7 +256,7 @@
 
 - сейчас raw `WireGuard server` на `wgs1` остаётся публичным WAN ingress
 - это повышает внешнюю поверхность даже при рабочем routing-layer и хорошем health/observability
-- регулярный mobile egress уже переведен на home Reality QR (`client -> ASUS :443 -> VPS`)
+- регулярный mobile egress уже переведен на home Reality QR (`client -> ASUS :<home-reality-port> -> VPS`)
 - если нужен именно доступ к домашней LAN, удобнее иметь отдельный overlay / zero-trust access path, а не зависеть от публичного `wgs1`
 
 Что улучшить:

@@ -160,14 +160,14 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 Результат:
 
 ```text
-ansible/out/clients/iphone-1.png
-ansible/out/clients/iphone-1.conf
+ansible/out/clients-home/iphone-1.png
+ansible/out/clients-home/iphone-1.conf
 ...
-ansible/out/clients/macbook.png
-ansible/out/clients/qr-index.html
+ansible/out/clients-home/macbook.png
+ansible/out/clients-home/qr-index.html
 ```
 
-Откройте `ansible/out/clients/qr-index.html` локально и сканируйте QR с нужных устройств.
+Откройте `ansible/out/clients-home/qr-index.html` локально и сканируйте QR с нужных устройств.
 
 ---
 
