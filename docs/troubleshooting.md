@@ -1,5 +1,8 @@
 # Диагностика проблем
 
+Для скорости LTE/Home Reality, MTU/MSS, TCP buffer и `connlimit` диагностики см.
+[routing-performance-troubleshooting.md](routing-performance-troubleshooting.md).
+
 ## Сначала
 
 ```bash
