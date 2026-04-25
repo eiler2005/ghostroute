@@ -2,7 +2,10 @@
 
 This document explains which domains each service uses and why they need to be routed through VPN. Useful when diagnosing issues or adding similar services.
 
-All domains listed here are included in `configs/dnsmasq.conf.add` (`VPN_DOMAINS` for remote `wgs1` clients) and `configs/dnsmasq-stealth.conf.add` (`STEALTH_DOMAINS` for LAN Channel B). Legacy per-domain VPN DNS upstream rules are retired.
+All domains listed here belong in `configs/dnsmasq-stealth.conf.add`
+(`STEALTH_DOMAINS`). That catalog feeds both LAN Channel B and mobile Home
+Reality split routing. Legacy `VPN_DOMAINS` and per-domain VPN DNS upstream
+rules are retired.
 
 ---
 

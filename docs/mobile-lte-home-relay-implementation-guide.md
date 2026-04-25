@@ -2,7 +2,10 @@
 
 **Audience:** LLM agent or engineer implementing the home-router-as-relay architecture (Variant B from the security review of 2026-04-25).
 **Goal:** mobile (LTE) clients enter the stealth tunnel via home router's public RU IP instead of connecting directly to VPS. This makes LTE traffic appear domestic to the carrier (avoiding international-traffic billing) while preserving Reality stealth and VPS exit-IP for site privacy.
-**Status:** planning complete; implementation not started.
+**Status:** implemented on 2026-04-25, then refined so Home Reality ingress uses
+the same managed split as LAN routing. This guide remains the implementation
+history for Variant B; the current canonical flow is
+`docs/network-flow-and-observer-model.md`.
 **Hard precondition:** Channel A decommission per `docs/channel-a-decommission-implementation-guide.md` is **scheduled to complete today (2026-04-25)**. This plan starts AFTER that decommission lands. The new Reality ingress on the home router replaces the security niche that wgs1 used to occupy, but on a completely different protocol/port and with stealth properties wgs1 lacked.
 
 This document is self-contained.
@@ -32,11 +35,8 @@ AFTER (this plan):
                           │
                   [Home router RT-AX88U Pro, sing-box]
                   ├─ Reality INBOUND (decrypts mobile traffic)
-                  ├─ route: reality-in → reality-out
-                  └─ Reality OUTBOUND (re-encrypts to VPS) ─► 198.51.100.10
-                                                                       │
-                                                                       ▼
-                                                                  Internet (exit IP = VPS)
+                  ├─ managed route: reality-in → reality-out ─► VPS
+                  └─ non-managed route: reality-in → direct-out ─► home WAN
 ```
 
 ### 0.3 What this plan does NOT solve
@@ -71,7 +71,12 @@ Reality2 (home router ↔ VPS) — already exists:
 
 ### 1.2 Sing-box single-process configuration
 
-Both inbounds and the existing outbound live in one sing-box process on the router. Routing rule sends Reality-inbound traffic directly to Reality-outbound (no iptables REDIRECT involvement). LAN traffic continues using the existing redirect inbound (`:<lan-redirect-port>`) → REDIRECT → reality-out path unchanged.
+Both inbounds and the existing outbound live in one sing-box process on the
+router. The original draft sent Reality-inbound traffic directly to
+Reality-outbound. The implemented production refinement uses sing-box rule-sets:
+`reality-in` managed destinations use `reality-out`, while non-managed
+destinations use `direct-out`. LAN traffic continues using the existing redirect
+inbound (`:<lan-redirect-port>`) -> REDIRECT -> reality-out path unchanged.
 
 Outline of the merged config (excerpt — full template in §3):
 
@@ -115,10 +120,16 @@ Outline of the merged config (excerpt — full template in §3):
     { "type": "direct", "tag": "direct-out" }
   ],
   "route": {
+    "rule_set": [
+      { "tag": "stealth-domains", "type": "local", "format": "source", "path": "/opt/etc/sing-box/rulesets/stealth-domains.json" },
+      { "tag": "stealth-static", "type": "local", "format": "source", "path": "/opt/etc/sing-box/rulesets/stealth-static.json" }
+    ],
     "rules": [
       { "inbound": "redirect-in", "outbound": "reality-out" },
-      { "inbound": "reality-in", "outbound": "reality-out" }
-    ]
+      { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "reality-in", "outbound": "direct-out" }
+    ],
+    "final": "direct-out"
   }
 }
 ```
@@ -396,17 +407,26 @@ Add a second inbound after the existing `redirect` inbound:
     { "type": "direct", "tag": "direct-out" }
   ],
   "route": {
+    "rule_set": [
+      { "tag": "stealth-domains", "type": "local", "format": "source", "path": "/opt/etc/sing-box/rulesets/stealth-domains.json" },
+      { "tag": "stealth-static", "type": "local", "format": "source", "path": "/opt/etc/sing-box/rulesets/stealth-static.json" }
+    ],
     "rules": [
       { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" },
-      { "inbound": "reality-in", "outbound": "reality-out" }
+      { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "reality-in", "outbound": "direct-out" }
     ],
     "final": "direct-out"
   }
 }
 ```
 
-Note: `reality-in` traffic, after decryption inside sing-box, has destination addresses learned from the inner VLESS request. The route rule sends it straight to `reality-out` (VPS Reality), where VPS Xray decrypts our outer Reality and forwards to the actual destination. End-to-end:
+Note: `reality-in` traffic, after decryption inside sing-box, has destination
+addresses learned from the inner VLESS request. Managed destinations match the
+same rule-sets generated from `STEALTH_DOMAINS` and `VPN_STATIC_NETS`, then use
+`reality-out`. Non-managed destinations use `direct-out`. End-to-end managed
+flow:
 ```
 mobile  ─► Reality(home key)  ─► sing-box decrypts  ─► Reality(VPS key)  ─► VPS Xray decrypts  ─► destination
 ```

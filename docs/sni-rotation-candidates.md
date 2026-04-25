@@ -40,9 +40,9 @@ two visible Reality layers:
 iPhone LTE
   -> home ASUS public IP :<home-reality-port>
   -> sing-box home Reality inbound
-  -> sing-box Reality outbound
-  -> VPS VPS / Caddy / Xray
-  -> Internet
+  -> managed split:
+       managed destinations -> sing-box Reality outbound -> VPS VPS / Caddy / Xray
+       other destinations   -> sing-box direct-out -> home WAN
 ```
 
 | Surface | Path | Config owner | Client artifact impact |
@@ -471,7 +471,7 @@ than the previous generic Microsoft homepage baseline.
 **Evidence:** local validation and live router checks passed; RU-vantage review
 still recommended after any future rotation.
 **Operational note:** mobile QR clients now connect first to home ASUS `:<home-reality-port>`;
-website checkers still report the VPS exit for managed domains.
+website checkers report the VPS exit only for managed domains.
 **Next review:** annual review or earlier if throttling/probing appears.
 
 ---

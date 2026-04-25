@@ -17,8 +17,9 @@ LAN/Wi-Fi clients
 Remote mobile QR clients
   -> home public IP :<home-reality-port>
   -> ASUS sing-box Reality inbound
-  -> same Reality outbound to VPS
-  -> Internet
+  -> managed split:
+       STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
+       other destinations              -> direct-out via home WAN
 ```
 
 `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
@@ -42,7 +43,7 @@ only as a cold fallback through `scripts/emergency-enable-wgc1.sh`.
 |---|---|---|---|
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
-| Mobile QR/VLESS | generated Reality profile | TCP/<home-reality-port> to home router | router sing-box -> Reality |
+| Mobile QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -93,12 +94,16 @@ client TCP connection
 client app
   -> VLESS+Reality to home public IP :<home-reality-port>
   -> router Reality inbound validates router-side UUID/key/short_id
-  -> sing-box Reality outbound to VPS
-  -> VPS exit
+  -> if destination matches STEALTH_DOMAINS or VPN_STATIC_NETS:
+       sing-box Reality outbound to VPS -> VPS exit
+  -> otherwise:
+       sing-box direct-out -> home WAN exit
 ```
 
 The mobile carrier sees domestic home ingress traffic. Websites still see the
-VPS exit IP for managed traffic.
+VPS exit IP for managed traffic; non-managed destinations see the home WAN
+IP. See [network-flow-and-observer-model.md](network-flow-and-observer-model.md)
+for the full workflow and observer table.
 
 ### Router-Originated Traffic
 

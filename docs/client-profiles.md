@@ -11,16 +11,15 @@ iPhone/MacBook outside home
   -> QR/VLESS profile in a client app
   -> home ASUS public IP / :<home-reality-port>
   -> sing-box home Reality inbound
-  -> sing-box Reality outbound
-  -> VPS VPS / shared Caddy :443
-  -> Xray Reality inbound on VPS
-  -> Internet
+  -> managed split:
+       STEALTH_DOMAINS/VPN_STATIC_NETS -> sing-box Reality outbound -> VPS VPS
+       other destinations              -> sing-box direct-out -> home WAN
 ```
 
 They connect to the ASUS router first. This is deliberate: a mobile carrier sees
 the remote device connecting to the home Russian IP, not directly to VPS.
-The final website/checker still sees the VPS exit IP because the router's
-outbound remains Reality-to-VPS.
+The final website/checker sees VPS only when its domain/IP is managed. A
+non-managed destination sees the home Russian WAN IP.
 
 This is the expected split:
 
@@ -34,6 +33,8 @@ This is the expected split:
 Do not use generic checker results alone to judge the LTE-facing path. A checker
 reports the final website-facing exit IP, not the first hop that the mobile
 carrier observes.
+
+Full flow map: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 These profiles are for egress, not LAN management. They do not grant general
 home LAN access unless a route is explicitly added later.

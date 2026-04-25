@@ -7,7 +7,7 @@
 | Source | Egress | Accounting note |
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; REDIRECT counters are now the primary Channel B signal |
-| Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> VPS Reality outbound | LTE carrier sees the home IP; router/VPS counters show the forwarded traffic |
+| Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | LTE carrier sees the home IP; VPS counters show only managed forwarded traffic |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
@@ -17,15 +17,19 @@ Channel A (`wgs1` + `wgc1`) is retired in normal operation. `wgc1_*` NVRAM remai
 
 `ifconfig.me`, anti-fraud checkers, and "VPN suspicion" pages report the
 website-facing exit. For managed domains that exit is intentionally the VPS
-VPS, so these tools will flag `198.51.100.10` as a datacenter IP. That does
-not contradict the mobile-ingress goal: LTE carriers see the iPhone connecting
-to the home ASUS IP first.
+VPS, so these tools can report VPS datacenter/suspicious. That does not
+contradict the mobile-ingress goal: LTE carriers see the iPhone connecting to
+the home ASUS IP first.
 
 For local Russian services that are not in `STEALTH_DOMAINS` or
-`VPN_STATIC_NETS`, traffic remains direct through the home WAN. Those services
-should see the home Russian IP, not VPS. If a Russian service unexpectedly
-sees VPS, check whether its domain or CDN CIDR was added to the managed
-catalog.
+`VPN_STATIC_NETS`, traffic remains direct through the home WAN. This applies to
+both LAN clients and mobile clients that entered through Home Reality. Those
+services should see the home Russian IP, not VPS. If a Russian service
+unexpectedly sees VPS, check whether its domain or CDN CIDR was added to the
+managed catalog.
+
+For the full end-to-end workflow and observer table, see
+[network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ---
 

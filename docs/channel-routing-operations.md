@@ -7,9 +7,9 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 DROP | sing-box redirect -> VLESS+Reality |
-| Remote mobile QR clients | generated VLESS/Reality profile | TCP/<home-reality-port> to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
-| Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | legacy WGC1 |
+| Channel A WireGuard | n/a | inactive in steady state | cold fallback only |
 
 DNS is shared:
 
@@ -17,7 +17,11 @@ DNS is shared:
 dnsmasq -> dnscrypt-proxy 127.0.0.1:5354
 ```
 
-Per-domain `@wgc1` DNS upstreams are retired. `wgc1` is still active, but only as the reserve path for legacy `wgs1` clients. New mobile clients should use the QR profile that points at the home public IP.
+Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
+steady state; `wgc1_*` NVRAM is preserved only for cold fallback. New mobile
+clients should use the QR profile that points at the home public IP.
+
+Full flow map: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ---
 
@@ -98,7 +102,7 @@ Expected:
 
 Generated mobile QR profiles (`iphone-*`, `macbook`) must point at the home public IP or home DNS name. The `router` profile is the exception: it points directly at the VPS because it is the router's outbound identity.
 
-### Channel A Reserve For Remote Clients
+### Channel A Cold Fallback Absence
 
 ```sh
 iptables -t mangle -S PREROUTING | grep 'wgs1 -j RC_VPN_ROUTE'
@@ -110,13 +114,13 @@ ip route show table wgc1
 Expected:
 
 ```text
--A PREROUTING -i wgs1 -j RC_VPN_ROUTE
--A RC_VPN_ROUTE -m set --match-set VPN_DOMAINS dst -j MARK --set-xmark 0x1000/0x1000
--A RC_VPN_ROUTE -m set --match-set VPN_STATIC_NETS dst -j MARK --set-xmark 0x1000/0x1000
-fwmark 0x1000/0x1000 -> table wgc1
+no active wgs1/wgc1 runtime hooks
+no RC_VPN_ROUTE
+no fwmark 0x1000 rule
 ```
 
-Must not exist:
+Cold fallback NVRAM is intentionally preserved, but runtime rules must not
+exist unless `scripts/emergency-enable-wgc1.sh --enable` was explicitly used.
 
 ```text
 -A PREROUTING -i br0 -j RC_VPN_ROUTE
@@ -146,7 +150,10 @@ ipset list VPN_DOMAINS | awk '/^Number of entries:/ {print $4}'
 ipset list VPN_STATIC_NETS | awk '/^Number of entries:/ {print $4}'
 ```
 
-`STEALTH_DOMAINS` and `VPN_DOMAINS` are populated dynamically after DNS resolution. A low value immediately after restart is not necessarily a failure.
+`STEALTH_DOMAINS` is populated dynamically after DNS resolution. A low value
+immediately after restart is not necessarily a failure. `VPN_DOMAINS` should not
+exist in steady state. `VPN_STATIC_NETS` should exist because Channel B still
+uses that historical static-CIDR set name.
 
 ---
 
@@ -211,9 +218,9 @@ Because this router supports `REDIRECT` but not `TPROXY`, moving `wgs1` to Chann
 
 Implementation options:
 
-- Keep `wgs1` on `wgc1` as today. This is the supported baseline.
-- Add explicit client-side VLESS profiles for those remote devices.
-- Design a separate router-side proxy path for `wgs1` if there is a strong reason to retire WGC1 later.
+- Keep active `wgs1` disabled, which is the supported baseline.
+- Add explicit client-side VLESS/Home Reality profiles for those remote devices.
+- Design a separate router-side proxy path for `wgs1` only if there is a strong reason to restore it later.
 
 Acceptance for the current baseline:
 
@@ -224,19 +231,17 @@ iptables -t mangle -S PREROUTING | grep 'wgs1.*STEALTH_DOMAINS' && echo "unexpec
 
 ---
 
-## Add A Domain To Both Catalogs
+## Add A Domain To The Active Catalog
 
-Managed domains should be present in both active catalogs:
+Managed domains should be present in the single active catalog:
 
 ```text
-configs/dnsmasq.conf.add
 configs/dnsmasq-stealth.conf.add
 ```
 
 Example:
 
 ```text
-ipset=/example.com/VPN_DOMAINS
 ipset=/example.com/STEALTH_DOMAINS
 ```
 
@@ -253,7 +258,6 @@ Warm and verify:
 
 ```sh
 nslookup example.com 127.0.0.1
-ipset list VPN_DOMAINS | grep <resolved-ip>
 ipset list STEALTH_DOMAINS | grep <resolved-ip>
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
 ```
@@ -299,7 +303,7 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 | Symptom | First checks |
 |---|---|
 | LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 DROP, sing-box log |
-| Remote WG client does not use WGC1 | `wgs1 -> RC_VPN_ROUTE`, `VPN_DOMAINS`, `0x1000`, table `wgc1` |
+| Emergency WGC1 fallback unexpectedly active | `wgs1`, `RC_VPN_ROUTE`, `0x1000`, table `wgc1`, emergency script state |
 | DNS looks wrong | `server=127.0.0.1#5354`, dnscrypt listener, no active `@wgc1` |
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |
 | Reality tunnel down | `sing-box` status/log, VPS Caddy/Xray, `99-verify.yml` |
