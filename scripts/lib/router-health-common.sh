@@ -567,6 +567,7 @@ printf 'DNS_REDIRECT_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i 
 printf 'CRON_SAVE_IPSET=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-save-ipset')"
 printf 'CRON_TRAFFIC_SNAPSHOT=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-snapshot')"
 printf 'CRON_TRAFFIC_DAILY_CLOSE=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-daily-close')"
+printf 'CRON_MOBILE_REALITY_COUNTERS=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/mobile-reality-accounting-refresh')"
 printf 'CRON_DOMAIN_AUTO_ADD=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/domain-auto-add.sh')"
 printf 'CRON_SINGBOX_WATCHDOG=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/singbox-watchdog.sh')"
 printf 'CRON_UPDATE_BLOCKED=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/update-blocked-list.sh')"
@@ -595,6 +596,7 @@ router_extract_traffic_summary() {
   awk '
     /^Router-wide window:/   { key = "TRAFFIC_ROUTER_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^Per-device byte window:/ { key = "TRAFFIC_DEVICE_WINDOW"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile byte window:/   { key = "TRAFFIC_MOBILE_BYTE_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^WAN total:/            { key = "TRAFFIC_WAN_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^VPN total:/            { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Reality-managed total:/ { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
@@ -608,6 +610,8 @@ router_extract_traffic_summary() {
     /^Other:/                { key = "TRAFFIC_DEVICE_OTHER"; value = substr($0, index($0, ":") + 1) }
     /^Client profiles seen:/ { key = "TRAFFIC_MOBILE_CLIENTS"; value = substr($0, index($0, ":") + 1) }
     /^Mobile connections:/   { key = "TRAFFIC_MOBILE_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile byte sources:/  { key = "TRAFFIC_MOBILE_BYTE_SOURCES"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile byte total:/    { key = "TRAFFIC_MOBILE_BYTE_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Mobile via Reality:/   { key = "TRAFFIC_MOBILE_REALITY"; value = substr($0, index($0, ":") + 1) }
     /^Mobile direct-out:/    { key = "TRAFFIC_MOBILE_DIRECT"; value = substr($0, index($0, ":") + 1) }
     /^Mobile unresolved:/    { key = "TRAFFIC_MOBILE_UNRESOLVED"; value = substr($0, index($0, ":") + 1) }
@@ -814,6 +818,7 @@ router_render_health_markdown() {
 
   traffic_router_window="$(router_kv_get "$traffic_file" TRAFFIC_ROUTER_WINDOW)"
   traffic_device_window="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_WINDOW)"
+  traffic_mobile_byte_window="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_BYTE_WINDOW)"
   traffic_wan="$(router_kv_get "$traffic_file" TRAFFIC_WAN_TOTAL)"
   traffic_reality="$(router_kv_get "$traffic_file" TRAFFIC_REALITY_TOTAL)"
   traffic_ts="$(router_kv_get "$traffic_file" TRAFFIC_TS_TOTAL)"
@@ -824,6 +829,8 @@ router_render_health_markdown() {
   traffic_device_other="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_OTHER)"
   traffic_mobile_clients="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_CLIENTS)"
   traffic_mobile_total="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_TOTAL)"
+  traffic_mobile_byte_sources="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_BYTE_SOURCES)"
+  traffic_mobile_byte_total="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_BYTE_TOTAL)"
   traffic_mobile_reality="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_REALITY)"
   traffic_mobile_direct="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_DIRECT)"
   traffic_mobile_unresolved="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_UNRESOLVED)"
@@ -864,6 +871,7 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] || drift_lines+=("Channel A wgs1 tcp/53 redirect should be absent")
   [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" = "0" ] || drift_lines+=("Channel A wgs1 interface should be absent")
   [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] || drift_lines+=("missing sing-box watchdog cron")
+  [ "$(router_kv_get "$state_file" CRON_MOBILE_REALITY_COUNTERS)" = "1" ] || drift_lines+=("missing Mobile Home Reality byte-counter refresh cron")
   if [ "$ipv6_policy_level" = "Critical" ]; then
     drift_lines+=("IPv6 policy drift: ${ipv6_policy_note}")
   elif [ "$ipv6_policy_level" = "Warning" ]; then
@@ -939,6 +947,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | wgs1 udp/53 redirect absent | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | wgs1 tcp/53 redirect absent | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | sing-box watchdog cron | $( [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Mobile Reality byte-counter cron | $( [ "$(router_kv_get "$state_file" CRON_MOBILE_REALITY_COUNTERS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 
 ## IPv6 Policy
 
@@ -1019,6 +1028,7 @@ EOF
 
 - Router-wide window: **${traffic_router_window:-n/a}**
 - Per-device byte window: **${traffic_device_window:-n/a}**
+- Mobile byte window: **${traffic_mobile_byte_window:-n/a}**
 - WAN total: **${traffic_wan:-n/a}**
 - Reality-managed total: **${traffic_reality:-n/a}**
 - Tailscale total: **${traffic_ts:-n/a}**
@@ -1029,6 +1039,8 @@ EOF
 - Other: **${traffic_device_other:-n/a}**
 - Mobile clients seen: **${traffic_mobile_clients:-n/a}**
 - Mobile connections: **${traffic_mobile_total:-n/a}**
+- Mobile byte sources: **${traffic_mobile_byte_sources:-n/a}**
+- Mobile byte total: **${traffic_mobile_byte_total:-n/a}**
 - Mobile via Reality: **${traffic_mobile_reality:-n/a}**
 - Mobile direct-out: **${traffic_mobile_direct:-n/a}**
 - Mobile unresolved: **${traffic_mobile_unresolved:-n/a}**

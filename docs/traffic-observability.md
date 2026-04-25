@@ -7,7 +7,7 @@
 | Source | Egress | Accounting note |
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; `RC_LAN_REALITY_*` mangle counters provide the `Via Reality` view |
-| Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | LTE carrier sees the home IP; VPS counters show only managed forwarded traffic |
+| Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | LTE carrier sees the home IP; `RC_MOBILE_REALITY_*` counters show encrypted Home Reality ingress bytes by source IP/profile |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
@@ -79,6 +79,8 @@ Runs on the router and stores:
 - interface counters: `wan0`, `br0`, radios, and other active non-Channel-A interfaces
 - LAN per-device mangle counters:
   `RC_LAN_REALITY_OUT/IN`, `RC_LAN_BYTES_OUT/IN`
+- Mobile Home Reality mangle counters:
+  `RC_MOBILE_REALITY_IN/OUT`
 - `tailscale status --json`
 
 Primary storage:
@@ -123,6 +125,7 @@ DNS forensics show interest, not bytes.
 
 - interface deltas
 - per-device mangle counter deltas
+- mobile Home Reality encrypted tunnel byte deltas
 - mobile Home Reality connection attribution from `sing-box.log`
 - Tailscale peer deltas
 - current conntrack snapshot
@@ -133,12 +136,21 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
-- `MOBILE HOME REALITY` is connection-count attribution from `sing-box.log`.
-  It reports client profile names, `reality-out` vs `direct-out`, EOF/error
-  count and top destinations. It is not a byte counter.
+- `MOBILE HOME REALITY` combines two signals:
+  - byte totals from router-side TCP/<home-reality-port> counters
+    (`RC_MOBILE_REALITY_IN/OUT`)
+  - connection attribution from `sing-box.log`: client profile names,
+    `reality-out` vs `direct-out`, EOF/error count and top destinations
+- Mobile byte counters are measured at the encrypted Home Reality ingress. They
+  show how much traffic came through the QR tunnel, not how those bytes split
+  after sing-box chose `reality-out` vs `direct-out`.
+- Per-profile mobile bytes are attributed by remote source IP observed in
+  `sing-box.log`. If several profiles share one carrier NAT IP during the same
+  window, the report uses a combined source label.
 - `router-health-report` includes the mobile Home Reality summary in the common
   `Traffic Snapshot` block.
-- Mobile Home Reality clients are not LAN devices; use sing-box logs for per-client mobile activity.
+- Mobile Home Reality clients are not LAN devices; use the `MOBILE HOME REALITY`
+  block for profile activity and `LAN DEVICE BYTES` for home Wi-Fi/LAN devices.
 
 ---
 
@@ -169,6 +181,7 @@ These commands do not mutate routing runtime except the `--save` variants writin
 ```sh
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
 iptables-save -t mangle -c | grep RC_LAN_REALITY
+iptables-save -t mangle -c | grep RC_MOBILE_REALITY
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
 tail -500 /opt/var/log/sing-box.log | grep 'inbound/vless\[reality-in\]'
 iptables-save -t mangle -c | grep RC_LAN_BYTES

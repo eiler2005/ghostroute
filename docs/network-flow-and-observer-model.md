@@ -170,6 +170,7 @@ router-originated traffic can loop sing-box outbound connections.
 | VPS VPS | connection from home router | does not see this flow | connection from home router | does not see this flow |
 | Target website | VPS/datacenter IP | home Russian WAN IP | VPS/datacenter IP | home Russian WAN IP |
 | Router logs | destination metadata and selected outbound | destination metadata and `direct-out` | REDIRECT/reality metadata | normal WAN path |
+| Router traffic report | TCP/<home-reality-port> byte counters + `reality-out` connection counts | TCP/<home-reality-port> byte counters + `direct-out` connection counts | LAN mangle byte counters | LAN direct WAN byte counters |
 
 HTTPS content remains encrypted end-to-end from the application perspective.
 Observers can still see network metadata such as IPs, ports, timing and volume.
@@ -219,6 +220,7 @@ ipset list STEALTH_DOMAINS | head
 ipset list VPN_STATIC_NETS | head
 ipset list VPN_DOMAINS
 tail -100 /opt/var/log/sing-box.log | grep -E 'reality-in|redirect-in|reality-out|direct-out'
+iptables-save -t mangle -c | grep -E 'RC_LAN_REALITY|RC_MOBILE_REALITY'
 ```
 
 Expected:
@@ -229,7 +231,10 @@ Expected:
 - Managed mobile flows show `reality-in -> reality-out`.
 - Non-managed mobile flows show `reality-in -> direct-out`.
 
-`./scripts/traffic-report` includes mobile Home Reality connection attribution
-from `sing-box.log`: profile count, total mobile connections, `reality-out` vs
-`direct-out`, EOF/error count and top destinations. This is intentionally
-connection-count reporting, not per-client byte accounting.
+`./scripts/traffic-report` includes mobile Home Reality byte totals and
+connection attribution. Bytes come from encrypted TCP/<home-reality-port> counters
+(`RC_MOBILE_REALITY_IN/OUT`) keyed by remote source IP/profile label. The
+`reality-out` vs `direct-out` split still comes from `sing-box.log` connection
+counts, because sing-box logs do not expose per-profile byte totals in the
+current setup. If multiple mobile profiles share the same carrier NAT IP, the
+byte row is shown under a combined source label.
