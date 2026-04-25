@@ -48,6 +48,7 @@
   - `Direct WAN`
   - `Other`
   - `Mobile connections`
+  - `Mobile byte total`
   - `Mobile via Reality`
   - `Mobile direct-out`
   - и что рядом с ними сохраняются стабильные section markers для peer-top summaries и mobile summaries
@@ -57,7 +58,7 @@
 - `router-health-report` строит свой traffic summary именно из этих строк
 - если заголовки или формат будут “тихо” изменены, downstream report перестанет быть надёжным
 - Tailscale peer-top summaries тоже являются частью UX-контракта: LLM и человек ожидают увидеть их в predictable месте
-- Mobile Home Reality summaries являются частью того же UX-контракта, но это connection counts по `sing-box.log`, а не byte accounting
+- Mobile Home Reality summaries являются частью того же UX-контракта: connection counts берутся из `sing-box.log`, а byte totals — из router-side TCP/<home-reality-port> counters
 
 ### `state-sample.env`
 

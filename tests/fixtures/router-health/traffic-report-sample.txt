@@ -1,6 +1,7 @@
 === WINDOW ===
 Router-wide window:      2026-04-17T00:00:00+0300 -> current router state
 Per-device byte window:  2026-04-17T12:00:00+0300 -> current router state
+Mobile byte window:      2026-04-17T12:00:00+0300 -> current router state
 
 === TOTALS ===
 WAN total:               12.34 GiB  (RX 10.00 GiB / TX 2.34 GiB)
@@ -28,6 +29,8 @@ Interpretation:          Reality = LAN flows redirected to sing-box; Direct WAN 
 === MOBILE HOME REALITY ===
 Client profiles seen:    2
 Mobile connections:      42
+Mobile byte sources:     2
+Mobile byte total:       812.0 MiB  (upload 90.0 MiB / download 722.0 MiB)
 Mobile via Reality:      30  (71.4%)
 Mobile direct-out:       12  (28.6%)
 Mobile unresolved:       0
@@ -36,6 +39,10 @@ Mobile EOF/errors:       3
 Client                 Total   Reality    Direct  Unresolved
 mobile-client-01          30        18        12           0
 mobile-client-02          12        12         0           0
+
+Byte source              Total      Upload    Download
+mobile-client-01     700.0 MiB    80.0 MiB   620.0 MiB
+mobile-client-02     112.0 MiB    10.0 MiB   102.0 MiB
 
 Top mobile destinations:
   www.youtube.com                               18  (Reality 18 / Direct 0)

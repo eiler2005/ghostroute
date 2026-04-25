@@ -77,10 +77,11 @@ When the user asks for a router traffic report or router health/capacity report 
 9. If the report contains "MOBILE HOME REALITY", include mobile profile activity:
    - client profiles seen
    - total mobile connections
+   - Mobile byte window / Mobile byte total when present
    - Mobile via Reality vs Mobile direct-out
    - unresolved and EOF/error counts
    - top mobile destinations when useful
-   Do not describe these as bytes; this section is log-attributed connection counts.
+   Explain the distinction: bytes are encrypted TCP/<home-reality-port> ingress counters by remote source IP; Reality/direct split remains log-attributed connection counts.
 
 10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
 
@@ -358,6 +359,14 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - `Top devices by direct WAN bytes` = устройства, которые больше всего обходили REDIRECT
 
 Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через Reality?”, начинайте именно с этого блока, а не с сырых строк таблицы.
+
+Раздел `MOBILE HOME REALITY`:
+
+- `Mobile byte total` = байты зашифрованного Home Reality туннеля на TCP/<home-reality-port>
+- `Upload` = направление mobile client -> домашний роутер
+- `Download` = направление домашний роутер -> mobile client
+- `Mobile via Reality` / `Mobile direct-out` = не байты, а connection-count split после решения sing-box
+- если несколько mobile-профилей делят один carrier NAT IP, byte source может быть объединённым label
 
 `TOP BY TAILSCALE PEERS`:
 

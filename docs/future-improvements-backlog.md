@@ -16,7 +16,7 @@
 - mobile QR clients (`iphone-*`, `macbook`) обслуживаются через home Reality ingress:
   - first hop: client → домашний белый IP `:<home-reality-port>`
   - router ingress: `sing-box` home Reality inbound
-  - egress: existing `sing-box` Reality outbound → VPS/Xray
+  - egress: managed split policy; `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → VPS/Xray, остальные назначения → home WAN direct
 - Channel A (`wgs1` + `wgc1`) runtime выключен; `wgc1_*` NVRAM сохранён только как cold fallback
 - `VPN_DOMAINS` отсутствует в steady state; active domain catalog is `STEALTH_DOMAINS`
 - DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:5354`
@@ -32,6 +32,7 @@
   - local `docs/vpn-domain-journal.md`
   - router-side USB-backed reports в `/opt/var/log/router_configuration/reports/`
 - traffic-отчёты приведены к более стабильной форме секций
+- mobile Home Reality получил байтовый учёт encrypted TCP/<home-reality-port> ingress через `RC_MOBILE_REALITY_IN/OUT`
 - fixture/smoke тесты для health-reporting уже добавлены
 - growth trends и интерпретация роста уже встроены в health/capacity слой
 - peer-level short summaries для `Tailscale` уже встроены в traffic-отчёты
@@ -163,13 +164,16 @@
   - стабильные секции `Window / Totals / Device Traffic Mix / Top by Reality / Top by Direct WAN / Top by Tailscale peers / LAN Device Bytes / Notes`
   - per-device `Via Reality` восстановлен после ухода от `wgc1` через `RC_LAN_REALITY_OUT/IN` mangle counters
   - mobile Home Reality activity is integrated into `traffic-report` and
-    `router-health-report` as log-attributed connection counts by profile,
-    outbound (`reality-out`/`direct-out`) and destination
+    `router-health-report` with:
+    - encrypted TCP/<home-reality-port> byte totals from `RC_MOBILE_REALITY_IN/OUT`
+    - log-attributed connection counts by profile, outbound
+      (`reality-out`/`direct-out`) and destination
+    - explicit caveat for shared carrier NAT IPs: byte rows can be combined by source label
   - tracked sanitised `router-health-latest.md`
   - явный LLM-runbook
   - USB-backed health snapshots на роутере
   - fixture/smoke тесты фиксируют текстовый контракт observability-слоя
-- в backlog остаются только дальнейшие улучшения формы, интерпретации и, при желании, более компактные executive-style summaries
+- в backlog остаются только дальнейшие улучшения формы, интерпретации и, при желании, более компактные executive-style summaries; per-profile byte split by final outbound would require sing-box metrics/exporter support and is not implemented in the current log-only model
 
 Желаемый результат:
 
@@ -211,13 +215,13 @@
 
 Проблема:
 
-- сейчас `VPN_DOMAINS` и `VPN_STATIC_NETS` далеки от лимитов, но рост каталога уже стал отдельной operational темой
+- сейчас `STEALTH_DOMAINS` и `VPN_STATIC_NETS` далеки от лимитов, но рост каталога уже стал отдельной operational темой
 - знание “места пока хватает” полезно, но без регулярного мониторинга легко пропустить ускорение роста, шумный auto-discovery или неожиданное разрастание static coverage
 
 Что улучшить:
 
 - ввести явный monitoring для:
-  - числа IP в `VPN_DOMAINS`
+  - числа IP в `STEALTH_DOMAINS`
   - числа CIDR в `VPN_STATIC_NETS`
   - использования лимита `maxelem`
   - headroom до лимита
@@ -232,8 +236,8 @@
 Статус:
 
 - базовый monitoring уже реализован:
-  - `VPN_DOMAINS current`
-  - `VPN_DOMAINS maxelem`
+  - `STEALTH_DOMAINS current`
+  - `STEALTH_DOMAINS maxelem`
   - usage/headroom
   - `VPN_STATIC_NETS current`
   - manual / auto rule counts

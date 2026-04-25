@@ -5,12 +5,14 @@ STATE_DIR="/jffs/addons/router_configuration/traffic"
 TAILSCALE_DIR="$STATE_DIR/tailscale"
 COUNTERS_FILE="$STATE_DIR/interface-counters.tsv"
 LAN_DEVICE_COUNTERS_FILE="$STATE_DIR/lan-device-counters.tsv"
+MOBILE_REALITY_COUNTERS_FILE="$STATE_DIR/mobile-reality-counters.tsv"
 
 mkdir -p "$STATE_DIR" "$TAILSCALE_DIR"
 
 timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 
 [ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
+[ -x /jffs/scripts/mobile-reality-accounting-refresh ] && /jffs/scripts/mobile-reality-accounting-refresh >/dev/null 2>&1 || true
 
 for iface in wan0 br0 eth6 eth7; do
   [ -d "/sys/class/net/$iface" ] || continue
@@ -29,9 +31,16 @@ if [ -x /jffs/scripts/lan-device-counters-snapshot ]; then
   done >> "$LAN_DEVICE_COUNTERS_FILE"
 fi
 
+if [ -x /jffs/scripts/mobile-reality-counters-snapshot ]; then
+  /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null | while IFS= read -r row; do
+    [ -n "$row" ] && printf '%s|%s\n' "$timestamp" "$row"
+  done >> "$MOBILE_REALITY_COUNTERS_FILE"
+fi
+
 # Keep history bounded on disk.
 find "$TAILSCALE_DIR" -name '*.json' -mtime +60 -print 2>/dev/null | while IFS= read -r old_file; do
   [ -n "$old_file" ] && rm -f "$old_file"
 done
 [ -f "$COUNTERS_FILE" ] && tail -n 5000 "$COUNTERS_FILE" > "$COUNTERS_FILE.tmp" && mv "$COUNTERS_FILE.tmp" "$COUNTERS_FILE"
 [ -f "$LAN_DEVICE_COUNTERS_FILE" ] && tail -n 20000 "$LAN_DEVICE_COUNTERS_FILE" > "$LAN_DEVICE_COUNTERS_FILE.tmp" && mv "$LAN_DEVICE_COUNTERS_FILE.tmp" "$LAN_DEVICE_COUNTERS_FILE"
+[ -f "$MOBILE_REALITY_COUNTERS_FILE" ] && tail -n 20000 "$MOBILE_REALITY_COUNTERS_FILE" > "$MOBILE_REALITY_COUNTERS_FILE.tmp" && mv "$MOBILE_REALITY_COUNTERS_FILE.tmp" "$MOBILE_REALITY_COUNTERS_FILE"

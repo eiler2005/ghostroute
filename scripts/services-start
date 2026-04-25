@@ -10,6 +10,11 @@ cru d TrafficSnapshot 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-snapshot ] && \
   cru a TrafficSnapshot "0 */6 * * * /jffs/scripts/cron-traffic-snapshot"
 
+# Keep Mobile Home Reality byte counters current across LTE source-IP changes.
+cru d MobileRealityCounters 2>/dev/null
+[ -x /jffs/scripts/mobile-reality-accounting-refresh ] && \
+  cru a MobileRealityCounters "*/5 * * * * /jffs/scripts/mobile-reality-accounting-refresh"
+
 # Save a close-of-day LAN / remote-access baseline for readable daily reports.
 cru d TrafficDailyClose 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-daily-close ] && \
