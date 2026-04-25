@@ -338,6 +338,17 @@ cleanup_auto_config() {
   while IFS= read -r auto_domain; do
     [ -n "$auto_domain" ] || continue
 
+    if echo "$auto_domain" | grep -qE "$RU_TLDS"; then
+      printf '%s\trussian-tld\t%s\n' "$auto_domain" "${auto_domain##*.}" >> "$AUTO_DROP"
+      continue
+    fi
+
+    covered_by=$(find_covering_domain_in_lists "$auto_domain" "$NO_VPN_DOMAINS" 2>/dev/null || true)
+    if [ -n "$covered_by" ]; then
+      printf '%s\tno-vpn\t%s\n' "$auto_domain" "$covered_by" >> "$AUTO_DROP"
+      continue
+    fi
+
     covered_by=$(find_covering_domain_in_lists "$auto_domain" "$MANAGED_DOMAINS" 2>/dev/null || true)
     if [ -n "$covered_by" ]; then
       printf '%s\tmanual\t%s\n' "$auto_domain" "$covered_by" >> "$AUTO_DROP"
@@ -358,7 +369,10 @@ cleanup_auto_config() {
   cleanup_removed=$((cleanup_before - cleanup_after))
   legacy_lines=0
   if [ -f "$AUTO" ]; then
-    legacy_lines=$(grep '^ipset=/' "$AUTO" 2>/dev/null | grep -vc "/$STEALTH_IPSET" 2>/dev/null || printf '0\n')
+    legacy_lines=$(awk -v target_set="$STEALTH_IPSET" '
+      /^ipset=\// && index($0, "/" target_set) == 0 { count++ }
+      END { print count + 0 }
+    ' "$AUTO" 2>/dev/null)
     legacy_lines=${legacy_lines:-0}
   fi
 

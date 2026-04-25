@@ -98,6 +98,16 @@
     "rules": [
       { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
+      {
+        "inbound": "reality-in",
+        "domain_suffix": [
+          "vtb.ru",
+          "app-analytics-services-att.com",
+          "app-measurement.com",
+          "firebaseinstallations.googleapis.com"
+        ],
+        "outbound": "direct-out"
+      },
       { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
       { "inbound": "reality-in", "outbound": "direct-out" }
 {% endif %}
