@@ -231,6 +231,7 @@ cd ..
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations и переключение каналов
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - реализованный VLESS+Reality guide
 - [docs/domain-management.md](docs/domain-management.md) - управление domain/static-network каталогами
+- [docs/stealth-domains-curation-audit.md](docs/stealth-domains-curation-audit.md) - advisory-аудит curation для STEALTH_DOMAINS
 - [docs/secrets-management.md](docs/secrets-management.md) - vault, local secrets и pre-push scan
 - [docs/client-profiles.md](docs/client-profiles.md) - VLESS/Reality QR workflow
 - [docs/troubleshooting.md](docs/troubleshooting.md) - диагностика инцидентов

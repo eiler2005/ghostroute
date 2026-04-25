@@ -234,6 +234,7 @@ See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-managem
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations and channel switching
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
 - [docs/domain-management.md](docs/domain-management.md) - domain and static-network catalog management
+- [docs/stealth-domains-curation-audit.md](docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
 - [docs/secrets-management.md](docs/secrets-management.md) - vault, local secrets and pre-push scan
 - [docs/client-profiles.md](docs/client-profiles.md) - VLESS/Reality QR workflow
 - [docs/troubleshooting.md](docs/troubleshooting.md) - incident diagnostics

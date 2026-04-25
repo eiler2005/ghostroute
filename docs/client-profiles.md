@@ -34,6 +34,43 @@ Do not use generic checker results alone to judge the LTE-facing path. A checker
 reports the final website-facing exit IP, not the first hop that the mobile
 carrier observes.
 
+## Mobile App Configuration (Critical) — OneXray
+
+Every Home Reality mobile profile must be checked in OneXray before judging LTE
+speed or reliability. Server-side tuning cannot compensate for a client profile
+that enables incompatible transport features.
+
+Open the imported Home Reality profile in OneXray, then inspect the profile's
+outbound, transport, routing and DNS settings. OneXray UI labels can vary by
+version, so use the exact setting names below as the source of truth.
+
+| Setting | Required value | Why it matters |
+|---|---:|---|
+| `Mux` / `Multiplex` | `OFF` | `xtls-rprx-vision` is exclusive with mux in practice. If mux is enabled, expect handshake failures, stalls, or a severe performance penalty. |
+| `TLS Fragment` / `Fragment` | `OFF` | Reality already provides the TLS-like transport. Fragment obfuscation adds per-record overhead without improving this design. |
+| `TCP Fast Open` / `TFO` | `OFF` | The server-side profile is tuned for ordinary TCP handshakes. Keep client and server behavior aligned. |
+| `Sniffing` | `ON` | The router-side mobile split needs host inference so managed destinations can match `STEALTH_DOMAINS` / `VPN_STATIC_NETS`. |
+| `Fake DNS` | `ON` | Prevents iOS from resolving managed names through the LTE carrier resolver before the proxy sees them. |
+| `Override system DNS` | `ON` | Keeps profile DNS under the tunnel/client control instead of the carrier path. |
+| `Bypass system DNS` | `ON` | Avoids accidental fallback to iOS/LTE DNS for proxy-owned lookups. |
+| `Domain Strategy` | `AsIs` | Do not force local/mobile DNS resolution. Let the tunnel/server-side path infer domains and route them. |
+
+If a setting is absent in the installed OneXray version, record `not exposed` in
+the checklist and verify the equivalent behavior with the LTE DNS leak test and
+router logs below. Do not guess by enabling nearby experimental toggles.
+
+Per-device checklist:
+
+| Device | Profile | Mux | Fragment | TFO | Sniffing | Fake/System DNS | Domain strategy | Checked by | Date | Result / notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `iphone-1` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `iphone-2` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `iphone-3` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `iphone-4` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `iphone-5` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `iphone-6` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `macbook` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
 ## iOS OneXray Direct Exceptions For Mercury/VTB
 
 The VTB Mercury iOS app is sensitive to VPN-like network traces. The router has

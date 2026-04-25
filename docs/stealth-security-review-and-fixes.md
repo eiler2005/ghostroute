@@ -2,7 +2,7 @@
 
 **Audience:** LLM agent or engineer implementing hardening fixes on the deployed `router_configuration` stealth channel.
 **Scope:** Channel B (VLESS+Reality on VPS CX23 `198.51.100.10`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
-**Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
+**Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, LTE performance hardening, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
 **Primary goal (unchanged):** RKN/ISP DPI cannot classify our home traffic as VPN. Everything else is secondary.
 
 This document is self-contained. Read [docs/architecture.md], [docs/channel-routing-operations.md], and [docs/stealth-channel-implementation-guide.md] for context if needed, but every fix below has its own self-sufficient problem statement, scope, patch, and verification.
@@ -50,6 +50,7 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
 | §2.6 docs/checklists | Applied | `architecture.md`, `stealth-channel-implementation-guide.md`, `failure-modes.md` updated |
 | Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/<home-reality-port>; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
+| LTE performance hardening | Applied follow-up | MSS clamp on both mobile ingress handshake directions, TCP high-BDP sysctl tuning, connlimit raised to 300, and `routing-performance-troubleshooting.md` added. |
 
 ---
 
@@ -984,6 +985,7 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 | 2026-04-25 20:00 | Channel A repo cleanup completed | Legacy `VPN_DOMAINS`, `wgs1/wgc1` hooks and stale docs/checks removed or marked historical |
 | 2026-04-25 21:00 | Mobile traffic observability added | Mobile Home Reality byte counters and period reports added for TCP/<home-reality-port> ingress |
 | 2026-04-25 22:00 | Emergency direct-VPS fallback made explicit | `emergency_clients[]` documented as disabled/off fallback for rare home relay outages |
+| 2026-04-25 23:00 | LTE performance hardening applied | Commits `afaa912`, `0bec8c5`, `feb8fd2`, `3a71207`: MSS 1360 clamp, TCP sysctl tuning, connlimit 300, and performance runbook |
 
 ---
 
