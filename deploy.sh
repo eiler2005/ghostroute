@@ -339,6 +339,7 @@ chmod +x /jffs/addons/x3mRouting/domain-auto-add.sh
 cp "$REMOTE_STAGE/scripts/update-blocked-list.sh" /jffs/addons/x3mRouting/update-blocked-list.sh
 chmod +x /jffs/addons/x3mRouting/update-blocked-list.sh
 cp "$REMOTE_STAGE/configs/domains-no-vpn.txt" /jffs/configs/domains-no-vpn.txt
+/jffs/addons/x3mRouting/domain-auto-add.sh --cleanup-only
 
 if [ "${ENABLE_DNSMASQ_LOGGING:-1}" = "1" ]; then
   mkdir -p /opt/var/log

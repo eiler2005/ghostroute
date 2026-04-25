@@ -34,6 +34,29 @@ Do not use generic checker results alone to judge the LTE-facing path. A checker
 reports the final website-facing exit IP, not the first hop that the mobile
 carrier observes.
 
+## iOS OneXray Direct Exceptions For Mercury/VTB
+
+The VTB Mercury iOS app is sensitive to VPN-like network traces. The router has
+`vtb.ru` in `configs/domains-no-vpn.txt`, and the mobile `reality-in` route has
+a small router-side `direct-out` bypass for VTB/Firebase/analytics domains.
+
+Important distinction: for a remote mobile client, router-side `direct-out` exits
+through the home WAN. It is not LTE-direct. If an iOS app checks the public IP
+from inside the OneXray tunnel, it may still see the home WAN rather than the
+mobile carrier IP.
+
+For OneXray on iOS, add a client-side routing rule with `outboundTag = direct`
+for these domains so the checks leave the phone outside the tunnel:
+
+```text
+domain:vtb.ru,full:ip-check-perf.radar.cloudflare.com,domain:radar.cloudflare.com,domain:app-analytics-services-att.com,domain:app-measurement.com,domain:firebaseinstallations.googleapis.com,domain:sentry.io,domain:ingest.us.sentry.io,domain:dns.nextdns.io,domain:app-site-association.cdn-apple.com,domain:mzstorekit.itunes.apple.com,domain:iosapps.itunes.apple.com
+```
+
+Place this rule above generic proxy rules if OneXray allows reordering, then
+fully stop and restart the VPN. The app may still show a VPN warning because iOS
+has an active VPN/TUN interface, but the login can work once the preflight
+checks go LTE-direct.
+
 Full flow map: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 These profiles are for egress, not LAN management. They do not grant general
