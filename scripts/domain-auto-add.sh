@@ -2,7 +2,7 @@
 # Automatic domain routing — runs every hour via cron.
 #
 # For each domain queried >= MIN_COUNT times in the dnsmasq log:
-#   - Adds VPN_DOMAINS + STEALTH_DOMAINS ipset entries to dnsmasq-autodiscovered.conf.add
+#   - Adds STEALTH_DOMAINS ipset entries to dnsmasq-autodiscovered.conf.add
 #   - Writes a compact activity log to /opt/var/log/domain-activity.log:
 #       • Заголовок запуска с временем и статистикой периода
 #       • Только добавленные домены (по одной строке каждый)
@@ -16,13 +16,12 @@ STATE_DIR_DEFAULT=/jffs/addons/router_configuration/dns-forensics
 [ -x /opt/bin/opkg ] && STATE_DIR_DEFAULT=/opt/var/log/router_configuration/dns-forensics
 LOG="${DOMAIN_AUTO_ADD_LOG_FILE:-/opt/var/log/dnsmasq.log}"
 ACTIVITY="${DOMAIN_AUTO_ADD_ACTIVITY_LOG_FILE:-/opt/var/log/domain-activity.log}"
-MANAGED="${DOMAIN_AUTO_ADD_MANAGED_FILE:-/jffs/configs/dnsmasq.conf.add}"
+MANAGED="${DOMAIN_AUTO_ADD_MANAGED_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
 AUTO="${DOMAIN_AUTO_ADD_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
 NO_VPN="${DOMAIN_AUTO_ADD_NO_VPN_FILE:-/jffs/configs/domains-no-vpn.txt}"
 BLOCKED_LIST="${DOMAIN_AUTO_ADD_BLOCKED_LIST_FILE:-/opt/tmp/blocked-domains.lst}"
 LEASES_FILE="${DOMAIN_AUTO_ADD_LEASES_FILE:-/var/lib/misc/dnsmasq.leases}"
 FORENSICS_DIR="${DOMAIN_AUTO_ADD_FORENSICS_DIR:-$STATE_DIR_DEFAULT}"
-VPN_IPSET=VPN_DOMAINS
 STEALTH_IPSET=STEALTH_DOMAINS
 MIN_COUNT=1
 MODE="${1:-run}"
@@ -316,7 +315,6 @@ rewrite_auto_file_from_list() {
     printf '# normalized by domain-auto-add.sh at %s\n' "$NOW"
     while IFS= read -r kept_domain; do
       [ -n "$kept_domain" ] || continue
-      printf 'ipset=/%s/%s\n' "$kept_domain" "$VPN_IPSET"
       printf 'ipset=/%s/%s\n' "$kept_domain" "$STEALTH_IPSET"
     done < "$keep_list"
   } > "$tmp_auto"
@@ -358,8 +356,13 @@ cleanup_auto_config() {
   cleanup_after=$(wc -l < "$AUTO_KEEP" 2>/dev/null | tr -d ' ')
   cleanup_after=${cleanup_after:-0}
   cleanup_removed=$((cleanup_before - cleanup_after))
+  legacy_lines=0
+  if [ -f "$AUTO" ]; then
+    legacy_lines=$(grep '^ipset=/' "$AUTO" 2>/dev/null | grep -vc "/$STEALTH_IPSET" 2>/dev/null || printf '0\n')
+    legacy_lines=${legacy_lines:-0}
+  fi
 
-  if [ "$cleanup_removed" -gt 0 ]; then
+  if [ "$cleanup_removed" -gt 0 ] || [ "$legacy_lines" -gt 0 ]; then
     rewrite_auto_file_from_list "$AUTO_KEEP"
     cp "$AUTO_KEEP" "$AUTO_DOMAINS"
 
@@ -372,7 +375,7 @@ cleanup_auto_config() {
 
     touch "$CHANGED"
     logger -t domain-auto-add \
-      "Cleanup removed $cleanup_removed redundant auto-domains (kept: $cleanup_after)"
+      "Cleanup removed $cleanup_removed redundant auto-domains and $legacy_lines legacy lines (kept: $cleanup_after)"
   fi
 
   rm -f "$AUTO_ORDERED" "$AUTO_KEEP" "$AUTO_DROP"
@@ -679,7 +682,6 @@ grep "query\[A" "$LOG" \
       # Add to dnsmasq autodiscovered config
       {
         printf '\n# auto-added %s (queries: %d, from: %s)\n' "$NOW" "$count" "$srcs"
-        printf 'ipset=/%s/%s\n' "$write_domain" "$VPN_IPSET"
         printf 'ipset=/%s/%s\n' "$write_domain" "$STEALTH_IPSET"
       } >> "$AUTO"
 
@@ -698,7 +700,7 @@ grep "query\[A" "$LOG" \
 # Ordinary candidates need repeated hits, but short/entry domains such as
 # www.ig.com and dynamic DNS names with IP-encoded family labels are probed
 # earlier even after a single observed query.
-# HTTP 000 (timeout/refused) = ISP blocks it → add to VPN even without antifilter entry.
+# HTTP 000 (timeout/refused) = ISP blocks it → add to STEALTH even without antifilter entry.
 PROBE_MIN_COUNT_24H=3
 PROBE_MIN_COUNT_PRIORITY=1
 PROBE_PRIORITY_MIN_SCORE=700
@@ -785,9 +787,7 @@ while IFS='	' read -r cand_effective_score cand_count24 cand_count7 cand_days7 c
     {
       printf '\n# geo-blocked (ISP:000%s) %s (queries24h: %d, queries7d: %d, from: %s)\n' \
              "$interest_tag" "$NOW" "$cand_count24" "$cand_count7" "$cand_srcs"
-      printf 'ipset=/%s/%s\n'          "$cand_write" "$VPN_IPSET"
-      printf 'server=/%s/1.1.1.1@%s\n' "$cand_write" "$VPN_IFACE"
-      printf 'server=/%s/9.9.9.9@%s\n' "$cand_write" "$VPN_IFACE"
+      printf 'ipset=/%s/%s\n' "$cand_write" "$STEALTH_IPSET"
     } >> "$AUTO"
     if [ "$cand_interest" -eq 1 ]; then
       printf '  + %-48s %3d запр24 %3d запр7д  ISP:000 interest\n' "$cand_write" "$cand_count24" "$cand_count7" >> "$GEO_LIST"
@@ -818,12 +818,12 @@ n_cln=$(wc -l < "$CNT_CLN"  2>/dev/null | tr -d ' '); n_cln=${n_cln:-0}
   printf '├─────────────────────────────────────────────────────────────\n'
 
   if [ "$n_add" -gt 0 ] && [ -s "$ADDED_LIST" ]; then
-    printf '│ ДОБАВЛЕНО В VPN (%d):\n' "$n_add"
+    printf '│ ДОБАВЛЕНО В STEALTH (%d):\n' "$n_add"
     while IFS= read -r line; do
       printf '│%s\n' "$line"
     done < "$ADDED_LIST"
   else
-    printf '│ Новых доменов для VPN: нет\n'
+    printf '│ Новых доменов для STEALTH: нет\n'
   fi
 
   if [ "$n_geo" -gt 0 ] && [ -s "$GEO_LIST" ]; then
@@ -856,7 +856,7 @@ n_cln=$(wc -l < "$CNT_CLN"  2>/dev/null | tr -d ' '); n_cln=${n_cln:-0}
   BL_STATUS=""
   [ -s "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: $(wc -l < "$BLOCKED_LIST" | tr -d ' ')"
   [ ! -s "$BLOCKED_LIST" ] && BL_STATUS="  |  список блокировок: нет (auto-add default-skip)"
-  printf '│ Итог: +%d добавлено  |  +%d geo  |  -%d cleanup  |  %d уже в VPN  |  %d пропущено  |  %d кандидатов%s\n' \
+  printf '│ Итог: +%d добавлено  |  +%d geo  |  -%d cleanup  |  %d уже в STEALTH  |  %d пропущено  |  %d кандидатов%s\n' \
     "$n_add" "$n_geo" "$n_cln" "$n_knw" "$n_skp" "$n_cnd" "$BL_STATUS"
   printf '└─────────────────────────────────────────────────────────────\n'
 } >> "$ACTIVITY"

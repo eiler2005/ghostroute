@@ -1,8 +1,9 @@
-# Channel B domain catalog: same managed domains as VPN_DOMAINS.
+# Domain catalog for the active Reality path.
 # Current routing policy:
 #   - br0 TCP -> STEALTH_DOMAINS/VPN_STATIC_NETS -> REDIRECT :<lan-redirect-port> -> sing-box -> Reality
 #   - br0 UDP/443 -> DROP for the same sets, forcing TCP fallback
-#   - wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> wgc1
+#   - mobile clients -> router Reality ingress :<home-reality-port> -> sing-box -> Reality
+# Channel A WireGuard is decommissioned; wgc1 remains only as cold-fallback NVRAM.
 
 ipset=/atlassian.com/STEALTH_DOMAINS
 ipset=/anthropic.com/STEALTH_DOMAINS

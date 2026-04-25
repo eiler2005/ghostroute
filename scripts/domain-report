@@ -2,7 +2,7 @@
 # Fetches domain activity information from the router.
 #
 # Usage:
-#   ./scripts/domain-report            # show auto-added domains
+#   ./scripts/domain-report            # show auto-added STEALTH domains
 #   ./scripts/domain-report --log      # show full activity log (что заходили, что добавлено)
 #   ./scripts/domain-report --log 100  # show last N lines of log
 #   ./scripts/domain-report --reset    # remove all auto-added domains and reload dnsmasq
@@ -81,13 +81,13 @@ case "$MODE" in
     ;;
 
   all)
-    echo "=== ВСЕ АВТО-ДОБАВЛЕННЫЕ ДОМЕНЫ ==="
+    echo "=== ВСЕ АВТО-ДОБАВЛЕННЫЕ STEALTH-ДОМЕНЫ ==="
     ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        [ -f "$AUTO" ] || { echo "(нет авто-добавленных доменов)"; exit 0; }
        echo "Файл: $AUTO"
        echo ""
-       grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/VPN_DOMAINS||" | sort -u'
+       grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u'
     ;;
 
   summary)
@@ -95,9 +95,9 @@ case "$MODE" in
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        ACTIVITY=/opt/var/log/domain-activity.log
 
-       echo "=== АВТО-ДОБАВЛЕННЫЕ ДОМЕНЫ ==="
+       echo "=== АВТО-ДОБАВЛЕННЫЕ STEALTH-ДОМЕНЫ ==="
        if [ -f "$AUTO" ] && grep -q "^ipset=" "$AUTO" 2>/dev/null; then
-         grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/VPN_DOMAINS||" | sort -u \
+         grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u \
            | while read d; do
                added=$(grep "auto-added.*${d}" "$AUTO" | head -1 | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}" || echo "?")
                printf "  %-45s добавлен: %s\n" "$d" "$added"
@@ -126,7 +126,7 @@ case "$MODE" in
 
   candidates)
     echo "=== КАНДИДАТЫ (не в списке блокировок) ==="
-    echo "Домены, которые видели в DNS, но не добавили в VPN"
+    echo "Домены, которые видели в DNS, но не добавили в STEALTH"
     echo "(отсутствуют в blocked-domains.lst)"
     echo ""
     ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \

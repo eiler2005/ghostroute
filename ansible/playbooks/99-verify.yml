@@ -99,6 +99,10 @@
       ansible.builtin.shell: "ipset list -n | grep -q '^{{ stealth_ipset_name }}$'"
       changed_when: false
 
+    - name: legacy VPN_DOMAINS ipset is absent after Channel A cleanup
+      ansible.builtin.shell: "! ipset list -n | grep -q '^VPN_DOMAINS$'"
+      changed_when: false
+
     - name: LAN TCP redirect routes STEALTH_DOMAINS to Channel B
       ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_ipset_name }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
       changed_when: false
@@ -143,6 +147,13 @@
         [ "$(nvram get wgc1_enable)" = "0" ]
       changed_when: false
 
+    - name: wgc1 cold-fallback NVRAM is preserved
+      ansible.builtin.shell: |
+        for field in wgc1_priv wgc1_addr wgc1_aips wgc1_ep_addr wgc1_ep_port wgc1_ppub wgc1_dns wgc1_mtu wgc1_alive; do
+          [ -n "$(nvram get "$field")" ] || exit 1
+        done
+      changed_when: false
+
     - name: dnscrypt-proxy listening on configured port
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ dnscrypt_port }} '"
       changed_when: false
@@ -182,4 +193,11 @@
         ! iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S PREROUTING | grep -q -- '-i br0 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S OUTPUT | grep -q -- '-j RC_VPN_ROUTE'
+      changed_when: false
+
+    - name: Channel A stale NAT and fwmark rules are absent
+      ansible.builtin.shell: |
+        ! ip rule show | grep -Eq '0x1000|wgc1' &&
+        ! iptables -t nat -S | grep -Eq 'wgs1|wgc1|0x1000|VPN_DOMAINS' &&
+        ! iptables -t mangle -S | grep -Eq 'wgs1|wgc1|0x1000|RC_VPN_ROUTE|VPN_DOMAINS'
       changed_when: false

@@ -1,6 +1,6 @@
 # Traffic Observability
 
-Этот документ описывает, как читать traffic/health слой после перехода на двухканальную маршрутизацию.
+Этот документ описывает, как читать traffic/health слой после финального ухода от Channel A и перехода на Reality-only routing.
 
 ## Current Routing Context
 
@@ -9,10 +9,9 @@
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; REDIRECT counters are now the primary Channel B signal |
 | Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> VPS Reality outbound | LTE carrier sees the home IP; router/VPS counters show the forwarded traffic |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
-| Legacy WG clients (`wgs1`) | `wgc1` for matched destinations | Per-peer stats come from `wg show wgs1 dump` |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
-Historical labels such as `VPN total` may still refer to the old interface counter `wgc1`. Interpret them with the current routing matrix in mind.
+Channel A (`wgs1` + `wgc1`) is retired in normal operation. `wgc1_*` NVRAM remains as cold fallback only; active reports should not depend on a live WireGuard interface.
 
 ## Observer Semantics
 
@@ -50,21 +49,20 @@ catalog.
 
 ```text
 STEALTH_DOMAINS exists
-VPN_DOMAINS exists
+VPN_DOMAINS absent
 VPN_STATIC_NETS exists
 sing-box REDIRECT listener :<lan-redirect-port> exists
 sing-box home Reality listener :<home-reality-port> exists
 LAN TCP REDIRECT rules exist for STEALTH_DOMAINS and VPN_STATIC_NETS
 LAN UDP/443 DROP rules exist for STEALTH_DOMAINS and VPN_STATIC_NETS
 legacy fwmark 0x2000/table 200/singbox0 are absent
-fwmark 0x1000/0x1000 -> wgc1
-wgs1 -> RC_VPN_ROUTE enabled
-br0 -> RC_VPN_ROUTE disabled
-OUTPUT -> RC_VPN_ROUTE disabled
-wgs1 -> STEALTH_DOMAINS disabled
+fwmark 0x1000/0x1000 -> wgc1 is absent
+RC_VPN_ROUTE is absent
+wgs1/wgc1 runtime interfaces are absent or disabled
+wgc1 cold-fallback NVRAM fields are preserved
 ```
 
-This is intentional drift detection. If the report complains that `br0 -> RC_VPN_ROUTE` is still enabled, it means LAN has slipped back toward the legacy WGC1 path.
+This is intentional drift detection. If the report complains about `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, `wgs1`, or `wgc1` runtime hooks, the router has slipped back toward the legacy Channel A path.
 
 ---
 
@@ -74,10 +72,9 @@ This is intentional drift detection. If the report complains that `br0 -> RC_VPN
 
 Runs on the router and stores:
 
-- interface counters: `wan0`, `wgc1`, `wgs1`, `br0`, radios
+- interface counters: `wan0`, `br0`, radios, and other active non-Channel-A interfaces
 - LAN per-device mangle counters
 - `tailscale status --json`
-- `wg show wgs1 dump`
 
 Primary storage:
 
@@ -93,7 +90,7 @@ Fallback:
 
 ### `cron-traffic-daily-close`
 
-Stores end-of-day conntrack snapshots for local LAN clients and remote `wgs1` peers.
+Stores end-of-day conntrack snapshots for local LAN clients.
 
 ### DNS forensics
 
@@ -122,14 +119,11 @@ DNS forensics show interest, not bytes.
 - interface deltas
 - per-device mangle counter deltas
 - Tailscale peer deltas
-- WireGuard server peer deltas
 - current conntrack snapshot
 
 Important interpretation:
 
-- `wgc1` bytes now mostly represent reserve/remote-client path plus any explicit legacy use.
 - REDIRECT `:<lan-redirect-port>` counters and sing-box logs are the primary matched LAN egress signal.
-- `wgs1` bytes mean remote WireGuard-server ingress/egress, not the upstream WGC1 tunnel.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
 
 ---
@@ -161,9 +155,6 @@ These commands do not mutate routing runtime except the `--save` variants writin
 ```sh
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
-ip -s link show wgc1
-ip -s link show wgs1
-wg show wgs1 dump
 iptables-save -t mangle -c | grep rcacct
 ```
 

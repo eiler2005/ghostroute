@@ -109,14 +109,13 @@ if [ -z "$ROUTER" ]; then
   exit 1
 fi
 
-require_local_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add"
-require_local_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/static-networks.txt"
 require_local_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt"
 require_local_file "${PROJECT_ROOT}/scripts/firewall-start"
 require_local_file "${PROJECT_ROOT}/scripts/nat-start"
 require_local_file "${PROJECT_ROOT}/scripts/cron-save-ipset"
+require_local_file "${PROJECT_ROOT}/scripts/emergency-enable-wgc1.sh"
 require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot"
 require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close"
 require_local_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh"
@@ -141,8 +140,6 @@ fi
 
 ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
 
-upload_file "${PROJECT_ROOT}/configs/dnsmasq.conf.add" "${REMOTE_STAGE}/configs/dnsmasq.conf.add"
-upload_file "${PROJECT_ROOT}/configs/dnsmasq-vpn-upstream.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-vpn-upstream.conf.add"
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-stealth.conf.add"
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
 upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
@@ -152,6 +149,7 @@ fi
 upload_file "${PROJECT_ROOT}/scripts/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
 upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
 upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
+upload_file "${PROJECT_ROOT}/scripts/emergency-enable-wgc1.sh" "${REMOTE_STAGE}/scripts/emergency-enable-wgc1.sh"
 upload_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
 upload_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
 upload_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh" "${REMOTE_STAGE}/scripts/lan-traffic-accounting-refresh"
@@ -217,6 +215,25 @@ merge_managed_block() {
   rm -f "$base_tmp" "$source_tmp"
 }
 
+remove_managed_block() {
+  target_file="$1"
+  marker_name="$2"
+
+  [ -f "$target_file" ] || return 0
+
+  start_marker="# BEGIN ${marker_name}"
+  end_marker="# END ${marker_name}"
+  base_tmp="/tmp/router_configuration.remove.$$"
+
+  awk -v start="$start_marker" -v end="$end_marker" '
+    $0 == start { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$target_file" > "$base_tmp"
+
+  mv "$base_tmp" "$target_file"
+}
+
 install_script() {
   source_file="$1"
   target_file="$2"
@@ -242,20 +259,14 @@ install_fully_managed_script() {
 }
 
 backup_if_present /jffs/configs/dnsmasq.conf.add
-merge_managed_block \
-  "$REMOTE_STAGE/configs/dnsmasq.conf.add" \
-  /jffs/configs/dnsmasq.conf.add \
-  "router_configuration dnsmasq.conf.add"
+remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq.conf.add"
+remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq-vpn-upstream.conf.add"
+remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq-stealth.conf.add"
 
-merge_managed_block \
-  "$REMOTE_STAGE/configs/dnsmasq-vpn-upstream.conf.add" \
-  /jffs/configs/dnsmasq.conf.add \
-  "router_configuration dnsmasq-vpn-upstream.conf.add"
-
-merge_managed_block \
-  "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" \
-  /jffs/configs/dnsmasq.conf.add \
-  "router_configuration dnsmasq-stealth.conf.add"
+backup_if_present /jffs/configs/dnsmasq-stealth.conf.add
+cp "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" /jffs/configs/dnsmasq-stealth.conf.add
+grep -q '^conf-file=/jffs/configs/dnsmasq-stealth.conf.add$' /jffs/configs/dnsmasq.conf.add || \
+  echo 'conf-file=/jffs/configs/dnsmasq-stealth.conf.add' >> /jffs/configs/dnsmasq.conf.add
 
 rm -f /jffs/configs/dnsmasq-vpn-upstream.conf.add
 
@@ -268,30 +279,29 @@ if [ -f "$REMOTE_STAGE/secrets/no-vpn-ip-ports.local.txt" ]; then
   cat "$REMOTE_STAGE/secrets/no-vpn-ip-ports.local.txt" >> /jffs/configs/router_configuration.no_vpn_ip_ports
 fi
 
-install_script \
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/firewall-start" \
-  /jffs/scripts/firewall-start \
-  "router_configuration firewall-start"
+  /jffs/scripts/firewall-start
 
-install_script \
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/nat-start" \
-  /jffs/scripts/nat-start \
-  "router_configuration nat-start"
+  /jffs/scripts/nat-start
 
-install_script \
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/cron-save-ipset" \
-  /jffs/scripts/cron-save-ipset \
-  "router_configuration cron-save-ipset"
+  /jffs/scripts/cron-save-ipset
 
-install_script \
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/emergency-enable-wgc1.sh" \
+  /jffs/scripts/emergency-enable-wgc1.sh
+
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/cron-traffic-snapshot" \
-  /jffs/scripts/cron-traffic-snapshot \
-  "router_configuration cron-traffic-snapshot"
+  /jffs/scripts/cron-traffic-snapshot
 
-install_script \
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/cron-traffic-daily-close" \
-  /jffs/scripts/cron-traffic-daily-close \
-  "router_configuration cron-traffic-daily-close"
+  /jffs/scripts/cron-traffic-daily-close
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/lan-traffic-accounting-refresh" \
@@ -301,10 +311,9 @@ install_fully_managed_script \
   "$REMOTE_STAGE/scripts/lan-device-counters-snapshot" \
   /jffs/scripts/lan-device-counters-snapshot
 
-install_script \
+install_fully_managed_script \
   "$REMOTE_STAGE/scripts/services-start" \
-  /jffs/scripts/services-start \
-  "router_configuration services-start"
+  /jffs/scripts/services-start
 
 mkdir -p /jffs/addons/x3mRouting
 cp "$REMOTE_STAGE/scripts/domain-auto-add.sh" /jffs/addons/x3mRouting/domain-auto-add.sh
@@ -325,10 +334,6 @@ sh /jffs/scripts/nat-start
 sh /jffs/scripts/firewall-start
 sh /jffs/scripts/services-start
 service restart_dnsmasq
-
-if ! ip route show table wgc1 | grep -q '.'; then
-  echo "Warning: routing table wgc1 is empty. Ensure the WGC1 client is connected." >&2
-fi
 
 rm -rf "$REMOTE_STAGE"
 REMOTE

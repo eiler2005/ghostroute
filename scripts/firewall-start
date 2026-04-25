@@ -4,13 +4,12 @@
 STATE_DIR="/jffs/addons/router_configuration"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/tmp"
 mkdir -p "$STATE_DIR"
-STATE_FILE="$STATE_DIR/VPN_DOMAINS.ipset"
+STATE_FILE="$STATE_DIR/STEALTH_DOMAINS.ipset"
 STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
 PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
 
-# Create/restore the legacy VPN target sets for catalog continuity. Channel A
-# routing is decommissioned; these sets are no longer used for wgs1/wgc1.
-ipset create VPN_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
+# Create/restore the active Channel B target sets.
+ipset create STEALTH_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
 ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
 [ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
 ipset flush VPN_STATIC_NETS 2>/dev/null
@@ -19,18 +18,6 @@ if [ -f "$STATIC_NETWORKS_FILE" ]; then
     ipset add VPN_STATIC_NETS "$network" 2>/dev/null
   done
 fi
-
-iptables -t mangle -D PREROUTING -i br0 -j RC_VPN_ROUTE 2>/dev/null
-iptables -t mangle -D PREROUTING -i wgs1 -j RC_VPN_ROUTE 2>/dev/null
-iptables -t mangle -D OUTPUT -j RC_VPN_ROUTE 2>/dev/null
-
-# Clean up legacy direct PREROUTING rules from older versions.
-iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
-iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
-iptables -t mangle -F RC_VPN_ROUTE 2>/dev/null
-iptables -t mangle -X RC_VPN_ROUTE 2>/dev/null
-# LAN (br0) traffic is handled by Channel B in stealth-route-init.sh.
-# Channel A wgs1/wgc1 hooks were removed during mobile relay migration.
 
 # Remote management is LAN-only. Merlin may leave a broad SSH ACCEPT rule in
 # INPUT; keep an explicit WAN-side drop ahead of it after firewall rebuilds.
@@ -44,14 +31,3 @@ iptables -I INPUT 1 ! -i br0 -p tcp --dport 22 -j DROP
 # Re-apply Channel B REDIRECT/QUIC-drop and home Reality INPUT rules after
 # Merlin rebuilds firewall chains.
 [ -x /jffs/scripts/stealth-route-init.sh ] && /jffs/scripts/stealth-route-init.sh >/dev/null 2>&1 || true
-
-# --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
-# Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.
-# Verify first: ip -6 route show table wgc1
-#
-# ipset create VPN_DOMAINS_V6 hash:ip family inet6 hashsize 1024 maxelem 65536 2>/dev/null
-# ipset create VPN_STATIC_NETS_V6 hash:net family inet6 hashsize 256 maxelem 65536 2>/dev/null
-# ip6tables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS_V6 dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
-# ip6tables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS_V6 dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
-# ip6tables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_DOMAINS_V6 dst -j MARK --set-mark 0x1000/0x1000
-# ip6tables -t mangle -A PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS_V6 dst -j MARK --set-mark 0x1000/0x1000

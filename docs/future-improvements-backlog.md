@@ -6,22 +6,19 @@
 
 ## Текущий статус
 
-На момент актуализации backlog система работает в двухканальной схеме:
+На момент актуализации backlog система работает в Reality-only схеме:
 
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` обслуживают LAN traffic:
   - `br0` — обычные LAN / Wi-Fi клиенты
   - TCP egress: nat `REDIRECT :<lan-redirect-port>` → sing-box → VLESS+Reality
   - UDP/443: DROP для managed destinations, чтобы клиенты fallback'ились с QUIC на TCP
   - router `OUTPUT` по умолчанию не перехватывается, чтобы не создать loop для sing-box outbound
-- `VPN_DOMAINS` и `VPN_STATIC_NETS` обслуживают remote `WireGuard server` clients:
-  - `wgs1` — raw remote clients
-  - egress: `0x1000` → table `wgc1`
 - mobile QR clients (`iphone-*`, `macbook`) обслуживаются через home Reality ingress:
-  - first hop: client → домашний белый IP `:443`
+  - first hop: client → домашний белый IP `:<home-reality-port>`
   - router ingress: `sing-box` home Reality inbound
   - egress: existing `sing-box` Reality outbound → VPS/Xray
-- `wgc1` больше не основной LAN/mobile uplink; это reserve/legacy канал для remote `wgs1` clients
-- для `wgs1` есть DNS-capture в локальный `dnsmasq`
+- Channel A (`wgs1` + `wgc1`) runtime выключен; `wgc1_*` NVRAM сохранён только как cold fallback
+- `VPN_DOMAINS` отсутствует в steady state; active domain catalog is `STEALTH_DOMAINS`
 - DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:5354`
 - traffic observability и device mix reporting работают с этой новой routing matrix
 
@@ -37,7 +34,7 @@
 - traffic-отчёты приведены к более стабильной форме секций
 - fixture/smoke тесты для health-reporting уже добавлены
 - growth trends и интерпретация роста уже встроены в health/capacity слой
-- peer-level short summaries для `WireGuard server` и `Tailscale` уже встроены в traffic-отчёты
+- peer-level short summaries для `Tailscale` уже встроены в traffic-отчёты
 
 ## Важное ограничение
 
@@ -252,40 +249,34 @@
 
 ### 8. Свести публичный `wgs1` к backup и позже убрать WAN ingress
 
-Проблема:
+Статус:
 
-- сейчас raw `WireGuard server` на `wgs1` остаётся публичным WAN ingress
-- это повышает внешнюю поверхность даже при рабочем routing-layer и хорошем health/observability
+- выполнено в рамках Channel A final cleanup: `wgs1_enable=0`, `wgc1_enable=0`, `wg show` пустой, публичный WireGuard ingress не является active path
+- `VPN_DOMAINS`, `0x1000`, `RC_VPN_ROUTE` и stale `wgs1/wgc1` hooks удалены из steady state
+- `wgc1_*` NVRAM сохранён только для cold fallback через `scripts/emergency-enable-wgc1.sh`
 - регулярный mobile egress уже переведен на home Reality QR (`client -> ASUS :<home-reality-port> -> VPS`)
-- если нужен именно доступ к домашней LAN, удобнее иметь отдельный overlay / zero-trust access path, а не зависеть от публичного `wgs1`
 
-Что улучшить:
+Что остаётся future-only:
 
 - рассмотреть migration path на альтернативный remote-access слой:
   - `ZeroTier`
   - `NetBird`
   - `OpenZiti`
-- для обычного mobile egress использовать текущий Reality QR до домашнего IP
-- для LAN remote-access сначала держать новую overlay-схему параллельно с `wgs1`
-- затем перевести существующих `wgs1` клиентов на Reality QR или overlay-схему по назначению
-- после успешной миграции выключить публичный `wgs1` на WAN или оставить только как строго временный аварийный backup
-
-Статус:
-
-- planning-only analysis уже зафиксирован в отдельном документе:
+- если нужен именно доступ к домашней LAN, рассмотреть отдельный overlay / zero-trust access path
+- planning-only analysis по overlay уже зафиксирован в отдельном документе:
   - [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
 - там сохранены:
-  - live observations по текущему `wgs1` surface
+  - historical observations по прежнему `wgs1` surface
   - shortlist кандидатов
   - iPhone onboarding notes
   - migration plans для `ZeroTier`, `NetBird`, `OpenZiti`
 - backlog здесь **не означает обязательное внедрение**
-- это отдельное future direction, к которому имеет смысл возвращаться только если действительно есть цель убрать публичный `wgs1` из роли основного ingress
+- это отдельное future direction, к которому имеет смысл возвращаться только если нужен remote LAN access beyond mobile Reality egress
 
 Желаемый результат:
 
 - основной remote access больше не зависит от публичного `wgs1`
-- старые `wgs1` клиенты аккуратно мигрированы
+- старые `wgs1` клиенты мигрированы на Reality QR или будущий overlay по назначению
 - внешний surface роутера становится меньше без слома текущего routing catalog
 
 ## Что не делать по умолчанию

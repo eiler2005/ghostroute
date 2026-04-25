@@ -3,36 +3,34 @@
 ## Сначала
 
 ```bash
-./verify.sh
+ROUTER=192.168.50.1 ./verify.sh
 ./scripts/router-health-report
-cd ansible && ansible-playbook playbooks/99-verify.yml
+cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers
 ```
 
-Если эти проверки зеленые, почти всегда проблема локализуется в конкретном domain/static entry, клиентском DNS cache или внешнем сервисе.
+Если проверки зелёные, проблема обычно в конкретном domain/static entry,
+клиентском DNS cache или внешнем сервисе.
 
----
+## LAN-Сайт Не Идёт Через Reality
 
-## LAN-сайт не идет через Reality / REDIRECT
-
-### Проверить rules
+### Rules
 
 ```sh
 netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
 iptables -t nat -S PREROUTING | grep <lan-redirect-port>
 iptables -S FORWARD | grep 'dport 443'
-ip rule show | grep 0x2000 || true
-ip route show table 200 || true
-ip -br link show singbox0 2>&1 || true
+ipset list STEALTH_DOMAINS | head
+ipset list VPN_STATIC_NETS | head
 ```
 
 Expected:
 
-- sing-box слушает `0.0.0.0:<lan-redirect-port>`.
-- `PREROUTING -i br0` redirects TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS` to `:<lan-redirect-port>`.
-- `FORWARD -i br0` drops UDP/443 for the same sets, forcing QUIC fallback.
-- legacy `0x2000`, table `200`, and `singbox0` are absent.
+- sing-box listens on `0.0.0.0:<lan-redirect-port>`;
+- `PREROUTING -i br0` redirects TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`;
+- `FORWARD -i br0` drops UDP/443 for the same sets;
+- `VPN_DOMAINS` is absent.
 
-### Проверить DNS/ipset
+### DNS/ipset
 
 ```sh
 nslookup example.com 127.0.0.1
@@ -40,26 +38,13 @@ ipset test STEALTH_DOMAINS <resolved-ip>
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
 ```
 
-Если IP не попал в `STEALTH_DOMAINS`, проверьте `configs/dnsmasq-stealth.conf.add` и что dnsmasq был перезапущен после deploy.
+Если IP не попал в `STEALTH_DOMAINS`, проверьте
+`configs/dnsmasq-stealth.conf.add`, `/jffs/configs/dnsmasq-stealth.conf.add` и
+перезапуск dnsmasq после deploy.
 
----
+## YouTube Или Другой Dual-Stack Сайт Не Открывается
 
-## YouTube или другой dual-stack сайт не открывается из домашнего Wi-Fi
-
-Сначала проверьте, что это не слетевшие firewall rules:
-
-```sh
-ROUTER=192.168.50.1 ./verify.sh
-```
-
-Если `verify.sh` показывает missing `LAN TCP REDIRECT`, `UDP/443 DROP` или
-`Home Reality INPUT`, пере-примените router rules:
-
-```sh
-ssh admin@192.168.50.1 '/jffs/scripts/stealth-route-init.sh'
-```
-
-Если rules зелёные, проверьте AAAA leakage при отключённом IPv6:
+Проверьте AAAA leakage:
 
 ```sh
 dig @192.168.50.1 youtube.com AAAA +short
@@ -87,223 +72,85 @@ ssh admin@192.168.50.1 '
 
 После этого выключите/включите Wi-Fi на клиенте или очистите DNS cache.
 
----
-
-## Remote WireGuard client не идет через WGC1 по VPN_DOMAINS
-
-Это относится к клиентам встроенного WireGuard VPN Server на роутере (`wgs1`).
-
-### Проверить handshakes
+## Mobile Home QR Не Работает
 
 ```sh
-wg show wgs1 latest-handshakes
-```
-
-`0` означает, что peer еще не подключался или давно не активен.
-
-### Проверить route hook
-
-```sh
-iptables -t mangle -S PREROUTING | grep 'wgs1 -j RC_VPN_ROUTE'
-iptables -t mangle -S RC_VPN_ROUTE
-ip rule show | grep 0x1000
-ip route show table wgc1
+ssh admin@192.168.50.1 '
+  netstat -nlp 2>/dev/null | grep ":<home-reality-port> "
+  iptables -S INPUT | grep <home-reality-port>
+  tail -100 /opt/var/log/sing-box.log
+'
 ```
 
 Expected:
 
-- `wgs1 -> RC_VPN_ROUTE` exists.
-- `RC_VPN_ROUTE` marks `VPN_DOMAINS` and `VPN_STATIC_NETS`.
-- `0x1000/0x1000` routes to table `wgc1`.
+- router-side Reality inbound listens on `0.0.0.0:<home-reality-port>`;
+- INPUT firewall allows TCP/<home-reality-port>;
+- sing-box has no fresh fatal errors.
 
-### Проверить DNS capture
-
-```sh
-iptables -t nat -S PREROUTING | grep -e 'wgs1'
-```
-
-Expected:
-
-```text
--A PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53
--A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53
-```
-
----
-
-## На роутере снова появился `@wgc1` DNS upstream
-
-Это legacy drift.
+## Legacy Channel A Снова Появился
 
 Проверка:
 
 ```sh
-grep '@wgc1' /jffs/configs/dnsmasq.conf.add
+nvram get wgs1_enable
+nvram get wgc1_enable
+wg show
+ip rule show | grep -E '0x1000|wgc1' || true
+ipset list VPN_DOMAINS 2>&1 | head -1
+iptables -t nat -S | grep -E 'wgs1|wgc1|0x1000|VPN_DOMAINS' || true
+iptables -t mangle -S | grep -E 'wgs1|wgc1|0x1000|RC_VPN_ROUTE|VPN_DOMAINS' || true
 ```
 
-Expected: пустой вывод.
+Expected:
 
-Исправление:
+- both NVRAM enable flags are `0`;
+- `wg show` has no active Channel A interface;
+- no `0x1000`, `wgs1`, `wgc1`, `RC_VPN_ROUTE` hooks;
+- `VPN_DOMAINS` does not exist.
 
-```bash
-ROUTER=192.168.50.1 ./deploy.sh
-cd ansible && ansible-playbook playbooks/20-stealth-router.yml
-ansible-playbook playbooks/99-verify.yml
-```
-
-Если строки вернулись, проверьте, что никто вручную не добавил `server=/domain/...@wgc1` в local configs или router-side custom blocks.
-
----
-
-## sing-box REDIRECT не слушает `:<lan-redirect-port>`
+Если drift появился, сначала пере-примените cleanup:
 
 ```sh
-/opt/etc/init.d/S99sing-box status
-netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
-tail -100 /opt/var/log/sing-box.log
-/opt/bin/sing-box check -C /opt/etc/sing-box
+ssh admin@192.168.50.1 '
+  nvram set wgs1_enable=0
+  nvram set wgc1_enable=0
+  nvram commit
+  while ip rule del fwmark 0x1000/0x1000 table wgc1 2>/dev/null; do :; done
+  ipset destroy VPN_DOMAINS 2>/dev/null || true
+  rm -f /opt/tmp/VPN_DOMAINS.ipset /jffs/addons/router_configuration/VPN_DOMAINS.ipset
+  /jffs/scripts/firewall-start
+  service restart_dnsmasq
+'
 ```
 
-Re-apply:
+## Emergency Fallback
 
-```bash
-cd ansible
-ansible-playbook playbooks/20-stealth-router.yml
-```
-
-Если config check падает, проверьте vault client fields and Reality parameters.
-
----
-
-## Reality/VLESS клиент не подключается
-
-Проверить VPS:
-
-```bash
-cd ansible
-ansible-playbook playbooks/99-verify.yml --limit vps_stealth
-```
-
-Проверить локальные профили:
-
-```bash
-ls -la ansible/out/clients
-```
-
-Fake URI example for shape only:
-
-```text
-vless://00000000-0000-4000-8000-000000000000@home.example.invalid:<home-reality-port>?type=tcp&security=reality&pbk=FAKE_HOME_PUBLIC_KEY&sid=FAKE_SHORT_ID&sni=gateway.icloud.com&fp=safari#debug-placeholder
-```
-
-Do not paste real URI/QR payload into docs or chat.
-
-Common causes:
-
-- wrong client UUID
-- wrong short_id
-- stale Reality public key (mobile QR uses the home ingress public key; router outbound uses the VPS public key)
-- wrong SNI/server name
-- home ASUS TCP/<home-reality-port> not reachable from LTE
-- sing-box home Reality inbound not listening on `0.0.0.0:<home-reality-port>`
-- Caddy layer4 or VPS Xray broken after the router forwards the session
-
----
-
-## DNS не работает или домены не попадают в ipset
-
-Проверить:
+Dry-run only:
 
 ```sh
-grep '^server=127.0.0.1#5354$' /jffs/configs/dnsmasq.conf.add
-netstat -nlp 2>/dev/null | grep ':5354 '
-nslookup example.com 127.0.0.1
+ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --dry-run'
 ```
 
-Re-apply:
-
-```bash
-cd ansible
-ansible-playbook playbooks/20-stealth-router.yml
-```
-
-Router-side restart:
+Live fallback creates WireGuard traffic and should be used only for catastrophic
+Reality outage:
 
 ```sh
-service restart_dnsmasq
-/opt/etc/init.d/S09dnscrypt-proxy2 restart
+ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --enable'
+ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --disable'
 ```
 
----
+## Blocked-List Update Fails
 
-## Static service работает только частично
-
-Пример: Telegram текст работает, media нет.
-
-Проверить:
+`update-blocked-list.sh` fetches through sing-box SOCKS:
 
 ```sh
-ipset list VPN_STATIC_NETS | awk '/^Number of entries:/ {print $4}'
-ipset test VPN_STATIC_NETS <service-ip>
-iptables -t nat -S PREROUTING | grep VPN_STATIC_NETS
-ip route get <service-ip> mark 0x1000
+ssh admin@192.168.50.1 '
+  netstat -nlp 2>/dev/null | grep "127.0.0.1:1080"
+  /jffs/addons/x3mRouting/update-blocked-list.sh
+  ls -lh /opt/tmp/blocked-domains.lst
+'
 ```
 
-Interpretation:
-
-- LAN TCP должен попадать в `REDIRECT --to-ports <lan-redirect-port>`.
-- `mark 0x1000` должен идти в `wgc1`.
-
-Если IP не в `VPN_STATIC_NETS`, обновите `configs/static-networks.txt`.
-
----
-
-## `verify.sh` показывает drift
-
-Сначала прочитайте конкретную строку drift. Типовые варианты:
-
-| Drift | Meaning |
-|---|---|
-| missing `STEALTH_DOMAINS` | stealth-route-init не применился |
-| missing Channel B REDIRECT listener | sing-box не слушает `:<lan-redirect-port>` |
-| missing LAN TCP REDIRECT | Channel B nat rules не применились |
-| missing UDP/443 DROP | QUIC может обходить Reality |
-| legacy `br0 -> RC_VPN_ROUTE` still enabled | старая LAN->WGC1 политика вернулась |
-| legacy `OUTPUT -> RC_VPN_ROUTE` still enabled | router-originated traffic снова идет в WGC1 |
-| missing `wgs1 -> RC_VPN_ROUTE` | remote WG clients потеряли WGC1 split-routing |
-
-Safe recovery:
-
-```bash
-ROUTER=192.168.50.1 ./deploy.sh
-cd ansible
-ansible-playbook playbooks/20-stealth-router.yml
-ansible-playbook playbooks/99-verify.yml
-```
-
----
-
-## SSH/deploy проблемы
-
-```bash
-ping 192.168.50.1
-nc -z -w 5 192.168.50.1 22
-ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@192.168.50.1
-```
-
-Merlin/dropbear compatibility:
-
-- `deploy.sh` uses `scp -O`.
-- SSH public key algorithm compatibility is handled by script options.
-- SSH should stay `LAN only`.
-
----
-
-## IPv6
-
-Current supported mode: IPv6 disabled.
-
-Do not enable partial IPv6 and assume these IPv4 ipset/fwmark rules will cover it. Dual-stack routing requires a separate design.
-
-When IPv6 is disabled, dnsmasq must keep `filter-AAAA` enabled so LAN clients
-do not receive IPv6 destinations that cannot use the IPv4 stealth path.
+If SOCKS is missing, check sing-box first; do not re-enable WireGuard just to
+download the blocklist.

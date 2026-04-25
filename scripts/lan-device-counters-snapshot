@@ -43,8 +43,7 @@ awk '
     }
     if (ip == "") next
 
-    if (iface == "wgc1") channel = "vpn"
-    else if (iface == "wan0") channel = "wan"
+    if (iface == "wan0") channel = "wan"
     else channel = "other"
 
     ips[ip] = 1

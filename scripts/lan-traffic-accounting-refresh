@@ -32,11 +32,9 @@ ensure_forward_hook -o br0 "$LAN_IN_CHAIN"
 awk 'NF >= 3 { print $3 }' "$LEASES_FILE" | while IFS= read -r ip; do
   [ -n "$ip" ] || continue
 
-  ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -o wgc1 -j RETURN
   ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -o wan0 -j RETURN
   ensure_rule "$LAN_OUT_CHAIN" -s "$ip" -j RETURN
 
-  ensure_rule "$LAN_IN_CHAIN" -d "$ip" -i wgc1 -j RETURN
   ensure_rule "$LAN_IN_CHAIN" -d "$ip" -i wan0 -j RETURN
   ensure_rule "$LAN_IN_CHAIN" -d "$ip" -j RETURN
 done

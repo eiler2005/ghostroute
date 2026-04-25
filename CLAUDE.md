@@ -84,29 +84,27 @@ Deploying is allowed only after an explicit command.
 
 **Router:** ASUS RT-AX88U Pro, Asuswrt-Merlin, BusyBox ash, aarch64  
 **Primary LAN egress:** Channel B (`sing-box REDIRECT :<lan-redirect-port>` → VLESS+Reality → VPS)
-**Primary mobile ingress:** home Reality QR (`iPhone/Mac -> ASUS :443 -> sing-box home-reality-in -> Reality outbound -> VPS)
-**Legacy remote-client egress:** WireGuard WGC1 for raw WireGuard server clients on `wgs1`
+**Primary mobile ingress:** home Reality QR (`iPhone/Mac -> ASUS :<home-reality-port> -> sing-box home-reality-in -> Reality outbound -> VPS)
+**Cold fallback:** preserved `wgc1_*` NVRAM via `scripts/emergency-enable-wgc1.sh`; disabled in steady state
 
 Current routing matrix:
 - `br0` LAN/Wi-Fi TCP → `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → nat `REDIRECT :<lan-redirect-port>` → sing-box → Reality
-- `br0` LAN/Wi-Fi UDP/443 → `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → REJECT, forcing client fallback to TCP
-- `iphone-*` / `macbook` QR profiles → home public IP `:443` → router-side Reality inbound → same Reality outbound to VPS
+- `br0` LAN/Wi-Fi UDP/443 → `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → DROP, forcing client fallback to TCP
+- `iphone-*` / `macbook` QR profiles → home public IP `:<home-reality-port>` → router-side Reality inbound → same Reality outbound to VPS
 - router `OUTPUT` → main routing by default; use explicit proxy only for router-local diagnostics
-- `wgs1` remote WireGuard clients → legacy fallback: `VPN_DOMAINS` / `VPN_STATIC_NETS` → fwmark `0x1000` → table `wgc1`
+- Channel A (`wgs1` + `wgc1`) → disabled; emergency-only
 
 Stealth channel B is implemented in `ansible/` as an Ansible-driven path:
 - VPS: Caddy L4 on `:443` → Xray/3x-ui Reality inbound on `127.0.0.1:8443`
-- Router: sing-box REDIRECT inbound on `0.0.0.0:<lan-redirect-port>`, home Reality inbound on `0.0.0.0:443`, `STEALTH_DOMAINS` ipset, QUIC fallback rules
-- WGC1 is no longer the default LAN or mobile path; it is preserved for legacy `wgs1` clients
+- Router: sing-box REDIRECT inbound on `0.0.0.0:<lan-redirect-port>`, home Reality inbound on `0.0.0.0:<home-reality-port>`, `STEALTH_DOMAINS` ipset, QUIC fallback rules
+- WGC1 is not active; NVRAM is preserved for cold fallback
 
 ### Key Files
 
 | File | Purpose |
 |---|---|
-| `configs/dnsmasq.conf.add` | Manual rules for `VPN_DOMAINS` (legacy remote `wgs1` clients → `wgc1`) |
-| `configs/dnsmasq-stealth.conf.add` | Mirrored rules for `STEALTH_DOMAINS` (LAN → REDIRECT/Reality) |
-| `configs/dnsmasq-vpn-upstream.conf.add` | Retired compatibility block; do not add new `@wgc1` upstreams |
-| `configs/static-networks.txt` | Shared static CIDR subnets; egress selected by ingress source |
+| `configs/dnsmasq-stealth.conf.add` | Manual rules for `STEALTH_DOMAINS` (LAN → REDIRECT/Reality) |
+| `configs/static-networks.txt` | Static CIDR subnets for Channel B |
 | `configs/domains-no-vpn.txt` | Exceptions — domains that do not need VPN |
 | `ansible/playbooks/10-stealth-vps.yml` | Deploy Caddy L4 + Xray/Reality on VPS |
 | `ansible/playbooks/20-stealth-router.yml` | Deploy sing-box + stealth routing on router |
@@ -120,9 +118,8 @@ Stealth channel B is implemented in `ansible/` as an Ansible-driven path:
 
 ### Domain Addition Workflow
 
-1. Add `ipset=/<domain>/VPN_DOMAINS` to `configs/dnsmasq.conf.add`
-2. Add `ipset=/<domain>/STEALTH_DOMAINS` to `configs/dnsmasq-stealth.conf.add`
-3. Do not add new `server=/...@wgc1` rules; DNS goes through dnscrypt-proxy on `127.0.0.1:5354`
-4. Get permission → `ROUTER=192.168.50.1 ./deploy.sh`
-5. Re-apply stealth router role: `cd ansible && ansible-playbook playbooks/20-stealth-router.yml`
-6. Verify: `ansible-playbook playbooks/99-verify.yml`
+1. Add `ipset=/<domain>/STEALTH_DOMAINS` to `configs/dnsmasq-stealth.conf.add`
+2. Do not add `VPN_DOMAINS` or `server=/...@wgc1` rules; DNS goes through dnscrypt-proxy on `127.0.0.1:5354`
+3. Get permission → `ROUTER=192.168.50.1 ./deploy.sh`
+4. Re-apply stealth router role: `cd ansible && ansible-playbook playbooks/20-stealth-router.yml`
+5. Verify: `ansible-playbook playbooks/99-verify.yml`

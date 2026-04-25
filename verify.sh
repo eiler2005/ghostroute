@@ -37,18 +37,18 @@ which iptables >/dev/null 2>&1 && echo "iptables: ok" || echo "iptables: missing
 echo
 echo "== Routing =="
 ip rule show | grep -E '0x1000|to 1\.1\.1\.1|to 9\.9\.9\.9' || echo "routing rules not found"
-ip route show table wgc1 || true
 
 echo
 echo "== IPSet =="
-ipset list VPN_DOMAINS 2>/dev/null || echo "VPN_DOMAINS not found"
+ipset list STEALTH_DOMAINS 2>/dev/null || echo "STEALTH_DOMAINS not found"
+ipset list VPN_DOMAINS 2>/dev/null || echo "VPN_DOMAINS not found (expected after Channel A cleanup)"
 echo
 ipset list VPN_STATIC_NETS 2>/dev/null || echo "VPN_STATIC_NETS not found"
 
 echo
 echo "== DNS Fill Test =="
 nslookup google.com 127.0.0.1 >/dev/null 2>&1 || true
-ipset list VPN_DOMAINS 2>/dev/null | sed -n '1,80p' || true
+ipset list STEALTH_DOMAINS 2>/dev/null | sed -n '1,80p' || true
 REMOTE
 }
 
@@ -72,12 +72,12 @@ router_build="$(router_kv_get "$STATE_FILE" ROUTER_BUILDNO)"
 router_extend="$(router_kv_get "$STATE_FILE" ROUTER_EXTENDNO)"
 router_uptime="$(router_kv_get "$STATE_FILE" ROUTER_UPTIME)"
 
-vpn_current="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_CURRENT)"
-vpn_max="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MAX)"
+vpn_current="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_CURRENT)"
+vpn_max="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_MAX)"
 vpn_static="$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_CURRENT)"
 manual_count="$(router_kv_get "$STATE_FILE" MANUAL_RULE_COUNT)"
 auto_count="$(router_kv_get "$STATE_FILE" AUTO_RULE_COUNT)"
-vpn_mem="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MEM)"
+vpn_mem="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_MEM)"
 
 usage_pct="$(awk -v current="${vpn_current:-0}" -v max="${vpn_max:-0}" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f", (current / max) * 100 }')"
 headroom="$(awk -v current="${vpn_current:-0}" -v max="${vpn_max:-0}" 'BEGIN { if (max <= 0) print "n/a"; else print max - current }')"
@@ -87,14 +87,12 @@ blocked_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" BL
 persist_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" PERSIST_FILE_EPOCH)")"
 iface_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" INTERFACE_COUNTERS_EPOCH)")"
 tailscale_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" LATEST_TAILSCALE_EPOCH)")"
-wgs1_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" LATEST_WGS1_EPOCH)")"
 daily_age="$(router_age_seconds "$now_epoch" "$(router_kv_get "$STATE_FILE" LATEST_DAILY_EPOCH)")"
 
 blocked_level="$(router_freshness_level "$blocked_age" 172800 345600)"
 persist_level="$(router_freshness_level "$persist_age" 28800 86400)"
 iface_level="$(router_freshness_level "$iface_age" 28800 86400)"
 tailscale_level="$(router_freshness_level "$tailscale_age" 28800 86400)"
-wgs1_level="$(router_freshness_level "$wgs1_age" 28800 86400)"
 daily_level="$(router_freshness_level "$daily_age" 129600 259200)"
 ipv6_policy_mode="$(router_ipv6_policy_mode "$STATE_FILE")"
 ipv6_policy_level="$(router_ipv6_policy_level "$STATE_FILE")"
@@ -102,9 +100,6 @@ ipv6_policy_note="$(router_ipv6_policy_note "$STATE_FILE")"
 ipv6_runtime_present="$(router_ipv6_runtime_present "$STATE_FILE")"
 ipv6_lan_wan_present="$(router_ipv6_lan_wan_present "$STATE_FILE")"
 ipv6_wgc1_path_present="$(router_ipv6_wgc1_path_present "$STATE_FILE")"
-wgs1_snapshot_state="$(router_wgs1_snapshot_state "$STATE_FILE" "$wgs1_level")"
-wgs1_snapshot_note="$(router_wgs1_snapshot_note "$STATE_FILE" "$wgs1_level")"
-
 declare -a critical_items=()
 declare -a warning_items=()
 declare -a info_items=()
@@ -127,8 +122,12 @@ add_info() {
   info_count=$((info_count + 1))
 }
 
-[ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "1" ] || add_critical "VPN_DOMAINS ipset missing"
+[ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "0" ] || add_critical "legacy VPN_DOMAINS ipset should be absent"
 [ "$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_EXISTS)" = "1" ] || add_critical "VPN_STATIC_NETS ipset missing"
+[ "$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_EXISTS)" = "1" ] || add_critical "STEALTH_DOMAINS ipset missing"
+[ "$(router_kv_get "$STATE_FILE" WGS1_ENABLE)" = "0" ] || add_critical "wgs1_enable should be 0"
+[ "$(router_kv_get "$STATE_FILE" WGC1_ENABLE)" = "0" ] || add_critical "wgc1_enable should be 0"
+[ "$(router_kv_get "$STATE_FILE" WGC1_NVRAM_PRESERVED)" = "1" ] || add_critical "wgc1 cold-fallback NVRAM fields are missing"
 [ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "0" ] || add_critical "Channel A RC_VPN_ROUTE chain should be absent"
 [ "$(router_kv_get "$STATE_FILE" RULE_MARK_0X1000)" = "0" ] || add_critical "Channel A fwmark 0x1000 -> wgc1 rule should be absent"
 [ "$(router_kv_get "$STATE_FILE" RULE_DNS_1111)" = "0" ] || add_warning "legacy ip rule for 1.1.1.1 -> wgc1 should be absent"
@@ -183,12 +182,12 @@ elif [ "$capacity_level" = "Watch" ]; then
 fi
 
 latest_snapshot_date="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_DATE)"
-latest_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_DOMAINS)"
+latest_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_STEALTH_DOMAINS)"
 latest_static_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_STATIC)"
 latest_manual_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_MANUAL)"
 latest_auto_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_AUTO)"
 week_snapshot_date="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_DATE)"
-week_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_VPN_DOMAINS)"
+week_vpn_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_STEALTH_DOMAINS)"
 week_static_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_VPN_STATIC)"
 week_manual_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_MANUAL)"
 week_auto_raw="$(router_kv_get "$HISTORY_FILE" HISTORY_WEEK_AUTO)"
@@ -255,7 +254,7 @@ if [ -n "$week_manual_prev" ] && [ -n "$week_auto_prev" ]; then
 fi
 
 if [ -n "$latest_snapshot_date" ]; then
-  add_info "latest saved catalog snapshot: ${latest_snapshot_date} (VPN_DOMAINS ${latest_vpn_raw}, auto rules ${latest_auto_raw})"
+  add_info "latest saved catalog snapshot: ${latest_snapshot_date} (STEALTH_DOMAINS ${latest_vpn_raw}, auto rules ${latest_auto_raw})"
 else
   add_info "no prior local journal snapshot found for capacity deltas"
 fi
@@ -274,8 +273,12 @@ echo "Build:                   ${router_build}${router_extend:+_${router_extend}
 echo "Uptime:                  ${router_uptime}"
 echo
 echo "=== Routing Health ==="
-printf "%-34s %s\n" "VPN_DOMAINS ipset" "$( [ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "VPN_DOMAINS absent" "$( [ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "VPN_STATIC_NETS ipset" "$( [ "$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_EXISTS)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "STEALTH_DOMAINS ipset" "$( [ "$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_EXISTS)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "wgs1_enable disabled" "$( [ "$(router_kv_get "$STATE_FILE" WGS1_ENABLE)" = "0" ] && echo OK || echo ENABLED )"
+printf "%-34s %s\n" "wgc1_enable disabled" "$( [ "$(router_kv_get "$STATE_FILE" WGC1_ENABLE)" = "0" ] && echo OK || echo ENABLED )"
+printf "%-34s %s\n" "wgc1 NVRAM preserved" "$( [ "$(router_kv_get "$STATE_FILE" WGC1_NVRAM_PRESERVED)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "RC_VPN_ROUTE chain absent" "$( [ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy 1.1.1.1 rule absent" "$( [ "$(router_kv_get "$STATE_FILE" RULE_DNS_1111)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy 9.9.9.9 rule absent" "$( [ "$(router_kv_get "$STATE_FILE" RULE_DNS_9999)" = "0" ] && echo OK || echo PRESENT )"
@@ -310,8 +313,8 @@ printf "%-34s %s\n" "Recommendation" "Keep IPv6 -> Отключить"
 echo "Note:                    ${ipv6_policy_note}"
 echo
 echo "=== Catalog Capacity ==="
-printf "%-34s %s\n" "VPN_DOMAINS current" "${vpn_current}"
-printf "%-34s %s\n" "VPN_DOMAINS maxelem" "${vpn_max}"
+printf "%-34s %s\n" "STEALTH_DOMAINS current" "${vpn_current}"
+printf "%-34s %s\n" "STEALTH_DOMAINS maxelem" "${vpn_max}"
 printf "%-34s %s%%\n" "Usage" "${usage_pct}"
 printf "%-34s %s\n" "Usage level" "${capacity_level}"
 printf "%-34s %s\n" "Headroom" "${headroom}"
@@ -323,7 +326,7 @@ echo
 echo "=== Growth Trends ==="
 if [ -n "$latest_snapshot_date" ]; then
   printf "%-34s %s\n" "Latest snapshot" "${latest_snapshot_date}"
-  printf "%-34s %s (%s)\n" "VPN_DOMAINS delta" "${latest_vpn_delta}" "${latest_growth_level}"
+  printf "%-34s %s (%s)\n" "STEALTH_DOMAINS delta" "${latest_vpn_delta}" "${latest_growth_level}"
   printf "%-34s %s\n" "VPN_STATIC_NETS delta" "${latest_static_delta}"
   printf "%-34s %s\n" "Manual rules delta" "${latest_manual_delta}"
   printf "%-34s %s\n" "Auto rules delta" "${latest_auto_delta}"
@@ -333,7 +336,7 @@ else
 fi
 if [ -n "$week_snapshot_date" ]; then
   printf "%-34s %s\n" "Week snapshot" "${week_snapshot_date}"
-  printf "%-34s %s (%s)\n" "VPN_DOMAINS week delta" "${week_vpn_delta}" "${week_growth_level}"
+  printf "%-34s %s (%s)\n" "STEALTH_DOMAINS week delta" "${week_vpn_delta}" "${week_growth_level}"
   printf "%-34s %s\n" "VPN_STATIC_NETS week delta" "${week_static_delta}"
   printf "%-34s %s\n" "Manual rules week delta" "${week_manual_delta}"
   printf "%-34s %s\n" "Auto rules week delta" "${week_auto_delta}"
@@ -347,13 +350,7 @@ printf "%-34s %s (%s)\n" "Blocked list" "${blocked_level}" "$(router_human_age "
 printf "%-34s %s (%s)\n" "IPSet persistence file" "${persist_level}" "$(router_human_age "$persist_age")"
 printf "%-34s %s (%s)\n" "Interface counters snapshot" "${iface_level}" "$(router_human_age "$iface_age")"
 printf "%-34s %s (%s)\n" "Tailscale snapshot" "${tailscale_level}" "$(router_human_age "$tailscale_age")"
-printf "%-34s %s (%s)\n" "WGS1 snapshot" "${wgs1_level}" "$(router_human_age "$wgs1_age")"
 printf "%-34s %s (%s)\n" "Daily close snapshot" "${daily_level}" "$(router_human_age "$daily_age")"
-echo
-echo "=== WGS1 Observability ==="
-printf "%-34s %s\n" "Snapshot artifact" "${wgs1_snapshot_state}"
-printf "%-34s %s\n" "Collection capability" "$( [ "$(router_wgs1_collection_problem "$STATE_FILE")" = "1" ] && echo PROBLEM || echo OK )"
-echo "Note:                    ${wgs1_snapshot_note}"
 echo
 echo "=== Drift ==="
 if [ "$critical_count" -eq 0 ] && [ "$warning_count" -eq 0 ]; then
