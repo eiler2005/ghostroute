@@ -30,6 +30,9 @@ if [ "$ROUTER_TCP_PERF_TUNING" = "1" ]; then
   [ -e /proc/sys/net/ipv4/tcp_wmem ] && echo "{{ router_tcp_wmem | default('4096 65536 8388608') }}" > /proc/sys/net/ipv4/tcp_wmem
   [ -e /proc/sys/net/ipv4/tcp_mtu_probing ] && echo {{ router_tcp_mtu_probing | default(1) }} > /proc/sys/net/ipv4/tcp_mtu_probing
   [ -e /proc/sys/net/ipv4/tcp_slow_start_after_idle ] && echo {{ router_tcp_slow_start_after_idle | default(0) }} > /proc/sys/net/ipv4/tcp_slow_start_after_idle
+  [ -e /proc/sys/net/ipv4/tcp_window_scaling ] && echo {{ router_tcp_window_scaling | default(1) }} > /proc/sys/net/ipv4/tcp_window_scaling
+  [ -e /proc/sys/net/ipv4/tcp_sack ] && echo {{ router_tcp_sack | default(1) }} > /proc/sys/net/ipv4/tcp_sack
+  [ -e /proc/sys/net/ipv4/tcp_timestamps ] && echo {{ router_tcp_timestamps | default(1) }} > /proc/sys/net/ipv4/tcp_timestamps
 fi
 
 # The stable router path uses iptables REDIRECT into a local sing-box inbound.
@@ -86,9 +89,12 @@ iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -m comment --comment "mobi
 # home LAN traffic.
 for OLD_MSS in 1280 1360 1380 1400 "$HOME_REALITY_MSS"; do
   iptables -t mangle -D PREROUTING -p tcp --dport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+  iptables -t mangle -D OUTPUT -p tcp --sport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
 done
 iptables -t mangle -I PREROUTING 1 -p tcp --dport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$HOME_REALITY_MSS" 2>/dev/null \
-  || logger -t stealth-route-init "TCPMSS unavailable; mobile Reality ingress has no MSS clamp"
+  || logger -t stealth-route-init "TCPMSS unavailable; mobile Reality ingress SYN has no MSS clamp"
+iptables -t mangle -I OUTPUT 1 -p tcp --sport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$HOME_REALITY_MSS" 2>/dev/null \
+  || logger -t stealth-route-init "TCPMSS unavailable; mobile Reality ingress SYN-ACK has no MSS clamp"
 
 # Some Merlin builds lack the connlimit match. Keep rate-limiting opportunistic
 # so the ingress ACCEPT is still installed on those kernels.

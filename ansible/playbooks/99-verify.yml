@@ -230,7 +230,9 @@
     - name: Router-side Reality ingress has LTE-safe MSS clamp
       ansible.builtin.shell: |
         iptables -t mangle -S PREROUTING |
-          grep -q -- '--dport {{ home_reality_ingress_port }} .*TCPMSS --set-mss {{ home_reality_mss | default(1360) }}'
+          grep -q -- '--dport {{ home_reality_ingress_port }} .*TCPMSS --set-mss {{ home_reality_mss | default(1360) }}' &&
+        iptables -t mangle -S OUTPUT |
+          grep -q -- '--sport {{ home_reality_ingress_port }} .*TCPMSS --set-mss {{ home_reality_mss | default(1360) }}'
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
@@ -243,7 +245,10 @@
         [ "$tcp_rmem" = "{{ router_tcp_rmem | default('4096 262144 8388608') }}" ] &&
         [ "$tcp_wmem" = "{{ router_tcp_wmem | default('4096 65536 8388608') }}" ] &&
         [ "$(cat /proc/sys/net/ipv4/tcp_mtu_probing 2>/dev/null)" = "{{ router_tcp_mtu_probing | default(1) }}" ] &&
-        [ "$(cat /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null)" = "{{ router_tcp_slow_start_after_idle | default(0) }}" ]
+        [ "$(cat /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null)" = "{{ router_tcp_slow_start_after_idle | default(0) }}" ] &&
+        [ "$(cat /proc/sys/net/ipv4/tcp_window_scaling 2>/dev/null)" = "{{ router_tcp_window_scaling | default(1) }}" ] &&
+        [ "$(cat /proc/sys/net/ipv4/tcp_sack 2>/dev/null)" = "{{ router_tcp_sack | default(1) }}" ] &&
+        [ "$(cat /proc/sys/net/ipv4/tcp_timestamps 2>/dev/null)" = "{{ router_tcp_timestamps | default(1) }}" ]
       changed_when: false
       when: router_tcp_perf_tuning_enabled | default(true) | bool
 
