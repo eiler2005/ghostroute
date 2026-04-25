@@ -2,9 +2,9 @@
 # Reality-first traffic report from the router.
 #
 # This report intentionally does not inspect wgs1/wgc1. Channel A is
-# decommissioned; managed traffic enters sing-box through local REDIRECT, so
-# byte attribution should be read as WAN/LAN/device accounting plus sing-box
-# activity, not as a WireGuard interface counter.
+# decommissioned; managed traffic enters sing-box through local REDIRECT.
+# Per-device Reality attribution comes from router-side mangle counters that
+# observe managed REDIRECT flows before nat rewrites them.
 
 set -euo pipefail
 
@@ -28,6 +28,7 @@ LAN_BYTES_PARSED="$TMPDIR/lan-device-bytes.txt"
 LAN_ALIAS_MAP="$TMPDIR/lan-alias-map.txt"
 DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
 DEVICE_MIX_TOTALS="$TMPDIR/device-mix-totals.txt"
+DEVICE_TOP_REALITY="$TMPDIR/device-top-reality.txt"
 DEVICE_TOP_WAN="$TMPDIR/device-top-wan.txt"
 CURRENT_TAILSCALE="$TMPDIR/current-tailscale.json"
 BASE_TAILSCALE="$TMPDIR/base-tailscale.json"
@@ -209,6 +210,8 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
     }
     NR == FNR {
       host[$1] = $2
+      reality_up[$1] = $3 + 0
+      reality_down[$1] = $4 + 0
       wan_up[$1] = $5 + 0
       wan_down[$1] = $6 + 0
       other_up[$1] = $7 + 0
@@ -219,6 +222,8 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
     {
       ip = $1
       current_host[ip] = $2
+      creality_up[ip] = $3 + 0
+      creality_down[ip] = $4 + 0
       cwan_up[ip] = $5 + 0
       cwan_down[ip] = $6 + 0
       cother_up[ip] = $7 + 0
@@ -231,21 +236,24 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
         if (label == "" || label == "?") label = host[ip]
         if (label == "" || label == "?") label = ip
 
+        rup = delta(creality_up[ip], reality_up[ip])
+        rdown = delta(creality_down[ip], reality_down[ip])
         wup = delta(cwan_up[ip], wan_up[ip])
         wdown = delta(cwan_down[ip], wan_down[ip])
         oup = delta(cother_up[ip], other_up[ip])
         odown = delta(cother_down[ip], other_down[ip])
 
+        rtotal = rup + rdown
         wtotal = wup + wdown
         ototal = oup + odown
-        upload = wup + oup
-        download = wdown + odown
+        upload = rup + wup + oup
+        download = rdown + wdown + odown
         total = upload + download
 
-        printf "%s|%s|%d|%d|%d|%d|%d\n",
-          ip, label, wtotal, ototal, upload, download, total
+        printf "%s|%s|%d|%d|%d|%d|%d|%d\n",
+          ip, label, rtotal, wtotal, ototal, upload, download, total
       }
-    }' "$LAN_BYTES_BASE" "$LAN_BYTES_CURRENT" | sort -t'|' -k7,7nr -k1,1V > "$LAN_BYTES_PARSED"
+    }' "$LAN_BYTES_BASE" "$LAN_BYTES_CURRENT" | sort -t'|' -k8,8nr -k1,1V > "$LAN_BYTES_PARSED"
 else
   : > "$LAN_BYTES_PARSED"
 fi
@@ -253,18 +261,21 @@ fi
 if [ -s "$LAN_BYTES_PARSED" ]; then
   awk -F'|' '
     {
-      total += $7 + 0
-      wan += $3 + 0
-      other += $4 + 0
+      total += $8 + 0
+      reality += $3 + 0
+      wan += $4 + 0
+      other += $5 + 0
       devices++
     }
     END {
-      printf "%d|%d|%d|%d\n", total, wan, other, devices
+      printf "%d|%d|%d|%d|%d\n", total, reality, wan, other, devices
     }
   ' "$LAN_BYTES_PARSED" > "$DEVICE_MIX_TOTALS"
-  sort -t'|' -k3,3nr -k7,7nr "$LAN_BYTES_PARSED" | awk -F'|' '$3 > 0 { print }' > "$DEVICE_TOP_WAN"
+  sort -t'|' -k3,3nr -k8,8nr "$LAN_BYTES_PARSED" | awk -F'|' '$3 > 0 { print }' > "$DEVICE_TOP_REALITY"
+  sort -t'|' -k4,4nr -k8,8nr "$LAN_BYTES_PARSED" | awk -F'|' '$4 > 0 { print }' > "$DEVICE_TOP_WAN"
 else
   : > "$DEVICE_MIX_TOTALS"
+  : > "$DEVICE_TOP_REALITY"
   : > "$DEVICE_TOP_WAN"
 fi
 
@@ -317,26 +328,58 @@ echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
 echo
 echo "=== TOTALS ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
-echo "Reality-managed total:   n/a  (local REDIRECT path; inspect sing-box logs/counters)"
+if [ -s "$DEVICE_MIX_TOTALS" ]; then
+  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_REALITY_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
+  echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
+else
+  echo "Reality-managed total:   n/a"
+fi
 echo "Wi-Fi total:             $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
 echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
 echo "Tailscale total:         $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib "$TAILSCALE_RX_TOTAL") / TX $(human_gib "$TAILSCALE_TX_TOTAL"))"
-echo "Reality share/WAN:       n/a"
+if [ -s "$DEVICE_MIX_TOTALS" ]; then
+  echo "Reality share/WAN:       $(human_pct "$DEVICE_REALITY_BYTES" "$WAN_TOTAL")"
+else
+  echo "Reality share/WAN:       n/a"
+fi
 echo
 echo "=== DEVICE TRAFFIC MIX ==="
 if [ -s "$DEVICE_MIX_TOTALS" ]; then
-  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
   echo "Devices in byte view:    ${DEVICE_COUNT}"
   echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
-  echo "Via Reality:             n/a  (local REDIRECT attribution is not interface-based)"
+  echo "Via Reality:             $(human_bytes "$DEVICE_REALITY_BYTES")  ($(human_pct "$DEVICE_REALITY_BYTES" "$DEVICE_TOTAL_BYTES"))"
   echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
   echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
+  echo "Interpretation:          Reality = managed REDIRECT/sing-box flows; Direct WAN = traffic that bypassed REDIRECT."
 else
   echo "Devices in byte view:    n/a"
   echo "Device byte total:       n/a"
   echo "Via Reality:             n/a"
   echo "Direct WAN:              n/a"
   echo "Other:                   n/a"
+fi
+echo
+echo "=== TOP BY REALITY ==="
+if [ -s "$DEVICE_TOP_REALITY" ]; then
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    function pct(part, total) {
+      part += 0
+      total += 0
+      if (total <= 0) return "n/a"
+      return sprintf("%.1f%%", (part / total) * 100)
+    }
+    NR <= 5 {
+      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($3), pct($3, $8)
+    }' "$DEVICE_TOP_REALITY"
+else
+  echo "  none"
 fi
 echo
 echo "=== TOP BY DIRECT WAN ==="
@@ -350,7 +393,7 @@ if [ -s "$DEVICE_TOP_WAN" ]; then
       return sprintf("%d B", x)
     }
     NR <= 5 {
-      printf "  %-30s %10s\n", $2, human_bytes($3)
+      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), ( ($8 + 0) > 0 ? sprintf("%.1f%%", (($4 + 0) / ($8 + 0)) * 100) : "n/a" )
     }' "$DEVICE_TOP_WAN"
 else
   echo "  none"
@@ -369,7 +412,7 @@ awk -F'|' '
 echo
 echo "=== LAN DEVICE BYTES ==="
 if [ -s "$LAN_BYTES_PARSED" ]; then
-  printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "WAN" "Other" "Upload" "Download"
+  printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "Reality" "WAN" "Other" "Upload" "Download"
   awk -F'|' '
     function human_bytes(x) {
       x += 0
@@ -381,8 +424,8 @@ if [ -s "$LAN_BYTES_PARSED" ]; then
     BEGIN { idx = 0 }
     {
       idx++
-      printf "LAN-%-4d  %-18s  %10s  %10s  %10s  %10s  %10s\n",
-        idx, $2, human_bytes($7), human_bytes($3), human_bytes($4), human_bytes($5), human_bytes($6)
+      printf "LAN-%-4d  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n",
+        idx, $2, human_bytes($8), human_bytes($3), human_bytes($4), human_bytes($5), human_bytes($6), human_bytes($7)
     }' "$LAN_BYTES_PARSED"
   echo
   echo "Rows above are cumulative byte deltas since ${LAN_BYTES_START}."
@@ -392,8 +435,8 @@ fi
 echo
 echo "=== NOTES ==="
 echo "- Channel A WireGuard is retired; wgs1/wgc1 are intentionally not inspected."
-echo "- Reality-managed bytes are local REDIRECT flows and are not represented by a wgc1 interface counter."
-echo "- Use sing-box logs/counters plus WAN/LAN totals for Reality activity checks."
+echo "- Reality-managed bytes are mangle-accounted managed REDIRECT flows, not a wgc1 interface counter."
+echo "- Mobile Home Reality traffic is visible in sing-box logs; this report's per-device mix covers LAN clients."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
   echo "- LAN hostnames are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
 fi

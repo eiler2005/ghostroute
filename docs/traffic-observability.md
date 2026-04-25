@@ -6,7 +6,7 @@
 
 | Source | Egress | Accounting note |
 |---|---|---|
-| LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; REDIRECT counters are now the primary Channel B signal |
+| LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; `RC_LAN_REALITY_*` mangle counters provide the `Via Reality` view |
 | Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | LTE carrier sees the home IP; VPS counters show only managed forwarded traffic |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
@@ -77,7 +77,8 @@ This is intentional drift detection. If the report complains about `VPN_DOMAINS`
 Runs on the router and stores:
 
 - interface counters: `wan0`, `br0`, radios, and other active non-Channel-A interfaces
-- LAN per-device mangle counters
+- LAN per-device mangle counters:
+  `RC_LAN_REALITY_OUT/IN`, `RC_LAN_BYTES_OUT/IN`
 - `tailscale status --json`
 
 Primary storage:
@@ -128,7 +129,10 @@ DNS forensics show interest, not bytes.
 Important interpretation:
 
 - REDIRECT `:<lan-redirect-port>` counters and sing-box logs are the primary matched LAN egress signal.
+- `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
+- `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
+- Mobile Home Reality clients are not LAN devices; use sing-box logs for per-client mobile activity.
 
 ---
 
@@ -158,8 +162,9 @@ These commands do not mutate routing runtime except the `--save` variants writin
 
 ```sh
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
+iptables-save -t mangle -c | grep RC_LAN_REALITY
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
-iptables-save -t mangle -c | grep rcacct
+iptables-save -t mangle -c | grep RC_LAN_BYTES
 ```
 
 Use these when report totals look surprising.

@@ -154,13 +154,14 @@
 Что улучшить:
 
 - продолжить улучшение day/week/month summaries
-- лучше показывать `Top by VPN`, `Top by direct WAN`, `Top by WG server peers`
+- лучше показывать `Top by Reality`, `Top by direct WAN`, `Top by Tailscale peers`
 - сохранить разделение на public-safe output и local-only aliases
 
 Статус:
 
 - значимая часть уже реализована:
-  - стабильные секции `Window / Totals / Device Traffic Mix / Top by VPN / Top by Direct WAN / Top by WG server peers / Top by Tailscale peers / Notes`
+  - стабильные секции `Window / Totals / Device Traffic Mix / Top by Reality / Top by Direct WAN / Top by Tailscale peers / LAN Device Bytes / Notes`
+  - per-device `Via Reality` восстановлен после ухода от `wgc1` через `RC_LAN_REALITY_OUT/IN` mangle counters
   - tracked sanitised `router-health-latest.md`
   - явный LLM-runbook
   - USB-backed health snapshots на роутере
