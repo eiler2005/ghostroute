@@ -11,7 +11,7 @@ TABLE={{ stealth_route_table }}
 IFACE={{ singbox_tun_name }}
 REDIRECT_PORT={{ singbox_redirect_port }}
 HOME_REALITY_PORT={{ home_reality_ingress_port }}
-HOME_REALITY_CONNLIMIT_ABOVE={{ home_reality_connlimit_above | default(100) }}
+HOME_REALITY_CONNLIMIT_ABOVE={{ home_reality_connlimit_above | default(300) }}
 HOME_REALITY_MSS={{ home_reality_mss | default(1360) }}
 ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
 VPS_IP={{ vps_ssh_host }}
@@ -76,6 +76,7 @@ iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst 
 # UUID and VLESS flow; this rule only opens the TCP listener.
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
+iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 300 -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above "$HOME_REALITY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -m comment --comment "mobile-reality-ingress" -j ACCEPT 2>/dev/null || true
