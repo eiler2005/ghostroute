@@ -3,8 +3,11 @@
 VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 
 **Audience:** future engineer, LLM agent, or operator maintaining the deployed stack.
-**Status:** implemented and verified.
-**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Both paths exit through the VPS VPS while WGC1 remains only a legacy `wgs1` fallback.
+**Status:** implemented and verified; Channel A cleanup and Home Reality split-routing refinements have landed after the original draft.
+**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS VPS; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
+
+For the current end-to-end flow and observer model, see
+[network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ---
 
@@ -15,9 +18,9 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | sing-box redirect -> Reality |
-| Remote mobile QR clients | generated VLESS/Reality profile | TCP/<home-reality-port> to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
-| Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | `wgc1` |
+| Legacy WireGuard Channel A | n/a | inactive in steady state | cold fallback only |
 
 ### Server side
 
@@ -41,14 +44,15 @@ This is intentionally not a fully isolated Docker-only ingress. The compromise i
 
 ```text
 Merlin router
-  -> dnsmasq fills VPN_DOMAINS and STEALTH_DOMAINS
+  -> dnsmasq fills STEALTH_DOMAINS
   -> dnscrypt-proxy listens on 127.0.0.1:5354
   -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:1080
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
   -> sing-box listens on 0.0.0.0:<home-reality-port> home Reality inbound for remote mobile clients
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
-  -> legacy 0x2000/table 200/singbox0 state is removed
+  -> mobile reality-in uses STEALTH_DOMAINS/VPN_STATIC_NETS rule-sets for split routing
+  -> legacy 0x1000/0x2000/table 200/singbox0/RC_VPN_ROUTE state is removed
 ```
 
 ---
@@ -67,27 +71,22 @@ LAN/Wi-Fi device
   -> Xray Reality inbound
   -> Internet
 
-Remote iPhone/MacBook connected to router WireGuard server
-  -> wgs1
-  -> dnsmasq
-  -> VPN_DOMAINS
-  -> RC_VPN_ROUTE
-  -> mark 0x1000
-  -> table wgc1
-  -> legacy WireGuard client WGC1
-  -> Internet
-
 Remote iPhone/MacBook using the current QR profile
   -> home public IP :<home-reality-port>
   -> sing-box home Reality inbound on ASUS
-  -> sing-box Reality outbound
-  -> VPS shared Caddy L4
-  -> Xray Reality inbound
-  -> Internet
+  -> if destination is managed:
+       sing-box Reality outbound -> VPS shared Caddy L4 -> Xray Reality inbound -> Internet
+  -> otherwise:
+       sing-box direct-out -> home WAN -> Internet
 ```
 
-Key invariant: `wgs1` is not hooked into `STEALTH_DOMAINS` in the current production policy. WireGuard-server clients keep the old WGC1 behavior only as a legacy fallback.
-Preferred mobile-client invariant: use the QR profile that points at the home public IP, not the VPS IP. This keeps the LTE carrier-facing endpoint domestic while the final website-facing exit remains VPS.
+Key invariant: active Channel A WireGuard is absent in the current production
+policy. `wgc1_*` NVRAM is preserved only for cold fallback via
+`scripts/emergency-enable-wgc1.sh`.
+
+Preferred mobile-client invariant: use the QR profile that points at the home
+public IP, not the VPS IP. This keeps the LTE carrier-facing endpoint domestic.
+The final website-facing exit is VPS only for managed destinations.
 
 ---
 
@@ -121,9 +120,7 @@ ansible/
   out/clients/
 
 configs/
-  dnsmasq.conf.add
   dnsmasq-stealth.conf.add
-  dnsmasq-vpn-upstream.conf.add
   sing-box-client.json.template
   static-networks.txt
 
@@ -273,25 +270,13 @@ cd ..
 
 ## 5. Current Config Contracts
 
-### `configs/dnsmasq.conf.add`
-
-Populates `VPN_DOMAINS` for remote `wgs1` clients:
-
-```text
-ipset=/example.com/VPN_DOMAINS
-```
-
 ### `configs/dnsmasq-stealth.conf.add`
 
-Populates `STEALTH_DOMAINS` for LAN/router Channel B:
+Populates `STEALTH_DOMAINS` for LAN Channel B and mobile Home Reality split:
 
 ```text
 ipset=/example.com/STEALTH_DOMAINS
 ```
-
-### `configs/dnsmasq-vpn-upstream.conf.add`
-
-Retired compatibility block. Do not add new `@wgc1` upstreams here.
 
 ### `configs/static-networks.txt`
 
@@ -300,15 +285,14 @@ Shared CIDR catalog:
 ```text
 br0 TCP     -> REDIRECT :<lan-redirect-port> -> sing-box -> Reality
 br0 UDP/443 -> DROP -> TCP fallback
-wgs1        -> 0x1000 -> wgc1
+mobile      -> rule-set match -> Reality
 ```
 
 ### `scripts/domain-auto-add.sh`
 
-Auto-discovered domains are written into both sets:
+Auto-discovered domains are written only into `STEALTH_DOMAINS`:
 
 ```text
-ipset=/auto-example.com/VPN_DOMAINS
 ipset=/auto-example.com/STEALTH_DOMAINS
 ```
 
@@ -353,15 +337,16 @@ Expected:
 - `STEALTH_DOMAINS` exists and can be populated.
 - `br0` TCP to `STEALTH_DOMAINS` and `VPN_STATIC_NETS` redirects to `:<lan-redirect-port>`.
 - `br0` UDP/443 to those sets is silently dropped to force TCP fallback.
-- `wgs1` is not hooked into Channel B.
-- legacy `0x2000`, table `200`, and `singbox0` are absent.
+- mobile Home Reality has a managed split rule and direct fallback rule.
+- mobile Home Reality has no catch-all `reality-in -> reality-out` rule.
+- legacy `0x1000`, `0x2000`, `RC_VPN_ROUTE`, table `200`, and `singbox0` are absent.
 - dnscrypt-proxy listens on configured port.
 - dnsmasq upstream points to `127.0.0.1#5354`.
 - OpenClaw has no router DNS override in SSH-only mode.
 - Router can connect to the VPS cover port: `echo | nc -w 3 198.51.100.10 443` exits `0`.
 - sing-box logs have no fresh `connection refused` to `198.51.100.10:443`.
 - sing-box logs have no fresh `x509: certificate is valid for ... microsoft.com, not gateway.icloud.com`.
-- WGC1 reserve hook is limited to remote WireGuard clients.
+- Channel A WireGuard runtime hooks are absent; `wgc1_*` NVRAM is preserved only for cold fallback.
 - `domain-auto-add.sh` default-skips when `/opt/tmp/blocked-domains.lst` is missing or empty.
 
 ---
@@ -401,7 +386,7 @@ Fix:
 - If logs mention Microsoft certificates, sync the existing 3x-ui/Xray Reality inbound to `gateway.icloud.com:443` and restart `xray`.
 - Regenerate and redistribute client QR codes after the SNI change.
 
-### Remote WireGuard client does not use WGC1
+### Channel A runtime unexpectedly reappears
 
 Check:
 
@@ -411,6 +396,9 @@ iptables -t mangle -S RC_VPN_ROUTE
 ip rule show | grep 0x1000
 ip route show table wgc1
 ```
+
+Expected steady state: no matches. Use `scripts/emergency-enable-wgc1.sh
+--disable` if an emergency fallback test left runtime rules behind.
 
 ### DNS is suspicious
 

@@ -11,7 +11,10 @@ LAN/Wi-Fi TCP             -> STEALTH_DOMAINS/VPN_STATIC_NETS
 LAN/Wi-Fi UDP/443         -> DROP for managed destinations -> client TCP fallback
 
 Remote QR mobile clients  -> home IP :<home-reality-port>
-                           -> router Reality inbound -> Reality outbound -> VPS
+                           -> router Reality inbound
+                           -> managed split:
+                                STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound -> VPS
+                                other destinations -> direct-out -> home WAN
 
 router OUTPUT             -> main routing unless explicitly proxied
 ```
@@ -19,7 +22,7 @@ router OUTPUT             -> main routing unless explicitly proxied
 | Источник | Домены | Static CIDR | Egress |
 |---|---|---|---|
 | `br0` | `STEALTH_DOMAINS` | `VPN_STATIC_NETS` | sing-box REDIRECT `:<lan-redirect-port>` |
-| mobile QR | generated VLESS/Reality profile | n/a | home ASUS `:<home-reality-port>` -> sing-box -> VPS |
+| mobile QR | generated VLESS/Reality profile + `STEALTH_DOMAINS` | `VPN_STATIC_NETS` | home ASUS `:<home-reality-port>` -> managed split |
 | `OUTPUT` | no transparent capture | no transparent capture | main routing / explicit proxy |
 
 `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
@@ -37,6 +40,11 @@ only for `scripts/emergency-enable-wgc1.sh`.
 
 3. **Российские сервисы вне managed route.** Домены, которых нет в
    `STEALTH_DOMAINS`/`VPN_STATIC_NETS`, идут обычным домашним WAN-выходом.
+   Это относится и к домашней LAN, и к traffic, который пришёл через mobile
+   Home Reality ingress.
+
+Подробная схема от клиента до конечного сайта, включая процессы, порты и
+observer model: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ## Доменный каталог
 

@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Router-ASUS%20Asuswrt--Merlin-blue)](https://github.com/RMerl/asuswrt-merlin.ng)
-[![VPN](https://img.shields.io/badge/VPN-WireGuard-88171A)](https://www.wireguard.com/)
+[![Routing](https://img.shields.io/badge/Routing-VLESS%2BReality-5B5FC7)]()
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
 
 **[Русская версия / Russian version ->](README-ru.md)**
@@ -18,7 +18,10 @@ GhostRoute lets an ASUS Merlin router decide which domains and IP networks shoul
 The current production model has two active paths:
 
 - Home Wi-Fi/LAN uses Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
-- Remote mobile QR/VLESS clients connect to the home ASUS first: `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
+- Remote mobile QR/VLESS clients connect to the home ASUS first:
+  `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound`.
+  The router then applies the same managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
+  leave through VPS Reality, while non-managed destinations leave through the home WAN.
 
 Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRAM remains only as a cold fallback.
 
@@ -86,16 +89,23 @@ Home public IP :<home-reality-port>
       v
 ASUS Router / Merlin
 +-- sing-box home Reality inbound
-+-- sing-box Reality outbound
-      |
-      v
-VPS VPS / Caddy / Xray
-      |
-      v
-Internet
++-- managed destination
+|     +-- STEALTH_DOMAINS / VPN_STATIC_NETS
+|     +-- sing-box Reality outbound
+|     +-- VPS VPS / Caddy / Xray
+|     +-- Internet
++-- non-managed destination
+      +-- sing-box direct outbound
+      +-- home ISP WAN
+      +-- Internet
 ```
 
-Mobile carriers see the phone connecting to the home Russian IP. Websites/checkers still see the VPS exit IP because the router's outbound hop remains Reality-to-VPS.
+Mobile carriers see the phone connecting to the home Russian IP. Managed
+websites/checkers see the VPS exit IP. Non-managed websites see the home
+Russian WAN IP.
+
+Detailed workflow, ports, components and observer model:
+[docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md).
 
 ### 3. Cold Fallback
 
@@ -154,6 +164,7 @@ scripts/
 
 docs/
   architecture.md
+  network-flow-and-observer-model.md
   channel-routing-operations.md
   stealth-channel-implementation-guide.md
   domain-management.md
@@ -187,12 +198,11 @@ Expected invariants:
 
 - LAN TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS` is redirected to `:<lan-redirect-port>`.
 - LAN UDP/443 for those sets is silently dropped to force TCP fallback.
-- Remote QR/VLESS clients connect to the home public IP on `:443`, not directly to VPS.
-- Router-side `sing-box` accepts `home-reality-in` on `0.0.0.0:443` and forwards it to the existing Reality outbound.
-- `wgs1` enters `RC_VPN_ROUTE`.
-- `RC_VPN_ROUTE` marks `VPN_DOMAINS` and `VPN_STATIC_NETS` with `0x1000`.
-- Legacy `0x2000`, table `200`, and `singbox0` are absent.
-- `0x1000` uses table `wgc1`.
+- Remote QR/VLESS clients connect to the home public IP on `:<home-reality-port>`, not directly to VPS.
+- Router-side `sing-box` accepts `reality-in` on `0.0.0.0:<home-reality-port>`.
+- Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
+- `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.
+- `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` and active `wgc1` are absent.
 
 ---
 
@@ -219,6 +229,7 @@ See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-managem
 
 - [README-ru.md](README-ru.md) - main Russian documentation
 - [docs/architecture.md](docs/architecture.md) - current routing architecture
+- [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations and channel switching
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
 - [docs/domain-management.md](docs/domain-management.md) - domain and static-network catalog management

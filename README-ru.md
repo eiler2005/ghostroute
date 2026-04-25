@@ -15,7 +15,10 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
 В текущей production-схеме есть два активных пути:
 
 - Домашний Wi-Fi/LAN использует Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
-- Удаленные мобильные QR/VLESS-клиенты сначала подключаются к домашнему ASUS: `iPhone/Mac -> домашний белый IP :<home-reality-port> -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
+- Удаленные мобильные QR/VLESS-клиенты сначала подключаются к домашнему ASUS:
+  `iPhone/Mac -> домашний белый IP :<home-reality-port> -> sing-box home Reality inbound`.
+  Дальше роутер применяет тот же managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
+  уходят через VPS Reality, остальные направления идут напрямую через домашний WAN.
 
 Channel A (`wgs1` + `wgc1`) выключен в нормальной эксплуатации. `wgc1_*` NVRAM сохранён только как cold fallback.
 
@@ -83,16 +86,23 @@ Home public IP :<home-reality-port>
       v
 ASUS Router / Merlin
 +-- sing-box home Reality inbound
-+-- sing-box Reality outbound
-      |
-      v
-VPS VPS / Caddy / Xray
-      |
-      v
-Internet
++-- managed destination
+|     +-- STEALTH_DOMAINS / VPN_STATIC_NETS
+|     +-- sing-box Reality outbound
+|     +-- VPS VPS / Caddy / Xray
+|     +-- Internet
++-- non-managed destination
+      +-- sing-box direct outbound
+      +-- home ISP WAN
+      +-- Internet
 ```
 
-Мобильный оператор видит подключение телефона к домашнему российскому IP. Сайты/checker всё равно видят VPS exit IP, потому что outbound с роутера остается Reality-to-VPS.
+Мобильный оператор видит подключение телефона к домашнему российскому IP.
+Managed-сайты/checker видят VPS exit IP. Non-managed сайты видят домашний
+российский WAN IP.
+
+Подробная схема с полным workflow, портами, компонентами и таблицей "кто что
+видит": [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md).
 
 ### 3. Cold fallback
 
@@ -151,6 +161,7 @@ scripts/
 
 docs/
   architecture.md
+  network-flow-and-observer-model.md
   channel-routing-operations.md
   stealth-channel-implementation-guide.md
   domain-management.md
@@ -184,12 +195,11 @@ cd ..
 
 - LAN TCP для `STEALTH_DOMAINS` и `VPN_STATIC_NETS` редиректится на `:<lan-redirect-port>`.
 - LAN UDP/443 для этих наборов отклоняется, чтобы форсировать TCP fallback.
-- Remote QR/VLESS-клиенты подключаются к домашнему белому IP на `:443`, не напрямую к VPS.
-- Router-side `sing-box` принимает `home-reality-in` на `0.0.0.0:443` и отправляет его в существующий Reality outbound.
-- `wgs1` входит в `RC_VPN_ROUTE`.
-- `RC_VPN_ROUTE` маркирует `VPN_DOMAINS` и `VPN_STATIC_NETS` как `0x1000`.
-- Legacy `0x2000`, table `200` и `singbox0` отсутствуют.
-- `0x1000` использует table `wgc1`.
+- Remote QR/VLESS-клиенты подключаются к домашнему белому IP на `:<home-reality-port>`, не напрямую к VPS.
+- Router-side `sing-box` принимает `reality-in` на `0.0.0.0:<home-reality-port>`.
+- Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
+- `STEALTH_DOMAINS` и `VPN_STATIC_NETS` существуют.
+- `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` и active `wgc1` отсутствуют.
 
 ---
 
@@ -216,6 +226,7 @@ cd ..
 
 - [README.md](README.md) - English overview
 - [docs/architecture.md](docs/architecture.md) - текущая routing architecture
+- [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - подробная схема потоков и кто что видит
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations и переключение каналов
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - реализованный VLESS+Reality guide
 - [docs/domain-management.md](docs/domain-management.md) - управление domain/static-network каталогами

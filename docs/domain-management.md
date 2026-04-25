@@ -6,14 +6,18 @@
 
 | Файл | ipset | Для кого | Egress |
 |---|---|---|---|
-| `configs/dnsmasq-stealth.conf.add` | `STEALTH_DOMAINS` | домашняя LAN/Wi-Fi | sing-box REDIRECT `:<lan-redirect-port>` -> Reality |
+| `configs/dnsmasq-stealth.conf.add` | `STEALTH_DOMAINS` | домашняя LAN/Wi-Fi и mobile Home Reality split | managed -> Reality; non-managed -> direct |
 
 `VPN_DOMAINS` удалён из нормальной схемы. `VPN_STATIC_NETS` остаётся, потому что
 Channel B использует этот исторически названный ipset для direct-IP/static CIDR.
 
 Remote mobile QR/VLESS-клиенты не зависят от ipset на первом hop: они идут на
-домашний ASUS `:<home-reality-port>`, попадают в router-side Reality inbound и дальше в тот же
-Reality outbound до VPS.
+домашний ASUS `:<home-reality-port>` и попадают в router-side Reality inbound. После этого
+sing-box использует rule-set, собранный из `STEALTH_DOMAINS` и
+`VPN_STATIC_NETS`: managed-направления уходят в Reality outbound до VPS,
+non-managed-направления уходят через `direct-out` и домашний WAN.
+
+Полная схема: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ## Добавить домен вручную
 
