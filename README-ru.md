@@ -227,6 +227,7 @@ cd ..
 - [README.md](README.md) - English overview
 - [docs/architecture.md](docs/architecture.md) - текущая routing architecture
 - [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - подробная схема потоков и кто что видит
+- [docs/routing-performance-troubleshooting.md](docs/routing-performance-troubleshooting.md) - диагностика и фиксы производительности LTE/Home Reality
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations и переключение каналов
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - реализованный VLESS+Reality guide
 - [docs/domain-management.md](docs/domain-management.md) - управление domain/static-network каталогами
