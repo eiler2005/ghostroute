@@ -172,6 +172,15 @@
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
+    - name: Router-side Reality ingress uses managed split routing
+      ansible.builtin.shell: |
+        cfg="$(sed 's/[[:space:]]//g' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","outbound":"direct-out"' &&
+        ! printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","outbound":"reality-out"'
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"
       changed_when: false

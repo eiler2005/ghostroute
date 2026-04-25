@@ -81,10 +81,25 @@
     { "type": "direct", "tag": "direct-out" }
   ],
   "route": {
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "stealth-domains",
+        "format": "source",
+        "path": "/opt/etc/sing-box/rule-sets/stealth-domains.json"
+      },
+      {
+        "type": "local",
+        "tag": "stealth-static",
+        "format": "source",
+        "path": "/opt/etc/sing-box/rule-sets/stealth-static.json"
+      }
+    ],
     "rules": [
       { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
-      { "inbound": "reality-in", "outbound": "reality-out" }
+      { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "reality-in", "outbound": "direct-out" }
 {% endif %}
     ],
     "final": "direct-out"

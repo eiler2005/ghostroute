@@ -49,6 +49,16 @@
   when: home_reality_enabled | default(false) | bool
   no_log: true
 
+- name: Install sing-box rule-set generator
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/update-singbox-rule-sets.sh"
+    dest: /jffs/scripts/update-singbox-rule-sets.sh
+    mode: "0755"
+
+- name: Generate sing-box rule-sets for mobile split routing
+  ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+  changed_when: false
+
 - name: Render sing-box config
   ansible.builtin.template:
     src: config.json.j2

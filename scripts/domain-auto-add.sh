@@ -865,6 +865,13 @@ n_cln=$(wc -l < "$CNT_CLN"  2>/dev/null | tr -d ' '); n_cln=${n_cln:-0}
 if [ -f "$CHANGED" ]; then
   service restart_dnsmasq
   logger -t domain-auto-add "dnsmasq reloaded, $n_add domains added"
+  if [ -x /jffs/scripts/update-singbox-rule-sets.sh ]; then
+    if /jffs/scripts/update-singbox-rule-sets.sh --restart-if-changed >/tmp/domain-auto-add.singbox-rules.log 2>&1; then
+      logger -t domain-auto-add "$(cat /tmp/domain-auto-add.singbox-rules.log 2>/dev/null | tr '\n' ';' | sed 's/;*$//')"
+    else
+      logger -t domain-auto-add "sing-box rule-set refresh failed; see /tmp/domain-auto-add.singbox-rules.log"
+    fi
+  fi
 fi
 
 # ── Rotate dnsmasq log ───────────────────────────────────────────────────────
