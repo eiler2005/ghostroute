@@ -37,10 +37,10 @@ stealth_test_upstream: 1.1.1.1
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_channel_b_lan_enabled: true
 router_tcp_perf_tuning_enabled: true
-router_tcp_rmem: "4096 262144 8388608"
-router_tcp_wmem: "4096 65536 8388608"
-router_tcp_rmem_max: 8388608
-router_tcp_wmem_max: 8388608
+router_tcp_rmem: "4096 262144 16777216"
+router_tcp_wmem: "4096 65536 16777216"
+router_tcp_rmem_max: 16777216
+router_tcp_wmem_max: 16777216
 router_tcp_mtu_probing: 1
 router_tcp_slow_start_after_idle: 0
 router_tcp_window_scaling: 1
