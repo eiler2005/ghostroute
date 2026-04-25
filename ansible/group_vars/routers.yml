@@ -43,6 +43,9 @@ router_tcp_rmem_max: 8388608
 router_tcp_wmem_max: 8388608
 router_tcp_mtu_probing: 1
 router_tcp_slow_start_after_idle: 0
+router_tcp_window_scaling: 1
+router_tcp_sack: 1
+router_tcp_timestamps: 1
 firewall_start_hook: /jffs/scripts/firewall-start
 services_start_hook: /jffs/scripts/services-start
 blocklist_update_script: /jffs/scripts/blocklist-update.sh
