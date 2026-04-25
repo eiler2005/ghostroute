@@ -8,6 +8,11 @@
 |---|---|---|---|
 | `configs/dnsmasq-stealth.conf.add` | `STEALTH_DOMAINS` | домашняя LAN/Wi-Fi и mobile Home Reality split | managed -> Reality; non-managed -> direct |
 
+Advisory-only идеи по сужению каталога лежат в
+[stealth-domains-curation-audit.md](stealth-domains-curation-audit.md). Этот
+документ ничего не удаляет из runtime catalog; он фиксирует evidence и будущие
+предложения.
+
 `VPN_DOMAINS` удалён из нормальной схемы. `VPN_STATIC_NETS` остаётся, потому что
 Channel B использует этот исторически названный ipset для direct-IP/static CIDR.
 

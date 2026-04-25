@@ -48,7 +48,7 @@ ordinary home Wi-Fi.
 | Mobile MSS clamp | `TCPMSS --set-mss 1360` on `PREROUTING dport <home-reality-port>` and `OUTPUT sport <home-reality-port>` | Avoid LTE PMTUD blackholes and large-segment retransmits on the mobile -> home TCP leg. |
 | Mobile ingress connlimit | `connlimit --connlimit-above 300` before ACCEPT | Avoid false drops for 6-7 mobile devices, Safari tab bursts, app sync, and LTE CGNAT source sharing. |
 | TCP socket buffers | `rmem_max/wmem_max = 8388608` and TCP r/w max `8388608` | Give high-BDP LTE paths enough receive/send window headroom. |
-| PMTU probing | `tcp_mtu_probing = 1` | Let Linux recover better when ICMP fragmentation-needed is blocked. |
+| PMTU probing | `tcp_mtu_probing = 1` | Let Linux recover better when ICMP fragmentation-needed is blocked on other TCP paths. It does not raise the mobile ingress MSS above the static `1360` clamp. |
 | Slow-start after idle | `tcp_slow_start_after_idle = 0` | Avoid needless throughput collapse after idle periods. |
 | TCP features | `tcp_window_scaling=1`, `tcp_sack=1`, `tcp_timestamps=1` | Keep core TCP performance features explicitly enabled. |
 | Congestion control | `cubic` | `bbr` is not available in the current Merlin kernel/modules. |
@@ -103,6 +103,11 @@ iptables -t mangle -A OUTPUT \
 
 `1360` is deliberately conservative for LTE plus Reality overhead. It trades a
 small amount of efficiency for fewer fragmentation/retransmit pathologies.
+
+This static clamp also means `tcp_mtu_probing=1` cannot discover a larger MSS for
+the Home Reality ingress itself. That is an accepted defensive trade-off. Future
+experiments with `--clamp-mss-to-pmtu`, `1380`, or `1400` must be backed by LTE
+measurements and easy rollback.
 
 ### Verification
 

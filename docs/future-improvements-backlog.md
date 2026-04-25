@@ -117,6 +117,34 @@
 
 - routing catalog становится уже и понятнее, без потери нужного покрытия
 
+### 2.1. STEALTH_DOMAINS curation scoring
+
+Проблема:
+
+- manual `STEALTH_DOMAINS` catalog может со временем разрастаться и вести через Reality домены, которым достаточно direct WAN
+- простое auto-removal небезопасно: “нужно / не нужно” зависит от user intent, аккаунтов, поездок, app quirks и geo/account consistency
+
+Что улучшить:
+
+- добавить advisory-only scoring поверх уже существующих данных:
+  - DNS forensics
+  - traffic reports
+  - `blocked-domains.lst`
+  - ISP probe из `domain-auto-add.sh`
+  - manual labels вроде `keep-managed`, `candidate-direct`, `temporary`
+- выдавать рекомендации `keep`, `needs-live-evidence`, `move-to-no-vpn`, `remove-later`
+- не удалять записи автоматически и не переписывать `domains-no-vpn.txt` без ручного решения
+
+Статус:
+
+- стартовый audit создан в [stealth-domains-curation-audit.md](stealth-domains-curation-audit.md)
+- runtime catalog не менялся
+- future implementation должна быть report-only до отдельного решения
+
+Желаемый результат:
+
+- можно безопасно сужать managed catalog по evidence, снижая CPU/egress нагрузку без внезапных regressions
+
 ### 3. Компактный health-summary и drift detection
 
 Проблема:
