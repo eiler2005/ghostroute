@@ -163,6 +163,9 @@
 - значимая часть уже реализована:
   - стабильные секции `Window / Totals / Device Traffic Mix / Top by Reality / Top by Direct WAN / Top by Tailscale peers / LAN Device Bytes / Notes`
   - per-device `Via Reality` восстановлен после ухода от `wgc1` через `RC_LAN_REALITY_OUT/IN` mangle counters
+  - `traffic-daily-report` теперь строит day/week/month deltas из snapshot TSV:
+    `interface-counters.tsv`, `lan-device-counters.tsv`,
+    `mobile-reality-counters.tsv`
   - mobile Home Reality activity is integrated into `traffic-report` and
     `router-health-report` with:
     - encrypted TCP/<home-reality-port> byte totals from `RC_MOBILE_REALITY_IN/OUT`

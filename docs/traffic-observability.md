@@ -41,7 +41,7 @@ For the full end-to-end workflow and observer table, see
 | `./scripts/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./scripts/router-health-report --save` | tracked snapshot + local journal + router-side copy |
 | `./scripts/traffic-report` | current-day traffic summary |
-| `./scripts/traffic-daily-report` | closed day/week/month traffic summary |
+| `./scripts/traffic-daily-report` | day/week/month byte summary from saved snapshots |
 | `./scripts/catalog-review-report` | advisory review of domains/static networks |
 | `./scripts/dns-forensics-report` | hourly DNS-interest snapshots |
 
@@ -130,6 +130,16 @@ DNS forensics show interest, not bytes.
 - Tailscale peer deltas
 - current conntrack snapshot
 
+`traffic-daily-report` builds period deltas from saved snapshots:
+
+- `interface-counters.tsv` for WAN/LAN bridge/Wi-Fi totals
+- `lan-device-counters.tsv` for LAN `Reality` / direct `WAN` / `Other`
+- `mobile-reality-counters.tsv` for Mobile Home Reality upload/download bytes
+
+Supported period arguments are `today`, `yesterday`, `week`, `month`, and a
+specific `YYYY-MM-DD`. The script takes a fresh snapshot first, then computes
+first-to-last deltas inside the requested nominal window.
+
 Important interpretation:
 
 - REDIRECT `:<lan-redirect-port>` counters and sing-box logs are the primary matched LAN egress signal.
@@ -162,6 +172,7 @@ Important interpretation:
 ./scripts/traffic-report
 ./scripts/traffic-daily-report yesterday
 ./scripts/traffic-daily-report week
+./scripts/traffic-daily-report month
 ./scripts/catalog-review-report
 ```
 

@@ -86,13 +86,20 @@ When the user asks for a router traffic report or router health/capacity report 
 10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
 
 11. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
-   If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
+    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-12. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+12. If the report is from ./scripts/traffic-daily-report, answer from its period sections:
+    - Interface sample window / LAN byte sample window / Mobile byte sample window
+    - INTERFACE TOTALS
+    - REALITY SUMMARY
+    - LAN DEVICE MIX
+    - MOBILE HOME REALITY BYTES
 
-13. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+13. If the report window is week/month, explicitly warn when any sample window is narrower than the nominal period.
 
-14. If the user asks about future optimization of domains/catalog/routing coverage:
+14. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+
+15. If the user asks about future optimization of domains/catalog/routing coverage:
    - start from docs/future-improvements-backlog.md
    - verify what is already implemented vs still future
    - prefer review/plan first, not runtime changes
@@ -292,8 +299,8 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - сколько уже накопилось за текущую неделю
 - сколько уже накопилось за текущий месяц
 - какие LAN-устройства дали основной объём трафика за день/неделю/месяц
-- какие `Tailscale` peer'ы дали трафик за этот день
-- какой был end-of-day снимок локальных устройств
+- сколько LAN traffic ушло через Reality-managed REDIRECT и сколько напрямую в WAN
+- сколько Mobile Home Reality bytes пришло через QR-туннель за период
 
 ### Когда данные закрытого дня появляются
 
@@ -310,19 +317,21 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 Для `week/month`:
 
 - если история начала собираться недавно, окно начнётся с самого раннего доступного snapshot внутри периода
-- это нормально и должно отражаться в строке `Window start`
+- это нормально и должно отражаться в строках `Interface sample window`, `LAN byte sample window`, `Mobile byte sample window`
 
 ## Как интерпретировать вывод
 
 ### Точные накопленные счётчики
 
 - `WAN total`
-- `Reality-managed total`
-- `Wi-Fi total`
+- `LAN Reality-managed`
+- `Mobile Home Reality`
+- `Combined observed`
+- `Wi-Fi radios`
 - `LAN bridge`
-- `Tailscale total`
-- строки `LAN DEVICE BYTES`
-- строки `TAILSCALE PEERS` (`RX` / `TX`)
+- строки `Top LAN by Reality`
+- строки `Top LAN by Direct WAN`
+- строки `MOBILE HOME REALITY BYTES`
 
 Все эти выводы по умолчанию уже в redacted-виде.
 
