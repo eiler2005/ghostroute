@@ -433,6 +433,7 @@ auto_count=$(grep -c '^ipset=.*/STEALTH_DOMAINS' /jffs/configs/dnsmasq-autodisco
 cron_list=$(cru l 2>/dev/null || true)
 dnscrypt_config=$(cat /opt/etc/dnscrypt-proxy.toml 2>/dev/null || true)
 singbox_config=$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)
+singbox_config_compact=$(printf '%s' "$singbox_config" | sed 's/[[:space:]]//g')
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
@@ -548,6 +549,9 @@ printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m se
 printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
 printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<home-reality-port>')"
 printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" '--dport <home-reality-port> -j ACCEPT')"
+printf 'HOME_REALITY_SPLIT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"')"
+printf 'HOME_REALITY_DIRECT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"direct-out"')"
+printf 'HOME_REALITY_ALL_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"reality-out"')"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '127.0.0.1:1080')"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" 'socks5://127.0.0.1:1080')"
 printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
@@ -824,6 +828,9 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
   [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener on :<home-reality-port>")
   [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality :<home-reality-port>")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] || drift_lines+=("home Reality ingress does not use STEALTH/VPN_STATIC split rule")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing direct fallback rule")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || drift_lines+=("home Reality ingress still relays all traffic to VPS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener on 127.0.0.1:1080")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
@@ -896,6 +903,9 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality listener :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality INPUT allow :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality managed split | $( [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality direct fallback | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | Channel B dnscrypt SOCKS listener :1080 | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
