@@ -24,3 +24,19 @@ Interpretation:          Reality = LAN flows redirected to sing-box; Direct WAN 
 
 === TOP BY TAILSCALE PEERS ===
   tail-peer-01                    12.0 MiB  (RX 5.0 MiB / TX 7.0 MiB)
+
+=== MOBILE HOME REALITY ===
+Client profiles seen:    2
+Mobile connections:      42
+Mobile via Reality:      30  (71.4%)
+Mobile direct-out:       12  (28.6%)
+Mobile unresolved:       0
+Mobile EOF/errors:       3
+
+Client                 Total   Reality    Direct  Unresolved
+mobile-client-01          30        18        12           0
+mobile-client-02          12        12         0           0
+
+Top mobile destinations:
+  www.youtube.com                               18  (Reality 18 / Direct 0)
+  1.1.1.1                                       12  (Reality 0 / Direct 12)

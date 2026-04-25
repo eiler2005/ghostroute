@@ -229,3 +229,7 @@ Expected:
 - Managed mobile flows show `reality-in -> reality-out`.
 - Non-managed mobile flows show `reality-in -> direct-out`.
 
+`./scripts/traffic-report` includes mobile Home Reality connection attribution
+from `sing-box.log`: profile count, total mobile connections, `reality-out` vs
+`direct-out`, EOF/error count and top destinations. This is intentionally
+connection-count reporting, not per-client byte accounting.

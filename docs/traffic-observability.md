@@ -123,6 +123,7 @@ DNS forensics show interest, not bytes.
 
 - interface deltas
 - per-device mangle counter deltas
+- mobile Home Reality connection attribution from `sing-box.log`
 - Tailscale peer deltas
 - current conntrack snapshot
 
@@ -132,6 +133,11 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
+- `MOBILE HOME REALITY` is connection-count attribution from `sing-box.log`.
+  It reports client profile names, `reality-out` vs `direct-out`, EOF/error
+  count and top destinations. It is not a byte counter.
+- `router-health-report` includes the mobile Home Reality summary in the common
+  `Traffic Snapshot` block.
 - Mobile Home Reality clients are not LAN devices; use sing-box logs for per-client mobile activity.
 
 ---
@@ -164,6 +170,7 @@ These commands do not mutate routing runtime except the `--save` variants writin
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
 iptables-save -t mangle -c | grep RC_LAN_REALITY
 tail -100 /opt/var/log/sing-box.log | grep redirect-in
+tail -500 /opt/var/log/sing-box.log | grep 'inbound/vless\[reality-in\]'
 iptables-save -t mangle -c | grep RC_LAN_BYTES
 ```
 

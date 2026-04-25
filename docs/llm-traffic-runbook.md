@@ -74,16 +74,24 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention top devices by Reality-managed bytes when present
    - mention top devices by direct WAN bytes
 
-9. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
+9. If the report contains "MOBILE HOME REALITY", include mobile profile activity:
+   - client profiles seen
+   - total mobile connections
+   - Mobile via Reality vs Mobile direct-out
+   - unresolved and EOF/error counts
+   - top mobile destinations when useful
+   Do not describe these as bytes; this section is log-attributed connection counts.
 
-10. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
+
+11. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-11. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
+12. If the report window is week/month, explicitly warn when "Per-device byte window" is narrower than the main report window.
 
-12. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+13. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
 
-13. If the user asks about future optimization of domains/catalog/routing coverage:
+14. If the user asks about future optimization of domains/catalog/routing coverage:
    - start from docs/future-improvements-backlog.md
    - verify what is already implemented vs still future
    - prefer review/plan first, not runtime changes
