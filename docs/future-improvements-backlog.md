@@ -162,6 +162,9 @@
 - значимая часть уже реализована:
   - стабильные секции `Window / Totals / Device Traffic Mix / Top by Reality / Top by Direct WAN / Top by Tailscale peers / LAN Device Bytes / Notes`
   - per-device `Via Reality` восстановлен после ухода от `wgc1` через `RC_LAN_REALITY_OUT/IN` mangle counters
+  - mobile Home Reality activity is integrated into `traffic-report` and
+    `router-health-report` as log-attributed connection counts by profile,
+    outbound (`reality-out`/`direct-out`) and destination
   - tracked sanitised `router-health-latest.md`
   - явный LLM-runbook
   - USB-backed health snapshots на роутере

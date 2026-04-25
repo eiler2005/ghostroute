@@ -30,6 +30,11 @@ DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
 DEVICE_MIX_TOTALS="$TMPDIR/device-mix-totals.txt"
 DEVICE_TOP_REALITY="$TMPDIR/device-top-reality.txt"
 DEVICE_TOP_WAN="$TMPDIR/device-top-wan.txt"
+MOBILE_LOG="$TMPDIR/mobile-reality.log"
+MOBILE_TOTALS="$TMPDIR/mobile-reality-totals.txt"
+MOBILE_CLIENTS="$TMPDIR/mobile-reality-clients.txt"
+MOBILE_DESTS="$TMPDIR/mobile-reality-dests.txt"
+MOBILE_ALIAS_MAP="$TMPDIR/mobile-alias-map.txt"
 CURRENT_TAILSCALE="$TMPDIR/current-tailscale.json"
 BASE_TAILSCALE="$TMPDIR/base-tailscale.json"
 TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
@@ -156,6 +161,7 @@ router_ssh '/opt/bin/tailscale status --json 2>/dev/null || printf "{}\n"' > "$C
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); SNAP=\$(ls \"\$STATE_DIR/tailscale\"/${TODAY}T*.json 2>/dev/null | sort | head -1); [ -n \"\$SNAP\" ] && cat \"\$SNAP\" || printf '{}\n'" > "$BASE_TAILSCALE"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/lan-device-counters.tsv\" ] && cat \"\$STATE_DIR/lan-device-counters.tsv\" || true" > "$LAN_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' > "$LAN_BYTES_CURRENT"
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$MOBILE_LOG"
 
 iface_current() {
   local iface="$1"
@@ -279,6 +285,103 @@ else
   : > "$DEVICE_TOP_WAN"
 fi
 
+if [ -s "$MOBILE_LOG" ]; then
+  awk -v totals="$MOBILE_TOTALS" -v clients_out="$MOBILE_CLIENTS" -v dests_out="$MOBILE_DESTS" '
+    function conn_id(line,   start, body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    function human_dest(dest,   d) {
+      d = dest
+      sub(/:[0-9]+$/, "", d)
+      return d
+    }
+    {
+      id = conn_id($0)
+      if (id == "") next
+
+      if ($0 ~ /inbound\/vless\[reality-in\]: \[[^]]+\] inbound connection to /) {
+        client = $0
+        sub(/^.*inbound\/vless\[reality-in\]: \[/, "", client)
+        sub(/\].*$/, "", client)
+
+        dest = $0
+        sub(/^.* inbound connection to /, "", dest)
+
+        seen[id] = 1
+        client_by_id[id] = client
+        dest_by_id[id] = dest
+        next
+      }
+
+      if ($0 ~ /inbound\/vless\[reality-in\]: process connection from .*: EOF/) {
+        mobile_errors++
+        next
+      }
+
+      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to / && (id in seen)) {
+        outbound_by_id[id] = "reality"
+        next
+      }
+
+      if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to / && (id in seen)) {
+        outbound_by_id[id] = "direct"
+        next
+      }
+    }
+    END {
+      for (id in seen) {
+        client = client_by_id[id]
+        dest = human_dest(dest_by_id[id])
+        outbound = outbound_by_id[id]
+        if (outbound == "") outbound = "unresolved"
+
+        total++
+        clients[client] = 1
+        client_total[client]++
+        dest_total[dest]++
+
+        if (outbound == "reality") {
+          reality++
+          client_reality[client]++
+          dest_reality[dest]++
+        } else if (outbound == "direct") {
+          direct++
+          client_direct[client]++
+          dest_direct[dest]++
+        } else {
+          unresolved++
+          client_unresolved[client]++
+          dest_unresolved[dest]++
+        }
+      }
+
+      client_count = 0
+      for (client in clients) client_count++
+      printf "%d|%d|%d|%d|%d|%d\n", total + 0, reality + 0, direct + 0, unresolved + 0, mobile_errors + 0, client_count + 0 > totals
+
+      for (client in clients) {
+        printf "%s|%d|%d|%d|%d\n", client, client_total[client] + 0, client_reality[client] + 0, client_direct[client] + 0, client_unresolved[client] + 0 >> clients_out
+      }
+
+      for (dest in dest_total) {
+        printf "%s|%d|%d|%d|%d\n", dest, dest_total[dest] + 0, dest_reality[dest] + 0, dest_direct[dest] + 0, dest_unresolved[dest] + 0 >> dests_out
+      }
+    }
+  ' "$MOBILE_LOG"
+
+  [ -s "$MOBILE_CLIENTS" ] && sort -t'|' -k2,2nr -k1,1 "$MOBILE_CLIENTS" -o "$MOBILE_CLIENTS"
+  [ -s "$MOBILE_DESTS" ] && sort -t'|' -k2,2nr -k1,1 "$MOBILE_DESTS" -o "$MOBILE_DESTS"
+else
+  printf '0|0|0|0|0|0\n' > "$MOBILE_TOTALS"
+  : > "$MOBILE_CLIENTS"
+  : > "$MOBILE_DESTS"
+fi
+
 ruby -rjson -e '
   current = JSON.parse(File.read(ARGV[0]))
   base = JSON.parse(File.read(ARGV[1]))
@@ -314,6 +417,23 @@ TAILSCALE_TOTAL=$(( TAILSCALE_RX_TOTAL + TAILSCALE_TX_TOTAL ))
 build_device_metadata_map
 apply_device_metadata
 redact_report_tables
+
+if [ "$REPORT_REDACT_NAMES" = "1" ] && [ -s "$MOBILE_CLIENTS" ]; then
+  awk -F'|' '$1 != "" { print $1 }' "$MOBILE_CLIENTS" | sort -u | awk '
+    NF { printf "%s|mobile-client-%02d\n", $1, ++idx }
+  ' > "$MOBILE_ALIAS_MAP"
+
+  awk -F'|' '
+    BEGIN { OFS="|" }
+    NR == FNR {
+      alias[$1] = $2
+      next
+    }
+    {
+      if ($1 in alias) $1 = alias[$1]
+      print
+    }' "$MOBILE_ALIAS_MAP" "$MOBILE_CLIENTS" > "$MOBILE_CLIENTS.redacted" && mv "$MOBILE_CLIENTS.redacted" "$MOBILE_CLIENTS"
+fi
 
 ROUTER_WINDOW_LINE="${REPORT_START} -> current router state"
 if [ -s "$LAN_BYTES_PARSED" ] && [ -n "$LAN_BYTES_START" ]; then
@@ -410,6 +530,29 @@ awk -F'|' '
     printf "%-22s  %-7s  %12s  %12s  %s\n", $1, $2, human_gib($3 + 0), human_gib($4 + 0), last_seen;
   }' "$TAILSCALE_PARSED"
 echo
+echo "=== MOBILE HOME REALITY ==="
+if [ -s "$MOBILE_TOTALS" ]; then
+  IFS='|' read -r MOBILE_TOTAL MOBILE_REALITY MOBILE_DIRECT MOBILE_UNRESOLVED MOBILE_ERRORS MOBILE_CLIENT_COUNT < "$MOBILE_TOTALS"
+  echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
+  echo "Mobile connections:      ${MOBILE_TOTAL}"
+  echo "Mobile via Reality:      ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
+  echo "Mobile direct-out:       ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
+  echo "Mobile unresolved:       ${MOBILE_UNRESOLVED}"
+  echo "Mobile EOF/errors:       ${MOBILE_ERRORS}"
+  if [ -s "$MOBILE_CLIENTS" ]; then
+    echo
+    printf "%-18s  %8s  %8s  %8s  %10s\n" "Client" "Total" "Reality" "Direct" "Unresolved"
+    awk -F'|' 'NR <= 10 { printf "%-18s  %8d  %8d  %8d  %10d\n", $1, $2, $3, $4, $5 }' "$MOBILE_CLIENTS"
+  fi
+  if [ -s "$MOBILE_DESTS" ]; then
+    echo
+    echo "Top mobile destinations:"
+    awk -F'|' 'NR <= 10 { printf "  %-42s %5d  (Reality %d / Direct %d)\n", $1, $2, $3, $4 }' "$MOBILE_DESTS"
+  fi
+else
+  echo "No mobile Home Reality log data for today."
+fi
+echo
 echo "=== LAN DEVICE BYTES ==="
 if [ -s "$LAN_BYTES_PARSED" ]; then
   printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "Reality" "WAN" "Other" "Upload" "Download"
@@ -436,7 +579,7 @@ echo
 echo "=== NOTES ==="
 echo "- Channel A WireGuard is retired; wgs1/wgc1 are intentionally not inspected."
 echo "- Reality-managed bytes are mangle-accounted managed REDIRECT flows, not a wgc1 interface counter."
-echo "- Mobile Home Reality traffic is visible in sing-box logs; this report's per-device mix covers LAN clients."
+echo "- Mobile Home Reality is log-attributed by connection count/client/outbound, not by per-client bytes."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
   echo "- LAN hostnames are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
 fi

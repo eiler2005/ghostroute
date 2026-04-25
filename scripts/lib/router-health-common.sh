@@ -606,6 +606,12 @@ router_extract_traffic_summary() {
     /^Via Reality:/          { key = "TRAFFIC_DEVICE_VIA_REALITY"; value = substr($0, index($0, ":") + 1) }
     /^Direct WAN:/           { key = "TRAFFIC_DEVICE_DIRECT_WAN"; value = substr($0, index($0, ":") + 1) }
     /^Other:/                { key = "TRAFFIC_DEVICE_OTHER"; value = substr($0, index($0, ":") + 1) }
+    /^Client profiles seen:/ { key = "TRAFFIC_MOBILE_CLIENTS"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile connections:/   { key = "TRAFFIC_MOBILE_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile via Reality:/   { key = "TRAFFIC_MOBILE_REALITY"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile direct-out:/    { key = "TRAFFIC_MOBILE_DIRECT"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile unresolved:/    { key = "TRAFFIC_MOBILE_UNRESOLVED"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile EOF\/errors:/   { key = "TRAFFIC_MOBILE_ERRORS"; value = substr($0, index($0, ":") + 1) }
     key != "" {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       print key "=" value
@@ -816,6 +822,12 @@ router_render_health_markdown() {
   traffic_device_reality="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_VIA_REALITY)"
   traffic_device_wan="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_DIRECT_WAN)"
   traffic_device_other="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_OTHER)"
+  traffic_mobile_clients="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_CLIENTS)"
+  traffic_mobile_total="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_TOTAL)"
+  traffic_mobile_reality="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_REALITY)"
+  traffic_mobile_direct="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_DIRECT)"
+  traffic_mobile_unresolved="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_UNRESOLVED)"
+  traffic_mobile_errors="$(router_kv_get "$traffic_file" TRAFFIC_MOBILE_ERRORS)"
   drift_lines=()
   [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "0" ] || drift_lines+=("legacy VPN_DOMAINS ipset should be absent")
   [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] || drift_lines+=("VPN_STATIC_NETS ipset missing")
@@ -1015,6 +1027,12 @@ EOF
 - Via Reality: **${traffic_device_reality:-n/a}**
 - Direct WAN: **${traffic_device_wan:-n/a}**
 - Other: **${traffic_device_other:-n/a}**
+- Mobile clients seen: **${traffic_mobile_clients:-n/a}**
+- Mobile connections: **${traffic_mobile_total:-n/a}**
+- Mobile via Reality: **${traffic_mobile_reality:-n/a}**
+- Mobile direct-out: **${traffic_mobile_direct:-n/a}**
+- Mobile unresolved: **${traffic_mobile_unresolved:-n/a}**
+- Mobile EOF/errors: **${traffic_mobile_errors:-n/a}**
 
 ## Drift
 EOF

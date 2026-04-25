@@ -63,7 +63,11 @@ router_extract_traffic_summary \
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_ROUTER_WINDOW" "2026-04-17T00:00:00+0300 -> current router state"
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_WINDOW" "2026-04-17T12:00:00+0300 -> current router state"
 assert_kv "$TRAFFIC_OUT" "TRAFFIC_DEVICE_VIA_REALITY" "5.00 GiB  (86.2%)"
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_MOBILE_TOTAL" "42"
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_MOBILE_REALITY" "30  (71.4%)"
+assert_kv "$TRAFFIC_OUT" "TRAFFIC_MOBILE_DIRECT" "12  (28.6%)"
 assert_contains "${PROJECT_ROOT}/tests/fixtures/router-health/traffic-report-sample.txt" "=== TOP BY TAILSCALE PEERS ==="
+assert_contains "${PROJECT_ROOT}/tests/fixtures/router-health/traffic-report-sample.txt" "=== MOBILE HOME REALITY ==="
 
 # 3. Markdown renderer contract:
 #    ensure the final sanitised report still exposes the sections relied on by humans and LLMs.
@@ -94,6 +98,9 @@ assert_contains "$MARKDOWN_OUT" "Recommendation: **Keep Merlin UI at IPv6 -> –û—
 assert_contains "$MARKDOWN_OUT" "## Traffic Snapshot"
 assert_contains "$MARKDOWN_OUT" "Reality-managed total:"
 assert_contains "$MARKDOWN_OUT" "Via Reality:"
+assert_contains "$MARKDOWN_OUT" "Mobile connections:"
+assert_contains "$MARKDOWN_OUT" "Mobile via Reality:"
+assert_contains "$MARKDOWN_OUT" "Mobile direct-out:"
 assert_contains "$MARKDOWN_OUT" "## Drift"
 assert_contains "$MARKDOWN_OUT" "## Notes"
 
