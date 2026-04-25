@@ -11,11 +11,26 @@ TABLE={{ stealth_route_table }}
 IFACE={{ singbox_tun_name }}
 REDIRECT_PORT={{ singbox_redirect_port }}
 HOME_REALITY_PORT={{ home_reality_ingress_port }}
+HOME_REALITY_CONNLIMIT_ABOVE={{ home_reality_connlimit_above | default(100) }}
+HOME_REALITY_MSS={{ home_reality_mss | default(1360) }}
+ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
 VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
 WAN_GW={{ wan_gw }}
 
 {{ singbox_init_path }} start >/dev/null 2>&1 || true
+
+# 0. Conservative TCP tuning for high-BDP mobile paths. These values keep the
+# old Merlin defaults as floors, but allow the two TCP legs of the home relay to
+# grow beyond the tiny 512 KiB core socket caps.
+if [ "$ROUTER_TCP_PERF_TUNING" = "1" ]; then
+  [ -e /proc/sys/net/core/rmem_max ] && echo {{ router_tcp_rmem_max | default(8388608) }} > /proc/sys/net/core/rmem_max
+  [ -e /proc/sys/net/core/wmem_max ] && echo {{ router_tcp_wmem_max | default(8388608) }} > /proc/sys/net/core/wmem_max
+  [ -e /proc/sys/net/ipv4/tcp_rmem ] && echo "{{ router_tcp_rmem | default('4096 262144 8388608') }}" > /proc/sys/net/ipv4/tcp_rmem
+  [ -e /proc/sys/net/ipv4/tcp_wmem ] && echo "{{ router_tcp_wmem | default('4096 65536 8388608') }}" > /proc/sys/net/ipv4/tcp_wmem
+  [ -e /proc/sys/net/ipv4/tcp_mtu_probing ] && echo {{ router_tcp_mtu_probing | default(1) }} > /proc/sys/net/ipv4/tcp_mtu_probing
+  [ -e /proc/sys/net/ipv4/tcp_slow_start_after_idle ] && echo {{ router_tcp_slow_start_after_idle | default(0) }} > /proc/sys/net/ipv4/tcp_slow_start_after_idle
+fi
 
 # The stable router path uses iptables REDIRECT into a local sing-box inbound.
 # Keep the old TUN path fully inert if it was left behind by a previous deploy.
@@ -60,11 +75,23 @@ iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst 
 # ingress. The inbound itself authenticates with Reality private key, short_id,
 # UUID and VLESS flow; this rule only opens the TCP listener.
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
+iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
+iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above "$HOME_REALITY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -m comment --comment "mobile-reality-ingress" -j ACCEPT 2>/dev/null || true
+
+# Clamp the outer mobile -> home TCP MSS before local delivery to sing-box.
+# This avoids LTE PMTUD blackholes on the ingress leg without slowing ordinary
+# home LAN traffic.
+for OLD_MSS in 1280 1360 1380 1400 "$HOME_REALITY_MSS"; do
+  iptables -t mangle -D PREROUTING -p tcp --dport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+done
+iptables -t mangle -I PREROUTING 1 -p tcp --dport "$HOME_REALITY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$HOME_REALITY_MSS" 2>/dev/null \
+  || logger -t stealth-route-init "TCPMSS unavailable; mobile Reality ingress has no MSS clamp"
+
 # Some Merlin builds lack the connlimit match. Keep rate-limiting opportunistic
 # so the ingress ACCEPT is still installed on those kernels.
-iptables -I INPUT 1 -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null \
+iptables -I INPUT 1 -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above "$HOME_REALITY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null \
   || logger -t stealth-route-init "connlimit unavailable; mobile Reality ingress has no kernel connlimit"
 iptables -I INPUT 2 -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT
 iptables -A INPUT -p tcp --dport "$HOME_REALITY_PORT" -m comment --comment "mobile-reality-ingress" -j ACCEPT 2>/dev/null \

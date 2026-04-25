@@ -12,6 +12,8 @@ singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 home_reality_enabled: true
 home_reality_listen: "0.0.0.0"
 home_reality_ingress_port: <home-reality-port>
+home_reality_connlimit_above: 100
+home_reality_mss: 1360
 # Backward-compatible alias for older docs/scripts; new code should use
 # home_reality_ingress_port.
 home_reality_port: "{{ home_reality_ingress_port }}"
@@ -34,6 +36,13 @@ stealth_test_domain: ifconfig.me
 stealth_test_upstream: 1.1.1.1
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_channel_b_lan_enabled: true
+router_tcp_perf_tuning_enabled: true
+router_tcp_rmem: "4096 262144 8388608"
+router_tcp_wmem: "4096 65536 8388608"
+router_tcp_rmem_max: 8388608
+router_tcp_wmem_max: 8388608
+router_tcp_mtu_probing: 1
+router_tcp_slow_start_after_idle: 0
 firewall_start_hook: /jffs/scripts/firewall-start
 services_start_hook: /jffs/scripts/services-start
 blocklist_update_script: /jffs/scripts/blocklist-update.sh
