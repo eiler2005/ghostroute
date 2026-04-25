@@ -129,16 +129,16 @@ add_info() {
 
 [ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "1" ] || add_critical "VPN_DOMAINS ipset missing"
 [ "$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_EXISTS)" = "1" ] || add_critical "VPN_STATIC_NETS ipset missing"
-[ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "1" ] || add_critical "mangle chain RC_VPN_ROUTE missing"
-[ "$(router_kv_get "$STATE_FILE" RULE_MARK_0X1000)" = "1" ] || add_critical "missing ip rule for fwmark 0x1000 -> wgc1"
+[ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "0" ] || add_critical "Channel A RC_VPN_ROUTE chain should be absent"
+[ "$(router_kv_get "$STATE_FILE" RULE_MARK_0X1000)" = "0" ] || add_critical "Channel A fwmark 0x1000 -> wgc1 rule should be absent"
 [ "$(router_kv_get "$STATE_FILE" RULE_DNS_1111)" = "0" ] || add_warning "legacy ip rule for 1.1.1.1 -> wgc1 should be absent"
 [ "$(router_kv_get "$STATE_FILE" RULE_DNS_9999)" = "0" ] || add_warning "legacy ip rule for 9.9.9.9 -> wgc1 should be absent"
 [ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_BR0)" = "0" ] || add_critical "legacy PREROUTING br0 -> RC_VPN_ROUTE hook should be absent"
-[ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_WGS1)" = "1" ] || add_critical "missing PREROUTING wgs1 -> RC_VPN_ROUTE hook"
+[ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_WGS1)" = "0" ] || add_critical "Channel A PREROUTING wgs1 -> RC_VPN_ROUTE hook should be absent"
 [ "$(router_kv_get "$STATE_FILE" HOOK_OUTPUT)" = "0" ] || add_critical "legacy OUTPUT -> RC_VPN_ROUTE hook should be absent"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || add_critical "missing sing-box REDIRECT listener on :<lan-redirect-port>"
-[ "$(router_kv_get "$STATE_FILE" HOME_REALITY_LISTENER)" = "1" ] || add_critical "missing home Reality listener on :443"
-[ "$(router_kv_get "$STATE_FILE" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || add_critical "missing INPUT allow rule for home Reality :443"
+[ "$(router_kv_get "$STATE_FILE" HOME_REALITY_LISTENER)" = "1" ] || add_critical "missing home Reality listener on :<home-reality-port>"
+[ "$(router_kv_get "$STATE_FILE" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || add_critical "missing INPUT allow rule for home Reality :<home-reality-port>"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || add_critical "missing sing-box SOCKS listener on 127.0.0.1:1080"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || add_critical "dnscrypt-proxy is not routed through sing-box SOCKS"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || add_critical "sing-box keepalive tuning missing"
@@ -148,8 +148,8 @@ add_info() {
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DROP_QUIC_STATIC)" = "1" ] || add_critical "missing UDP/443 DROP for VPN_STATIC_NETS"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REJECT_QUIC_STEALTH)" = "0" ] || add_critical "UDP/443 REJECT for STEALTH_DOMAINS should be absent"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REJECT_QUIC_STATIC)" = "0" ] || add_critical "UDP/443 REJECT for VPN_STATIC_NETS should be absent"
-[ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "1" ] || add_critical "missing wgs1 udp/53 -> dnsmasq redirect"
-[ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "1" ] || add_critical "missing wgs1 tcp/53 -> dnsmasq redirect"
+[ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "0" ] || add_critical "Channel A wgs1 udp/53 redirect should be absent"
+[ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "0" ] || add_critical "Channel A wgs1 tcp/53 redirect should be absent"
 [ "$(router_kv_get "$STATE_FILE" CRON_SINGBOX_WATCHDOG)" = "1" ] || add_critical "missing sing-box watchdog cron"
 
 if [ "$ipv6_policy_level" = "Critical" ]; then
@@ -170,17 +170,11 @@ fi
 [ "$tailscale_level" = "OK" ] || add_warning "tailscale snapshot freshness is ${tailscale_level} ($(router_human_age "$tailscale_age"))"
 [ "$daily_level" = "OK" ] || add_warning "daily close snapshot freshness is ${daily_level} ($(router_human_age "$daily_age"))"
 
-case "$wgs1_snapshot_state" in
-  "Capability problem")
-    add_warning "wgs1 snapshot collection capability problem (${wgs1_snapshot_note})"
-    ;;
-  "Missing")
-    add_warning "wgs1 snapshot missing (${wgs1_snapshot_note})"
-    ;;
-  "Stale")
-    add_warning "wgs1 snapshot freshness is ${wgs1_level} ($(router_human_age "$wgs1_age"))"
-    ;;
-esac
+if [ "$(router_kv_get "$STATE_FILE" WGS1_IFACE_EXISTS)" = "1" ]; then
+  add_critical "Channel A wgs1 interface should be absent"
+else
+  add_info "Channel A wgs1 interface absent"
+fi
 
 if [ "$capacity_level" = "Warning" ] || [ "$capacity_level" = "Critical" ]; then
   add_warning "catalog usage level is ${capacity_level} at ${usage_pct}%"
@@ -282,16 +276,16 @@ echo
 echo "=== Routing Health ==="
 printf "%-34s %s\n" "VPN_DOMAINS ipset" "$( [ "$(router_kv_get "$STATE_FILE" VPN_DOMAINS_EXISTS)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "VPN_STATIC_NETS ipset" "$( [ "$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_EXISTS)" = "1" ] && echo OK || echo MISSING )"
-printf "%-34s %s\n" "RC_VPN_ROUTE chain" "$( [ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "RC_VPN_ROUTE chain absent" "$( [ "$(router_kv_get "$STATE_FILE" CHAIN_RC_VPN_ROUTE)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy 1.1.1.1 rule absent" "$( [ "$(router_kv_get "$STATE_FILE" RULE_DNS_1111)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy 9.9.9.9 rule absent" "$( [ "$(router_kv_get "$STATE_FILE" RULE_DNS_9999)" = "0" ] && echo OK || echo PRESENT )"
-printf "%-34s %s\n" "ip rule fwmark 0x1000" "$( [ "$(router_kv_get "$STATE_FILE" RULE_MARK_0X1000)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "ip rule fwmark 0x1000 absent" "$( [ "$(router_kv_get "$STATE_FILE" RULE_MARK_0X1000)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy PREROUTING br0 absent" "$( [ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_BR0)" = "0" ] && echo OK || echo PRESENT )"
-printf "%-34s %s\n" "PREROUTING wgs1 hook" "$( [ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_WGS1)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "PREROUTING wgs1 hook absent" "$( [ "$(router_kv_get "$STATE_FILE" HOOK_PREROUTING_WGS1)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "legacy OUTPUT hook absent" "$( [ "$(router_kv_get "$STATE_FILE" HOOK_OUTPUT)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "Channel B listener :<lan-redirect-port>" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && echo OK || echo MISSING )"
-printf "%-34s %s\n" "Home Reality listener :443" "$( [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_LISTENER)" = "1" ] && echo OK || echo MISSING )"
-printf "%-34s %s\n" "Home Reality INPUT :443" "$( [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "Home Reality listener :<home-reality-port>" "$( [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_LISTENER)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "Home Reality INPUT :<home-reality-port>" "$( [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "dnscrypt SOCKS listener :1080" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "dnscrypt uses sing-box SOCKS" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "sing-box keepalive tuning" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && echo OK || echo MISSING )"
@@ -301,8 +295,8 @@ printf "%-34s %s\n" "UDP/443 DROP stealth" "$( [ "$(router_kv_get "$STATE_FILE" 
 printf "%-34s %s\n" "UDP/443 DROP static" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DROP_QUIC_STATIC)" = "1" ] && echo OK || echo MISSING )"
 printf "%-34s %s\n" "UDP/443 REJECT stealth absent" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REJECT_QUIC_STEALTH)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "UDP/443 REJECT static absent" "$( [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REJECT_QUIC_STATIC)" = "0" ] && echo OK || echo PRESENT )"
-printf "%-34s %s\n" "wgs1 udp/53 redirect" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "1" ] && echo OK || echo MISSING )"
-printf "%-34s %s\n" "wgs1 tcp/53 redirect" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "1" ] && echo OK || echo MISSING )"
+printf "%-34s %s\n" "wgs1 udp/53 redirect absent" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_UDP)" = "0" ] && echo OK || echo PRESENT )"
+printf "%-34s %s\n" "wgs1 tcp/53 redirect absent" "$( [ "$(router_kv_get "$STATE_FILE" DNS_REDIRECT_TCP)" = "0" ] && echo OK || echo PRESENT )"
 printf "%-34s %s\n" "sing-box watchdog cron" "$( [ "$(router_kv_get "$STATE_FILE" CRON_SINGBOX_WATCHDOG)" = "1" ] && echo OK || echo MISSING )"
 echo
 echo "=== IPv6 Policy ==="

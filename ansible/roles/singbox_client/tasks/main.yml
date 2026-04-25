@@ -34,6 +34,21 @@
     chmod 666 /dev/net/tun
   changed_when: false
 
+- name: Validate home Reality ingress identity separation
+  ansible.builtin.assert:
+    that:
+      - home_reality_ingress_port | int not in [22, 80, 443, 1080, 1194, 51820, 8080, 8443]
+      - home_clients is defined
+      - home_clients | length == 7
+      - home_reality_server_private_key is defined
+      - home_reality_server_public_key is defined
+      - home_reality_server_short_ids is defined
+      - (home_reality_server_short_ids | length) >= (home_clients | length)
+      - ((home_clients | map(attribute='uuid') | list) | intersect((clients | rejectattr('name', 'equalto', 'router') | map(attribute='uuid') | list))) | length == 0
+    fail_msg: "home Reality ingress must use fresh home_clients/home key material and a non-legacy port."
+  when: home_reality_enabled | default(false) | bool
+  no_log: true
+
 - name: Render sing-box config
   ansible.builtin.template:
     src: config.json.j2

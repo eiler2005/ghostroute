@@ -40,7 +40,7 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 
 | Item | Status | Evidence |
 |---|---|---|
-| §1.1 IPv6 kill-switch | Applied | `20-stealth-router.yml`, `ipv6_kill`, `verify.sh`: IPv6 disabled / no LAN GUA |
+| §1.1 IPv6 kill-switch | Applied | `20-stealth-router.yml`, `ipv6_kill`, `verify.sh`: IPv6 disabled / no LAN GUA; dnsmasq `filter-AAAA` blocks dead dual-stack answers |
 | §1.2 UDP/443 REJECT → DROP | Applied | `stealth-route-init.sh`, `99-verify.yml`, `verify.sh`: DROP present, REJECT absent |
 | §1.3 OpenClaw off shared IP | Done via SSH-only access | Old public `sslip.io` hostname removed from public Caddy surface; OpenClaw is reached through an SSH tunnel to VPS loopback `127.0.0.1:18789`. |
 | §2.1 SNI switch | Applied | Vault/client profiles, Caddy L4 route, and Xray/3x-ui Reality inbound use `gateway.icloud.com`; `docs/sni-rotation-candidates.md` contains decision log |
@@ -49,7 +49,7 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 | §2.4 sing-box watchdog | Applied | `/jffs/scripts/singbox-watchdog.sh` cron installed |
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
 | §2.6 docs/checklists | Applied | `architecture.md`, `stealth-channel-implementation-guide.md`, `failure-modes.md` updated |
-| Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/443; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
+| Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/<home-reality-port>; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
 
 ---
 
@@ -71,7 +71,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
 
 ### Fix
 
-**Chosen approach: IPv6 kill-switch via Merlin NVRAM.** Simpler and more robust than mirroring ip6tables rules. If user later needs IPv6 for some specific LAN use case, that becomes a separate design task that must mirror the full IPv4 stealth plane in v6 before re-enabling.
+**Chosen approach: IPv6 kill-switch via Merlin NVRAM plus dnsmasq `filter-AAAA`.** Simpler and more robust than mirroring ip6tables rules. `filter-AAAA` matters even when Merlin reports IPv6 disabled: LAN clients should not receive dual-stack AAAA answers that can make browsers/apps prefer a dead IPv6 path. If user later needs IPv6 for some specific LAN use case, that becomes a separate design task that must mirror the full IPv4 stealth plane in v6 before re-enabling.
 
 1. Create a new role `ansible/roles/ipv6_kill/` with a single task:
 
@@ -94,6 +94,15 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
      register: ipv6_recheck
      changed_when: false
      failed_when: ipv6_recheck.stdout | trim not in ['disabled', '']
+
+   - name: Filter AAAA answers while IPv6 policy is disabled
+     ansible.builtin.raw: |
+       CONF=/jffs/configs/dnsmasq.conf.add
+       touch "$CONF"
+       sed -i '/^filter-AAAA$/d' "$CONF"
+       echo 'filter-AAAA' >> "$CONF"
+       service restart_dnsmasq
+     changed_when: false
 
    - name: Verify no LAN IPv6 GUA addresses
      ansible.builtin.raw: |
@@ -127,6 +136,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
    ssh "$ROUTER_SSH" '
      [ "$(nvram get ipv6_service)" = "disabled" ] || { echo "FAIL: IPv6 not disabled"; exit 1; }
      ip -6 addr show dev br0 2>/dev/null | grep -qE "inet6 (2|3)" && { echo "FAIL: LAN GUA v6 present"; exit 1; } || true
+     dig @192.168.50.1 youtube.com AAAA +short | grep . && { echo "FAIL: AAAA answers are not filtered"; exit 1; }
      echo "OK: IPv6 disabled, no LAN GUA v6"
    '
    ```
@@ -135,6 +145,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
    ```
    - [ ] `nvram get ipv6_service` == `disabled`
    - [ ] `ip -6 addr show dev br0` shows no global unicast IPv6 addresses
+   - [ ] `dig @192.168.50.1 youtube.com AAAA +short` is empty
    ```
 
 ### Verification
@@ -905,7 +916,7 @@ curl -6 https://ipv6.google.com  # expect: Network unreachable
 
 # Remote mobile client via home QR
 # from iPhone: import the regenerated home QR, toggle VPN, visit ifconfig.me.
-# Expected client profile endpoint: home public IP or home DNS name on TCP/443.
+# Expected client profile endpoint: home public IP or home DNS name on TCP/<home-reality-port>.
 # Expected checker result: 198.51.100.10, because the website sees the VPS exit.
 # Expected mobile-carrier-visible endpoint: home Russian IP, not 198.51.100.10.
 

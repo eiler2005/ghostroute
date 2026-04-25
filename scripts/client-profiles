@@ -4,6 +4,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${PROJECT_ROOT}/ansible/out/clients"
+HOME_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-home"
 
 usage() {
   cat >&2 <<'EOF'
@@ -12,8 +13,11 @@ Usage: ./scripts/client-profiles <generate|list|open|clean>
 Commands:
   generate  Generate local VLESS .conf and QR .png files from ansible-vault.
   list      List generated local client artifacts.
+  home-list List generated home Reality mobile client artifacts.
   open      Open local qr-index.html when it exists.
+  home-open Open local home Reality qr-index.html when it exists.
   clean     Remove generated local client artifacts.
+  home-clean Remove generated home Reality mobile client artifacts.
 EOF
 }
 
@@ -31,8 +35,30 @@ case "$cmd" in
       exit 1
     fi
     ;;
+  home-list)
+    if [ -d "$HOME_OUT_DIR" ]; then
+      find "$HOME_OUT_DIR" -maxdepth 1 -type f | sort
+    else
+      echo "No generated home client directory: $HOME_OUT_DIR" >&2
+      exit 1
+    fi
+    ;;
   open)
     index="${OUT_DIR}/qr-index.html"
+    [ -f "$index" ] || {
+      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      exit 1
+    }
+    if command -v open >/dev/null 2>&1; then
+      open "$index"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$index"
+    else
+      echo "$index"
+    fi
+    ;;
+  home-open)
+    index="${HOME_OUT_DIR}/qr-index.html"
     [ -f "$index" ] || {
       echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
       exit 1
@@ -48,6 +74,10 @@ case "$cmd" in
   clean)
     mkdir -p "$OUT_DIR"
     find "$OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
+    ;;
+  home-clean)
+    mkdir -p "$HOME_OUT_DIR"
+    find "$HOME_OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
     ;;
   -h|--help|help|"")
     usage

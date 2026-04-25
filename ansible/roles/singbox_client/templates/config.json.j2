@@ -21,11 +21,11 @@
     }{% if home_reality_enabled | default(false) | bool %},
     {
       "type": "vless",
-      "tag": "home-reality-in",
+      "tag": "reality-in",
       "listen": "{{ home_reality_listen }}",
-      "listen_port": {{ home_reality_port }},
+      "listen_port": {{ home_reality_ingress_port }},
       "users": [
-{% for client in clients | rejectattr('name', 'equalto', 'router') | list %}
+{% for client in home_clients %}
         {
           "name": "{{ client.name }}",
           "uuid": "{{ client.uuid }}",
@@ -39,15 +39,11 @@
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "{{ home_reality_dest.split(':')[0] }}",
-            "server_port": {{ home_reality_dest.split(':')[1] | int }}
+            "server": "{{ home_reality_dest_host }}",
+            "server_port": {{ home_reality_dest_port }}
           },
           "private_key": "{{ home_reality_server_private_key }}",
-          "short_id": [
-{% for client in clients | rejectattr('name', 'equalto', 'router') | list %}
-            "{{ client.short_id }}"{{ "," if not loop.last else "" }}
-{% endfor %}
-          ]
+          "short_id": {{ home_reality_server_short_ids | to_json }}
         }
       }
     }
@@ -88,7 +84,7 @@
     "rules": [
       { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
-      { "inbound": "home-reality-in", "outbound": "reality-out" }
+      { "inbound": "reality-in", "outbound": "reality-out" }
 {% endif %}
     ],
     "final": "direct-out"

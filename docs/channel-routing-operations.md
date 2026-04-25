@@ -7,7 +7,7 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 DROP | sing-box redirect -> VLESS+Reality |
-| Remote mobile QR clients | generated VLESS/Reality profile | TCP/443 to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
+| Remote mobile QR clients | generated VLESS/Reality profile | TCP/<home-reality-port> to home ASUS Reality inbound | sing-box home ingress -> VPS Reality |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy WireGuard clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` -> table `wgc1` | legacy WGC1 |
 
@@ -85,15 +85,15 @@ ip -br link show singbox0 2>&1 || true
 ### Home Reality Mobile Ingress
 
 ```sh
-netstat -nlp 2>/dev/null | grep ':443 '
-iptables -S INPUT | grep -- '--dport 443'
+netstat -nlp 2>/dev/null | grep ':<home-reality-port> '
+iptables -S INPUT | grep -- '--dport <home-reality-port>'
 ```
 
 Expected:
 
 ```text
-0.0.0.0:443 ... LISTEN ... sing-box
--A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+0.0.0.0:<home-reality-port> ... LISTEN ... sing-box
+-A INPUT -p tcp -m tcp --dport <home-reality-port> -j ACCEPT
 ```
 
 Generated mobile QR profiles (`iphone-*`, `macbook`) must point at the home public IP or home DNS name. The `router` profile is the exception: it points directly at the VPS because it is the router's outbound identity.
@@ -272,16 +272,17 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 Local artifacts:
 
 ```text
-ansible/out/clients/iphone-1.png
-ansible/out/clients/iphone-1.conf
-ansible/out/clients/macbook.png
-ansible/out/clients/macbook.conf
-ansible/out/clients/qr-index.html
+ansible/out/clients/router.conf
+ansible/out/clients-home/iphone-1.png
+ansible/out/clients-home/iphone-1.conf
+ansible/out/clients-home/macbook.png
+ansible/out/clients-home/macbook.conf
+ansible/out/clients-home/qr-index.html
 ```
 
 Security rule:
 
-- Real files under `ansible/out/clients/` are operational secrets.
+- Real files under `ansible/out/clients/` and `ansible/out/clients-home/` are operational secrets.
 - Do not paste real VLESS URI or QR payload in issues/docs/chat.
 - Documentation may use fake placeholders only.
 

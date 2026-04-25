@@ -8,39 +8,141 @@
     - ../secrets/stealth.yml
   vars:
     out_dir: "{{ playbook_dir }}/../out/clients"
+    home_out_dir: "{{ playbook_dir }}/../out/clients-home"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
   tasks:
-    - name: Ensure output dir
+    - name: Ensure router output dir
       ansible.builtin.file:
         path: "{{ out_dir }}"
         state: directory
         mode: "0700"
 
-    - name: Render VLESS URI for each client
+    - name: Ensure home mobile output dir
+      ansible.builtin.file:
+        path: "{{ home_out_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render VLESS URI for router VPS identity
       ansible.builtin.copy:
-        dest: "{{ out_dir }}/{{ item.name }}.conf"
+        dest: "{{ out_dir }}/router.conf"
         mode: "0600"
         content: |
-          {% if item.name == 'router' %}
-          vless://{{ item.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
-          {% else %}
-          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ home_reality_port }}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ home_reality_sni }}&fp=safari&pbk={{ home_reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}
-          {% endif %}
-      loop: "{{ clients }}"
+          vless://{{ router_client.uuid }}@{{ vps_ssh_host }}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ reality_sni }}&fp=chrome&pbk={{ reality_server_public_key }}&sid={{ router_client.short_id }}&type=tcp&headerType=none#router
+      vars:
+        router_client: "{{ clients | selectattr('name', 'equalto', 'router') | list | first }}"
       no_log: true
 
-    - name: Render QR PNG for each client
+    - name: Render HOME Reality URI for each mobile client
+      ansible.builtin.copy:
+        dest: "{{ home_out_dir }}/{{ item.name }}.conf"
+        mode: "0600"
+        content: |
+          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ home_reality_ingress_port }}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={{ home_reality_sni }}&fp=chrome&pbk={{ home_reality_server_public_key }}&sid={{ item.short_id }}&type=tcp&headerType=none#{{ item.name }}-home
+      loop: "{{ home_clients }}"
+      no_log: true
+      tags:
+        - home_clients_only
+
+    - name: Render HOME Reality QR PNG for each mobile client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ out_dir }}/{{ item.name }}.png" -r "{{ out_dir }}/{{ item.name }}.conf"
-      loop: "{{ clients }}"
-      when: item.name != 'router'   # router imports config directly, QR не нужен
+        qrencode -t PNG -o "{{ home_out_dir }}/{{ item.name }}.png" -r "{{ home_out_dir }}/{{ item.name }}.conf"
+      loop: "{{ home_clients }}"
       no_log: true
+      tags:
+        - home_clients_only
+
+    - name: Render HOME Reality QR index
+      ansible.builtin.copy:
+        dest: "{{ home_out_dir }}/qr-index.html"
+        mode: "0600"
+        content: |
+          <!doctype html>
+          <html lang="ru">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Home Reality Client QR Codes</title>
+            <style>
+              :root {
+                color-scheme: light;
+                --bg: #f4efe6;
+                --card: #fffaf0;
+                --ink: #1f2528;
+                --muted: #67706f;
+                --line: #dacdb7;
+              }
+              body {
+                margin: 0;
+                font-family: ui-rounded, "Avenir Next", "Trebuchet MS", sans-serif;
+                background: radial-gradient(circle at top left, #fff7d6, transparent 34rem), var(--bg);
+                color: var(--ink);
+              }
+              main {
+                max-width: 1120px;
+                margin: 0 auto;
+                padding: 40px 24px 64px;
+              }
+              h1 {
+                margin: 0 0 8px;
+                font-size: clamp(32px, 5vw, 56px);
+                letter-spacing: -0.04em;
+              }
+              p {
+                margin: 0 0 28px;
+                color: var(--muted);
+                font-size: 18px;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 18px;
+              }
+              article {
+                border: 1px solid var(--line);
+                border-radius: 22px;
+                background: color-mix(in srgb, var(--card) 92%, white);
+                padding: 18px;
+                box-shadow: 0 14px 34px rgba(68, 53, 28, 0.12);
+              }
+              h2 {
+                margin: 0 0 14px;
+                font-size: 20px;
+                letter-spacing: -0.02em;
+              }
+              img {
+                width: 100%;
+                max-width: 320px;
+                aspect-ratio: 1;
+                display: block;
+                margin: 0 auto;
+                image-rendering: pixelated;
+                border-radius: 12px;
+                background: white;
+              }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Home Reality Client QR Codes</h1>
+              <p>Open this file locally and scan each QR from the target device app.</p>
+              <section class="grid">
+          {% for client in home_clients %}
+                <article><h2>{{ client.name }}-home</h2><img src="{{ client.name }}.png" alt="{{ client.name }} home QR"></article>
+          {% endfor %}
+              </section>
+            </main>
+          </body>
+          </html>
+      no_log: true
+      tags:
+        - home_clients_only
 
     - name: Inform user
       ansible.builtin.debug:
         msg: |
-          Client profiles generated in {{ out_dir }}.
-          Distribute .png QR codes over secure channel only (Signal / AirDrop).
-          These contain UUIDs that grant access to Reality inbound.
+          Router profile generated in {{ out_dir }}.
+          HOME Reality mobile profiles generated in {{ home_out_dir }}.
+          Direct-VPS mobile profiles are revoked after migration; {{ out_dir }} keeps only router.conf for the router's VPS identity.

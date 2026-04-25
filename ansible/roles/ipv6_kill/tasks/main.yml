@@ -17,6 +17,15 @@
   changed_when: false
   failed_when: ipv6_recheck.stdout | trim not in ['disabled', '']
 
+- name: Filter AAAA answers while IPv6 policy is disabled
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch "$CONF"
+    sed -i '/^filter-AAAA$/d' "$CONF"
+    echo 'filter-AAAA' >> "$CONF"
+    service restart_dnsmasq
+  changed_when: false
+
 - name: Verify no LAN global IPv6 addresses remain
   ansible.builtin.raw: |
     ip -6 addr show dev br0 2>/dev/null | grep -E 'inet6 (2|3)[0-9a-f]{1,3}:' || echo "OK_NO_GUA"

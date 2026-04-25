@@ -188,7 +188,66 @@
   changed_when: xray_reality_sni_sync.stdout | trim == "changed"
   when: reality_server_public_key | length > 0
 
-- name: Restart xray after existing Reality inbound SNI sync
+- name: Sync existing Reality inbound clients
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker exec -i \
+      -e REALITY_CLIENTS={{ clients | to_json | quote }} \
+      xray python3 - <<'PY'
+    import json
+    import os
+    import sqlite3
+
+    db = "/etc/x-ui/x-ui.db"
+    clients = json.loads(os.environ["REALITY_CLIENTS"])
+    desired = []
+    for client in clients:
+        uuid = client["uuid"]
+        desired.append({
+            "id": uuid,
+            "email": client.get("email") or client["name"],
+            "flow": "xtls-rprx-vision",
+            "enable": True,
+            "limitIp": 0,
+            "totalGB": 0,
+            "expiryTime": 0,
+            "reset": 0,
+            "subId": uuid.replace("-", "")[:16],
+        })
+
+    con = sqlite3.connect(db)
+    cols = {row[1] for row in con.execute("pragma table_info(inbounds)")}
+    settings_col = "settings"
+
+    row = con.execute(
+        f"select id, {settings_col} from inbounds where remark = ?",
+        ("stealth-reality",),
+    ).fetchone()
+    if not row:
+        raise SystemExit("stealth-reality inbound not found")
+
+    inbound_id, settings_raw = row
+    settings = json.loads(settings_raw or "{}")
+    if settings.get("clients") == desired:
+        print("ok")
+        raise SystemExit(0)
+
+    settings["clients"] = desired
+    con.execute(
+        f"update inbounds set {settings_col} = ? where id = ?",
+        (json.dumps(settings, separators=(",", ":")), inbound_id),
+    )
+    con.commit()
+    print("changed")
+    PY
+  args:
+    executable: /bin/bash
+  register: xray_reality_clients_sync
+  changed_when: xray_reality_clients_sync.stdout | trim == "changed"
+  when: reality_server_public_key | length > 0
+  no_log: true
+
+- name: Restart xray after existing Reality inbound sync
   ansible.builtin.command:
     argv: [docker, restart, xray]
-  when: xray_reality_sni_sync is changed
+  when: xray_reality_sni_sync is changed or xray_reality_clients_sync is changed

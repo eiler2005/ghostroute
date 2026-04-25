@@ -603,8 +603,8 @@ printf 'HOOK_STEALTH_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A 
 printf 'HOOK_STEALTH_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -m set --match-set STEALTH_DOMAINS dst')"
 printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m set --match-set STEALTH_DOMAINS dst')"
 printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
-printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:443')"
-printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" '--dport 443 -j ACCEPT')"
+printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<home-reality-port>')"
+printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" '--dport <home-reality-port> -j ACCEPT')"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '127.0.0.1:1080')"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" 'socks5://127.0.0.1:1080')"
 printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
@@ -890,11 +890,11 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("VPN_DOMAINS ipset missing")
   [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] || drift_lines+=("VPN_STATIC_NETS ipset missing")
   [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("STEALTH_DOMAINS ipset missing")
-  [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] || drift_lines+=("mangle chain RC_VPN_ROUTE missing")
-  [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] || drift_lines+=("missing ip rule for fwmark 0x1000 -> wgc1")
+  [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("Channel A RC_VPN_ROUTE chain should be absent")
+  [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("Channel A fwmark 0x1000 -> wgc1 rule should be absent")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener on :443")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality :443")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener on :<home-reality-port>")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality :<home-reality-port>")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener on 127.0.0.1:1080")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
@@ -909,11 +909,12 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy mangle br0 -> STEALTH_DOMAINS hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_OUTPUT)" = "0" ] || drift_lines+=("legacy mangle OUTPUT -> STEALTH_DOMAINS hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy br0 -> RC_VPN_ROUTE hook should be disabled")
-  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "1" ] || drift_lines+=("missing PREROUTING wgs1 -> RC_VPN_ROUTE hook")
+  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "0" ] || drift_lines+=("Channel A PREROUTING wgs1 -> RC_VPN_ROUTE hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "0" ] || drift_lines+=("legacy OUTPUT -> RC_VPN_ROUTE hook should be disabled")
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] || drift_lines+=("wgs1 should not be hooked into STEALTH_DOMAINS")
-  [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] || drift_lines+=("missing wgs1 udp/53 -> dnsmasq redirect")
-  [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] || drift_lines+=("missing wgs1 tcp/53 -> dnsmasq redirect")
+  [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "0" ] || drift_lines+=("Channel A wgs1 udp/53 redirect should be absent")
+  [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] || drift_lines+=("Channel A wgs1 tcp/53 redirect should be absent")
+  [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" = "0" ] || drift_lines+=("Channel A wgs1 interface should be absent")
   [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] || drift_lines+=("missing sing-box watchdog cron")
   if [ "$ipv6_policy_level" = "Critical" ]; then
     drift_lines+=("IPv6 policy drift: ${ipv6_policy_note}")
@@ -958,11 +959,11 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | VPN_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | VPN_STATIC_NETS ipset | $( [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | STEALTH_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| RC_VPN_ROUTE chain | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| ip rule fwmark 0x1000 -> wgc1 | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| RC_VPN_ROUTE chain absent | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] && printf 'OK' || printf 'Present' ) |
+| ip rule fwmark 0x1000 -> wgc1 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality listener :443 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality INPUT allow :443 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality listener :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality INPUT allow :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Channel B dnscrypt SOCKS listener :1080 | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
@@ -977,11 +978,12 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | legacy mangle br0 -> STEALTH_DOMAINS absent | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | legacy mangle OUTPUT -> STEALTH_DOMAINS absent | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_OUTPUT)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | PREROUTING br0 -> RC_VPN_ROUTE disabled | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
-| PREROUTING wgs1 -> RC_VPN_ROUTE | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| PREROUTING wgs1 -> RC_VPN_ROUTE absent | $( [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | OUTPUT -> RC_VPN_ROUTE disabled | $( [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | PREROUTING wgs1 -> STEALTH_DOMAINS disabled | $( [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
-| wgs1 udp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| wgs1 tcp/53 -> dnsmasq | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| wgs1 interface absent | $( [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" = "0" ] && printf 'OK' || printf 'Present' ) |
+| wgs1 udp/53 redirect absent | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "0" ] && printf 'OK' || printf 'Present' ) |
+| wgs1 tcp/53 redirect absent | $( [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | sing-box watchdog cron | $( [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 
 ## IPv6 Policy

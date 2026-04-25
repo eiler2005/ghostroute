@@ -1,23 +1,17 @@
 #!/bin/sh
 
 # Remove old resolver pinning. Domain DNS now goes through dnscrypt-proxy, while
-# the data path is selected by ingress: br0 TCP -> REDIRECT :<lan-redirect-port>,
-# br0 UDP/443 -> forced TCP fallback, wgs1 -> wgc1.
+# the data path is selected by ingress: br0 TCP -> REDIRECT :<lan-redirect-port> and
+# br0 UDP/443 -> forced TCP fallback. Channel A wgs1/wgc1 is decommissioned.
 ip rule del to 1.1.1.1/32 table wgc1 prio 9901 2>/dev/null
 ip rule del to 9.9.9.9/32 table wgc1 prio 9902 2>/dev/null
 
-# Route marked remote WireGuard-server client packets through WGC1.
+# Remove legacy Channel A fwmark routing.
 ip rule del fwmark 0x1000/0x1000 2>/dev/null
-ip rule add fwmark 0x1000/0x1000 table wgc1 prio 9910
 
-# Force plain DNS from raw WireGuard server clients into the router's dnsmasq.
-# Without this, a client that reconnects with stale/missing DNS settings can
-# still reach the internet, but VPN_DOMAINS won't populate because queries
-# bypass the router-local resolver/ipset pipeline.
+# Remove legacy plain-DNS capture from raw WireGuard server clients.
 iptables -t nat -D PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null
 iptables -t nat -D PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null
-iptables -t nat -A PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53
-iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53
 
 # --- IPv6 fwmark routing (uncomment when WGC1 carries IPv6 traffic) ---
 # ip -6 rule del fwmark 0x1000/0x1000 2>/dev/null

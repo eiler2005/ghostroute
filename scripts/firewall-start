@@ -7,10 +7,9 @@ mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/VPN_DOMAINS.ipset"
 STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
 PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
-ROUTING_CHAIN="RC_VPN_ROUTE"
 
-# Create/restore the legacy VPN target sets. WGC1 is intentionally kept as a
-# reserve path for raw WireGuard server clients only (wgs1).
+# Create/restore the legacy VPN target sets for catalog continuity. Channel A
+# routing is decommissioned; these sets are no longer used for wgs1/wgc1.
 ipset create VPN_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
 ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
 [ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
@@ -21,47 +20,30 @@ if [ -f "$STATIC_NETWORKS_FILE" ]; then
   done
 fi
 
-iptables -t mangle -N "$ROUTING_CHAIN" 2>/dev/null || true
-iptables -t mangle -F "$ROUTING_CHAIN"
-iptables -t mangle -D PREROUTING -i br0 -j "$ROUTING_CHAIN" 2>/dev/null
-iptables -t mangle -D PREROUTING -i wgs1 -j "$ROUTING_CHAIN" 2>/dev/null
-iptables -t mangle -D OUTPUT -j "$ROUTING_CHAIN" 2>/dev/null
+iptables -t mangle -D PREROUTING -i br0 -j RC_VPN_ROUTE 2>/dev/null
+iptables -t mangle -D PREROUTING -i wgs1 -j RC_VPN_ROUTE 2>/dev/null
+iptables -t mangle -D OUTPUT -j RC_VPN_ROUTE 2>/dev/null
 
 # Clean up legacy direct PREROUTING rules from older versions.
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000 2>/dev/null
+iptables -t mangle -F RC_VPN_ROUTE 2>/dev/null
+iptables -t mangle -X RC_VPN_ROUTE 2>/dev/null
+# LAN (br0) traffic is handled by Channel B in stealth-route-init.sh.
+# Channel A wgs1/wgc1 hooks were removed during mobile relay migration.
 
-# Optional per-IP:port bypasses. Useful when a service's web UI must stay on VPN
-# but management ports (for example SSH on 22/tcp) should go directly via WAN.
-if [ -f "$PORT_BYPASS_FILE" ]; then
-  sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$PORT_BYPASS_FILE" | while read -r proto ip port; do
-    case "$proto" in
-      tcp|udp) ;;
-      *) continue ;;
-    esac
-
-    case "$port" in
-      ''|*[!0-9]*) continue ;;
-    esac
-
-    [ "$port" -ge 1 ] 2>/dev/null || continue
-    [ "$port" -le 65535 ] 2>/dev/null || continue
-
-    iptables -t mangle -A "$ROUTING_CHAIN" -p "$proto" -d "$ip" --dport "$port" -j RETURN
-  done
-fi
-
-iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_DOMAINS dst -j MARK --set-mark 0x1000/0x1000
-iptables -t mangle -A "$ROUTING_CHAIN" -m set --match-set VPN_STATIC_NETS dst -j MARK --set-mark 0x1000/0x1000
-iptables -t mangle -A PREROUTING -i wgs1 -j "$ROUTING_CHAIN"
-# LAN (br0) traffic is handled by Channel B in stealth-route-init.sh:
-# TCP is redirected to sing-box :<lan-redirect-port>, and UDP/443 is silently dropped to
-# force client fallback away from QUIC. Router OUTPUT is not transparently captured.
-# Only raw WireGuard server clients arrive on wgs1 and keep the old WGC1 split.
+# Remote management is LAN-only. Merlin may leave a broad SSH ACCEPT rule in
+# INPUT; keep an explicit WAN-side drop ahead of it after firewall rebuilds.
+iptables -D INPUT ! -i br0 -p tcp --dport 22 -j DROP 2>/dev/null
+iptables -I INPUT 1 ! -i br0 -p tcp --dport 22 -j DROP
 
 # Keep per-device LAN byte accounting chains up to date without resetting
 # their counters during ordinary refreshes.
 [ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
+
+# Re-apply Channel B REDIRECT/QUIC-drop and home Reality INPUT rules after
+# Merlin rebuilds firewall chains.
+[ -x /jffs/scripts/stealth-route-init.sh ] && /jffs/scripts/stealth-route-init.sh >/dev/null 2>&1 || true
 
 # --- IPv6 support (uncomment when WGC1 carries IPv6 traffic) ---
 # Requires: ip6tables, ipset with inet6, and IPv6 routes in table wgc1.
