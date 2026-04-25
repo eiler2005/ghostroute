@@ -130,6 +130,11 @@
   until: xui_health.json.success | default(false)
   no_log: true
 
+- name: Build VPS Reality client source of truth
+  ansible.builtin.set_fact:
+    xray_reality_clients: "{{ clients + (emergency_clients | default([])) }}"
+  no_log: true
+
 - name: Seed Reality inbound (first run)
   ansible.builtin.include_tasks: seed_reality.yml
   when: reality_server_public_key | length == 0
@@ -140,6 +145,7 @@
     docker exec -i \
       -e REALITY_DEST={{ reality_dest | quote }} \
       -e REALITY_SERVER_NAMES={{ reality_server_names | to_json | quote }} \
+      -e REALITY_SHORT_IDS={{ reality_short_ids | to_json | quote }} \
       xray python3 - <<'PY'
     import json
     import os
@@ -148,6 +154,7 @@
     db = "/etc/x-ui/x-ui.db"
     dest = os.environ["REALITY_DEST"]
     server_names = json.loads(os.environ["REALITY_SERVER_NAMES"])
+    short_ids = json.loads(os.environ["REALITY_SHORT_IDS"])
 
     con = sqlite3.connect(db)
     cols = {row[1] for row in con.execute("pragma table_info(inbounds)")}
@@ -171,6 +178,9 @@
     if reality.get("serverNames") != server_names:
         reality["serverNames"] = server_names
         changed = True
+    if reality.get("shortIds") != short_ids:
+        reality["shortIds"] = short_ids
+        changed = True
 
     if changed:
         con.execute(
@@ -192,7 +202,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     docker exec -i \
-      -e REALITY_CLIENTS={{ clients | to_json | quote }} \
+      -e REALITY_CLIENTS={{ xray_reality_clients | to_json | quote }} \
       xray python3 - <<'PY'
     import json
     import os

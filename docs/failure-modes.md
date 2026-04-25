@@ -98,6 +98,29 @@ Recover:
 /jffs/scripts/stealth-route-init.sh
 ```
 
+## Home Router Down: Mobile Impact
+
+Symptom: remote mobile clients lose the Home Reality path, often all app traffic
+inside the mobile proxy profile stalls.
+
+Check from outside home:
+
+```bash
+nc -vz <home-public-host-or-ip> <home-reality-port>
+curl -I --max-time 10 https://ifconfig.me/
+```
+
+If the home relay/router/home ISP is down but the VPS is healthy:
+
+1. In the mobile client app, switch from the normal `*-home` profile to the
+   disabled/off `*-emergency-direct` profile.
+2. Use it only for the outage window.
+3. Switch back to `*-home` once the home relay is healthy.
+
+If the VPS is also down, the emergency direct-VPS profile cannot help.
+Disable the proxy profile and use direct LTE without bypass until the VPS or a
+future multi-VPS fallback is restored.
+
 ## Auto-Discovery Blocklist Missing
 
 Symptom: new auto-discovered domains are skipped instead of being added.

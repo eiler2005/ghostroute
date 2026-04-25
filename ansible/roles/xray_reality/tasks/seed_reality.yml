@@ -113,7 +113,7 @@
           }
         ]
       }}
-  loop: "{{ clients }}"
+  loop: "{{ xray_reality_clients | default(clients) }}"
   when: not _has_existing_stealth_inbound
   no_log: true
 
@@ -161,13 +161,13 @@
 - name: Ensure generated short IDs cover all clients
   ansible.builtin.assert:
     that:
-      - (_reality_sids | length) >= (clients | length)
+      - (_reality_sids | length) >= ((xray_reality_clients | default(clients)) | length)
     fail_msg: "Reality short_ids are fewer than configured clients."
 
 - name: Build clients list with assigned Reality short IDs
   ansible.builtin.set_fact:
     _clients_with_short_ids: "{{ (_clients_with_short_ids | default([])) + [ item | combine({'short_id': _reality_sids[ansible_loop.index0]}) ] }}"
-  loop: "{{ clients }}"
+  loop: "{{ xray_reality_clients | default(clients) }}"
   loop_control:
     extended: true
   no_log: true
@@ -182,6 +182,15 @@
     template_reality_server_public_key: "{{ _reality_pub }}"
     template_reality_short_ids: "{{ _reality_sids }}"
     template_clients: "{{ _clients_with_short_ids }}"
+    template_home_reality_public_host: "{{ home_reality_public_host | default(vault_home_reality_public_host | default('')) }}"
+    template_home_reality_ingress_port: "{{ home_reality_ingress_port | default(<home-reality-port>) }}"
+    template_home_reality_dest_host: "{{ home_reality_dest_host | default('gateway.icloud.com') }}"
+    template_home_reality_dest_port: "{{ home_reality_dest_port | default(443) }}"
+    template_home_reality_server_private_key: "{{ home_reality_server_private_key | default('') }}"
+    template_home_reality_server_public_key: "{{ home_reality_server_public_key | default('') }}"
+    template_home_reality_server_short_ids: "{{ home_reality_server_short_ids | default([]) }}"
+    template_home_clients: "{{ home_clients | default([]) }}"
+    template_emergency_clients: "{{ emergency_clients | default([]) }}"
   delegate_to: localhost
   become: false
   no_log: true

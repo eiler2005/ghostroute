@@ -56,6 +56,39 @@
         status_code: 200
       changed_when: false
 
+    - name: VPS Reality client identities are router plus emergency only
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i \
+          -e EXPECTED_CLIENTS={{ ((clients + (emergency_clients | default([]))) | length) | quote }} \
+          xray python3 - <<'PY'
+        import json
+        import os
+        import sqlite3
+
+        expected = int(os.environ["EXPECTED_CLIENTS"])
+        con = sqlite3.connect("/etc/x-ui/x-ui.db")
+        row = con.execute("select settings from inbounds where remark = ?", ("stealth-reality",)).fetchone()
+        if not row:
+            raise SystemExit("stealth-reality inbound not found")
+        settings = json.loads(row[0] or "{}")
+        actual = len(settings.get("clients", []))
+        if actual != expected:
+            raise SystemExit(f"expected {expected} VPS Reality clients, got {actual}")
+        PY
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Router-side home clients do not overlap VPS-side identities
+      ansible.builtin.assert:
+        that:
+          - ((home_clients | map(attribute='uuid') | list) | intersect(((clients + (emergency_clients | default([]))) | map(attribute='uuid') | list))) | length == 0
+          - (clients | selectattr('name', 'equalto', 'router') | list | length) == 1
+        fail_msg: "home_clients must stay router-side only; VPS inbound must contain router plus emergency_clients."
+      no_log: true
+
 - name: Verify stealth channel — router side
   hosts: routers
   gather_facts: false
@@ -163,7 +196,17 @@
       changed_when: false
 
     - name: Router-side Reality ingress is listening for remote mobile clients
-      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_ingress_port }} '"
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_ingress_port }}'"
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
+    - name: Router-side Reality ingress is IPv4-only, not IPv6 wildcard
+      ansible.builtin.shell: |
+        netstat -nlp 2>/dev/null | awk '
+          $4 == "0.0.0.0:{{ home_reality_ingress_port }}" { has4 = 1 }
+          $4 == ":::{{ home_reality_ingress_port }}" || $4 == "[::]:{{ home_reality_ingress_port }}" || $4 == "*:{{ home_reality_ingress_port }}" { has6 = 1 }
+          END { exit(has4 == 1 && has6 != 1 ? 0 : 1) }
+        '
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
@@ -172,12 +215,31 @@
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
+    - name: Router-side Reality ingress connlimit DROP precedes ACCEPT
+      ansible.builtin.shell: |
+        iptables -S INPUT | awk '
+          /--dport {{ home_reality_ingress_port }}/ {
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above 30/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
+          }
+          END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
+        '
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
     - name: Router-side Reality ingress uses managed split routing
       ansible.builtin.shell: |
-        cfg="$(sed 's/[[:space:]]//g' {{ singbox_config_path }})"
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
         printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","outbound":"direct-out"' &&
         ! printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","outbound":"reality-out"'
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
+    - name: Router-side Reality ingress sends tunneled DNS through Reality outbound
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","port":[53,853],"outbound":"reality-out"'
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 

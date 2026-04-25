@@ -974,6 +974,19 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 
 ---
 
+# 8. Audit trail
+
+| Date/time | Milestone | Evidence |
+|---|---|---|
+| 2026-04-25 14:00 | Channel A runtime decommissioned | `wgs1_enable=0`, `wgc1_enable=0`, `wg show` empty, no `0x1000`/`RC_VPN_ROUTE` steady-state hooks |
+| 2026-04-25 16:00 | Mobile Home Reality relay deployed | Router `sing-box` has `reality-in` on TCP/<home-reality-port> and normal mobile QR clients dial the home IP first |
+| 2026-04-25 18:00 | Old mobile UUIDs removed from normal VPS path | VPS `clients[]` source of truth reduced to router identity; router-side `home_clients[]` kept separate |
+| 2026-04-25 20:00 | Channel A repo cleanup completed | Legacy `VPN_DOMAINS`, `wgs1/wgc1` hooks and stale docs/checks removed or marked historical |
+| 2026-04-25 21:00 | Mobile traffic observability added | Mobile Home Reality byte counters and period reports added for TCP/<home-reality-port> ingress |
+| 2026-04-25 22:00 | Emergency direct-VPS fallback made explicit | `emergency_clients[]` documented as disabled/off fallback for rare home relay outages |
+
+---
+
 # Appendix A: file/line references for reviewer context
 
 Primary files touched (or should be touched) by the fixes:

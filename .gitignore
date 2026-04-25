@@ -32,6 +32,8 @@ docs/vpn-domain-journal.md
 !/ansible/out/clients/.gitkeep
 /ansible/out/clients-home/*
 !/ansible/out/clients-home/.gitkeep
+/ansible/out/clients-emergency/*
+!/ansible/out/clients-emergency/.gitkeep
 /ansible/out/clients-backup-*/
 /ansible/out/clients-home-backup-*/
 ansible/*.retry

@@ -88,6 +88,30 @@ Expected:
 - INPUT firewall allows TCP/<home-reality-port>;
 - sing-box has no fresh fatal errors.
 
+## VPS Emergency Clients Drift
+
+VPS Reality inbound should contain the router identity plus
+`emergency_clients[]`. Normal mobile `home_clients[]` must not be present on the
+VPS; they belong to the router-side `:<home-reality-port>` inbound.
+
+Count check on the VPS:
+
+```bash
+ssh deploy@198.51.100.10 '
+  docker exec xray python3 - <<'"'"'PY'"'"'
+import json, sqlite3
+con = sqlite3.connect("/etc/x-ui/x-ui.db")
+row = con.execute("select settings from inbounds where remark = ?", ("stealth-reality",)).fetchone()
+settings = json.loads(row[0] or "{}")
+print(len(settings.get("clients", [])))
+PY
+'
+```
+
+Expected count is `1 + len(emergency_clients)` from
+`ansible/secrets/stealth.yml`: one router identity plus emergency direct-VPS
+fallback identities.
+
 ## Legacy Channel A Снова Появился
 
 Проверка:
