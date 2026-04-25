@@ -1,540 +1,518 @@
-# SNI Rotation Candidates & Procedure for Reality
+# SNI Rotation Guide For Reality
 
-**Audience:** operator or LLM agent switching the Reality cover SNI when the current one gets throttled/blocked/burnt.
-**Status:** procedure documented; active SNI switched to `gateway.icloud.com` on 2026-04-24.
-**Primary goal:** keep Reality indistinguishable from legitimate high-volume HTTPS traffic on the RU-facing DPI profile.
+**Audience:** future operator or LLM agent rotating Reality cover domains.
+**Status:** critical rewrite of the original candidate note, 2026-04-25.
+**Current default:** `gateway.icloud.com` is used for both visible Reality
+surfaces unless explicitly changed.
+
+This guide is deliberately conservative. The domain list below is a seed pool,
+not an allow-list. A hostname is acceptable only after it passes the validation
+gates in this document from the right vantage points.
 
 ---
 
-## 0. Context
+## 0. Critical Context
 
-### 0.1 What Reality SNI does
+### 0.1 SNI Is Not IP Camouflage
 
-Reality cover SNI is the TLS ServerName value sent by client on the ClientHello. It is what ISP/RKN DPI sees as "destination hostname". The real destination (anything the client actually wants to reach) is hidden inside the Reality-encrypted tunnel.
+Reality can make the TLS handshake and active-probe behavior look like ordinary
+HTTPS for the selected cover hostname. It does **not** make the remote IP or ASN
+look like Apple, Cloudflare, or Microsoft.
 
-### 0.2 Why rotate
+Current user-facing consequences:
 
-One SNI value = one point of behavioral fingerprint:
-- If RKN starts throttling/blocking the selected SNI (e.g. Microsoft O365 broad throttling), Reality gets dragged into that throttle even though its content is different.
-- If volume from one home IP to one SNI gets statistically odd (24/7 persistent flow to `www.microsoft.com` is atypical for a home user), DPI metadata analysis can flag.
-- Community-popular Reality SNIs (e.g. `www.lovelive-anime.jp` in 2023–2024) drift into DPI-vendor block-lists over time.
+| Observer | What they can see |
+|---|---|
+| LTE operator for `iphone-*` QR clients | iPhone connects to the home Russian IP on TCP/443 |
+| Home ISP | ASUS connects to the VPS IP on TCP/443, with the chosen cover SNI |
+| Websites/checkers for managed domains | VPS exit IP, VPS region, datacenter ASN |
+| Websites for non-managed domains | Home Russian WAN IP |
 
-Rotation schedule: **only on trigger**, not periodic. Triggers:
-- Observed throttling of the current SNI in RU (high latency / packet loss / RST on specific flows).
-- Public notice (Xray/V2ray community) that the SNI became DPI-adversarial.
-- Yearly sanity review.
+Do not use a website checker result alone to judge the LTE-facing privacy story.
+Checkers report the final exit, not the first hop seen by the mobile carrier.
 
-### 0.3 Current state
+### 0.2 There Are Two Reality SNI Surfaces Now
 
-```yaml
-# ansible/secrets/stealth.yml (vault)
-reality_dest: "gateway.icloud.com:443"
-reality_server_names:
-  - "gateway.icloud.com"
+The old design had one external Reality endpoint. The current architecture has
+two visible Reality layers:
+
+```text
+iPhone LTE
+  -> home ASUS public IP :443
+  -> sing-box home Reality inbound
+  -> sing-box Reality outbound
+  -> VPS VPS / Caddy / Xray
+  -> Internet
 ```
 
-`gateway.icloud.com` is the active choice as of 2026-04-24. `www.microsoft.com` remains acceptable as a rollback baseline despite selective MS-targeted throttling in RU, but it is no longer the preferred long-flow cover.
+| Surface | Path | Config owner | Client artifact impact |
+|---|---|---|---|
+| **Home ingress SNI** | iPhone/Mac -> ASUS `:443` | `ansible/group_vars/routers.yml`: `home_reality_dest`, `home_reality_server_names` | Regenerate and redistribute `iphone-*` / `macbook` QR |
+| **VPS outbound SNI** | ASUS -> VPS `:443` | `ansible/secrets/stealth.yml`: `reality_dest`, `reality_server_names` | Re-render router config; regenerate profiles so artifacts stay current |
 
-### 0.4 Impact of a rotation
+Default operational rule: rotate both surfaces to the same accepted candidate
+unless there is a deliberate reason to keep them different. If only the VPS
+surface is rotated, LTE clients still present the old home-ingress SNI to the
+mobile operator.
 
-There are now two Reality layers:
+### 0.3 When To Rotate
 
-1. **Router outbound to VPS** — uses the VPS Reality public key and the VPS
-   cover SNI from this document.
-2. **Remote mobile ingress to home ASUS** — generated iPhone/MacBook QR
-   profiles point at the home public IP on TCP/443 and use the home Reality
-   public key. The router then forwards them through the VPS Reality outbound.
+Do **not** rotate randomly or on a short calendar cadence. Each rotation changes
+behavior and creates redistribution work. Rotate on one of these triggers:
 
-For a VPS SNI rotation:
-
-- Router `sing-box` config is re-rendered by Ansible; ~5 sec service restart.
-- Any existing router-to-VPS sessions drop; users reconnect automatically if the app is configured to reconnect.
-- Downtime on router-side stealth channel: ~10 sec.
-- The router profile used as the outbound identity changes because it points directly at the VPS.
-- Mobile QR profiles should still be regenerated and redistributed after the playbook run so operators do not keep stale QR artifacts, but their first hop remains the home public IP and their `pbk=` remains the home Reality public key unless the home ingress key/SNI was rotated too.
-
----
-
-## 1. Hard requirements for any Reality SNI
-
-Any candidate **must** satisfy ALL of these. Validation commands in §3.
-
-| Requirement | Why |
-|---|---|
-| Serves real TLS 1.3 | Reality requires TLS 1.3 ClientHello shape. |
-| Supports X25519 key exchange | Required by Xray Reality. |
-| Cert CN / SAN matches the hostname | Active probing from RKN would expose a mismatch. |
-| Reachable from VPS VPS (outbound HTTPS) | Reality fallback proxies to `dest` for non-matching handshakes; if unreachable, active probe gets TCP RST → detectable. |
-| Does **not** require mTLS / client certificate | Xray fallback cannot present a client cert. |
-| Advertises HTTP/1.1 or HTTP/2 ALPN (not HTTP/3-only) | Reality runs over TCP; must have a valid HTTP over TCP path. |
-| Stable: same cert served consistently, no geographical cert rotation per-request | Avoid probe-vs-client cert mismatch. |
-| Not itself throttled/blocked in RU | Otherwise Reality inherits the throttle. |
-| Not on known VPN/Reality-adversary SNI-blocklists | See §6 for signal sources. |
+- current SNI shows throttling, RSTs, packet loss, or unusual latency from a RU
+  vantage;
+- the Xray/sing-box community reports that the hostname became adversarial;
+- active-probe logs spike after a known burn event;
+- annual review says the current candidate no longer matches device behavior.
 
 ---
 
-## 2. Candidate pool (20 domains)
+## 1. Hard Rejection Rules
 
-Grouped by "cover traffic profile" — pick candidates whose normal-user traffic pattern matches yours (lots of persistent HTTPS vs. short bursts).
+Reject a hostname immediately if any item below is true:
 
-### 2.1 Tier A — Apple ecosystem (5)
+- It is owned by us, by a personal project, or publicly resolves to our VPS.
+- It is a Russian local domain or a domain whose normal traffic is mostly
+  Russia-only. The cover story becomes too inspectable and low-noise.
+- It is already blocked or heavily throttled in the relevant RU networks.
+- It is a VPN/proxy/checker/speedtest domain or community-popular Reality SNI.
+- It is a niche hostname with little residential background traffic.
+- It serves only HTTP/3/QUIC and has no reliable TCP HTTPS path.
+- It requires client certificates, unusual auth at TLS level, or mTLS.
+- The certificate SAN does not cover the hostname.
+- The certificate or ALPN behavior changes per request in a way active probes
+  could observe.
+- The fallback HTTPS response from the VPS would be broken, reset, or obviously
+  synthetic.
 
-Rationale: iPhone/iPad/Mac are ubiquitous in RU. Every device constantly hits these. Very high background noise volume per residential line. Apple infrastructure in RU works stably in 2025.
+Never use:
 
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 1 | `gateway.icloud.com` | iCloud sync (persistent, long-lived) | **Top pick** — iPhone holds persistent connection, matches Reality's long TCP flow perfectly. |
-| 2 | `www.icloud.com` | Web iCloud | Bursty on login. |
-| 3 | `appleid.apple.com` | Auth endpoint | Short bursts; less ideal for long flows. |
-| 4 | `swdist.apple.com` | Software distribution | Heavy downloads; good for bulk traffic. |
-| 5 | `www.apple.com` | Corporate site | Generic but universal. |
-
-### 2.2 Tier B — Microsoft ecosystem (4)
-
-Rationale: Office 365 / OneDrive / Teams still widely used in RU enterprise. Current selection.
-
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 6 | `www.microsoft.com` | Corporate site | Previous baseline / rollback candidate. |
-| 7 | `learn.microsoft.com` | Docs portal | Static-heavy, steady traffic profile. |
-| 8 | `update.microsoft.com` | Windows Update | Burst downloads; check it actually responds to GET / (WU endpoints sometimes return 403 at root — still works for Reality probe-fallback, but check). |
-| 9 | `docs.microsoft.com` | Legacy docs redirect | Redirects to learn.microsoft.com but TLS itself is valid. |
-
-### 2.3 Tier C — Cloudflare (3)
-
-Rationale: Cloudflare fronts 20%+ of RU internet traffic. Excellent ambient noise. Cloudflare itself is not systematically blocked in RU as of 2026-01.
-
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 10 | `www.cloudflare.com` | Corporate site | Strong candidate. |
-| 11 | `dash.cloudflare.com` | User dashboard | Logged-in traffic pattern. |
-| 12 | `blog.cloudflare.com` | Blog / static | Very stable, high TLS 1.3 compliance. |
-
-### 2.4 Tier D — Google (3)
-
-Rationale: When available (region/ISP-dependent), Google edges carry enormous generic HTTPS volume. **WARNING:** some RU regions see selective Google throttling; validate from RU vantage before switching.
-
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 13 | `dl.google.com` | Download CDN | Heavy bursts; works well. |
-| 14 | `www.google.com` | Search | Ubiquitous; check for regional throttling. |
-| 15 | `fonts.googleapis.com` | Font CDN | Called from millions of sites → indirect use. |
-
-### 2.5 Tier E — Major tech corporate (3)
-
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 16 | `www.amazon.com` | Retail | Very high user volume; AWS-hosted, stable TLS 1.3. |
-| 17 | `www.intel.com` | Corporate | Low-volume but inconspicuous. |
-| 18 | `www.nvidia.com` | Corporate | Low-volume, low attention. |
-
-### 2.6 Tier F — Alternative CDNs (2)
-
-| # | Domain | Cover traffic profile | Notes |
-|---|--------|-----------------------|-------|
-| 19 | `www.fastly.com` | CDN corporate | Stable; backs Reddit, NYT, etc. |
-| 20 | `player.vimeo.com` | Video player endpoint (Fastly-hosted) | Persistent streaming flows; matches Reality's long-flow pattern well. |
-
-### 2.7 Explicit NO-candidates (do not use)
-
-- **Any `*.youtube.com`, `*.googlevideo.com`** — heavily throttled in RU.
-- **Any `*.facebook.com`, `*.instagram.com`, `*.fbcdn.net`** — blocked in RU.
-- **Any `*.twitter.com`, `*.x.com`** — blocked.
-- **Any Russian domain (`*.ru`, `*.рф`, Yandex, VK, Mail.ru)** — under RKN direct inspection cooperation, avoid.
-- **`www.lovelive-anime.jp`** — burnt since ~2023, in most DPI Reality-SNI blocklists.
-- **`www.tesla.com`, `www.speedtest.net`** — historically community-popular, now moderately adversarial (speedtest in particular: some ISPs run DPI on speedtest to suppress ban-evidence).
-- **Netflix, Disney+, Hulu endpoints** — blocked / geo-unreachable from RU, fallback probes would fail.
-- **Self-owned domains or anything pointing to VPS VPS IP publicly** — see security review §1.3.
+```text
+*.youtube.com, *.googlevideo.com      # target traffic itself; often throttled
+*.facebook.com, *.instagram.com, *.fbcdn.net
+*.twitter.com, *.x.com
+*.ru, *.рф, yandex.*, vk.com, mail.ru
+speedtest.net and similar checker/test domains
+self-owned domains, sslip.io/nip.io domains pointing at our VPS
+domains from old public Reality "best SNI" lists unless freshly revalidated
+```
 
 ---
 
-## 3. Per-candidate validation (run before switching)
+## 2. Acceptance Gates
 
-All commands run **on the VPS VPS** (reachability from VPS is what matters for Reality fallback). Additionally, run **a subset** from a Russian vantage (someone's mobile or a Russia-hosted VM) to validate RU-accessibility.
+A candidate must pass every hard gate before it can be considered.
 
-### 3.1 One-shot validator script
+| Gate | Required result | Why |
+|---|---|---|
+| DNS | Stable A/AAAA answers; no dependency on our VPS | Avoid self-linkage |
+| TLS version | TLS 1.3 works over TCP/443 | Reality depends on TLS 1.3 shape |
+| Key exchange | X25519 available | Matches Reality requirements |
+| ALPN | `h2` or `http/1.1` available | Fallback probe must look normal over TCP |
+| Certificate | SAN covers the exact hostname or valid wildcard | Active probing must not see mismatch |
+| HTTP response | Any plausible 2xx/3xx/400/401/403 from fallback | RST/timeout is suspicious |
+| VPS reachability | Works from VPS VPS | Xray fallback path depends on this |
+| RU reachability | Works from the relevant RU ISP/mobile vantage | Avoid inheriting SNI throttling |
+| Stability | Same broad cert/SAN/ALPN behavior over 24h | Avoid probe-vs-client mismatch |
 
-Save as `ansible/scripts/validate-sni-candidate.sh`. Run: `./validate-sni-candidate.sh <hostname>`.
+Soft-score only after all hard gates pass:
+
+| Axis | Good | Bad |
+|---|---|---|
+| Residential plausibility | Apple/iCloud, OS update, major CDN | obscure SaaS admin panel |
+| Flow shape | long-lived sync or streaming-like HTTPS | one-shot marketing page |
+| Background volume | common on phones/laptops in RU | rare in home traffic |
+| ASN mismatch tolerance | hostname plausibly fronted/CDN-like | hostname strongly tied to one ASN |
+| Operational blast radius | easy rollback, no client key rotation | requires key/UUID churn |
+
+---
+
+## 3. Candidate Pool
+
+This pool is intentionally smaller and more skeptical than the original note.
+Each row is a starting point for validation, not a pre-approved choice.
+
+### 3.1 Primary Candidates
+
+| Candidate | Why consider it | Caveats |
+|---|---|---|
+| `gateway.icloud.com` | Best current fit for Apple-device long-lived sync behavior; active default | Revalidate from RU and VPS before every rotation; do not assume Apple behavior is permanent |
+| `www.icloud.com` | Apple background and user plausibility | More web-login/bursty than sync |
+| `swdist.apple.com` | Apple software distribution; plausible bulk HTTPS | Burst-heavy, not always long-lived |
+| `www.cloudflare.com` | Very common CDN/security brand, stable public TLS | Corporate-site traffic is bursty; ASN mismatch with VPS remains visible |
+| `dash.cloudflare.com` | Long-lived dashboard pattern can be plausible | Requires care: logged-in dashboard traffic profile is not universal |
+| `learn.microsoft.com` | Common docs portal, stable TLS shape historically | More bursty/static than long-lived |
+| `www.microsoft.com` | Known rollback baseline | Not preferred as primary because generic corporate homepage does not match long-lived flows well |
+
+### 3.2 Secondary / Research Candidates
+
+Use these only if primary candidates fail validation or the flow profile is a
+better match for a specific deployment.
+
+| Candidate | Why consider it | Caveats |
+|---|---|---|
+| `appleid.apple.com` | Apple auth traffic is common on devices | Short auth bursts; less natural for persistent tunnels |
+| `www.apple.com` | Universal Apple hostname | Marketing-site flow shape, not sync |
+| `dl.google.com` | Common download/update traffic | Validate RU networks carefully; avoid all YouTube/Googlevideo hosts |
+| `fonts.googleapis.com` | Extremely common indirect web dependency | Small bursty objects, not long-lived |
+| `www.google.com` | High background volume | Search/SNI policies vary by region; validate RU vantage |
+| `www.fastly.com` | CDN brand with stable TLS | Corporate hostname, lower personal-device background |
+| `player.vimeo.com` | Video/player traffic can be long-flow | Lower ambient traffic than Apple/Google; validate reachability |
+| `www.amazon.com` | Major consumer brand | Region redirects and bot defenses may change fallback behavior |
+| `www.intel.com` | Inconspicuous corporate TLS | Low traffic volume |
+| `www.nvidia.com` | Inconspicuous corporate TLS | Low traffic volume, bursty |
+
+### 3.3 Deprecated From The Original Pool
+
+- `docs.microsoft.com`: legacy hostname; prefer `learn.microsoft.com`.
+- `blog.cloudflare.com`: acceptable for testing, but blog/static traffic is a
+  weaker flow-shape match than `www.cloudflare.com` or `dash.cloudflare.com`.
+- Any candidate justified only by "popular in Reality community": popularity is
+  a negative signal after it becomes visible to DPI vendors.
+
+---
+
+## 4. Validator
+
+Run this from the **VPS** and from at least one **RU vantage** before switching.
+The VPS check verifies Reality fallback. The RU check verifies the SNI is not
+already throttled or blocked where the traffic is observed.
+
+Save temporarily as `/tmp/validate-sni-candidate.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# Validate a single SNI candidate for Reality use.
-# Exit 0 = suitable; non-zero = fails some criterion.
-
 set -u
-HOST="${1:?usage: $0 <hostname>}"
-PORT=443
-TMP=$(mktemp -d); trap "rm -rf $TMP" EXIT
 
-pass() { printf "  [ok]  %s\n" "$*"; }
-fail() { printf "  [FAIL] %s\n" "$*"; EXIT_CODE=1; }
+host="${1:?usage: $0 <hostname>}"
+port="${2:-443}"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 
-EXIT_CODE=0
-echo "== Validating $HOST:$PORT =="
+fail_count=0
+ok() { printf '[ok] %s\n' "$*"; }
+bad() { printf '[fail] %s\n' "$*"; fail_count=$((fail_count + 1)); }
+info() { printf '[info] %s\n' "$*"; }
 
-# 3.1.1 HTTPS reachability + certificate verification via curl.
-# TLS 1.3 + X25519 are checked below with openssl because macOS curl may list
-# TLS flags that its linked libcurl cannot actually execute.
-if curl -sI --max-time 10 "https://$HOST/" \
-     -o "$TMP/headers" -w "%{http_code} %{ssl_verify_result}\n" > "$TMP/curl" 2>"$TMP/err"; then
-  read -r CODE VERIFY < "$TMP/curl"
-  if [[ "$VERIFY" == "0" ]]; then
-    pass "HTTPS reachability OK, cert verified, HTTP $CODE"
-  else
-    fail "TLS cert verify failed (verify_result=$VERIFY)"
-  fi
-  # Accept any 2xx/3xx/400/401/403 — just need the server to respond
-  if [[ "$CODE" =~ ^(2|3|400|401|403) ]]; then
-    pass "HTTP response acceptable ($CODE)"
-  else
-    fail "HTTP response unacceptable ($CODE)"
-  fi
+echo "== $host:$port =="
+
+if dig +short A "$host" >/dev/null 2>&1 || dig +short AAAA "$host" >/dev/null 2>&1; then
+  addrs="$({ dig +short A "$host"; dig +short AAAA "$host"; } 2>/dev/null | tr '\n' ' ')"
+  [ -n "$addrs" ] && ok "DNS answers: $addrs" || bad "DNS returned no address"
 else
-  fail "curl failed: $(cat "$TMP/err")"
+  bad "DNS lookup failed"
 fi
 
-# 3.1.2 Detailed TLS inspection via openssl
-OPENSSL_OUT=$(echo | openssl s_client -connect "$HOST:$PORT" -servername "$HOST" \
-  -tls1_3 -groups X25519 -alpn h2,http/1.1 -showcerts 2>/dev/null)
+curl_code="$(
+  curl -sS -I --connect-timeout 5 --max-time 12 \
+    -o "$tmp/headers" -w '%{http_code} %{ssl_verify_result} %{time_connect}' \
+    "https://$host/" 2>"$tmp/curl.err" || true
+)"
 
-if echo "$OPENSSL_OUT" | grep -q "Protocol.*TLSv1.3"; then
-  pass "Confirmed TLSv1.3 protocol"
+if [ -n "$curl_code" ]; then
+  set -- $curl_code
+  http_code="${1:-000}"
+  verify_result="${2:-999}"
+  connect_time="${3:-999}"
+  [ "$verify_result" = "0" ] && ok "curl cert verification OK" || bad "curl cert verify_result=$verify_result"
+  case "$http_code" in
+    2*|3*|400|401|403) ok "HTTP fallback response plausible: $http_code" ;;
+    *) bad "HTTP fallback response suspicious: $http_code" ;;
+  esac
+  info "TCP connect time: ${connect_time}s"
 else
-  fail "TLSv1.3 not confirmed"
+  bad "curl failed: $(cat "$tmp/curl.err" 2>/dev/null)"
 fi
 
-if echo "$OPENSSL_OUT" | grep -qE "Server Temp Key.*X25519|X25519"; then
-  pass "X25519 key exchange confirmed"
+openssl_out="$(
+  echo | openssl s_client \
+    -connect "$host:$port" \
+    -servername "$host" \
+    -tls1_3 \
+    -groups X25519 \
+    -alpn h2,http/1.1 \
+    -showcerts 2>/dev/null || true
+)"
+
+printf '%s\n' "$openssl_out" | grep -q 'Protocol.*TLSv1.3' \
+  && ok "TLS 1.3 confirmed" || bad "TLS 1.3 not confirmed"
+
+printf '%s\n' "$openssl_out" | grep -qE 'Server Temp Key: X25519|X25519' \
+  && ok "X25519 confirmed" || bad "X25519 not confirmed"
+
+printf '%s\n' "$openssl_out" | grep -qE 'ALPN protocol: (h2|http/1.1)' \
+  && ok "$(printf '%s\n' "$openssl_out" | grep 'ALPN protocol:' | tail -1)" \
+  || bad "ALPN h2/http1.1 not confirmed"
+
+cert_pem="$(printf '%s\n' "$openssl_out" | awk '/BEGIN CERTIFICATE/{p=1} p{print} /END CERTIFICATE/{exit}')"
+cert_text="$(printf '%s\n' "$cert_pem" | openssl x509 -noout -text 2>/dev/null || true)"
+san="$(printf '%s\n' "$cert_text" | sed -n '/Subject Alternative Name/,+2p')"
+printf '%s\n' "$san" | grep -qiE "DNS:${host//./\\.}(,|$)|DNS:\\*\\.${host#*.}(,|$)" \
+  && ok "SAN covers hostname" \
+  || { bad "SAN does not obviously cover hostname"; printf '%s\n' "$san" | sed 's/^/  /'; }
+
+issuer="$(printf '%s\n' "$cert_text" | awk -F'Issuer: ' '/Issuer:/ {print $2; exit}')"
+subject="$(printf '%s\n' "$cert_text" | awk -F'Subject: ' '/Subject:/ {print $2; exit}')"
+info "issuer: ${issuer:-unknown}"
+info "subject: ${subject:-unknown}"
+
+if [ "$fail_count" -eq 0 ]; then
+  echo "== PASS $host =="
 else
-  fail "X25519 not confirmed"
+  echo "== FAIL $host ($fail_count failure(s)) =="
 fi
-
-# ALPN: must be http/1.1 or h2
-if echo "$OPENSSL_OUT" | grep -qE "ALPN protocol:.*(h2|http/1.1)"; then
-  pass "ALPN OK: $(echo "$OPENSSL_OUT" | grep 'ALPN protocol')"
-else
-  fail "ALPN not h2 or http/1.1 (probably HTTP/3-only)"
-fi
-
-# Cert subject check: CN or SAN must match hostname
-CERT_PEM=$(echo "$OPENSSL_OUT" | awk '/BEGIN CERTIFICATE/{flag=1} flag{print} /END CERTIFICATE/{exit}')
-CERT_SUBJECTS=$(echo "$CERT_PEM" | openssl x509 -noout -text 2>/dev/null | sed -n '/Subject Alternative Name/,+2p' || true)
-if echo "$CERT_SUBJECTS" | grep -qiE "(^|[^.])$HOST([^a-z]|$)|\*\.$(echo "$HOST" | cut -d. -f2-)"; then
-  pass "Cert SAN covers $HOST"
-else
-  fail "Cert SAN does not obviously cover $HOST — inspect manually"
-  echo "$CERT_SUBJECTS" | sed 's/^/      /'
-fi
-
-# No session ticket (reduces probe replay) — optional
-if echo "$OPENSSL_OUT" | grep -q "TLS session ticket:"; then
-  echo "  [info] server issues TLS session tickets (acceptable for Reality, not optimal)"
-fi
-
-# 3.1.3 Latency sample (for fallback-timing concerns)
-LATENCY_MS=$(curl -s -o /dev/null -w "%{time_connect}\n" --max-time 10 "https://$HOST/" \
-             | awk '{print int($1*1000)}')
-if [[ -n "$LATENCY_MS" && "$LATENCY_MS" -lt 500 ]]; then
-  pass "TCP connect latency ${LATENCY_MS}ms (reasonable)"
-else
-  fail "TCP connect latency ${LATENCY_MS}ms (too high or unreachable)"
-fi
-
-echo "== $HOST: $([ $EXIT_CODE -eq 0 ] && echo PASS || echo FAIL) =="
-exit $EXIT_CODE
+exit "$fail_count"
 ```
 
-Usage:
-```
-chmod +x ansible/scripts/validate-sni-candidate.sh
-scp ansible/scripts/validate-sni-candidate.sh deploy@<vps>:/tmp/
-ssh deploy@<vps> 'for h in gateway.icloud.com www.cloudflare.com www.apple.com; do
-  /tmp/validate-sni-candidate.sh "$h" || true; echo
-done'
+Batch usage:
+
+```bash
+for h in \
+  gateway.icloud.com \
+  www.icloud.com \
+  www.cloudflare.com \
+  dash.cloudflare.com \
+  learn.microsoft.com \
+  www.microsoft.com \
+  player.vimeo.com
+do
+  /tmp/validate-sni-candidate.sh "$h" || true
+  echo
+done
 ```
 
-### 3.2 RU-vantage check (optional but recommended)
+Stability check:
 
-If rotation is triggered by RU-specific throttling, also run the validator from a Russian mobile network or RU-located VM:
+```bash
+for i in 1 2 3 4; do
+  date
+  /tmp/validate-sni-candidate.sh gateway.icloud.com || true
+  sleep 21600   # 6h
+done
 ```
-ssh russian-vm 'bash -s' < ansible/scripts/validate-sni-candidate.sh www.microsoft.com
-```
-Look for:
-- Latency spikes > 500ms or packet loss — indicates ISP-level throttling of that SNI.
-- HTTP status != 2xx/3xx — indicates blocking.
-
-### 3.3 Cert-rotation stability check
-
-Over 24 hours, re-run validator a few times. The cert issuer + SAN should stay the same. If SAN changes per-request (some enterprise LBs rotate certs dynamically), skip the candidate.
 
 ---
 
-## 4. Switch procedure (Ansible-driven)
+## 5. Rotation Modes
 
-### 4.1 Prerequisites
+### 5.1 Rotate Both Surfaces
 
-- New SNI candidate has passed §3 validation from both VPS and (ideally) RU vantage.
-- Communication channel ready to push new QR to 7 external clients (Signal / AirDrop).
-- Maintenance window — ~10 min of stealth-channel downtime acceptable.
+Use this when the current SNI is considered weak or burnt for the whole setup.
+This is the default human procedure.
 
-### 4.2 Step-by-step
+1. Validate the new hostname from VPS and RU vantage.
+2. Edit VPS Reality settings:
+
+   ```bash
+   cd ansible
+   ansible-vault edit secrets/stealth.yml
+   # reality_dest: "<new-host>:443"
+   # reality_server_names:
+   #   - "<new-host>"
+   ```
+
+3. Edit home ingress settings:
+
+   ```yaml
+   # ansible/group_vars/routers.yml
+   home_reality_dest: "<new-host>:443"
+   home_reality_server_names:
+     - "<new-host>"
+   ```
+
+4. Apply:
+
+   ```bash
+   ansible-playbook playbooks/10-stealth-vps.yml
+   ansible-playbook playbooks/30-generate-client-profiles.yml
+   ansible-playbook playbooks/20-stealth-router.yml
+   ansible-playbook playbooks/99-verify.yml
+   ```
+
+5. Redistribute regenerated `iphone-*` / `macbook` QR PNGs.
+
+### 5.2 Rotate Only VPS Outbound SNI
+
+Use this when the home mobile ingress is healthy, but the home ISP path from
+ASUS to VPS needs a different cover SNI.
+
+Change only:
+
+```yaml
+# ansible/secrets/stealth.yml
+reality_dest: "<new-host>:443"
+reality_server_names:
+  - "<new-host>"
+```
+
+Then:
 
 ```bash
-cd router_configuration/ansible
-
-# 4.2.1 Edit the vault — change both fields consistently
-ansible-vault edit secrets/stealth.yml
-#   reality_dest: "<new-host>:443"
-#   reality_server_names:
-#     - "<new-host>"
-
-# 4.2.2 Preview — dry-run the VPS playbook to see diff
-ansible-playbook playbooks/10-stealth-vps.yml --check --diff
-
-# 4.2.3 Apply to VPS (updates Xray Reality inbound + Caddy L4 matcher)
 ansible-playbook playbooks/10-stealth-vps.yml
-
-# 4.2.4 Sanity check from the VPS itself
-ssh deploy@<vps> "/tmp/validate-sni-candidate.sh <new-host>"
-
-# 4.2.5 External handshake check (from your laptop)
-curl -sk --resolve <new-host>:443:<vps-ip> --max-time 10 -I "https://<new-host>/"
-#    Expect: HTTP response with cert CN/SAN matching <new-host>
-
-# 4.2.6 Regenerate router + client profiles (pulls new SNI from vault)
 ansible-playbook playbooks/30-generate-client-profiles.yml
-
-# 4.2.7 Push new router config via regular router playbook
 ansible-playbook playbooks/20-stealth-router.yml
+ansible-playbook playbooks/99-verify.yml
+```
 
-# 4.2.8 Router-side verify
+Mobile QR files do not need a first-hop address change, but regenerate them so
+local artifacts reflect the exact deployed state.
+
+### 5.3 Rotate Only Home Ingress SNI
+
+Use this when LTE/mobile operator behavior is the concern, but ASUS -> VPS is
+healthy.
+
+Change only:
+
+```yaml
+# ansible/group_vars/routers.yml
+home_reality_dest: "<new-host>:443"
+home_reality_server_names:
+  - "<new-host>"
+```
+
+Then:
+
+```bash
+ansible-playbook playbooks/30-generate-client-profiles.yml
+ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/99-verify.yml --limit routers
-
-# 4.2.9 Test from LAN
-#   From LAN client: curl https://ifconfig.me   (or whatever test domain is in STEALTH_DOMAINS)
-#   Expect: VPS VPS IP
-
-# 4.2.10 Redistribute QR codes to 7 external clients
-ls ansible/out/clients/*.png
-#   Distribute over Signal / AirDrop only. Do not commit.
 ```
 
-### 4.3 What changes and what does not
-
-| Changes | Stays the same |
-|--------|---------------|
-| `reality_dest` in vault | `reality_server_private_key` (the Reality keypair) |
-| `reality_server_names[0]` in vault | `reality_server_public_key` |
-| Every client's `sni=` in VLESS URI | Every client's UUID |
-| Every client's QR PNG | `reality_short_ids` (each client's short_id stays) |
-| Router `/opt/etc/sing-box/config.json` | Xray inbound ID, 3x-ui panel |
-
-This means: **no key rotation, no UUID churn, clients keep their identity**. Only the cover SNI changes.
-
-### 4.4 Parallel rollout (safer variant)
-
-If downtime concerns matter: keep old inbound running temporarily and add new inbound on a different port (e.g., 127.0.0.1:8444) with the new SNI, route via Caddy L4 with a new `@matcher`:
-
-```
-# /etc/caddy/Caddyfile (L4 block, add)
-@reality_new tls sni <new-host>
-route @reality_new { proxy 127.0.0.1:8444 }
-```
-
-Then migrate clients gradually. **Not needed for MVP**; stick with the atomic cutover in §4.2 unless scale justifies.
+Regenerate and redistribute mobile QR PNGs. The first hop remains the home IP,
+but `sni=` in the mobile profiles changes.
 
 ---
 
-## 5. Rollback
+## 6. Verification After Rotation
 
-If after switch (§4.2) something is broken (handshakes failing, Reality fallback 502s, etc.):
+Repository checks:
 
 ```bash
-cd router_configuration/ansible
-
-# 5.1 Revert vault to previous SNI
-ansible-vault edit secrets/stealth.yml
-#   reality_dest: "www.microsoft.com:443"     # or previous known-good
-#   reality_server_names:
-#     - "www.microsoft.com"
-
-# 5.2 Re-apply VPS
-ansible-playbook playbooks/10-stealth-vps.yml
-
-# 5.3 Re-generate profiles and push router
-ansible-playbook playbooks/30-generate-client-profiles.yml
-ansible-playbook playbooks/20-stealth-router.yml
-
-# 5.4 Redistribute QR for reverted SNI to clients
+./verify.sh
+./scripts/router-health-report
+cd ansible
+ansible-playbook playbooks/99-verify.yml
 ```
 
-Total rollback time: ~5 min. Clients need new QR again.
+Router live checks:
 
-**Tip:** right before a switch, archive `ansible/out/clients/*.png` → `ansible/out/clients-backup-<date>/` so rollback does not require regenerating QR for the previous SNI.
+```sh
+netstat -nlp 2>/dev/null | grep -E ':(443|<lan-redirect-port>|1080) '
+iptables -S INPUT | grep -- '--dport 443'
+tail -100 /opt/var/log/sing-box.log
+```
+
+Expected:
+
+- `0.0.0.0:443` is `sing-box` home Reality ingress.
+- `0.0.0.0:<lan-redirect-port>` is `sing-box` REDIRECT inbound.
+- no `UDP/443 REJECT` rules for managed destinations.
+- `iphone-*` logs show `inbound/vless[home-reality-in]` when mobile clients connect.
+
+Observer sanity:
+
+| Test | Expected |
+|---|---|
+| iPhone OneXray profile endpoint | home IP or home DNS name, not VPS IP |
+| LTE operator-visible peer | home IP `:443` |
+| Website checker for managed domain | VPS exit IP |
+| Local Russian site outside managed lists | home Russian WAN IP |
+
+---
+
+## 7. Rollback
+
+Before switching, archive current QR artifacts outside git:
 
 ```bash
 mkdir -p ansible/out/clients-backup-$(date +%Y%m%d-%H%M)
-cp ansible/out/clients/*.png ansible/out/clients-backup-$(date +%Y%m%d-%H%M)/
+cp ansible/out/clients/*.png ansible/out/clients-backup-$(date +%Y%m%d-%H%M)/ 2>/dev/null || true
+cp ansible/out/clients/*.conf ansible/out/clients-backup-$(date +%Y%m%d-%H%M)/ 2>/dev/null || true
 ```
+
+Rollback is the inverse of the chosen rotation mode:
+
+1. Restore previous `reality_dest` / `reality_server_names` in vault if VPS
+   outbound changed.
+2. Restore previous `home_reality_dest` / `home_reality_server_names` if home
+   ingress changed.
+3. Re-run the same playbooks from §5.
+4. Redistribute previous or regenerated QR if home ingress changed.
+
+No UUID or Reality key rotation is required for SNI-only rollback.
 
 ---
 
-## 6. Decision framework — evaluating NEW candidates
+## 8. Decision Log Template
 
-When the pool in §2 is exhausted or a new candidate appears, evaluate against:
+Append every production rotation here or in `docs/sni-rotation-log.md`.
 
-### 6.1 Signal sources (check before adopting)
+```markdown
+## YYYY-MM-DD — <new-host> (previous: <old-host>)
 
-- [Xray / sing-box community discussions](https://github.com/XTLS/Xray-core/discussions) — search for `SNI` and the candidate hostname.
-- V2Ray / Xray Russian Telegram channels (`@projectxray_ru`, `@v2rayN_official`) for current DPI reports.
-- [Censored Planet](https://censoredplanet.org/) + [OONI Explorer](https://explorer.ooni.org/) — check if the hostname shows anomalies in RU measurements.
+**Mode:** both surfaces / VPS only / home ingress only
+**Trigger:** throttle / block / annual review / community burn notice / test
+**Validator evidence:** VPS pass/fail, RU vantage pass/fail, 24h stability
+**Candidates rejected:** host + reason
+**Files changed:** vault, group_vars, generated QR, docs
+**Rollout:** playbooks run, downtime, user impact
+**Observer checks:** LTE endpoint, home ISP path, website checker exit
+**Rollback point:** previous host and QR backup path
+**Next review:** date
+```
 
-### 6.2 Evaluation matrix
+### 2026-04-24/25 — `gateway.icloud.com` (previous VPS SNI: `www.microsoft.com`)
 
-For each candidate, score 0–5 on each axis; accept if total ≥ 24/30:
-
-| Axis | Max | How to score |
-|------|-----|--------------|
-| Passes §3 validator | 5 | 5 if clean pass, 0 if any fail |
-| RU-accessible without throttling | 5 | 5 if RU-vantage §3.2 shows normal, 0 if blocked |
-| Background traffic volume in RU | 5 | 5 for Apple/MS/Cloudflare-level; 2 for niche; 0 for self-owned |
-| Cert/TLS stability over 24h | 5 | 5 same cert always; 2 if rotates geo-region; 0 if per-request rotation |
-| Not on DPI adversary lists (§6.1) | 5 | 5 if no mentions; 0 if burnt |
-| Cover-traffic profile matches Reality (long-lived TCP) | 5 | 5 for persistent services (iCloud sync, dash panels); 2 for bursty; 0 for one-shot |
-
-### 6.3 Reject if ANY of:
-
-- Hostname owned by user personally (SNI enumeration risk, see security review §1.3).
-- Hostname shares an IP range already known to host VPN endpoints.
-- Hostname returns HTTP 3xx to a different hostname (redirect target could leak via `Server` header differences under probing).
-- Hostname has mandatory HTTP/3 (TCP/HTTP1.1-HTTP2 unavailable).
-- Hostname serves an Extended Validation cert with distinctive OID (less "generic" looking).
+**Mode:** both surfaces after home Reality ingress was introduced.
+**Trigger:** hardening pass: Apple/iCloud has a better long-flow cover profile
+than the previous generic Microsoft homepage baseline.
+**Evidence:** local validation and live router checks passed; RU-vantage review
+still recommended after any future rotation.
+**Operational note:** mobile QR clients now connect first to home ASUS `:443`;
+website checkers still report the VPS exit for managed domains.
+**Next review:** annual review or earlier if throttling/probing appears.
 
 ---
 
-## 7. Post-switch monitoring (first 72 hours)
+## 9. Quick Reference
 
-After a switch, watch for:
+Current intended defaults:
 
-### 7.1 VPS side
+```yaml
+# VPS outbound Reality surface
+reality_dest: "gateway.icloud.com:443"
+reality_server_names:
+  - "gateway.icloud.com"
 
-```bash
-ssh deploy@<vps> 'docker exec xray tail -f /var/log/xray/access.log' | \
-  grep -iE 'rejected|fallback|error'
+# Home ingress Reality surface
+home_reality_dest: "gateway.icloud.com:443"
+home_reality_server_names:
+  - "gateway.icloud.com"
 ```
 
-Expected: zero errors after warm-up. Many `rejected: fallback to ...` = active probing hitting wrong key (normal, Reality is doing its job). Spike of probing = someone scanning your IP; investigate.
+Most likely future candidates, in review order:
 
-### 7.2 Router side
-
-- `ss -Htn state established '( dport = :443 )' | wc -l` — should show at least 1 long-lived connection to VPS IP.
-- `cat /proc/net/nf_conntrack | grep -c '<vps-ip>'` — count active conntrack entries.
-- `tail -F /opt/var/log/sing-box.log` — zero handshake failures.
-
-### 7.3 LAN clients
-
-- Spot-check 3–4 stealth domains from different devices.
-- Measure latency: `curl -w '%{time_total}\n' -so /dev/null https://<stealth-test-domain>/` before and after — should be within ±50ms.
-
-### 7.4 RU vantage check
-
-Re-run §3.2 from RU vantage 24h after switch. Confirm no throttling appeared.
-
----
-
-## 8. Decision log (append-only)
-
-Whoever performs a rotation must append an entry here (or in a sibling `docs/sni-rotation-log.md`). Format:
-
-```
-## YYYY-MM-DD  —  <new SNI>  (previous: <old SNI>)
-
-**Trigger:** <why rotated — throttle observed / community burn notice / yearly review>
-**Validator results:** <pass/fail per §3; attach RU-vantage evidence if any>
-**Candidates considered:** <list with scores from §6.2>
-**Rollout:** <downtime observed; any issues>
-**Clients redistributed:** <date; method: Signal / AirDrop / in-person>
-**Monitoring window (72h):** <observations>
-**Next review:** <date>
-```
-
-Keep the log. It is itself a signal of "which SNIs have been used from this setup" — useful for future threat-model updates.
-
-### 2026-04-24 — `gateway.icloud.com` (previous: `www.microsoft.com`)
-
-**Trigger:** Hardening pass from `docs/stealth-security-review-and-fixes.md` §2.1. No evidence that `www.microsoft.com` was burnt, but Apple iCloud is a better long-flow cover for Reality.
-**Validator results:** Local validator PASS for `gateway.icloud.com`: HTTPS reachable, cert verified, TLS 1.3, X25519, ALPN `h2`, SAN covers hostname, connect latency < 500 ms. RU-vantage validation still recommended for 24h follow-up.
-**Candidates considered:** `gateway.icloud.com` primary; `www.cloudflare.com` fallback if Apple validation fails; `player.vimeo.com` fallback for long-flow behavior with less ambient Apple traffic.
-**Rollout:** Vault SNI updated; local client profiles regenerated; router playbook applied; VPS Caddy active probe returns real Apple fallback for `gateway.icloud.com`.
-**Clients redistributed:** Pending operator distribution of regenerated QR PNGs from `ansible/out/clients/`.
-**Monitoring window (72h):** Started 2026-04-24; watch VPS/Xray logs, router conntrack, and LAN smoke tests.
-**Next review:** 2026-04-25 for RU-vantage and 72h stability check.
-
----
-
-## 9. Appendix — Quick reference
-
-### 9.1 Current SNI as of last edit
-
-```
-reality_dest:         gateway.icloud.com:443
-reality_server_names: [gateway.icloud.com]
-```
-
-### 9.2 Quick-swap one-liner (after vault edit)
-
-```bash
-cd ansible && ansible-playbook playbooks/10-stealth-vps.yml \
-  && ansible-playbook playbooks/30-generate-client-profiles.yml \
-  && ansible-playbook playbooks/20-stealth-router.yml \
-  && ansible-playbook playbooks/99-verify.yml
-```
-
-### 9.3 Candidate pool (compact)
-
-```
-# Tier A — Apple
-gateway.icloud.com      # TOP: matches long-flow profile
+```text
+gateway.icloud.com
 www.icloud.com
-appleid.apple.com
 swdist.apple.com
-www.apple.com
-
-# Tier B — Microsoft
-www.microsoft.com       # previous baseline / rollback
-learn.microsoft.com
-update.microsoft.com
-docs.microsoft.com
-
-# Tier C — Cloudflare
 www.cloudflare.com
 dash.cloudflare.com
-blog.cloudflare.com
-
-# Tier D — Google (validate RU access first)
+learn.microsoft.com
+www.microsoft.com
+player.vimeo.com
 dl.google.com
-www.google.com
 fonts.googleapis.com
-
-# Tier E — Tech brands
-www.amazon.com
-www.intel.com
-www.nvidia.com
-
-# Tier F — CDN alternatives
-www.fastly.com
-player.vimeo.com        # persistent-flow profile
 ```
 
-### 9.4 Forbidden (do NOT use — §2.7)
+One-line full redeploy after edits:
 
-```
-*.youtube.com, *.googlevideo.com     # RU throttled
-*.facebook.com, *.instagram.com      # RU blocked
-*.twitter.com, *.x.com               # RU blocked
-*.ru, *.рф, yandex.*, vk.com, mail.ru  # under RKN cooperation
-www.lovelive-anime.jp                # burnt ~2023
-www.tesla.com, www.speedtest.net     # community-known, adversarial
-Netflix/Disney+/Hulu endpoints       # geo-unreachable from RU
-Any domain resolvable to VPS VPS IP publicly  # SNI-enum leak
+```bash
+cd ansible &&
+ansible-playbook playbooks/10-stealth-vps.yml &&
+ansible-playbook playbooks/30-generate-client-profiles.yml &&
+ansible-playbook playbooks/20-stealth-router.yml &&
+ansible-playbook playbooks/99-verify.yml
 ```
