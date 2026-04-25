@@ -22,9 +22,19 @@ awk '
   }
   {
     if (NF < 3 || $2 != "-A") next
-    if ($3 == "RC_LAN_BYTES_OUT") direction = "up"
-    else if ($3 == "RC_LAN_BYTES_IN") direction = "down"
-    else next
+    if ($3 == "RC_LAN_BYTES_OUT") {
+      direction = "up"
+      forced_channel = ""
+    } else if ($3 == "RC_LAN_BYTES_IN") {
+      direction = "down"
+      forced_channel = ""
+    } else if ($3 == "RC_LAN_REALITY_OUT") {
+      direction = "up"
+      forced_channel = "vpn"
+    } else if ($3 == "RC_LAN_REALITY_IN") {
+      direction = "down"
+      forced_channel = "vpn"
+    } else next
 
     bytes_field = $1
     sub(/^\[[0-9]+:/, "", bytes_field)
@@ -43,7 +53,8 @@ awk '
     }
     if (ip == "") next
 
-    if (iface == "wan0") channel = "wan"
+    if (forced_channel != "") channel = forced_channel
+    else if (iface == "wan0") channel = "wan"
     else channel = "other"
 
     ips[ip] = 1
