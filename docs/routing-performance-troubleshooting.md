@@ -47,11 +47,11 @@ ordinary home Wi-Fi.
 |---|---|---|
 | Mobile MSS clamp | `TCPMSS --set-mss 1360` on `PREROUTING dport <home-reality-port>` and `OUTPUT sport <home-reality-port>` | Avoid LTE PMTUD blackholes and large-segment retransmits on the mobile -> home TCP leg. |
 | Mobile ingress connlimit | `connlimit --connlimit-above 300` before ACCEPT | Avoid false drops for 6-7 mobile devices, Safari tab bursts, app sync, and LTE CGNAT source sharing. |
-| TCP socket buffers | `rmem_max/wmem_max = 8388608` and TCP r/w max `8388608` | Give high-BDP LTE paths enough receive/send window headroom. |
+| TCP socket buffers | `rmem_max/wmem_max = 16777216` and TCP r/w max `16777216` | Give high-BDP LTE paths enough receive/send window headroom for concurrent mobile flows. |
 | PMTU probing | `tcp_mtu_probing = 1` | Let Linux recover better when ICMP fragmentation-needed is blocked on other TCP paths. It does not raise the mobile ingress MSS above the static `1360` clamp. |
 | Slow-start after idle | `tcp_slow_start_after_idle = 0` | Avoid needless throughput collapse after idle periods. |
 | TCP features | `tcp_window_scaling=1`, `tcp_sack=1`, `tcp_timestamps=1` | Keep core TCP performance features explicitly enabled. |
-| Congestion control | `cubic` | `bbr` is not available in the current Merlin kernel/modules. |
+| Congestion control | `cubic` | `bbr`/`westwood` are not available in the current Merlin kernel/modules. |
 
 These changes are managed by:
 
@@ -150,10 +150,10 @@ Small socket caps can prevent a TCP flow from filling the pipe.
 ### Current Runtime Values
 
 ```text
-net.core.rmem_max                  8388608
-net.core.wmem_max                  8388608
-net.ipv4.tcp_rmem                  4096 262144 8388608
-net.ipv4.tcp_wmem                  4096 65536 8388608
+net.core.rmem_max                  16777216
+net.core.wmem_max                  16777216
+net.ipv4.tcp_rmem                  4096 262144 16777216
+net.ipv4.tcp_wmem                  4096 65536 16777216
 net.ipv4.tcp_mtu_probing           1
 net.ipv4.tcp_slow_start_after_idle 0
 net.ipv4.tcp_window_scaling        1
@@ -192,9 +192,9 @@ Home Reality LTE MSS clamp :<home-reality-port> | OK
 Router TCP high-BDP tuning        | OK
 ```
 
-## 4. Congestion Control: BBR Is Not Available
+## 4. Congestion Control: BBR/Westwood Are Not Available
 
-BBR/fq was checked on the router:
+BBR/fq and Westwood were checked on the router:
 
 ```sh
 ssh admin@192.168.50.1 '
@@ -202,6 +202,7 @@ ssh admin@192.168.50.1 '
   modprobe sch_fq 2>/dev/null || true
   cat /proc/sys/net/ipv4/tcp_available_congestion_control
   cat /proc/sys/net/core/default_qdisc 2>/dev/null || true
+  find /lib/modules /jffs /opt -name "*westwood*" -o -name "tcp_*" 2>/dev/null | head
 '
 ```
 
@@ -212,11 +213,14 @@ available congestion control: reno cubic
 default qdisc: pfifo_fast
 tcp_bbr module: missing
 sch_fq module: missing
+tcp_westwood module: missing
 ```
 
 Therefore the current production choice is `cubic`. Do not document BBR as
 enabled unless a future Merlin/kernel build actually provides `tcp_bbr` and
-`sch_fq`.
+`sch_fq`. Do not switch to Westwood unless a future build exposes it in
+`tcp_available_congestion_control`; installing a random kernel module is unsafe
+because it must match the exact router kernel.
 
 ## 5. Connlimit On TCP/<home-reality-port>
 
@@ -359,9 +363,9 @@ Keep:
 
 - MSS `1360` on both mobile ingress directions.
 - connlimit `>300`.
-- TCP max buffers `8 MiB`.
+- TCP max buffers `16 MiB`.
 - `tcp_mtu_probing=1`.
-- `cubic`, unless a future kernel exposes `bbr` and `sch_fq`.
+- `cubic`, unless a future kernel exposes `bbr`/`fq` or `westwood`.
 
 Revisit only if live LTE tests still show stalls after reconnecting the mobile
 profile and confirming the connlimit DROP counter stays at zero.

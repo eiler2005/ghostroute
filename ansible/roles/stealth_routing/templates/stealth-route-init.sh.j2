@@ -24,10 +24,10 @@ WAN_GW={{ wan_gw }}
 # old Merlin defaults as floors, but allow the two TCP legs of the home relay to
 # grow beyond the tiny 512 KiB core socket caps.
 if [ "$ROUTER_TCP_PERF_TUNING" = "1" ]; then
-  [ -e /proc/sys/net/core/rmem_max ] && echo {{ router_tcp_rmem_max | default(8388608) }} > /proc/sys/net/core/rmem_max
-  [ -e /proc/sys/net/core/wmem_max ] && echo {{ router_tcp_wmem_max | default(8388608) }} > /proc/sys/net/core/wmem_max
-  [ -e /proc/sys/net/ipv4/tcp_rmem ] && echo "{{ router_tcp_rmem | default('4096 262144 8388608') }}" > /proc/sys/net/ipv4/tcp_rmem
-  [ -e /proc/sys/net/ipv4/tcp_wmem ] && echo "{{ router_tcp_wmem | default('4096 65536 8388608') }}" > /proc/sys/net/ipv4/tcp_wmem
+  [ -e /proc/sys/net/core/rmem_max ] && echo {{ router_tcp_rmem_max | default(16777216) }} > /proc/sys/net/core/rmem_max
+  [ -e /proc/sys/net/core/wmem_max ] && echo {{ router_tcp_wmem_max | default(16777216) }} > /proc/sys/net/core/wmem_max
+  [ -e /proc/sys/net/ipv4/tcp_rmem ] && echo "{{ router_tcp_rmem | default('4096 262144 16777216') }}" > /proc/sys/net/ipv4/tcp_rmem
+  [ -e /proc/sys/net/ipv4/tcp_wmem ] && echo "{{ router_tcp_wmem | default('4096 65536 16777216') }}" > /proc/sys/net/ipv4/tcp_wmem
   [ -e /proc/sys/net/ipv4/tcp_mtu_probing ] && echo {{ router_tcp_mtu_probing | default(1) }} > /proc/sys/net/ipv4/tcp_mtu_probing
   [ -e /proc/sys/net/ipv4/tcp_slow_start_after_idle ] && echo {{ router_tcp_slow_start_after_idle | default(0) }} > /proc/sys/net/ipv4/tcp_slow_start_after_idle
   [ -e /proc/sys/net/ipv4/tcp_window_scaling ] && echo {{ router_tcp_window_scaling | default(1) }} > /proc/sys/net/ipv4/tcp_window_scaling
