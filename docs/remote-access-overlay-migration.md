@@ -1,34 +1,33 @@
 # Remote Access Overlay Migration
 
-Этот документ фиксирует варианты замены публичного ingress для `wgs1` на альтернативный remote-access слой.
+Этот документ фиксирует historical варианты замены публичного ingress для `wgs1` на альтернативный remote-access слой.
 
 Важно:
 
 - это **planning-only** документ
 - в этой итерации **ничего не внедряется**
-- цель здесь не "маскировка" трафика, а **снижение внешней поверхности** за счёт отказа от публичного `wgs1` на WAN
+- Channel A уже выключен в normal runtime; документ оставлен как planning-only контекст на случай отдельного проекта remote LAN access
 
 ## Цель
 
-Текущая схема даёт удобный remote access через raw `WireGuard server` на `wgs1`, но сам `wgs1` является публичным WAN ingress.
+На момент исходного анализа remote access шёл через raw `WireGuard server` на `wgs1`, а сам `wgs1` был публичным WAN ingress. После Channel A cleanup это больше не active path.
 
 Целевое состояние:
 
-- основной remote access идёт через отдельный overlay / zero-trust access layer
-- `wgs1` сначала остаётся `backup`
-- затем существующие `wgs1` клиенты переводятся на новую схему
-- после миграции публичный `wgs1` выключается на WAN
+- обычный mobile egress идёт через home Reality QR
+- если нужен remote LAN access, он проектируется отдельно через overlay / zero-trust access layer
+- `wgc1_*` NVRAM остаётся cold fallback, но `wgs1/wgc1` runtime выключен
 
 Итоговая цель:
 
-- `wgs1` **не виден вовне**, потому что он больше не принимает основной публичный ingress
-- текущий routing catalog (`VPN_DOMAINS`, `VPN_STATIC_NETS`, `RC_VPN_ROUTE`, `wgc1`) остаётся основной внутренней логикой роутера
+- `wgs1` **не виден вовне**, потому что он больше не принимает публичный ingress
+- текущий routing catalog (`STEALTH_DOMAINS`, `VPN_STATIC_NETS`, REDIRECT `:<lan-redirect-port>`, home Reality `:<home-reality-port>`) остаётся основной внутренней логикой роутера
 
-## Что зафиксировано по live-state
+## Что было зафиксировано по historical live-state
 
-Проверка сделана по live-роутеру **24 апреля 2026**.
+Проверка ниже сделана по live-роутеру **24 апреля 2026**, до финального Channel A cleanup.
 
-### Public surface сейчас
+### Public surface тогда
 
 - `wgs1_enable=1`
 - `wgs1_port=51820`

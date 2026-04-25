@@ -49,16 +49,16 @@ if [ "$SAVE_MODE" = "1" ]; then
   if [ -f "$JOURNAL_FILE" ]; then
     NOW_DATE="$(date +%F)"
     NOW_TS="$(date '+%Y-%m-%d %H:%M:%S %z')"
-    VPN_CURRENT="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_CURRENT)"
-    VPN_MAX="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MAX)"
-    VPN_MEM="$(router_kv_get "$STATE_FILE" VPN_DOMAINS_MEM)"
+    VPN_CURRENT="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_CURRENT)"
+    VPN_MAX="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_MAX)"
+    VPN_MEM="$(router_kv_get "$STATE_FILE" STEALTH_DOMAINS_MEM)"
     VPN_STATIC="$(router_kv_get "$STATE_FILE" VPN_STATIC_NETS_CURRENT)"
     MANUAL_COUNT="$(router_kv_get "$STATE_FILE" MANUAL_RULE_COUNT)"
     AUTO_COUNT="$(router_kv_get "$STATE_FILE" AUTO_RULE_COUNT)"
     USAGE_PCT="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f%%", (current / max) * 100 }')"
     HEADROOM="$(awk -v current="${VPN_CURRENT:-0}" -v max="${VPN_MAX:-0}" 'BEGIN { if (max <= 0) print "n/a"; else print max - current }')"
     LATEST_DATE="$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_DATE)"
-    LATEST_VPN="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_VPN_DOMAINS)")"
+    LATEST_VPN="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_STEALTH_DOMAINS)")"
     LATEST_MANUAL="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_MANUAL)")"
     LATEST_AUTO="$(router_extract_int "$(router_kv_get "$HISTORY_FILE" HISTORY_LATEST_AUTO)")"
     GROWTH_DELTA="n/a"
@@ -88,11 +88,11 @@ if [ "$SAVE_MODE" = "1" ]; then
 
 | Метрика | Значение |
 |---|---|
-| VPN_DOMAINS — IP в ipset | ${VPN_CURRENT} |
-| Лимит VPN_DOMAINS (maxelem) | ${VPN_MAX} |
+| STEALTH_DOMAINS — IP в ipset | ${VPN_CURRENT} |
+| Лимит STEALTH_DOMAINS (maxelem) | ${VPN_MAX} |
 | Использование лимита | ${USAGE_PCT} |
 | Headroom до лимита | ${HEADROOM} IP |
-| Память VPN_DOMAINS | ${VPN_MEM} B |
+| Память STEALTH_DOMAINS | ${VPN_MEM} B |
 | VPN_STATIC_NETS | ${VPN_STATIC} активных CIDR в ipset |
 | Ручные доменные правила | ${MANUAL_COUNT} |
 | Auto-discovered доменные правила | ${AUTO_COUNT} |
@@ -100,7 +100,7 @@ if [ "$SAVE_MODE" = "1" ]; then
 ### Growth note [operational]
 
 - previous saved snapshot: ${LATEST_DATE:-n/a}
-- VPN_DOMAINS delta vs previous snapshot: ${GROWTH_DELTA}
+- STEALTH_DOMAINS delta vs previous snapshot: ${GROWTH_DELTA}
 - growth level: ${GROWTH_LEVEL}
 - growth note: ${GROWTH_NOTE}
 

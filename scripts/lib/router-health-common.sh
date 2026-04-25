@@ -272,13 +272,18 @@ router_ipv6_wgc1_path_present() {
 
 router_ipv6_all_disable_flags_set() {
   local state_file="$1"
+  local wgc1_disable
+  local wgs1_disable
+
+  wgc1_disable="$(router_kv_get "$state_file" IPV6_DISABLE_WGC1)"
+  wgs1_disable="$(router_kv_get "$state_file" IPV6_DISABLE_WGS1)"
 
   if [ "$(router_kv_get "$state_file" IPV6_DISABLE_ALL)" = "1" ] &&
     [ "$(router_kv_get "$state_file" IPV6_DISABLE_DEFAULT)" = "1" ] &&
     [ "$(router_kv_get "$state_file" IPV6_DISABLE_BR0)" = "1" ] &&
     [ "$(router_kv_get "$state_file" IPV6_DISABLE_WAN0)" = "1" ] &&
-    [ "$(router_kv_get "$state_file" IPV6_DISABLE_WGC1)" = "1" ] &&
-    [ "$(router_kv_get "$state_file" IPV6_DISABLE_WGS1)" = "1" ]; then
+    { [ "$wgc1_disable" = "1" ] || [ "$wgc1_disable" = "missing" ]; } &&
+    { [ "$wgs1_disable" = "1" ] || [ "$wgs1_disable" = "missing" ]; }; then
     printf '1\n'
   else
     printf '0\n'
@@ -360,81 +365,6 @@ router_ipv6_policy_note() {
   fi
 }
 
-router_wgs1_collection_problem() {
-  local state_file="$1"
-
-  if [ "$(router_kv_get "$state_file" WG_BIN_FOUND)" != "1" ] ||
-    [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" != "1" ] ||
-    [ "$(router_kv_get "$state_file" WGS1_CURRENT_DUMP_OK)" != "1" ]; then
-    printf '1\n'
-  else
-    printf '0\n'
-  fi
-}
-
-router_wgs1_snapshot_state() {
-  local state_file="$1"
-  local freshness_level="${2:-OK}"
-
-  if [ "$(router_wgs1_collection_problem "$state_file")" = "1" ]; then
-    printf 'Capability problem\n'
-  elif [ "$(router_kv_get "$state_file" LATEST_WGS1_EXISTS)" != "1" ] ||
-    [ "$(router_kv_get "$state_file" LATEST_WGS1_HAS_DATA)" != "1" ]; then
-    printf 'Missing\n'
-  elif [ "$freshness_level" != "OK" ]; then
-    printf 'Stale\n'
-  else
-    printf 'Fresh and usable\n'
-  fi
-}
-
-router_wgs1_snapshot_note() {
-  local state_file="$1"
-  local freshness_level="${2:-OK}"
-  local state
-
-  state="$(router_wgs1_snapshot_state "$state_file" "$freshness_level")"
-
-  case "$state" in
-    "Capability problem")
-      printf 'wgs1 snapshot collection cannot run cleanly. Check wg binary lookup, wgs1 interface/runtime, and cron execution path.\n'
-      ;;
-    "Missing")
-      printf 'No saved wgs1 dump artifact has accumulated yet. Router-wide wgs1 totals can still exist before the first usable per-peer baseline appears.\n'
-      ;;
-    "Stale")
-      printf 'A saved wgs1 dump exists, but its freshness is outside the expected snapshot window.\n'
-      ;;
-    *)
-      printf 'Fresh raw wgs1 dump snapshots are available for peer breakdowns.\n'
-      ;;
-  esac
-}
-
-router_wgs1_window_state() {
-  local traffic_file="$1"
-  local warning_text
-
-  warning_text="$(router_kv_get "$traffic_file" TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING)"
-  if [ -n "$warning_text" ]; then
-    printf 'No usable peer baseline in current traffic window\n'
-  else
-    printf 'Usable\n'
-  fi
-}
-
-router_wgs1_window_note() {
-  local traffic_file="$1"
-  local warning_text
-
-  warning_text="$(router_kv_get "$traffic_file" TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING)"
-  if [ -n "$warning_text" ]; then
-    printf '%s\n' "$warning_text"
-  else
-    printf 'Per-peer WireGuard deltas are available for the current traffic window.\n'
-  fi
-}
-
 router_collect_health_state() {
   local outfile="$1"
   router_health_load_env || return 1
@@ -482,23 +412,23 @@ now_epoch=$(date +%s)
 state_dir="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && state_dir="/opt/var/log/router_configuration"
 
-vpn_current=$(ipset list VPN_DOMAINS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
-vpn_header=$(ipset list VPN_DOMAINS 2>/dev/null | awk -F'Header: ' '/^Header:/ {print $2; exit}')
-vpn_max=$(printf '%s\n' "$vpn_header" | awk '{for (i = 1; i <= NF; i++) if ($i == "maxelem") {print $(i+1); exit}}')
-vpn_mem=$(ipset list VPN_DOMAINS 2>/dev/null | awk '/^Size in memory:/ {print $4; exit}')
-vpn_exists=0
-[ -n "${vpn_current:-}" ] && vpn_exists=1
+legacy_vpn_current=$(ipset list VPN_DOMAINS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
+legacy_vpn_exists=0
+[ -n "${legacy_vpn_current:-}" ] && legacy_vpn_exists=1
 
 vpn_static_current=$(ipset list VPN_STATIC_NETS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
 vpn_static_exists=0
 [ -n "${vpn_static_current:-}" ] && vpn_static_exists=1
 
 stealth_current=$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
+stealth_header=$(ipset list STEALTH_DOMAINS 2>/dev/null | awk -F'Header: ' '/^Header:/ {print $2; exit}')
+stealth_max=$(printf '%s\n' "$stealth_header" | awk '{for (i = 1; i <= NF; i++) if ($i == "maxelem") {print $(i+1); exit}}')
+stealth_mem=$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Size in memory:/ {print $4; exit}')
 stealth_exists=0
 [ -n "${stealth_current:-}" ] && stealth_exists=1
 
-manual_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq.conf.add 2>/dev/null || printf '0\n')
-auto_count=$(grep -c '^ipset=' /jffs/configs/dnsmasq-autodiscovered.conf.add 2>/dev/null || printf '0\n')
+manual_count=$(cat /jffs/configs/dnsmasq.conf.add /jffs/configs/dnsmasq-stealth.conf.add 2>/dev/null | grep -c '^ipset=.*/STEALTH_DOMAINS' || printf '0\n')
+auto_count=$(grep -c '^ipset=.*/STEALTH_DOMAINS' /jffs/configs/dnsmasq-autodiscovered.conf.add 2>/dev/null || printf '0\n')
 
 cron_list=$(cru l 2>/dev/null || true)
 dnscrypt_config=$(cat /opt/etc/dnscrypt-proxy.toml 2>/dev/null || true)
@@ -519,6 +449,15 @@ ipv6_addr_wgc1=$(ip -6 -o addr show dev wgc1 2>/dev/null || true)
 ipv6_addr_wgs1=$(ip -6 -o addr show dev wgs1 2>/dev/null || true)
 ipv6_route_main=$(ip -6 route show 2>/dev/null || true)
 ipv6_route_wgc1=$(ip -6 route show table wgc1 2>/dev/null || true)
+wgs1_enable=$(nvram get wgs1_enable 2>/dev/null || true)
+wgc1_enable=$(nvram get wgc1_enable 2>/dev/null || true)
+wgc1_nvram_missing=""
+for nvram_field in wgc1_priv wgc1_addr wgc1_aips wgc1_ep_addr wgc1_ep_port wgc1_ppub wgc1_dns wgc1_mtu wgc1_alive; do
+  nvram_value=$(nvram get "$nvram_field" 2>/dev/null || true)
+  [ -n "$nvram_value" ] || wgc1_nvram_missing="${wgc1_nvram_missing}${nvram_field} "
+done
+wgc1_nvram_preserved=1
+[ -n "$wgc1_nvram_missing" ] && wgc1_nvram_preserved=0
 wg_bin=""
 for candidate in /usr/sbin/wg /opt/bin/wg /usr/bin/wg /bin/wg; do
   if [ -x "$candidate" ]; then
@@ -537,12 +476,12 @@ fi
 
 blocked_file="/opt/tmp/blocked-domains.lst"
 persist_file=""
-if [ -f /opt/tmp/VPN_DOMAINS.ipset ]; then
-  persist_file="/opt/tmp/VPN_DOMAINS.ipset"
-elif [ -f /jffs/addons/router_configuration/VPN_DOMAINS.ipset ]; then
-  persist_file="/jffs/addons/router_configuration/VPN_DOMAINS.ipset"
+if [ -f /opt/tmp/STEALTH_DOMAINS.ipset ]; then
+  persist_file="/opt/tmp/STEALTH_DOMAINS.ipset"
+elif [ -f /jffs/addons/router_configuration/STEALTH_DOMAINS.ipset ]; then
+  persist_file="/jffs/addons/router_configuration/STEALTH_DOMAINS.ipset"
 else
-  persist_file="/opt/tmp/VPN_DOMAINS.ipset"
+  persist_file="/opt/tmp/STEALTH_DOMAINS.ipset"
 fi
 
 latest_tailscale=$(latest_file "$state_dir/tailscale/*.json")
@@ -563,14 +502,14 @@ printf 'ROUTER_EXTENDNO=%s\n' "$(nvram get extendno 2>/dev/null || true)"
 printf 'ROUTER_UPTIME=%s\n' "$(uptime 2>/dev/null || true)"
 printf 'STATE_DIR=%s\n' "$state_dir"
 
-printf 'VPN_DOMAINS_EXISTS=%s\n' "$vpn_exists"
-printf 'VPN_DOMAINS_CURRENT=%s\n' "${vpn_current:-0}"
-printf 'VPN_DOMAINS_MAX=%s\n' "${vpn_max:-65536}"
-printf 'VPN_DOMAINS_MEM=%s\n' "${vpn_mem:-0}"
+printf 'VPN_DOMAINS_EXISTS=%s\n' "$legacy_vpn_exists"
+printf 'VPN_DOMAINS_CURRENT=%s\n' "${legacy_vpn_current:-0}"
 printf 'VPN_STATIC_NETS_EXISTS=%s\n' "$vpn_static_exists"
 printf 'VPN_STATIC_NETS_CURRENT=%s\n' "${vpn_static_current:-0}"
 printf 'STEALTH_DOMAINS_EXISTS=%s\n' "$stealth_exists"
 printf 'STEALTH_DOMAINS_CURRENT=%s\n' "${stealth_current:-0}"
+printf 'STEALTH_DOMAINS_MAX=%s\n' "${stealth_max:-65536}"
+printf 'STEALTH_DOMAINS_MEM=%s\n' "${stealth_mem:-0}"
 printf 'MANUAL_RULE_COUNT=%s\n' "${manual_count:-0}"
 printf 'AUTO_RULE_COUNT=%s\n' "${auto_count:-0}"
 printf 'IPV6_SERVICE=%s\n' "${ipv6_service:-disabled}"
@@ -587,6 +526,10 @@ printf 'IPV6_ADDR_WGS1=%s\n' "$(bool_nonempty "$ipv6_addr_wgs1")"
 printf 'IPV6_ROUTE_MAIN=%s\n' "$(bool_nonempty "$ipv6_route_main")"
 printf 'IPV6_ROUTE_WGC1=%s\n' "$(bool_nonempty "$ipv6_route_wgc1")"
 printf 'WG_BIN_FOUND=%s\n' "$( [ -n "$wg_bin" ] && printf '1\n' || printf '0\n' )"
+printf 'WGS1_ENABLE=%s\n' "${wgs1_enable:-}"
+printf 'WGC1_ENABLE=%s\n' "${wgc1_enable:-}"
+printf 'WGC1_NVRAM_PRESERVED=%s\n' "$wgc1_nvram_preserved"
+printf 'WGC1_NVRAM_MISSING=%s\n' "$wgc1_nvram_missing"
 printf 'WGS1_IFACE_EXISTS=%s\n' "$wgs1_iface_exists"
 printf 'WGS1_CURRENT_DUMP_OK=%s\n' "$wgs1_current_dump_ok"
 
@@ -649,22 +592,16 @@ router_extract_traffic_summary() {
     /^Router-wide window:/   { key = "TRAFFIC_ROUTER_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^Per-device byte window:/ { key = "TRAFFIC_DEVICE_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^WAN total:/            { key = "TRAFFIC_WAN_TOTAL"; value = substr($0, index($0, ":") + 1) }
-    /^VPN total:/            { key = "TRAFFIC_VPN_TOTAL"; value = substr($0, index($0, ":") + 1) }
-    /^WG server total:/      { key = "TRAFFIC_WGS1_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^VPN total:/            { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^Reality-managed total:/ { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Tailscale total:/      { key = "TRAFFIC_TS_TOTAL"; value = substr($0, index($0, ":") + 1) }
-    /^VPN share\/WAN:/       { key = "TRAFFIC_VPN_SHARE"; value = substr($0, index($0, ":") + 1) }
+    /^VPN share\/WAN:/       { key = "TRAFFIC_REALITY_SHARE"; value = substr($0, index($0, ":") + 1) }
+    /^Reality share\/WAN:/   { key = "TRAFFIC_REALITY_SHARE"; value = substr($0, index($0, ":") + 1) }
     /^Device byte total:/    { key = "TRAFFIC_DEVICE_TOTAL"; value = substr($0, index($0, ":") + 1) }
-    /^Via VPN:/              { key = "TRAFFIC_DEVICE_VIA_VPN"; value = substr($0, index($0, ":") + 1) }
+    /^Via VPN:/              { key = "TRAFFIC_DEVICE_VIA_REALITY"; value = substr($0, index($0, ":") + 1) }
+    /^Via Reality:/          { key = "TRAFFIC_DEVICE_VIA_REALITY"; value = substr($0, index($0, ":") + 1) }
     /^Direct WAN:/           { key = "TRAFFIC_DEVICE_DIRECT_WAN"; value = substr($0, index($0, ":") + 1) }
     /^Other:/                { key = "TRAFFIC_DEVICE_OTHER"; value = substr($0, index($0, ":") + 1) }
-    /^Warning:[[:space:]]+WG server total is non-zero,/ {
-      key = "TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING"
-      value = substr($0, index($0, ":") + 1)
-    }
-    /^- WG server total is non-zero,/ {
-      key = "TRAFFIC_WGS1_PEER_BREAKDOWN_WARNING"
-      value = substr($0, 3)
-    }
     key != "" {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       print key "=" value
@@ -717,7 +654,7 @@ router_collect_capacity_history() {
 
     if latest
       puts "HISTORY_LATEST_DATE=#{latest["date"]}"
-      puts "HISTORY_LATEST_VPN_DOMAINS=#{latest["`VPN_DOMAINS` — IP в ipset"] || latest["VPN_DOMAINS — IP в ipset"]}"
+      puts "HISTORY_LATEST_STEALTH_DOMAINS=#{latest["`STEALTH_DOMAINS` — IP в ipset"] || latest["STEALTH_DOMAINS — IP в ipset"] || latest["`VPN_DOMAINS` — IP в ipset"] || latest["VPN_DOMAINS — IP в ipset"]}"
       puts "HISTORY_LATEST_VPN_STATIC=#{latest["`VPN_STATIC_NETS`"] || latest["VPN_STATIC_NETS"]}"
       puts "HISTORY_LATEST_MANUAL=#{latest["Ручные доменные правила"]}"
       puts "HISTORY_LATEST_AUTO=#{latest["Auto-discovered доменные правила"]}"
@@ -725,7 +662,7 @@ router_collect_capacity_history() {
 
     if week
       puts "HISTORY_WEEK_DATE=#{week["date"]}"
-      puts "HISTORY_WEEK_VPN_DOMAINS=#{week["`VPN_DOMAINS` — IP в ipset"] || week["VPN_DOMAINS — IP в ipset"]}"
+      puts "HISTORY_WEEK_STEALTH_DOMAINS=#{week["`STEALTH_DOMAINS` — IP в ipset"] || week["STEALTH_DOMAINS — IP в ipset"] || week["`VPN_DOMAINS` — IP в ipset"] || week["VPN_DOMAINS — IP в ipset"]}"
       puts "HISTORY_WEEK_VPN_STATIC=#{week["`VPN_STATIC_NETS`"] || week["VPN_STATIC_NETS"]}"
       puts "HISTORY_WEEK_MANUAL=#{week["Ручные доменные правила"]}"
       puts "HISTORY_WEEK_AUTO=#{week["Auto-discovered доменные правила"]}"
@@ -741,11 +678,10 @@ router_render_health_markdown() {
   local now_epoch router_product router_build router_extend router_uptime
   local vpn_current vpn_max vpn_mem vpn_static_current manual_count auto_count
   local usage_pct headroom capacity_level
-  local blocked_epoch persist_epoch iface_epoch tailscale_epoch wgs1_epoch daily_epoch
-  local blocked_age persist_age iface_age tailscale_age wgs1_age daily_age
-  local blocked_level persist_level iface_level tailscale_level wgs1_level daily_level
+  local blocked_epoch persist_epoch iface_epoch tailscale_epoch daily_epoch
+  local blocked_age persist_age iface_age tailscale_age daily_age
+  local blocked_level persist_level iface_level tailscale_level daily_level
   local ipv6_policy_mode ipv6_policy_level ipv6_policy_note ipv6_runtime_present ipv6_lan_wan_present ipv6_wgc1_path_present
-  local wgs1_snapshot_state wgs1_snapshot_note wgs1_window_state wgs1_window_note
   local latest_date latest_vpn latest_static latest_manual latest_auto
   local week_date week_vpn week_static week_manual week_auto
   local latest_vpn_num latest_static_num latest_manual_num latest_auto_num
@@ -754,7 +690,7 @@ router_render_health_markdown() {
   local week_vpn_delta week_static_delta week_manual_delta week_auto_delta
   local latest_rule_total_delta week_rule_total_delta
   local latest_growth_level week_growth_level latest_auto_note week_auto_note
-  local traffic_router_window traffic_device_window traffic_wan traffic_vpn traffic_wgs1 traffic_ts traffic_share traffic_device_total traffic_device_vpn traffic_device_wan traffic_device_other
+  local traffic_router_window traffic_device_window traffic_wan traffic_reality traffic_ts traffic_share traffic_device_total traffic_device_reality traffic_device_wan traffic_device_other
   local result_level
   local -a drift_lines
 
@@ -764,9 +700,9 @@ router_render_health_markdown() {
   router_extend="$(router_kv_get "$state_file" ROUTER_EXTENDNO)"
   router_uptime="$(router_kv_get "$state_file" ROUTER_UPTIME)"
 
-  vpn_current="$(router_kv_get "$state_file" VPN_DOMAINS_CURRENT)"
-  vpn_max="$(router_kv_get "$state_file" VPN_DOMAINS_MAX)"
-  vpn_mem="$(router_kv_get "$state_file" VPN_DOMAINS_MEM)"
+  vpn_current="$(router_kv_get "$state_file" STEALTH_DOMAINS_CURRENT)"
+  vpn_max="$(router_kv_get "$state_file" STEALTH_DOMAINS_MAX)"
+  vpn_mem="$(router_kv_get "$state_file" STEALTH_DOMAINS_MEM)"
   vpn_static_current="$(router_kv_get "$state_file" VPN_STATIC_NETS_CURRENT)"
   manual_count="$(router_kv_get "$state_file" MANUAL_RULE_COUNT)"
   auto_count="$(router_kv_get "$state_file" AUTO_RULE_COUNT)"
@@ -779,21 +715,18 @@ router_render_health_markdown() {
   persist_epoch="$(router_kv_get "$state_file" PERSIST_FILE_EPOCH)"
   iface_epoch="$(router_kv_get "$state_file" INTERFACE_COUNTERS_EPOCH)"
   tailscale_epoch="$(router_kv_get "$state_file" LATEST_TAILSCALE_EPOCH)"
-  wgs1_epoch="$(router_kv_get "$state_file" LATEST_WGS1_EPOCH)"
   daily_epoch="$(router_kv_get "$state_file" LATEST_DAILY_EPOCH)"
 
   blocked_age="$(router_age_seconds "$now_epoch" "$blocked_epoch")"
   persist_age="$(router_age_seconds "$now_epoch" "$persist_epoch")"
   iface_age="$(router_age_seconds "$now_epoch" "$iface_epoch")"
   tailscale_age="$(router_age_seconds "$now_epoch" "$tailscale_epoch")"
-  wgs1_age="$(router_age_seconds "$now_epoch" "$wgs1_epoch")"
   daily_age="$(router_age_seconds "$now_epoch" "$daily_epoch")"
 
   blocked_level="$(router_freshness_level "$blocked_age" 172800 345600)"
   persist_level="$(router_freshness_level "$persist_age" 28800 86400)"
   iface_level="$(router_freshness_level "$iface_age" 28800 86400)"
   tailscale_level="$(router_freshness_level "$tailscale_age" 28800 86400)"
-  wgs1_level="$(router_freshness_level "$wgs1_age" 28800 86400)"
   daily_level="$(router_freshness_level "$daily_age" 129600 259200)"
   ipv6_policy_mode="$(router_ipv6_policy_mode "$state_file")"
   ipv6_policy_level="$(router_ipv6_policy_level "$state_file")"
@@ -801,16 +734,13 @@ router_render_health_markdown() {
   ipv6_runtime_present="$(router_ipv6_runtime_present "$state_file")"
   ipv6_lan_wan_present="$(router_ipv6_lan_wan_present "$state_file")"
   ipv6_wgc1_path_present="$(router_ipv6_wgc1_path_present "$state_file")"
-  wgs1_snapshot_state="$(router_wgs1_snapshot_state "$state_file" "$wgs1_level")"
-  wgs1_snapshot_note="$(router_wgs1_snapshot_note "$state_file" "$wgs1_level")"
-
   latest_date="$(router_kv_get "$history_file" HISTORY_LATEST_DATE)"
-  latest_vpn="$(router_kv_get "$history_file" HISTORY_LATEST_VPN_DOMAINS)"
+  latest_vpn="$(router_kv_get "$history_file" HISTORY_LATEST_STEALTH_DOMAINS)"
   latest_static="$(router_kv_get "$history_file" HISTORY_LATEST_VPN_STATIC)"
   latest_manual="$(router_kv_get "$history_file" HISTORY_LATEST_MANUAL)"
   latest_auto="$(router_kv_get "$history_file" HISTORY_LATEST_AUTO)"
   week_date="$(router_kv_get "$history_file" HISTORY_WEEK_DATE)"
-  week_vpn="$(router_kv_get "$history_file" HISTORY_WEEK_VPN_DOMAINS)"
+  week_vpn="$(router_kv_get "$history_file" HISTORY_WEEK_STEALTH_DOMAINS)"
   week_static="$(router_kv_get "$history_file" HISTORY_WEEK_VPN_STATIC)"
   week_manual="$(router_kv_get "$history_file" HISTORY_WEEK_MANUAL)"
   week_auto="$(router_kv_get "$history_file" HISTORY_WEEK_AUTO)"
@@ -875,21 +805,20 @@ router_render_health_markdown() {
   traffic_router_window="$(router_kv_get "$traffic_file" TRAFFIC_ROUTER_WINDOW)"
   traffic_device_window="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_WINDOW)"
   traffic_wan="$(router_kv_get "$traffic_file" TRAFFIC_WAN_TOTAL)"
-  traffic_vpn="$(router_kv_get "$traffic_file" TRAFFIC_VPN_TOTAL)"
-  traffic_wgs1="$(router_kv_get "$traffic_file" TRAFFIC_WGS1_TOTAL)"
+  traffic_reality="$(router_kv_get "$traffic_file" TRAFFIC_REALITY_TOTAL)"
   traffic_ts="$(router_kv_get "$traffic_file" TRAFFIC_TS_TOTAL)"
-  traffic_share="$(router_kv_get "$traffic_file" TRAFFIC_VPN_SHARE)"
+  traffic_share="$(router_kv_get "$traffic_file" TRAFFIC_REALITY_SHARE)"
   traffic_device_total="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_TOTAL)"
-  traffic_device_vpn="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_VIA_VPN)"
+  traffic_device_reality="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_VIA_REALITY)"
   traffic_device_wan="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_DIRECT_WAN)"
   traffic_device_other="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_OTHER)"
-  wgs1_window_state="$(router_wgs1_window_state "$traffic_file")"
-  wgs1_window_note="$(router_wgs1_window_note "$traffic_file")"
-
   drift_lines=()
-  [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("VPN_DOMAINS ipset missing")
+  [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "0" ] || drift_lines+=("legacy VPN_DOMAINS ipset should be absent")
   [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] || drift_lines+=("VPN_STATIC_NETS ipset missing")
   [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] || drift_lines+=("STEALTH_DOMAINS ipset missing")
+  [ "$(router_kv_get "$state_file" WGS1_ENABLE)" = "0" ] || drift_lines+=("wgs1_enable should be 0")
+  [ "$(router_kv_get "$state_file" WGC1_ENABLE)" = "0" ] || drift_lines+=("wgc1_enable should be 0")
+  [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] || drift_lines+=("wgc1 cold-fallback NVRAM fields are missing")
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("Channel A RC_VPN_ROUTE chain should be absent")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("Channel A fwmark 0x1000 -> wgc1 rule should be absent")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
@@ -923,9 +852,9 @@ router_render_health_markdown() {
   fi
 
   result_level="OK"
-  if [ "${#drift_lines[@]}" -gt 0 ] || [ "$capacity_level" = "Critical" ] || [ "$blocked_level" = "Critical" ] || [ "$persist_level" = "Critical" ] || [ "$iface_level" = "Critical" ] || [ "$tailscale_level" = "Critical" ] || [ "$wgs1_level" = "Critical" ] || [ "$daily_level" = "Critical" ] || [ "$ipv6_policy_level" = "Critical" ]; then
+  if [ "${#drift_lines[@]}" -gt 0 ] || [ "$capacity_level" = "Critical" ] || [ "$blocked_level" = "Critical" ] || [ "$persist_level" = "Critical" ] || [ "$iface_level" = "Critical" ] || [ "$tailscale_level" = "Critical" ] || [ "$daily_level" = "Critical" ] || [ "$ipv6_policy_level" = "Critical" ]; then
     result_level="Critical"
-  elif [ "$capacity_level" = "Warning" ] || [ "$blocked_level" = "Warning" ] || [ "$persist_level" = "Warning" ] || [ "$iface_level" = "Warning" ] || [ "$tailscale_level" = "Warning" ] || [ "$wgs1_level" = "Warning" ] || [ "$daily_level" = "Warning" ] || [ "$blocked_level" = "Missing" ] || [ "$persist_level" = "Missing" ] || [ "$iface_level" = "Missing" ] || [ "$tailscale_level" = "Missing" ] || [ "$wgs1_level" = "Missing" ] || [ "$daily_level" = "Missing" ] || [ "$ipv6_policy_level" = "Warning" ]; then
+  elif [ "$capacity_level" = "Warning" ] || [ "$blocked_level" = "Warning" ] || [ "$persist_level" = "Warning" ] || [ "$iface_level" = "Warning" ] || [ "$tailscale_level" = "Warning" ] || [ "$daily_level" = "Warning" ] || [ "$blocked_level" = "Missing" ] || [ "$persist_level" = "Missing" ] || [ "$iface_level" = "Missing" ] || [ "$tailscale_level" = "Missing" ] || [ "$daily_level" = "Missing" ] || [ "$ipv6_policy_level" = "Warning" ]; then
     result_level="Warning"
   elif [ "$capacity_level" = "Watch" ]; then
     result_level="Watch"
@@ -941,7 +870,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 - Result: **${result_level}**
 - Router: **${router_product}** build **${router_build}${router_extend:+_${router_extend}}**
 - Uptime: **${router_uptime}**
-- Catalog usage: **${vpn_current}/${vpn_max}** (**${usage_pct}%**, level **${capacity_level}**)
+- STEALTH catalog usage: **${vpn_current}/${vpn_max}** (**${usage_pct}%**, level **${capacity_level}**)
 - Headroom: **${headroom}**
 - Drift items: **${#drift_lines[@]}**
 
@@ -956,9 +885,12 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 
 | Check | Status |
 |---|---|
-| VPN_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| legacy VPN_DOMAINS ipset absent | $( [ "$(router_kv_get "$state_file" VPN_DOMAINS_EXISTS)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | VPN_STATIC_NETS ipset | $( [ "$(router_kv_get "$state_file" VPN_STATIC_NETS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | STEALTH_DOMAINS ipset | $( [ "$(router_kv_get "$state_file" STEALTH_DOMAINS_EXISTS)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| wgs1_enable disabled | $( [ "$(router_kv_get "$state_file" WGS1_ENABLE)" = "0" ] && printf 'OK' || printf 'Enabled' ) |
+| wgc1_enable disabled | $( [ "$(router_kv_get "$state_file" WGC1_ENABLE)" = "0" ] && printf 'OK' || printf 'Enabled' ) |
+| wgc1 cold-fallback NVRAM preserved | $( [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] && printf 'OK' || printf 'Missing fields' ) |
 | RC_VPN_ROUTE chain absent | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | ip rule fwmark 0x1000 -> wgc1 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
@@ -1001,8 +933,8 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 
 | Metric | Value |
 |---|---|
-| VPN_DOMAINS current | ${vpn_current} |
-| VPN_DOMAINS maxelem | ${vpn_max} |
+| STEALTH_DOMAINS current | ${vpn_current} |
+| STEALTH_DOMAINS maxelem | ${vpn_max} |
 | Usage | ${usage_pct}% |
 | Level | ${capacity_level} |
 | Headroom | ${headroom} |
@@ -1018,7 +950,7 @@ EOF
 ### Growth vs latest saved snapshot
 
 - Latest saved snapshot: **${latest_date}**
-- VPN_DOMAINS: **${latest_vpn_num:-n/a} -> ${vpn_current}** (${latest_vpn_delta})
+- STEALTH_DOMAINS: **${latest_vpn_num:-n/a} -> ${vpn_current}** (${latest_vpn_delta})
 - VPN_STATIC_NETS: **${latest_static_num:-n/a} -> ${vpn_static_current}** (${latest_static_delta})
 - Manual rules: **${latest_manual_num:-n/a} -> ${manual_count}** (${latest_manual_delta})
 - Auto rules: **${latest_auto_num:-n/a} -> ${auto_count}** (${latest_auto_delta})
@@ -1040,7 +972,7 @@ EOF
 ### Growth vs week-old snapshot
 
 - Week snapshot: **${week_date}**
-- VPN_DOMAINS: **${week_vpn_num:-n/a} -> ${vpn_current}** (${week_vpn_delta})
+- STEALTH_DOMAINS: **${week_vpn_num:-n/a} -> ${vpn_current}** (${week_vpn_delta})
 - VPN_STATIC_NETS: **${week_static_num:-n/a} -> ${vpn_static_current}** (${week_static_delta})
 - Manual rules: **${week_manual_num:-n/a} -> ${manual_count}** (${week_manual_delta})
 - Auto rules: **${week_auto_num:-n/a} -> ${auto_count}** (${week_auto_delta})
@@ -1059,28 +991,18 @@ EOF
 | IPSet persistence file | $(router_human_age "$persist_age") | ${persist_level} |
 | Interface counters snapshot | $(router_human_age "$iface_age") | ${iface_level} |
 | Tailscale snapshot | $(router_human_age "$tailscale_age") | ${tailscale_level} |
-| WGS1 snapshot | $(router_human_age "$wgs1_age") | ${wgs1_level} |
 | Daily close snapshot | $(router_human_age "$daily_age") | ${daily_level} |
-
-## WGS1 Observability
-
-- Snapshot artifact: **${wgs1_snapshot_state}**
-- Collection capability: **$( [ "$(router_wgs1_collection_problem "$state_file")" = "1" ] && printf 'Problem detected' || printf 'OK' )**
-- Window peer baseline: **${wgs1_window_state}**
-- Snapshot note: **${wgs1_snapshot_note}**
-- Window note: **${wgs1_window_note}**
 
 ## Traffic Snapshot
 
 - Router-wide window: **${traffic_router_window:-n/a}**
 - Per-device byte window: **${traffic_device_window:-n/a}**
 - WAN total: **${traffic_wan:-n/a}**
-- VPN total: **${traffic_vpn:-n/a}**
-- WG server total: **${traffic_wgs1:-n/a}**
+- Reality-managed total: **${traffic_reality:-n/a}**
 - Tailscale total: **${traffic_ts:-n/a}**
-- VPN share/WAN: **${traffic_share:-n/a}**
+- Reality share/WAN: **${traffic_share:-n/a}**
 - Device byte total: **${traffic_device_total:-n/a}**
-- Via VPN: **${traffic_device_vpn:-n/a}**
+- Via Reality: **${traffic_device_reality:-n/a}**
 - Direct WAN: **${traffic_device_wan:-n/a}**
 - Other: **${traffic_device_other:-n/a}**
 
@@ -1105,7 +1027,7 @@ EOF
 
 - This report is sanitised for repository storage and LLM consumption.
 - Security goal here is leak closure, drift detection, and lower attack surface, not traffic disguise.
-- VPN_DOMAINS is a live accumulated ipset state, not a day-only metric.
+- STEALTH_DOMAINS is a live accumulated ipset state, not a day-only metric.
 - Growth deltas come from saved journal snapshots when available; otherwise they stay n/a.
 EOF
 }

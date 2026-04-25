@@ -12,25 +12,24 @@
 
 GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pro с Asuswrt-Merlin: выбранные домены и IP-сети отправляются через нужный egress-канал без VPN-приложений на домашних устройствах.
 
-В текущей production-схеме есть три разных пути:
+В текущей production-схеме есть два активных пути:
 
 - Домашний Wi-Fi/LAN использует Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
-- Удаленные мобильные QR/VLESS-клиенты сначала подключаются к домашнему ASUS: `iPhone/Mac -> домашний белый IP :443 -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
-- Старые устройства через WireGuard Server на роутере (`wgs1`) остаются на Channel A: `VPN_DOMAINS -> wgc1`, пока не будут мигрированы.
+- Удаленные мобильные QR/VLESS-клиенты сначала подключаются к домашнему ASUS: `iPhone/Mac -> домашний белый IP :<home-reality-port> -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
 
-`wgc1` больше не является основным каналом для домашней сети. Он сохранен как legacy reserve. Новый мобильный onboarding должен использовать home Reality QR, а не прямой профиль на VPS и не WireGuard.
+Channel A (`wgs1` + `wgc1`) выключен в нормальной эксплуатации. `wgc1_*` NVRAM сохранён только как cold fallback.
 
 ---
 
 ## Возможности
 
 - Domain-based routing через `dnsmasq` + `ipset`.
-- Раздельные каталоги для домашней LAN (`STEALTH_DOMAINS`) и remote WireGuard-клиентов (`VPN_DOMAINS`).
+- Единый активный каталог для домашней LAN (`STEALTH_DOMAINS`).
 - Общий static CIDR каталог для direct-IP сервисов через `VPN_STATIC_NETS`.
 - VLESS+Reality egress через VPS VPS за общим Caddy L4 на TCP/443.
-- Router-side VLESS+Reality ingress на TCP/443 для удаленных мобильных клиентов: LTE-оператор видит домашний российский IP, а не VPS.
+- Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных мобильных клиентов: LTE-оператор видит домашний российский IP, а не VPS.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
-- Auto-discovery доменов, который пишет оба набора: `VPN_DOMAINS` и `STEALTH_DOMAINS`.
+- Auto-discovery доменов, который пишет только `STEALTH_DOMAINS`.
 - Локальная генерация QR/VLESS-профилей из Ansible Vault.
 - Health, traffic и catalog reports для человека и LLM handoff.
 
@@ -79,7 +78,7 @@ Remote iPhone/MacBook outside home
 Client app imports generated QR profile
       |
       v
-Home public IP :443
+Home public IP :<home-reality-port>
       |
       v
 ASUS Router / Merlin
@@ -95,28 +94,9 @@ Internet
 
 Мобильный оператор видит подключение телефона к домашнему российскому IP. Сайты/checker всё равно видят VPS exit IP, потому что outbound с роутера остается Reality-to-VPS.
 
-### 3. Legacy WireGuard-клиенты
+### 3. Cold fallback
 
-```text
-Legacy WireGuard client outside home
-      |
-      v
-Router WireGuard Server (wgs1)
-      |
-      v
-VPN_DOMAINS / VPN_STATIC_NETS
-      |
-      v
-mark 0x1000 -> table wgc1
-      |
-      v
-legacy WireGuard client wgc1
-      |
-      v
-Internet
-```
-
-WireGuard оставлен только как compatibility/fallback-путь на период миграции. Предпочтительный мобильный путь теперь — Reality QR до домашнего ASUS.
+WireGuard не активен в steady state. Сохранённый `wgc1_*` NVRAM используется только через `scripts/emergency-enable-wgc1.sh` при катастрофическом отказе Reality.
 
 ---
 
@@ -127,10 +107,9 @@ Router:
   ASUS RT-AX88U Pro + Asuswrt-Merlin
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
-  sing-box home Reality inbound on :443
+  sing-box home Reality inbound on :<home-reality-port>
   dnscrypt-proxy on 127.0.0.1:5354
-  WireGuard Server interface: wgs1
-  WireGuard Client reserve interface: wgc1
+  WireGuard Channel A disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
@@ -150,9 +129,7 @@ Control:
 
 ```text
 configs/
-  dnsmasq.conf.add                # VPN_DOMAINS for remote wgs1 clients
   dnsmasq-stealth.conf.add        # STEALTH_DOMAINS for home LAN Channel B
-  dnsmasq-vpn-upstream.conf.add   # retired compatibility block
   static-networks.txt             # shared CIDR catalog
 
 ansible/

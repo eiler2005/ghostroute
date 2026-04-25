@@ -161,16 +161,15 @@ Common patterns:
 Что смотреть:
 
 - `Routing Health`
-  - на месте ли `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, `RC_VPN_ROUTE`, DNS через `127.0.0.1:5354`
+  - на месте ли `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, home Reality `:<home-reality-port>`, DNS через `127.0.0.1:5354`
+  - отсутствуют ли legacy `VPN_DOMAINS`, `RC_VPN_ROUTE` и `0x1000`
 - `Catalog Capacity`
-  - не вырос ли `VPN_DOMAINS` неожиданно сильно после нового семейства
+  - не вырос ли `STEALTH_DOMAINS` неожиданно сильно после нового семейства
   - что пишет `Growth Trends` / `Growth note`
 - `Traffic Snapshot`
-  - начал ли сервис реально давать `VPN`-трафик
+  - начал ли сервис реально давать Reality-managed трафик
 - `Device Traffic Mix`
   - не ушёл ли тестируемый клиент в direct `WAN`
-- `Top by WG server peers`
-  - если тест идёт через raw `WireGuard server`, видно ли это сразу в peer-level summary
 
 Если нужно сохранить понятный snapshot для следующего агента/LLM:
 

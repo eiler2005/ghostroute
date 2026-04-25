@@ -15,25 +15,24 @@
 
 GhostRoute lets an ASUS Merlin router decide which domains and IP networks should leave through a stealth Reality channel, while ordinary home devices stay configuration-free.
 
-The current production model has three distinct paths:
+The current production model has two active paths:
 
 - Home Wi-Fi/LAN uses Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
-- Remote mobile QR/VLESS clients connect to the home ASUS first: `iPhone/Mac -> home public IP :443 -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
-- Legacy devices connected to the router WireGuard Server (`wgs1`) keep Channel A: `VPN_DOMAINS -> wgc1` until they are migrated.
+- Remote mobile QR/VLESS clients connect to the home ASUS first: `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound -> Reality outbound -> VPS/Xray`.
 
-`wgc1` is no longer the primary home-LAN path. It remains a legacy reserve path. New mobile onboarding should use the home Reality QR profile, not direct-to-VPS or WireGuard.
+Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRAM remains only as a cold fallback.
 
 ---
 
 ## Key Features
 
 - Domain-based routing with `dnsmasq` + `ipset`.
-- Separate catalogs for home LAN (`STEALTH_DOMAINS`) and remote WireGuard clients (`VPN_DOMAINS`).
+- Single active domain catalog for home LAN (`STEALTH_DOMAINS`).
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
 - VLESS+Reality egress through a VPS VPS behind shared Caddy L4 on TCP/443.
-- Router-side VLESS+Reality ingress on TCP/443 for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
+- Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
-- Automatic domain discovery that writes both LAN and remote-client catalogs.
+- Automatic domain discovery that writes `STEALTH_DOMAINS` only.
 - Local QR/VLESS profile generation from Ansible Vault.
 - Health, traffic and catalog reports suitable for humans and LLM handoff.
 
@@ -82,7 +81,7 @@ Remote iPhone/MacBook outside home
 Client app imports generated QR profile
       |
       v
-Home public IP :443
+Home public IP :<home-reality-port>
       |
       v
 ASUS Router / Merlin
@@ -98,28 +97,9 @@ Internet
 
 Mobile carriers see the phone connecting to the home Russian IP. Websites/checkers still see the VPS exit IP because the router's outbound hop remains Reality-to-VPS.
 
-### 3. Legacy WireGuard Clients
+### 3. Cold Fallback
 
-```text
-Legacy WireGuard client outside home
-      |
-      v
-Router WireGuard Server (wgs1)
-      |
-      v
-VPN_DOMAINS / VPN_STATIC_NETS
-      |
-      v
-mark 0x1000 -> table wgc1
-      |
-      v
-legacy WireGuard client wgc1
-      |
-      v
-Internet
-```
-
-WireGuard is kept only as a compatibility/fallback path while devices migrate to Reality QR profiles. It is not the preferred mobile path.
+WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `scripts/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
 
 ---
 
@@ -130,10 +110,9 @@ Router:
   ASUS RT-AX88U Pro + Asuswrt-Merlin
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
-  sing-box home Reality inbound on :443
+  sing-box home Reality inbound on :<home-reality-port>
   dnscrypt-proxy on 127.0.0.1:5354
-  WireGuard Server interface: wgs1
-  WireGuard Client reserve interface: wgc1
+  WireGuard Channel A disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
@@ -153,9 +132,7 @@ Control:
 
 ```text
 configs/
-  dnsmasq.conf.add                # VPN_DOMAINS for remote wgs1 clients
   dnsmasq-stealth.conf.add        # STEALTH_DOMAINS for home LAN Channel B
-  dnsmasq-vpn-upstream.conf.add   # retired compatibility block
   static-networks.txt             # shared CIDR catalog
 
 ansible/

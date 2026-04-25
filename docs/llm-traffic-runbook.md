@@ -51,7 +51,7 @@ When the user asks for a router traffic report or router health/capacity report 
    Explicitly say this is advisory-only and that no runtime changes were applied.
 
 6. For health/capacity answers explicitly mention:
-   - VPN_DOMAINS current / maxelem / usage / headroom
+   - STEALTH_DOMAINS current / maxelem / usage / headroom
    - VPN_STATIC_NETS current
    - manual rule count
    - auto rule count
@@ -62,20 +62,19 @@ When the user asks for a router traffic report or router health/capacity report 
 7. In traffic answers always include:
    - report window from the script output
    - WAN total
-   - VPN total
-   - WG server total
+   - Reality-managed total
    - Tailscale total when relevant
-   - VPN share/WAN
+   - Reality share/WAN
 
 8. If the report contains "DEVICE TRAFFIC MIX", use that block first for per-device interpretation:
    - mention Per-device byte window
    - mention Device byte total
-   - mention Via VPN
+   - mention Via Reality
    - mention Direct WAN
-   - mention top devices by VPN bytes
+   - mention top devices by Reality-managed bytes when present
    - mention top devices by direct WAN bytes
 
-9. If the report contains "TOP BY WG SERVER PEERS" or "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer tables.
+9. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
 
 10. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
    If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
@@ -238,10 +237,10 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 Использовать, когда нужен ответ:
 
 - что происходит сегодня
-- сколько уже прошло через `WAN` / `VPN` / `WG server` / `Wi-Fi` / `Tailscale`
+- сколько уже прошло через `WAN` / `Reality` / `Wi-Fi` / `Tailscale`
 - какие LAN-устройства уже дали заметный объём трафика и в какой канал он ушёл
 - какие локальные устройства активны прямо сейчас
-- какие raw `WireGuard server` peer'ы сейчас активны
+- какие `Tailscale` peer'ы сейчас активны, если это относится к вопросу
 
 ### Почасовой forensic DNS-срез
 
@@ -285,9 +284,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - сколько уже накопилось за текущий месяц
 - какие LAN-устройства дали основной объём трафика за день/неделю/месяц
 - какие `Tailscale` peer'ы дали трафик за этот день
-- какие raw `WireGuard server` peer'ы дали трафик за этот день
 - какой был end-of-day снимок локальных устройств
-- какой был end-of-day снимок raw `WireGuard server` peer'ов
 
 ### Когда данные закрытого дня появляются
 
@@ -311,13 +308,11 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 ### Точные накопленные счётчики
 
 - `WAN total`
-- `VPN total`
-- `WG server total`
+- `Reality-managed total`
 - `Wi-Fi total`
 - `LAN bridge`
 - `Tailscale total`
 - строки `LAN DEVICE BYTES`
-- строки `WIREGUARD SERVER PEERS` (`RX` / `TX`)
 - строки `TAILSCALE PEERS` (`RX` / `TX`)
 
 Все эти выводы по умолчанию уже в redacted-виде.
@@ -338,7 +333,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 Раздел `LAN DEVICE BYTES`:
 
 - `Total`
-- `VPN`
+- `Reality`
 - `WAN`
 - `Other`
 - `Upload`
@@ -349,18 +344,18 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 Раздел `DEVICE TRAFFIC MIX (LAN SOURCES)`:
 
 - это короткая interpretive summary над теми же `LAN DEVICE BYTES`
-- `Via VPN` = historical label для per-device байтов, прошедших через repo-managed routed path; в текущей схеме для LAN это прежде всего Channel B через REDIRECT `:<lan-redirect-port>`, а не обязательно `wgc1`
-- `Direct WAN` = сумма per-device байтов, ушедших напрямую мимо VPN
-- `Top devices by VPN bytes` = устройства с наибольшим объёмом VPN-трафика
-- `Top devices by direct WAN bytes` = устройства, которые больше всего обходили VPN
+- `Via Reality` = per-device байты, прошедшие через repo-managed Reality path, когда их можно атрибутировать на локальных counters
+- `Direct WAN` = сумма per-device байтов, ушедших напрямую мимо REDIRECT
+- `Top devices by Reality bytes` = устройства с наибольшим объёмом Reality-managed трафика, если этот блок есть
+- `Top devices by direct WAN bytes` = устройства, которые больше всего обходили REDIRECT
 
-Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через VPN?”, начинайте именно с этого блока, а не с сырых строк таблицы.
+Если человек спрашивает “где тут WAN по устройствам?” или “сколько устройств пошло через Reality?”, начинайте именно с этого блока, а не с сырых строк таблицы.
 
-`TOP BY WG SERVER PEERS` и `TOP BY TAILSCALE PEERS`:
+`TOP BY TAILSCALE PEERS`:
 
 - это короткие peer-level summaries
 - их нужно использовать первыми, если человек спрашивает "какие удалённые клиенты были самыми активными"
-- полные таблицы `WIREGUARD SERVER PEERS` и `TAILSCALE PEERS` нужны уже для точных значений, handshake и last seen
+- полная таблица `TAILSCALE PEERS` нужна уже для точных значений и last seen
 
 ## Как интерпретировать health-report
 
@@ -370,8 +365,8 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 Нужно проговаривать:
 
-- `VPN_DOMAINS current`
-- `VPN_DOMAINS maxelem`
+- `STEALTH_DOMAINS current`
+- `STEALTH_DOMAINS maxelem`
 - usage %
 - headroom
 - `VPN_STATIC_NETS current`
@@ -382,7 +377,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 - это delta к последнему local journal snapshot
 - это не “за день” и не “за неделю” автоматически
-- `VPN_DOMAINS` — накопительное live-state ipset, которое сохраняется на USB и переживает рестарты
+- `STEALTH_DOMAINS` — накопительное live-state ipset, которое сохраняется на USB и переживает рестарты
 - `Growth level` — компактная оценка риска по usage/headroom и скорости роста
 - `Growth note` — короткая интерпретация, похоже ли, что именно auto-catalog сейчас даёт основной вклад в рост
 
@@ -394,7 +389,6 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - ipset persistence file
 - interface counters snapshot
 - tailscale snapshot
-- wgs1 snapshot
 - daily close snapshot
 
 Если статус не `OK`, это надо явно сказать человеку, потому что:
@@ -409,7 +403,7 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 - ipset'ы
 - routing hooks
 - `ip rule`
-- DNS redirect для `wgs1`
+- отсутствие legacy Channel A DNS redirect для `wgs1`
 
 Если drift пустой, можно честно говорить:
 
@@ -424,31 +418,17 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
 
 `Other` означает трафик LAN-устройства, который не попал в распознанный routed path или `wan0` по нашей грубой классификации. Обычно туда попадает локальная сеть, межLAN-трафик и прочие не-внешние направления.
 
-Раздел `WIREGUARD SERVER PEERS (CURRENT|END-OF-DAY CONNECTION SNAPSHOT)`:
-
-- `Total`
-- `VPN`
-- `WAN`
-- `Local`
-
-Это тоже количество `conntrack`-записей, а не объём трафика.
-
 ## Что нельзя утверждать
 
 Для `Tailscale Exit Node` нельзя честно говорить:
 
-- сколько именно у `iphone-11` прошло через конкретный upstream (`wgc1` или REDIRECT/Reality), если этот peer пришёл через userspace proxy и нет отдельной per-peer разбивки по egress
+- сколько именно у `iphone-11` прошло через конкретный upstream (REDIRECT/Reality или прямой WAN), если этот peer пришёл через userspace proxy и нет отдельной per-peer разбивки по egress
 - а сколько именно у того же `iphone-11` прошло напрямую через `WAN`
 
 Можно говорить только:
 
 - сколько peer передал по `Tailscale` всего
-- сколько роутер в целом передал через наблюдаемые интерфейсы/counters (`wgc1`, REDIRECT/sing-box, WAN), если соответствующие counters есть в отчёте
-
-Для raw `WireGuard server` говорить можно точнее:
-
-- сколько peer передал по `wgs1`
-- сколько у peer'а было active conntrack entries в `VPN` / `WAN` / `Local`
+- сколько роутер в целом передал через наблюдаемые интерфейсы/counters (REDIRECT/sing-box, WAN), если соответствующие counters есть в отчёте
 
 Но это всё равно не полноценный NetFlow/pcap учёт на каждый запрос.
 
@@ -471,14 +451,12 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
    Для `week/month` указывать диапазон дат из заголовка скрипта.
 2. Дать totals:
    - `WAN`
-   - `VPN`
-   - `WG server`
+   - `Reality`
    - `Wi-Fi`
    - `Tailscale`
-3. Если есть раздел `LAN DEVICE BYTES`, назвать 1-3 самых активных LAN-устройства и объём `VPN` / `WAN`.
-4. Отдельно перечислить `WIREGUARD SERVER PEERS`, у которых не ноль.
-5. Отдельно перечислить `Tailscale peers`, у которых не ноль.
-6. Отдельно пояснить, что `LAN DEVICES` и `WIREGUARD SERVER PEERS (... CONNECTION SNAPSHOT)` — это снимки соединений, не байты.
+3. Если есть раздел `LAN DEVICE BYTES`, назвать 1-3 самых активных LAN-устройства и объём `Reality` / `WAN`.
+4. Отдельно перечислить `Tailscale peers`, у которых не ноль.
+5. Отдельно пояснить, что `LAN DEVICES` — это снимки соединений, не байты.
 
 ## Чего не выводить в ответ
 

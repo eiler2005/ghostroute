@@ -20,7 +20,7 @@
 - что `router_collect_capacity_history` может:
   - найти нужные snapshot sections
   - вытащить дату
-  - вытащить `VPN_DOMAINS`
+  - вытащить `STEALTH_DOMAINS`
   - вытащить `VPN_STATIC_NETS`
   - вытащить manual/auto rule counts
 
@@ -41,11 +41,10 @@
   - `Router-wide window`
   - `Per-device byte window`
   - `WAN total`
-  - `VPN total`
-  - `WG server total`
-  - `VPN share/WAN`
+  - `Reality-managed total`
+  - `Reality share/WAN`
   - `Device byte total`
-  - `Via VPN`
+  - `Via Reality`
   - `Direct WAN`
   - `Other`
   - и что рядом с ними сохраняются стабильные section markers для peer-top summaries
@@ -54,7 +53,7 @@
 
 - `router-health-report` строит свой traffic summary именно из этих строк
 - если заголовки или формат будут “тихо” изменены, downstream report перестанет быть надёжным
-- peer-top summaries тоже являются частью UX-контракта: LLM и человек ожидают увидеть их в predictable месте
+- Tailscale peer-top summaries тоже являются частью UX-контракта: LLM и человек ожидают увидеть их в predictable месте
 
 ### `state-sample.env`
 

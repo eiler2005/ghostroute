@@ -22,6 +22,22 @@
     dest: "{{ stealth_dnsmasq_conf_path }}"
     mode: "0644"
 
+- name: Remove retired inline dnsmasq managed blocks
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch "$CONF"
+    for marker in \
+      "router_configuration dnsmasq.conf.add" \
+      "router_configuration dnsmasq-vpn-upstream.conf.add" \
+      "router_configuration dnsmasq-stealth.conf.add"
+    do
+      awk -v start="# BEGIN ${marker}" -v end="# END ${marker}" '
+        $0 == start { skip = 1; next }
+        $0 == end { skip = 0; next }
+        !skip { print }
+      ' "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
+    done
+
 - name: Ensure stale firewall-start stealth hook is absent
   ansible.builtin.raw: |
     mkdir -p /jffs/scripts

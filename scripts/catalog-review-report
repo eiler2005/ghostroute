@@ -19,7 +19,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 STATE_FILE="$TMPDIR/catalog-review-state.env"
 MARKDOWN_OUTPUT="$TMPDIR/catalog-review-latest.md"
 
-DNSMASQ_FILE="${CATALOG_REVIEW_DNSMASQ_FILE:-${PROJECT_ROOT}/configs/dnsmasq.conf.add}"
+DNSMASQ_FILE="${CATALOG_REVIEW_DNSMASQ_FILE:-${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add}"
 STATIC_FILE="${CATALOG_REVIEW_STATIC_FILE:-${PROJECT_ROOT}/configs/static-networks.txt}"
 JOURNAL_FILE="${CATALOG_REVIEW_JOURNAL_FILE:-${PROJECT_ROOT}/docs/vpn-domain-journal.md}"
 
@@ -63,7 +63,7 @@ end
 domains = []
 File.foreach(dnsmasq_file) do |line|
   next unless line.start_with?("ipset=/")
-  domain = line.sub("ipset=/", "").sub(%r{/VPN_DOMAINS.*$}, "").strip
+  domain = line.sub("ipset=/", "").sub(%r{/STEALTH_DOMAINS.*$}, "").strip
   next if domain.empty?
   domains << domain
 end
@@ -139,14 +139,14 @@ wide_candidates = static_entries.select { |entry| entry["prefix"] <= 18 }.sort_b
 family_rollups = family_counts.sort_by { |family, count| [-count, family] }.first(8)
 
 state = load_state(state_file)
-vpn_current = state["VPN_DOMAINS_CURRENT"] || "n/a"
-vpn_max = state["VPN_DOMAINS_MAX"] || "n/a"
+stealth_current = state["STEALTH_DOMAINS_CURRENT"] || "n/a"
+stealth_max = state["STEALTH_DOMAINS_MAX"] || "n/a"
 vpn_static_current = state["VPN_STATIC_NETS_CURRENT"] || "n/a"
 manual_count = state["MANUAL_RULE_COUNT"] || domains.length.to_s
 auto_count = state["AUTO_RULE_COUNT"] || "n/a"
 
-usage = if vpn_current =~ /\A\d+\z/ && vpn_max =~ /\A\d+\z/ && vpn_max.to_i > 0
-          format("%.1f%%", (vpn_current.to_f / vpn_max.to_f) * 100.0)
+usage = if stealth_current =~ /\A\d+\z/ && stealth_max =~ /\A\d+\z/ && stealth_max.to_i > 0
+          format("%.1f%%", (stealth_current.to_f / stealth_max.to_f) * 100.0)
         else
           "n/a"
         end
@@ -162,7 +162,7 @@ puts "## Summary"
 puts
 puts "- Manual domain rules in repo: #{manual_count}"
 puts "- Auto-discovered rules on router: #{auto_count}"
-puts "- Live `VPN_DOMAINS`: #{vpn_current} / #{vpn_max} (#{usage})"
+puts "- Live `STEALTH_DOMAINS`: #{stealth_current} / #{stealth_max} (#{usage})"
 puts "- Live `VPN_STATIC_NETS`: #{vpn_static_current}"
 puts "- Static CIDR lines in repo: #{static_entries.length}"
 puts "- Broad static review candidates (`/18` or broader): #{wide_candidates.length}"

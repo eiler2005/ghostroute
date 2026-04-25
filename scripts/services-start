@@ -4,8 +4,8 @@
 cru d SaveIPSet 2>/dev/null
 cru a SaveIPSet "0 */6 * * * /jffs/scripts/cron-save-ipset"
 
-# Traffic snapshots every 6 hours (interfaces + Tailscale + WireGuard server peers,
-# stored on USB/Entware when available).
+# Traffic snapshots every 6 hours (WAN/LAN/Tailscale/device counters, stored on
+# USB/Entware when available).
 cru d TrafficSnapshot 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-snapshot ] && \
   cru a TrafficSnapshot "0 */6 * * * /jffs/scripts/cron-traffic-snapshot"
@@ -15,7 +15,7 @@ cru d TrafficDailyClose 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-daily-close ] && \
   cru a TrafficDailyClose "55 23 * * * /jffs/scripts/cron-traffic-daily-close"
 
-# Domain auto-routing: add newly discovered blocked domains to VPN (every hour).
+# Domain auto-routing: add newly discovered blocked domains to STEALTH (hourly).
 # Requires dnsmasq logging (enabled by default) and Entware on USB.
 cru d DomainCollect 2>/dev/null
 cru d DomainAutoAdd 2>/dev/null
@@ -23,7 +23,7 @@ cru d DomainAutoAdd 2>/dev/null
   cru a DomainAutoAdd "0 * * * * /jffs/addons/x3mRouting/domain-auto-add.sh"
 
 # Update blocked domains list from antifilter.download (daily at 5:00 AM).
-# Used by domain-auto-add.sh to filter: only blocked domains get VPN-routed.
+# Used by domain-auto-add.sh to filter: only blocked domains get Reality-routed.
 cru d UpdateBlockedList 2>/dev/null
 [ -x /jffs/addons/x3mRouting/update-blocked-list.sh ] && \
   cru a UpdateBlockedList "0 5 * * * /jffs/addons/x3mRouting/update-blocked-list.sh"

@@ -2,383 +2,134 @@
 
 ## Коротко
 
-Текущая архитектура — Reality-first с отдельным домашним ingress для мобильных клиентов:
+Текущая архитектура — Reality-first, без активного WireGuard Channel A:
 
 ```text
-Statement: GhostRoute делает domain-based routing на роутере, а не на каждом
-клиентском устройстве.
+LAN/Wi-Fi clients
+  -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
+  -> br0 TCP nat REDIRECT :<lan-redirect-port>
+  -> ASUS sing-box redirect inbound
+  -> VLESS+Reality outbound
+  -> VPS Caddy :443
+  -> Xray Reality inbound
+  -> Internet
 
-Setup:
-- Router: ASUS RT-AX88U Pro + Merlin, dnsmasq/ipset/iptables, Entware.
-- VPS: VPS, общий Caddy на :443, Xray/Reality backend в /opt/stealth.
-- Channel B, primary for home:
-  br0 LAN TCP -> STEALTH_DOMAINS/VPN_STATIC_NETS
-  -> nat REDIRECT :<lan-redirect-port> -> sing-box -> VLESS+Reality -> VPS.
-- Channel A, reserve for remote WireGuard clients:
-  wgs1 -> VPN_DOMAINS/VPN_STATIC_NETS -> mark 0x1000 -> table wgc1.
-- Remote mobile QR/VLESS clients:
-  client app -> generated QR/VLESS profile -> home public IP :<home-reality-port>
-  -> ASUS sing-box home Reality inbound -> sing-box Reality outbound
-  -> VPS Caddy :443 -> Xray Reality inbound -> Internet.
-  This keeps the LTE carrier-facing endpoint on the Russian home IP while
-  preserving the VPS exit IP for websites.
-- DNS:
-  dnsmasq fills both ipsets and sends upstream queries to dnscrypt-proxy
-  on 127.0.0.1:5354; dnscrypt-proxy sends DoH through sing-box SOCKS
-  on 127.0.0.1:1080, so resolver traffic follows the same Reality cover.
-- Automation:
-  deploy.sh manages router base scripts/catalogs; Ansible manages VPS,
-  sing-box, dnscrypt-proxy, REDIRECT rules, verification and QR generation.
-
-Non-goal: router OUTPUT is not transparently captured, because that can loop
-sing-box's own outbound connections.
+Remote mobile QR clients
+  -> home public IP :<home-reality-port>
+  -> ASUS sing-box Reality inbound
+  -> same Reality outbound to VPS
+  -> Internet
 ```
 
-| Источник | Каталог назначения | Механизм | Egress |
+`wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
+only as a cold fallback through `scripts/emergency-enable-wgc1.sh`.
+
+## Components
+
+| Component | Role |
+|---|---|
+| ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
+| `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off |
+| `dnscrypt-proxy` | upstream DNS on `127.0.0.1:5354`, proxied through sing-box SOCKS |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, Reality outbound to VPS |
+| VPS VPS | Caddy :443 plus Xray Reality backend on localhost |
+| `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel B |
+| `wgc1` NVRAM | cold fallback only, disabled in steady state |
+
+## Routing Matrix
+
+| Source | Selector | Mechanism | Egress |
 |---|---|---|---|
-| LAN/Wi-Fi (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`, UDP/443 DROP | sing-box redirect → Reality |
-| Router `OUTPUT` | не прозрачно перехватывается | main routing / explicit proxy only | router default |
-| Remote WireGuard server clients (`wgs1`) | `VPN_DOMAINS`, `VPN_STATIC_NETS` | mark `0x1000` → table `wgc1` | `wgc1` |
-| Remote QR/VLESS clients | generated profile | client-side VLESS+Reality to home ASUS :<home-reality-port> | ASUS sing-box → VPS Reality |
+| LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | sing-box -> Reality |
+| LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
+| Mobile QR/VLESS | generated Reality profile | TCP/<home-reality-port> to home router | router sing-box -> Reality |
+| Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
+| Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
-`wgc1` больше не является основным egress для домашней LAN или мобильных клиентов. Он сохранен как резервный/legacy канал для клиентов, которые подключаются к встроенному WireGuard server на роутере.
+## Domain Catalog
 
----
-
-## Компоненты
+Single repo source:
 
 ```text
-dnsmasq
-  -> fills VPN_DOMAINS from configs/dnsmasq.conf.add
-  -> fills STEALTH_DOMAINS from configs/dnsmasq-stealth.conf.add
-  -> includes auto-discovered domains from /jffs/configs/dnsmasq-autodiscovered.conf.add
-  -> upstream DNS via dnscrypt-proxy 127.0.0.1:5354
-  -> dnscrypt-proxy DoH egress via sing-box SOCKS 127.0.0.1:1080
-
-firewall-start
-  -> creates/restores VPN_DOMAINS
-  -> creates VPN_STATIC_NETS from configs/static-networks.txt
-  -> hooks only wgs1 into RC_VPN_ROUTE
-
-stealth-route-init.sh
-  -> creates STEALTH_DOMAINS
-  -> redirects matching br0 TCP flows to local sing-box :<lan-redirect-port>
-  -> silently drops matching br0 UDP/443 so clients fall back from QUIC to TCP
-  -> removes legacy 0x2000/table 200/singbox0 state
-
-nat-start
-  -> fwmark 0x1000/0x1000 -> table wgc1
-  -> redirects plain DNS from wgs1 clients to local dnsmasq
-
-sing-box
-  -> redirect inbound on 0.0.0.0:<lan-redirect-port>
-  -> home Reality inbound on 0.0.0.0:<home-reality-port> for remote mobile QR clients
-  -> VLESS+Reality outbound to VPS :443
-
-VPS
-  -> shared system Caddy with layer4 plugin on :443
-  -> Xray/3x-ui Reality inbound on 127.0.0.1:8443
+configs/dnsmasq-stealth.conf.add
 ```
 
----
+Live include:
+
+```text
+/jffs/configs/dnsmasq.conf.add
+  conf-file=/jffs/configs/dnsmasq-stealth.conf.add
+```
+
+Auto-discovery writes only:
+
+```text
+ipset=/example.com/STEALTH_DOMAINS
+```
+
+`VPN_DOMAINS` should be absent in the new steady state.
 
 ## Packet Flow
 
-### LAN client
+### LAN Client
 
 ```text
 client DNS query
   -> dnsmasq
-  -> matching domain IP added to STEALTH_DOMAINS
+  -> matching IPv4 added to STEALTH_DOMAINS
 
-client connection to resolved IP
+client TCP connection
   -> PREROUTING -i br0
   -> match STEALTH_DOMAINS or VPN_STATIC_NETS
-  -> TCP nat REDIRECT to local :<lan-redirect-port>
+  -> REDIRECT :<lan-redirect-port>
   -> sing-box redirect inbound
-  -> VLESS+Reality
+  -> Reality outbound
   -> VPS exit
 ```
 
-### Router-originated traffic
+### Mobile Home QR
 
 ```text
-router process / local proxy / service
-  -> OUTPUT
-  -> main routing by default
-  -> explicit proxy only when a diagnostic command intentionally opts in
+client app
+  -> VLESS+Reality to home public IP :<home-reality-port>
+  -> router Reality inbound validates router-side UUID/key/short_id
+  -> sing-box Reality outbound to VPS
+  -> VPS exit
 ```
 
-Router `OUTPUT` намеренно не перехватывается прозрачным REDIRECT-правилом: иначе sing-box outbound, который сам создается на роутере, легко поймать в loop. Для диагностики router-originated traffic используйте явный proxy/клиентский профиль, а не глобальный `OUTPUT` hook.
+The mobile carrier sees domestic home ingress traffic. Websites still see the
+VPS exit IP for managed traffic.
 
-### Remote WireGuard server client
+### Router-Originated Traffic
 
-```text
-iPhone/MacBook on mobile network
-  -> WireGuard VPN Server on router
-  -> decrypted packet enters as wgs1
-  -> PREROUTING -i wgs1
-  -> RC_VPN_ROUTE
-  -> match VPN_DOMAINS or VPN_STATIC_NETS
-  -> MARK 0x1000/0x1000
-  -> ip rule fwmark 0x1000/0x1000 lookup wgc1
-  -> old WGC1 egress
-```
+Router `OUTPUT` is not transparently captured. Capturing router-originated
+traffic globally can loop sing-box outbound connections. Diagnostics that need
+Reality should use an explicit proxy or client profile.
 
-Plain DNS from `wgs1` is captured:
+## Boot Hooks
 
-```sh
-iptables -t nat -A PREROUTING -i wgs1 -p udp --dport 53 -j REDIRECT --to-ports 53
-iptables -t nat -A PREROUTING -i wgs1 -p tcp --dport 53 -j REDIRECT --to-ports 53
-```
-
-Это сохраняет `VPN_DOMAINS` для мобильных клиентов даже после reconnect со stale DNS-настройками.
-
-### Remote QR/VLESS mobile client
-
-```text
-iPhone/MacBook outside home
-  -> client app imports generated QR/VLESS profile
-  -> VLESS+Reality over TCP/<home-reality-port> to home public IP
-  -> ASUS sing-box home Reality inbound
-  -> ASUS sing-box Reality outbound
-  -> VPS shared Caddy L4
-  -> Xray Reality inbound
-  -> Internet
-```
-
-This path enters the home router first, then exits through the VPS. Mobile carriers see the home Russian IP as the VPN endpoint; websites/checkers see the VPS exit IP. It does not provide access to home LAN resources unless a separate remote-access overlay is designed and deployed.
-
----
-
-## Domain Catalogs
-
-### `VPN_DOMAINS`
-
-Источник:
-
-```text
-configs/dnsmasq.conf.add
-/jffs/configs/dnsmasq-autodiscovered.conf.add
-```
-
-Назначение:
-
-```text
-remote wgs1 clients -> RC_VPN_ROUTE -> mark 0x1000 -> wgc1
-```
-
-Пример:
-
-```text
-ipset=/youtube.com/VPN_DOMAINS
-```
-
-### `STEALTH_DOMAINS`
-
-Источник:
-
-```text
-configs/dnsmasq-stealth.conf.add
-/jffs/configs/dnsmasq-autodiscovered.conf.add
-```
-
-Назначение:
-
-```text
-LAN TCP -> nat REDIRECT :<lan-redirect-port> -> sing-box redirect -> Reality
-```
-
-Пример:
-
-```text
-ipset=/youtube.com/STEALTH_DOMAINS
-```
-
-### `VPN_STATIC_NETS`
-
-Источник:
-
-```text
-configs/static-networks.txt
-```
-
-Назначение зависит от источника пакета:
-
-```text
-br0 TCP     -> nat REDIRECT :<lan-redirect-port> -> sing-box redirect -> Reality
-br0 UDP/443 -> DROP -> client fallback to TCP
-wgs1        -> mark 0x1000 -> wgc1
-```
-
-Такой shared catalog нужен для Telegram, imo, Apple и других direct-IP flows, где DNS-доменов недостаточно.
-
----
-
-## DNS Architecture
-
-Текущая supported-схема:
-
-```text
-clients
-  -> router dnsmasq :53
-  -> dnscrypt-proxy 127.0.0.1:5354
-  -> upstream encrypted resolvers
-```
-
-Because IPv6 is intentionally disabled, dnsmasq keeps `filter-AAAA` enabled.
-LAN clients should not receive IPv6 answers for dual-stack services such as
-YouTube while the active stealth plane is IPv4-only.
-
-Legacy per-domain upstreams вида:
-
-```text
-server=/example.com/1.1.1.1@wgc1
-server=/example.com/9.9.9.9@wgc1
-```
-
-больше не используются как active configuration. Они намеренно удалены из managed DNS policy, потому что LAN теперь должна использовать Channel B, а DNS не должен скрыто привязывать географию к `wgc1`.
-
-Файл `configs/dnsmasq-vpn-upstream.conf.add` сохранен только как lightweight compatibility block, потому что `deploy.sh` все еще умеет мержить его managed section.
-
----
-
-## VPS Stealth Channel
-
-На VPS используется компромиссная production-схема:
-
-```text
-system Caddy :443 with layer4 plugin and generic fallback site
-  -> routes Reality traffic to Xray on 127.0.0.1:8443
-
-/opt/stealth
-  -> Docker Compose for xray / 3x-ui side
-```
-
-Общий Caddy остается системным. Public `:443` держит только Reality L4 routing и generic fallback; OpenClaw не публикуется через Caddy и доступен только через SSH tunnel. Xray/3x-ui живут отдельно в `/opt/stealth`, чтобы не смешивать app stacks.
-
-Reality profiles:
-
-```text
-vless://<FAKE-UUID>@<FAKE-HOST>:443?type=tcp&security=reality&pbk=<FAKE-PUBLIC-KEY>&sid=<FAKE-SHORT-ID>&sni=gateway.icloud.com&fp=chrome#iphone-placeholder
-```
-
-Это пример формата, не реальный профиль.
-
----
-
-## Deployment Model
-
-### Router base layer
-
-```bash
-ROUTER=192.168.50.1 ./deploy.sh
-```
-
-Доставляет:
-
-- `configs/dnsmasq.conf.add`
-- `configs/dnsmasq-stealth.conf.add`
-- `configs/dnsmasq-vpn-upstream.conf.add`
-- `configs/static-networks.txt`
-- `scripts/firewall-start`
-- `scripts/nat-start`
-- `scripts/domain-auto-add.sh`
-- cron/reporting scripts
-
-### Stealth router layer
-
-```bash
-cd ansible
-ansible-playbook playbooks/20-stealth-router.yml
-```
-
-Управляет:
-
-- `sing-box`
-- `dnscrypt-proxy`
-- `/jffs/scripts/stealth-route-init.sh`
-- route table `200`
-- `STEALTH_DOMAINS`
-- dnsmasq include for stealth catalog
-
-### Verify
-
-```bash
-cd ansible
-ansible-playbook playbooks/99-verify.yml
-cd ..
-./verify.sh
-./scripts/router-health-report
-```
-
----
-
-## Operational Artifacts
-
-| Artifact | Purpose |
+| Hook | Responsibility |
 |---|---|
-| `/jffs/configs/dnsmasq.conf.add` | live dnsmasq managed blocks |
-| `/jffs/configs/dnsmasq-stealth.conf.add` | live stealth catalog |
-| `/jffs/configs/dnsmasq-autodiscovered.conf.add` | router-local auto-discovered domains |
-| `/opt/etc/sing-box/config.json` | sing-box client config |
-| `/opt/var/log/sing-box.log` | sing-box log |
-| `/opt/etc/dnscrypt-proxy.toml` | dnscrypt config |
-| `/opt/var/log/router_configuration` | traffic/report snapshots when Entware is available |
-| `/jffs/addons/router_configuration` | fallback state when Entware is unavailable |
+| `firewall-start` | create/restore `STEALTH_DOMAINS`, load `VPN_STATIC_NETS`, enforce LAN-only SSH, call stealth-route-init |
+| `stealth-route-init.sh` | apply REDIRECT, QUIC DROP and mobile Reality INPUT rules |
+| `cron-save-ipset` | persist `STEALTH_DOMAINS.ipset` |
+| `cron-traffic-snapshot` | collect WAN/LAN/Tailscale/device counters |
+| `nat-start` | intentionally no Channel A work |
 
----
+## Verification
 
-## Verification Commands
-
-```sh
-iptables -t nat -S PREROUTING | grep <lan-redirect-port>
-iptables -S FORWARD | grep 'dport 443'
-netstat -nlp | grep <lan-redirect-port>
-netstat -nlp | grep ':<home-reality-port> '
-iptables -S INPUT | grep -- '--dport <home-reality-port>'
-iptables -t mangle -S PREROUTING | grep RC_VPN_ROUTE
-iptables -t mangle -S RC_VPN_ROUTE
-ip rule show
-ip route show table 200 || true
-ip route show table wgc1
-ipset list STEALTH_DOMAINS | sed -n '1,10p'
-ipset list VPN_DOMAINS | sed -n '1,10p'
-ipset list VPN_STATIC_NETS | sed -n '1,20p'
-grep '@wgc1' /jffs/configs/dnsmasq.conf.add
+```bash
+ROUTER=192.168.50.1 ./verify.sh
+cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers
 ```
 
-Expected:
+Critical invariants:
 
-- `PREROUTING -i br0` has TCP REDIRECT rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
-- `FORWARD -i br0` has UDP/443 DROP rules for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
-- sing-box listens on `0.0.0.0:<lan-redirect-port>`.
-- sing-box listens on `0.0.0.0:<home-reality-port>` for remote mobile QR clients.
-- router INPUT allows TCP/<home-reality-port> for the home Reality ingress.
-- `PREROUTING -i wgs1 -j RC_VPN_ROUTE` exists.
-- `RC_VPN_ROUTE` marks `VPN_DOMAINS` and `VPN_STATIC_NETS` as `0x1000`.
-- No `PREROUTING -i br0 -j RC_VPN_ROUTE`.
-- No `OUTPUT -j RC_VPN_ROUTE`.
-- No legacy `fwmark 0x2000`, table `200 -> singbox0`, or live `singbox0`.
-- No active `@wgc1` dnsmasq upstream entries.
-
----
-
-## Security Notes
-
-- Do not paste real `ansible/secrets/stealth.yml`.
-- Do not paste real VLESS URIs or QR payloads.
-- Keep `~/.vault_pass.txt` local and mode `600`.
-- Generated client files under `ansible/out/clients/` are local operational artifacts.
-- IPv6 remains out of scope until a separate dual-stack design exists. Keep
-  Merlin IPv6 disabled and dnsmasq `filter-AAAA` enabled.
-
----
-
-## Related Docs
-
-- [channel-routing-operations.md](channel-routing-operations.md)
-- [stealth-channel-implementation-guide.md](stealth-channel-implementation-guide.md)
-- [domain-management.md](domain-management.md)
-- [troubleshooting.md](troubleshooting.md)
-- [traffic-observability.md](traffic-observability.md)
+- `wgs1_enable=0`
+- `wgc1_enable=0`
+- `VPN_DOMAINS` absent
+- `STEALTH_DOMAINS` present
+- `VPN_STATIC_NETS` present
+- no `RC_VPN_ROUTE`
+- no `0x1000` rule outside emergency fallback
+- `filter-AAAA` present while IPv6 is disabled

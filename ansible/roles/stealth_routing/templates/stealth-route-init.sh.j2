@@ -29,10 +29,7 @@ ipset create "$IPSET" hash:net family inet -exist
 ipset create "$STATIC_IPSET" hash:net family inet -exist
 
 # 2. mangle cleanup: remove the previous TUN/policy-routing Channel B hooks.
-# Clean up the earlier broad PREROUTING hook so remote wgs1 clients do not
-# accidentally use Channel B; they stay on the old WGC1 reserve channel.
 iptables -t mangle -D PREROUTING -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i wgs1 -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set "$STATIC_IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
 iptables -t mangle -D OUTPUT -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
@@ -43,12 +40,9 @@ while ip rule del fwmark "$MARK" table "$TABLE" 2>/dev/null; do :; done
 ip route flush table "$TABLE" 2>/dev/null || true
 
 # 3. nat: Channel B owns LAN TCP by redirecting selected destinations into
-# sing-box. This avoids Merlin TUN/TUNSETIFF races and leaves remote wgs1
-# clients on the old WGC1 reserve channel.
+# sing-box. This avoids Merlin TUN/TUNSETIFF races.
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
-iptables -t nat -D PREROUTING -i wgs1 -p tcp -m set --match-set VPN_DOMAINS dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
-iptables -t nat -D PREROUTING -i wgs1 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
@@ -57,12 +51,8 @@ iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" d
 # local ICMP port-unreachable signature created by REJECT.
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
-iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set VPN_DOMAINS dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
-iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
-iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set VPN_DOMAINS dst -j DROP 2>/dev/null || true
-iptables -D FORWARD -i wgs1 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP
 
