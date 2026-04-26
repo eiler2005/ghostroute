@@ -426,6 +426,10 @@ Interpretation:
 - `VPS` means this device matched `STEALTH_DOMAINS`/`VPN_STATIC_NETS` and was
   redirected into sing-box `:<lan-redirect-port>`.
 - `RU direct` means traffic from that device left through normal home WAN.
+  The destination sees the home Russian IP. This is not synonymous with
+  "Russian sites only": it can include Russian services, ordinary foreign sites
+  that are not in `STEALTH_DOMAINS`, Apple/CDN/API/background traffic, and
+  resolver-like infrastructure.
 - `VPS share` shows how much of the measured device traffic used the managed
   route.
 
