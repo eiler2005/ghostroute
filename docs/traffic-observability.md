@@ -68,6 +68,8 @@ Important accounting rule:
 
 - `WAN total` is the physical ISP-interface volume. It includes everything that
   crossed `wan0`.
+- `LAN/Wi-Fi observed + Home Reality ingress + WAN remainder/unattributed`
+  should add up to `WAN total` within rounding. This is the physical WAN view.
 - `Client observed total` is the user-facing base for the report: LAN/Wi-Fi
   device traffic plus Home Reality ingress traffic.
 - `Via VPS + Via home RU direct + Other/unresolved` should add up to
@@ -350,13 +352,14 @@ Typical summary:
 
 ```text
 === 1. EXIT SUMMARY ===
-WAN total:               12.75 GiB  (actual ISP/WAN interface)
-Client observed total:   9.13 GiB   (LAN/Wi-Fi exact + Home Reality ingress exact)
+WAN total:               13.78 GiB  (physical router/ISP base = 100%)
+LAN/Wi-Fi observed:      4.22 GiB   (30.6% of WAN)
+Home Reality ingress:    5.32 GiB   (38.6% of WAN)
+WAN remainder/unattributed: 4.24 GiB (30.8% of WAN)
+Client observed total:   9.54 GiB   (69.2% of WAN)
 Via VPS:         8.07 GiB   (88.4%; LAN exact + ingress estimated)
 Via home RU direct:      1.05 GiB   (11.5%; LAN exact + ingress estimated)
 Other/unresolved:        0 B        (0.0%)
-LAN/Wi-Fi observed:      3.90 GiB
-Home Reality ingress:    5.22 GiB  (client -> home RU IP :<home-reality-port>)
 Interface counters:      Wi-Fi 4.88 GiB / LAN bridge 4.70 GiB
 ```
 
@@ -366,6 +369,10 @@ How to read this:
   “how much crossed the router's WAN interface?”.
 - `Client observed total` is the correct base for “how much user traffic did
   the GhostRoute accounting observe?”.
+- `WAN remainder/unattributed` explains the gap between physical WAN and
+  observed client ingress. It includes second WAN legs such as
+  `router -> VPS/site`, router/background traffic, and any per-device counter
+  coverage gaps in the selected window.
 - `Via VPS` combines exact LAN/Wi-Fi managed bytes plus estimated Home
   Reality ingress bytes that went through `reality-out`.
 - `Via home RU direct` combines exact LAN/Wi-Fi direct bytes plus estimated Home
@@ -541,11 +548,12 @@ LAN/Wi-Fi samples:         2026-04-25T00:00:00+0300 -> 2026-04-25T23:55:00+0300
 Home Reality samples:      2026-04-25T14:56:58+0300 -> 2026-04-25T23:55:00+0300
 
 WAN total:                 73.02 GiB
-Client observed total:     13.67 GiB
+LAN/Wi-Fi observed:        11.73 GiB
+Home Reality ingress:      1.93 GiB
+WAN remainder/unattributed:59.36 GiB
+Client observed total:     13.66 GiB
 LAN/Wi-Fi via VPS:      11.38 GiB
 LAN/Wi-Fi RU direct:       365.4 MiB
-LAN/Wi-Fi observed:        11.74 GiB
-Home Reality ingress:      1.93 GiB
 ```
 
 Important:

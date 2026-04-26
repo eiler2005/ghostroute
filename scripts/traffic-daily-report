@@ -264,6 +264,7 @@ mobile_total = mobile_sources.sum { |row| row[:total] }
 mobile_upload = mobile_sources.sum { |row| row[:upload] }
 mobile_download = mobile_sources.sum { |row| row[:download] }
 client_observed_total = lan_total + mobile_total
+wan_remainder = [wan[:total] - client_observed_total, 0].max
 
 puts '=== GHOSTROUTE USAGE REPORT ==='
 puts format('%-26s %s', 'Period:', period_label)
@@ -274,17 +275,18 @@ puts format('%-26s %s', 'Home Reality samples:', window_for(mobile_rows))
 puts
 
 puts '=== 1. EXIT SUMMARY ==='
-puts format('%-26s %s  (actual ISP/WAN interface RX %s / TX %s)', 'WAN total:', human_bytes(wan[:total]), human_bytes(wan[:rx]), human_bytes(wan[:tx]))
-puts format('%-26s %s  (LAN/Wi-Fi exact + Home Reality ingress exact)', 'Client observed total:', human_bytes(client_observed_total))
+puts format('%-26s %s  (physical router/ISP base = 100%%; RX %s / TX %s)', 'WAN total:', human_bytes(wan[:total]), human_bytes(wan[:rx]), human_bytes(wan[:tx]))
+puts format('%-26s %s  (%s of WAN)', 'LAN/Wi-Fi observed:', human_bytes(lan_total), pct(lan_total, wan[:total]))
+puts format('%-26s %s  (%s of WAN; upload %s / download %s)', 'Home Reality ingress:', human_bytes(mobile_total), pct(mobile_total, wan[:total]), human_bytes(mobile_upload), human_bytes(mobile_download))
+puts format('%-26s %s  (%s of WAN; second WAN legs + router/background/counter gaps)', 'WAN remainder/unattributed:', human_bytes(wan_remainder), pct(wan_remainder, wan[:total]))
+puts format('%-26s %s  (%s of WAN; LAN/Wi-Fi exact + Home Reality ingress exact)', 'Client observed total:', human_bytes(client_observed_total), pct(client_observed_total, wan[:total]))
 puts format('%-26s %s', 'LAN/Wi-Fi via VPS:', human_bytes(lan_reality))
 puts format('%-26s %s', 'LAN/Wi-Fi RU direct:', human_bytes(lan_wan))
 puts format('%-26s %s', 'LAN/Wi-Fi other:', human_bytes(lan_other))
-puts format('%-26s %s', 'LAN/Wi-Fi observed:', human_bytes(lan_total))
-puts format('%-26s %s  (upload %s / download %s)', 'Home Reality ingress:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
 puts format('%-26s %s  (RX %s / TX %s)', 'Wi-Fi interface:', human_bytes(wifi[:total]), human_bytes(wifi[:rx]), human_bytes(wifi[:tx]))
 puts format('%-26s %s  (RX %s / TX %s)', 'LAN bridge:', human_bytes(br0[:total]), human_bytes(br0[:rx]), human_bytes(br0[:tx]))
 puts format('%-26s %s', 'LAN Reality share:', pct(lan_reality, lan_total))
-puts 'Accounting note:           WAN includes Home Reality ingress and its second WAN egress leg; client observed total is the user-facing base.'
+puts 'Accounting note:           LAN/Wi-Fi + Home Reality ingress + WAN remainder ~= WAN total; observed split is the user-flow view.'
 puts
 
 puts '=== 2. PATH MATRIX ==='
