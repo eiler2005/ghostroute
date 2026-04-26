@@ -1,8 +1,7 @@
 # GhostRoute Architecture Improvement Roadmap
 
-This document turns the architecture review in
-`docs/architecture-review-2026-04-26.md` into an implementation roadmap.
-It is intentionally more selective than the review: the goal is to improve
+This document records the accepted architecture improvement roadmap after the
+2026-04-26 review pass. It is intentionally selective: the goal is to improve
 architecture, security visibility and maintainability without changing
 production routing behavior.
 
@@ -144,8 +143,9 @@ little operational benefit.
 - Secret scanning stays green.
 - Production behavior is unchanged.
 
-## Source Review
+## Review Disposition
 
-The detailed review remains available at
-`docs/architecture-review-2026-04-26.md`. This roadmap is the implementation
-filter for that review, not a replacement for it.
+The original long-form review was used as input for this roadmap and then
+removed from tracked docs after the accepted P0 slice was implemented. This
+roadmap is now the canonical public record for the accepted findings,
+deferred work and architectural priorities from that review pass.
