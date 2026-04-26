@@ -543,6 +543,20 @@ if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBI
     NF { printf "%s|mobile-client-%02d\n", $1, ++idx }
   ' > "$MOBILE_ALIAS_MAP"
 
+  if [ -s "$DEVICE_METADATA_MAP" ]; then
+    awk -F'|' '
+      BEGIN { OFS="|" }
+      NR == FNR {
+        if ($2 != "") label[$1] = $2
+        next
+      }
+      {
+        if (($2 in label) && label[$2] != "") $2 = $2 " (" label[$2] ")"
+        print
+      }
+    ' "$DEVICE_METADATA_MAP" "$MOBILE_ALIAS_MAP" > "$MOBILE_ALIAS_MAP.named" && mv "$MOBILE_ALIAS_MAP.named" "$MOBILE_ALIAS_MAP"
+  fi
+
   if [ -s "$MOBILE_CLIENTS" ]; then
     awk -F'|' '
       BEGIN { OFS="|" }
