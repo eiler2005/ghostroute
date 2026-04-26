@@ -1,0 +1,9 @@
+#!/bin/sh
+
+STATE_DIR="/jffs/addons/router_configuration"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/tmp"
+mkdir -p "$STATE_DIR"
+STATE_FILE="$STATE_DIR/STEALTH_DOMAINS.ipset"
+
+ipset list STEALTH_DOMAINS >/dev/null 2>&1 || exit 0
+ipset save STEALTH_DOMAINS > "$STATE_FILE"

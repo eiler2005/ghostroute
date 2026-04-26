@@ -5,7 +5,7 @@
 
 - name: Install GhostRoute health monitor scripts
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../scripts/health-monitor/"
+    src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/router/"
     dest: /jffs/scripts/health-monitor/
     mode: preserve
 

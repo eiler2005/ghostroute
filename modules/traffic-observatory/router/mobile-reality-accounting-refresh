@@ -1,0 +1,87 @@
+#!/bin/sh
+
+MOBILE_IN_CHAIN="RC_MOBILE_REALITY_IN"
+MOBILE_OUT_CHAIN="RC_MOBILE_REALITY_OUT"
+GHOSTROUTE_RUNTIME_ENV="${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}"
+[ -r "$GHOSTROUTE_RUNTIME_ENV" ] && . "$GHOSTROUTE_RUNTIME_ENV"
+REALITY_PORT="${HOME_REALITY_PORT:-${GHOSTROUTE_HOME_REALITY_PORT:-}}"
+[ -n "$REALITY_PORT" ] || {
+  logger -t mobile-reality-accounting-refresh "HOME_REALITY_PORT is not configured"
+  exit 0
+}
+SINGBOX_LOG="${SINGBOX_LOG:-/opt/var/log/sing-box.log}"
+TMP_IPS="/tmp/mobile-reality-ips.$$"
+
+ensure_chain() {
+  iptables -t mangle -N "$1" 2>/dev/null || true
+}
+
+ensure_hook() {
+  chain_name="$1"
+  direction="$2"
+  port_flag="$3"
+
+  iptables -t mangle -C "$direction" -p tcp "$port_flag" "$REALITY_PORT" -j "$chain_name" 2>/dev/null || \
+    iptables -t mangle -I "$direction" 1 -p tcp "$port_flag" "$REALITY_PORT" -j "$chain_name"
+}
+
+ensure_rule() {
+  chain_name="$1"
+  shift
+  iptables -t mangle -C "$chain_name" "$@" 2>/dev/null || \
+    iptables -t mangle -A "$chain_name" "$@"
+}
+
+valid_ipv4() {
+  printf '%s\n' "$1" | awk -F. '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) exit 1
+      }
+      exit 0
+    }'
+}
+
+extract_mobile_ips() {
+  [ -f "$SINGBOX_LOG" ] || return 0
+
+  today="$(date +%Y-%m-%d)"
+  grep " $today " "$SINGBOX_LOG" 2>/dev/null | awk '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    /inbound\/vless\[reality-in\]: inbound connection from / {
+      id = conn_id($0)
+      if (id == "") next
+      ip = $0
+      sub(/^.* inbound connection from /, "", ip)
+      sub(/:[0-9]+.*$/, "", ip)
+      if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) ips[ip] = 1
+    }
+    END {
+      for (ip in ips) print ip
+    }'
+}
+
+ensure_chain "$MOBILE_IN_CHAIN"
+ensure_chain "$MOBILE_OUT_CHAIN"
+ensure_hook "$MOBILE_IN_CHAIN" INPUT --dport
+ensure_hook "$MOBILE_OUT_CHAIN" OUTPUT --sport
+
+extract_mobile_ips | sort -u > "$TMP_IPS"
+
+while IFS= read -r remote_ip; do
+  [ -n "$remote_ip" ] || continue
+  valid_ipv4 "$remote_ip" || continue
+
+  ensure_rule "$MOBILE_IN_CHAIN" -s "${remote_ip}/32" -j RETURN
+  ensure_rule "$MOBILE_OUT_CHAIN" -d "${remote_ip}/32" -j RETURN
+done < "$TMP_IPS"
+
+rm -f "$TMP_IPS"

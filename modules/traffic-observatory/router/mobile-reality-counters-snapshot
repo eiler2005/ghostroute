@@ -1,0 +1,112 @@
+#!/bin/sh
+
+MOBILE_IN_CHAIN="RC_MOBILE_REALITY_IN"
+MOBILE_OUT_CHAIN="RC_MOBILE_REALITY_OUT"
+SINGBOX_LOG="${SINGBOX_LOG:-/opt/var/log/sing-box.log}"
+TMP_RULES="/tmp/mobile-reality-counters.$$"
+TMP_CLIENT_IPS="/tmp/mobile-reality-clients.$$"
+TMP_CLIENT_MAP="/tmp/mobile-reality-client-map.$$"
+
+[ -x /jffs/scripts/mobile-reality-accounting-refresh ] && \
+  /jffs/scripts/mobile-reality-accounting-refresh >/dev/null 2>&1 || true
+
+iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || {
+  rm -f "$TMP_RULES" "$TMP_CLIENT_IPS" "$TMP_CLIENT_MAP"
+  exit 0
+}
+
+if [ -f "$SINGBOX_LOG" ]; then
+  today="$(date +%Y-%m-%d)"
+  grep " $today " "$SINGBOX_LOG" 2>/dev/null | awk '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    /inbound\/vless\[reality-in\]: inbound connection from / {
+      id = conn_id($0)
+      if (id == "") next
+      ip = $0
+      sub(/^.* inbound connection from /, "", ip)
+      sub(/:[0-9]+.*$/, "", ip)
+      remote_by_id[id] = ip
+      next
+    }
+    /inbound\/vless\[reality-in\]: \[[^]]+\] inbound connection to / {
+      id = conn_id($0)
+      if (id == "" || !(id in remote_by_id)) next
+      client = $0
+      sub(/^.*inbound\/vless\[reality-in\]: \[/, "", client)
+      sub(/\].*$/, "", client)
+      ip = remote_by_id[id]
+      if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && client != "") {
+        print ip "|" client
+      }
+    }' | sort -u > "$TMP_CLIENT_IPS"
+else
+  : > "$TMP_CLIENT_IPS"
+fi
+
+awk -F'|' '
+  BEGIN { OFS = "|" }
+  {
+    ip = $1
+    client = $2
+    if (ip == "" || client == "") next
+    if (seen[ip, client]) next
+    seen[ip, client] = 1
+    if (label[ip] == "") label[ip] = client
+    else label[ip] = label[ip] "+" client
+  }
+  END {
+    for (ip in label) print ip, label[ip]
+  }
+' "$TMP_CLIENT_IPS" > "$TMP_CLIENT_MAP"
+
+awk '
+  BEGIN { OFS = "|" }
+  NR == FNR {
+    split($0, fields, "|")
+    label[fields[1]] = fields[2]
+    ips[fields[1]] = 1
+    next
+  }
+  {
+    if (NF < 1 || $0 !~ / -A RC_MOBILE_REALITY_/) next
+
+    bytes_field = $1
+    sub(/^\[[0-9]+:/, "", bytes_field)
+    sub(/\].*$/, "", bytes_field)
+
+    chain = ""
+    ip = ""
+    for (i = 1; i <= NF; i++) {
+      if ($i == "-A" && (i + 1) <= NF && $(i + 1) ~ /^RC_MOBILE_REALITY_/) {
+        chain = $(i + 1)
+      }
+      if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+        ip = $(i + 1)
+        sub(/\/32$/, "", ip)
+      }
+    }
+    if (ip == "") next
+
+    ips[ip] = 1
+    if (chain == "RC_MOBILE_REALITY_IN") upload[ip] = bytes_field
+    else if (chain == "RC_MOBILE_REALITY_OUT") download[ip] = bytes_field
+  }
+  END {
+    for (ip in ips) {
+      client = label[ip]
+      if (client == "") client = "remote:" ip
+      up = upload[ip]; if (up == "") up = "0"
+      down = download[ip]; if (down == "") down = "0"
+      print ip, client, up, down
+    }
+  }
+' "$TMP_CLIENT_MAP" "$TMP_RULES" | sort -t'|' -k1,1
+
+rm -f "$TMP_RULES" "$TMP_CLIENT_IPS" "$TMP_CLIENT_MAP"

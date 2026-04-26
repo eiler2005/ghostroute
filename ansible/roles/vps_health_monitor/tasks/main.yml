@@ -14,11 +14,11 @@
     dest: "{{ stealth_stack_dir }}/health-monitor/{{ item.dest }}"
     mode: "0755"
   loop:
-    - { src: "{{ playbook_dir }}/../../scripts/vps-health-monitor/lib.sh", dest: "lib.sh" }
-    - { src: "{{ playbook_dir }}/../../scripts/vps-health-monitor/run-probes", dest: "run-probes" }
-    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/aggregate", dest: "aggregate" }
-    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/daily-digest", dest: "daily-digest" }
-    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/run-once", dest: "run-once" }
+    - { src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/vps/lib.sh", dest: "lib.sh" }
+    - { src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/vps/run-probes", dest: "run-probes" }
+    - { src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/router/aggregate", dest: "aggregate" }
+    - { src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/router/daily-digest", dest: "daily-digest" }
+    - { src: "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/router/run-once", dest: "run-once" }
 
 - name: Render GhostRoute VPS health monitor env
   ansible.builtin.template:

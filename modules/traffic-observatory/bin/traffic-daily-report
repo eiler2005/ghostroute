@@ -1,0 +1,344 @@
+#!/bin/bash
+# Period traffic report from router-side Reality-first snapshots.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+. "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
+router_health_load_env
+
+PERIOD_ARG="${1:-today}"
+REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
+DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+INTERFACE_COUNTERS="$TMPDIR/interface-counters.tsv"
+LAN_COUNTERS="$TMPDIR/lan-device-counters.tsv"
+MOBILE_COUNTERS="$TMPDIR/mobile-reality-counters.tsv"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
+
+# Add a fresh endpoint sample before reading the history. This keeps "today",
+# "week" and "month" reports useful without waiting for the next 6-hour cron.
+router_ssh 'sh -s' <<'REMOTE' >/dev/null 2>&1 || true
+[ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1
+REMOTE
+
+router_ssh 'sh -s' <<'REMOTE' > "$INTERFACE_COUNTERS"
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/interface-counters.tsv" ] && cat "$STATE_DIR/interface-counters.tsv" || true
+REMOTE
+
+router_ssh 'sh -s' <<'REMOTE' > "$LAN_COUNTERS"
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/lan-device-counters.tsv" ] && cat "$STATE_DIR/lan-device-counters.tsv" || true
+REMOTE
+
+router_ssh 'sh -s' <<'REMOTE' > "$MOBILE_COUNTERS"
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/mobile-reality-counters.tsv" ] && cat "$STATE_DIR/mobile-reality-counters.tsv" || true
+REMOTE
+
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DEVICE_METADATA_FILE"
+
+ruby -rdate -rtime - "$PERIOD_ARG" "$REPORT_REDACT_NAMES" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" "$DEVICE_METADATA_MAP" <<'RUBY'
+period_arg, redact_names, interface_path, lan_path, mobile_path, metadata_map_path = ARGV
+
+def human_bytes(bytes)
+  bytes = bytes.to_i
+  if bytes >= 1024 * 1024 * 1024
+    format('%.2f GiB', bytes.to_f / 1024 / 1024 / 1024)
+  elsif bytes >= 1024 * 1024
+    format('%.1f MiB', bytes.to_f / 1024 / 1024)
+  elsif bytes >= 1024
+    format('%.1f KiB', bytes.to_f / 1024)
+  else
+    "#{bytes} B"
+  end
+end
+
+def pct(part, total)
+  total = total.to_i
+  return 'n/a' if total <= 0
+  format('%.1f%%', (part.to_f / total) * 100)
+end
+
+def parse_time(value)
+  Time.strptime(value, '%Y-%m-%dT%H:%M:%S%z')
+rescue ArgumentError
+  nil
+end
+
+def delta(current, base)
+  current = current.to_i
+  base = base.to_i
+  current >= base ? current - base : current
+end
+
+def period_range(arg)
+  today = Date.today
+  case arg
+  when '', 'today', 'current', 'current-day'
+    start_date = today
+    label = 'today'
+    days = 1
+  when 'yesterday'
+    start_date = today - 1
+    label = 'yesterday'
+    days = 1
+  when 'week'
+    start_date = today - 6
+    label = 'last 7 days'
+    days = 7
+  when 'month'
+    start_date = today - 29
+    label = 'last 30 days'
+    days = 30
+  when /\A\d{4}-\d{2}-\d{2}\z/
+    start_date = Date.iso8601(arg)
+    label = arg
+    days = 1
+  else
+    warn "Unknown period '#{arg}', falling back to today"
+    start_date = today
+    label = 'today'
+    days = 1
+  end
+
+  start_time = Time.new(start_date.year, start_date.month, start_date.day, 0, 0, 0, Time.now.utc_offset)
+  end_date = start_date + days
+  end_time = Time.new(end_date.year, end_date.month, end_date.day, 0, 0, 0, Time.now.utc_offset)
+  [label, start_time, end_time]
+end
+
+def rows_in_period(path, start_time, end_time)
+  rows = []
+  return rows unless File.exist?(path)
+
+  File.foreach(path) do |line|
+    parts = line.strip.split('|', -1)
+    next if parts.empty?
+    ts = parse_time(parts[0])
+    next unless ts
+    next if ts < start_time || ts >= end_time
+    rows << [ts, parts]
+  end
+  rows
+end
+
+def counter_delta(rows, key_index, value_indexes)
+  by_key = Hash.new { |hash, key| hash[key] = [] }
+  rows.each do |ts, parts|
+    key = parts[key_index]
+    next if key.nil? || key.empty?
+    by_key[key] << [ts, parts]
+  end
+
+  result = {}
+  by_key.each do |key, key_rows|
+    sorted = key_rows.sort_by(&:first)
+    first = sorted.first[1]
+    last = sorted.last[1]
+    values = value_indexes.map { |idx| delta(last[idx], first[idx]) }
+    result[key] = {
+      first_ts: sorted.first[0],
+      last_ts: sorted.last[0],
+      first: first,
+      last: last,
+      values: values
+    }
+  end
+  result
+end
+
+def window_for(rows)
+  return 'n/a (no samples in period)' if rows.empty?
+  sorted = rows.sort_by(&:first)
+  "#{sorted.first[0].strftime('%Y-%m-%dT%H:%M:%S%z')} -> #{sorted.last[0].strftime('%Y-%m-%dT%H:%M:%S%z')}"
+end
+
+def load_device_metadata_map(path)
+  metadata = {}
+  return metadata if path.nil? || path.empty? || !File.exist?(path)
+
+  File.foreach(path) do |line|
+    next if line.strip.empty? || line.lstrip.start_with?('#')
+
+    key, label, = line.chomp.split('|', -1).map { |part| part.to_s.strip }
+    next if key.nil? || key.empty?
+    next if label.nil? || label.empty?
+
+    metadata[key] = label
+  end
+
+  metadata
+end
+
+period_label, start_time, end_time = period_range(period_arg)
+device_metadata = load_device_metadata_map(metadata_map_path)
+interface_rows = rows_in_period(interface_path, start_time, end_time)
+lan_rows = rows_in_period(lan_path, start_time, end_time)
+mobile_rows = rows_in_period(mobile_path, start_time, end_time)
+
+interfaces = counter_delta(interface_rows, 1, [2, 3])
+lan_devices_raw = counter_delta(lan_rows, 1, [3, 4, 5, 6, 7, 8])
+mobile_raw = counter_delta(mobile_rows, 1, [3, 4])
+
+lan_devices = lan_devices_raw.map do |ip, data|
+  last = data[:last]
+  host = last[2]
+  host = ip if host.nil? || host.empty? || host == '?'
+  label = device_metadata.fetch(ip, host)
+  reality_up, reality_down, wan_up, wan_down, other_up, other_down = data[:values]
+  reality = reality_up + reality_down
+  wan = wan_up + wan_down
+  other = other_up + other_down
+  upload = reality_up + wan_up + other_up
+  download = reality_down + wan_down + other_down
+  total = upload + download
+  {
+    key: ip,
+    label: label,
+    reality: reality,
+    wan: wan,
+    other: other,
+    upload: upload,
+    download: download,
+    total: total
+  }
+end
+
+mobile_sources_by_label = Hash.new { |hash, key| hash[key] = { label: key, upload: 0, download: 0, total: 0 } }
+mobile_raw.each_value do |data|
+  last = data[:last]
+  label = last[2]
+  label = 'unknown-mobile-source' if label.nil? || label.empty?
+  upload, download = data[:values]
+  total = upload + download
+  mobile_sources_by_label[label][:upload] += upload
+  mobile_sources_by_label[label][:download] += download
+  mobile_sources_by_label[label][:total] += total
+end
+mobile_sources = mobile_sources_by_label.values
+mobile_sources.reject! do |row|
+  row[:total].to_i <= 0 ||
+    row[:label].to_s.start_with?('remote:#') ||
+    row[:label].to_s.start_with?('remote:*')
+end
+
+if redact_names == '1'
+  lan_devices.sort_by { |row| row[:key] }.each_with_index do |row, idx|
+    row[:label] = format('lan-host-%02d', idx + 1)
+  end
+
+  mobile_sources.sort_by { |row| row[:label] }.each_with_index do |row, idx|
+    row[:label] = format('mobile-source-%02d', idx + 1)
+  end
+end
+
+iface = lambda do |name|
+  values = interfaces.fetch(name, { values: [0, 0] })[:values]
+  { rx: values[0].to_i, tx: values[1].to_i, total: values[0].to_i + values[1].to_i }
+end
+
+wan = iface.call('wan0')
+br0 = iface.call('br0')
+wifi24 = iface.call('eth6')
+wifi5 = iface.call('eth7')
+wifi = {
+  rx: wifi24[:rx] + wifi5[:rx],
+  tx: wifi24[:tx] + wifi5[:tx]
+}
+wifi[:total] = wifi[:rx] + wifi[:tx]
+
+lan_total = lan_devices.sum { |row| row[:total] }
+lan_reality = lan_devices.sum { |row| row[:reality] }
+lan_wan = lan_devices.sum { |row| row[:wan] }
+lan_other = lan_devices.sum { |row| row[:other] }
+mobile_total = mobile_sources.sum { |row| row[:total] }
+mobile_upload = mobile_sources.sum { |row| row[:upload] }
+mobile_download = mobile_sources.sum { |row| row[:download] }
+client_observed_total = lan_total + mobile_total
+wan_remainder = [wan[:total] - client_observed_total, 0].max
+
+puts '=== GHOSTROUTE USAGE REPORT ==='
+puts format('%-26s %s', 'Period:', period_label)
+puts format('%-26s %s -> %s', 'Nominal window:', start_time.strftime('%Y-%m-%dT%H:%M:%S%z'), end_time.strftime('%Y-%m-%dT%H:%M:%S%z'))
+puts format('%-26s %s', 'Interface samples:', window_for(interface_rows))
+puts format('%-26s %s', 'LAN/Wi-Fi samples:', window_for(lan_rows))
+puts format('%-26s %s', 'Home Reality samples:', window_for(mobile_rows))
+puts
+
+puts '=== 1. EXIT SUMMARY ==='
+puts format('%-26s %s  (physical router/ISP traffic; RX %s / TX %s)', 'WAN total:', human_bytes(wan[:total]), human_bytes(wan[:rx]), human_bytes(wan[:tx]))
+puts format('%-26s %s  (reference: %s of WAN)', 'LAN/Wi-Fi observed:', human_bytes(lan_total), pct(lan_total, wan[:total]))
+puts format('%-26s %s  (reference: %s of WAN; upload %s / download %s)', 'Home Reality ingress:', human_bytes(mobile_total), pct(mobile_total, wan[:total]), human_bytes(mobile_upload), human_bytes(mobile_download))
+puts format('%-26s %s  (reference: %s of WAN; second WAN legs + router/background/counter gaps)', 'WAN remainder/unattributed:', human_bytes(wan_remainder), pct(wan_remainder, wan[:total]))
+puts format('%-26s %s  (reference: %s of WAN; LAN/Wi-Fi exact + Home Reality ingress exact)', 'Client observed total:', human_bytes(client_observed_total), pct(client_observed_total, wan[:total]))
+puts format('%-26s %s', 'LAN/Wi-Fi via VPS:', human_bytes(lan_reality))
+puts format('%-26s %s', 'LAN/Wi-Fi RU direct:', human_bytes(lan_wan))
+puts format('%-26s %s', 'LAN/Wi-Fi other:', human_bytes(lan_other))
+puts format('%-26s %s  (RX %s / TX %s)', 'Wi-Fi interface:', human_bytes(wifi[:total]), human_bytes(wifi[:rx]), human_bytes(wifi[:tx]))
+puts format('%-26s %s  (RX %s / TX %s)', 'LAN bridge:', human_bytes(br0[:total]), human_bytes(br0[:rx]), human_bytes(br0[:tx]))
+puts format('%-26s %s', 'LAN Reality share:', pct(lan_reality, lan_total))
+puts 'Traffic note:              bytes/GiB are primary; percentages are reference context only.'
+puts 'Accounting note:           LAN/Wi-Fi + Home Reality ingress + WAN remainder ~= WAN total; observed split is the user-flow view.'
+puts
+
+puts '=== 2. PATH MATRIX ==='
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Source', 'First hop', 'Router', 'Exit', 'Site sees')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'REDIRECT', 'VLESS+Reality -> VPS', 'VPS exit IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'no redirect', 'Home WAN direct', 'Home Russian IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'HR client', 'LTE/Wi-Fi -> home :<home-reality-port>', 'reality-in', 'split not byte-attributed', 'VPS or home RU IP')
+puts
+
+puts '=== 3. LAN/WI-FI DEVICES ==='
+if lan_devices.empty?
+  puts 'No LAN device byte samples in this period.'
+else
+  puts format('%-42s %12s %12s %9s', 'Device', 'VPS', 'RU direct', 'VPS share')
+  lan_devices.sort_by { |row| [-row[:reality], row[:label]] }.first(8).select { |row| row[:reality] > 0 }.each do |row|
+    puts format('%-42s %12s %12s %9s', row[:label], human_bytes(row[:reality]), human_bytes(row[:wan]), pct(row[:reality], row[:total]))
+  end
+  puts '  none' unless lan_devices.any? { |row| row[:reality] > 0 }
+end
+puts
+
+puts '=== 4. HOME REALITY INGRESS CLIENTS ==='
+if mobile_sources.empty?
+  puts 'No Home Reality byte samples in this period.'
+else
+  puts format('%-26s %d', 'Ingress byte sources:', mobile_sources.length)
+  puts format('%-26s %s  (upload %s / download %s)', 'Home Reality ingress:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
+  puts
+  puts format('%-24s %12s %12s %12s', 'Ingress source', 'Total', 'Upload', 'Download')
+  mobile_sources.sort_by { |row| [-row[:total], row[:label]] }.first(12).each do |row|
+    puts format('%-24s %12s %12s %12s', row[:label], human_bytes(row[:total]), human_bytes(row[:upload]), human_bytes(row[:download]))
+  end
+end
+puts
+
+puts '=== 5. SITES / DESTINATIONS ==='
+puts 'Period snapshot reports do not retain destination-level sing-box logs.'
+puts 'Use `./scripts/traffic-report today` for top destinations and routing checks.'
+puts
+
+puts '=== 6. ROUTING MISTAKES / CHECKS ==='
+puts 'Destination-level mistake checks are available for current-day logs only.'
+puts 'Catalog-level review is covered by `./scripts/catalog-review-report` and `docs/stealth-domains-curation-audit.md`.'
+puts
+
+puts '=== NOTES ==='
+puts '- Period reports are built from router-side snapshots in interface-counters.tsv, lan-device-counters.tsv and mobile-reality-counters.tsv.'
+puts '- LAN Reality bytes are managed REDIRECT flows counted before nat rewrites them to sing-box :<lan-redirect-port>.'
+puts '- Home Reality ingress bytes are encrypted TCP/<home-reality-port> counters. They measure clients entering through :<home-reality-port> before sing-box splits traffic to reality-out or direct-out; the client can be on LTE or Wi-Fi.'
+puts '- If a period has only one sample for a key, its delta is 0 until another snapshot exists.'
+if redact_names == '1'
+  puts '- LAN/mobile source labels are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection.'
+end
+RUBY

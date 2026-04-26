@@ -234,7 +234,19 @@ ansible/
   secrets/stealth.yml             # ansible-vault, gitignored
   out/clients/                    # generated QR/profile artifacts, gitignored
 
+modules/
+  routing-core/
+  ghostroute-health-monitor/
+  traffic-observatory/
+  dns-catalog-intelligence/
+  performance-diagnostics/
+  reality-sni-rotation/
+  client-profile-factory/
+  secrets-management/
+  recovery-verification/
+
 scripts/
+  # stable compatibility wrappers around modules/* implementations
   firewall-start
   nat-start
   domain-auto-add.sh
@@ -253,6 +265,11 @@ docs/
   client-profiles.md
   troubleshooting.md
 ```
+
+The detailed physical module map lives in
+[docs/operational-modules.md](docs/operational-modules.md). The global README
+keeps the high-level workflow; module folders contain local implementation
+overviews.
 
 ---
 
