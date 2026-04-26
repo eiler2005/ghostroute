@@ -30,7 +30,8 @@ iPhone по LTE, MacBook по Wi-Fi, ноутбук в другой сети и 
 
 | Question | Where to look |
 |---|---|
-| Сколько всего прошло через домашний WAN? | `EXIT SUMMARY -> WAN total` |
+| Сколько всего прошло через физический WAN/ISP интерфейс роутера? | `EXIT SUMMARY -> WAN total` |
+| Сколько пользовательского трафика видит GhostRoute accounting? | `EXIT SUMMARY -> Client observed total` |
 | Сколько ушло через VPS? | `EXIT SUMMARY -> Via VPS` |
 | Сколько осталось в российском direct-интернете? | `EXIT SUMMARY -> Via home RU direct` |
 | Какие домашние Wi-Fi/LAN устройства больше всего используют VPS? | `LAN/WI-FI DEVICES` |
@@ -62,6 +63,18 @@ Why some numbers are estimated:
 - Therefore destination-level traffic is marked `Est. traffic` and is allocated
   by connection share. This is good enough for popularity and routing review,
   but not billing-grade per-site accounting.
+
+Important accounting rule:
+
+- `WAN total` is the physical ISP-interface volume. It includes everything that
+  crossed `wan0`.
+- `Client observed total` is the user-facing base for the report: LAN/Wi-Fi
+  device traffic plus Home Reality ingress traffic.
+- `Via VPS + Via home RU direct + Other/unresolved` should add up to
+  `Client observed total` within rounding.
+- `WAN total` is not expected to equal that split. For Home Reality ingress the
+  same user flow crosses WAN twice: client -> home router, then router ->
+  VPS/site. Router/background traffic can also be present.
 
 ## Current Routing Context
 
@@ -251,8 +264,8 @@ DNS forensics show interest, not bytes.
 
 Canonical sections:
 
-- `EXIT SUMMARY` — WAN/Wi-Fi totals plus how much left via VPS vs home
-  Russian direct exit.
+- `EXIT SUMMARY` — physical WAN total, user-facing client observed total, and
+  how that observed traffic splits into VPS vs home Russian direct.
 - `PATH MATRIX` — source, first hop, router decision, exit and what the final
   site sees.
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
@@ -337,24 +350,32 @@ Typical summary:
 
 ```text
 === 1. EXIT SUMMARY ===
-WAN total:               12.75 GiB  (RX 5.70 GiB / TX 7.06 GiB)
-Wi-Fi total:             4.88 GiB
+WAN total:               12.75 GiB  (actual ISP/WAN interface)
+Client observed total:   9.13 GiB   (LAN/Wi-Fi exact + Home Reality ingress exact)
+Via VPS:         8.07 GiB   (88.4%; LAN exact + ingress estimated)
+Via home RU direct:      1.05 GiB   (11.5%; LAN exact + ingress estimated)
+Other/unresolved:        0 B        (0.0%)
+LAN/Wi-Fi observed:      3.90 GiB
 Home Reality ingress:    5.22 GiB  (client -> home RU IP :<home-reality-port>)
-Via VPS:         8.07 GiB  (LAN exact + mobile estimated)
-Via home RU direct:      1.05 GiB  (LAN exact + mobile estimated)
-Reality-managed total:   3.80 GiB
-Reality share/WAN:       29.8%
+Interface counters:      Wi-Fi 4.88 GiB / LAN bridge 4.70 GiB
 ```
 
 How to read this:
 
-- `WAN total` is the router's total WAN traffic for the report window.
+- `WAN total` is the physical ISP-facing counter. It is the correct answer to
+  “how much crossed the router's WAN interface?”.
+- `Client observed total` is the correct base for “how much user traffic did
+  the GhostRoute accounting observe?”.
 - `Via VPS` combines exact LAN/Wi-Fi managed bytes plus estimated Home
   Reality ingress bytes that went through `reality-out`.
 - `Via home RU direct` combines exact LAN/Wi-Fi direct bytes plus estimated Home
   Reality ingress bytes that went through `direct-out`.
+- `Via VPS + Via home RU direct + Other/unresolved` should equal
+  `Client observed total` within rounding.
 - `Home Reality ingress` is all encrypted TCP/<home-reality-port> traffic that entered the
   router. The client may be on LTE or Wi-Fi.
+- `WAN total` can be larger than `Client observed total` because Home Reality
+  ingress uses WAN for both the inbound leg and the outbound leg.
 
 Path matrix:
 
@@ -519,8 +540,11 @@ Interface samples:         2026-04-25T00:00:00+0300 -> 2026-04-25T23:55:00+0300
 LAN/Wi-Fi samples:         2026-04-25T00:00:00+0300 -> 2026-04-25T23:55:00+0300
 Home Reality samples:      2026-04-25T14:56:58+0300 -> 2026-04-25T23:55:00+0300
 
+WAN total:                 73.02 GiB
+Client observed total:     13.67 GiB
 LAN/Wi-Fi via VPS:      11.38 GiB
 LAN/Wi-Fi RU direct:       365.4 MiB
+LAN/Wi-Fi observed:        11.74 GiB
 Home Reality ingress:      1.93 GiB
 ```
 

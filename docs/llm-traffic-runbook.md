@@ -62,6 +62,7 @@ When the user asks for a router traffic report or router health/capacity report 
 7. In traffic answers always include:
    - report window from the script output
    - WAN total
+   - Client observed total when present
    - Reality-managed total
    - Tailscale total when relevant
    - Reality share/WAN
@@ -338,6 +339,7 @@ paste it into public docs.
 ### Точные накопленные счётчики
 
 - `WAN total`
+- `Client observed total`
 - `LAN Reality-managed`
 - `Home Reality ingress`
 - `Combined observed`
