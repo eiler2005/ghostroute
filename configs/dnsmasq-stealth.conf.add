@@ -108,9 +108,7 @@ ipset=/omny.fm/STEALTH_DOMAINS
 ipset=/tritondigital.com/STEALTH_DOMAINS
 ipset=/podtrac.com/STEALTH_DOMAINS
 ipset=/pscrb.fm/STEALTH_DOMAINS
-# VPS (robot.example-provider.invalid, console.example-provider.invalid blocked by ISP; not in antifilter)
-ipset=/example-provider.invalid/STEALTH_DOMAINS
-ipset=/example-provider-cloud.invalid/STEALTH_DOMAINS
+# Private provider/admin domains belong in configs/private/dnsmasq-stealth.local.conf.add.
 # Smithery (MCP registry)
 ipset=/smithery.ai/STEALTH_DOMAINS
 # cobalt.tools (site + API; parent domain covers api.cobalt.tools and future subdomains)

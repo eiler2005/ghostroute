@@ -100,7 +100,7 @@ VPS; they belong to the router-side `:<home-reality-port>` inbound.
 Count check on the VPS:
 
 ```bash
-ssh deploy@198.51.100.10 '
+ssh deploy@<vps-ip> '
   docker exec xray python3 - <<'"'"'PY'"'"'
 import json, sqlite3
 con = sqlite3.connect("/etc/x-ui/x-ui.db")
@@ -173,7 +173,7 @@ ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --disable'
 
 ```sh
 ssh admin@192.168.50.1 '
-  netstat -nlp 2>/dev/null | grep "127.0.0.1:1080"
+  netstat -nlp 2>/dev/null | grep "127.0.0.1:<router-socks-port>"
   /jffs/addons/x3mRouting/update-blocked-list.sh
   ls -lh /opt/tmp/blocked-domains.lst
 '

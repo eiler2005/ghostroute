@@ -4,7 +4,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 
 **Audience:** future engineer, LLM agent, or operator maintaining the deployed stack.
 **Status:** implemented and verified; Channel A cleanup and Home Reality split-routing refinements have landed after the original draft.
-**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS VPS; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
+**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS host; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
 
 For the current end-to-end flow and observer model, see
 [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
@@ -25,10 +25,10 @@ For the current end-to-end flow and observer model, see
 ### Server side
 
 ```text
-VPS VPS
+VPS host
   -> system Caddy v2 with layer4 plugin on :443
   -> generic :443 fallback site exists only to bind the public listener
-  -> Reality traffic routed to Xray/3x-ui on 127.0.0.1:8443
+  -> Reality traffic routed to Xray/3x-ui on 127.0.0.1:<xray-local-port>
   -> Xray/3x-ui stack lives under /opt/stealth
   -> existing services keep using shared system Caddy
 ```
@@ -45,8 +45,8 @@ This is intentionally not a fully isolated Docker-only ingress. The compromise i
 ```text
 Merlin router
   -> dnsmasq fills STEALTH_DOMAINS
-  -> dnscrypt-proxy listens on 127.0.0.1:5354
-  -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:1080
+  -> dnscrypt-proxy listens on 127.0.0.1:<dnscrypt-port>
+  -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:<router-socks-port>
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
   -> sing-box listens on 0.0.0.0:<home-reality-port> home Reality inbound for remote mobile clients
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
@@ -207,7 +207,7 @@ ansible-playbook playbooks/10-stealth-vps.yml
 
 - Caddy L4 integration
 - Xray/3x-ui Docker Compose under `/opt/stealth`
-- Reality inbound on `127.0.0.1:8443`
+- Reality inbound on `127.0.0.1:<xray-local-port>`
 - clients from vault
 - UFW rules needed for the stealth stack
 
@@ -311,7 +311,7 @@ Expected:
 
 - Caddy has layer4 module.
 - Caddy listens on `:443`.
-- Xray listens on `127.0.0.1:8443`.
+- Xray listens on `127.0.0.1:<xray-local-port>`.
 - Generic non-Reality fallback on `:443` exists, but OpenClaw is not exposed there.
 - Old OpenClaw SNI does not return the OpenClaw certificate.
 - `gateway.icloud.com` SNI returns the real Apple certificate through Reality fallback.
@@ -328,8 +328,8 @@ Expected:
 
 - sing-box REDIRECT listener exists on `0.0.0.0:<lan-redirect-port>`.
 - sing-box home Reality listener exists on `0.0.0.0:<home-reality-port>`.
-- sing-box SOCKS listener exists on `127.0.0.1:1080` for dnscrypt-proxy.
-- `dnscrypt-proxy.toml` has `proxy = 'socks5://127.0.0.1:1080'`.
+- sing-box SOCKS listener exists on `127.0.0.1:<router-socks-port>` for dnscrypt-proxy.
+- `dnscrypt-proxy.toml` has `proxy = 'socks5://127.0.0.1:<router-socks-port>'`.
 - sing-box config has explicit keepalive / no-multiplex tuning.
 - `cru l` contains `/jffs/scripts/singbox-watchdog.sh`.
 - `nvram get ipv6_service` returns `disabled`.
@@ -341,10 +341,10 @@ Expected:
 - mobile Home Reality has no catch-all `reality-in -> reality-out` rule.
 - legacy `0x1000`, `0x2000`, `RC_VPN_ROUTE`, table `200`, and `singbox0` are absent.
 - dnscrypt-proxy listens on configured port.
-- dnsmasq upstream points to `127.0.0.1#5354`.
+- dnsmasq upstream points to `127.0.0.1#<dnscrypt-port>`.
 - OpenClaw has no router DNS override in SSH-only mode.
-- Router can connect to the VPS cover port: `echo | nc -w 3 198.51.100.10 443` exits `0`.
-- sing-box logs have no fresh `connection refused` to `198.51.100.10:443`.
+- Router can connect to the VPS cover port: `echo | nc -w 3 <vps-ip> 443` exits `0`.
+- sing-box logs have no fresh `connection refused` to `<vps-ip>:443`.
 - sing-box logs have no fresh `x509: certificate is valid for ... microsoft.com, not gateway.icloud.com`.
 - Channel A WireGuard runtime hooks are absent; `wgc1_*` NVRAM is preserved only for cold fallback.
 - `domain-auto-add.sh` default-skips when `/opt/tmp/blocked-domains.lst` is missing or empty.
@@ -369,14 +369,14 @@ tail -100 /opt/var/log/sing-box.log | grep redirect-in
 Symptoms:
 
 ```text
-dial tcp 198.51.100.10:443: connect: connection refused
+dial tcp <vps-ip>:443: connect: connection refused
 x509: certificate is valid for ... microsoft.com, not gateway.icloud.com
 ```
 
 Checks:
 
 ```sh
-echo | nc -w 3 198.51.100.10 443
+echo | nc -w 3 <vps-ip> 443
 tail -100 /opt/var/log/sing-box.log | grep -E 'connection refused|x509'
 ```
 
@@ -405,9 +405,9 @@ Expected steady state: no matches. Use `scripts/emergency-enable-wgc1.sh
 Check:
 
 ```sh
-grep '^server=127.0.0.1#5354$' /jffs/configs/dnsmasq.conf.add
+grep '^server=127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq.conf.add
 grep '@wgc1' /jffs/configs/dnsmasq.conf.add
-netstat -nlp 2>/dev/null | grep ':5354 '
+netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 ```
 
 There should be no active `@wgc1` DNS upstream entries.
@@ -417,15 +417,15 @@ There should be no active `@wgc1` DNS upstream entries.
 OpenClaw is intentionally hidden from public DNS and is not served by public Caddy. Open an SSH tunnel first:
 
 ```bash
-ssh -N -L 18789:127.0.0.1:18789 \
+ssh -N -L <private-forward-port>:127.0.0.1:<private-forward-port> \
   -o ProxyCommand='ssh admin@192.168.50.1 nc -w 120 %h %p' \
-  deploy@198.51.100.10
+  deploy@<vps-ip>
 ```
 
 Then open:
 
 ```text
-http://127.0.0.1:18789/
+http://127.0.0.1:<private-forward-port>/
 ```
 
 This keeps OpenClaw off public DNS and off the shared public `:443` Caddy surface.

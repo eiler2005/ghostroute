@@ -24,12 +24,12 @@ Variant B was chosen: the home router becomes a Reality ingress relay. Mobile cl
 
 ```
 BEFORE (current):
-  iPhone (LTE) ──Reality─► 198.51.100.10 (VPS) ─► Internet
+  iPhone (LTE) ──Reality─► <vps-ip> (VPS) ─► Internet
                           ↑
                           LTE carrier sees DE destination → international billing
 
 AFTER (this plan):
-  iPhone (LTE) ──Reality─► home_public_IP:<home-reality-port> (RU) 
+  iPhone (LTE) ──Reality─► home_public_IP:<home-reality-port> (RU)
                           ↑
                           LTE carrier sees RU destination → domestic billing
                           │
@@ -155,7 +155,7 @@ After this plan: VPS Xray inbound has exactly one allowed client (the router). M
 | CPU overhead on RT-AX88U Pro from second Reality cycle | Medium | sing-box single-process, kernel route directly inbound→outbound, no iptables REDIRECT for mobile traffic; benchmark in Phase 7 |
 | Old wgs1-port-scan history on home IP | Low | Use <home-reality-port> (different from old wgs1 port) |
 | Home IP becomes single-point-of-failure for mobile clients | Medium | Document rollback profile; mobile QR could include backup `next_endpoint` if app supports |
-| Mobile traffic exits via VPS — sites still see VPS IP | Same as today | n/a |
+| Mobile traffic exits via VPS — sites still see VPS exit IP | Same as today | n/a |
 
 ### 1.5 What ISP / RKN / LTE carrier sees after this plan
 
@@ -163,7 +163,7 @@ After this plan: VPS Xray inbound has exactly one allowed client (the router). M
 |----------|------|------------|
 | LTE mobile carrier | mobile_IP → home_public_IP:<home-reality-port> (TLS, SNI=gateway.icloud.com) | RU domestic. Domestic billing. |
 | Home ISP (inbound side) | mobile_IP → home_public_IP:<home-reality-port> (TLS) | Residential IP serves a TLS service on non-standard port. Slightly unusual but not VPN-fingerprintable. |
-| Home ISP (outbound side, unchanged) | home_router → 198.51.100.10:443 (TLS, SNI=gateway.icloud.com) | Same as today; passes Channel B stealth. |
+| Home ISP (outbound side, unchanged) | home_router → <vps-ip>:443 (TLS, SNI=gateway.icloud.com) | Same as today; passes Channel B stealth. |
 | RKN passive DPI (national scale) | All of above | No WG signatures (Channel A decommissioned). Detection profile = ~10% (residual AS-mismatch + duration fingerprint, unchanged). |
 
 ---
@@ -219,9 +219,9 @@ Before Phase 1, all of the following MUST be true:
 
 #### Step 1.1 — Generate keypair
 
-On the VPS VPS (it has Xray binary; alternatively, install `xray-core` locally on control machine):
+On the VPS host (it has Xray binary; alternatively, install `xray-core` locally on control machine):
 ```bash
-ssh deploy@198.51.100.10 'docker exec xray /app/bin/xray-linux-amd64 x25519'
+ssh deploy@<vps-ip> 'docker exec xray /app/bin/xray-linux-amd64 x25519'
 # Output:
 #   Private key: <BASE64-32B>
 #   Public key:  <BASE64-32B>
@@ -247,8 +247,8 @@ Save:
 
 Default recommendation: `<home-reality-port>`. Avoid:
 - old wgs1 port (whatever was in NVRAM before today)
-- 22, 80, 443, 8080, 8443
-- common scan-targeted ports (1194, 51820, 1080, etc.)
+- 22, 80, 443, 8080, <xray-local-port>
+- common scan-targeted ports (1194, <legacy-wg-port>, <router-socks-port>, etc.)
 
 Save `home_reality_ingress_port: <home-reality-port>` in vault.
 
@@ -601,8 +601,8 @@ For each of the 6 iPhones and 1 MacBook:
 1. Send the corresponding `.png` QR via Signal / AirDrop.
 2. User opens V2Box / FoXray on device, removes the OLD profile (the one ending in `#iphone-X` pointing to VPS), imports the NEW QR (ending in `#iphone-X-home`).
 3. Verify connectivity test from each device:
-   - On WiFi at home: `curl https://ifconfig.me` → expect VPS IP.
-   - On LTE outside home: `curl https://ifconfig.me` → expect VPS IP.
+   - On WiFi at home: `curl https://ifconfig.me` → expect VPS exit IP.
+   - On LTE outside home: `curl https://ifconfig.me` → expect VPS exit IP.
 4. After device confirms ok on LTE, mark client migrated.
 
 #### Step 6.2 — Wait 24h with both profiles available
@@ -660,13 +660,13 @@ rm ansible/out/clients/macbook.{conf,png}
 ssh admin@<router> '
   ss -tln "( sport = :{{ home_reality_ingress_port }} )" | grep -q 0.0.0.0
   ss -tln "( sport = :{{ singbox_redirect_port }} )" | grep -q 0.0.0.0
-  ss -tln "( sport = :1080 )" | grep -q 127.0.0.1
+  ss -tln "( sport = :<router-socks-port> )" | grep -q 127.0.0.1
 '
 ```
 
 All three checks should pass:
 - redirect inbound (existing) on 0.0.0.0:<lan-redirect-port>
-- DoH SOCKS5 (existing) on 127.0.0.1:1080
+- DoH SOCKS5 (existing) on 127.0.0.1:<router-socks-port>
 - Reality inbound (NEW) on 0.0.0.0:<home-reality-port>
 
 #### Step 7.2 — External TLS handshake
@@ -683,14 +683,14 @@ Expect: TLS handshake succeeds, valid Apple cert (Reality fallback proxies probe
 
 From an iPhone on LTE (NOT home WiFi):
 1. Connect via the new home QR.
-2. `curl https://ifconfig.me` → should return VPS IP `198.51.100.10`.
+2. `curl https://ifconfig.me` → should return VPS exit IP `<vps-ip>`.
 3. From iOS shortcut or browser: visit a STEALTH-listed site (e.g., `youtube.com`) → should load.
 
 #### Step 7.4 — LTE billing classification
 
 Best-effort verification. If your carrier provides per-flow billing data:
 - Check destination IP for that mobile's data session.
-- Should be home_public_IP (RU), not 198.51.100.10 (DE).
+- Should be home_public_IP (RU), not <vps-ip> (DE).
 
 If carrier UI doesn't expose this — assume domestic billing applies (the L3 destination is RU IP; standard GeoIP-based billing classifies as domestic).
 
@@ -725,7 +725,7 @@ Expect: sing-box CPU usage < 60% of one core during active streaming. RT-AX88U P
 
 LAN device (any home Wi-Fi computer):
 ```bash
-curl https://ifconfig.me  # expect: VPS IP (unchanged)
+curl https://ifconfig.me  # expect: VPS exit IP (unchanged)
 curl https://youtube.com -I  # expect: 200/301
 ```
 
@@ -895,7 +895,7 @@ For at least 7 days post-deployment:
 2. **Mobile client connectivity** — ad-hoc reports from family. If iPhone-N reports issues, debug per Phase 7 steps for that profile.
 3. **`router-health-report`** — same daily cadence as before.
 4. **External port-scan reputation** — periodically (monthly) scan home_public_IP from external vantage. If new SHODAN/Censys entries reveal "your home IP runs TLS on port X" — accept (this is now true) but be aware.
-5. **VPS traffic budget** — should drop slightly (mobile traffic now goes via two Reality hops, but volume same; unrelated to budget). Monitor `provider-cli server list` for bandwidth used vs included.
+5. **VPS traffic budget** — should drop slightly (mobile traffic now goes via two Reality hops, but volume same; unrelated to budget). Monitor `provider billing dashboard` for bandwidth used vs included.
 
 ---
 
@@ -967,7 +967,7 @@ This plan does NOT do:
 # Router
 ssh admin@<router> '
   echo "=== sing-box listening ==="
-  ss -tln | grep -E ":({{ singbox_redirect_port }}|{{ home_reality_ingress_port }}|1080)"
+  ss -tln | grep -E ":({{ singbox_redirect_port }}|{{ home_reality_ingress_port }}|<router-socks-port>)"
   echo "=== INPUT ACCEPT for mobile reality ==="
   iptables -t filter -nL INPUT | grep mobile-reality-ingress
   echo "=== sing-box uptime ==="
@@ -979,7 +979,7 @@ curl -sk --resolve gateway.icloud.com:{{ home_reality_ingress_port }}:<home_publ
      -I "https://gateway.icloud.com:{{ home_reality_ingress_port }}/"
 
 # VPS side
-ssh deploy@198.51.100.10 'docker logs --tail 50 xray | grep -i error'
+ssh deploy@<vps-ip> 'docker logs --tail 50 xray | grep -i error'
 ```
 
 ### A.2 Decision log entry template

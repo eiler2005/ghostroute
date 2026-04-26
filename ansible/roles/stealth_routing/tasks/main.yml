@@ -16,9 +16,22 @@
     dest: "{{ stealth_route_init_script }}"
     mode: "0755"
 
+- name: Install GhostRoute private runtime env
+  ansible.builtin.template:
+    src: ghostroute-runtime.env.j2
+    dest: /jffs/scripts/ghostroute-runtime.env
+    mode: "0600"
+
 - name: Install dnsmasq stealth catalog
   ansible.builtin.copy:
-    content: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/dnsmasq-stealth.conf.add') }}"
+    content: |
+      {{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/dnsmasq-stealth.conf.add') }}
+      {% set private_catalog = lookup('ansible.builtin.file', playbook_dir + '/../../configs/private/dnsmasq-stealth.local.conf.add', errors='ignore') %}
+      {% if private_catalog | length > 0 %}
+      # BEGIN local private dnsmasq stealth catalog
+      {{ private_catalog }}
+      # END local private dnsmasq stealth catalog
+      {% endif %}
     dest: "{{ stealth_dnsmasq_conf_path }}"
     mode: "0644"
 

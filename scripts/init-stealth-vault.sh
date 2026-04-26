@@ -113,6 +113,12 @@ vps_user="${vps_user_override:-deploy}"
 
 xui_password="$(rand_b64 24)"
 xui_web_path="/$(rand_hex 8)"
+xui_web_port="${XUI_ADMIN_WEB_PORT:-<xui_admin_port>}"
+xray_reality_port="${XRAY_REALITY_LISTEN_PORT:-<xray_reality_local_port>}"
+singbox_redirect_port="${SINGBOX_REDIRECT_PORT:-<router_redirect_port>}"
+singbox_socks_port="${SINGBOX_DNSCRYPT_SOCKS_PORT:-<router_socks_port>}"
+dnscrypt_port="${DNSCRYPT_PORT:-<dnscrypt_port>}"
+home_reality_ingress_port="${HOME_REALITY_INGRESS_PORT:-<home_reality_ingress_port>}"
 
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
@@ -133,7 +139,13 @@ system_caddy_client_ca_file: "/etc/caddy/certs/<site>-access-ca.crt"
 xui_admin_username: "admin"
 xui_admin_password: "${xui_password}"
 xui_admin_web_path: "${xui_web_path}"
-xui_admin_web_port: <xui-admin-port>
+xui_admin_web_port: "${xui_web_port}"
+vault_xray_reality_listen_port: "${xray_reality_port}"
+
+# ===== Router local/private ports =====
+vault_singbox_redirect_port: "${singbox_redirect_port}"
+vault_singbox_dnscrypt_socks_port: "${singbox_socks_port}"
+vault_dnscrypt_port: "${dnscrypt_port}"
 
 # ===== Reality server =====
 reality_dest: "gateway.icloud.com:443"
@@ -146,7 +158,7 @@ reality_short_ids:
 
 # ===== Home Reality ingress on ASUS =====
 vault_home_reality_public_host: "myhome.asuscomm.com"
-home_reality_ingress_port: <home-reality-port>
+vault_home_reality_ingress_port: "${home_reality_ingress_port}"
 home_reality_dest_host: "gateway.icloud.com"
 home_reality_dest_port: 443
 home_reality_server_private_key: ""

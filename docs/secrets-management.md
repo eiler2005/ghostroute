@@ -10,6 +10,8 @@ Treat these as secrets or sensitive operational data:
 - Client UUIDs and Reality `short_id` values.
 - Reality private/public key material.
 - 3x-ui admin username, password, web path and admin port.
+- Router/VPS runtime listener ports, including LAN REDIRECT, Home Reality
+  ingress, local SOCKS/DNS, Xray localhost and admin ports.
 - Real VPS IP/hostname and SSH username when they identify the production host.
 - Router LAN IP, SSH user and SSH key path.
 - Existing shared Caddy site hostnames, local upstream ports and certificate paths.
@@ -21,10 +23,14 @@ Treat these as secrets or sensitive operational data:
 secrets/router.env                  # local router deploy env; gitignored
 secrets/no-vpn-ip-ports.local.txt   # personal bypass IP:port rules; gitignored
 secrets/device-metadata.local.tsv   # local device aliases; gitignored
+configs/private/dnsmasq-stealth.local.conf.add
+                                   # local provider/admin/private domain rules; gitignored
 
 ansible/secrets/stealth.yml         # encrypted ansible-vault; gitignored
 ansible/secrets/stealth.yml.example # placeholder template; safe for git
 ansible/out/clients/                # generated QR/.conf files; gitignored
+docs/private/                       # local-only operational notes; gitignored
+reports/                            # local generated reports; gitignored
 ```
 
 `secrets/device-metadata.local.tsv` is the shared local source for report device
@@ -109,7 +115,7 @@ git status --short
 git diff --check
 ```
 
-`secret-scan` is lightweight and repo-specific. It does not replace judgment, but it catches the common mistakes: real VLESS URIs, UUIDs in docs, private-key markers, embedded public IP hostnames and secret-looking assignments.
+`secret-scan` is lightweight and repo-specific. It does not replace judgment, but it catches the common mistakes: real VLESS URIs, UUIDs in docs, private-key markers, embedded public IP hostnames and secret-looking assignments. It also rejects known production listener/IP literals that have been removed from public documentation and history.
 
 ## Rules For Documentation
 
@@ -117,3 +123,5 @@ git diff --check
 - Use fake UUIDs such as `00000000-0000-4000-8000-000000000000`.
 - Use `example.invalid` or `<placeholder>` for hostnames.
 - Never paste real QR payloads, vault contents or generated client files.
+- Keep provider-specific/admin-only domains in
+  `configs/private/dnsmasq-stealth.local.conf.add`, not in the public catalog.

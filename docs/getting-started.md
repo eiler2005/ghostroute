@@ -144,7 +144,7 @@ ansible-playbook playbooks/20-stealth-router.yml
 
 - `sing-box`
 - sing-box REDIRECT inbound on `0.0.0.0:<lan-redirect-port>`
-- `dnscrypt-proxy` on `127.0.0.1:5354`
+- `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>`
 - `STEALTH_DOMAINS`
 - LAN TCP REDIRECT and UDP/443 fallback rules
 - `/jffs/scripts/stealth-route-init.sh`

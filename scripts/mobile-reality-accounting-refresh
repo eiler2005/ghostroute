@@ -2,7 +2,13 @@
 
 MOBILE_IN_CHAIN="RC_MOBILE_REALITY_IN"
 MOBILE_OUT_CHAIN="RC_MOBILE_REALITY_OUT"
-REALITY_PORT="${HOME_REALITY_PORT:-<home-reality-port>}"
+GHOSTROUTE_RUNTIME_ENV="${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}"
+[ -r "$GHOSTROUTE_RUNTIME_ENV" ] && . "$GHOSTROUTE_RUNTIME_ENV"
+REALITY_PORT="${HOME_REALITY_PORT:-${GHOSTROUTE_HOME_REALITY_PORT:-}}"
+[ -n "$REALITY_PORT" ] || {
+  logger -t mobile-reality-accounting-refresh "HOME_REALITY_PORT is not configured"
+  exit 0
+}
 SINGBOX_LOG="${SINGBOX_LOG:-/opt/var/log/sing-box.log}"
 TMP_IPS="/tmp/mobile-reality-ips.$$"
 

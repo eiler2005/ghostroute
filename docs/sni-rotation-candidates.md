@@ -25,7 +25,7 @@ Current user-facing consequences:
 |---|---|
 | LTE operator for `iphone-*` QR clients | iPhone connects to the home Russian IP on TCP/<home-reality-port> |
 | Home ISP | ASUS connects to the VPS IP on TCP/443, with the chosen cover SNI |
-| Websites/checkers for managed domains | VPS exit IP, VPS region, datacenter ASN |
+| Websites/checkers for managed domains | VPS exit IP, datacenter ASN |
 | Websites for non-managed domains | Home Russian WAN IP |
 
 Do not use a website checker result alone to judge the LTE-facing privacy story.
@@ -41,7 +41,7 @@ iPhone LTE
   -> home ASUS public IP :<home-reality-port>
   -> sing-box home Reality inbound
   -> managed split:
-       managed destinations -> sing-box Reality outbound -> VPS VPS / Caddy / Xray
+       managed destinations -> sing-box Reality outbound -> VPS host / Caddy / Xray
        other destinations   -> sing-box direct-out -> home WAN
 ```
 
@@ -112,7 +112,7 @@ A candidate must pass every hard gate before it can be considered.
 | ALPN | `h2` or `http/1.1` available | Fallback probe must look normal over TCP |
 | Certificate | SAN covers the exact hostname or valid wildcard | Active probing must not see mismatch |
 | HTTP response | Any plausible 2xx/3xx/400/401/403 from fallback | RST/timeout is suspicious |
-| VPS reachability | Works from VPS VPS | Xray fallback path depends on this |
+| VPS reachability | Works from VPS host | Xray fallback path depends on this |
 | RU reachability | Works from the relevant RU ISP/mobile vantage | Avoid inheriting SNI throttling |
 | Stability | Same broad cert/SAN/ALPN behavior over 24h | Avoid probe-vs-client mismatch |
 
@@ -399,7 +399,7 @@ ansible-playbook playbooks/99-verify.yml
 Router live checks:
 
 ```sh
-netstat -nlp 2>/dev/null | grep -E ':(<home-reality-port>|<lan-redirect-port>|1080) '
+netstat -nlp 2>/dev/null | grep -E ':(<home-reality-port>|<lan-redirect-port>|<router-socks-port>) '
 iptables -S INPUT | grep -- '--dport <home-reality-port>'
 tail -100 /opt/var/log/sing-box.log
 ```

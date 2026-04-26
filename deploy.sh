@@ -149,6 +149,9 @@ fi
 ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts/health-monitor' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
 
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-stealth.conf.add"
+if [ -f "${PROJECT_ROOT}/configs/private/dnsmasq-stealth.local.conf.add" ]; then
+  upload_file "${PROJECT_ROOT}/configs/private/dnsmasq-stealth.local.conf.add" "${REMOTE_STAGE}/secrets/dnsmasq-stealth.local.conf.add"
+fi
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
 upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
 if [ -f "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" ]; then
@@ -280,7 +283,14 @@ remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmas
 remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq-stealth.conf.add"
 
 backup_if_present /jffs/configs/dnsmasq-stealth.conf.add
-cp "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" /jffs/configs/dnsmasq-stealth.conf.add
+cat "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" > /jffs/configs/dnsmasq-stealth.conf.add
+if [ -f "$REMOTE_STAGE/secrets/dnsmasq-stealth.local.conf.add" ]; then
+  {
+    printf '\n# BEGIN local private dnsmasq stealth catalog\n'
+    cat "$REMOTE_STAGE/secrets/dnsmasq-stealth.local.conf.add"
+    printf '\n# END local private dnsmasq stealth catalog\n'
+  } >> /jffs/configs/dnsmasq-stealth.conf.add
+fi
 grep -q '^conf-file=/jffs/configs/dnsmasq-stealth.conf.add$' /jffs/configs/dnsmasq.conf.add || \
   echo 'conf-file=/jffs/configs/dnsmasq-stealth.conf.add' >> /jffs/configs/dnsmasq.conf.add
 

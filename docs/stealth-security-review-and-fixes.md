@@ -1,7 +1,7 @@
 # Stealth Channel — Security Review & Hardening Implementation Guide
 
 **Audience:** LLM agent or engineer implementing hardening fixes on the deployed `router_configuration` stealth channel.
-**Scope:** Channel B (VLESS+Reality on VPS CX23 `198.51.100.10`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
+**Scope:** Channel B (VLESS+Reality on VPS CX23 `<vps-ip>`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
 **Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, LTE performance hardening, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
 **Primary goal (unchanged):** RKN/ISP DPI cannot classify our home traffic as VPN. Everything else is secondary.
 
@@ -42,9 +42,9 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 |---|---|---|
 | §1.1 IPv6 kill-switch | Applied | `20-stealth-router.yml`, `ipv6_kill`, `verify.sh`: IPv6 disabled / no LAN GUA; dnsmasq `filter-AAAA` blocks dead dual-stack answers |
 | §1.2 UDP/443 REJECT → DROP | Applied | `stealth-route-init.sh`, `99-verify.yml`, `verify.sh`: DROP present, REJECT absent |
-| §1.3 OpenClaw off shared IP | Done via SSH-only access | Old public `sslip.io` hostname removed from public Caddy surface; OpenClaw is reached through an SSH tunnel to VPS loopback `127.0.0.1:18789`. |
+| §1.3 OpenClaw off shared IP | Done via SSH-only access | Old public `sslip.io` hostname removed from public Caddy surface; OpenClaw is reached through an SSH tunnel to VPS loopback `127.0.0.1:<private-forward-port>`. |
 | §2.1 SNI switch | Applied | Vault/client profiles, Caddy L4 route, and Xray/3x-ui Reality inbound use `gateway.icloud.com`; `docs/sni-rotation-candidates.md` contains decision log |
-| §2.2 DoH through stealth | Applied | sing-box SOCKS `127.0.0.1:1080`; dnscrypt `proxy = 'socks5://127.0.0.1:1080'` |
+| §2.2 DoH through stealth | Applied | sing-box SOCKS `127.0.0.1:<router-socks-port>`; dnscrypt `proxy = 'socks5://127.0.0.1:<router-socks-port>'` |
 | §2.3 TCP keepalive / flow tuning | Applied | sing-box VLESS outbound has keepalive interval, connect timeout, no multiplex, no TFO |
 | §2.4 sing-box watchdog | Applied | `/jffs/scripts/singbox-watchdog.sh` cron installed |
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
@@ -252,19 +252,19 @@ Revert both lines to `REJECT --reject-with icmp-port-unreachable` and redeploy. 
 ## 1.3 Eliminate SNI-enumeration risk from shared-Caddy co-host (OpenClaw)
 
 ### Problem
-Historically, system Caddy on `198.51.100.10:443` served two logical endpoints:
+Historically, system Caddy on `<vps-ip>:443` served two logical endpoints:
 - Reality cover (`sni=gateway.icloud.com`; previous baseline was `www.microsoft.com`, see §2.1).
 - A personal/project site behind mTLS (referenced as OpenClaw in the review; config in `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`).
 
-An active SNI scanner probing `443` with the OpenClaw hostname receives a certificate whose SAN lists that hostname. If that hostname is **publicly resolvable to `198.51.100.10`** (A/AAAA record), an attacker can:
+An active SNI scanner probing `443` with the OpenClaw hostname receives a certificate whose SAN lists that hostname. If that hostname is **publicly resolvable to `<vps-ip>`** (A/AAAA record), an attacker can:
 1. Enumerate your VPS IP via regular DNS.
 2. Scan `443` with every plausible SNI; discover Reality cover behavior because it is the only SNI that successfully proxies to the configured cover certificate.
 3. Link the VPS IP to you personally via the OpenClaw domain's WHOIS / DNS ownership.
 
-This collapses the "VPS IP is just cover-like public TLS" story into "VPS IP belongs to [user], serves both private project X and suspiciously-stable cover TLS". One Google query dismantles the cover.
+This collapses the "VPS exit IP is just cover-like public TLS" story into "VPS exit IP belongs to [user], serves both private project X and suspiciously-stable cover TLS". One Google query dismantles the cover.
 
 ### Why it matters
-Highest-impact attack for a well-resourced RKN DPI: they see VPS IP handles persistent TCP 24/7 from this user's home IP with a cover SNI. They scan IP for other services → find OpenClaw cert → confirmed VPN setup by this specific user. All cover-story benefits lost.
+Highest-impact attack for a well-resourced RKN DPI: they see VPS exit IP handles persistent TCP 24/7 from this user's home IP with a cover SNI. They scan IP for other services → find OpenClaw cert → confirmed VPN setup by this specific user. All cover-story benefits lost.
 
 ### Scope
 
@@ -276,8 +276,8 @@ Three possible remediation paths, in order of preference:
 
 **Path B (next best): front OpenClaw with Cloudflare.**
 - DNS A record of OpenClaw domain → Cloudflare (orange-cloud proxy).
-- Cloudflare terminates TLS for that domain; origin-pulls from VPS via a non-443 port (e.g. 8443 via Cloudflare Tunnel / `cloudflared`).
-- SNI probing `198.51.100.10:443` with OpenClaw hostname no longer returns OpenClaw cert.
+- Cloudflare terminates TLS for that domain; origin-pulls from VPS via a non-443 port (e.g. <xray-local-port> via Cloudflare Tunnel / `cloudflared`).
+- SNI probing `<vps-ip>:443` with OpenClaw hostname no longer returns OpenClaw cert.
 
 **Path C (minimum, last resort): hide OpenClaw hostname from public DNS.**
 - Remove A record pointing OpenClaw hostname to VPS IP.
@@ -290,10 +290,10 @@ Three possible remediation paths, in order of preference:
 
 1. In VPS console: create a Floating IP, assign to the current CX23 server.
 2. Note the new IP, call it `OPENCLAW_IP`.
-3. Update OpenClaw DNS A record to `OPENCLAW_IP` (remove the record pointing to `198.51.100.10`).
+3. Update OpenClaw DNS A record to `OPENCLAW_IP` (remove the record pointing to `<vps-ip>`).
 4. Bind OpenClaw's Caddy block to `OPENCLAW_IP` only. Edit `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`:
    - Replace `<openclaw-host> {` with `<openclaw-host>:443 {` and add `bind OPENCLAW_IP` inside the block.
-   - Keep the Reality L4 block listening on `:443` (all interfaces) or explicitly bind to `198.51.100.10`.
+   - Keep the Reality L4 block listening on `:443` (all interfaces) or explicitly bind to `<vps-ip>`.
 5. Re-deploy:
    ```
    cd ansible
@@ -305,24 +305,24 @@ Three possible remediation paths, in order of preference:
 1. DNS probe:
    ```
    dig +short <openclaw-host>          # expect: OPENCLAW_IP
-   dig -x 198.51.100.10 +short       # expect: generic VPS reverse, no openclaw
+   dig -x <vps-ip> +short       # expect: generic VPS reverse, no openclaw
    ```
 
-2. SNI probe against `198.51.100.10` with OpenClaw SNI:
+2. SNI probe against `<vps-ip>` with OpenClaw SNI:
    ```
-   curl -sk --resolve <openclaw-host>:443:198.51.100.10 --max-time 5 \
+   curl -sk --resolve <openclaw-host>:443:<vps-ip> --max-time 5 \
         -I https://<openclaw-host>/  -o /dev/null -w "%{ssl_verify_result} %{http_code}\n"
    ```
    Expect: TLS handshake fails OR returns a default/Reality-fallback cert (NOT OpenClaw cert). Inspect cert:
    ```
-   echo | openssl s_client -connect 198.51.100.10:443 -servername <openclaw-host> 2>/dev/null \
+   echo | openssl s_client -connect <vps-ip>:443 -servername <openclaw-host> 2>/dev/null \
      | openssl x509 -noout -subject -issuer -ext subjectAltName
    ```
    Expect: cert SAN does NOT include `<openclaw-host>`.
 
 3. Reality side still works:
    ```
-   curl -sk --resolve gateway.icloud.com:443:198.51.100.10 --max-time 5 \
+   curl -sk --resolve gateway.icloud.com:443:<vps-ip> --max-time 5 \
         -I https://gateway.icloud.com/ -o /dev/null -w "%{http_code}\n"
    ```
    Expect: 200/301/400/403 (real iCloud-fallback response; Apple gateway commonly returns 400 to a bare request).
@@ -344,8 +344,8 @@ Revert SystemCaddyfile.j2 `bind` directive removal, re-deploy. Release floating 
 **Path B (Cloudflare front):**
 1. Sign up for Cloudflare, add the OpenClaw domain, enable orange-cloud on its A record.
 2. On VPS, install `cloudflared`: `sudo apt install cloudflared` + tunnel auth + `cloudflared tunnel create openclaw`.
-3. Bind OpenClaw's Caddy block to `127.0.0.1:8443` (not public `:443`).
-4. Point cloudflared tunnel at `http://127.0.0.1:8443` for the OpenClaw hostname.
+3. Bind OpenClaw's Caddy block to `127.0.0.1:<xray-local-port>` (not public `:443`).
+4. Point cloudflared tunnel at `http://127.0.0.1:<xray-local-port>` for the OpenClaw hostname.
 5. Same verification as Path A, except dig of OpenClaw domain returns Cloudflare IP.
 
 **Path C (DNS hiding):**
@@ -354,15 +354,15 @@ Revert SystemCaddyfile.j2 `bind` directive removal, re-deploy. Release floating 
 3. Do not publish OpenClaw through Caddy on public `:443`.
 4. Access OpenClaw via SSH local-forward to the loopback upstream:
    ```bash
-   ssh -N -L 18789:127.0.0.1:18789 \
+   ssh -N -L <private-forward-port>:127.0.0.1:<private-forward-port> \
      -o ProxyCommand='ssh admin@192.168.50.1 nc -w 120 %h %p' \
-     deploy@198.51.100.10
+     deploy@<vps-ip>
    ```
-5. Open `http://127.0.0.1:18789/` locally.
+5. Open `http://127.0.0.1:<private-forward-port>/` locally.
 
-Verification: `dig +short openclaw.home.arpa @1.1.1.1` returns nothing; old public `sslip.io` SNI no longer returns the OpenClaw certificate; `curl -I http://127.0.0.1:18789/` returns `HTTP/1.1 200 OK` while the SSH tunnel is open.
+Verification: `dig +short openclaw.home.arpa @1.1.1.1` returns nothing; old public `sslip.io` SNI no longer returns the OpenClaw certificate; `curl -I http://127.0.0.1:<private-forward-port>/` returns `HTTP/1.1 200 OK` while the SSH tunnel is open.
 
-Current production implementation uses Path C with SSH-only access. Caddy public `:443` keeps only a generic fallback site so the listener exists; OpenClaw is not published through public Caddy and is reached only through `ssh -L 18789:127.0.0.1:18789`.
+Current production implementation uses Path C with SSH-only access. Caddy public `:443` keeps only a generic fallback site so the listener exists; OpenClaw is not published through public Caddy and is reached only through `ssh -L <private-forward-port>:127.0.0.1:<private-forward-port>`.
 
 ---
 
@@ -391,7 +391,7 @@ Exact procedure is already documented in [docs/sni-rotation-candidates.md §4](s
 
 1. Pre-flight validate the candidate:
    ```
-   ssh deploy@198.51.100.10 '/tmp/validate-sni-candidate.sh gateway.icloud.com'
+   ssh deploy@<vps-ip> '/tmp/validate-sni-candidate.sh gateway.icloud.com'
    ```
    Abort if any `[FAIL]` line. Follow the script in §3 of sni-rotation-candidates.md — copy it to the VPS first if not already there.
 
@@ -442,10 +442,10 @@ Exact procedure is already documented in [docs/sni-rotation-candidates.md §4](s
 ### Verification
 
 Included in `playbooks/99-verify.yml` and the post-switch §7 of sni-rotation-candidates.md. Specifically:
-- VPS: `curl -k --resolve gateway.icloud.com:443:198.51.100.10 https://gateway.icloud.com/` returns iCloud-fallback cert and a plausible Apple response, commonly HTTP 400 for a bare request.
-- Router: `echo | nc -w 3 198.51.100.10 443` returns `rc=0`.
+- VPS: `curl -k --resolve gateway.icloud.com:443:<vps-ip> https://gateway.icloud.com/` returns iCloud-fallback cert and a plausible Apple response, commonly HTTP 400 for a bare request.
+- Router: `echo | nc -w 3 <vps-ip> 443` returns `rc=0`.
 - Router: `tail -F /opt/var/log/sing-box.log` shows handshake success.
-- Router: logs do not contain `connection refused` to `198.51.100.10:443`.
+- Router: logs do not contain `connection refused` to `<vps-ip>:443`.
 - Router: logs do not contain `x509: certificate is valid for ... microsoft.com, not gateway.icloud.com`.
 - LAN: test domain in STEALTH_DOMAINS still exits via VPS IP.
 
@@ -461,7 +461,7 @@ Follow sni-rotation-candidates.md §5. Restore vault to `www.microsoft.com`, re-
 ## 2.2 Route dnscrypt-proxy DoH traffic **through** the stealth tunnel
 
 ### Problem
-dnscrypt-proxy on the router (`127.0.0.1:5354`) sends DoH queries to `cloudflare-dns.com`, `quad9-dns.com`, etc. over port `443/TCP` from the router WAN interface directly — outside the stealth channel. The ISP sees:
+dnscrypt-proxy on the router (`127.0.0.1:<dnscrypt-port>`) sends DoH queries to `cloudflare-dns.com`, `quad9-dns.com`, etc. over port `443/TCP` from the router WAN interface directly — outside the stealth channel. The ISP sees:
 
 - Constant outbound TCP/443 to 1.1.1.1 / 9.9.9.9 / dns.nextdns.io → "this home is using DoH".
 
@@ -485,7 +485,7 @@ Removes one of the cheapest classification signals available to ISP (no DPI need
      "type": "socks",
      "tag": "socks-in",
      "listen": "127.0.0.1",
-     "listen_port": 1080,
+     "listen_port": <router-socks-port>,
      "sniff": true,
      "domain_strategy": "prefer_ipv4"
    }
@@ -499,7 +499,7 @@ Removes one of the cheapest classification signals available to ISP (no DPI need
 
    Edit `ansible/roles/dnscrypt_proxy/templates/dnscrypt-proxy.toml.j2`, add near the top:
    ```toml
-   proxy = "socks5://127.0.0.1:1080"
+   proxy = "socks5://127.0.0.1:<router-socks-port>"
    ```
 
 3. Re-apply:
@@ -513,7 +513,7 @@ Removes one of the cheapest classification signals available to ISP (no DPI need
 1. On router:
    ```
    # sing-box SOCKS5 listening
-   ss -tln state listening '( sport = :1080 )' | grep -q 127.0.0.1 && echo OK
+   ss -tln state listening '( sport = :<router-socks-port> )' | grep -q 127.0.0.1 && echo OK
 
    # dnscrypt-proxy has proxy config active
    grep '^proxy' /opt/etc/dnscrypt-proxy/dnscrypt-proxy.toml
@@ -522,20 +522,20 @@ Removes one of the cheapest classification signals available to ISP (no DPI need
 2. On router, packet-capture DoH query:
    ```
    tcpdump -nn -i wan0 'host 1.1.1.1 or host 9.9.9.9' &
-   dig @127.0.0.1 -p 5354 example.com
+   dig @127.0.0.1 -p <dnscrypt-port> example.com
    # expect: NOTHING captured on wan0 to 1.1.1.1/9.9.9.9
    ```
 
 3. Capture stealth tunnel traffic instead:
    ```
-   tcpdump -nn -i wan0 'host 198.51.100.10 and port 443'
-   dig @127.0.0.1 -p 5354 example.com
+   tcpdump -nn -i wan0 'host <vps-ip> and port 443'
+   dig @127.0.0.1 -p <dnscrypt-port> example.com
    # expect: packets to VPS during the query
    ```
 
 4. Functional:
    ```
-   dig @127.0.0.1 -p 5354 example.com +short    # expect: valid IP answer
+   dig @127.0.0.1 -p <dnscrypt-port> example.com +short    # expect: valid IP answer
    dig example.com +short                        # also valid via dnsmasq → dnscrypt
    ```
 
@@ -593,7 +593,7 @@ Practical minimum (portable): set `tcp_fast_open: false` — prevents TFO finger
    ```
    for i in 1 2 3 4 5; do
      echo "=== $(date +%H:%M:%S) ==="
-     ss -tn state established '( dport = :443 )' dst 198.51.100.10
+     ss -tn state established '( dport = :443 )' dst <vps-ip>
      sleep 120
    done
    ```
@@ -791,7 +791,7 @@ IPv6 without mirroring would leak all LAN v6 flows to ISP. The kill-switch
 nails `ipv6_service=disabled` in NVRAM.
 
 ### Why exit IP is personal VPS (not shared pool)
-Double-hop cascade was evaluated and deferred. A single VPS IP is
+Double-hop cascade was evaluated and deferred. A single VPS exit IP is
 slightly identity-linkable to the VPS owner, but (a) it's not the home
 IP, (b) the site-level identity story is already protected per-browser.
 Upgrade path: add a second WG peer on VPS to cascade exit through a
@@ -804,7 +804,7 @@ inbound endpoint. Design in docs/remote-access-overlay-migration.md;
 not yet executed.
 
 ### Residual risks
-- Single VPS = single point of failure for Channel B. If VPS IP
+- Single VPS = single point of failure for Channel B. If VPS exit IP
   is RKN-blocked, stealth channel is down until failover (manual).
 - Router OUTPUT chain not stealth-captured. NTP, firmware updates,
   dnscrypt-proxy upstream DoH would flow directly over WAN if §2.2 regresses.
@@ -816,9 +816,9 @@ not yet executed.
 Add to `docs/stealth-channel-implementation-guide.md` §6 acceptance checklist:
 ```
 - [ ] `nvram get ipv6_service` == `disabled` (channel-B IPv6 kill-switch)
-- [ ] dig <openclaw-host> +short does NOT return 198.51.100.10 publicly
+- [ ] dig <openclaw-host> +short does NOT return <vps-ip> publicly
 - [ ] `iptables -t filter -S FORWARD | grep dpt:443 | grep -q DROP` on router (no REJECT)
-- [x] `netstat -nlp | grep 127.0.0.1:1080` on router shows sing-box SOCKS5 bound (DoH routing)
+- [x] `netstat -nlp | grep 127.0.0.1:<router-socks-port>` on router shows sing-box SOCKS5 bound (DoH routing)
 - [x] singbox-watchdog cron present: `cru l | grep singbox-watchdog`
 - [x] `domain-auto-add.sh` default-skips when `blocked-domains.lst` is missing or empty
 ```
@@ -829,7 +829,7 @@ Add to `docs/stealth-channel-implementation-guide.md` §10 non-goals:
 - Shared-pool exit IP (requires cascade through commercial VPN on VPS)
 - wgs1 WAN ingress removal (requires overlay migration)
 - OpenClaw cohost on public `:443` (removed; access is SSH-only to loopback)
-- Multi-VPS failover (single VPS VPS is SPOF)
+- Multi-VPS failover (single VPS host is SPOF)
 ```
 
 ### Verification
@@ -909,7 +909,7 @@ Then functional tests:
 
 ```bash
 # Channel B sanity — LAN device
-curl https://ifconfig.me     # expect: 198.51.100.10 (if ifconfig.me in STEALTH)
+curl https://ifconfig.me     # expect: <vps-ip> (if ifconfig.me in STEALTH)
 curl -6 https://ipv6.google.com  # expect: Network unreachable
 
 # Channel A regression — wgs1 peer (from phone via wgs1)
@@ -918,15 +918,15 @@ curl -6 https://ipv6.google.com  # expect: Network unreachable
 # Remote mobile client via home QR
 # from iPhone: import the regenerated home QR, toggle VPN, visit ifconfig.me.
 # Expected client profile endpoint: home public IP or home DNS name on TCP/<home-reality-port>.
-# Expected checker result: 198.51.100.10, because the website sees the VPS exit.
-# Expected mobile-carrier-visible endpoint: home Russian IP, not 198.51.100.10.
+# Expected checker result: <vps-ip>, because the website sees the VPS exit.
+# Expected mobile-carrier-visible endpoint: home Russian IP, not <vps-ip>.
 
 # DPI sanity (if RU vantage available)
 # tcpdump | tshark SNI extraction → gateway.icloud.com
-# netstat on VPS → caddy on :443, xray on 127.0.0.1:8443
+# netstat on VPS → caddy on :443, xray on 127.0.0.1:<xray-local-port>
 
 # Active probing defense
-curl -k --resolve gateway.icloud.com:443:198.51.100.10 -I https://gateway.icloud.com/
+curl -k --resolve gateway.icloud.com:443:<vps-ip> -I https://gateway.icloud.com/
 # expect: 200/301/400/403 (Apple's real fallback response)
 ```
 
@@ -950,7 +950,7 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 
 2. On the VPS, keep Caddy + Xray running but stop seeding new inbounds:
    ```
-   ssh deploy@198.51.100.10 'cd /opt/stealth && docker compose stop xray'
+   ssh deploy@<vps-ip> 'cd /opt/stealth && docker compose stop xray'
    ```
    Caddy keeps `:443` bound through the generic fallback site; Reality handshakes fail closed while non-Reality SNI gets the fallback behavior.
 

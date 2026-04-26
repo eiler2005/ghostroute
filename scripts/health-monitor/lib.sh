@@ -3,6 +3,8 @@
 HEALTH_MONITOR_VERSION=1
 HEALTH_MONITOR_TITLE="${HEALTH_MONITOR_TITLE:-Модуль мониторинга работоспособности GhostRoute}"
 HEALTH_MONITOR_DIR="${HEALTH_MONITOR_DIR:-/jffs/scripts/health-monitor}"
+HEALTH_MONITOR_ENV="${HEALTH_MONITOR_ENV:-$HEALTH_MONITOR_DIR/env}"
+[ -r "$HEALTH_MONITOR_ENV" ] && . "$HEALTH_MONITOR_ENV"
 
 health_monitor_default_log_dir() {
   if [ -x /opt/bin/opkg ] || [ -d /opt/var/log ]; then

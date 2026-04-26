@@ -32,7 +32,7 @@ Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRA
 - Domain-based routing with `dnsmasq` + `ipset`.
 - Single active domain catalog for home LAN (`STEALTH_DOMAINS`).
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
-- VLESS+Reality egress through a VPS VPS behind shared Caddy L4 on TCP/443.
+- VLESS+Reality egress through a VPS host behind shared Caddy L4 on TCP/443.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
 - Automatic domain discovery that writes `STEALTH_DOMAINS` only.
@@ -67,7 +67,7 @@ Home Wi-Fi / LAN devices
       +-- VLESS+Reality TCP/443
             |
             v
-      VPS VPS
+      VPS host
       +-- shared Caddy :443
       +-- Xray Reality inbound
             |
@@ -94,7 +94,7 @@ ASUS Router / Merlin
 +-- managed destination
 |     +-- STEALTH_DOMAINS / VPN_STATIC_NETS
 |     +-- sing-box Reality outbound
-|     +-- VPS VPS / Caddy / Xray
+|     +-- VPS host / Caddy / Xray
 |     +-- Internet
 +-- non-managed destination
       +-- sing-box direct outbound
@@ -123,13 +123,13 @@ Router:
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
   sing-box home Reality inbound on :<home-reality-port>
-  dnscrypt-proxy on 127.0.0.1:5354
+  dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
   WireGuard Channel A disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
-  Xray/3x-ui Reality inbound on 127.0.0.1:8443
+  Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
   stealth stack under /opt/stealth
 
 Control:
@@ -210,7 +210,7 @@ Traffic and observability:
 ./scripts/router-health-report
 ```
 
-The traffic report answers how much went through the VPS VPS, how much
+The traffic report answers how much went through the VPS, how much
 stayed on the home Russian WAN, which devices and Home Reality ingress clients
 were active, and whether likely routing mistakes appeared. See
 [docs/traffic-observability.md](docs/traffic-observability.md).

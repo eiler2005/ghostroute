@@ -7,7 +7,13 @@ REALITY_IN_CHAIN="RC_LAN_REALITY_IN"
 STEALTH_SET="STEALTH_DOMAINS"
 STATIC_SET="VPN_STATIC_NETS"
 REALITY_CONNMARK="0x5200/0x5200"
-REDIRECT_PORT="${SINGBOX_REDIRECT_PORT:-<lan-redirect-port>}"
+GHOSTROUTE_RUNTIME_ENV="${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}"
+[ -r "$GHOSTROUTE_RUNTIME_ENV" ] && . "$GHOSTROUTE_RUNTIME_ENV"
+REDIRECT_PORT="${SINGBOX_REDIRECT_PORT:-${GHOSTROUTE_REDIRECT_PORT:-}}"
+[ -n "$REDIRECT_PORT" ] || {
+  logger -t lan-traffic-accounting-refresh "SINGBOX_REDIRECT_PORT is not configured"
+  exit 0
+}
 LEASES_FILE="/var/lib/misc/dnsmasq.leases"
 
 ensure_chain() {

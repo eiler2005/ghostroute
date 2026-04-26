@@ -12,7 +12,7 @@ iPhone/MacBook outside home
   -> home ASUS public IP / :<home-reality-port>
   -> sing-box home Reality inbound
   -> managed split:
-       STEALTH_DOMAINS/VPN_STATIC_NETS -> sing-box Reality outbound -> VPS VPS
+       STEALTH_DOMAINS/VPN_STATIC_NETS -> sing-box Reality outbound -> VPS host
        other destinations              -> sing-box direct-out -> home WAN
 ```
 
@@ -189,7 +189,7 @@ Use them only when the home relay, home router or home ISP is down and the VPS
 is healthy. Keep them imported but disabled/off in the mobile app.
 
 Trade-off: during emergency use, the LTE carrier sees the device connecting
-directly to the VPS VPS, so the domestic-first-hop billing/privacy property
+directly to the VPS host, so the domestic-first-hop billing/privacy property
 does not apply for that period.
 
 ## Clean Local Artifacts

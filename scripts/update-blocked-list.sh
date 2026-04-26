@@ -13,7 +13,16 @@
 CACHE="/opt/tmp/blocked-domains.lst"
 CACHE_TMP="${CACHE}.tmp"
 URL="https://community.antifilter.download/list/domains.lst"
-SOCKS_PROXY="${BLOCKED_LIST_SOCKS_PROXY:-socks5h://127.0.0.1:1080}"
+GHOSTROUTE_RUNTIME_ENV="${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}"
+[ -r "$GHOSTROUTE_RUNTIME_ENV" ] && . "$GHOSTROUTE_RUNTIME_ENV"
+if [ -n "${BLOCKED_LIST_SOCKS_PROXY:-}" ]; then
+  SOCKS_PROXY="$BLOCKED_LIST_SOCKS_PROXY"
+elif [ -n "${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-}" ]; then
+  SOCKS_PROXY="socks5h://127.0.0.1:${GHOSTROUTE_DNSCRYPT_SOCKS_PORT}"
+else
+  logger -t blocked-list "Missing SOCKS proxy port; set BLOCKED_LIST_SOCKS_PROXY or GHOSTROUTE_DNSCRYPT_SOCKS_PORT"
+  exit 1
+fi
 MAX_TIME=120
 
 # Download through Channel B SOCKS (use which — BusyBox ash lacks 'command -v').

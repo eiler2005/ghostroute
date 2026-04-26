@@ -128,7 +128,7 @@
       enable: true
       remark: "stealth-reality"
       listen: "0.0.0.0"
-      port: 8443
+      port: "{{ xray_reality_listen_port | int }}"
       protocol: "vless"
       settings: "{{ _inbound_settings | to_json }}"
       streamSettings: "{{ _stream_settings | to_json }}"
@@ -183,7 +183,7 @@
     template_reality_short_ids: "{{ _reality_sids }}"
     template_clients: "{{ _clients_with_short_ids }}"
     template_home_reality_public_host: "{{ home_reality_public_host | default(vault_home_reality_public_host | default('')) }}"
-    template_home_reality_ingress_port: "{{ home_reality_ingress_port | default(<home-reality-port>) }}"
+    template_home_reality_ingress_port: "{{ home_reality_ingress_port }}"
     template_home_reality_dest_host: "{{ home_reality_dest_host | default('gateway.icloud.com') }}"
     template_home_reality_dest_port: "{{ home_reality_dest_port | default(443) }}"
     template_home_reality_server_private_key: "{{ home_reality_server_private_key | default('') }}"

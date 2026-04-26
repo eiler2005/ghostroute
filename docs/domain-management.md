@@ -44,7 +44,7 @@ server=/example.com/9.9.9.9@wgc1
 DNS upstream общий:
 
 ```text
-server=127.0.0.1#5354
+server=127.0.0.1#<dnscrypt-port>
 ```
 
 ## Deploy

@@ -19,7 +19,7 @@ cat > "$TMPDIR/bin/ss" <<'EOF'
 #!/bin/sh
 case "$*" in
   *":443"*) [ "${FAKE_CADDY_DOWN:-0}" = "1" ] || echo 'LISTEN 0 4096 *:443 *:* users:(("caddy",pid=10,fd=3))' ;;
-  *":8443"*) echo 'LISTEN 0 4096 127.0.0.1:8443 0.0.0.0:* users:(("xray",pid=20,fd=3))' ;;
+  *":62010"*) echo 'LISTEN 0 4096 127.0.0.1:62010 0.0.0.0:* users:(("xray",pid=20,fd=3))' ;;
 esac
 EOF
 cat > "$TMPDIR/bin/caddy" <<'EOF'
@@ -49,6 +49,8 @@ chmod 0755 "$TMPDIR/bin"/*
 export PATH="$TMPDIR/bin:$PATH"
 export HEALTH_MONITOR_LOG_DIR="$TMPDIR/vps-log"
 export VPS_HEALTH_CADDY_BIN="$TMPDIR/bin/caddy"
+export VPS_HEALTH_XRAY_PORT=62010
+export VPS_HEALTH_XUI_PORT=62011
 
 "$STAGE/run-probes"
 "$STAGE/aggregate"

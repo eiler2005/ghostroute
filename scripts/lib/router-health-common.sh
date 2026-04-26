@@ -20,6 +20,12 @@ router_health_load_env() {
   CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
   ROUTER="${ROUTER:-}"
   SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
+  GHOSTROUTE_REDIRECT_PORT="${GHOSTROUTE_REDIRECT_PORT:-${SINGBOX_REDIRECT_PORT:-}}"
+  GHOSTROUTE_HOME_REALITY_PORT="${GHOSTROUTE_HOME_REALITY_PORT:-${HOME_REALITY_PORT:-}}"
+  GHOSTROUTE_DNSCRYPT_SOCKS_PORT="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-${SINGBOX_DNSCRYPT_SOCKS_PORT:-}}"
+  GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-${DNSCRYPT_PORT:-}}"
+  GHOSTROUTE_HOME_REALITY_MSS="${GHOSTROUTE_HOME_REALITY_MSS:-${HOME_REALITY_MSS:-1360}}"
+  GHOSTROUTE_HOME_REALITY_CONNLIMIT="${GHOSTROUTE_HOME_REALITY_CONNLIMIT:-${HOME_REALITY_CONNLIMIT_ABOVE:-300}}"
 
   if [ -z "$ROUTER" ]; then
     ROUTER="$(router_detect_ip)"
@@ -369,7 +375,7 @@ router_collect_health_state() {
   local outfile="$1"
   router_health_load_env || return 1
 
-  router_ssh 'sh -s' <<'REMOTE' > "$outfile"
+  router_ssh "GHOSTROUTE_REDIRECT_PORT='${GHOSTROUTE_REDIRECT_PORT}' GHOSTROUTE_HOME_REALITY_PORT='${GHOSTROUTE_HOME_REALITY_PORT}' GHOSTROUTE_DNSCRYPT_SOCKS_PORT='${GHOSTROUTE_DNSCRYPT_SOCKS_PORT}' GHOSTROUTE_DNSCRYPT_PORT='${GHOSTROUTE_DNSCRYPT_PORT}' GHOSTROUTE_HOME_REALITY_MSS='${GHOSTROUTE_HOME_REALITY_MSS}' GHOSTROUTE_HOME_REALITY_CONNLIMIT='${GHOSTROUTE_HOME_REALITY_CONNLIMIT}' sh -s" <<'REMOTE' > "$outfile"
 set -eu
 
 latest_file() {
@@ -392,6 +398,18 @@ bool_grep() {
   local haystack="$1"
   local needle="$2"
   printf '%s\n' "$haystack" | grep -F -- "$needle" >/dev/null 2>&1 && printf '1\n' || printf '0\n'
+}
+
+singbox_port_by_tag() {
+  tag="$1"
+  printf '%s\n' "$singbox_config" | awk -v tag="\"tag\": \""$tag"\"" '
+    index($0, tag) { seen = 1 }
+    seen && /"listen_port"/ {
+      gsub(/[^0-9]/, "", $0)
+      print $0
+      exit
+    }
+  '
 }
 
 bool_nonempty() {
@@ -434,6 +452,10 @@ cron_list=$(cru l 2>/dev/null || true)
 dnscrypt_config=$(cat /opt/etc/dnscrypt-proxy.toml 2>/dev/null || true)
 singbox_config=$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)
 singbox_config_compact=$(printf '%s\n' "$singbox_config" | awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }')
+redirect_port="${GHOSTROUTE_REDIRECT_PORT:-$(singbox_port_by_tag redirect-in)}"
+home_reality_port="${GHOSTROUTE_HOME_REALITY_PORT:-$(singbox_port_by_tag reality-in)}"
+dnscrypt_socks_port="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(singbox_port_by_tag dnscrypt-socks-in)}"
+dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-$(awk -F'#' '/^server=127[.]0[.]0[.]1#/ { gsub(/[^0-9].*/, "", $2); print $2; exit }' /jffs/configs/dnsmasq.conf.add 2>/dev/null)}"
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
@@ -546,22 +568,22 @@ printf 'HOOK_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -j RC_VPN_ROU
 printf 'HOOK_STEALTH_PREROUTING_BR0=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i br0 -m set --match-set STEALTH_DOMAINS dst')"
 printf 'HOOK_STEALTH_PREROUTING_WGS1=%s\n' "$(bool_grep "$prerouting_mangle" '-A PREROUTING -i wgs1 -m set --match-set STEALTH_DOMAINS dst')"
 printf 'HOOK_STEALTH_OUTPUT=%s\n' "$(bool_grep "$output_mangle" '-A OUTPUT -m set --match-set STEALTH_DOMAINS dst')"
-printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<lan-redirect-port>')"
-printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '0.0.0.0:<home-reality-port>')"
-printf 'HOME_REALITY_IPV4_ONLY=%s\n' "$( { bool_grep "$listen_sockets" '0.0.0.0:<home-reality-port>' | grep -q 1; } && ! printf '%s\n' "$listen_sockets" | grep -Eq ':::<home-reality-port>|\[::\]:<home-reality-port>|\*:<home-reality-port>' && printf '1\n' || printf '0\n' )"
-printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" '--dport <home-reality-port> -j ACCEPT')"
-printf 'HOME_REALITY_CONNLIMIT_DROP=%s\n' "$(printf '%s\n' "$filter_input" | awk '/--dport <home-reality-port>/ { if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above 300/ && $0 ~ /-j DROP/) drop = NR; if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR } END { print (drop > 0 && first_accept > 0 && drop < first_accept) ? 1 : 0 }')"
-printf 'HOME_REALITY_MSS_CLAMP=%s\n' "$( { printf '%s\n' "$prerouting_mangle" | awk '/--dport <home-reality-port>/ && /TCPMSS/ && /--set-mss 1360/ { found = 1 } END { exit(found ? 0 : 1) }'; } && { printf '%s\n' "$output_mangle" | awk '/--sport <home-reality-port>/ && /TCPMSS/ && /--set-mss 1360/ { found = 1 } END { exit(found ? 0 : 1) }'; } && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_B_REDIRECT_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "0.0.0.0:$redirect_port")"
+printf 'HOME_REALITY_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "0.0.0.0:$home_reality_port")"
+printf 'HOME_REALITY_IPV4_ONLY=%s\n' "$( { bool_grep "$listen_sockets" "0.0.0.0:$home_reality_port" | grep -q 1; } && ! printf '%s\n' "$listen_sockets" | grep -Eq ":::$home_reality_port|\[::\]:$home_reality_port|\*:$home_reality_port" && printf '1\n' || printf '0\n' )"
+printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" "--dport $home_reality_port -j ACCEPT")"
+printf 'HOME_REALITY_CONNLIMIT_DROP=%s\n' "$(printf '%s\n' "$filter_input" | awk -v port="$home_reality_port" -v limit="$GHOSTROUTE_HOME_REALITY_CONNLIMIT" '$0 ~ "--dport " port { if ($0 ~ /connlimit/ && $0 ~ "--connlimit-above " limit && $0 ~ /-j DROP/) drop = NR; if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR } END { print (drop > 0 && first_accept > 0 && drop < first_accept) ? 1 : 0 }')"
+printf 'HOME_REALITY_MSS_CLAMP=%s\n' "$( { printf '%s\n' "$prerouting_mangle" | awk -v port="$home_reality_port" -v mss="$GHOSTROUTE_HOME_REALITY_MSS" '$0 ~ "--dport " port && /TCPMSS/ && $0 ~ "--set-mss " mss { found = 1 } END { exit(found ? 0 : 1) }'; } && { printf '%s\n' "$output_mangle" | awk -v port="$home_reality_port" -v mss="$GHOSTROUTE_HOME_REALITY_MSS" '$0 ~ "--sport " port && /TCPMSS/ && $0 ~ "--set-mss " mss { found = 1 } END { exit(found ? 0 : 1) }'; } && printf '1\n' || printf '0\n' )"
 printf 'ROUTER_TCP_PERF_TUNING=%s\n' "$( [ "$(cat /proc/sys/net/core/rmem_max 2>/dev/null)" = "16777216" ] && [ "$(cat /proc/sys/net/core/wmem_max 2>/dev/null)" = "16777216" ] && [ "$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)" = "4096 262144 16777216" ] && [ "$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_wmem 2>/dev/null)" = "4096 65536 16777216" ] && [ "$(cat /proc/sys/net/ipv4/tcp_mtu_probing 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null)" = "0" ] && [ "$(cat /proc/sys/net/ipv4/tcp_window_scaling 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_sack 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_timestamps 2>/dev/null)" = "1" ] && printf '1\n' || printf '0\n' )"
 printf 'HOME_REALITY_DNS_GUARD_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","port":[53,853],"outbound":"reality-out"')"
 printf 'HOME_REALITY_SPLIT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"')"
 printf 'HOME_REALITY_DIRECT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"direct-out"')"
 printf 'HOME_REALITY_ALL_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"reality-out"')"
-printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" '127.0.0.1:1080')"
-printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" 'socks5://127.0.0.1:1080')"
+printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$dnscrypt_socks_port")"
+printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" "socks5://127.0.0.1:$dnscrypt_socks_port")"
 printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
-printf 'CHANNEL_B_REDIRECT_STEALTH=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports <lan-redirect-port>')"
-printf 'CHANNEL_B_REDIRECT_STATIC=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports <lan-redirect-port>')"
+printf 'CHANNEL_B_REDIRECT_STEALTH=%s\n' "$(bool_grep "$nat_prerouting" "-A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports $redirect_port")"
+printf 'CHANNEL_B_REDIRECT_STATIC=%s\n' "$(bool_grep "$nat_prerouting" "-A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports $redirect_port")"
 printf 'CHANNEL_B_DROP_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j DROP')"
 printf 'CHANNEL_B_DROP_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP')"
 printf 'CHANNEL_B_REJECT_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT')"
@@ -867,18 +889,18 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] || drift_lines+=("wgc1 cold-fallback NVRAM fields are missing")
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("Channel A RC_VPN_ROUTE chain should be absent")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("Channel A fwmark 0x1000 -> wgc1 rule should be absent")
-  [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener on :<lan-redirect-port>")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener on :<home-reality-port>")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener")
   [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] || drift_lines+=("home Reality listener should bind IPv4 0.0.0.0 only, not IPv6 wildcard")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality :<home-reality-port>")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] || drift_lines+=("missing connlimit DROP >300 before home Reality :<home-reality-port> ACCEPT")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] || drift_lines+=("missing LTE-safe MSS clamp for home Reality :<home-reality-port>")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] || drift_lines+=("missing INPUT allow rule for home Reality")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] || drift_lines+=("missing connlimit DROP before home Reality ACCEPT")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] || drift_lines+=("missing LTE-safe MSS clamp for home Reality")
   [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] || drift_lines+=("router TCP high-BDP performance tuning is missing")
   [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing DNS guard rule for ports 53/853")
   [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] || drift_lines+=("home Reality ingress does not use STEALTH/VPN_STATIC split rule")
   [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing direct fallback rule")
   [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || drift_lines+=("home Reality ingress still relays all traffic to VPS")
-  [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener on 127.0.0.1:1080")
+  [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
@@ -948,18 +970,18 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | wgc1 cold-fallback NVRAM preserved | $( [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] && printf 'OK' || printf 'Missing fields' ) |
 | RC_VPN_ROUTE chain absent | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | ip rule fwmark 0x1000 -> wgc1 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] && printf 'OK' || printf 'Present' ) |
-| Channel B REDIRECT listener :<lan-redirect-port> | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality listener :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel B REDIRECT listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality IPv4-only listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] && printf 'OK' || printf 'IPv6/wildcard drift' ) |
-| Home Reality INPUT allow :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality connlimit >300 before ACCEPT | $( [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality LTE MSS clamp :<home-reality-port> | $( [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality INPUT allow | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality connlimit before ACCEPT | $( [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality LTE MSS clamp | $( [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Router TCP high-BDP tuning | $( [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality DNS guard :53/:853 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality managed split | $( [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality direct fallback | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
-| Channel B dnscrypt SOCKS listener :1080 | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel B dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |

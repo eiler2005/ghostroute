@@ -677,9 +677,9 @@ echo
 
 echo "=== 2. PATH MATRIX ==="
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Source" "First hop" "Router" "Exit" "Site sees"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "REDIRECT :<lan-redirect-port>" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "REDIRECT" "VLESS+Reality -> VPS" "VPS exit IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no redirect" "Home WAN direct" "Home Russian IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS exit IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
 echo
 
@@ -726,7 +726,7 @@ echo
 echo "=== 5. HOME REALITY INGRESS CLIENTS ==="
 echo "Ingress byte sources:    ${MOBILE_BYTE_SOURCES}"
 echo "Ingress byte total:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
-echo "Ingress via VPS est.:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS VPS IP)"
+echo "Ingress via VPS est.:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS exit IP)"
 echo "Ingress RU direct est.:  $(human_bytes "$MOBILE_EST_DIRECT_BYTES")  (sites see home Russian IP)"
 echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
 echo "Ingress connections:     ${MOBILE_TOTAL}"
@@ -844,7 +844,7 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
     }' "$MOBILE_DESTS"
 
   echo
-  echo "Popular via VPS (estimated; final site sees VPS VPS IP):"
+  echo "Popular via VPS (estimated; final site sees VPS exit IP):"
   printf "%-20s %-38s %12s %9s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Reality conn"
   awk -F'|' '($3 + 0) > 0 { print $3 "|" $0 }' "$MOBILE_DESTS" \
     | sort -t'|' -k1,1nr -k2,2 \

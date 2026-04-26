@@ -3,6 +3,7 @@ caddy_dockerfile: caddy/Dockerfile
 caddy_caddyfile: caddy/Caddyfile
 caddy_image_tag: caddy-l4:local
 xui_image: "ghcr.io/mhsanaei/3x-ui:latest"
+xray_reality_listen_port: "{{ vault_xray_reality_listen_port }}"
 
 # Actual VPS currently has host-level Caddy already bound on :80/:443 for an
 # existing site. Real hostnames, upstream ports and certificate paths are kept

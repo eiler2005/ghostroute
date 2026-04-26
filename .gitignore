@@ -21,6 +21,10 @@ id_ecdsa
 
 # VPN domain journal (local-only, не для репозитория)
 docs/vpn-domain-journal.md
+docs/router-health-latest.md
+docs/private/
+configs/private/
+reports/
 
 # Локальные secrets / overrides с персональными IP, ключами и bypass-правилами
 /secrets/
