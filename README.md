@@ -68,8 +68,8 @@ core, not just a set of firewall scripts:
   retransmits, TCP tuning, MSS clamp, keepalive behavior and LTE/Home Reality
   performance symptoms, so speed issues can be diagnosed separately from
   routing correctness.
-- **SNI Rotation Guide for Reality** — operational guidance for validating,
-  rotating and documenting Reality cover SNI choices, including compatibility,
+- **SNI Rotation Guide for Reality** - operational guidance for validating,
+  rotating and documenting Reality cover SNI choices, including client behavior,
   regional reachability and rollback considerations.
 - **Client Profile Factory** — local generation and cleanup of QR/VLESS
   profiles from Ansible Vault, including separate router, home-mobile and
@@ -85,7 +85,7 @@ Together these modules make the repo auditable: routing, health, traffic,
 performance and recovery procedures are documented as separate operational
 surfaces with clear read-only diagnostics and explicit manual recovery steps.
 See the full module map in
-[docs/operational-modules.md](docs/operational-modules.md).
+[docs/operational-modules.md](/docs/operational-modules.md).
 
 ---
 
@@ -186,7 +186,7 @@ websites/checkers see the VPS exit IP. Non-managed websites see the home
 Russian WAN IP.
 
 Detailed workflow, ports, components and observer model:
-[docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md).
+[modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ### 3. Cold Fallback
 
@@ -227,6 +227,7 @@ configs/
   static-networks.txt             # shared CIDR catalog
 
 ansible/
+  README.md                       # Ansible control plane overview
   playbooks/10-stealth-vps.yml
   playbooks/20-stealth-router.yml
   playbooks/30-generate-client-profiles.yml
@@ -250,17 +251,14 @@ scripts/
 
 docs/
   architecture.md
-  network-flow-and-observer-model.md
-  channel-routing-operations.md
-  stealth-channel-implementation-guide.md
-  domain-management.md
-  secrets-management.md
-  client-profiles.md
+  operational-modules.md
+  getting-started.md
   troubleshooting.md
+  future-improvements-backlog.md
 ```
 
 The detailed physical module map lives in
-[docs/operational-modules.md](docs/operational-modules.md). The global README
+[docs/operational-modules.md](/docs/operational-modules.md). The global README
 keeps the high-level workflow; module folders contain local implementation
 overviews.
 
@@ -302,7 +300,7 @@ Traffic and observability:
 The traffic report answers how much went through the VPS, how much
 stayed on the home Russian WAN, which devices and Home Reality ingress clients
 were active, and whether likely routing mistakes appeared. See
-[docs/traffic-observability.md](docs/traffic-observability.md).
+[modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
 
 Health monitor:
 
@@ -367,27 +365,28 @@ The `router.conf` profile still targets the VPS directly because it is the route
 
 Never commit or paste real VLESS URIs, UUIDs, Reality keys, short IDs, admin paths or QR payloads into documentation. Use fake placeholders only.
 
-See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-management.md](docs/secrets-management.md).
+See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) and [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md).
 
 ---
 
 ## Detailed Documentation
 
 - [README-ru.md](README-ru.md) - main Russian documentation
-- [docs/operational-modules.md](docs/operational-modules.md) - canonical module map and operating surfaces
-- [docs/architecture.md](docs/architecture.md) - current routing architecture
-- [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
-- [docs/traffic-observability.md](docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
-- [docs/stealth-monitoring-implementation-guide.md](docs/stealth-monitoring-implementation-guide.md) - GhostRoute health monitor implementation
-- [docs/stealth-monitor-runbook.md](docs/stealth-monitor-runbook.md) - health monitor alerts and recovery runbook
-- [docs/routing-performance-troubleshooting.md](docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
-- [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations and channel switching
-- [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
-- [docs/domain-management.md](docs/domain-management.md) - domain and static-network catalog management
-- [docs/stealth-domains-curation-audit.md](docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
-- [docs/secrets-management.md](docs/secrets-management.md) - vault, local secrets and pre-push scan
-- [docs/client-profiles.md](docs/client-profiles.md) - VLESS/Reality QR workflow
-- [docs/troubleshooting.md](docs/troubleshooting.md) - incident diagnostics
+- [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
+- [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
+- [docs/architecture.md](/docs/architecture.md) - current routing architecture
+- [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
+- [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
+- [modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md](/modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md) - GhostRoute health monitor implementation
+- [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](/modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md) - health monitor alerts and recovery runbook
+- [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
+- [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md) - day-2 operations and channel switching
+- [modules/routing-core/docs/stealth-channel-implementation-guide.md](/modules/routing-core/docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
+- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md) - domain and static-network catalog management
+- [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
+- [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md) - vault, local secrets and pre-push scan
+- [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
+- [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics
 
 ---
 

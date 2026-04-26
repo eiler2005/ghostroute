@@ -94,7 +94,7 @@ fully stop and restart the VPN. The app may still show a VPN warning because iOS
 has an active VPN/TUN interface, but the login can work once the preflight
 checks go LTE-direct.
 
-Full flow map: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+Full flow map: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 These profiles are for egress, not LAN management. They do not grant general
 home LAN access unless a route is explicitly added later.

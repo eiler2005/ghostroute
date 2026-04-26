@@ -63,4 +63,4 @@ Secrets must never be moved into tracked docs or module READMEs.
 
 ## Related Docs
 
-- `docs/secrets-management.md`
+- `modules/secrets-management/docs/secrets-management.md`

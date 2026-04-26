@@ -48,7 +48,7 @@ SSH port: 22
 ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@192.168.50.1
 ```
 
-`deploy.sh` уже использует compatibility options для Merlin/dropbear.
+`deploy.sh` уже использует параметры, подходящие для Merlin/dropbear.
 
 ---
 
@@ -124,7 +124,7 @@ ROUTER=192.168.50.1 ./deploy.sh
 
 - `dnsmasq.conf.add`
 - `dnsmasq-stealth.conf.add`
-- retired `dnsmasq-vpn-upstream.conf.add` compatibility block
+- retired `dnsmasq-vpn-upstream.conf.add` fallback block
 - `static-networks.txt`
 - `firewall-start`
 - `nat-start`
@@ -235,6 +235,6 @@ ip route get <resolved-ip> mark 0x1000
 ## 10. What To Read Next
 
 - [architecture.md](architecture.md)
-- [channel-routing-operations.md](channel-routing-operations.md)
-- [domain-management.md](domain-management.md)
+- [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md)
+- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md)
 - [troubleshooting.md](troubleshooting.md)

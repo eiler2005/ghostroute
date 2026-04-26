@@ -69,7 +69,7 @@ remain manual and explicit.
 
 ## Related Docs
 
-- `docs/domain-management.md`
-- `docs/x3mrouting-roadmap.md`
-- `docs/stealth-domains-curation-audit.md`
-- `docs/ai-tooling-domains.md`
+- `modules/dns-catalog-intelligence/docs/domain-management.md`
+- `modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md`
+- `modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md`
+- `modules/dns-catalog-intelligence/docs/ai-tooling-domains.md`

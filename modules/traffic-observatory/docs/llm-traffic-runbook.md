@@ -15,7 +15,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - "сохрани health snapshot и обнови журнал", "health report save" -> ./modules/ghostroute-health-monitor/bin/router-health-report --save
    - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report
    - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report --save
-   - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, docs/domain-management.md, docs/current-routing-explained.md, docs/traffic-observability.md and answer with a review/plan by default
+   - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, modules/dns-catalog-intelligence/docs/domain-management.md, modules/routing-core/docs/current-routing-explained.md, modules/traffic-observatory/docs/traffic-observability.md and answer with a review/plan by default
    - "сегодня", "текущий день", "today", "current day" -> ./modules/traffic-observatory/bin/traffic-report today
    - "вчера", "yesterday" -> ./modules/traffic-observatory/bin/traffic-report yesterday
    - specific date like 2026-04-14 -> ./modules/traffic-observatory/bin/traffic-report 2026-04-14
@@ -143,9 +143,9 @@ When the user asks for a router traffic report or router health/capacity report 
 
 1. Сначала читать:
    - `docs/future-improvements-backlog.md`
-   - `docs/domain-management.md`
-   - `docs/current-routing-explained.md`
-   - `docs/traffic-observability.md`
+   - `modules/dns-catalog-intelligence/docs/domain-management.md`
+   - `modules/routing-core/docs/current-routing-explained.md`
+   - `modules/traffic-observatory/docs/traffic-observability.md`
 2. Затем проверить, что уже реализовано, а что всё ещё остаётся future:
    - сначала по самим документам и backlog
    - при необходимости дополнительно через `./verify.sh`, `./modules/ghostroute-health-monitor/bin/router-health-report`, `./modules/dns-catalog-intelligence/bin/catalog-review-report`

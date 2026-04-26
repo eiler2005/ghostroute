@@ -60,7 +60,7 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
    - legacy `VPN_DOMAINS` и `server=...@wgc1` entries are no longer written
 9. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
 
-Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
+Полная схема алгоритма: [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md#алгоритм----как-домен-попадает-в-vpn).
 
 Автоматически добавленные домены хранятся **отдельно** от ручных:
 
@@ -248,6 +248,6 @@ x3mRouting умеет строить полный routing pipeline (ipset → ip
 ## Связанные документы
 
 - [architecture.md](architecture.md) — как устроена маршрутизация и где место auto-discovery
-- [domain-management.md](domain-management.md) — как добавлять домены вручную и работать с авто-добавленными
-- [current-routing-explained.md](current-routing-explained.md) — полный список роутимых доменов
+- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md) — как добавлять домены вручную и работать с авто-добавленными
+- [modules/routing-core/docs/current-routing-explained.md](/modules/routing-core/docs/current-routing-explained.md) — полный список роутимых доменов
 - [remote-access-overlay-migration.md](remote-access-overlay-migration.md) — planning-only future direction по замене публичного `wgs1` на overlay / zero-trust remote access слой

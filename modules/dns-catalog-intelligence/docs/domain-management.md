@@ -9,7 +9,7 @@
 | `configs/dnsmasq-stealth.conf.add` | `STEALTH_DOMAINS` | домашняя LAN/Wi-Fi и mobile Home Reality split | managed -> Reality; non-managed -> direct |
 
 Advisory-only идеи по сужению каталога лежат в
-[stealth-domains-curation-audit.md](stealth-domains-curation-audit.md). Этот
+[modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md). Этот
 документ ничего не удаляет из runtime catalog; он фиксирует evidence и будущие
 предложения.
 
@@ -22,7 +22,7 @@ sing-box использует rule-set, собранный из `STEALTH_DOMAINS
 `VPN_STATIC_NETS`: managed-направления уходят в Reality outbound до VPS,
 non-managed-направления уходят через `direct-out` и домашний WAN.
 
-Полная схема: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+Полная схема: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ## Добавить домен вручную
 

@@ -21,7 +21,7 @@ Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
 steady state; `wgc1_*` NVRAM is preserved only for cold fallback. New mobile
 clients should use the QR profile that points at the home public IP.
 
-Full flow map: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+Full flow map: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ---
 

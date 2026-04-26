@@ -2,7 +2,7 @@
 
 > **SUPERSEDED** — Channel A was decommissioned on 2026-04-25. Normal remote
 > mobile egress now uses Home Reality as described in
-> [network-flow-and-observer-model.md](network-flow-and-observer-model.md). This
+> [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md). This
 > document is retained only as historical planning context for a future remote
 > LAN access project.
 
@@ -61,7 +61,7 @@
 См.:
 
 - [architecture.md](architecture.md)
-- [current-routing-explained.md](current-routing-explained.md)
+- [modules/routing-core/docs/current-routing-explained.md](/modules/routing-core/docs/current-routing-explained.md)
 
 ### Важное ограничение текущего дизайна
 

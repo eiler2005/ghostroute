@@ -65,6 +65,6 @@ explicit Ansible workflow.
 
 ## Related Docs
 
-- `docs/client-profiles.md`
+- `modules/client-profile-factory/docs/client-profiles.md`
 - `docs/getting-started.md`
-- `docs/secrets-management.md`
+- `modules/secrets-management/docs/secrets-management.md`

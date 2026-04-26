@@ -64,6 +64,6 @@ recovery procedure.
 
 ## Related Docs
 
-- `docs/routing-performance-troubleshooting.md`
-- `docs/traffic-observability.md`
-- `docs/stealth-monitor-runbook.md`
+- `modules/performance-diagnostics/docs/routing-performance-troubleshooting.md`
+- `modules/traffic-observatory/docs/traffic-observability.md`
+- `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`

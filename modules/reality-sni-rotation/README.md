@@ -61,6 +61,6 @@ operator approval, Vault edits, deploy and rollback readiness.
 
 ## Related Docs
 
-- `docs/sni-rotation-candidates.md`
-- `docs/secrets-management.md`
-- `docs/stealth-channel-implementation-guide.md`
+- `modules/reality-sni-rotation/docs/sni-rotation-candidates.md`
+- `modules/secrets-management/docs/secrets-management.md`
+- `modules/routing-core/docs/stealth-channel-implementation-guide.md`

@@ -103,7 +103,7 @@ youtube-nocookie.com    — embedded/privacy-enhanced player variant
 
 ## Telegram
 
-Telegram is a special case — see [telegram-deep-dive.md](telegram-deep-dive.md) for full details.
+Telegram is a special case — see [modules/dns-catalog-intelligence/docs/telegram-deep-dive.md](/modules/dns-catalog-intelligence/docs/telegram-deep-dive.md) for full details.
 
 **Domain routing:**
 ```
