@@ -412,14 +412,17 @@ LAN/Wi-Fi devices:
 
 ```text
 === 4. LAN/WI-FI DEVICES ===
-Device                     VPS       RU direct   VPS share
-iPad                       1.80 GiB     10.9 MiB    99.4%
-MacBook Air/private MAC    601.5 MiB    31.6 MiB    95.0%
-Windows laptop             64.6 MiB     10.5 MiB    86.0%
+Device                         VPS       RU direct   VPS share
+lan-host-02 (iPad)             1.80 GiB     10.9 MiB    99.4%
+lan-host-10 (MacBook)          601.5 MiB    31.6 MiB    95.0%
+lan-host-06 (Windows laptop)   64.6 MiB     10.5 MiB    86.0%
 ```
 
 Interpretation:
 
+- Redacted reports keep stable `lan-host-XX` names and may append a device type
+  from `secrets/device-metadata.local.tsv`, for example `(iPhone)` or
+  `(Windows laptop)`.
 - `VPS` means this device matched `STEALTH_DOMAINS`/`VPN_STATIC_NETS` and was
   redirected into sing-box `:<lan-redirect-port>`.
 - `RU direct` means traffic from that device left through normal home WAN.
@@ -437,6 +440,9 @@ Ingress RU direct est.:  972.5 MiB (sites see home Russian IP)
 Client/profile       Conn    VPS    Direct   VPS est.    RU est.
 iphone-2             3177    3055   122      2.67 GiB    109.1 MiB
 iphone-4             1575    1138   437      1018.1 MiB  391.0 MiB
+
+Ingress source          Total       Upload     Download     VPS est.     RU est.  VPS share
+mobile-client-05        1.73 GiB    31.7 MiB   1.70 GiB     1.40 GiB     363 MiB     81.2%
 ```
 
 Interpretation:
@@ -446,7 +452,9 @@ Interpretation:
   split.
 - `Ingress source` rows may show profile names or remote source labels. If a
   carrier NAT hides many sessions behind the same remote IP, the report may
-  group them.
+  group them. Their `VPS est.`/`RU est.` split uses the exact profile split when
+  the source maps to a known profile; otherwise it uses the overall ingress
+  split as a best-effort estimate.
 
 ---
 
