@@ -193,6 +193,12 @@ probe_mobile_routing_leaks() {
   should_run mobile_routing_leaks || return 0
   log="$(hm_singbox_log)"
   today="$(date +%Y-%m-%d)"
+  dnsmasq_file="${HEALTH_MONITOR_DNSMASQ_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
+  auto_file="${HEALTH_MONITOR_DNSMASQ_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+  tmp_prefix="/tmp/health-monitor-mobile-leaks.$$"
+  managed_domains="${tmp_prefix}.managed"
+  direct_hosts="${tmp_prefix}.direct"
+  leak_sample="${tmp_prefix}.sample"
   [ -r "$log" ] || {
     hm_emit mobile_routing_leaks UNKNOWN "Mobile route split cannot be assessed" \
       "sing-box log is not readable." \
@@ -201,13 +207,44 @@ probe_mobile_routing_leaks() {
     return 0
   }
 
-  managed_direct="$(grep " $today " "$log" 2>/dev/null | grep 'outbound/direct\[direct-out\]' | grep -Eic 'youtube|googlevideo|telegram|openai|anthropic|github|instagram|discord|twitter|x\.com' || true)"
+  extract_stealth_domains "$dnsmasq_file" "$auto_file" > "$managed_domains"
+  grep " $today " "$log" 2>/dev/null |
+    grep 'outbound/direct\[direct-out\]' |
+    sed -n 's/.*outbound connection to \([^:]*\):.*/\1/p' |
+    tr '[:upper:]' '[:lower:]' |
+    sort -u > "$direct_hosts"
+
+  awk '
+    NR == FNR {
+      if ($0 != "") managed[$0] = 1
+      next
+    }
+    {
+      host = $0
+      for (suffix in managed) {
+        if (host == suffix || length(host) > length(suffix) && substr(host, length(host) - length(suffix), 1) == "." && substr(host, length(host) - length(suffix) + 1) == suffix) {
+          count++
+          if (sample_count < 5) {
+            sample_count++
+            sample = sample (sample == "" ? "" : ",") host
+          }
+          next
+        }
+      }
+    }
+    END {
+      printf "%d\n%s\n", count + 0, sample
+    }
+  ' "$managed_domains" "$direct_hosts" > "$leak_sample"
+  managed_direct="$(sed -n '1p' "$leak_sample" 2>/dev/null)"
+  managed_direct_sample="$(sed -n '2p' "$leak_sample" 2>/dev/null)"
   direct_via_vps="$(grep " $today " "$log" 2>/dev/null | grep 'outbound/vless\[reality-out\]' | grep -Eic '\.ru|yandex|vk\.com|ok\.ru|ozon|wildberries|avito|sber|tbank|gosuslugi|mail\.ru' || true)"
+  rm -f "$managed_domains" "$direct_hosts" "$leak_sample"
 
   if [ "${managed_direct:-0}" -gt 0 ] || [ "${direct_via_vps:-0}" -gt 0 ]; then
     hm_emit mobile_routing_leaks WARN "Mobile managed/direct routing leak suspected" \
       "Heuristic log scan found destinations that may have used the wrong outbound." \
-      "managed_direct=$managed_direct direct_via_vps=$direct_via_vps" \
+      "managed_direct=$managed_direct direct_via_vps=$direct_via_vps sample=${managed_direct_sample:-none}" \
       "Review traffic-report today and rule-set sync before changing catalogs."
   else
     hm_emit mobile_routing_leaks OK "Mobile managed/direct routing leak suspected" \

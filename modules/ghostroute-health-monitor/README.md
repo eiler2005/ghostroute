@@ -2,32 +2,77 @@
 
 ## Purpose
 
-GhostRoute Health Monitor is a read-only reliability module for router + VPS
-health. It produces local sentinels, `status.json`, Markdown summaries, daily
+GhostRoute Health Monitor is the read-only reliability module for the router +
+VPS setup. It writes local sentinels, `status.json`, Markdown summaries, daily
 digests and disk-based alert ledgers without changing production routing state.
+
+## Features
+
+- Router probes for sing-box, Reality paths, DNS leaks, rule-set drift and stale
+  snapshots.
+- VPS observer probes for Caddy, Xray, 3x-ui, disk pressure and recent Reality
+  evidence.
+- Local-only alert ledgers and merged control-machine reports.
+- Rolling baseline learning for RTT and retransmit degradation.
+
+## How It Works
+
+Router and VPS probes emit JSONL evidence into their own runtime storage.
+Aggregators turn that evidence into `STATUS_OK` / `STATUS_FAIL`, `status.json`
+and `summary-latest.md`. The control-machine report reads both sides and can
+save a merged operational report back to router runtime storage.
 
 ## Architecture
 
-- `router/` contains BusyBox-compatible router monitor scripts installed to
-  `/jffs/scripts/health-monitor`.
-- `vps/` contains VPS-side observer probes installed to
-  `/opt/stealth/health-monitor`.
-- `bin/` contains control-machine reports that merge router and VPS status.
+- `router/` contains BusyBox-compatible router monitor scripts.
+- `vps/` contains VPS observer scripts.
+- `bin/` contains local report commands.
+- `tests/` contains fixture tests for router, VPS and merged report behavior.
 
-## Contract
+## Read-only / Mutating Contract
 
-Probe and report scripts are read-only. They may write their own health state,
-alerts and summaries, but they must not repair routing, restart services or
-change catalogs without an explicit operator action outside the monitor.
+Probes and reports are read-only relative to production routing. They may write
+their own health state, alerts and summaries. They must not restart services,
+edit catalogs, rotate secrets or repair routing without a separate explicit
+operator action.
 
-## Commands And Storage
+## Public Commands
 
-- Public wrappers: `scripts/router-health-report`,
-  `scripts/ghostroute-health-report`, `scripts/health-monitor/*`.
-- Router storage: `/opt/var/log/router_configuration/health-monitor`, fallback
-  `/jffs/addons/router_configuration/health-monitor`.
-- VPS storage: `/var/log/ghostroute/health-monitor`.
-- Related docs: `docs/stealth-monitoring-implementation-guide.md`,
-  `docs/stealth-monitor-runbook.md`, `docs/troubleshooting.md`.
-- Tests: `modules/ghostroute-health-monitor/tests/*`, also exposed through
-  `tests/test-health-monitor.sh` and `tests/test-vps-health-monitor.sh`.
+- `./modules/ghostroute-health-monitor/bin/router-health-report`
+- `./modules/ghostroute-health-monitor/bin/router-health-report --save`
+- `./modules/ghostroute-health-monitor/bin/ghostroute-health-report`
+- `./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save`
+- Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
+
+## Runtime Storage & Artifacts
+
+- Router primary: `/opt/var/log/router_configuration/health-monitor`
+- Router fallback: `/jffs/addons/router_configuration/health-monitor`
+- VPS: `/var/log/ghostroute/health-monitor`
+- Local generated reports: `reports/`
+
+## Dependencies On Other Modules
+
+- Routing Core supplies the runtime hooks and rule-set state.
+- Traffic Observatory supplies traffic context for router health reports.
+- DNS & Catalog Intelligence supplies catalog capacity and drift evidence.
+- Recovery & Verification is used for live confirmation.
+
+## Failure Modes
+
+- `STATUS_FAIL` or stale `summary-latest.md`.
+- Reality path unavailable on router or VPS.
+- DNS/plain port 53 leak, IPv6 drift or direct traffic leak.
+- Rule-set drift or catalog freshness problems.
+
+## Tests
+
+- `./modules/ghostroute-health-monitor/tests/test-health-monitor.sh`
+- `./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh`
+- `./tests/run-all.sh`
+
+## Related Docs
+
+- `docs/stealth-monitoring-implementation-guide.md`
+- `docs/stealth-monitor-runbook.md`
+- `docs/troubleshooting.md`

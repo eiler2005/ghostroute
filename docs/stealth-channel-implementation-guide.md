@@ -82,7 +82,7 @@ Remote iPhone/MacBook using the current QR profile
 
 Key invariant: active Channel A WireGuard is absent in the current production
 policy. `wgc1_*` NVRAM is preserved only for cold fallback via
-`scripts/emergency-enable-wgc1.sh`.
+`modules/recovery-verification/router/emergency-enable-wgc1.sh`.
 
 Preferred mobile-client invariant: use the QR profile that points at the home
 public IP, not the VPS IP. This keeps the LTE carrier-facing endpoint domestic.
@@ -124,12 +124,12 @@ configs/
   sing-box-client.json.template
   static-networks.txt
 
-scripts/
-  firewall-start
-  nat-start
-  domain-auto-add.sh
-  init-stealth-vault.sh
-  domain-migrate.sh.template
+modules/
+  routing-core/router/firewall-start
+  routing-core/router/nat-start
+  dns-catalog-intelligence/router/domain-auto-add.sh
+  secrets-management/bin/init-stealth-vault.sh
+  dns-catalog-intelligence/bin/domain-migrate.sh.template
 
 docs/
   architecture.md
@@ -263,7 +263,7 @@ ansible/out/clients-home/qr-index.html
 ansible-playbook playbooks/99-verify.yml
 cd ..
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 ---
@@ -288,7 +288,7 @@ br0 UDP/443 -> DROP -> TCP fallback
 mobile      -> rule-set match -> Reality
 ```
 
-### `scripts/domain-auto-add.sh`
+### `modules/dns-catalog-intelligence/router/domain-auto-add.sh`
 
 Auto-discovered domains are written only into `STEALTH_DOMAINS`:
 
@@ -397,7 +397,7 @@ ip rule show | grep 0x1000
 ip route show table wgc1
 ```
 
-Expected steady state: no matches. Use `scripts/emergency-enable-wgc1.sh
+Expected steady state: no matches. Use `modules/recovery-verification/router/emergency-enable-wgc1.sh
 --disable` if an emergency fallback test left runtime rules behind.
 
 ### DNS is suspicious

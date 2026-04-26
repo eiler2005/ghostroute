@@ -23,7 +23,7 @@ REPORT_OUT="$TMPDIR/catalog-review.md"
 CATALOG_REVIEW_DNSMASQ_FILE="${MODULE_DIR}/fixtures/catalog-review/dnsmasq-sample.conf.add" \
 CATALOG_REVIEW_STATIC_FILE="${MODULE_DIR}/fixtures/catalog-review/static-networks-sample.txt" \
 CATALOG_REVIEW_STATE_FILE="${MODULE_DIR}/fixtures/catalog-review/state-sample.env" \
-"${PROJECT_ROOT}/scripts/catalog-review-report" > "$REPORT_OUT"
+"${PROJECT_ROOT}/modules/dns-catalog-intelligence/bin/catalog-review-report" > "$REPORT_OUT"
 
 assert_contains "$REPORT_OUT" "# Catalog Review Latest"
 assert_contains "$REPORT_OUT" "Mode: advisory only"

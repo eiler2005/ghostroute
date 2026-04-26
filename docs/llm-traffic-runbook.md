@@ -11,17 +11,17 @@ When the user asks for a router traffic report or router health/capacity report 
 
 1. Map the request to the correct command:
    - "проверка роутера", "health", "router health", "состояние роутера", "дрейф", "freshness" -> ./verify.sh
-   - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./scripts/router-health-report
-   - "сохрани health snapshot и обнови журнал", "health report save" -> ./scripts/router-health-report --save
-   - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./scripts/catalog-review-report
-   - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./scripts/catalog-review-report --save
+   - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./modules/ghostroute-health-monitor/bin/router-health-report
+   - "сохрани health snapshot и обнови журнал", "health report save" -> ./modules/ghostroute-health-monitor/bin/router-health-report --save
+   - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report
+   - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report --save
    - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, docs/domain-management.md, docs/current-routing-explained.md, docs/traffic-observability.md and answer with a review/plan by default
-   - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report today
-   - "вчера", "yesterday" -> ./scripts/traffic-report yesterday
-   - specific date like 2026-04-14 -> ./scripts/traffic-report 2026-04-14
-   - "неделя", "за неделю", "week" -> ./scripts/traffic-report week
-   - "месяц", "за месяц", "month" -> ./scripts/traffic-report month
-   - "что было в 5 утра", "кто шумел ночью", "what happened around 5am", "dns forensics", "who queried what", "что скачивали" -> ./scripts/dns-forensics-report <hour-prefix> and correlate with ./scripts/traffic-report
+   - "сегодня", "текущий день", "today", "current day" -> ./modules/traffic-observatory/bin/traffic-report today
+   - "вчера", "yesterday" -> ./modules/traffic-observatory/bin/traffic-report yesterday
+   - specific date like 2026-04-14 -> ./modules/traffic-observatory/bin/traffic-report 2026-04-14
+   - "неделя", "за неделю", "week" -> ./modules/traffic-observatory/bin/traffic-report week
+   - "месяц", "за месяц", "month" -> ./modules/traffic-observatory/bin/traffic-report month
+   - "что было в 5 утра", "кто шумел ночью", "what happened around 5am", "dns forensics", "who queried what", "что скачивали" -> ./modules/dns-catalog-intelligence/bin/dns-forensics-report <hour-prefix> and correlate with ./modules/traffic-observatory/bin/traffic-report
 
 2. Default to redacted mode. Use REPORT_REDACT_NAMES=0 only for trusted local inspection when the user explicitly wants device-level identification.
 
@@ -34,7 +34,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - Drift
    - Result
 
-4. If the command is ./scripts/router-health-report or --save, answer from these sections first:
+4. If the command is ./modules/ghostroute-health-monitor/bin/router-health-report or --save, answer from these sections first:
    - Summary
    - Routing Health
    - Catalog Capacity
@@ -43,7 +43,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - Traffic Snapshot
    - Drift
 
-5. If the command is ./scripts/catalog-review-report or --save, answer from these sections first:
+5. If the command is ./modules/dns-catalog-intelligence/bin/catalog-review-report or --save, answer from these sections first:
    - Summary
    - Static Coverage Review
    - Domain Coverage Review
@@ -98,7 +98,7 @@ When the user asks for a router traffic report or router health/capacity report 
 11. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
     If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-12. If the report is from ./scripts/traffic-daily-report, answer from its period sections:
+12. If the report is from ./modules/traffic-observatory/bin/traffic-daily-report, answer from its period sections:
     - Interface sample window / LAN byte sample window / Mobile byte sample window
     - INTERFACE TOTALS
     - REALITY SUMMARY
@@ -148,7 +148,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - `docs/traffic-observability.md`
 2. Затем проверить, что уже реализовано, а что всё ещё остаётся future:
    - сначала по самим документам и backlog
-   - при необходимости дополнительно через `./verify.sh`, `./scripts/router-health-report`, `./scripts/catalog-review-report`
+   - при необходимости дополнительно через `./verify.sh`, `./modules/ghostroute-health-monitor/bin/router-health-report`, `./modules/dns-catalog-intelligence/bin/catalog-review-report`
 3. По умолчанию отдавать:
    - review
    - backlog-status
@@ -173,13 +173,13 @@ When the user asks for a router traffic report or router health/capacity report 
 ```bash
 ./verify.sh
 ./verify.sh --verbose
-./scripts/router-health-report
-./scripts/router-health-report --save
-./scripts/catalog-review-report
-./scripts/catalog-review-report --save
-./scripts/dns-forensics-report
-./scripts/dns-forensics-report 2026-04-21T05
-./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report --save
+./modules/dns-catalog-intelligence/bin/catalog-review-report
+./modules/dns-catalog-intelligence/bin/catalog-review-report --save
+./modules/dns-catalog-intelligence/bin/dns-forensics-report
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
 ```
 
 Минимальный рекомендуемый набор команд для типового workflow:
@@ -189,14 +189,14 @@ When the user asks for a router traffic report or router health/capacity report 
 ./verify.sh
 
 # Сохранить sanitised snapshot для человека, LLM и USB-backed storage
-./scripts/router-health-report --save
+./modules/ghostroute-health-monitor/bin/router-health-report --save
 
 # Сегодняшний трафик
-./scripts/traffic-report
+./modules/traffic-observatory/bin/traffic-report
 
 # Недельный / месячный трафик
-./scripts/traffic-daily-report week
-./scripts/traffic-daily-report month
+./modules/traffic-observatory/bin/traffic-daily-report week
+./modules/traffic-observatory/bin/traffic-daily-report month
 ```
 
 Когда использовать:
@@ -205,9 +205,9 @@ When the user asks for a router traffic report or router health/capacity report 
   когда нужен быстрый live health-summary по routing-инвариантам, freshness и drift
 - `./verify.sh --verbose`
   когда нужен подробный низкоуровневый dump для ручной диагностики
-- `./scripts/router-health-report`
+- `./modules/ghostroute-health-monitor/bin/router-health-report`
   когда нужен sanitised Markdown-отчёт, который можно сразу читать человеку или LLM
-- `./scripts/router-health-report --save`
+- `./modules/ghostroute-health-monitor/bin/router-health-report --save`
   когда нужно одновременно:
   - обновить local `reports/router-health-latest.md`
   - записать local snapshot в `docs/vpn-domain-journal.md`
@@ -228,7 +228,7 @@ USB-backed destination:
    - `Freshness`
    - `Drift`
    - `Result`
-2. Для `./scripts/router-health-report` и `--save`:
+2. Для `./modules/ghostroute-health-monitor/bin/router-health-report` и `--save`:
    - `Summary`
    - `Routing Health`
    - `Catalog Capacity`
@@ -236,7 +236,7 @@ USB-backed destination:
    - `Freshness`
    - `Traffic Snapshot`
    - `Drift`
-3. Для `./scripts/catalog-review-report` и `--save`:
+3. Для `./modules/dns-catalog-intelligence/bin/catalog-review-report` и `--save`:
    - `Summary`
    - `Static Coverage Review`
    - `Domain Coverage Review`
@@ -246,7 +246,7 @@ USB-backed destination:
 ### Текущий день
 
 ```bash
-./scripts/traffic-report
+./modules/traffic-observatory/bin/traffic-report
 ```
 
 Безопасный дефолт:
@@ -257,7 +257,7 @@ USB-backed destination:
 Никогда не снимайте редактирование без прямой необходимости. Если trusted local inspection всё же нужен:
 
 ```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report
 ```
 
 Использовать, когда нужен ответ:
@@ -271,9 +271,9 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 ### Почасовой forensic DNS-срез
 
 ```bash
-./scripts/dns-forensics-report
-./scripts/dns-forensics-report 2026-04-21T05
-./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+./modules/dns-catalog-intelligence/bin/dns-forensics-report
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
 ```
 
 Использовать, когда нужен ответ:
@@ -291,22 +291,22 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 ### Отчёт использования схемы
 
 ```bash
-./scripts/traffic-report today
-./scripts/traffic-report yesterday
-./scripts/traffic-report 2026-04-14
-./scripts/traffic-report week
-./scripts/traffic-report month
+./modules/traffic-observatory/bin/traffic-report today
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report 2026-04-14
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
 ```
 
 При необходимости trusted local inspection:
 
 ```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report today
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report yesterday
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report today
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report yesterday
 ```
 
 Trusted mode uses the shared local label map from
-`secrets/device-metadata.local.tsv`, parsed by `scripts/lib/device-labels.sh`.
+`secrets/device-metadata.local.tsv`, parsed by `modules/shared/lib/device-labels.sh`.
 Redacted reports keep stable `lan-host-XX` labels and may append safe device
 types such as `(iPhone)`, `(iPad)`, `(Windows laptop)`, or `(MacBook)`.
 Trusted mode can show the full friendly aliases. Keep trusted output local; do

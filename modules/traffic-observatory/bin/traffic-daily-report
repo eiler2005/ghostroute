@@ -325,12 +325,12 @@ puts
 
 puts '=== 5. SITES / DESTINATIONS ==='
 puts 'Period snapshot reports do not retain destination-level sing-box logs.'
-puts 'Use `./scripts/traffic-report today` for top destinations and routing checks.'
+puts 'Use `./modules/traffic-observatory/bin/traffic-report today` for top destinations and routing checks.'
 puts
 
 puts '=== 6. ROUTING MISTAKES / CHECKS ==='
 puts 'Destination-level mistake checks are available for current-day logs only.'
-puts 'Catalog-level review is covered by `./scripts/catalog-review-report` and `docs/stealth-domains-curation-audit.md`.'
+puts 'Catalog-level review is covered by `./modules/dns-catalog-intelligence/bin/catalog-review-report` and `docs/stealth-domains-curation-audit.md`.'
 puts
 
 puts '=== NOTES ==='

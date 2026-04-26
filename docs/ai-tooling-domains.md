@@ -157,8 +157,8 @@ Common patterns:
 
 ```bash
 ./verify.sh
-./scripts/traffic-report
-./scripts/router-health-report
+./modules/traffic-observatory/bin/traffic-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Что смотреть:
@@ -177,7 +177,7 @@ Common patterns:
 Если нужно сохранить понятный snapshot для следующего агента/LLM:
 
 ```bash
-./scripts/router-health-report --save
+./modules/ghostroute-health-monitor/bin/router-health-report --save
 ```
 
 Это обновит local `reports/router-health-latest.md` и одновременно сохранит sanitised copy на USB-backed storage роутера.

@@ -190,7 +190,7 @@ Detailed workflow, ports, components and observer model:
 
 ### 3. Cold Fallback
 
-WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `scripts/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
+WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `modules/recovery-verification/router/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
 
 ---
 
@@ -212,7 +212,7 @@ VPS:
   stealth stack under /opt/stealth
 
 Control:
-  deploy.sh for router base scripts/catalogs
+  deploy.sh for router base runtime files/catalogs
   Ansible for VPS, router stealth layer, verification and QR generation
   ansible-vault for real credentials and client parameters
 ```
@@ -246,14 +246,7 @@ modules/
   recovery-verification/
 
 scripts/
-  # stable compatibility wrappers around modules/* implementations
-  firewall-start
-  nat-start
-  domain-auto-add.sh
-  client-profiles
-  secret-scan
-  router-health-report
-  traffic-report
+  README.md                       # reserved for future cross-repo utilities
 
 docs/
   architecture.md
@@ -289,7 +282,7 @@ cd ..
 
 # Local health snapshot
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Traffic and observability:
@@ -297,13 +290,13 @@ Traffic and observability:
 ```bash
 # Main usage report: exits, devices, Home Reality ingress clients,
 # popular destinations and routing mistake checks.
-./scripts/traffic-report today
-./scripts/traffic-report yesterday
-./scripts/traffic-report week
-./scripts/traffic-report month
+./modules/traffic-observatory/bin/traffic-report today
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
 
 # Human/LLM-safe operational snapshot.
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 The traffic report answers how much went through the VPS, how much
@@ -323,8 +316,8 @@ ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/ale
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
 
 # Unified router+VPS report from the control machine.
-./scripts/ghostroute-health-report
-./scripts/ghostroute-health-report --save
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save
 ```
 
 The health monitor is read-only for production routing state. It writes local
@@ -364,8 +357,8 @@ Expected invariants:
 Client profiles are generated locally from Ansible Vault:
 
 ```bash
-./scripts/client-profiles generate
-./scripts/client-profiles open
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles open
 ```
 
 Generated files live under `ansible/out/clients/`, including `iphone-*.png`, `macbook.png`, matching `.conf` files and a local `qr-index.html` gallery.

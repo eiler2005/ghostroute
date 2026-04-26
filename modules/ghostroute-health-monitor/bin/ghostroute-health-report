@@ -9,7 +9,7 @@ SAVE_MODE=0
 if [ "${1:-}" = "--save" ]; then
   SAVE_MODE=1
 elif [ -n "${1:-}" ]; then
-  echo "Usage: ./scripts/ghostroute-health-report [--save]" >&2
+  echo "Usage: ./modules/ghostroute-health-monitor/bin/ghostroute-health-report [--save]" >&2
   exit 1
 fi
 
@@ -122,7 +122,7 @@ render_report() {
     printf '1. If overall is not `OK`, read Router Summary and VPS Summary below.\n'
     printf '2. Use local alert ledgers on the affected host for exact transitions.\n'
     printf '3. Do not restart services, edit routing, or deploy without operator OK.\n'
-    printf '4. After manual recovery, rerun `scripts/ghostroute-health-report --save`.\n'
+    printf '4. After manual recovery, rerun `./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save`.\n'
     printf '\n## Router Summary\n\n'
     sed -n '1,220p' "$ROUTER_SUMMARY"
     printf '\n## VPS Summary\n\n'

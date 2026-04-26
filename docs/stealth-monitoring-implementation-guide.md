@@ -169,12 +169,12 @@ Router не хранит VPS credentials. Единый статус собира
 
 ## Единый control-machine отчет
 
-`scripts/ghostroute-health-report` читает router monitor через существующий
+`modules/ghostroute-health-monitor/bin/ghostroute-health-report` читает router monitor через существующий
 router SSH helper и VPS observer через Ansible inventory/vault:
 
 ```bash
-./scripts/ghostroute-health-report
-./scripts/ghostroute-health-report --save
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save
 ```
 
 Без `--save` отчет печатается в stdout. С `--save` он сохраняется на диске
@@ -314,11 +314,12 @@ sh -n modules/ghostroute-health-monitor/router/lib.sh \
   modules/ghostroute-health-monitor/router/daily-digest \
   modules/ghostroute-health-monitor/router/run-once
 
-./tests/test-health-monitor.sh
-./tests/test-vps-health-monitor.sh
-./tests/test-router-health.sh
-./tests/test-catalog-review.sh
-./tests/test-dns-forensics.sh
+./modules/ghostroute-health-monitor/tests/test-health-monitor.sh
+./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh
+./modules/recovery-verification/tests/test-router-health.sh
+./modules/dns-catalog-intelligence/tests/test-catalog-review.sh
+./modules/dns-catalog-intelligence/tests/test-dns-forensics.sh
+./tests/run-all.sh
 ```
 
 Live smoke только после явного разрешения на deploy:

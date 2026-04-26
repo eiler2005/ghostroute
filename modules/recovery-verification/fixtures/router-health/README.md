@@ -1,6 +1,6 @@
 # Router Health Fixtures
 
-Этот каталог содержит фикстуры для `tests/test-router-health.sh`.
+Этот каталог содержит фикстуры для `modules/recovery-verification/tests/test-router-health.sh`.
 
 Их задача не “симулировать весь роутер”, а стабилизировать три текстовых контракта, на которых держится observability-слой.
 

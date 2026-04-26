@@ -9,8 +9,8 @@
 #       • Итоговая строка: добавлено / уже было / пропущено
 #   - Saves an hourly DNS forensics snapshot keyed by client IP
 #
-# View log on Mac:  ./scripts/domain-report --log
-# Reset auto-adds:  ./scripts/domain-report --reset
+# View log on Mac:  ./modules/dns-catalog-intelligence/bin/domain-report --log
+# Reset auto-adds:  ./modules/dns-catalog-intelligence/bin/domain-report --reset
 
 STATE_DIR_DEFAULT=/jffs/addons/router_configuration/dns-forensics
 [ -x /opt/bin/opkg ] && STATE_DIR_DEFAULT=/opt/var/log/router_configuration/dns-forensics

@@ -1,9 +1,9 @@
 # GhostRoute Modules
 
-This directory is the physical implementation map for GhostRoute's operational
-modules. Public command names stay stable through wrappers in `scripts/`, while
-deploy and Ansible copy the real router/VPS implementations from these module
-directories.
+This directory is the canonical implementation map for GhostRoute. Module-owned
+commands, router runtime scripts, VPS runtime scripts, tests and helper
+libraries live here; the top-level `scripts/` directory is reserved only for
+future cross-repo utilities that do not belong to a specific module.
 
 | Module | Implementation focus |
 |---|---|
@@ -18,6 +18,6 @@ directories.
 | `recovery-verification` | Verification, runbooks and manual fallback tools. |
 | `shared` | Internal helper libraries used by several modules. |
 
-The high-level navigation table lives in
-`docs/operational-modules.md`; module README files describe local contracts and
-implementation boundaries.
+The detailed navigation table lives in `docs/operational-modules.md`. Each
+module README is a Module Overview: what the module owns, how it works, which
+commands are public, which artifacts it writes, and which tests cover it.

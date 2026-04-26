@@ -117,36 +117,36 @@ For the full end-to-end workflow and observer table, see
 | Tool | Purpose |
 |---|---|
 | `./verify.sh` | compact live health summary |
-| `./scripts/router-health-report` | sanitised Markdown state for humans/LLMs |
-| `./scripts/router-health-report --save` | local report snapshot + local journal + router-side copy |
-| `./scripts/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
-| `./scripts/traffic-daily-report` | compatibility backend for saved day/week/month snapshot periods |
-| `./scripts/catalog-review-report` | advisory review of domains/static networks |
-| `./scripts/dns-forensics-report` | hourly DNS-interest snapshots |
+| `./modules/ghostroute-health-monitor/bin/router-health-report` | sanitised Markdown state for humans/LLMs |
+| `./modules/ghostroute-health-monitor/bin/router-health-report --save` | local report snapshot + local journal + router-side copy |
+| `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
+| `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
+| `./modules/dns-catalog-intelligence/bin/catalog-review-report` | advisory review of domains/static networks |
+| `./modules/dns-catalog-intelligence/bin/dns-forensics-report` | hourly DNS-interest snapshots |
 
 Use `traffic-report` as the main entrypoint:
 
 ```bash
-./scripts/traffic-report today
-./scripts/traffic-report yesterday
-./scripts/traffic-report week
-./scripts/traffic-report month
-./scripts/traffic-report 2026-04-25
+./modules/traffic-observatory/bin/traffic-report today
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
+./modules/traffic-observatory/bin/traffic-report 2026-04-25
 ```
 
 Use `router-health-report` when you need one compact state document for humans
 or LLM handoff:
 
 ```bash
-./scripts/router-health-report
-./scripts/router-health-report --save
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report --save
 ```
 
 Use `dns-forensics-report` when the question is “who queried what around this
 hour?”. DNS forensics show interest, not traffic volume:
 
 ```bash
-./scripts/dns-forensics-report 2026-04-26T13
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-26T13
 ```
 
 ---
@@ -169,11 +169,11 @@ Format:
 ```
 
 The shared parser lives in `modules/shared/lib/device-labels.sh` and is exposed
-through the stable `scripts/lib` wrapper. These reports consume the same map:
+through the module-native `modules/shared/lib` helper. These reports consume the same map:
 
-- `./scripts/traffic-report`
-- `./scripts/traffic-daily-report`
-- `./scripts/dns-forensics-report`
+- `./modules/traffic-observatory/bin/traffic-report`
+- `./modules/traffic-observatory/bin/traffic-daily-report`
+- `./modules/dns-catalog-intelligence/bin/dns-forensics-report`
 
 Default output stays redacted (`lan-host-01`, `mobile-source-01`). For trusted
 local inspection set `REPORT_REDACT_NAMES=0`; then LAN rows show aliases/types
@@ -348,7 +348,7 @@ Important interpretation:
 Command:
 
 ```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report today
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report today
 ```
 
 Typical summary:
@@ -549,9 +549,9 @@ Meaning:
 Closed periods use saved snapshots:
 
 ```bash
-./scripts/traffic-report yesterday
-./scripts/traffic-report week
-./scripts/traffic-report month
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
 ```
 
 Example:
@@ -586,19 +586,19 @@ Important:
 
 ```bash
 ./verify.sh
-./scripts/router-health-report
-./scripts/traffic-report today
-./scripts/traffic-report yesterday
-./scripts/traffic-report week
-./scripts/traffic-report month
-./scripts/catalog-review-report
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/traffic-observatory/bin/traffic-report today
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
+./modules/dns-catalog-intelligence/bin/catalog-review-report
 ```
 
 Save operational state:
 
 ```bash
-./scripts/router-health-report --save
-./scripts/catalog-review-report --save
+./modules/ghostroute-health-monitor/bin/router-health-report --save
+./modules/dns-catalog-intelligence/bin/catalog-review-report --save
 ```
 
 These commands do not mutate routing runtime except the `--save` variants writing documentation/report artifacts.
@@ -635,9 +635,9 @@ Do not paste:
 For trusted local inspection:
 
 ```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report
-REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
-REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report yesterday
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-daily-report today
+REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-daily-report yesterday
 ```
 
 Do not commit unredacted output.
