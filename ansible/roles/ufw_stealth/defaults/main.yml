@@ -1,0 +1,3 @@
+---
+ufw_stealth_public_port: "443"
+ufw_stealth_ssh_port: "22"

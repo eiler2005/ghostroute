@@ -147,8 +147,8 @@ verifiable in the current code**:
 - wgs1/wgc1 disabled, NVRAM preserved as cold fallback
 - VPN_DOMAINS ipset removed
 - TCP buffer sysctl applied
-- Connlimit on `:41953` (300)
-- Mobile reality ingress on `:41953`
+- Connlimit on `:<home-reality-port>` (300)
+- Mobile reality ingress on `:<home-reality-port>`
 
 This is real, hard-won security work and the refactor did not erase it.
 
@@ -457,8 +457,8 @@ the STEALTH ipset in `modules/routing-core/router/firewall-start` or in
 - wgs1/wgc1 disabled, NVRAM preserved ✓
 - VPN_DOMAINS removed ✓
 - TCP buffers / `tcp_slow_start_after_idle=0` ✓
-- Connlimit `:41953` 300 ✓
-- Mobile reality `:41953` ✓
+- Connlimit `:<home-reality-port>` 300 ✓
+- Mobile reality `:<home-reality-port>` ✓
 - `filter-AAAA` ✓
 
 ### 4.3 🟡 Channel A decommission guide possibly lost

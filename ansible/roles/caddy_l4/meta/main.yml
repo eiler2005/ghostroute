@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: caddy_l4
+  author: GhostRoute
+  description: Project role for the VPS Caddy layer4 Reality listener wrapper.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericLinux
+      versions: ["all"]
+dependencies: []

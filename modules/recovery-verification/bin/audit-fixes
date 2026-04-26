@@ -1,0 +1,206 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="${GHOSTROUTE_AUDIT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+
+fail_count=0
+warn_count=0
+
+pass() {
+  printf 'ok: %s\n' "$1"
+}
+
+fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+  fail_count=$((fail_count + 1))
+}
+
+warn() {
+  printf 'warn: %s\n' "$1" >&2
+  warn_count=$((warn_count + 1))
+}
+
+require_file() {
+  local rel="$1"
+  if [ -f "${PROJECT_ROOT}/${rel}" ]; then
+    pass "${rel} exists"
+  else
+    fail "${rel} is missing"
+  fi
+}
+
+require_executable() {
+  local rel="$1"
+  if [ -x "${PROJECT_ROOT}/${rel}" ]; then
+    pass "${rel} is executable"
+  else
+    fail "${rel} is missing or not executable"
+  fi
+}
+
+require_pattern() {
+  local rel="$1"
+  local pattern="$2"
+  local label="$3"
+  if [ ! -f "${PROJECT_ROOT}/${rel}" ]; then
+    fail "${label}: ${rel} is missing"
+    return
+  fi
+  if rg -q "$pattern" "${PROJECT_ROOT}/${rel}"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+require_fixed() {
+  local rel="$1"
+  local text="$2"
+  local label="$3"
+  if [ ! -f "${PROJECT_ROOT}/${rel}" ]; then
+    fail "${label}: ${rel} is missing"
+    return
+  fi
+  if rg -F -q -- "$text" "${PROJECT_ROOT}/${rel}"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+reject_pattern() {
+  local label="$1"
+  local pattern="$2"
+  shift 2
+  local output
+  if output="$(rg -n "$pattern" "$@" 2>/dev/null)"; then
+    output="$(printf '%s\n' "$output" | grep -v '/modules/recovery-verification/bin/audit-fixes:' || true)"
+    if [ -z "$output" ]; then
+      pass "$label"
+      return
+    fi
+    printf '%s\n' "$output" >&2
+    fail "$label"
+  else
+    pass "$label"
+  fi
+}
+
+check_udp_443_drop() {
+  require_fixed \
+    "ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2" \
+    '--match-set "$IPSET" dst -j DROP' \
+    "routing template installs UDP/443 DROP for STEALTH_DOMAINS"
+  require_fixed \
+    "ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2" \
+    '--match-set "$STATIC_IPSET" dst -j DROP' \
+    "routing template installs UDP/443 DROP for VPN_STATIC_NETS"
+  require_pattern \
+    "ansible/playbooks/99-verify.yml" \
+    'dport 443 .*match-set .*DROP' \
+    "Ansible verify checks UDP/443 DROP"
+  require_pattern \
+    "modules/recovery-verification/bin/verify.sh" \
+    'CHANNEL_B_DROP_QUIC_(STEALTH|STATIC)' \
+    "verify.sh checks UDP/443 DROP"
+  require_pattern \
+    "modules/shared/lib/router-health-common.sh" \
+    'CHANNEL_B_DROP_QUIC_(STEALTH|STATIC)' \
+    "health common checks UDP/443 DROP"
+}
+
+check_channel_a_drift() {
+  require_pattern \
+    "modules/recovery-verification/bin/verify.sh" \
+    'Channel A|WGS1|WGC1|RC_VPN_ROUTE|RULE_MARK_0X1000' \
+    "verify.sh checks Channel A drift"
+  require_pattern \
+    "modules/ghostroute-health-monitor/router/run-probes" \
+    'channel_a_resurrection' \
+    "health monitor checks Channel A resurrection"
+  require_file "docs/adr/0004-channel-a-cold-fallback.md"
+}
+
+check_module_native_contract() {
+  require_file "scripts/README.md"
+  if find "${PROJECT_ROOT}/scripts" -type f ! -name README.md | grep . >/tmp/ghostroute-audit-scripts.txt; then
+    cat /tmp/ghostroute-audit-scripts.txt >&2
+    fail "scripts/ contains module wrappers or non-common files"
+  else
+    pass "scripts/ has no module wrapper files"
+  fi
+
+  reject_pattern \
+    "docs/modules/tests contain stale ./scripts references" \
+    '[.]/scripts/' \
+    "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/README-ru.md" \
+    "${PROJECT_ROOT}/docs" "${PROJECT_ROOT}/modules" "${PROJECT_ROOT}/tests" \
+    --glob '!docs/vpn-domain-journal.md' \
+    --glob '!modules/recovery-verification/bin/audit-fixes'
+
+  local wrapper_pattern
+  wrapper_pattern='compatibility wrapper''s|stable wrapper''s|scripts/lib wrap''per|test-wrapper-comp''at'
+  reject_pattern \
+    "docs/modules/tests contain stale wrapper language" \
+    "$wrapper_pattern" \
+    "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/README-ru.md" \
+    "${PROJECT_ROOT}/docs" "${PROJECT_ROOT}/modules" "${PROJECT_ROOT}/tests" \
+    --glob '!docs/vpn-domain-journal.md'
+
+  require_executable "modules/traffic-observatory/bin/traffic-report"
+  require_executable "modules/ghostroute-health-monitor/bin/router-health-report"
+  require_executable "modules/ghostroute-health-monitor/bin/ghostroute-health-report"
+  require_executable "modules/dns-catalog-intelligence/bin/catalog-review-report"
+  require_executable "modules/dns-catalog-intelligence/bin/dns-forensics-report"
+  require_executable "modules/dns-catalog-intelligence/bin/domain-report"
+  require_executable "modules/client-profile-factory/bin/client-profiles"
+  require_executable "modules/secrets-management/bin/secret-scan"
+  require_executable "modules/recovery-verification/bin/verify.sh"
+}
+
+check_ansible_role_contracts() {
+  local role
+  for role in "${PROJECT_ROOT}"/ansible/roles/*; do
+    [ -d "$role" ] || continue
+    if [ -f "$role/defaults/main.yml" ]; then
+      pass "${role#${PROJECT_ROOT}/}/defaults/main.yml exists"
+    else
+      fail "${role#${PROJECT_ROOT}/}/defaults/main.yml missing"
+    fi
+    if [ -f "$role/meta/main.yml" ]; then
+      pass "${role#${PROJECT_ROOT}/}/meta/main.yml exists"
+    else
+      fail "${role#${PROJECT_ROOT}/}/meta/main.yml missing"
+    fi
+  done
+}
+
+check_secret_hygiene() {
+  if [ "${GHOSTROUTE_AUDIT_SKIP_SECRET_SCAN:-0}" = "1" ]; then
+    warn "secret-scan skipped by GHOSTROUTE_AUDIT_SKIP_SECRET_SCAN=1"
+    return
+  fi
+  if [ ! -x "${PROJECT_ROOT}/modules/secrets-management/bin/secret-scan" ]; then
+    fail "secret-scan command is missing"
+    return
+  fi
+  if "${PROJECT_ROOT}/modules/secrets-management/bin/secret-scan"; then
+    pass "secret-scan passed"
+  else
+    fail "secret-scan failed"
+  fi
+}
+
+check_udp_443_drop
+check_channel_a_drift
+check_module_native_contract
+check_ansible_role_contracts
+check_secret_hygiene
+
+if [ "$fail_count" -gt 0 ]; then
+  printf 'audit-fixes: failed (%s failure(s), %s warning(s))\n' "$fail_count" "$warn_count" >&2
+  exit 1
+fi
+
+printf 'audit-fixes: ok (%s warning(s))\n' "$warn_count"

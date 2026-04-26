@@ -374,6 +374,8 @@ See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-pro
 - [README-ru.md](README-ru.md) - main Russian documentation
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
+- [docs/architecture-improvement-roadmap-2026-04-26.md](/docs/architecture-improvement-roadmap-2026-04-26.md) - prioritized architecture/security improvement roadmap
+- [docs/adr/](/docs/adr/) - concise architecture decision records
 - [docs/architecture.md](/docs/architecture.md) - current routing architecture
 - [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
