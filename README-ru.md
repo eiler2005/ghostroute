@@ -223,6 +223,10 @@ ssh admin@192.168.50.1 '/jffs/scripts/health-monitor/run-once'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
+
+# Единый router+VPS отчет с control machine.
+./scripts/ghostroute-health-report
+./scripts/ghostroute-health-report --save
 ```
 
 Модуль read-only относительно production routing state. Он пишет только
@@ -231,6 +235,10 @@ ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/sta
 `/jffs/addons/router_configuration/health-monitor`.
 Плановый сбор идет раз в час; для свежего среза вручную используется
 `/jffs/scripts/health-monitor/run-once`.
+VPS observer хранит свой local-only статус на VPS в
+`/var/log/ghostroute/health-monitor`. Единый `ghostroute-health-report --save`
+сохраняет latest/history на роутере в `health-monitor/global/` и чистит history
+старше 31 дня.
 
 Как читать алерт на диске роутера:
 
