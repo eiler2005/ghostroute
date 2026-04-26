@@ -1,6 +1,7 @@
 #!/bin/sh
 
 HEALTH_MONITOR_VERSION=1
+HEALTH_MONITOR_TITLE="${HEALTH_MONITOR_TITLE:-Модуль мониторинга работоспособности GhostRoute}"
 HEALTH_MONITOR_DIR="${HEALTH_MONITOR_DIR:-/jffs/scripts/health-monitor}"
 
 health_monitor_default_log_dir() {
@@ -16,9 +17,10 @@ RAW_DIR="$LOG_DIR/raw"
 ALERT_DIR="$LOG_DIR/alerts"
 DAILY_DIR="$LOG_DIR/daily"
 STATE_DIR="$LOG_DIR/state"
+BASELINE_DIR="$STATE_DIR/baselines"
 
 hm_init_dirs() {
-  mkdir -p "$RAW_DIR" "$ALERT_DIR" "$DAILY_DIR" "$STATE_DIR"
+  mkdir -p "$RAW_DIR" "$ALERT_DIR" "$DAILY_DIR" "$STATE_DIR" "$BASELINE_DIR"
 }
 
 hm_today() {
@@ -51,6 +53,71 @@ hm_alert_md_file() {
 
 hm_daily_file() {
   printf '%s/daily/%s.md\n' "$LOG_DIR" "$(hm_today)"
+}
+
+hm_baseline_file() {
+  metric="$1"
+  printf '%s/%s.tsv\n' "$BASELINE_DIR" "$metric"
+}
+
+hm_baseline_observe() {
+  metric="$1"
+  value="$2"
+  now="${3:-$(hm_now_epoch)}"
+  file="$(hm_baseline_file "$metric")"
+  tmp="$file.tmp.$$"
+  cutoff=$((now - 604800))
+
+  hm_init_dirs
+  if [ -r "$file" ]; then
+    awk -v cutoff="$cutoff" 'NF >= 2 && ($1 + 0) >= cutoff { print $1 "\t" $2 }' "$file" > "$tmp"
+  else
+    : > "$tmp"
+  fi
+  printf '%s\t%s\n' "$now" "$value" >> "$tmp"
+  mv "$tmp" "$file"
+}
+
+hm_baseline_stats() {
+  metric="$1"
+  file="$(hm_baseline_file "$metric")"
+  values="$file.values.$$"
+
+  if [ ! -s "$file" ]; then
+    printf '0 0\n'
+    return 0
+  fi
+
+  awk 'NF >= 2 { print $2 }' "$file" | sort -n > "$values"
+  count="$(wc -l < "$values" | tr -d ' ')"
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  if [ "$count" -le 0 ]; then
+    rm -f "$values"
+    printf '0 0\n'
+    return 0
+  fi
+
+  idx="$(awk -v count="$count" 'BEGIN { i = int(count * 0.95); if (i < count * 0.95) i++; if (i < 1) i = 1; print i }')"
+  p95="$(awk -v idx="$idx" 'NR == idx { print $1; found = 1; exit } END { if (!found) print 0 }' "$values")"
+  rm -f "$values"
+  printf '%s %s\n' "$count" "$p95"
+}
+
+hm_thresholds_from_p95() {
+  p95="$1"
+  min_warn="$2"
+  min_crit="$3"
+  warn_mult="$4"
+  crit_mult="$5"
+  awk -v p95="$p95" -v min_warn="$min_warn" -v min_crit="$min_crit" \
+    -v warn_mult="$warn_mult" -v crit_mult="$crit_mult" '
+    BEGIN {
+      warn = p95 * warn_mult
+      crit = p95 * crit_mult
+      if (warn < min_warn) warn = min_warn
+      if (crit < min_crit) crit = min_crit
+      printf "%.2f %.2f\n", warn, crit
+    }'
 }
 
 hm_emit() {

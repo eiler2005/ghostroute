@@ -287,6 +287,108 @@ ls -lt /opt/var/log/router_configuration/daily/ | head
 
 If cron is stopped, restarting cron is a runtime action and needs OK.
 
+## Сценарии по симптомам
+
+### 1. Появился `STATUS_FAIL`
+
+- Symptom: sentinel показывает `STATUS_FAIL`, пользовательских жалоб может не быть.
+- First files: `summary-latest.md`, затем `alerts/$(date +%F).md`.
+- Likely probes: любой non-OK в секции `Non-OK Checks`.
+- Read-only diagnostics: `cat status.json`, `grep -A80 'Non-OK Checks' summary-latest.md`.
+- Forbidden: удалять sentinel/alerts или перезапускать сервисы ради "очистки" статуса.
+- Recovery with OK: выполнять только action из соответствующего probe runbook.
+- Confirmation: `/jffs/scripts/health-monitor/run-once`, затем `ls STATUS_*`.
+
+### 2. На iPhone сайты медленные
+
+- Symptom: remote/mobile профиль работает, но страницы открываются медленно.
+- First files: `summary-latest.md`, `traffic-report today`, VPS summary если доступен.
+- Likely probes: `performance_rtt`, `tcp_retransmits`, `mobile_routing_leaks`, VPS `vps_disk_space`.
+- Read-only diagnostics: `tail -1000 /opt/var/log/sing-box.log | grep -E 'reality-in|reality-out'`.
+- Forbidden: менять SNI/keypair, catalog или routing без evidence.
+- Recovery with OK: перезапуск sing-box/Xray только если probe указывает на service failure.
+- Confirmation: `run-once`, затем проверить RTT evidence и пользовательский симптом.
+
+### 3. На iPhone показывает не тот IP
+
+- Symptom: checker показывает домашний IP для managed site или VPS IP для direct site.
+- First files: `summary-latest.md`, `alerts/<today>.md`, `traffic-report today`.
+- Likely probes: `mobile_routing_leaks`, `rule_set_sync`, будущий `mobile_self_check`.
+- Read-only diagnostics: проверить `reality-in -> reality-out/direct-out` в sing-box log.
+- Forbidden: добавлять домены вслепую только по одному screenshot.
+- Recovery with OK: sync rule-set или catalog update после подтверждения домена.
+- Confirmation: `rule_set_sync OK`, no `mobile_routing_leaks`, повторный checker.
+
+### 4. Конкретный сайт не открывается
+
+- Symptom: один сайт не работает, остальные направления нормальные.
+- First files: `summary-latest.md`, `traffic-report today`, DNS/catatalog docs.
+- Likely probes: `rule_set_sync`, `catalog_health`, `dns_ipv6_leaks`.
+- Read-only diagnostics: проверить DNS family, ipset hit, наличие домена в dnsmasq и rule-set.
+- Forbidden: перезапускать весь stack до проверки, что проблема не в одном домене.
+- Recovery with OK: добавить/исключить домен, regenerate rule-sets, затем targeted verify.
+- Confirmation: сайт открывается, `rule_set_sync OK`.
+
+### 5. Managed domain ушел direct
+
+- Symptom: managed-сайт видит home WAN вместо VPS.
+- First files: `alerts/<today>.md`, raw events по `mobile_routing_leaks` и `rule_set_sync`.
+- Likely probes: `rule_set_sync`, `mobile_routing_leaks`, `channel_b_reality`.
+- Read-only diagnostics: `grep domain /jffs/configs/dnsmasq.conf.add`, проверить `domain_suffix`.
+- Forbidden: менять VPS/Xray, если drift только в catalog/rule-set.
+- Recovery with OK: `/jffs/scripts/update-singbox-rule-sets.sh --restart-if-changed`.
+- Confirmation: new raw event по `rule_set_sync` со статусом `OK`.
+
+### 6. VPS / Reality down
+
+- Symptom: managed-трафик массово не работает или `channel_b_reality`/`vps_path` CRIT.
+- First files: router `summary-latest.md`, VPS `summary-latest.md`, merged report.
+- Likely probes: router `channel_b_reality`, `vps_path`; VPS `caddy_listener`, `xray_reality_listener`, `xray_container`.
+- Read-only diagnostics: `nc -z -w 5 <vps_host> 443`, `ss -tlnp`, `docker ps`.
+- Forbidden: включать emergency fallback без понимания, что VPS или home path сломан.
+- Recovery with OK: service recovery на конкретном сломанном слое.
+- Confirmation: router `STATUS_OK`, VPS `STATUS_OK`, merged report `Overall OK`.
+
+### 7. `rule_set_sync` CRIT
+
+- Symptom: dnsmasq STEALTH catalog и sing-box `domain_suffix` rule-set разошлись.
+- First files: raw events по `rule_set_sync`, `summary-latest.md`.
+- Likely probes: `rule_set_sync`, затем `mobile_routing_leaks`.
+- Read-only diagnostics: сравнить `/jffs/configs/dnsmasq.conf.add` и `/opt/etc/sing-box/rule-sets/stealth-domains.json`.
+- Forbidden: править JSON вручную на роутере.
+- Recovery with OK: regenerate rule-set штатным скриптом.
+- Confirmation: `run-probes --probe rule_set_sync`, затем `status OK`.
+
+### 8. DNS / IPv6 leak
+
+- Symptom: `dns_ipv6_leaks` WARN/CRIT или подозрение на обход DNS policy.
+- First files: `summary-latest.md`, raw evidence по `dns_ipv6_leaks`.
+- Likely probes: `dns_ipv6_leaks`, `channel_a_resurrection`.
+- Read-only diagnostics: `nvram get ipv6_service`, `ip -6 addr`, bounded tcpdump sample.
+- Forbidden: включать IPv6 или менять DNS upstream без отдельного решения.
+- Recovery with OK: вернуть Merlin IPv6 disabled, восстановить DNS guard/filter-AAAA.
+- Confirmation: `dns_ipv6_leaks OK`, `verify.sh` IPv6 Policy OK.
+
+### 9. Channel A resurrection
+
+- Symptom: старый WireGuard/Channel A появился в runtime.
+- First files: `summary-latest.md`, `verify.sh` output.
+- Likely probes: `channel_a_resurrection`.
+- Read-only diagnostics: `nvram get wgs1_enable`, `ip link show wgs1`, `ip rule show`.
+- Forbidden: использовать Channel A как обычный режим.
+- Recovery with OK: выполнить decommission cleanup или emergency flow по отдельному runbook.
+- Confirmation: `wgs1/wgc1` inactive, `VPN_DOMAINS` absent, `verify.sh OK`.
+
+### 10. Stale snapshots
+
+- Symptom: отчеты есть, но данные старые.
+- First files: `summary-latest.md`, `cru l`, traffic report timestamps.
+- Likely probes: `snapshot_freshness`.
+- Read-only diagnostics: `ls -l /opt/var/log/router_configuration/*counters*`, `cru l`.
+- Forbidden: удалять старые snapshots как способ "починки".
+- Recovery with OK: восстановить cron/service hook и запустить targeted snapshot.
+- Confirmation: `snapshot_freshness OK` после `run-once`.
+
 ## После восстановления
 
 Плановый цикл идет раз в час: `run-probes` в `00` минут, `aggregate` в `02`.
@@ -310,12 +412,12 @@ read-only one-shot.
 
 4. Не удаляй историю алертов. Она нужна для post-incident review.
 
-## Phase 2, не v1
+## Не входит в текущий active rollout
 
-Не входит в текущий модуль:
+Не входит в текущий active rollout:
 
 - external notifications через ntfy/Telegram/SMS;
-- public mobile self-check receiver на Caddy;
+- public mobile self-check receiver на Caddy, пока явно не задан hostname/token;
 - automatic remediation;
 - Prometheus/Grafana.
 

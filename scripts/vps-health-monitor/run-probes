@@ -1,0 +1,165 @@
+#!/bin/sh
+# Read-only VPS-side health probes for GhostRoute.
+
+set -u
+. "$(dirname "$0")/lib.sh"
+
+PROBE_FILTER=""
+if [ "${1:-}" = "--probe" ]; then
+  PROBE_FILTER="${2:-}"
+elif [ -n "${HEALTH_MONITOR_PROBE_FILTER:-}" ]; then
+  PROBE_FILTER="$HEALTH_MONITOR_PROBE_FILTER"
+fi
+
+should_run() {
+  [ -z "$PROBE_FILTER" ] || [ "$PROBE_FILTER" = "$1" ]
+}
+
+probe_caddy_listener() {
+  should_run caddy_listener || return 0
+  if hm_ss -tlnp '( sport = :443 )' 2>/dev/null | grep -q caddy; then
+    hm_emit caddy_listener OK "VPS Caddy :443 unavailable" \
+      "Caddy owns the public TLS listener." \
+      "port=443 process=caddy" \
+      "No action."
+  else
+    hm_emit caddy_listener CRIT "VPS Caddy :443 unavailable" \
+      "Caddy is not visible on TCP/443." \
+      "port=443" \
+      "Check system Caddy status before changing router routing."
+  fi
+}
+
+probe_caddy_layer4() {
+  should_run caddy_layer4 || return 0
+  caddy_bin="${VPS_HEALTH_CADDY_BIN:-/usr/bin/caddy}"
+  if [ ! -x "$caddy_bin" ]; then
+    hm_emit caddy_layer4 CRIT "Caddy layer4 module missing" \
+      "Configured Caddy binary is missing." \
+      "caddy_bin=$caddy_bin" \
+      "Inspect Caddy installation on the VPS."
+  elif "$caddy_bin" list-modules 2>/dev/null | grep -q '^layer4$'; then
+    hm_emit caddy_layer4 OK "Caddy layer4 module missing" \
+      "Caddy includes the layer4 module." \
+      "caddy_bin=$caddy_bin module=layer4" \
+      "No action."
+  else
+    hm_emit caddy_layer4 CRIT "Caddy layer4 module missing" \
+      "Caddy is installed but layer4 is not listed." \
+      "caddy_bin=$caddy_bin" \
+      "Rebuild/redeploy Caddy only with operator approval."
+  fi
+}
+
+probe_xray_reality_listener() {
+  should_run xray_reality_listener || return 0
+  if hm_ss -tlnp '( sport = :8443 )' 2>/dev/null | grep -q '127.0.0.1:8443'; then
+    hm_emit xray_reality_listener OK "Xray Reality listener unavailable" \
+      "Xray Reality inbound is listening on localhost." \
+      "listener=127.0.0.1:8443" \
+      "No action."
+  else
+    hm_emit xray_reality_listener CRIT "Xray Reality listener unavailable" \
+      "Xray Reality inbound is not listening on 127.0.0.1:8443." \
+      "listener=127.0.0.1:8443" \
+      "Check xray container and 3x-ui inbound state."
+  fi
+}
+
+probe_xray_container() {
+  should_run xray_container || return 0
+  if hm_docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^xray$'; then
+    hm_emit xray_container OK "xray container down" \
+      "xray container is running." \
+      "container=xray" \
+      "No action."
+  else
+    hm_emit xray_container CRIT "xray container down" \
+      "xray container is not listed as running." \
+      "container=xray" \
+      "Inspect docker compose state before restarting services."
+  fi
+}
+
+probe_xui_health() {
+  should_run xui_health || return 0
+  port="${VPS_HEALTH_XUI_PORT:-<xui-admin-port>}"
+  path="${VPS_HEALTH_XUI_PATH:-/}"
+  case "$path" in
+    "") path="/" ;;
+    /*) ;;
+    *) path="/$path" ;;
+  esac
+  if hm_curl -fsS --max-time 5 "http://127.0.0.1:$port$path/" >/dev/null 2>&1; then
+    hm_emit xui_health OK "3x-ui localhost health failed" \
+      "3x-ui responded on localhost." \
+      "url=http://127.0.0.1:$port$path/" \
+      "No action."
+  else
+    hm_emit xui_health WARN "3x-ui localhost health failed" \
+      "3x-ui did not respond to the localhost health request." \
+      "url=http://127.0.0.1:$port$path/" \
+      "Check 3x-ui only if Reality traffic is also degraded."
+  fi
+}
+
+probe_vps_disk_space() {
+  should_run vps_disk_space || return 0
+  target="$LOG_DIR"
+  [ -d "$target" ] || target="/var/log"
+  usage="$(df -P "$target" 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
+  case "$usage" in
+    ''|*[!0-9]*) hm_emit vps_disk_space UNKNOWN "VPS disk space cannot be assessed" \
+      "Could not parse df output." \
+      "target=$target" \
+      "Check disk usage manually."; return 0 ;;
+  esac
+  if [ "$usage" -ge 95 ]; then
+    hm_emit vps_disk_space CRIT "VPS disk almost full" \
+      "VPS filesystem usage is critical." \
+      "target=$target usage_pct=$usage" \
+      "Free disk space before restarting services."
+  elif [ "$usage" -ge 85 ]; then
+    hm_emit vps_disk_space WARN "VPS disk usage high" \
+      "VPS filesystem usage is elevated." \
+      "target=$target usage_pct=$usage" \
+      "Review logs and Docker disk usage."
+  else
+    hm_emit vps_disk_space OK "VPS disk space" \
+      "VPS filesystem usage is healthy." \
+      "target=$target usage_pct=$usage" \
+      "No action."
+  fi
+}
+
+probe_recent_reality_evidence() {
+  should_run recent_reality_evidence || return 0
+  if ! hm_docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^xray$'; then
+    hm_emit recent_reality_evidence UNKNOWN "Recent Reality evidence unavailable" \
+      "xray container is not running, so logs cannot be trusted." \
+      "container=xray" \
+      "Resolve xray_container first."
+    return 0
+  fi
+  count="$(hm_docker logs --since 24h xray 2>&1 | grep -Eic 'reality|stealth-reality|accepted|inbound' || true)"
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  if [ "$count" -gt 0 ]; then
+    hm_emit recent_reality_evidence OK "No recent Reality evidence" \
+      "Recent xray logs contain Reality/inbound evidence." \
+      "window=24h matches=$count" \
+      "No action."
+  else
+    hm_emit recent_reality_evidence WARN "No recent Reality evidence" \
+      "No recent Reality/inbound evidence was found in xray logs." \
+      "window=24h matches=0" \
+      "Correlate with router reality-out logs and user activity before changing services."
+  fi
+}
+
+probe_caddy_listener
+probe_caddy_layer4
+probe_xray_reality_listener
+probe_xray_container
+probe_xui_health
+probe_vps_disk_space
+probe_recent_reality_evidence

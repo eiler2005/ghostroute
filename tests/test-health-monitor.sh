@@ -113,4 +113,37 @@ touch -t 200001010000 "$old_raw" "$old_alert"
 [ ! -e "$old_raw" ] || { echo "Old raw file was not removed by retention" >&2; exit 1; }
 [ ! -e "$old_alert" ] || { echo "Old alert md file was not removed by retention" >&2; exit 1; }
 
+unset HEALTH_MONITOR_DNSMASQ_FILE HEALTH_MONITOR_DNSMASQ_AUTO_FILE HEALTH_MONITOR_RULESET_FILE
+export HEALTH_MONITOR_PROBE_FILTER=performance_rtt
+export SINGBOX_LOG_PATH="$TMPDIR/sing-box.log"
+rm -rf "$HEALTH_MONITOR_LOG_DIR/state/baselines"
+cat > "$SINGBOX_LOG_PATH" <<'EOF'
+INFO [abc 100ms] outbound/vless[reality-out]: test
+EOF
+"$PROJECT_ROOT/scripts/health-monitor/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"performance_rtt"' | grep -F '"status":"OK"' | grep -F 'baseline=learning' >/dev/null
+
+rm -rf "$HEALTH_MONITOR_LOG_DIR/state/baselines"
+(
+  . "$PROJECT_ROOT/scripts/health-monitor/lib.sh"
+  now="$(date +%s)"
+  i=0
+  while [ "$i" -lt 24 ]; do
+    hm_baseline_observe performance_rtt 100 $((now - 1000 + i))
+    i=$((i + 1))
+  done
+)
+cat > "$SINGBOX_LOG_PATH" <<'EOF'
+INFO [abc 500ms] outbound/vless[reality-out]: test
+EOF
+"$PROJECT_ROOT/scripts/health-monitor/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"performance_rtt"' | grep -F '"status":"WARN"' | grep -F 'baseline_p95_ms=100' >/dev/null
+
+rm -rf "$HEALTH_MONITOR_LOG_DIR/state/baselines"
+cat > "$SINGBOX_LOG_PATH" <<'EOF'
+INFO [abc 3101ms] outbound/vless[reality-out]: test
+EOF
+"$PROJECT_ROOT/scripts/health-monitor/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"performance_rtt"' | grep -F '"status":"CRIT"' | grep -F 'hard_crit_ms=3000' >/dev/null
+
 echo "health-monitor fixture tests passed"

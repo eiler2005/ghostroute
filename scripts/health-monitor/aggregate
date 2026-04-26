@@ -167,7 +167,7 @@ awk -F'\t' '{ print $1 "\t" $2 }' "$LATEST_TSV" > "$PREV_TSV.tmp"
 mv "$PREV_TSV.tmp" "$PREV_TSV"
 
 {
-  printf '# Модуль мониторинга работоспособности GhostRoute\n\n'
+  printf '# %s\n\n' "$HEALTH_MONITOR_TITLE"
   printf '%s\n' "- Generated: **$NOW_TS**"
   printf '%s\n' "- Overall: **$overall**"
   printf '%s\n' "- Storage: \`$LOG_DIR\`"

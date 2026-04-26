@@ -9,3 +9,6 @@
     - caddy_l4
     - xray_reality
     - ufw_stealth
+    - role: vps_health_monitor
+      tags:
+        - vps_health_monitor

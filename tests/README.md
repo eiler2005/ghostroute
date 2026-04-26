@@ -24,6 +24,7 @@ Legacy expectations such as `br0 -> RC_VPN_ROUTE`, `OUTPUT -> RC_VPN_ROUTE`, or 
 ./tests/test-catalog-review.sh
 ./tests/test-dns-forensics.sh
 ./tests/test-health-monitor.sh
+./tests/test-vps-health-monitor.sh
 ```
 
 These tests validate:
@@ -33,6 +34,7 @@ These tests validate:
 - catalog review output shape
 - DNS forensics snapshot/report formatting
 - health monitor JSONL/status aggregation, local alert ledger, summary rendering
+- VPS observer fixtures and merged GhostRoute health report rendering
 
 They do not connect to the router.
 
@@ -41,7 +43,8 @@ They do not connect to the router.
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
 bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
-sh -n scripts/firewall-start scripts/nat-start scripts/domain-auto-add.sh scripts/health-monitor/lib.sh scripts/health-monitor/run-probes scripts/health-monitor/aggregate scripts/health-monitor/daily-digest scripts/health-monitor/run-once tests/test-health-monitor.sh
+sh -n scripts/firewall-start scripts/nat-start scripts/domain-auto-add.sh scripts/health-monitor/lib.sh scripts/health-monitor/run-probes scripts/health-monitor/aggregate scripts/health-monitor/daily-digest scripts/health-monitor/run-once scripts/vps-health-monitor/lib.sh scripts/vps-health-monitor/run-probes tests/test-health-monitor.sh
+bash -n scripts/ghostroute-health-report tests/test-vps-health-monitor.sh
 ```
 
 ### Ansible syntax
@@ -49,6 +52,7 @@ sh -n scripts/firewall-start scripts/nat-start scripts/domain-auto-add.sh script
 ```bash
 cd ansible
 ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook --syntax-check playbooks/10-stealth-vps.yml
 ansible-playbook --syntax-check playbooks/99-verify.yml
 ```
 

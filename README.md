@@ -225,6 +225,10 @@ ssh admin@192.168.50.1 '/jffs/scripts/health-monitor/run-once'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
+
+# Unified router+VPS report from the control machine.
+./scripts/ghostroute-health-report
+./scripts/ghostroute-health-report --save
 ```
 
 The health monitor is read-only for production routing state. It writes local
@@ -233,6 +237,10 @@ internal alerts and reports to router storage only. Primary path:
 `/jffs/addons/router_configuration/health-monitor`.
 Scheduled collection runs hourly; use `/jffs/scripts/health-monitor/run-once`
 for an immediate fresh snapshot.
+The VPS observer keeps its own local-only status on the VPS under
+`/var/log/ghostroute/health-monitor`. `ghostroute-health-report --save` stores
+merged latest/history reports on the router under `health-monitor/global/` and
+keeps 31 days of history.
 
 How to read a router-side alert:
 

@@ -366,6 +366,50 @@ probe_catalog_health() {
   fi
 }
 
+emit_performance_rtt_sample() {
+  source="$1"
+  ms="$2"
+  evidence="$3"
+
+  hm_baseline_observe performance_rtt "$ms"
+  stats="$(hm_baseline_stats performance_rtt)"
+  baseline_count="$(printf '%s\n' "$stats" | awk '{ print $1 }')"
+  baseline_p95="$(printf '%s\n' "$stats" | awk '{ print $2 }')"
+  case "$baseline_count" in ''|*[!0-9]*) baseline_count=0 ;; esac
+
+  if awk -v ms="$ms" 'BEGIN { exit(ms > 3000 ? 0 : 1) }'; then
+    hm_emit performance_rtt CRIT "RTT/performance degradation" \
+      "Reality RTT sample exceeded the hard catastrophic threshold." \
+      "$evidence source=$source rtt_ms=$ms baseline_samples=$baseline_count baseline_p95_ms=$baseline_p95 hard_crit_ms=3000" \
+      "Check VPS load, home WAN, and provider path."
+  elif [ "$baseline_count" -lt 24 ]; then
+    hm_emit performance_rtt OK "RTT/performance degradation" \
+      "Reality RTT sample collected while the 7-day baseline is still learning." \
+      "$evidence source=$source rtt_ms=$ms baseline=learning baseline_samples=$baseline_count required_samples=24" \
+      "No action unless users report performance problems."
+  else
+    thresholds="$(hm_thresholds_from_p95 "$baseline_p95" 400 800 1.5 2.5)"
+    warn_ms="$(printf '%s\n' "$thresholds" | awk '{ print $1 }')"
+    crit_ms="$(printf '%s\n' "$thresholds" | awk '{ print $2 }')"
+    if awk -v ms="$ms" -v crit="$crit_ms" 'BEGIN { exit(ms >= crit ? 0 : 1) }'; then
+      hm_emit performance_rtt CRIT "RTT/performance degradation" \
+        "Reality RTT sample is critically above the learned baseline." \
+        "$evidence source=$source rtt_ms=$ms baseline_samples=$baseline_count baseline_p95_ms=$baseline_p95 warn_ms=$warn_ms crit_ms=$crit_ms" \
+        "Check VPS load, home WAN, and provider path."
+    elif awk -v ms="$ms" -v warn="$warn_ms" 'BEGIN { exit(ms >= warn ? 0 : 1) }'; then
+      hm_emit performance_rtt WARN "RTT/performance degradation" \
+        "Reality RTT sample is above the learned baseline." \
+        "$evidence source=$source rtt_ms=$ms baseline_samples=$baseline_count baseline_p95_ms=$baseline_p95 warn_ms=$warn_ms crit_ms=$crit_ms" \
+        "Correlate with user reports and traffic-report."
+    else
+      hm_emit performance_rtt OK "RTT/performance degradation" \
+        "Reality RTT sample is within the learned baseline." \
+        "$evidence source=$source rtt_ms=$ms baseline_samples=$baseline_count baseline_p95_ms=$baseline_p95 warn_ms=$warn_ms crit_ms=$crit_ms" \
+        "No action."
+    fi
+  fi
+}
+
 probe_performance_rtt() {
   should_run performance_rtt || return 0
   socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:1080}"
@@ -386,22 +430,7 @@ probe_performance_rtt() {
     log_p50="${log_sample%%|*}"
     log_count="${log_sample##*|}"
     if [ -n "$log_sample" ] && [ "$log_sample" != "$log_p50" ]; then
-      if [ "$log_p50" -gt 5000 ] 2>/dev/null; then
-        hm_emit performance_rtt CRIT "RTT/performance degradation" \
-          "Passive sing-box log latency is critically high." \
-          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
-          "Check VPS load, home WAN, and provider path."
-      elif [ "$log_p50" -gt 2000 ] 2>/dev/null; then
-        hm_emit performance_rtt WARN "RTT/performance degradation" \
-          "Passive sing-box log latency is elevated." \
-          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
-          "Correlate with user reports and traffic-report."
-      else
-        hm_emit performance_rtt OK "RTT/performance degradation" \
-          "Passive sing-box log latency is within the v1 threshold." \
-          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
-          "No action."
-      fi
+      emit_performance_rtt_sample "singbox_log" "$log_p50" "p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc"
       return 0
     fi
     if [ "${recent_reality:-0}" -gt 0 ]; then
@@ -418,21 +447,50 @@ probe_performance_rtt() {
     return 0
   fi
   ms="$(awk -v t="$timing" 'BEGIN { printf "%d", t * 1000 }')"
-  if [ "$ms" -gt 5000 ] 2>/dev/null; then
-    hm_emit performance_rtt CRIT "RTT/performance degradation" \
-      "Reality RTT sample is critically high." \
-      "time_total_ms=$ms" \
-      "Check VPS load, home WAN, and provider path."
-  elif [ "$ms" -gt 2000 ] 2>/dev/null; then
-    hm_emit performance_rtt WARN "RTT/performance degradation" \
-      "Reality RTT sample is elevated." \
-      "time_total_ms=$ms" \
-      "Compare with traffic-report and retry before changing config."
+  emit_performance_rtt_sample "active_curl" "$ms" "time_total_ms=$ms"
+}
+
+emit_tcp_retransmit_sample() {
+  ratio="$1"
+  delta_out="$2"
+  delta_retrans="$3"
+
+  hm_baseline_observe tcp_retransmits "$ratio"
+  stats="$(hm_baseline_stats tcp_retransmits)"
+  baseline_count="$(printf '%s\n' "$stats" | awk '{ print $1 }')"
+  baseline_p95="$(printf '%s\n' "$stats" | awk '{ print $2 }')"
+  case "$baseline_count" in ''|*[!0-9]*) baseline_count=0 ;; esac
+
+  if awk -v ratio="$ratio" 'BEGIN { exit(ratio > 25 ? 0 : 1) }'; then
+    hm_emit tcp_retransmits CRIT "TCP retransmit ratio" \
+      "TCP retransmit ratio exceeded the hard catastrophic threshold." \
+      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans baseline_samples=$baseline_count baseline_p95_pct=$baseline_p95 hard_crit_pct=25" \
+      "Check Wi-Fi/WAN packet loss, MTU/MSS, and VPS path."
+  elif [ "$baseline_count" -lt 24 ]; then
+    hm_emit tcp_retransmits OK "TCP retransmit ratio" \
+      "TCP retransmit sample collected while the 7-day baseline is still learning." \
+      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans baseline=learning baseline_samples=$baseline_count required_samples=24" \
+      "No action unless users report packet loss or performance problems."
   else
-    hm_emit performance_rtt OK "RTT/performance degradation" \
-      "Reality RTT sample is within the v1 static threshold." \
-      "time_total_ms=$ms" \
-      "No action."
+    thresholds="$(hm_thresholds_from_p95 "$baseline_p95" 5 15 1.5 2.5)"
+    warn_pct="$(printf '%s\n' "$thresholds" | awk '{ print $1 }')"
+    crit_pct="$(printf '%s\n' "$thresholds" | awk '{ print $2 }')"
+    if awk -v ratio="$ratio" -v crit="$crit_pct" 'BEGIN { exit(ratio >= crit ? 0 : 1) }'; then
+      hm_emit tcp_retransmits CRIT "TCP retransmit ratio" \
+        "TCP retransmit ratio is critically above the learned baseline." \
+        "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans baseline_samples=$baseline_count baseline_p95_pct=$baseline_p95 warn_pct=$warn_pct crit_pct=$crit_pct" \
+        "Check Wi-Fi/WAN packet loss, MTU/MSS, and VPS path."
+    elif awk -v ratio="$ratio" -v warn="$warn_pct" 'BEGIN { exit(ratio >= warn ? 0 : 1) }'; then
+      hm_emit tcp_retransmits WARN "TCP retransmit ratio" \
+        "TCP retransmit ratio is above the learned baseline." \
+        "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans baseline_samples=$baseline_count baseline_p95_pct=$baseline_p95 warn_pct=$warn_pct crit_pct=$crit_pct" \
+        "Correlate with RTT and user reports."
+    else
+      hm_emit tcp_retransmits OK "TCP retransmit ratio" \
+        "TCP retransmit ratio is within the learned baseline." \
+        "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans baseline_samples=$baseline_count baseline_p95_pct=$baseline_p95 warn_pct=$warn_pct crit_pct=$crit_pct" \
+        "No action."
+    fi
   fi
 }
 
@@ -477,28 +535,14 @@ probe_tcp_retransmits() {
   [ "$delta_out" -le 0 ] && delta_out=1
   [ "$delta_retrans" -lt 0 ] && delta_retrans=0
   ratio="$(awk -v r="$delta_retrans" -v o="$delta_out" 'BEGIN { printf "%.2f", r * 100 / o }')"
-  ratio_int="${ratio%.*}"
 
   if [ "$prev_out" = "0" ]; then
     hm_emit tcp_retransmits OK "TCP retransmit ratio" \
       "TCP retransmit baseline sample was initialized." \
       "ratio_pct=0.00 delta_out=0 delta_retrans=0" \
       "No action."
-  elif [ "$ratio_int" -gt 5 ] 2>/dev/null; then
-    hm_emit tcp_retransmits CRIT "TCP retransmit ratio" \
-      "TCP retransmit ratio is critically high." \
-      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
-      "Check Wi-Fi/WAN packet loss, MTU/MSS, and VPS path."
-  elif [ "$ratio_int" -gt 1 ] 2>/dev/null; then
-    hm_emit tcp_retransmits WARN "TCP retransmit ratio" \
-      "TCP retransmit ratio is elevated." \
-      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
-      "Correlate with RTT and user reports."
   else
-    hm_emit tcp_retransmits OK "TCP retransmit ratio" \
-      "TCP retransmit ratio is healthy." \
-      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
-      "No action."
+    emit_tcp_retransmit_sample "$ratio" "$delta_out" "$delta_retrans"
   fi
 }
 

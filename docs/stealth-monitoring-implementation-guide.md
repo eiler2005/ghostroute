@@ -4,7 +4,7 @@
 router + VPS + Home Reality ingress для remote/mobile devices.
 
 Модуль не меняет маршрутизацию, не чинит сервисы сам, не отправляет внешние
-push-уведомления в v1. Он пишет состояние, алерты и отчеты на диск роутера,
+push-уведомления в текущем rollout. Он пишет состояние, алерты и отчеты на диск роутера,
 чтобы оператор или LLM могли быстро понять, что сломалось и какой runbook
 открывать.
 
@@ -34,6 +34,24 @@ Fallback storage:
 ```
 
 Fallback используется только если USB/Entware storage недоступен.
+
+VPS-side scripts устанавливаются Ansible role `vps_health_monitor`:
+
+```text
+/opt/stealth/health-monitor/
+  lib.sh
+  run-probes
+  aggregate
+  daily-digest
+  run-once
+  env
+```
+
+VPS storage:
+
+```text
+/var/log/ghostroute/health-monitor
+```
 
 ## Файлы состояния
 
@@ -87,6 +105,14 @@ HealthMonitorAggregate   2 * * * *  /jffs/scripts/health-monitor/aggregate
 HealthMonitorDaily       10 3 * * *  /jffs/scripts/health-monitor/daily-digest
 ```
 
+VPS observer работает отдельно и не ходит на роутер:
+
+```text
+GhostRoute VPS probes      1 * * * *   /opt/stealth/health-monitor/run-probes
+GhostRoute VPS aggregate   3 * * * *   /opt/stealth/health-monitor/aggregate
+GhostRoute VPS daily       15 3 * * *  /opt/stealth/health-monitor/daily-digest
+```
+
 ## Покрытие рисков
 
 `summary-latest.md` содержит Risk Card по таким probe:
@@ -107,9 +133,73 @@ HealthMonitorDaily       10 3 * * *  /jffs/scripts/health-monitor/daily-digest
 | `tcp_retransmits` | TCP retransmit ratio вырос |
 | `snapshot_freshness` | traffic/report cron snapshots stale |
 
-Throughput speed-test намеренно не включен в cron v1: мониторинг не должен сам
+Throughput speed-test намеренно не включен в cron: мониторинг не должен сам
 создавать заметный трафик. Mobile self-check через публичный Caddy receiver
-также оставлен на Phase 2.
+остается отдельной последней фазой и по умолчанию выключен.
+
+Phase 2 добавляет rolling baseline для:
+
+- `performance_rtt` - 7 дней samples в `state/baselines/performance_rtt.tsv`;
+- `tcp_retransmits` - 7 дней samples в `state/baselines/tcp_retransmits.tsv`.
+
+До 24 samples probe не повышает статус из-за обычных флуктуаций и пишет
+`baseline=learning`. После 24 samples используются dynamic thresholds от p95.
+Hard guard остается всегда: RTT `>3000ms` или retransmits `>25%` дают `CRIT`.
+
+## VPS observer
+
+VPS observer использует такой же формат `status.json`, `summary-latest.md`,
+`alerts/*.jsonl` и `alerts/*.md`, но хранит их на VPS. Он read-only относительно
+Caddy/Xray: только читает `ss`, `caddy list-modules`, `docker ps/logs`, `curl`
+на localhost и `df`.
+
+Пробки VPS v1:
+
+| Probe | Что ловит |
+|---|---|
+| `caddy_listener` | Caddy не слушает public TCP/443 |
+| `caddy_layer4` | host Caddy потерял layer4 module |
+| `xray_reality_listener` | Xray Reality inbound не слушает `127.0.0.1:8443` |
+| `xray_container` | Docker container `xray` не запущен |
+| `xui_health` | 3x-ui localhost endpoint не отвечает |
+| `vps_disk_space` | VPS disk usage высокий/критичный |
+| `recent_reality_evidence` | нет recent Reality/inbound evidence в xray logs |
+
+Router не хранит VPS credentials. Единый статус собирается control machine.
+
+## Единый control-machine отчет
+
+`scripts/ghostroute-health-report` читает router monitor через существующий
+router SSH helper и VPS observer через Ansible inventory/vault:
+
+```bash
+./scripts/ghostroute-health-report
+./scripts/ghostroute-health-report --save
+```
+
+Без `--save` отчет печатается в stdout. С `--save` он сохраняется на диске
+роутера:
+
+```text
+health-monitor/global/ghostroute-health-latest.md
+health-monitor/global/history/YYYY-MM-DDTHHMMSS+ZZZZ.md
+```
+
+History retention: 31 день. В `docs/*latest.md` этот merged report не пишется.
+
+## Mobile self-check hooks
+
+Mobile self-check receiver и iPhone Shortcut остаются последней фазой. В repo
+есть только disabled-by-default vault hooks:
+
+```yaml
+vault_mobile_checkin_enabled: false
+vault_mobile_checkin_public_host: ""
+vault_mobile_checkin_token: ""
+```
+
+Публичный endpoint не включается, пока operator явно не задаст hostname/token и
+не утвердит отдельный rollout.
 
 ## Read-only границы
 
@@ -147,6 +237,13 @@ ansible-playbook playbooks/20-stealth-router.yml
 
 Оба пути устанавливают `/jffs/scripts/health-monitor/*` и регистрируют cron
 через `cru`.
+
+VPS observer устанавливается только VPS playbook:
+
+```bash
+cd ansible
+ansible-playbook playbooks/10-stealth-vps.yml
+```
 
 ## Manual commands
 
@@ -216,6 +313,7 @@ sh -n scripts/health-monitor/lib.sh scripts/health-monitor/run-probes \
   scripts/health-monitor/run-once
 
 ./tests/test-health-monitor.sh
+./tests/test-vps-health-monitor.sh
 ./tests/test-router-health.sh
 ./tests/test-catalog-review.sh
 ./tests/test-dns-forensics.sh

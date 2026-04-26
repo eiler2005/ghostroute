@@ -1,0 +1,38 @@
+---
+- name: Ensure GhostRoute VPS health monitor directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ stealth_stack_dir }}/health-monitor"
+    - /var/log/ghostroute/health-monitor
+
+- name: Install GhostRoute VPS health monitor scripts
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ stealth_stack_dir }}/health-monitor/{{ item.dest }}"
+    mode: "0755"
+  loop:
+    - { src: "{{ playbook_dir }}/../../scripts/vps-health-monitor/lib.sh", dest: "lib.sh" }
+    - { src: "{{ playbook_dir }}/../../scripts/vps-health-monitor/run-probes", dest: "run-probes" }
+    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/aggregate", dest: "aggregate" }
+    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/daily-digest", dest: "daily-digest" }
+    - { src: "{{ playbook_dir }}/../../scripts/health-monitor/run-once", dest: "run-once" }
+
+- name: Render GhostRoute VPS health monitor env
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ stealth_stack_dir }}/health-monitor/env"
+    mode: "0644"
+
+- name: Register GhostRoute VPS health monitor cron jobs
+  ansible.builtin.copy:
+    dest: /etc/cron.d/ghostroute-health-monitor
+    mode: "0644"
+    content: |
+      SHELL=/bin/sh
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      1 * * * * root {{ stealth_stack_dir }}/health-monitor/run-probes >/dev/null 2>&1
+      3 * * * * root {{ stealth_stack_dir }}/health-monitor/aggregate >/dev/null 2>&1
+      15 3 * * * root {{ stealth_stack_dir }}/health-monitor/daily-digest >/dev/null 2>&1

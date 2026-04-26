@@ -21,3 +21,9 @@ system_caddy_site_upstream: "{{ vault_system_caddy_site_upstream | default(syste
 system_caddy_cert_file: "{{ vault_system_caddy_cert_file | default(system_caddy_cert_file_secret | default('/etc/caddy/certs/example-fullchain.pem')) }}"
 system_caddy_key_file: "{{ vault_system_caddy_key_file | default(system_caddy_key_file_secret | default('/etc/caddy/certs/example-privkey.pem')) }}"
 system_caddy_client_ca_file: "{{ vault_system_caddy_client_ca_file | default(system_caddy_client_ca_file_secret | default('/etc/caddy/certs/example-access-ca.crt')) }}"
+
+# Phase 2 placeholder only. The mobile self-check receiver is disabled until a
+# public hostname and token are explicitly added to ansible-vault.
+mobile_checkin_enabled: "{{ vault_mobile_checkin_enabled | default(false) }}"
+mobile_checkin_public_host: "{{ vault_mobile_checkin_public_host | default('') }}"
+mobile_checkin_token: "{{ vault_mobile_checkin_token | default('') }}"
