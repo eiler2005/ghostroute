@@ -65,10 +65,13 @@ core, not just a set of firewall scripts:
   retransmits, TCP tuning, MSS clamp, keepalive behavior and LTE/Home Reality
   performance symptoms, so speed issues can be diagnosed separately from
   routing correctness.
+- **SNI Rotation Guide for Reality** — operational guidance for validating,
+  rotating and documenting Reality cover SNI choices, including compatibility,
+  regional reachability and rollback considerations.
 - **Client Profile Factory** — local generation and cleanup of QR/VLESS
   profiles from Ansible Vault, including separate router, home-mobile and
   emergency profile flows. Generated credentials stay outside git.
-- **Security & Secret Hygiene** — vault templates, local secret storage rules,
+- **Secrets Management** — Ansible Vault templates, local secret storage rules,
   generated-artifact isolation and a repo-specific `secret-scan` for catching
   real URIs, UUIDs, keys, public endpoints and production literals before push.
 - **Recovery & Verification Toolkit** — `verify.sh`, Ansible verification,
@@ -78,6 +81,36 @@ core, not just a set of firewall scripts:
 Together these modules make the repo auditable: routing, health, traffic,
 performance and recovery procedures are documented as separate operational
 surfaces with clear read-only diagnostics and explicit manual recovery steps.
+
+---
+
+## Architecture At A Glance
+
+```text
+                         Control machine
+                deploy.sh / Ansible / reports / vault
+                              |
+                              v
+Home Wi-Fi/LAN ---- DNS ----> ASUS Merlin router <---- Reality QR ---- iPhone/Mac
+ devices          lookup      dnsmasq + ipset          :<home-reality-port>
+                              |
+                              +-- managed match
+                              |     STEALTH_DOMAINS / VPN_STATIC_NETS
+                              |     -> sing-box REDIRECT / reality-in
+                              |     -> VLESS+Reality outbound
+                              |     -> VPS Caddy L4 -> Xray -> Internet
+                              |
+                              +-- non-managed match
+                                    -> direct-out -> home WAN -> Internet
+
+Operational layer:
+  Health Monitor      -> STATUS_OK/FAIL, summaries, local alerts
+  Traffic Observatory -> WAN/LAN/Home Reality usage and routing checks
+  DNS Intelligence    -> lookup evidence, domain discovery, catalog review
+  Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
+  SNI Rotation Guide  -> Reality cover validation, rotation, rollback
+  Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
+```
 
 ---
 

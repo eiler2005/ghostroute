@@ -180,4 +180,4 @@ Common patterns:
 ./scripts/router-health-report --save
 ```
 
-Это обновит tracked `docs/router-health-latest.md` и одновременно сохранит sanitised copy на USB-backed storage роутера.
+Это обновит local `reports/router-health-latest.md` и одновременно сохранит sanitised copy на USB-backed storage роутера.

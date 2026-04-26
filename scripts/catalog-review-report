@@ -229,8 +229,10 @@ RUBY
 cat "$MARKDOWN_OUTPUT"
 
 if [ "$SAVE_MODE" = "1" ]; then
-  TRACKED_LATEST="${PROJECT_ROOT}/docs/catalog-review-latest.md"
-  cp "$MARKDOWN_OUTPUT" "$TRACKED_LATEST"
+  LOCAL_REPORT_DIR="${PROJECT_ROOT}/reports"
+  LOCAL_LATEST="${LOCAL_REPORT_DIR}/catalog-review-latest.md"
+  mkdir -p "$LOCAL_REPORT_DIR"
+  cp "$MARKDOWN_OUTPUT" "$LOCAL_LATEST"
 
   if [ -z "${CATALOG_REVIEW_STATE_FILE:-}" ]; then
     ROUTER_STATE_DIR="$(router_kv_get "$STATE_FILE" STATE_DIR)"
@@ -260,7 +262,7 @@ if [ "$SAVE_MODE" = "1" ]; then
 
 - broad static review candidates: ${BROAD_COUNT}
 - parent-covered child domain candidates: ${COVERED_COUNT}
-- tracked summary: [catalog-review-latest.md](catalog-review-latest.md)
+- local summary: ${LOCAL_LATEST}
 - router-side USB report: ${ROUTER_REPORT_FILE}
 - next safe step: review recommendations first, then change config only behind smoke tests
 EOF

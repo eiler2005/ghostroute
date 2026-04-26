@@ -209,7 +209,7 @@ When the user asks for a router traffic report or router health/capacity report 
   когда нужен sanitised Markdown-отчёт, который можно сразу читать человеку или LLM
 - `./scripts/router-health-report --save`
   когда нужно одновременно:
-  - обновить tracked `docs/router-health-latest.md`
+  - обновить local `reports/router-health-latest.md`
   - записать local snapshot в `docs/vpn-domain-journal.md`
   - сохранить копию на USB-backed storage роутера
 

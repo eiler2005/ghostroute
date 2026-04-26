@@ -2,9 +2,13 @@
 
 ## Роль в проекте
 
-Domain discovery — автоматический и ручной процесс нахождения новых доменов для маршрутизации через VPN.
+Domain discovery — автоматический и ручной процесс нахождения новых доменов
+для managed-маршрутизации через STEALTH/Reality path.
 
-Нативный discovery pipeline `dnsmasq → ipset` остаётся источником доменных наборов. Дальше routing зависит от источника: LAN TCP уходит через REDIRECT `:<lan-redirect-port>` в Reality, remote `wgs1` клиенты остаются на mark `0x1000` → `wgc1`.
+Нативный discovery pipeline `dnsmasq → ipset` остаётся источником доменных
+наборов. Дальше routing идёт через текущую GhostRoute-схему: LAN TCP уходит
+через REDIRECT `:<lan-redirect-port>` в sing-box/Reality, а Home Reality
+QR-клиенты используют тот же managed split после входа на роутер.
 
 ## Что уже закрыто вокруг discovery
 
@@ -15,11 +19,11 @@ Domain discovery — автоматический и ручной процесс
 - `./scripts/router-health-report`
   sanitised Markdown snapshot для человека и LLM
 - `./scripts/router-health-report --save`
-  tracked summary + local journal + USB-backed copy на роутере
+  local summary + local journal + USB-backed copy на роутере
 
 Это важно для discovery, потому что теперь можно быстро видеть:
 
-- текущий размер `VPN_DOMAINS`
+- текущий размер `STEALTH_DOMAINS`
 - usage/headroom относительно `maxelem`
 - число manual и auto rules
 - свежесть blocked-list
@@ -30,7 +34,8 @@ Domain discovery — автоматический и ручной процесс
 
 ### Режим 1: Автоматический (основной)
 
-Скрипт `domain-auto-add.sh` запускается каждый час через cron и автоматически добавляет новые домены в VPN:
+Скрипт `domain-auto-add.sh` запускается каждый час через cron и автоматически
+добавляет новые домены в `STEALTH_DOMAINS`:
 
 ```
 dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsmasq restart
@@ -51,9 +56,8 @@ dnsmasq.log → domain-auto-add.sh → dnsmasq-autodiscovered.conf.add → dnsma
 6. **Определяет write_domain**: обычно поддомен (≥3 меток) → registrable domain (`example-provider.invalid` вместо `www.example-provider.invalid`), но для dynamic DNS с IP-encoded family label пишет семейство по IP-лейблу
 7. Перед записью делает повторный suffix coverage check — если write-domain уже покрыт, новая child-запись не создаётся
 8. Записывает в `/jffs/configs/dnsmasq-autodiscovered.conf.add`:
-   - `ipset=/<domain>/VPN_DOMAINS`
    - `ipset=/<domain>/STEALTH_DOMAINS`
-   - legacy `server=...@wgc1` entries are no longer written
+   - legacy `VPN_DOMAINS` и `server=...@wgc1` entries are no longer written
 9. Перезапускает dnsmasq, пишет лог в `/opt/var/log/domain-activity.log`, ротирует dnsmasq.log
 
 Полная схема алгоритма: [domain-management.md](domain-management.md#алгоритм----как-домен-попадает-в-vpn).
@@ -96,7 +100,8 @@ getdomainnames.sh
 
 ### Ручные исключения (`domains-no-vpn.txt`)
 
-Для российских сервисов на зарубежных TLD, которые не нужно маршрутизировать через VPN:
+Для российских сервисов на зарубежных TLD, которые не нужно маршрутизировать
+через managed Reality path:
 
 ```
 # configs/domains-no-vpn.txt
@@ -111,7 +116,8 @@ meduza.io
 Скрипт `update-blocked-list.sh` ежедневно (cron, 5:00) скачивает кураторский список доменов, заблокированных в России, из [community.antifilter.download](https://community.antifilter.download).
 
 - Список содержит ~500 ключевых заблокированных сервисов (Instagram, Twitter, LinkedIn, ChatGPT и др.)
-- Скачивается **через VPN** (сам antifilter.download может быть заблокирован)
+- Скачивается через configured sing-box SOCKS/Reality path (сам
+  antifilter.download может быть заблокирован)
 - Кэшируется в `/opt/tmp/blocked-domains.lst`
 - Если скачивание не удалось — используется кэшированная версия
 - Если списка нет совсем — `domain-auto-add.sh` работает в fallback-режиме (добавляет всё, как раньше)
@@ -142,12 +148,12 @@ CDN и infrastructure-домены, которые не имеет смысла 
 ┌─────────────────────────────────────────────────────────────
 │ 2026-03-30 16:00   период 12:00–16:00   DNS-запросов: 4521
 ├─────────────────────────────────────────────────────────────
-│ ДОБАВЛЕНО В VPN (3):
+│ ДОБАВЛЕНО В STEALTH_DOMAINS (3):
 │  + api.example.com                            12 запр  [192.0.2.10]
 │  + cdn.service.net                             8 запр  [192.0.2.10,198.51.100.20]
 │  + app.newsite.org                             5 запр  [198.51.100.20]
 │
-│ Итог: +3 добавлено  |  145 уже в VPN  |  89 системных пропущено
+│ Итог: +3 добавлено  |  145 уже в STEALTH  |  89 системных пропущено
 └─────────────────────────────────────────────────────────────
 ```
 
@@ -185,8 +191,8 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 Что важно смотреть:
 
-- `VPN_DOMAINS current`
-- `VPN_DOMAINS maxelem`
+- `STEALTH_DOMAINS current`
+- `STEALTH_DOMAINS maxelem`
 - usage/headroom
 - `VPN_STATIC_NETS current`
 - manual rule count
@@ -196,7 +202,7 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 Где хранится последнее sanitised состояние:
 
-- tracked: `docs/router-health-latest.md`
+- local: `reports/router-health-latest.md`
 - local journal: `docs/vpn-domain-journal.md`
 - router-side USB storage: `/opt/var/log/router_configuration/reports/`
 
@@ -204,8 +210,9 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 x3mRouting умеет строить полный routing pipeline (ipset → iptables → ip rule), но:
 
-- Его routing исторически заточен под **OpenVPN**, а не WireGuard
-- У нас уже есть рабочий нативный pipeline через WGC1, который полностью контролируем
+- Его routing исторически заточен под legacy VPN engines, а не текущий
+  sing-box REDIRECT + Reality split
+- У нас уже есть рабочий нативный GhostRoute pipeline, который полностью контролируем
 - Использование x3mRouting как routing engine создаёт зависимость и потенциальные конфликты с нашими managed-блоками
 
 Мы берём от x3mRouting **только** утилиты анализа DNS-логов: `getdomainnames.sh` и `autoscan`.
