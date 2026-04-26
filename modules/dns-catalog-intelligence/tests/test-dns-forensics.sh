@@ -26,7 +26,7 @@ mkdir -p "$WRITER_DIR"
 DOMAIN_AUTO_ADD_LOG_FILE="${MODULE_DIR}/fixtures/dns-forensics/dnsmasq-sample.log" \
 DOMAIN_AUTO_ADD_LEASES_FILE="${MODULE_DIR}/fixtures/dns-forensics/dnsmasq-leases-sample.txt" \
 DOMAIN_AUTO_ADD_FORENSICS_DIR="$WRITER_DIR" \
-sh "${PROJECT_ROOT}/scripts/domain-auto-add.sh" --forensics-only
+sh "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/domain-auto-add.sh" --forensics-only
 
 WRITER_SNAPSHOT="$(find "$WRITER_DIR" -type f -name '*.tsv' | sort | tail -1)"
 [ -n "$WRITER_SNAPSHOT" ] || { echo "Writer snapshot was not created" >&2; exit 1; }
@@ -38,7 +38,7 @@ assert_contains "$WRITER_SNAPSHOT" "TOPFAMILY|192.168.50.36|2|1|github.com"
 
 DNS_FORENSICS_SOURCE_DIR="${MODULE_DIR}/fixtures/dns-forensics" \
 DNS_FORENSICS_DEVICE_METADATA_FILE="${MODULE_DIR}/fixtures/dns-forensics/device-metadata-sample.tsv" \
-"${PROJECT_ROOT}/scripts/dns-forensics-report" 2026-04-21T05 > "$REPORT_OUT"
+"${PROJECT_ROOT}/modules/dns-catalog-intelligence/bin/dns-forensics-report" 2026-04-21T05 > "$REPORT_OUT"
 
 assert_contains "$REPORT_OUT" "=== WINDOW ==="
 assert_contains "$REPORT_OUT" "Window key:              2026-04-21T05"
@@ -52,7 +52,7 @@ assert_contains "$REPORT_OUT" "=== NOTES ==="
 
 DNS_FORENSICS_SOURCE_DIR="${MODULE_DIR}/fixtures/dns-forensics" \
 DNS_FORENSICS_DEVICE_METADATA_FILE="${MODULE_DIR}/fixtures/dns-forensics/device-metadata-sample.tsv" \
-"${PROJECT_ROOT}/scripts/dns-forensics-report" 2026-04-21T05 --ip 192.168.50.36 > "$FILTERED_OUT"
+"${PROJECT_ROOT}/modules/dns-catalog-intelligence/bin/dns-forensics-report" 2026-04-21T05 --ip 192.168.50.36 > "$FILTERED_OUT"
 
 assert_contains "$FILTERED_OUT" "=== CLIENT 192.168.50.36 ==="
 assert_contains "$FILTERED_OUT" "api.github.com"

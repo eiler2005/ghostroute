@@ -1,6 +1,6 @@
 # Catalog Review Fixtures
 
-Этот каталог фиксирует текстовый контракт для `scripts/catalog-review-report`.
+Этот каталог фиксирует текстовый контракт для `modules/dns-catalog-intelligence/bin/catalog-review-report`.
 
 Задача теста:
 

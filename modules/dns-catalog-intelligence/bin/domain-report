@@ -2,12 +2,12 @@
 # Fetches domain activity information from the router.
 #
 # Usage:
-#   ./scripts/domain-report            # show auto-added STEALTH domains
-#   ./scripts/domain-report --log      # show full activity log (что заходили, что добавлено)
-#   ./scripts/domain-report --log 100  # show last N lines of log
-#   ./scripts/domain-report --reset    # remove all auto-added domains and reload dnsmasq
-#   ./scripts/domain-report --cleanup  # prune redundant child auto-domains and reload dnsmasq
-#   ./scripts/domain-report --candidates # show domains skipped (not in blocked list)
+#   ./modules/dns-catalog-intelligence/bin/domain-report            # show auto-added STEALTH domains
+#   ./modules/dns-catalog-intelligence/bin/domain-report --log      # show full activity log (что заходили, что добавлено)
+#   ./modules/dns-catalog-intelligence/bin/domain-report --log 100  # show last N lines of log
+#   ./modules/dns-catalog-intelligence/bin/domain-report --reset    # remove all auto-added domains and reload dnsmasq
+#   ./modules/dns-catalog-intelligence/bin/domain-report --cleanup  # prune redundant child auto-domains and reload dnsmasq
+#   ./modules/dns-catalog-intelligence/bin/domain-report --candidates # show domains skipped (not in blocked list)
 
 set -euo pipefail
 
@@ -117,11 +117,11 @@ case "$MODE" in
        fi
 
        echo ""
-       echo "Подробный лог: ./scripts/domain-report --log"
-       echo "Все домены:    ./scripts/domain-report --all"
-       echo "Кандидаты:     ./scripts/domain-report --candidates"
-       echo "Cleanup:       ./scripts/domain-report --cleanup"
-       echo "Сбросить всё:  ./scripts/domain-report --reset"'
+       echo "Подробный лог: ./modules/dns-catalog-intelligence/bin/domain-report --log"
+       echo "Все домены:    ./modules/dns-catalog-intelligence/bin/domain-report --all"
+       echo "Кандидаты:     ./modules/dns-catalog-intelligence/bin/domain-report --candidates"
+       echo "Cleanup:       ./modules/dns-catalog-intelligence/bin/domain-report --cleanup"
+       echo "Сбросить всё:  ./modules/dns-catalog-intelligence/bin/domain-report --reset"'
     ;;
 
   candidates)

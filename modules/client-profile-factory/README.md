@@ -5,23 +5,66 @@
 Client Profile Factory generates and cleans local QR/VLESS profiles from
 Ansible Vault for router identity, home-mobile clients and emergency profiles.
 
+## Features
+
+- Generates local VLESS `.conf` files and QR images.
+- Separates router, home-mobile and emergency profile flows.
+- Opens local HTML indexes for operator use.
+- Cleans generated artifacts without touching Vault.
+
+## How It Works
+
+The module entrypoint delegates generation to the existing Ansible playbook,
+then lists, opens or removes gitignored artifacts under `ansible/out`. Generated
+credentials never become tracked repo content.
+
 ## Architecture
 
-The control-machine implementation lives in `bin/client-profiles`. It delegates
-profile generation to the existing Ansible playbook and opens or cleans local
-gitignored artifacts.
+- `bin/client-profiles` is the local control-machine command.
+- Ansible owns profile rendering templates.
+- Output directories are ignored by git.
 
-## Contract
+## Read-only / Mutating Contract
 
-Profile generation is local artifact creation. Credentials and QR outputs must
-stay outside git. Runtime router/VPS state changes happen only through the
-explicit Ansible profile-generation workflow.
+Listing and opening artifacts are read-only. Generating and cleaning profiles
+mutate only local generated files. Router/VPS runtime changes require the
+explicit Ansible workflow.
 
-## Commands And Storage
+## Public Commands
 
-- Public wrapper: `scripts/client-profiles`.
-- Ansible playbook: `ansible/playbooks/30-generate-client-profiles.yml`.
-- Artifacts: `ansible/out/clients*`, all gitignored.
-- Related docs: `docs/client-profiles.md`, `docs/getting-started.md`,
-  `docs/secrets-management.md`.
-- Tests: syntax checks and secret-scan coverage.
+- `./modules/client-profile-factory/bin/client-profiles generate`
+- `./modules/client-profile-factory/bin/client-profiles list`
+- `./modules/client-profile-factory/bin/client-profiles home-list`
+- `./modules/client-profile-factory/bin/client-profiles emergency-list`
+- `./modules/client-profile-factory/bin/client-profiles clean`
+
+## Runtime Storage & Artifacts
+
+- `ansible/out/clients`
+- `ansible/out/clients-home`
+- `ansible/out/clients-emergency`
+
+## Dependencies On Other Modules
+
+- Secrets Management stores Vault values and enforces generated-artifact rules.
+- Reality SNI Rotation may require profile regeneration.
+- Recovery & Verification confirms generated profiles match live routing.
+
+## Failure Modes
+
+- Missing Vault values.
+- Generated QR files accidentally staged for git.
+- Profile regeneration not followed by live verification.
+- Emergency profiles confused with home-mobile profiles.
+
+## Tests
+
+- Syntax checks.
+- `./modules/secrets-management/bin/secret-scan`
+- Ansible profile playbook syntax checks.
+
+## Related Docs
+
+- `docs/client-profiles.md`
+- `docs/getting-started.md`
+- `docs/secrets-management.md`

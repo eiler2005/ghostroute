@@ -31,7 +31,7 @@ From the repo:
 
 ```bash
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Router-side stealth verification:
@@ -120,7 +120,7 @@ no fwmark 0x1000 rule
 ```
 
 Cold fallback NVRAM is intentionally preserved, but runtime rules must not
-exist unless `scripts/emergency-enable-wgc1.sh --enable` was explicitly used.
+exist unless `modules/recovery-verification/router/emergency-enable-wgc1.sh --enable` was explicitly used.
 
 ```text
 -A PREROUTING -i br0 -j RC_VPN_ROUTE
@@ -168,7 +168,7 @@ ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/99-verify.yml --limit routers
 cd ..
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Why both deploy mechanisms exist:
@@ -192,9 +192,9 @@ Implementation intent:
 Concrete files:
 
 ```text
-scripts/firewall-start
+modules/routing-core/router/firewall-start
 ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2
-scripts/lib/router-health-common.sh
+modules/shared/lib/router-health-common.sh
 ansible/playbooks/99-verify.yml
 ```
 

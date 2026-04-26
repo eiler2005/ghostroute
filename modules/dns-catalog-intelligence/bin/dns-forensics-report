@@ -2,9 +2,9 @@
 # Read hourly DNS forensics snapshots from the router.
 #
 # Usage:
-#   ./scripts/dns-forensics-report
-#   ./scripts/dns-forensics-report 2026-04-21T05
-#   ./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+#   ./modules/dns-catalog-intelligence/bin/dns-forensics-report
+#   ./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05
+#   ./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
 
 set -euo pipefail
 

@@ -16,9 +16,9 @@ QR-клиенты используют тот же managed split после вх
 
 - `./verify.sh`
   compact health-summary по routing-инвариантам, capacity и freshness
-- `./scripts/router-health-report`
+- `./modules/ghostroute-health-monitor/bin/router-health-report`
   sanitised Markdown snapshot для человека и LLM
-- `./scripts/router-health-report --save`
+- `./modules/ghostroute-health-monitor/bin/router-health-report --save`
   local summary + local journal + USB-backed copy на роутере
 
 Это важно для discovery, потому что теперь можно быстро видеть:
@@ -126,7 +126,7 @@ meduza.io
 
 Мониторинг:
 ```bash
-./scripts/domain-report --candidates   # домены, пропущенные из-за отсутствия в списке
+./modules/dns-catalog-intelligence/bin/domain-report --candidates   # домены, пропущенные из-за отсутствия в списке
 ```
 
 ### Системные паттерны (SKIP_PATTERNS)
@@ -163,20 +163,20 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 ```bash
 # Сводка: авто-добавленные домены + последний запуск
-./scripts/domain-report
+./modules/dns-catalog-intelligence/bin/domain-report
 
 # Подробный лог (последние N строк)
-./scripts/domain-report --log
-./scripts/domain-report --log 500
+./modules/dns-catalog-intelligence/bin/domain-report --log
+./modules/dns-catalog-intelligence/bin/domain-report --log 500
 
 # Все авто-добавленные домены (список)
-./scripts/domain-report --all
+./modules/dns-catalog-intelligence/bin/domain-report --all
 
 # Cleanup: убрать child auto-домены, уже покрытые родителем
-./scripts/domain-report --cleanup
+./modules/dns-catalog-intelligence/bin/domain-report --cleanup
 
 # Сброс: удалить все авто-добавленные домены
-./scripts/domain-report --reset
+./modules/dns-catalog-intelligence/bin/domain-report --reset
 ```
 
 ### Capacity / health monitoring каталога
@@ -185,8 +185,8 @@ CDN и infrastructure-домены, которые не имеет смысла 
 
 ```bash
 ./verify.sh
-./scripts/router-health-report
-./scripts/router-health-report --save
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report --save
 ```
 
 Что важно смотреть:

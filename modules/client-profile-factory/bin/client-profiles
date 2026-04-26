@@ -9,7 +9,7 @@ EMERGENCY_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-emergency"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/client-profiles <generate|list|home-list|emergency-list|open|home-open|emergency-open|clean|home-clean|emergency-clean>
+Usage: ./modules/client-profile-factory/bin/client-profiles <generate|list|home-list|emergency-list|open|home-open|emergency-open|clean|home-clean|emergency-clean>
 
 Commands:
   generate  Generate local VLESS .conf and QR .png files from ansible-vault.
@@ -58,7 +58,7 @@ case "$cmd" in
   open)
     index="${OUT_DIR}/qr-index.html"
     [ -f "$index" ] || {
-      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      echo "Missing $index. Run: ./modules/client-profile-factory/bin/client-profiles generate" >&2
       exit 1
     }
     if command -v open >/dev/null 2>&1; then
@@ -72,7 +72,7 @@ case "$cmd" in
   home-open)
     index="${HOME_OUT_DIR}/qr-index.html"
     [ -f "$index" ] || {
-      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      echo "Missing $index. Run: ./modules/client-profile-factory/bin/client-profiles generate" >&2
       exit 1
     }
     if command -v open >/dev/null 2>&1; then
@@ -86,7 +86,7 @@ case "$cmd" in
   emergency-open)
     index="${EMERGENCY_OUT_DIR}/qr-index.html"
     [ -f "$index" ] || {
-      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      echo "Missing $index. Run: ./modules/client-profile-factory/bin/client-profiles generate" >&2
       exit 1
     }
     if command -v open >/dev/null 2>&1; then

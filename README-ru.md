@@ -187,7 +187,7 @@ Managed-сайты/checker видят VPS exit IP. Non-managed сайты вид
 
 ### 3. Cold fallback
 
-WireGuard не активен в steady state. Сохранённый `wgc1_*` NVRAM используется только через `scripts/emergency-enable-wgc1.sh` при катастрофическом отказе Reality.
+WireGuard не активен в steady state. Сохранённый `wgc1_*` NVRAM используется только через `modules/recovery-verification/router/emergency-enable-wgc1.sh` при катастрофическом отказе Reality.
 
 ---
 
@@ -209,7 +209,7 @@ VPS:
   stealth stack under /opt/stealth
 
 Control:
-  deploy.sh for router base scripts/catalogs
+  deploy.sh for router base runtime files/catalogs
   Ansible for VPS, router stealth layer, verification and QR generation
   ansible-vault for real credentials and client parameters
 ```
@@ -243,14 +243,7 @@ modules/
   recovery-verification/
 
 scripts/
-  # stable compatibility wrappers around modules/* implementations
-  firewall-start
-  nat-start
-  domain-auto-add.sh
-  client-profiles
-  secret-scan
-  router-health-report
-  traffic-report
+  README.md                       # reserved for future cross-repo utilities
 
 docs/
   architecture.md
@@ -285,7 +278,7 @@ cd ..
 
 # Local health snapshot
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Traffic и observability:
@@ -293,13 +286,13 @@ Traffic и observability:
 ```bash
 # Главный usage-отчёт: exits, устройства, Home Reality ingress clients,
 # популярные назначения и проверки ошибок маршрутизации.
-./scripts/traffic-report today
-./scripts/traffic-report yesterday
-./scripts/traffic-report week
-./scripts/traffic-report month
+./modules/traffic-observatory/bin/traffic-report today
+./modules/traffic-observatory/bin/traffic-report yesterday
+./modules/traffic-observatory/bin/traffic-report week
+./modules/traffic-observatory/bin/traffic-report month
 
 # Безопасный operational snapshot для человека/LLM.
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Traffic report показывает, сколько ушло через VPS, сколько осталось
@@ -319,8 +312,8 @@ ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/ale
 ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
 
 # Единый router+VPS отчет с control machine.
-./scripts/ghostroute-health-report
-./scripts/ghostroute-health-report --save
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report
+./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save
 ```
 
 Модуль read-only относительно production routing state. Он пишет только
@@ -360,8 +353,8 @@ VPS observer хранит свой local-only статус на VPS в
 Профили генерируются локально из Ansible Vault:
 
 ```bash
-./scripts/client-profiles generate
-./scripts/client-profiles open
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles open
 ```
 
 Артефакты лежат в `ansible/out/clients/`: `iphone-*.png`, `macbook.png`, соответствующие `.conf` файлы и локальная галерея `qr-index.html`.

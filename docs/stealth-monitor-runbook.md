@@ -173,7 +173,7 @@ tail -1000 /opt/var/log/sing-box.log | grep -E 'reality-in|reality-out|direct-ou
 С локальной машины полезно:
 
 ```bash
-./scripts/traffic-report today
+./modules/traffic-observatory/bin/traffic-report today
 ```
 
 Не меняй catalog только по одному heuristic alert. Сначала проверь
@@ -249,8 +249,8 @@ ipset list VPN_STATIC_NETS | head -30
 For growth/capacity review:
 
 ```bash
-./scripts/router-health-report
-./scripts/catalog-review-report
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/dns-catalog-intelligence/bin/catalog-review-report
 ```
 
 ### `performance_rtt` WARN/CRIT

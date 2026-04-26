@@ -64,7 +64,7 @@ conf-file=/jffs/configs/dnsmasq-stealth.conf.add
 ```
 
 The same repo catalogs feed mobile Home Reality split routing. During deploy,
-`scripts/update-singbox-rule-sets.sh` regenerates sing-box source rule-sets from:
+`modules/routing-core/router/update-singbox-rule-sets.sh` regenerates sing-box source rule-sets from:
 
 - `configs/dnsmasq-stealth.conf.add` -> `stealth-domains.json`
 - `configs/static-networks.txt` -> `stealth-static.json`
@@ -141,10 +141,10 @@ Geo-probe по-прежнему может добавить домен, но т�
 Команды:
 
 ```bash
-./scripts/domain-report
-./scripts/domain-report --log
-./scripts/domain-report --cleanup
-./scripts/domain-report --candidates
+./modules/dns-catalog-intelligence/bin/domain-report
+./modules/dns-catalog-intelligence/bin/domain-report --log
+./modules/dns-catalog-intelligence/bin/domain-report --cleanup
+./modules/dns-catalog-intelligence/bin/domain-report --candidates
 ```
 
 ## Cold Fallback

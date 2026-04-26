@@ -310,7 +310,7 @@ ssh admin@192.168.50.1 '
 
 ```sh
 ROUTER=192.168.50.1 ./verify.sh
-ROUTER=192.168.50.1 ./scripts/router-health-report --save
+ROUTER=192.168.50.1 ./modules/ghostroute-health-monitor/bin/router-health-report --save
 ```
 
 Expected:

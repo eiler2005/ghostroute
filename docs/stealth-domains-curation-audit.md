@@ -125,7 +125,7 @@ Disallowed behavior:
 
 ## Safe Workflow For A Later Curation Pass
 
-1. Run `./scripts/traffic-report` and `./scripts/dns-forensics-report`.
+1. Run `./modules/traffic-observatory/bin/traffic-report` and `./modules/dns-catalog-intelligence/bin/dns-forensics-report`.
 2. Pick one small domain family, not the whole catalog.
 3. Test a temporary direct bypass for one device/profile.
 4. Confirm app behavior on LAN and mobile Home Reality.

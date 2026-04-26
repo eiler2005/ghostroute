@@ -20,10 +20,10 @@ PERIOD_ARG="${1:-today}"
 case "$PERIOD_ARG" in
   ""|today|current|current-day) ;;
   yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-    exec "${PROJECT_ROOT}/scripts/traffic-daily-report" "$PERIOD_ARG"
+    exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
     ;;
   *)
-    echo "Usage: ./scripts/traffic-report [today|yesterday|week|month|YYYY-MM-DD]" >&2
+    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD]" >&2
     exit 1
     ;;
 esac

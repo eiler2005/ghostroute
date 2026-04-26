@@ -26,8 +26,8 @@
 
 - `./verify.sh` теперь по умолчанию даёт compact health-summary
 - `./verify.sh --verbose` оставлен для deep diagnostics
-- `./scripts/router-health-report` даёт sanitised Markdown snapshot для человека и LLM
-- `./scripts/router-health-report --save` обновляет:
+- `./modules/ghostroute-health-monitor/bin/router-health-report` даёт sanitised Markdown snapshot для человека и LLM
+- `./modules/ghostroute-health-monitor/bin/router-health-report --save` обновляет:
   - local `reports/router-health-latest.md`
   - local `docs/vpn-domain-journal.md`
   - router-side USB-backed reports в `/opt/var/log/router_configuration/reports/`
@@ -104,8 +104,8 @@
 Статус:
 
 - recommendational layer уже реализован:
-  - `./scripts/catalog-review-report`
-  - `./scripts/catalog-review-report --save`
+  - `./modules/dns-catalog-intelligence/bin/catalog-review-report`
+  - `./modules/dns-catalog-intelligence/bin/catalog-review-report --save`
   - local `reports/catalog-review-latest.md`
   - USB-backed advisory snapshots на роутере
 - текущая реализация ничего не меняет в runtime и не делает cleanup автоматически
@@ -292,7 +292,7 @@
 
 - выполнено в рамках Channel A final cleanup: `wgs1_enable=0`, `wgc1_enable=0`, `wg show` пустой, публичный WireGuard ingress не является active path
 - `VPN_DOMAINS`, `0x1000`, `RC_VPN_ROUTE` и stale `wgs1/wgc1` hooks удалены из steady state
-- `wgc1_*` NVRAM сохранён только для cold fallback через `scripts/emergency-enable-wgc1.sh`
+- `wgc1_*` NVRAM сохранён только для cold fallback через `modules/recovery-verification/router/emergency-enable-wgc1.sh`
 - регулярный mobile egress уже переведен на home Reality QR (`client -> ASUS :<home-reality-port> -> VPS`)
 
 Что остаётся future-only:

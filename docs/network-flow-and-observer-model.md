@@ -208,8 +208,8 @@ what the LTE carrier saw as the first hop.
 
 ```bash
 ROUTER=192.168.50.1 ./verify.sh
-./scripts/router-health-report
-./scripts/traffic-report
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/traffic-observatory/bin/traffic-report
 ```
 
 On the router:
@@ -231,7 +231,7 @@ Expected:
 - Managed mobile flows show `reality-in -> reality-out`.
 - Non-managed mobile flows show `reality-in -> direct-out`.
 
-`./scripts/traffic-report` includes mobile Home Reality byte totals and
+`./modules/traffic-observatory/bin/traffic-report` includes mobile Home Reality byte totals and
 connection attribution. Bytes come from encrypted TCP/<home-reality-port> counters
 (`RC_MOBILE_REALITY_IN/OUT`) keyed by remote source IP/profile label. The
 `reality-out` vs `direct-out` split still comes from `sing-box.log` connection

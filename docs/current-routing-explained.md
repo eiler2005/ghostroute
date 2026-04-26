@@ -26,7 +26,7 @@ router OUTPUT             -> main routing unless explicitly proxied
 | `OUTPUT` | no transparent capture | no transparent capture | main routing / explicit proxy |
 
 `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
-only for `scripts/emergency-enable-wgc1.sh`.
+only for `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
 
 ## Кто что видит
 

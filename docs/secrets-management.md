@@ -46,7 +46,7 @@ Format:
 ```
 
 Reports use the shared parser in
-`modules/shared/lib/device-labels.sh` through the stable `scripts/lib` wrapper.
+`modules/shared/lib/device-labels.sh` through the module-native `modules/shared/lib` helper.
 `traffic-report`, `traffic-daily-report` and `dns-forensics-report` all consume
 that same map.
 
@@ -61,7 +61,7 @@ $EDITOR secrets/router.env
 Create the Ansible vault:
 
 ```bash
-./scripts/init-stealth-vault.sh --vps-host <vps_ip_or_dns_name> --router-ip <router_lan_ip>
+./modules/secrets-management/bin/init-stealth-vault.sh --vps-host <vps_ip_or_dns_name> --router-ip <router_lan_ip>
 cd ansible
 ansible-vault edit secrets/stealth.yml
 ```
@@ -88,13 +88,13 @@ Reality keys
 
 QR codes are access credentials. Do not commit them, paste them into docs or send them through untrusted channels.
 
-Use the wrapper:
+Use the module command:
 
 ```bash
-./scripts/client-profiles generate
-./scripts/client-profiles home-list
-./scripts/client-profiles home-open
-./scripts/client-profiles home-clean
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles home-list
+./modules/client-profile-factory/bin/client-profiles home-open
+./modules/client-profile-factory/bin/client-profiles home-clean
 ```
 
 Generated artifacts stay local:
@@ -111,7 +111,7 @@ ansible/out/clients-home/qr-index.html
 Run:
 
 ```bash
-./scripts/secret-scan
+./modules/secrets-management/bin/secret-scan
 git status --short
 git diff --check
 ```

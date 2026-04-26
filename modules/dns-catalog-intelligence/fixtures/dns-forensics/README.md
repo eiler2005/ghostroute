@@ -1,6 +1,6 @@
 # DNS Forensics Fixtures
 
-Фикстуры для локального smoke-теста `scripts/dns-forensics-report`.
+Фикстуры для локального smoke-теста `modules/dns-catalog-intelligence/bin/dns-forensics-report`.
 
 Здесь мы проверяем не живой роутер и не `dnsmasq`, а стабильный текстовый контракт forensic snapshot:
 

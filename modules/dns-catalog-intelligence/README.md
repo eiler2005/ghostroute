@@ -3,29 +3,73 @@
 ## Purpose
 
 DNS & Catalog Intelligence observes DNS lookup evidence, discovers candidate
-domains, maintains managed catalog reviews and keeps manual rules separate from
+domains, reviews managed catalogs and keeps manual rules separate from
 auto-discovered entries.
+
+## Features
+
+- Router-side DNS observation and optional auto-add workflow.
+- Catalog review for domain suffixes and static network coverage.
+- DNS forensics snapshots for "who looked up what" investigations.
+- Local gitignored domain journal for operational notes and capacity snapshots.
+
+## How It Works
+
+Router-side discovery reads dnsmasq evidence, validates candidates against the
+configured policy and writes auto-discovered catalog state on the router. Local
+report commands review repo catalogs and DNS snapshots without changing runtime
+state.
 
 ## Architecture
 
-- `router/` contains the router-side discovery and blocklist refresh scripts.
-- `bin/` contains local report and forensics entrypoints.
-- `fixtures/` and `tests/` capture catalog review and DNS forensics contracts.
+- `router/` contains router-side discovery and blocklist refresh scripts.
+- `bin/` contains local report commands.
+- `fixtures/` and `tests/` capture catalog and DNS-forensics contracts.
 
-## Contract
+## Read-only / Mutating Contract
 
-Router discovery may update the router auto catalog according to its configured
-rules. Public repo catalog changes remain manual. The local
-`docs/vpn-domain-journal.md` journal is intentionally gitignored.
+Local reports are advisory and read-only. Router discovery can update only the
+router auto catalog according to configured rules. Public repo catalog changes
+remain manual and explicit.
 
-## Commands And Storage
+## Public Commands
 
-- Public wrappers: `scripts/domain-auto-add.sh`, `scripts/domain-report`,
-  `scripts/catalog-review-report`, `scripts/dns-forensics-report`,
-  `scripts/update-blocked-list.sh`.
-- Catalog files: `configs/dnsmasq-stealth.conf.add`,
-  `configs/static-networks.txt`, router auto-discovered dnsmasq files.
-- Related docs: `docs/domain-management.md`, `docs/x3mrouting-roadmap.md`,
-  `docs/stealth-domains-curation-audit.md`, `docs/ai-tooling-domains.md`.
-- Tests: `modules/dns-catalog-intelligence/tests/*`, also exposed through
-  `tests/test-catalog-review.sh` and `tests/test-dns-forensics.sh`.
+- `./modules/dns-catalog-intelligence/bin/domain-report`
+- `./modules/dns-catalog-intelligence/bin/catalog-review-report`
+- `./modules/dns-catalog-intelligence/bin/catalog-review-report --save`
+- `./modules/dns-catalog-intelligence/bin/dns-forensics-report`
+- Runtime-only router script: `/jffs/addons/x3mRouting/domain-auto-add.sh`
+
+## Runtime Storage & Artifacts
+
+- `configs/dnsmasq-stealth.conf.add`
+- `configs/static-networks.txt`
+- Router auto-discovered dnsmasq files.
+- Local ignored journal: `docs/vpn-domain-journal.md`
+- Local generated reports: `reports/`
+
+## Dependencies On Other Modules
+
+- Routing Core consumes generated rule-set inputs.
+- Traffic Observatory and DNS forensics share device-label metadata.
+- Secrets Management protects local/private metadata.
+
+## Failure Modes
+
+- Catalog drift between manual and router auto-discovered rules.
+- Broad static CIDR rules that should be split or reviewed.
+- DNS evidence missing because dnsmasq logs or snapshots are stale.
+- Auto-discovered child domains already covered by broader suffixes.
+
+## Tests
+
+- `./modules/dns-catalog-intelligence/tests/test-catalog-review.sh`
+- `./modules/dns-catalog-intelligence/tests/test-dns-forensics.sh`
+- `./tests/run-all.sh`
+
+## Related Docs
+
+- `docs/domain-management.md`
+- `docs/x3mrouting-roadmap.md`
+- `docs/stealth-domains-curation-audit.md`
+- `docs/ai-tooling-domains.md`

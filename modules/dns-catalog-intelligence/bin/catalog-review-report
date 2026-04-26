@@ -9,7 +9,7 @@ SAVE_MODE=0
 if [ "${1:-}" = "--save" ]; then
   SAVE_MODE=1
 elif [ -n "${1:-}" ]; then
-  echo "Usage: ./scripts/catalog-review-report [--save]" >&2
+  echo "Usage: ./modules/dns-catalog-intelligence/bin/catalog-review-report [--save]" >&2
   exit 1
 fi
 
@@ -223,7 +223,7 @@ puts
 puts "1. Review the widest static CIDRs first and confirm they still solve a real non-DNS traffic problem."
 puts "2. Treat parent-covered child domains as readability-vs-minimalism decisions, not automatic removals."
 puts "3. Prefer narrowing static coverage only after a live smoke test proves DNS-based coverage is enough."
-puts "4. Make any future cleanup behind `deploy -> verify.sh -> router-health-report --save`."
+puts "4. Make any future cleanup behind `deploy.sh -> verify.sh -> ./modules/ghostroute-health-monitor/bin/router-health-report --save`."
 RUBY
 
 cat "$MARKDOWN_OUTPUT"
@@ -258,7 +258,7 @@ if [ "$SAVE_MODE" = "1" ]; then
 
 ## ${NOW_DATE} — Catalog review snapshot
 
-> Advisory-only snapshot сохранён через \`./scripts/catalog-review-report --save\` в ${NOW_TS}. Никаких runtime-изменений этот review не вносит.
+> Advisory-only snapshot сохранён через \`./modules/dns-catalog-intelligence/bin/catalog-review-report --save\` в ${NOW_TS}. Никаких runtime-изменений этот review не вносит.
 
 - broad static review candidates: ${BROAD_COUNT}
 - parent-covered child domain candidates: ${COVERED_COUNT}

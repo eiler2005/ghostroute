@@ -84,7 +84,7 @@ VPS OK
 EOF
 GHOSTROUTE_ROUTER_STATUS_JSON="$ROUTER_STATUS" GHOSTROUTE_ROUTER_SUMMARY_MD="$ROUTER_SUMMARY" \
 GHOSTROUTE_VPS_STATUS_JSON="$VPS_STATUS" GHOSTROUTE_VPS_SUMMARY_MD="$VPS_SUMMARY" \
-  "$PROJECT_ROOT/scripts/ghostroute-health-report" > "$TMPDIR/global-ok.md"
+  "$PROJECT_ROOT/modules/ghostroute-health-monitor/bin/ghostroute-health-report" > "$TMPDIR/global-ok.md"
 grep -F 'Overall: **OK**' "$TMPDIR/global-ok.md" >/dev/null
 
 cat > "$VPS_STATUS" <<'EOF'
@@ -92,7 +92,7 @@ cat > "$VPS_STATUS" <<'EOF'
 EOF
 GHOSTROUTE_ROUTER_STATUS_JSON="$ROUTER_STATUS" GHOSTROUTE_ROUTER_SUMMARY_MD="$ROUTER_SUMMARY" \
 GHOSTROUTE_VPS_STATUS_JSON="$VPS_STATUS" GHOSTROUTE_VPS_SUMMARY_MD="$VPS_SUMMARY" \
-  "$PROJECT_ROOT/scripts/ghostroute-health-report" > "$TMPDIR/global-vps-crit.md"
+  "$PROJECT_ROOT/modules/ghostroute-health-monitor/bin/ghostroute-health-report" > "$TMPDIR/global-vps-crit.md"
 grep -F 'Overall: **CRIT**' "$TMPDIR/global-vps-crit.md" >/dev/null
 grep -F 'VPS observer: **CRIT**' "$TMPDIR/global-vps-crit.md" >/dev/null
 
@@ -104,7 +104,7 @@ cat > "$VPS_STATUS" <<'EOF'
 EOF
 GHOSTROUTE_ROUTER_STATUS_JSON="$ROUTER_STATUS" GHOSTROUTE_ROUTER_SUMMARY_MD="$ROUTER_SUMMARY" \
 GHOSTROUTE_VPS_STATUS_JSON="$VPS_STATUS" GHOSTROUTE_VPS_SUMMARY_MD="$VPS_SUMMARY" \
-  "$PROJECT_ROOT/scripts/ghostroute-health-report" > "$TMPDIR/global-router-warn.md"
+  "$PROJECT_ROOT/modules/ghostroute-health-monitor/bin/ghostroute-health-report" > "$TMPDIR/global-router-warn.md"
 grep -F 'Overall: **WARN**' "$TMPDIR/global-router-warn.md" >/dev/null
 
 echo "vps-health-monitor fixture tests passed"

@@ -237,8 +237,8 @@
 - ничего не менять в `wgs1`
 - зафиксировать текущий health snapshot:
   - `./verify.sh`
-  - `./scripts/traffic-report`
-  - `./scripts/router-health-report --save`
+  - `./modules/traffic-observatory/bin/traffic-report`
+  - `./modules/ghostroute-health-monitor/bin/router-health-report --save`
 - отдельно подготовить hardening backlog:
   - WAN admin off
   - WAN SSH LAN-only
@@ -296,8 +296,8 @@
 - отключить `wgs1` на WAN
 - ещё раз прогнать:
   - `./verify.sh`
-  - `./scripts/traffic-report`
-  - `./scripts/router-health-report --save`
+  - `./modules/traffic-observatory/bin/traffic-report`
+  - `./modules/ghostroute-health-monitor/bin/router-health-report --save`
 - обновить docs/runbook
 
 ### Вердикт

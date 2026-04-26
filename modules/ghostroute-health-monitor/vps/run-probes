@@ -155,16 +155,25 @@ probe_recent_reality_evidence() {
     return 0
   fi
   count="$(hm_docker logs --since 24h xray 2>&1 | grep -Eic 'reality|stealth-reality|accepted|inbound' || true)"
+  source="xray_logs"
+  if [ "${count:-0}" = "0" ] && command -v journalctl >/dev/null 2>&1; then
+    caddy_count="$(journalctl -u caddy --since '24 hours ago' --no-pager 2>/dev/null | grep -Eic 'layer4|reality|xray|8443|proxy|matched' || true)"
+    case "$caddy_count" in ''|*[!0-9]*) caddy_count=0 ;; esac
+    if [ "$caddy_count" -gt 0 ]; then
+      count="$caddy_count"
+      source="caddy_journal"
+    fi
+  fi
   case "$count" in ''|*[!0-9]*) count=0 ;; esac
   if [ "$count" -gt 0 ]; then
     hm_emit recent_reality_evidence OK "No recent Reality evidence" \
-      "Recent xray logs contain Reality/inbound evidence." \
-      "window=24h matches=$count" \
+      "Recent VPS logs contain Reality/inbound evidence." \
+      "window=24h matches=$count source=$source" \
       "No action."
   else
     hm_emit recent_reality_evidence WARN "No recent Reality evidence" \
       "No recent Reality/inbound evidence was found in xray logs." \
-      "window=24h matches=0" \
+      "window=24h matches=0 source=xray_logs,caddy_journal" \
       "Correlate with router reality-out logs and user activity before changing services."
   fi
 }

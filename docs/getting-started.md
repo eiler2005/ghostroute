@@ -72,7 +72,7 @@ SSH_IDENTITY_FILE=/Users/<user>/.ssh/id_rsa
 Stealth secrets:
 
 ```bash
-./scripts/init-stealth-vault.sh
+./modules/secrets-management/bin/init-stealth-vault.sh
 ```
 
 или вручную:
@@ -177,7 +177,7 @@ ansible/out/clients-home/qr-index.html
 ansible-playbook playbooks/99-verify.yml
 cd ..
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Expected current routing state:

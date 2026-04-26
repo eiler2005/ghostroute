@@ -59,14 +59,14 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 ## 1.1 Close IPv6 bypass
 
 ### Problem
-`scripts/firewall-start` and `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2` contain only IPv4 (`iptables`) rules. No `ip6tables` / `ipset` IPv6 equivalents. If Merlin has IPv6 enabled (UI → IPv6 → Connection type), LAN devices receive RA/DHCPv6 and their IPv6 traffic **bypasses** the entire stealth pipeline: REDIRECT on :<lan-redirect-port>, UDP/443 DROP, and dnsmasq's own `STEALTH_DOMAINS` resolution.
+`modules/routing-core/router/firewall-start` and `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2` contain only IPv4 (`iptables`) rules. No `ip6tables` / `ipset` IPv6 equivalents. If Merlin has IPv6 enabled (UI → IPv6 → Connection type), LAN devices receive RA/DHCPv6 and their IPv6 traffic **bypasses** the entire stealth pipeline: REDIRECT on :<lan-redirect-port>, UDP/443 DROP, and dnsmasq's own `STEALTH_DOMAINS` resolution.
 
 ### Why it matters
 When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 connection goes directly from home WAN to the real target. ISP sees destination IPv6, real SNI, and real hostname — the whole stealth channel is irrelevant to that flow. RKN/ISP learns both: (a) we reach blocked resources, (b) we have persistent cover traffic on TCP/443 IPv4. Correlation gives them evidence.
 
 ### Scope
 - **Router Ansible role:** `ansible/roles/stealth_routing/`
-- **Router script:** `scripts/firewall-start` (may contain commented IPv6 block per review findings)
+- **Router script:** `modules/routing-core/router/firewall-start` (may contain commented IPv6 block per review findings)
 - **Verification:** `verify.sh`
 - **Documentation:** `docs/stealth-channel-implementation-guide.md` §6 acceptance checklist
 
@@ -617,7 +617,7 @@ Remove the added directives, restart sing-box.
 Operational reliability. Not a stealth issue per se, but a long outage degrades trust; users may switch back to plain WAN or disable VPN on their iPhones to "fix" slow internet, exposing themselves.
 
 ### Scope
-- New script: `scripts/singbox-watchdog.sh` (deployed by `singbox_client` role).
+- New script: `/jffs/scripts/singbox-watchdog.sh` (deployed by `singbox_client` role).
 - `ansible/roles/singbox_client/tasks/main.yml` — add cron entry.
 
 ### Fix
@@ -696,18 +696,18 @@ Remove cron entry and the watchdog script. No other state.
 ## 2.5 `domain-auto-add.sh` — default-skip when blocklist missing
 
 ### Problem
-Per the review, `scripts/domain-auto-add.sh` falls back to "add every observed domain to both VPN_DOMAINS and STEALTH_DOMAINS" when `blocked-domains.lst` is missing or outdated. This pollutes STEALTH_DOMAINS with non-sensitive domains, inflating traffic through the stealth channel and degrading the duration-fingerprint story.
+Per the review, `modules/dns-catalog-intelligence/router/domain-auto-add.sh` falls back to "add every observed domain to both VPN_DOMAINS and STEALTH_DOMAINS" when `blocked-domains.lst` is missing or outdated. This pollutes STEALTH_DOMAINS with non-sensitive domains, inflating traffic through the stealth channel and degrading the duration-fingerprint story.
 
 ### Why it matters
 Smaller, curated STEALTH_DOMAINS = less bandwidth through VPS = closer to legitimate iCloud cover profile. Larger, polluted set = more bandwidth anomaly + more domains for the ISP to potentially correlate against their own block lists.
 
 ### Scope
-- `scripts/domain-auto-add.sh`
+- `modules/dns-catalog-intelligence/router/domain-auto-add.sh`
 - Possibly `docs/domain-management.md` if it describes behavior.
 
 ### Fix
 
-Find the branch in `scripts/domain-auto-add.sh` that adds to ipsets when `blocked-domains.lst` does not exist or is empty. Change the logic:
+Find the branch in `modules/dns-catalog-intelligence/router/domain-auto-add.sh` that adds to ipsets when `blocked-domains.lst` does not exist or is empty. Change the logic:
 
 ```sh
 # BEFORE (simplified): if blocklist missing, add all observed domains
@@ -729,7 +729,7 @@ fi
 
 Adjust to the exact control flow of the existing script.
 
-Also add a separate operator-facing command `scripts/domain-force-add.sh <domain> <set>` that explicitly adds one domain, bypassing the blocklist check, for manual intervention — so there is a safe escape hatch.
+Also add a separate operator-facing command `modules/dns-catalog-intelligence/router/domain-force-add.sh <domain> <set>` that explicitly adds one domain, bypassing the blocklist check, for manual intervention — so there is a safe escape hatch.
 
 ### Verification
 
@@ -857,10 +857,10 @@ New doc `docs/disaster-recovery.md`: procedure for VPS-lost (restore from backup
 New section or doc on Reality keypair rotation (every ~6 months, or after suspected compromise). Steps: regenerate server keypair in Xray, re-seed 3x-ui inbound, regenerate ALL 8 clients' pubkey reference, redistribute QRs. Downtime: ~10 min.
 
 ## 3.4 Client revocation workflow
-`docs/client-profiles.md` extension: remove one UUID from `clients[]` in vault, re-run `10-stealth-vps.yml` (which syncs Xray inbound). Add a helper `scripts/revoke-client.sh <name>`.
+`docs/client-profiles.md` extension: remove one UUID from `clients[]` in vault, re-run `10-stealth-vps.yml` (which syncs Xray inbound). Add a helper `modules/client-profile-factory/bin/revoke-client.sh <name>`.
 
 ## 3.5 Monitoring/alerting hooks
-Send `scripts/router-health-report` output hourly to a Telegram bot or similar. Alert thresholds: REDIRECT counter == 0 for > 1 hour → warn; UDP DROP count > 10× redirect count → warn; sing-box restart count > 3/day → warn.
+Send `modules/ghostroute-health-monitor/bin/router-health-report` output hourly to a Telegram bot or similar. Alert thresholds: REDIRECT counter == 0 for > 1 hour -> warn; UDP DROP count > 10x redirect count -> warn; sing-box restart count > 3/day -> warn.
 
 ## 3.6 3x-ui admin binding hardening
 Remove the `127.0.0.1:<xui-admin-port>:<xui-admin-port>` port mapping from `docker-compose.yml.j2`. Access panel via `docker exec -it xray wget -qO- http://127.0.0.1:<xui-admin-port>/...` or a Unix socket. Reduces attack surface on the VPS host.
@@ -902,7 +902,7 @@ cd router_configuration/ansible
 ansible-playbook playbooks/99-verify.yml
 cd ..
 ./verify.sh
-./scripts/router-health-report
+./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
 Then functional tests:
@@ -1002,7 +1002,7 @@ Primary files touched (or should be touched) by the fixes:
 | §2.2 | `ansible/roles/singbox_client/templates/config.json.j2`, `ansible/roles/dnscrypt_proxy/templates/dnscrypt-proxy.toml.j2` | DoH over stealth |
 | §2.3 | `ansible/roles/singbox_client/templates/config.json.j2` | TCP keepalive |
 | §2.4 | `ansible/roles/singbox_client/templates/singbox-watchdog.sh.j2` (new), `ansible/roles/singbox_client/tasks/main.yml` | Watchdog |
-| §2.5 | `scripts/domain-auto-add.sh`, optional new `scripts/domain-force-add.sh` | Default-skip |
+| §2.5 | `modules/dns-catalog-intelligence/router/domain-auto-add.sh`, optional new `modules/dns-catalog-intelligence/router/domain-force-add.sh` | Default-skip |
 | §2.6 | `docs/architecture.md`, `docs/stealth-channel-implementation-guide.md` | Design rationale |
 
 ---

@@ -115,7 +115,7 @@ They contain client UUIDs, Reality parameters and server access information. The
 ## Generate
 
 ```bash
-./scripts/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles generate
 ```
 
 This runs:
@@ -128,10 +128,10 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 ## View Locally
 
 ```bash
-./scripts/client-profiles home-list
-./scripts/client-profiles home-open
-./scripts/client-profiles emergency-list
-./scripts/client-profiles emergency-open
+./modules/client-profile-factory/bin/client-profiles home-list
+./modules/client-profile-factory/bin/client-profiles home-open
+./modules/client-profile-factory/bin/client-profiles emergency-list
+./modules/client-profile-factory/bin/client-profiles emergency-open
 ```
 
 `home-open` opens the local home Reality `qr-index.html` when available.
@@ -195,8 +195,8 @@ does not apply for that period.
 ## Clean Local Artifacts
 
 ```bash
-./scripts/client-profiles home-clean
-./scripts/client-profiles emergency-clean
+./modules/client-profile-factory/bin/client-profiles home-clean
+./modules/client-profile-factory/bin/client-profiles emergency-clean
 ```
 
 This removes generated home mobile files under `ansible/out/clients-home/` and keeps only `.gitkeep`. `ansible/out/clients/router.conf` is the router's VPS identity, not a mobile QR.
@@ -206,7 +206,7 @@ This removes generated home mobile files under `ansible/out/clients-home/` and k
 1. Edit `ansible/secrets/stealth.yml` with `ansible-vault edit`.
 2. Add or rotate the client's `uuid` and `short_id` in `home_clients[]`.
 3. Deploy router changes if the home Reality inbound needs updating.
-4. Regenerate local profiles with `./scripts/client-profiles generate`.
+4. Regenerate local profiles with `./modules/client-profile-factory/bin/client-profiles generate`.
 5. Scan the new QR from the device.
 
 For emergency direct-VPS fallback, add or rotate the matching entry in

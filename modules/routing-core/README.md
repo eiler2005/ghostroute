@@ -4,27 +4,72 @@
 
 Routing Core owns the production data plane: dnsmasq/ipset classification,
 Merlin firewall hooks, sing-box REDIRECT, home Reality ingress, managed Reality
-egress and direct-out fallback for non-managed traffic.
+egress to the VPS and direct-out fallback for non-managed traffic.
+
+## Features
+
+- Builds and refreshes router-side hooks for NAT, firewall and service startup.
+- Maintains sing-box rule-set synchronization from the repo-managed catalogs.
+- Preserves Channel A only as a cold fallback path, not as steady-state routing.
+
+## How It Works
+
+`deploy.sh` copies the router scripts from this module to the ASUS Merlin
+runtime paths. Merlin then calls `/jffs/scripts/nat-start`,
+`/jffs/scripts/firewall-start` and `/jffs/scripts/services-start`; those hooks
+install the REDIRECT, counter and cron behavior used by the rest of GhostRoute.
 
 ## Architecture
 
-Router runtime scripts live in `router/` and are installed to the existing
-`/jffs/scripts/*` paths by `deploy.sh` and Ansible. The module does not change
-remote path names; it only gives the implementation a clearer home in the repo.
+- `router/` contains BusyBox-compatible router scripts.
+- `deploy.sh` and Ansible install those scripts to stable `/jffs/scripts/*`
+  runtime paths.
+- sing-box rule-sets are generated under the configured router rule-set
+  directory, currently `/opt/etc/sing-box/rule-sets`.
 
-## Contract
+## Read-only / Mutating Contract
 
-This module is mutating only during explicit deploy or manual recovery. Normal
-monitoring and report commands must not call these scripts to modify routing.
+This module mutates routing only during explicit deploy, explicit rule-set
+refresh, or explicit manual recovery. Health, traffic and DNS report modules may
+inspect its state, but must not silently change routing.
 
-## Commands And Storage
+## Public Commands
 
-- Public wrappers: `scripts/firewall-start`, `scripts/nat-start`,
-  `scripts/services-start`, `scripts/update-singbox-rule-sets.sh`.
-- Deploy target: `/jffs/scripts/*` and sing-box rule-sets under the configured
-  router rule-set directory.
-- Related docs: `docs/architecture.md`,
-  `docs/stealth-channel-implementation-guide.md`,
-  `docs/channel-routing-operations.md`.
-- Tests: covered indirectly by `verify.sh`, health fixtures and live Ansible
-  verification.
+- `./deploy.sh`
+- `./modules/routing-core/router/update-singbox-rule-sets.sh`
+- Runtime-only router hooks under `/jffs/scripts/*`
+
+## Runtime Storage & Artifacts
+
+- `/jffs/scripts/firewall-start`
+- `/jffs/scripts/nat-start`
+- `/jffs/scripts/services-start`
+- `/jffs/scripts/update-singbox-rule-sets.sh`
+- `/opt/etc/sing-box/rule-sets`
+
+## Dependencies On Other Modules
+
+- DNS & Catalog Intelligence provides domain/static network inputs.
+- Traffic Observatory installs counters that are invoked from the firewall path.
+- Recovery & Verification validates the routing invariants.
+
+## Failure Modes
+
+- Missing Merlin hook files.
+- Rule-set drift between router runtime and repo catalogs.
+- sing-box REDIRECT not receiving managed traffic.
+- Channel A cold fallback accidentally re-enabled.
+
+## Tests
+
+- `./modules/recovery-verification/tests/test-router-health.sh`
+- `./verify.sh`
+- Ansible `playbooks/99-verify.yml`
+
+## Related Docs
+
+- `docs/architecture.md`
+- `docs/current-routing-explained.md`
+- `docs/network-flow-and-observer-model.md`
+- `docs/channel-routing-operations.md`
+- `docs/stealth-channel-implementation-guide.md`

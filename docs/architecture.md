@@ -23,7 +23,7 @@ Remote mobile QR clients
 ```
 
 `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
-only as a cold fallback through `scripts/emergency-enable-wgc1.sh`.
+only as a cold fallback through `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
 
 ## Components
 

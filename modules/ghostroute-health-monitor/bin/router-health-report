@@ -9,7 +9,7 @@ SAVE_MODE=0
 if [ "${1:-}" = "--save" ]; then
   SAVE_MODE=1
 elif [ -n "${1:-}" ]; then
-  echo "Usage: ./scripts/router-health-report [--save]" >&2
+  echo "Usage: ./modules/ghostroute-health-monitor/bin/router-health-report [--save]" >&2
   exit 1
 fi
 
@@ -26,7 +26,7 @@ MARKDOWN_OUTPUT="$TMPDIR/router-health-latest.md"
 
 router_collect_health_state "$STATE_FILE"
 router_collect_capacity_history "${PROJECT_ROOT}/docs/vpn-domain-journal.md" "$HISTORY_FILE" "$(date +%F)"
-"${PROJECT_ROOT}/scripts/traffic-report" > "$TRAFFIC_OUTPUT"
+"${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" > "$TRAFFIC_OUTPUT"
 router_extract_traffic_summary "$TRAFFIC_OUTPUT" "$TRAFFIC_SUMMARY"
 router_render_health_markdown "$STATE_FILE" "$HISTORY_FILE" "$TRAFFIC_SUMMARY" > "$MARKDOWN_OUTPUT"
 
@@ -110,8 +110,8 @@ if [ "$SAVE_MODE" = "1" ]; then
 
 - sanitised local summary: ${LOCAL_LATEST}
 - router-side USB report: ${ROUTER_REPORT_FILE}
-- local command: ./scripts/router-health-report --save
-- traffic baseline for this save comes from ./scripts/traffic-report
+- local command: ./modules/ghostroute-health-monitor/bin/router-health-report --save
+- traffic baseline for this save comes from ./modules/traffic-observatory/bin/traffic-report
 EOF
   fi
 fi
