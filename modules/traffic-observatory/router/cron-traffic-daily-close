@@ -1,0 +1,24 @@
+#!/bin/sh
+
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+DAILY_DIR="$STATE_DIR/daily"
+
+mkdir -p "$DAILY_DIR"
+
+# Take a closing counter snapshot first so the day has a stable end marker.
+[ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1
+
+day_key="$(date '+%Y-%m-%d')"
+out_file="$DAILY_DIR/$day_key-lan-conntrack.txt"
+
+{
+  cat /var/lib/misc/dnsmasq.leases 2>/dev/null || true
+  printf '\n---CONNTRACK---\n'
+  conntrack -L 2>/dev/null || true
+} > "$out_file"
+
+# Keep daily close snapshots bounded on disk.
+find "$DAILY_DIR" -name '*-lan-conntrack.txt' -mtime +60 -print 2>/dev/null | while IFS= read -r old_file; do
+  [ -n "$old_file" ] && rm -f "$old_file"
+done

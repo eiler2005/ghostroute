@@ -45,9 +45,10 @@ Format:
 192.168.50.228|Office desktop|Windows PC
 ```
 
-Reports use `scripts/lib/device-labels.sh` to build one common label map from
-this file. `traffic-report`, `traffic-daily-report` and `dns-forensics-report`
-all consume that same map.
+Reports use the shared parser in
+`modules/shared/lib/device-labels.sh` through the stable `scripts/lib` wrapper.
+`traffic-report`, `traffic-daily-report` and `dns-forensics-report` all consume
+that same map.
 
 ## First-Time Setup
 

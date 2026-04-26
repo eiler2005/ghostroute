@@ -1,0 +1,153 @@
+#!/bin/bash
+# Fetches domain activity information from the router.
+#
+# Usage:
+#   ./scripts/domain-report            # show auto-added STEALTH domains
+#   ./scripts/domain-report --log      # show full activity log (что заходили, что добавлено)
+#   ./scripts/domain-report --log 100  # show last N lines of log
+#   ./scripts/domain-report --reset    # remove all auto-added domains and reload dnsmasq
+#   ./scripts/domain-report --cleanup  # prune redundant child auto-domains and reload dnsmasq
+#   ./scripts/domain-report --candidates # show domains skipped (not in blocked list)
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+[ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
+[ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+
+ROUTER_USER="${ROUTER_USER:-admin}"
+ROUTER_PORT="${ROUTER_PORT:-22}"
+CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
+ROUTER="${ROUTER:-}"
+SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
+
+MODE="summary"
+LOG_LINES=200
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log)   MODE="log"; [ "${2:-}" -eq "${2:-}" ] 2>/dev/null && { LOG_LINES="${2:-200}"; shift; }; shift ;;
+    --reset)      MODE="reset"; shift ;;
+    --cleanup)    MODE="cleanup"; shift ;;
+    --all)        MODE="all"; shift ;;
+    --candidates) MODE="candidates"; shift ;;
+    *) echo "Usage: $0 [--log [N]] [--reset] [--cleanup] [--all] [--candidates]" >&2; exit 1 ;;
+  esac
+done
+
+SSH_OPTS=(
+  -i "$SSH_IDENTITY_FILE"
+  -p "$ROUTER_PORT"
+  -o ConnectTimeout="$CONNECT_TIMEOUT"
+  -o IdentitiesOnly=yes
+  -o PubkeyAcceptedAlgorithms=+ssh-rsa
+  -o StrictHostKeyChecking=accept-new
+)
+
+if [ -z "$ROUTER" ]; then
+  ROUTER=$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }') || true
+fi
+[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
+
+case "$MODE" in
+
+  log)
+    echo "=== ЛОГА АКТИВНОСТИ ДОМЕНОВ (последние ${LOG_LINES} строк) ==="
+    echo "Файл на роутере: /opt/var/log/domain-activity.log"
+    echo ""
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      "[ -f /opt/var/log/domain-activity.log ] \
+       && tail -n ${LOG_LINES} /opt/var/log/domain-activity.log \
+       || echo 'Лог ещё не создан. Подождите первого запуска крона (каждые 4 часа).'"
+    ;;
+
+  reset)
+    echo "Удаляю все авто-добавленные домены..."
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'rm -f /jffs/configs/dnsmasq-autodiscovered.conf.add
+       service restart_dnsmasq
+       echo "Готово. Все авто-добавленные домены удалены, dnsmasq перезапущен."'
+    ;;
+
+  cleanup)
+    echo "Нормализую auto-файл на роутере и убираю дочерние записи, покрытые более общими правилами..."
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
+       BEFORE=$( [ -f "$AUTO" ] && grep -c "^ipset=" "$AUTO" || echo 0 )
+       /jffs/addons/x3mRouting/domain-auto-add.sh --cleanup-only
+       AFTER=$( [ -f "$AUTO" ] && grep -c "^ipset=" "$AUTO" || echo 0 )
+       echo ""
+       echo "Auto-domains: ${BEFORE} -> ${AFTER}"'
+    ;;
+
+  all)
+    echo "=== ВСЕ АВТО-ДОБАВЛЕННЫЕ STEALTH-ДОМЕНЫ ==="
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
+       [ -f "$AUTO" ] || { echo "(нет авто-добавленных доменов)"; exit 0; }
+       echo "Файл: $AUTO"
+       echo ""
+       grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u'
+    ;;
+
+  summary)
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
+       ACTIVITY=/opt/var/log/domain-activity.log
+
+       echo "=== АВТО-ДОБАВЛЕННЫЕ STEALTH-ДОМЕНЫ ==="
+       if [ -f "$AUTO" ] && grep -q "^ipset=" "$AUTO" 2>/dev/null; then
+         grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u \
+           | while read d; do
+               added=$(grep "auto-added.*${d}" "$AUTO" | head -1 | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}" || echo "?")
+               printf "  %-45s добавлен: %s\n" "$d" "$added"
+             done
+       else
+         echo "  (пока нет)"
+       fi
+
+       echo ""
+       echo "=== ПОСЛЕДНИЙ ЗАПУСК ==="
+       if [ -f "$ACTIVITY" ]; then
+         # Show last run block
+         awk "/^════/{found=1; buf=\"\"} found{buf=buf\"\n\"\$0} END{print buf}" "$ACTIVITY" \
+           | tail -50
+       else
+         echo "  Лог ещё не создан."
+       fi
+
+       echo ""
+       echo "Подробный лог: ./scripts/domain-report --log"
+       echo "Все домены:    ./scripts/domain-report --all"
+       echo "Кандидаты:     ./scripts/domain-report --candidates"
+       echo "Cleanup:       ./scripts/domain-report --cleanup"
+       echo "Сбросить всё:  ./scripts/domain-report --reset"'
+    ;;
+
+  candidates)
+    echo "=== КАНДИДАТЫ (не в списке блокировок) ==="
+    echo "Домены, которые видели в DNS, но не добавили в STEALTH"
+    echo "(отсутствуют в blocked-domains.lst)"
+    echo ""
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'ACTIVITY=/opt/var/log/domain-activity.log
+       if [ -f "$ACTIVITY" ]; then
+         grep "^│  ?" "$ACTIVITY" \
+           | sed "s/^│  ? //" \
+           | awk "{print \$1}" \
+           | sort | uniq -c | sort -rn \
+           | head -50
+       else
+         echo "Лог ещё не создан."
+       fi
+       echo ""
+       BL=/opt/tmp/blocked-domains.lst
+       if [ -f "$BL" ]; then
+         echo "Список блокировок: $(wc -l < "$BL") доменов ($(ls -lh "$BL" | awk "{print \$5}"))"
+         echo "Обновлён: $(date -r "$BL" "+%Y-%m-%d %H:%M" 2>/dev/null || stat -c "%y" "$BL" 2>/dev/null | cut -d. -f1)"
+       else
+         echo "Список блокировок: не скачан"
+         echo "Запустите: ssh admin@router /jffs/addons/x3mRouting/update-blocked-list.sh"
+       fi'
+    ;;
+esac

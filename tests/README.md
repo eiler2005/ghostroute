@@ -20,11 +20,13 @@ Legacy expectations such as `br0 -> RC_VPN_ROUTE`, `OUTPUT -> RC_VPN_ROUTE`, or 
 ### Fixture tests
 
 ```bash
+./tests/run-all.sh
 ./tests/test-router-health.sh
 ./tests/test-catalog-review.sh
 ./tests/test-dns-forensics.sh
 ./tests/test-health-monitor.sh
 ./tests/test-vps-health-monitor.sh
+./tests/test-wrapper-compat.sh
 ```
 
 These tests validate:
@@ -35,6 +37,7 @@ These tests validate:
 - DNS forensics snapshot/report formatting
 - health monitor JSONL/status aggregation, local alert ledger, summary rendering
 - VPS observer fixtures and merged GhostRoute health report rendering
+- stable wrapper compatibility after the physical `modules/` split
 
 They do not connect to the router.
 
@@ -42,9 +45,10 @@ They do not connect to the router.
 
 ```bash
 bash -n verify.sh scripts/router-health-report scripts/traffic-report scripts/traffic-daily-report scripts/lib/router-health-common.sh tests/test-router-health.sh
-bash -n scripts/catalog-review-report scripts/dns-forensics-report tests/test-catalog-review.sh tests/test-dns-forensics.sh
-sh -n scripts/firewall-start scripts/nat-start scripts/domain-auto-add.sh scripts/health-monitor/lib.sh scripts/health-monitor/run-probes scripts/health-monitor/aggregate scripts/health-monitor/daily-digest scripts/health-monitor/run-once scripts/vps-health-monitor/lib.sh scripts/vps-health-monitor/run-probes tests/test-health-monitor.sh
-bash -n scripts/ghostroute-health-report tests/test-vps-health-monitor.sh
+bash -n modules/recovery-verification/bin/verify.sh modules/ghostroute-health-monitor/bin/router-health-report modules/traffic-observatory/bin/traffic-report modules/traffic-observatory/bin/traffic-daily-report modules/shared/lib/router-health-common.sh modules/recovery-verification/tests/test-router-health.sh
+bash -n modules/dns-catalog-intelligence/bin/catalog-review-report modules/dns-catalog-intelligence/bin/dns-forensics-report modules/dns-catalog-intelligence/tests/test-catalog-review.sh modules/dns-catalog-intelligence/tests/test-dns-forensics.sh
+sh -n modules/routing-core/router/firewall-start modules/routing-core/router/nat-start modules/dns-catalog-intelligence/router/domain-auto-add.sh modules/ghostroute-health-monitor/router/lib.sh modules/ghostroute-health-monitor/router/run-probes modules/ghostroute-health-monitor/router/aggregate modules/ghostroute-health-monitor/router/daily-digest modules/ghostroute-health-monitor/router/run-once modules/ghostroute-health-monitor/vps/lib.sh modules/ghostroute-health-monitor/vps/run-probes modules/ghostroute-health-monitor/tests/test-health-monitor.sh
+bash -n modules/ghostroute-health-monitor/bin/ghostroute-health-report modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh tests/test-wrapper-compat.sh tests/run-all.sh
 ```
 
 ### Ansible syntax

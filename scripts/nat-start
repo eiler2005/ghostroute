@@ -1,6 +1,4 @@
 #!/bin/sh
-
-# Channel B NAT is owned by stealth-route-init.sh from firewall-start.
-# This hook intentionally has no Channel A policy-routing work after the
-# WireGuard decommission cleanup.
-exit 0
+set -eu
+PROJECT_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+exec "${PROJECT_ROOT}/modules/routing-core/router/nat-start" "$@"

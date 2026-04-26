@@ -1,0 +1,148 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+SAVE_MODE=0
+if [ "${1:-}" = "--save" ]; then
+  SAVE_MODE=1
+elif [ -n "${1:-}" ]; then
+  echo "Usage: ./scripts/ghostroute-health-report [--save]" >&2
+  exit 1
+fi
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+ROUTER_STATUS="$TMPDIR/router-status.json"
+ROUTER_SUMMARY="$TMPDIR/router-summary.md"
+VPS_STATUS="$TMPDIR/vps-status.json"
+VPS_SUMMARY="$TMPDIR/vps-summary.md"
+REPORT="$TMPDIR/ghostroute-health-report.md"
+
+json_unknown() {
+  local file="$1"
+  local layer="$2"
+  local message="$3"
+  local ts
+  ts="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  printf '{"ts":"%s","overall":"UNKNOWN","version":1,"storage":"unknown","checks":{"collector":{"status":"UNKNOWN","last_ts":"%s","risk":"collector unavailable","message":"%s","evidence":"layer=%s","action":"Check collector access."}}}\n' \
+    "$ts" "$ts" "$message" "$layer" > "$file"
+}
+
+json_overall() {
+  ruby -rjson -e 'begin; j = JSON.parse(File.read(ARGV[0])); puts(j["overall"] || "UNKNOWN"); rescue StandardError; puts "UNKNOWN"; end' "$1"
+}
+
+split_bundle() {
+  local bundle="$1"
+  local status_file="$2"
+  local summary_file="$3"
+  awk -v status_file="$status_file" -v summary_file="$summary_file" '
+    /^__SUMMARY__$/ { in_summary = 1; next }
+    in_summary { print > summary_file; next }
+    { print > status_file }
+  ' "$bundle"
+}
+
+collect_router() {
+  if [ -n "${GHOSTROUTE_ROUTER_STATUS_JSON:-}" ] && [ -n "${GHOSTROUTE_ROUTER_SUMMARY_MD:-}" ]; then
+    cp "$GHOSTROUTE_ROUTER_STATUS_JSON" "$ROUTER_STATUS"
+    cp "$GHOSTROUTE_ROUTER_SUMMARY_MD" "$ROUTER_SUMMARY"
+    return 0
+  fi
+
+  router_health_load_env
+  bundle="$TMPDIR/router-bundle.txt"
+  if router_ssh 'BASE=/opt/var/log/router_configuration/health-monitor; [ -d "$BASE" ] || BASE=/jffs/addons/router_configuration/health-monitor; if [ -r "$BASE/status.json" ]; then cat "$BASE/status.json"; else printf "{\"overall\":\"UNKNOWN\"}\n"; fi; printf "\n__SUMMARY__\n"; if [ -r "$BASE/summary-latest.md" ]; then sed -n "1,220p" "$BASE/summary-latest.md"; else printf "Router summary missing at %s\n" "$BASE"; fi' > "$bundle"; then
+    split_bundle "$bundle" "$ROUTER_STATUS" "$ROUTER_SUMMARY"
+  else
+    json_unknown "$ROUTER_STATUS" router "Router status could not be collected."
+    printf 'Router summary could not be collected via SSH.\n' > "$ROUTER_SUMMARY"
+  fi
+}
+
+collect_vps() {
+  if [ -n "${GHOSTROUTE_VPS_STATUS_JSON:-}" ] && [ -n "${GHOSTROUTE_VPS_SUMMARY_MD:-}" ]; then
+    cp "$GHOSTROUTE_VPS_STATUS_JSON" "$VPS_STATUS"
+    cp "$GHOSTROUTE_VPS_SUMMARY_MD" "$VPS_SUMMARY"
+    return 0
+  fi
+
+  tree="$TMPDIR/ansible-tree"
+  mkdir -p "$tree"
+  vps_command='BASE=/var/log/ghostroute/health-monitor; if [ -r "$BASE/status.json" ]; then cat "$BASE/status.json"; else printf "{\"overall\":\"UNKNOWN\"}\n"; fi; printf "\n__SUMMARY__\n"; if [ -r "$BASE/summary-latest.md" ]; then sed -n "1,220p" "$BASE/summary-latest.md"; else printf "VPS summary missing at %s\n" "$BASE"; fi'
+  if (cd "$PROJECT_ROOT/ansible" && ansible vps_stealth -e @secrets/stealth.yml -m ansible.builtin.shell -a "$vps_command" --tree "$tree" >/dev/null 2>&1); then
+    result_file="$(find "$tree" -type f | head -1)"
+    if [ -n "$result_file" ]; then
+      ruby -rjson -e 'j = JSON.parse(File.read(ARGV[0])); print(j["stdout"] || "")' "$result_file" > "$TMPDIR/vps-bundle.txt"
+      split_bundle "$TMPDIR/vps-bundle.txt" "$VPS_STATUS" "$VPS_SUMMARY"
+      return 0
+    fi
+  fi
+
+  json_unknown "$VPS_STATUS" vps "VPS status could not be collected."
+  printf 'VPS summary could not be collected through Ansible.\n' > "$VPS_SUMMARY"
+}
+
+merged_overall() {
+  local router="$1"
+  local vps="$2"
+  if [ "$router" = "CRIT" ] || [ "$vps" = "CRIT" ]; then
+    printf 'CRIT\n'
+  elif [ "$router" = "OK" ] && [ "$vps" = "OK" ]; then
+    printf 'OK\n'
+  else
+    printf 'WARN\n'
+  fi
+}
+
+render_report() {
+  local router_overall="$1"
+  local vps_overall="$2"
+  local overall="$3"
+  local ts
+  ts="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+
+  {
+    printf '# GhostRoute Health Report\n\n'
+    printf '%s\n' "- Generated: **$ts**"
+    printf '%s\n' "- Overall: **$overall**"
+    printf '%s\n' "- Router monitor: **$router_overall**"
+    printf '%s\n' "- VPS observer: **$vps_overall**"
+    printf '%s\n' "- Alerting: local files only, no external notifications"
+    printf '\n## Layer Status\n\n'
+    printf '| Layer | Status | Source |\n'
+    printf '|---|---|---|\n'
+    printf '| Router | `%s` | router health-monitor status.json |\n' "$router_overall"
+    printf '| VPS | `%s` | VPS health-monitor status.json via control machine |\n' "$vps_overall"
+    printf '\n## Operator Workflow\n\n'
+    printf '1. If overall is not `OK`, read Router Summary and VPS Summary below.\n'
+    printf '2. Use local alert ledgers on the affected host for exact transitions.\n'
+    printf '3. Do not restart services, edit routing, or deploy without operator OK.\n'
+    printf '4. After manual recovery, rerun `scripts/ghostroute-health-report --save`.\n'
+    printf '\n## Router Summary\n\n'
+    sed -n '1,220p' "$ROUTER_SUMMARY"
+    printf '\n## VPS Summary\n\n'
+    sed -n '1,220p' "$VPS_SUMMARY"
+  } > "$REPORT"
+}
+
+save_to_router() {
+  router_health_load_env
+  cat "$REPORT" | router_ssh 'BASE=/opt/var/log/router_configuration/health-monitor; [ -d "$BASE" ] || BASE=/jffs/addons/router_configuration/health-monitor; GLOBAL="$BASE/global"; HISTORY="$GLOBAL/history"; TS=$(date "+%Y-%m-%dT%H%M%S%z"); mkdir -p "$HISTORY"; TMP="$GLOBAL/.ghostroute-health.$$"; cat > "$TMP"; cp "$TMP" "$GLOBAL/ghostroute-health-latest.md"; cp "$TMP" "$HISTORY/$TS.md"; rm -f "$TMP"; find "$HISTORY" -name "*.md" -mtime +31 -delete 2>/dev/null || true'
+}
+
+collect_router
+collect_vps
+ROUTER_OVERALL="$(json_overall "$ROUTER_STATUS")"
+VPS_OVERALL="$(json_overall "$VPS_STATUS")"
+OVERALL="$(merged_overall "$ROUTER_OVERALL" "$VPS_OVERALL")"
+render_report "$ROUTER_OVERALL" "$VPS_OVERALL" "$OVERALL"
+cat "$REPORT"
+
+if [ "$SAVE_MODE" = "1" ]; then
+  save_to_router
+fi

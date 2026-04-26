@@ -112,23 +112,25 @@ fi
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/static-networks.txt"
 require_local_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt"
-require_local_file "${PROJECT_ROOT}/scripts/firewall-start"
-require_local_file "${PROJECT_ROOT}/scripts/nat-start"
-require_local_file "${PROJECT_ROOT}/scripts/cron-save-ipset"
-require_local_file "${PROJECT_ROOT}/scripts/emergency-enable-wgc1.sh"
-require_local_file "${PROJECT_ROOT}/scripts/update-singbox-rule-sets.sh"
-require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot"
-require_local_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close"
-require_local_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh"
-require_local_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot"
-require_local_file "${PROJECT_ROOT}/scripts/mobile-reality-accounting-refresh"
-require_local_file "${PROJECT_ROOT}/scripts/mobile-reality-counters-snapshot"
-require_local_file "${PROJECT_ROOT}/scripts/health-monitor/lib.sh"
-require_local_file "${PROJECT_ROOT}/scripts/health-monitor/run-probes"
-require_local_file "${PROJECT_ROOT}/scripts/health-monitor/aggregate"
-require_local_file "${PROJECT_ROOT}/scripts/health-monitor/daily-digest"
-require_local_file "${PROJECT_ROOT}/scripts/health-monitor/run-once"
-require_local_file "${PROJECT_ROOT}/scripts/services-start"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/firewall-start"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/nat-start"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/cron-save-ipset"
+require_local_file "${PROJECT_ROOT}/modules/recovery-verification/router/emergency-enable-wgc1.sh"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/update-singbox-rule-sets.sh"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-daily-close"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-accounting-refresh"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh"
+require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-probes"
+require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/aggregate"
+require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/daily-digest"
+require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-once"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/services-start"
+require_local_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/domain-auto-add.sh"
+require_local_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/update-blocked-list.sh"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   require_local_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add"
 fi
@@ -157,25 +159,25 @@ upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/confi
 if [ -f "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" ]; then
   upload_file "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" "${REMOTE_STAGE}/secrets/no-vpn-ip-ports.local.txt"
 fi
-upload_file "${PROJECT_ROOT}/scripts/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
-upload_file "${PROJECT_ROOT}/scripts/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
-upload_file "${PROJECT_ROOT}/scripts/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
-upload_file "${PROJECT_ROOT}/scripts/emergency-enable-wgc1.sh" "${REMOTE_STAGE}/scripts/emergency-enable-wgc1.sh"
-upload_file "${PROJECT_ROOT}/scripts/update-singbox-rule-sets.sh" "${REMOTE_STAGE}/scripts/update-singbox-rule-sets.sh"
-upload_file "${PROJECT_ROOT}/scripts/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
-upload_file "${PROJECT_ROOT}/scripts/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
-upload_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh" "${REMOTE_STAGE}/scripts/lan-traffic-accounting-refresh"
-upload_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
-upload_file "${PROJECT_ROOT}/scripts/mobile-reality-accounting-refresh" "${REMOTE_STAGE}/scripts/mobile-reality-accounting-refresh"
-upload_file "${PROJECT_ROOT}/scripts/mobile-reality-counters-snapshot" "${REMOTE_STAGE}/scripts/mobile-reality-counters-snapshot"
-upload_file "${PROJECT_ROOT}/scripts/health-monitor/lib.sh" "${REMOTE_STAGE}/scripts/health-monitor/lib.sh"
-upload_file "${PROJECT_ROOT}/scripts/health-monitor/run-probes" "${REMOTE_STAGE}/scripts/health-monitor/run-probes"
-upload_file "${PROJECT_ROOT}/scripts/health-monitor/aggregate" "${REMOTE_STAGE}/scripts/health-monitor/aggregate"
-upload_file "${PROJECT_ROOT}/scripts/health-monitor/daily-digest" "${REMOTE_STAGE}/scripts/health-monitor/daily-digest"
-upload_file "${PROJECT_ROOT}/scripts/health-monitor/run-once" "${REMOTE_STAGE}/scripts/health-monitor/run-once"
-upload_file "${PROJECT_ROOT}/scripts/services-start" "${REMOTE_STAGE}/scripts/services-start"
-upload_file "${PROJECT_ROOT}/scripts/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
-upload_file "${PROJECT_ROOT}/scripts/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
+upload_file "${PROJECT_ROOT}/modules/recovery-verification/router/emergency-enable-wgc1.sh" "${REMOTE_STAGE}/scripts/emergency-enable-wgc1.sh"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/update-singbox-rule-sets.sh" "${REMOTE_STAGE}/scripts/update-singbox-rule-sets.sh"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-accounting-refresh" "${REMOTE_STAGE}/scripts/lan-traffic-accounting-refresh"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh" "${REMOTE_STAGE}/scripts/mobile-reality-accounting-refresh"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot" "${REMOTE_STAGE}/scripts/mobile-reality-counters-snapshot"
+upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh" "${REMOTE_STAGE}/scripts/health-monitor/lib.sh"
+upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-probes" "${REMOTE_STAGE}/scripts/health-monitor/run-probes"
+upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/aggregate" "${REMOTE_STAGE}/scripts/health-monitor/aggregate"
+upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/daily-digest" "${REMOTE_STAGE}/scripts/health-monitor/daily-digest"
+upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-once" "${REMOTE_STAGE}/scripts/health-monitor/run-once"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/services-start" "${REMOTE_STAGE}/scripts/services-start"
+upload_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
+upload_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
 upload_file "${PROJECT_ROOT}/configs/domains-no-vpn.txt" "${REMOTE_STAGE}/configs/domains-no-vpn.txt"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   upload_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-logging.conf.add"
@@ -355,6 +357,17 @@ for health_monitor_script in lib.sh run-probes aggregate daily-digest run-once; 
     "$REMOTE_STAGE/scripts/health-monitor/$health_monitor_script" \
     "/jffs/scripts/health-monitor/$health_monitor_script"
 done
+if [ -r /jffs/scripts/ghostroute-runtime.env ]; then
+  # Keep deploy.sh self-sufficient for the health monitor: Ansible renders the
+  # same env, but base router deploy should not leave probes in UNKNOWN.
+  . /jffs/scripts/ghostroute-runtime.env
+  {
+    printf 'HEALTH_MONITOR_REDIRECT_PORT=%s\n' "${GHOSTROUTE_REDIRECT_PORT:-}"
+    printf 'HEALTH_MONITOR_SOCKS_PORT=%s\n' "${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-}"
+    printf 'HEALTH_MONITOR_HOME_REALITY_PORT=%s\n' "${GHOSTROUTE_HOME_REALITY_PORT:-}"
+  } > /jffs/scripts/health-monitor/env
+  chmod 0600 /jffs/scripts/health-monitor/env
+fi
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/services-start" \

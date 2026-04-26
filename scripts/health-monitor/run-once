@@ -1,12 +1,4 @@
 #!/bin/sh
-# Manual entrypoint: collect probes, aggregate state, and print the summary path.
-
-set -u
-DIR="$(dirname "$0")"
-. "$DIR/lib.sh"
-
-"$DIR/run-probes"
-"$DIR/aggregate"
-
-printf 'GhostRoute health monitor summary: %s/summary-latest.md\n' "$LOG_DIR"
-printf 'GhostRoute health monitor status:  %s/status.json\n' "$LOG_DIR"
+set -eu
+PROJECT_ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
+exec "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-once" "$@"

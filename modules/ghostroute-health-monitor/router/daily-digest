@@ -1,0 +1,67 @@
+#!/bin/sh
+# Write a daily local digest. No external notifications are sent.
+
+set -u
+. "$(dirname "$0")/lib.sh"
+
+hm_init_dirs
+"$(dirname "$0")/aggregate" >/dev/null 2>&1 || true
+
+today="$(hm_today)"
+digest="$(hm_daily_file)"
+summary="$LOG_DIR/summary-latest.md"
+alerts_md="$(hm_alert_md_file)"
+raw="$(hm_raw_file)"
+
+{
+  printf '# GhostRoute Health Monitor Daily Digest - %s\n\n' "$today"
+  printf 'This is a local router-side digest. It is not sent outside the router.\n\n'
+  if [ -r "$summary" ]; then
+    sed -n '1,220p' "$summary"
+  else
+    printf 'No summary-latest.md exists yet.\n'
+  fi
+  printf '\n## Alert Ledger\n\n'
+  if [ -s "$alerts_md" ]; then
+    sed -n '1,220p' "$alerts_md"
+  else
+    printf 'No alerts recorded today.\n'
+  fi
+  printf '\n## Raw Event Counts\n\n'
+  if [ -s "$raw" ]; then
+    awk '
+      function json_get(line, key,   pat, rest, idx, end) {
+        pat = "\"" key "\":\""
+        idx = index(line, pat)
+        if (idx == 0) return ""
+        rest = substr(line, idx + length(pat))
+        end = index(rest, "\"")
+        if (end == 0) return rest
+        return substr(rest, 1, end - 1)
+      }
+      {
+        probe = json_get($0, "probe")
+        status = json_get($0, "status")
+        if (probe != "" && status != "") count[probe, status]++
+      }
+      END {
+        print "| Probe | OK | WARN | CRIT | UNKNOWN | SKIP |"
+        print "|---|---:|---:|---:|---:|---:|"
+        for (k in count) {
+          split(k, parts, SUBSEP)
+          probes[parts[1]] = 1
+        }
+        for (p in probes) {
+          printf "| `%s` | %d | %d | %d | %d | %d |\n", p, count[p, "OK"] + 0, count[p, "WARN"] + 0, count[p, "CRIT"] + 0, count[p, "UNKNOWN"] + 0, count[p, "SKIP"] + 0
+        }
+      }' "$raw"
+  else
+    printf 'No raw events recorded today.\n'
+  fi
+} > "$digest.tmp"
+mv "$digest.tmp" "$digest"
+
+find "$RAW_DIR" -name '*.jsonl' -mtime +30 -delete 2>/dev/null || true
+find "$ALERT_DIR" -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
+find "$ALERT_DIR" -name '*.md' -mtime +90 -delete 2>/dev/null || true
+find "$DAILY_DIR" -name '*.md' -mtime +90 -delete 2>/dev/null || true

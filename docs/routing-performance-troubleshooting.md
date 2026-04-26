@@ -58,7 +58,7 @@ These changes are managed by:
 - [ansible/group_vars/routers.yml](../ansible/group_vars/routers.yml)
 - [ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2](../ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2)
 - [ansible/playbooks/99-verify.yml](../ansible/playbooks/99-verify.yml)
-- [scripts/lib/router-health-common.sh](../scripts/lib/router-health-common.sh)
+- [modules/shared/lib/router-health-common.sh](../modules/shared/lib/router-health-common.sh)
 
 ## 2. MTU / MSS Problems
 

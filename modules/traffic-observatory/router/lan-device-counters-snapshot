@@ -1,0 +1,88 @@
+#!/bin/sh
+
+LEASES_FILE="/var/lib/misc/dnsmasq.leases"
+TMP_RULES="/tmp/lan-device-counters.$$"
+
+[ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
+
+iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || {
+  rm -f "$TMP_RULES"
+  exit 0
+}
+
+awk '
+  NR == FNR {
+    if (NF >= 4) {
+      host = $4
+      if (host == "" || host == "*") host = "?"
+      hosts[$3] = host
+      ips[$3] = 1
+    }
+    next
+  }
+  {
+    if (NF < 3 || $2 != "-A") next
+    if ($3 == "RC_LAN_BYTES_OUT") {
+      direction = "up"
+      forced_channel = ""
+    } else if ($3 == "RC_LAN_BYTES_IN") {
+      direction = "down"
+      forced_channel = ""
+    } else if ($3 == "RC_LAN_REALITY_OUT") {
+      direction = "up"
+      forced_channel = "vpn"
+    } else if ($3 == "RC_LAN_REALITY_IN") {
+      direction = "down"
+      forced_channel = "vpn"
+    } else next
+
+    bytes_field = $1
+    sub(/^\[[0-9]+:/, "", bytes_field)
+    sub(/\]$/, "", bytes_field)
+
+    ip = ""
+    iface = ""
+    for (i = 4; i <= NF; i++) {
+      if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+        ip = $(i + 1)
+        sub(/\/32$/, "", ip)
+      }
+      if (($i == "-i" || $i == "-o") && (i + 1) <= NF) {
+        iface = $(i + 1)
+      }
+    }
+    if (ip == "") next
+
+    if (forced_channel != "") channel = forced_channel
+    else if (iface == "wan0") channel = "wan"
+    else channel = "other"
+
+    ips[ip] = 1
+    # Keep raw byte counters as strings here. BusyBox awk can clamp large
+    # numeric values around 2^31-1 when coerced too early.
+    counters[ip, direction, channel] = bytes_field
+  }
+  END {
+    for (ip in ips) {
+      host = hosts[ip]
+      if (host == "") host = "?"
+      vpn_up = counters[ip, "up", "vpn"];     if (vpn_up == "") vpn_up = "0"
+      vpn_down = counters[ip, "down", "vpn"]; if (vpn_down == "") vpn_down = "0"
+      wan_up = counters[ip, "up", "wan"];     if (wan_up == "") wan_up = "0"
+      wan_down = counters[ip, "down", "wan"]; if (wan_down == "") wan_down = "0"
+      other_up = counters[ip, "up", "other"]; if (other_up == "") other_up = "0"
+      other_down = counters[ip, "down", "other"]; if (other_down == "") other_down = "0"
+      printf "%s|%s|%s|%s|%s|%s|%s|%s\n",
+        ip,
+        host,
+        vpn_up,
+        vpn_down,
+        wan_up,
+        wan_down,
+        other_up,
+        other_down
+    }
+  }
+' "$LEASES_FILE" "$TMP_RULES" | sort -t'|' -k1,1
+
+rm -f "$TMP_RULES"

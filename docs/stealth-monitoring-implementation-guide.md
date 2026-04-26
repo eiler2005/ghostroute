@@ -308,9 +308,11 @@ Retention выполняется `aggregate` и `daily-digest`:
 Локально:
 
 ```bash
-sh -n scripts/health-monitor/lib.sh scripts/health-monitor/run-probes \
-  scripts/health-monitor/aggregate scripts/health-monitor/daily-digest \
-  scripts/health-monitor/run-once
+sh -n modules/ghostroute-health-monitor/router/lib.sh \
+  modules/ghostroute-health-monitor/router/run-probes \
+  modules/ghostroute-health-monitor/router/aggregate \
+  modules/ghostroute-health-monitor/router/daily-digest \
+  modules/ghostroute-health-monitor/router/run-once
 
 ./tests/test-health-monitor.sh
 ./tests/test-vps-health-monitor.sh

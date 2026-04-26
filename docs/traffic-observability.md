@@ -118,7 +118,7 @@ For the full end-to-end workflow and observer table, see
 |---|---|
 | `./verify.sh` | compact live health summary |
 | `./scripts/router-health-report` | sanitised Markdown state for humans/LLMs |
-| `./scripts/router-health-report --save` | tracked snapshot + local journal + router-side copy |
+| `./scripts/router-health-report --save` | local report snapshot + local journal + router-side copy |
 | `./scripts/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./scripts/traffic-daily-report` | compatibility backend for saved day/week/month snapshot periods |
 | `./scripts/catalog-review-report` | advisory review of domains/static networks |
@@ -168,8 +168,8 @@ Format:
 192.168.50.195||iPad
 ```
 
-The shared parser lives in `scripts/lib/device-labels.sh`. These reports consume
-the same map:
+The shared parser lives in `modules/shared/lib/device-labels.sh` and is exposed
+through the stable `scripts/lib` wrapper. These reports consume the same map:
 
 - `./scripts/traffic-report`
 - `./scripts/traffic-daily-report`

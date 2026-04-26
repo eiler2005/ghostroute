@@ -1,0 +1,120 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUT_DIR="${PROJECT_ROOT}/ansible/out/clients"
+HOME_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-home"
+EMERGENCY_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-emergency"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./scripts/client-profiles <generate|list|home-list|emergency-list|open|home-open|emergency-open|clean|home-clean|emergency-clean>
+
+Commands:
+  generate  Generate local VLESS .conf and QR .png files from ansible-vault.
+  list      List generated local client artifacts.
+  home-list List generated home Reality mobile client artifacts.
+  emergency-list List generated emergency direct-VPS artifacts.
+  open      Open local qr-index.html when it exists.
+  home-open Open local home Reality qr-index.html when it exists.
+  emergency-open Open local emergency direct-VPS qr-index.html when it exists.
+  clean     Remove generated local client artifacts.
+  home-clean Remove generated home Reality mobile client artifacts.
+  emergency-clean Remove generated emergency direct-VPS artifacts.
+EOF
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  generate)
+    cd "${PROJECT_ROOT}/ansible"
+    ansible-playbook playbooks/30-generate-client-profiles.yml
+    ;;
+  list)
+    if [ -d "$OUT_DIR" ]; then
+      find "$OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' | sort
+    else
+      echo "No generated client directory: $OUT_DIR" >&2
+      exit 1
+    fi
+    ;;
+  home-list)
+    if [ -d "$HOME_OUT_DIR" ]; then
+      find "$HOME_OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' | sort
+    else
+      echo "No generated home client directory: $HOME_OUT_DIR" >&2
+      exit 1
+    fi
+    ;;
+  emergency-list)
+    if [ -d "$EMERGENCY_OUT_DIR" ]; then
+      find "$EMERGENCY_OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' | sort
+    else
+      echo "No generated emergency client directory: $EMERGENCY_OUT_DIR" >&2
+      exit 1
+    fi
+    ;;
+  open)
+    index="${OUT_DIR}/qr-index.html"
+    [ -f "$index" ] || {
+      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      exit 1
+    }
+    if command -v open >/dev/null 2>&1; then
+      open "$index"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$index"
+    else
+      echo "$index"
+    fi
+    ;;
+  home-open)
+    index="${HOME_OUT_DIR}/qr-index.html"
+    [ -f "$index" ] || {
+      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      exit 1
+    }
+    if command -v open >/dev/null 2>&1; then
+      open "$index"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$index"
+    else
+      echo "$index"
+    fi
+    ;;
+  emergency-open)
+    index="${EMERGENCY_OUT_DIR}/qr-index.html"
+    [ -f "$index" ] || {
+      echo "Missing $index. Run: ./scripts/client-profiles generate" >&2
+      exit 1
+    }
+    if command -v open >/dev/null 2>&1; then
+      open "$index"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$index"
+    else
+      echo "$index"
+    fi
+    ;;
+  clean)
+    mkdir -p "$OUT_DIR"
+    find "$OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
+    ;;
+  home-clean)
+    mkdir -p "$HOME_OUT_DIR"
+    find "$HOME_OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
+    ;;
+  emergency-clean)
+    mkdir -p "$EMERGENCY_OUT_DIR"
+    find "$EMERGENCY_OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
+    ;;
+  -h|--help|help|"")
+    usage
+    [ -n "$cmd" ] || exit 1
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

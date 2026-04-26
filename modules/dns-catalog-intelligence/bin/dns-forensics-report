@@ -1,0 +1,243 @@
+#!/bin/bash
+# Read hourly DNS forensics snapshots from the router.
+#
+# Usage:
+#   ./scripts/dns-forensics-report
+#   ./scripts/dns-forensics-report 2026-04-21T05
+#   ./scripts/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
+[ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
+[ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+
+ROUTER_USER="${ROUTER_USER:-admin}"
+ROUTER_PORT="${ROUTER_PORT:-22}"
+CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
+ROUTER="${ROUTER:-}"
+SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
+DNS_FORENSICS_DEVICE_METADATA_FILE="${DNS_FORENSICS_DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
+
+WINDOW_PREFIX=""
+FILTER_IP=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ip)
+      FILTER_IP="${2:-}"
+      [ -n "$FILTER_IP" ] || { echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2; exit 1; }
+      shift 2
+      ;;
+    -*)
+      echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2
+      exit 1
+      ;;
+    *)
+      if [ -z "$WINDOW_PREFIX" ]; then
+        WINDOW_PREFIX="$1"
+      else
+        echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+SSH_OPTS=(
+  -i "$SSH_IDENTITY_FILE"
+  -p "$ROUTER_PORT"
+  -o ConnectTimeout="$CONNECT_TIMEOUT"
+  -o IdentitiesOnly=yes
+  -o PubkeyAcceptedAlgorithms=+ssh-rsa
+  -o StrictHostKeyChecking=accept-new
+)
+
+detect_router_ip() {
+  local candidate
+
+  if command -v route >/dev/null 2>&1; then
+    candidate="$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }')"
+    [ -n "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  fi
+
+  if command -v ip >/dev/null 2>&1; then
+    candidate="$(ip route show default 2>/dev/null | awk '/default/ { print $3; exit }')"
+    [ -n "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  fi
+
+  return 1
+}
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+SNAPSHOT_FILE="$TMPDIR/dns-forensics.tsv"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
+
+if [ -n "${DNS_FORENSICS_SOURCE_DIR:-}" ]; then
+  if [ -n "$WINDOW_PREFIX" ]; then
+    SELECTED_FILE="$(find "${DNS_FORENSICS_SOURCE_DIR}" -type f -name "${WINDOW_PREFIX}*.tsv" | sort | tail -1)"
+  else
+    SELECTED_FILE="$(find "${DNS_FORENSICS_SOURCE_DIR}" -type f -name '*.tsv' | sort | tail -1)"
+  fi
+  [ -n "$SELECTED_FILE" ] || { echo "No DNS forensics snapshots found in ${DNS_FORENSICS_SOURCE_DIR}." >&2; exit 1; }
+  cp "$SELECTED_FILE" "$SNAPSHOT_FILE"
+  SNAPSHOT_SOURCE="$SELECTED_FILE"
+else
+  ROUTER="${ROUTER:-$(detect_router_ip || true)}"
+  [ -n "$ROUTER" ] || { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
+  SELECTED_FILE="$(
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" WINDOW_PREFIX="$WINDOW_PREFIX" 'sh -s' <<'REMOTE'
+set -e
+DIR=/jffs/addons/router_configuration/dns-forensics
+[ -d /opt/var/log/router_configuration/dns-forensics ] && DIR=/opt/var/log/router_configuration/dns-forensics
+
+if [ -n "$WINDOW_PREFIX" ]; then
+  ls -1 "$DIR" 2>/dev/null | grep '\.tsv$' | grep "^${WINDOW_PREFIX}" | sort | tail -1 | sed "s|^|$DIR/|"
+else
+  ls -1 "$DIR" 2>/dev/null | grep '\.tsv$' | sort | tail -1 | sed "s|^|$DIR/|"
+fi
+REMOTE
+  )"
+  [ -n "$SELECTED_FILE" ] || {
+    if [ -n "$WINDOW_PREFIX" ]; then
+      echo "No DNS forensics snapshot found for prefix ${WINDOW_PREFIX}." >&2
+    else
+      echo "No DNS forensics snapshots found on the router." >&2
+    fi
+    exit 1
+  }
+  ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "cat \"$SELECTED_FILE\"" > "$SNAPSHOT_FILE"
+  SNAPSHOT_SOURCE="$SELECTED_FILE"
+fi
+
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DNS_FORENSICS_DEVICE_METADATA_FILE"
+
+ruby - "$SNAPSHOT_FILE" "$DEVICE_METADATA_MAP" "$FILTER_IP" "$SNAPSHOT_SOURCE" <<'RUBY'
+snapshot_file, metadata_map_file, filter_ip, snapshot_source = ARGV
+
+meta = {}
+clients = []
+top_domains = Hash.new { |h, k| h[k] = [] }
+top_families = Hash.new { |h, k| h[k] = [] }
+metadata = {}
+
+if File.file?(metadata_map_file)
+  File.readlines(metadata_map_file, chomp: true).each do |line|
+    next if line.strip.empty? || line.lstrip.start_with?("#")
+    ip, label, = line.split("|", 4)
+    next if ip.to_s.empty?
+    label = label.to_s.strip
+    metadata[ip] = label unless label.empty?
+  end
+end
+
+File.readlines(snapshot_file, chomp: true).each do |line|
+  next if line.strip.empty?
+  parts = line.split("|")
+  case parts[0]
+  when "SNAPSHOT"
+    meta["snapshot_created"] = parts[1].to_s
+  when "WINDOW"
+    meta["window_key"] = parts[1].to_s
+    meta["date_hdr"] = parts[2].to_s
+    meta["window_from"] = parts[3].to_s
+    meta["window_to"] = parts[4].to_s
+    meta["total_queries"] = parts[5].to_i
+    meta["client_count"] = parts[6].to_i
+  when "CLIENT"
+    clients << {
+      "rank" => parts[1].to_i,
+      "ip" => parts[2].to_s,
+      "host" => parts[3].to_s,
+      "queries" => parts[4].to_i,
+      "unique_domains" => parts[5].to_i,
+      "top_family" => parts[6].to_s,
+      "top_family_count" => parts[7].to_i,
+    }
+  when "TOPDOMAIN"
+    top_domains[parts[1].to_s] << {
+      "rank" => parts[2].to_i,
+      "count" => parts[3].to_i,
+      "domain" => parts[4].to_s,
+    }
+  when "TOPFAMILY"
+    top_families[parts[1].to_s] << {
+      "rank" => parts[2].to_i,
+      "count" => parts[3].to_i,
+      "family" => parts[4].to_s,
+    }
+  end
+end
+
+clients.sort_by! { |row| row["rank"] }
+
+if !filter_ip.to_s.empty?
+  clients.select! { |row| row["ip"] == filter_ip }
+  if clients.empty?
+    warn "Client #{filter_ip} not found in snapshot #{snapshot_source}."
+    exit 1
+  end
+end
+
+display_host = lambda do |client|
+  metadata[client["ip"]] || begin
+    host = client["host"].to_s
+    (host.empty? || host == "?") ? client["ip"] : host
+  end
+end
+
+puts "=== WINDOW ==="
+puts "Snapshot source:         #{snapshot_source}"
+puts "Snapshot created:        #{meta['snapshot_created']}"
+puts "Window key:              #{meta['window_key']}"
+puts "Observed period:         #{meta['date_hdr']} #{meta['window_from']} -> #{meta['window_to']}"
+puts "Total DNS queries:       #{meta['total_queries']}"
+puts "Clients in snapshot:     #{meta['client_count']}"
+puts
+puts "=== TOP CLIENTS ==="
+printf "%-5s  %-15s  %-28s  %8s  %14s  %s\n", "Rank", "Client IP", "Host", "Queries", "Unique domains", "Top family"
+clients.each do |client|
+  family = client["top_family"].to_s
+  family = "-" if family.empty?
+  family_note = family == "-" ? "-" : "#{family} (#{client['top_family_count']})"
+  printf "%-5d  %-15s  %-28s  %8d  %14d  %s\n",
+    client["rank"], client["ip"], display_host.call(client), client["queries"], client["unique_domains"], family_note
+end
+puts
+
+clients.each do |client|
+  puts "=== CLIENT #{client['ip']} ==="
+  puts "Display label:           #{display_host.call(client)}"
+  puts "Queries:                 #{client['queries']}"
+  puts "Unique domains:          #{client['unique_domains']}"
+  puts
+  puts "Top raw domains:"
+  domains = top_domains[client["ip"]]
+  if domains.empty?
+    puts "  none"
+  else
+    domains.each do |row|
+      puts format("  %d. %-48s %6d", row["rank"], row["domain"], row["count"])
+    end
+  end
+  puts
+  puts "Top domain families:"
+  families = top_families[client["ip"]]
+  if families.empty?
+    puts "  none"
+  else
+    families.each do |row|
+      puts format("  %d. %-48s %6d", row["rank"], row["family"], row["count"])
+    end
+  end
+  puts
+end
+
+puts "=== NOTES ==="
+puts "- This is an hourly DNS-interest snapshot, not a byte counter."
+puts "- CDN, update, sync, or telemetry domains can strongly hint at activity, but they do not prove exact download volume by themselves."
+puts "- Correlate this report with traffic-report / traffic-daily-report for byte attribution."
+RUBY
