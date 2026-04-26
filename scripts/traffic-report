@@ -639,14 +639,14 @@ echo "=== GHOSTROUTE USAGE REPORT ==="
 echo "Period:                  today"
 echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
 echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
-echo "Mobile byte window:      ${MOBILE_WINDOW_LINE}"
+echo "Mobile/QR byte window:   ${MOBILE_WINDOW_LINE}"
 echo
 
 echo "=== 1. EXIT SUMMARY ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
 echo "Wi-Fi total:             $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
 echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
-echo "Mobile LTE ingress:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (LTE -> home RU IP :<home-reality-port>)"
+echo "QR/Home Reality ingress: $(human_bytes "$MOBILE_BYTE_TOTAL")  (client -> home RU IP :<home-reality-port>)"
 echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  (LAN exact + mobile estimated)"
 echo "Via home RU direct:      $(human_bytes "$TOTAL_HOME_DIRECT_EST")  (LAN exact + mobile estimated)"
 echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
@@ -662,8 +662,8 @@ echo "=== 2. PATH MATRIX ==="
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Source" "First hop" "Router" "Exit" "Site sees"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "REDIRECT :<lan-redirect-port>" "VLESS+Reality -> VPS" "VPS VPS IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no redirect" "Home WAN direct" "Home Russian IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Mobile LTE" "LTE -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Mobile LTE" "LTE -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "QR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "QR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
 echo
 
 echo "=== 3. MANAGED CATALOG ==="
@@ -671,7 +671,7 @@ echo "STEALTH_DOMAINS active:  ${STEALTH_IPSET_ACTIVE} IPs in router ipset"
 echo "Managed domain rules:    ${STEALTH_RULES_CONFIG} rules in configs/dnsmasq-stealth.conf.add"
 echo "Static CIDR routes:      ${STATIC_NETS_CONFIG} rules in configs/static-networks.txt"
 echo "LAN/Wi-Fi via VPS:       $(human_bytes "$DEVICE_REALITY_BYTES")"
-echo "Mobile via VPS:          $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} mobile connections)"
+echo "QR clients via VPS:      $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} QR connections)"
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
@@ -707,22 +707,39 @@ fi
 echo
 
 echo "=== 5. MOBILE QR CLIENTS ==="
-echo "Mobile byte sources:     ${MOBILE_BYTE_SOURCES}"
-echo "Mobile byte total:       $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
+echo "QR byte sources:         ${MOBILE_BYTE_SOURCES}"
+echo "QR byte total:           $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
+echo "QR via VPS est.:         $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS VPS IP)"
+echo "QR RU direct est.:       $(human_bytes "$MOBILE_EST_DIRECT_BYTES")  (sites see home Russian IP)"
 echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
-echo "Mobile connections:      ${MOBILE_TOTAL}"
-echo "Mobile via Reality:      ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
-echo "Mobile direct-out:       ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
-echo "Mobile unresolved:       ${MOBILE_UNRESOLVED}"
-echo "Mobile EOF/errors:       ${MOBILE_ERRORS}"
+echo "QR connections:          ${MOBILE_TOTAL}"
+echo "QR via Reality:          ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
+echo "QR direct-out:           ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
+echo "QR unresolved:           ${MOBILE_UNRESOLVED}"
+echo "QR EOF/errors:           ${MOBILE_ERRORS}"
 if [ -s "$MOBILE_CLIENTS" ]; then
   echo
-  printf "%-18s %8s %8s %8s %10s\n" "QR/profile" "Conn" "VPS" "Direct" "Unresolved"
-  awk -F'|' 'NR <= 8 { printf "%-18s %8d %8d %8d %10d\n", $1, $2, $3, $4, $5 }' "$MOBILE_CLIENTS"
+  printf "%-18s %8s %8s %8s %12s %12s %10s\n" "QR/profile" "Conn" "VPS" "Direct" "VPS est." "RU est." "Unresolved"
+  awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 8 {
+      total = $2 + 0
+      vps = $3 + 0
+      direct = $4 + 0
+      vps_bytes = mobile_total > 0 ? mobile_bytes * vps / mobile_total : 0
+      direct_bytes = mobile_total > 0 ? mobile_bytes * direct / mobile_total : 0
+      printf "%-18s %8d %8d %8d %12s %12s %10d\n", $1, total, vps, direct, human_bytes(vps_bytes), human_bytes(direct_bytes), $5
+    }' "$MOBILE_CLIENTS"
 fi
 if [ -s "$MOBILE_BYTES_PARSED" ]; then
   echo
-  printf "%-24s %12s %12s %12s\n" "LTE source" "Total" "Upload" "Download"
+  printf "%-24s %12s %12s %12s\n" "QR source" "Total" "Upload" "Download"
   awk -F'|' '
     function human_bytes(x) {
       x += 0
@@ -738,7 +755,129 @@ fi
 echo
 
 echo "=== 6. SITES / DESTINATIONS ==="
-if [ -s "$MOBILE_DESTS" ]; then
+if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_TOTAL:-0}" -gt 0 ]; then
+  echo "Top QR destinations overall (estimated bytes from QR ingress):"
+  printf "%-20s %-38s %12s %8s %-20s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Path" "Split"
+  awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    function pct(part, total) {
+      part += 0
+      total += 0
+      if (total <= 0) return "n/a"
+      return sprintf("%.1f%%", (part / total) * 100)
+    }
+    function family(dest,   d) {
+      d = tolower(dest)
+      if (d ~ /(youtube|googlevideo|ytimg|ggpht|googleapis|googleusercontent)/) return "Google/YouTube"
+      if (d ~ /(telegram|t\.me|149\.154\.)/) return "Telegram"
+      if (d ~ /(instagram|cdninstagram|facebook|fbcdn)/) return "Meta"
+      if (d ~ /(whatsapp|whatsapp\.net)/) return "WhatsApp"
+      if (d ~ /(apple|icloud|itunes|mzstatic|push\.apple)/) return "Apple/iCloud"
+      if (d ~ /(amazonaws|s3|cloudfront)/) return "AWS/CDN"
+      if (d ~ /(cloudflare|1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9)/) return "DNS/CDN"
+      if (d ~ /(yandex|kinopoisk|vk\.com|ok\.ru|mail\.ru|ozon|wildberries|avito|sber|tinkoff|tbank|gosuslugi|dzen)/) return "RU services"
+      if (d ~ /(openai|anthropic|claude|chatgpt)/) return "AI services"
+      return "Other"
+    }
+    NR <= 12 {
+      total = $2 + 0
+      reality = $3 + 0
+      direct = $4 + 0
+      bytes = mobile_bytes * total / mobile_total
+      path = "mixed"
+      if (reality > 0 && direct == 0) path = "VPS"
+      else if (direct > 0 && reality == 0) path = "Home RU direct"
+      else if (reality >= direct) path = "mostly VPS"
+      else path = "mostly Home RU direct"
+      printf "%-20s %-38s %12s %8s %-20s R %d / D %d\n", family($1), $1, human_bytes(bytes), pct(total, mobile_total), path, reality, direct
+    }' "$MOBILE_DESTS"
+
+  echo
+  echo "Popular via VPS (estimated; final site sees VPS VPS IP):"
+  printf "%-20s %-38s %12s %8s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Reality conn"
+  awk -F'|' '($3 + 0) > 0 { print $3 "|" $0 }' "$MOBILE_DESTS" \
+    | sort -t'|' -k1,1nr -k2,2 \
+    | head -10 \
+    | awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }
+      function pct(part, total) {
+        part += 0
+        total += 0
+        if (total <= 0) return "n/a"
+        return sprintf("%.1f%%", (part / total) * 100)
+      }
+      function family(dest,   d) {
+        d = tolower(dest)
+        if (d ~ /(youtube|googlevideo|ytimg|ggpht|googleapis|googleusercontent)/) return "Google/YouTube"
+        if (d ~ /(telegram|t\.me|149\.154\.)/) return "Telegram"
+        if (d ~ /(instagram|cdninstagram|facebook|fbcdn)/) return "Meta"
+        if (d ~ /(whatsapp|whatsapp\.net)/) return "WhatsApp"
+        if (d ~ /(apple|icloud|itunes|mzstatic|push\.apple)/) return "Apple/iCloud"
+        if (d ~ /(amazonaws|s3|cloudfront)/) return "AWS/CDN"
+        if (d ~ /(cloudflare|1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9)/) return "DNS/CDN"
+        if (d ~ /(yandex|kinopoisk|vk\.com|ok\.ru|mail\.ru|ozon|wildberries|avito|sber|tinkoff|tbank|gosuslugi|dzen)/) return "RU services"
+        if (d ~ /(openai|anthropic|claude|chatgpt)/) return "AI services"
+        return "Other"
+      }
+      {
+        dest = $2
+        reality = $4 + 0
+        bytes = mobile_bytes * reality / mobile_total
+        printf "%-20s %-38s %12s %8s %d\n", family(dest), dest, human_bytes(bytes), pct(reality, mobile_total), reality
+      }'
+
+  echo
+  echo "Popular via home RU direct (estimated; final site sees home Russian IP):"
+  printf "%-20s %-38s %12s %8s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Direct conn"
+  awk -F'|' '($4 + 0) > 0 { print $4 "|" $0 }' "$MOBILE_DESTS" \
+    | sort -t'|' -k1,1nr -k2,2 \
+    | head -10 \
+    | awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+      function human_bytes(x) {
+        x += 0
+        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+        return sprintf("%d B", x)
+      }
+      function pct(part, total) {
+        part += 0
+        total += 0
+        if (total <= 0) return "n/a"
+        return sprintf("%.1f%%", (part / total) * 100)
+      }
+      function family(dest,   d) {
+        d = tolower(dest)
+        if (d ~ /(youtube|googlevideo|ytimg|ggpht|googleapis|googleusercontent)/) return "Google/YouTube"
+        if (d ~ /(telegram|t\.me|149\.154\.)/) return "Telegram"
+        if (d ~ /(instagram|cdninstagram|facebook|fbcdn)/) return "Meta"
+        if (d ~ /(whatsapp|whatsapp\.net)/) return "WhatsApp"
+        if (d ~ /(apple|icloud|itunes|mzstatic|push\.apple)/) return "Apple/iCloud"
+        if (d ~ /(amazonaws|s3|cloudfront)/) return "AWS/CDN"
+        if (d ~ /(cloudflare|1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9)/) return "DNS/CDN"
+        if (d ~ /(yandex|kinopoisk|vk\.com|ok\.ru|mail\.ru|ozon|wildberries|avito|sber|tinkoff|tbank|gosuslugi|dzen)/) return "RU services"
+        if (d ~ /(openai|anthropic|claude|chatgpt)/) return "AI services"
+        return "Other"
+      }
+      {
+        dest = $2
+        direct = $5 + 0
+        bytes = mobile_bytes * direct / mobile_total
+        printf "%-20s %-38s %12s %8s %d\n", family(dest), dest, human_bytes(bytes), pct(direct, mobile_total), direct
+      }'
+elif [ -s "$MOBILE_DESTS" ]; then
   printf "%-44s %8s %-18s %s\n" "Destination" "Conn" "Path" "Split"
   awk -F'|' '
     NR <= 12 {
@@ -749,8 +888,9 @@ if [ -s "$MOBILE_DESTS" ]; then
       else path = "mostly Home RU direct"
       printf "%-44s %8d %-18s Reality %d / Direct %d\n", $1, $2, path, $3, $4
     }' "$MOBILE_DESTS"
+  echo "No QR byte baseline yet, so destination traffic is shown as connections only."
 else
-  echo "No mobile destination log data for today."
+  echo "No QR destination log data for today."
 fi
 echo
 
@@ -758,30 +898,67 @@ echo "=== 7. ROUTING MISTAKES / CHECKS ==="
 mistakes=0
 if [ -s "$ROUTING_WARN_RU_VPS" ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: RU/direct-looking mobile destinations used VPS:"
-  awk -F'|' 'NR <= 8 { printf "  %-36s total=%d reality=%d direct=%d\n", $1, $2, $3, $4 }' "$ROUTING_WARN_RU_VPS"
+  echo "WARN: RU/direct-looking QR destinations used VPS:"
+  awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 8 {
+      bytes = mobile_total > 0 ? mobile_bytes * ($3 + 0) / mobile_total : 0
+      printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2, $3, $4
+    }' "$ROUTING_WARN_RU_VPS"
 else
-  echo "OK: no RU/direct-looking mobile destination via VPS found in today logs."
+  echo "OK: no RU/direct-looking QR destination via VPS found in today logs."
 fi
 if [ -s "$ROUTING_WARN_MANAGED_DIRECT" ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: managed-looking mobile destinations had direct-out connections:"
-  awk -F'|' 'NR <= 8 { printf "  %-36s total=%d reality=%d direct=%d\n", $1, $2, $3, $4 }' "$ROUTING_WARN_MANAGED_DIRECT"
+  echo "WARN: managed-looking QR destinations had direct-out connections:"
+  awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 8 {
+      bytes = mobile_total > 0 ? mobile_bytes * ($4 + 0) / mobile_total : 0
+      printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2, $3, $4
+    }' "$ROUTING_WARN_MANAGED_DIRECT"
 else
-  echo "OK: no obvious managed mobile destination went direct."
+  echo "OK: no obvious managed QR destination went direct."
 fi
 dns_direct="$(awk -F'|' '$1 == "1.1.1.1" || $1 == "8.8.8.8" || $1 == "9.9.9.9" { direct += $4 + 0 } END { print direct + 0 }' "$MOBILE_DESTS" 2>/dev/null || printf '0')"
 if [ "${dns_direct:-0}" -gt 0 ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: mobile direct DNS-like destinations observed: ${dns_direct} direct connections."
+  echo "REVIEW: QR direct resolver-like destinations observed: ${dns_direct} direct connections."
+  echo "  This is not automatically an LTE DNS leak. It means traffic already inside"
+  echo "  the Home Reality tunnel reached resolver-like IPs and then exited via"
+  echo "  home Russian direct, so the destination sees the home Russian IP."
+  awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    ($1 == "1.1.1.1" || $1 == "8.8.8.8" || $1 == "9.9.9.9") && ($4 + 0) > 0 {
+      bytes = mobile_total > 0 ? mobile_bytes * ($4 + 0) / mobile_total : 0
+      printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2 + 0, $3 + 0, $4 + 0
+    }' "$MOBILE_DESTS"
 else
-  echo "OK: no mobile direct DNS-like destinations observed."
+  echo "OK: no QR direct DNS-like destinations observed."
 fi
 if [ "${MOBILE_UNRESOLVED:-0}" -gt 0 ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: mobile unresolved connections: ${MOBILE_UNRESOLVED}."
+  echo "WARN: QR unresolved connections: ${MOBILE_UNRESOLVED}."
 else
-  echo "OK: mobile unresolved connections: 0."
+  echo "OK: QR unresolved connections: 0."
 fi
 if [ -s "$ROUTING_WARN_CATALOG_RU" ]; then
   mistakes=$((mistakes + 1))
@@ -794,8 +971,9 @@ echo
 echo "=== NOTES ==="
 echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP for Home WAN direct paths."
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
-echo "- Mobile LTE ingress bytes are exact TCP/<home-reality-port> counters; mobile VPS/direct bytes are estimated from connection split until per-outbound byte attribution is added."
-echo "- Mobile direct-out can be Russian sites, Apple/CDN/API traffic, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
+echo "- QR/Home Reality ingress bytes are exact TCP/<home-reality-port> counters; QR VPS/direct bytes are estimated from connection split until per-outbound byte attribution is added."
+echo "- QR direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
+echo "- Resolver-like direct-out is a review signal, not necessarily your mistake and not proof of LTE-side DNS leak."
 echo "- Routing mistakes are heuristics: WARN means review catalog/no-vpn rules, not automatic proof of breakage."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
   echo "- LAN/mobile names are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
