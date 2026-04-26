@@ -7,7 +7,7 @@
 | Source | Egress | Accounting note |
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; `RC_LAN_REALITY_*` mangle counters provide the `Via Reality` view |
-| Remote mobile QR clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | LTE carrier sees the home IP; `RC_MOBILE_REALITY_*` counters show encrypted Home Reality ingress bytes by source IP/profile |
+| Home Reality ingress clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | First-hop network sees the home IP; `RC_MOBILE_REALITY_*` counters show encrypted Home Reality ingress bytes by source IP/profile |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
@@ -40,7 +40,7 @@ For the full end-to-end workflow and observer table, see
 | `./verify.sh` | compact live health summary |
 | `./scripts/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./scripts/router-health-report --save` | tracked snapshot + local journal + router-side copy |
-| `./scripts/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, mobile QR, destinations, routing checks |
+| `./scripts/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./scripts/traffic-daily-report` | compatibility backend for saved day/week/month snapshot periods |
 | `./scripts/catalog-review-report` | advisory review of domains/static networks |
 | `./scripts/dns-forensics-report` | hourly DNS-interest snapshots |
@@ -155,8 +155,8 @@ DNS forensics show interest, not bytes.
 
 - interface deltas
 - per-device mangle counter deltas
-- QR/Home Reality encrypted tunnel byte deltas
-- QR/Home Reality connection attribution from `sing-box.log`
+- Home Reality encrypted tunnel byte deltas
+- Home Reality connection attribution from `sing-box.log`
 - Tailscale peer deltas
 - current conntrack snapshot
 
@@ -172,12 +172,12 @@ Canonical sections:
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
   much traffic used the managed path.
 - `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
-- `MOBILE QR CLIENTS` — QR/profile connection split plus QR/Home Reality
-  ingress bytes. The QR client can be on LTE or Wi-Fi; the common signal is
-  TCP/<home-reality-port> into the home Reality inbound.
-- `SITES / DESTINATIONS` — current-day top QR destinations with estimated
-  traffic, percentage of QR usage, app/family labels, and separate popularity
-  blocks for VPS vs home Russian direct.
+- `HOME REALITY INGRESS CLIENTS` — client/profile connection split plus Home
+  Reality ingress bytes. The client can be on LTE or Wi-Fi; the common signal
+  is TCP/<home-reality-port> into the home Reality inbound.
+- `SITES / DESTINATIONS` — current-day top Home Reality destinations with
+  estimated traffic, percentage of ingress usage, app/family labels, and
+  separate popularity blocks for VPS vs home Russian direct.
 - `ROUTING MISTAKES / CHECKS` — heuristic warnings for likely wrong routing,
   such as RU/direct-looking destinations via VPS, managed destinations going
   direct, direct DNS-like mobile destinations, unresolved mobile flows, or
@@ -187,8 +187,8 @@ For current-day reports it combines:
 
 - live interface deltas;
 - LAN/Wi-Fi byte counters;
-- QR/Home Reality byte counters;
-- QR destination attribution from `sing-box.log`;
+- Home Reality byte counters;
+- Home Reality destination attribution from `sing-box.log`;
 - routing mistake heuristics.
 
 For closed day/week/month reports it uses the saved snapshot backend
@@ -199,7 +199,7 @@ The saved snapshot backend builds period deltas from:
 
 - `interface-counters.tsv` for WAN/LAN bridge/Wi-Fi totals
 - `lan-device-counters.tsv` for LAN `Reality` / direct `WAN` / `Other`
-- `mobile-reality-counters.tsv` for QR/Home Reality upload/download bytes
+- `mobile-reality-counters.tsv` for Home Reality upload/download bytes
 
 The script takes a fresh snapshot first, then computes first-to-last deltas
 inside the requested nominal window.
@@ -210,29 +210,29 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
-- `MOBILE QR CLIENTS` combines two signals:
+- `HOME REALITY INGRESS CLIENTS` combines two signals:
   - byte totals from router-side TCP/<home-reality-port> counters
     (`RC_MOBILE_REALITY_IN/OUT`)
   - connection attribution from `sing-box.log`: client profile names,
     `reality-out` vs `direct-out`, EOF/error count and top destinations
-- QR/Home Reality byte counters are measured at the encrypted Home Reality
-  ingress. They show how much traffic came through the QR tunnel, whether the
+- Home Reality byte counters are measured at the encrypted Home Reality
+  ingress. They show how much traffic came through TCP/<home-reality-port>, whether the
   client was on LTE or Wi-Fi.
 - Per-profile and per-destination VPS/direct byte splits are estimated from the
   `sing-box.log` connection split until sing-box exposes exact per-outbound
   byte attribution. The report marks these columns as `est.`.
-- Per-profile QR source bytes are attributed by remote source IP observed in
+- Per-profile ingress source bytes are attributed by remote source IP observed in
   `sing-box.log`. If several profiles share one carrier NAT IP during the same
   window, the report uses a combined source label.
 - `SITES / DESTINATIONS` separates popularity into:
-  - overall QR destinations;
+  - overall Home Reality ingress destinations;
   - destinations that exited through VPS, where final sites see the
     VPS VPS IP;
   - destinations that exited through home Russian direct, where final sites see
     the home Russian IP.
-- `router-health-report` includes the QR/Home Reality summary in the common
+- `router-health-report` includes the Home Reality ingress summary in the common
   `Traffic Snapshot` block.
-- QR/Home Reality clients are not LAN devices; use `MOBILE QR CLIENTS` for
+- Home Reality ingress clients are not LAN devices; use `HOME REALITY INGRESS CLIENTS` for
   profile activity and `LAN/WI-FI DEVICES` for home Wi-Fi/LAN devices.
 - `ROUTING MISTAKES / CHECKS` is heuristic. A warning means "review catalog or
   no-vpn rules", not automatic proof of breakage.
