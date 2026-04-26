@@ -1,6 +1,67 @@
 # Traffic Observability
 
-Этот документ описывает, как читать traffic/health слой после финального ухода от Channel A и перехода на Reality-only routing.
+Этот документ описывает систему отчётности GhostRoute: как понять, сколько
+трафика прошло через домашний интернет, сколько ушло через VPS, какие
+устройства и приложения создают основную нагрузку, и не появились ли ошибки
+маршрутизации.
+
+Цель отчётов — дать один понятный operational view по всей схеме:
+
+```text
+Home Wi-Fi/LAN device
+  -> ASUS router
+  -> either VLESS+Reality -> VPS
+  -> or home Russian WAN direct
+
+Home Reality ingress client
+  -> home IP :<home-reality-port>
+  -> ASUS router
+  -> either VLESS+Reality -> VPS
+  -> or home Russian WAN direct
+```
+
+`Home Reality ingress client` — это не обязательно телефон и не обязательно
+LTE. Это любой клиентский профиль, который вошёл на роутер через TCP/<home-reality-port>:
+iPhone по LTE, MacBook по Wi-Fi, ноутбук в другой сети и т.д.
+
+---
+
+## What The Reports Answer
+
+| Question | Where to look |
+|---|---|
+| Сколько всего прошло через домашний WAN? | `EXIT SUMMARY -> WAN total` |
+| Сколько ушло через VPS? | `EXIT SUMMARY -> Via VPS` |
+| Сколько осталось в российском direct-интернете? | `EXIT SUMMARY -> Via home RU direct` |
+| Какие домашние Wi-Fi/LAN устройства больше всего используют VPS? | `LAN/WI-FI DEVICES` |
+| Какие Home Reality ingress профили активны? | `HOME REALITY INGRESS CLIENTS` |
+| Какие сайты/приложения популярны через ingress? | `SITES / DESTINATIONS` |
+| Какие назначения вышли через VPS? | `Popular via VPS` |
+| Какие назначения вышли через home Russian IP? | `Popular via home RU direct` |
+| Мог ли российский сайт уйти через VPS? | `ROUTING MISTAKES / CHECKS` |
+| Не ушёл ли managed-сайт напрямую? | `ROUTING MISTAKES / CHECKS` |
+| Есть ли DNS-like direct-out внутри Home Reality? | `ROUTING MISTAKES / CHECKS` |
+
+---
+
+## Reporting Layers
+
+GhostRoute intentionally separates three layers:
+
+| Layer | What it measures | Byte quality |
+|---|---|---|
+| Interfaces | `wan0`, `br0`, Wi-Fi radios | exact kernel counters |
+| LAN/Wi-Fi devices | traffic from home devices split into VPS vs RU direct | exact mangle byte counters, best-effort per device |
+| Home Reality ingress | encrypted TCP/<home-reality-port> ingress plus sing-box split logs | ingress bytes exact; per-destination VPS/direct bytes estimated |
+
+Why some numbers are estimated:
+
+- The router knows exact bytes that entered through TCP/<home-reality-port>.
+- sing-box logs show which destination used `reality-out` or `direct-out`.
+- sing-box logs do not currently expose exact bytes per destination.
+- Therefore destination-level traffic is marked `Est. traffic` and is allocated
+  by connection share. This is good enough for popularity and routing review,
+  but not billing-grade per-site accounting.
 
 ## Current Routing Context
 
@@ -44,6 +105,31 @@ For the full end-to-end workflow and observer table, see
 | `./scripts/traffic-daily-report` | compatibility backend for saved day/week/month snapshot periods |
 | `./scripts/catalog-review-report` | advisory review of domains/static networks |
 | `./scripts/dns-forensics-report` | hourly DNS-interest snapshots |
+
+Use `traffic-report` as the main entrypoint:
+
+```bash
+./scripts/traffic-report today
+./scripts/traffic-report yesterday
+./scripts/traffic-report week
+./scripts/traffic-report month
+./scripts/traffic-report 2026-04-25
+```
+
+Use `router-health-report` when you need one compact state document for humans
+or LLM handoff:
+
+```bash
+./scripts/router-health-report
+./scripts/router-health-report --save
+```
+
+Use `dns-forensics-report` when the question is “who queried what around this
+hour?”. DNS forensics show interest, not traffic volume:
+
+```bash
+./scripts/dns-forensics-report 2026-04-26T13
+```
 
 ---
 
@@ -236,6 +322,215 @@ Important interpretation:
   profile activity and `LAN/WI-FI DEVICES` for home Wi-Fi/LAN devices.
 - `ROUTING MISTAKES / CHECKS` is heuristic. A warning means "review catalog or
   no-vpn rules", not automatic proof of breakage.
+
+---
+
+## Example: Current-Day Report
+
+Command:
+
+```bash
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report today
+```
+
+Typical summary:
+
+```text
+=== 1. EXIT SUMMARY ===
+WAN total:               12.75 GiB  (RX 5.70 GiB / TX 7.06 GiB)
+Wi-Fi total:             4.88 GiB
+Home Reality ingress:    5.22 GiB  (client -> home RU IP :<home-reality-port>)
+Via VPS:         8.07 GiB  (LAN exact + mobile estimated)
+Via home RU direct:      1.05 GiB  (LAN exact + mobile estimated)
+Reality-managed total:   3.80 GiB
+Reality share/WAN:       29.8%
+```
+
+How to read this:
+
+- `WAN total` is the router's total WAN traffic for the report window.
+- `Via VPS` combines exact LAN/Wi-Fi managed bytes plus estimated Home
+  Reality ingress bytes that went through `reality-out`.
+- `Via home RU direct` combines exact LAN/Wi-Fi direct bytes plus estimated Home
+  Reality ingress bytes that went through `direct-out`.
+- `Home Reality ingress` is all encrypted TCP/<home-reality-port> traffic that entered the
+  router. The client may be on LTE or Wi-Fi.
+
+Path matrix:
+
+```text
+Source      First hop                 Router             Exit                      Site sees
+Wi-Fi/LAN   device -> router          REDIRECT :<lan-redirect-port>    VLESS+Reality -> VPS   VPS VPS IP
+Wi-Fi/LAN   device -> router          no redirect        Home WAN direct           Home Russian IP
+HR client   LTE/Wi-Fi -> home :<home-reality-port>  reality-in         VLESS+Reality -> VPS   VPS VPS IP
+HR client   LTE/Wi-Fi -> home :<home-reality-port>  reality-in         Home WAN direct           Home Russian IP
+```
+
+This is the core mental model:
+
+- managed path -> final site sees VPS VPS IP;
+- direct path -> final site sees home Russian IP;
+- first-hop network for Home Reality ingress sees only the home IP on TCP/<home-reality-port>.
+
+---
+
+## Example: Devices
+
+LAN/Wi-Fi devices:
+
+```text
+=== 4. LAN/WI-FI DEVICES ===
+Device                     VPS       RU direct   VPS share
+iPad                       1.80 GiB     10.9 MiB    99.4%
+MacBook Air/private MAC    601.5 MiB    31.6 MiB    95.0%
+Windows laptop             64.6 MiB     10.5 MiB    86.0%
+```
+
+Interpretation:
+
+- `VPS` means this device matched `STEALTH_DOMAINS`/`VPN_STATIC_NETS` and was
+  redirected into sing-box `:<lan-redirect-port>`.
+- `RU direct` means traffic from that device left through normal home WAN.
+- `VPS share` shows how much of the measured device traffic used the managed
+  route.
+
+Home Reality ingress clients:
+
+```text
+=== 5. HOME REALITY INGRESS CLIENTS ===
+Ingress byte total:      5.22 GiB
+Ingress via VPS est.:    4.27 GiB  (sites see VPS VPS IP)
+Ingress RU direct est.:  972.5 MiB (sites see home Russian IP)
+
+Client/profile       Conn    VPS    Direct   VPS est.    RU est.
+iphone-2             3177    3055   122      2.67 GiB    109.1 MiB
+iphone-4             1575    1138   437      1018.1 MiB  391.0 MiB
+```
+
+Interpretation:
+
+- `Client/profile` is the VLESS/Reality client identity from sing-box logs.
+- `VPS est.` and `RU est.` are estimated from ingress bytes and connection
+  split.
+- `Ingress source` rows may show profile names or remote source labels. If a
+  carrier NAT hides many sessions behind the same remote IP, the report may
+  group them.
+
+---
+
+## Example: Popular Sites And Apps
+
+The current-day report includes destination-level popularity for Home Reality
+ingress:
+
+```text
+=== 6. SITES / DESTINATIONS ===
+Top Home Reality ingress destinations overall:
+App/family      Destination             Est. traffic  % ingress  Path
+Google/YouTube  www.google.com          1.03 GiB      19.8%      VPS
+Telegram        203.0.113.35          550.2 MiB     10.3%      VPS
+Apple/iCloud    gs-loc.apple.com        357.0 MiB      6.7%      VPS
+AWS/CDN         ...amazonaws.com         190.6 MiB      3.6%      Home RU direct
+DNS/CDN         1.1.1.1                  119.9 MiB      2.2%      mostly Home RU direct
+```
+
+Then it splits the same data into two practical views:
+
+```text
+Popular via VPS:
+App/family      Destination        Est. traffic  % ingress
+Google/YouTube  www.google.com     1.03 GiB      19.8%
+Telegram        203.0.113.35     550.2 MiB     10.3%
+
+Popular via home RU direct:
+App/family      Destination        Est. traffic  % ingress
+AWS/CDN         ...amazonaws.com   190.6 MiB      3.6%
+DNS/CDN         1.1.1.1            119.9 MiB      2.2%
+RU services     api.ozon.ru         17.0 MiB      0.3%
+```
+
+Use this section to answer:
+
+- what is popular on Home Reality ingress;
+- what actually used the VPS VPS;
+- what stayed in the Russian direct internet;
+- whether a service family is unexpectedly heavy.
+
+For LAN/Wi-Fi destinations, exact per-site byte attribution is not currently
+available; use DNS forensics to see interest and LAN/Wi-Fi device counters to
+see volume.
+
+---
+
+## Routing Mistakes And Review Signals
+
+`ROUTING MISTAKES / CHECKS` is the safety section. It catches likely catalog
+mistakes, not just transport failures.
+
+Example healthy output:
+
+```text
+=== 7. ROUTING MISTAKES / CHECKS ===
+OK: no RU/direct-looking Home Reality destination via VPS found in today logs.
+OK: no obvious managed Home Reality destination went direct.
+REVIEW: Home Reality direct resolver-like destinations observed: 134 direct connections.
+OK: Home Reality unresolved connections: 0.
+OK: no obvious RU-looking domain in managed catalog.
+```
+
+Meaning:
+
+- `RU/direct-looking ... via VPS`:
+  a destination that looks Russian or normally direct went through VPS region.
+  Review `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, and auto-add history.
+- `managed ... went direct`:
+  something that looks like YouTube/Telegram/OpenAI/etc. escaped to home WAN.
+  Review catalog coverage and sing-box rule-set sync.
+- `resolver-like destinations observed`:
+  traffic already inside Home Reality went to IPs such as `1.1.1.1` and then
+  exited through home Russian direct. This is a review signal, not proof of
+  LTE DNS leak.
+- `unresolved connections`:
+  sing-box saw inbound Home Reality connections but did not observe a final
+  outbound decision in logs. Small transient values can be normal; persistent
+  growth should be investigated.
+- `RU-looking domain in managed catalog`:
+  a Russian-looking domain is present in `STEALTH_DOMAINS`. This may be
+  intentional, but it deserves review because final sites may see VPS VPS.
+
+---
+
+## Period Reports
+
+Closed periods use saved snapshots:
+
+```bash
+./scripts/traffic-report yesterday
+./scripts/traffic-report week
+./scripts/traffic-report month
+```
+
+Example:
+
+```text
+Period:                    yesterday
+Nominal window:            2026-04-25T00:00:00+0300 -> 2026-04-26T00:00:00+0300
+Interface samples:         2026-04-25T00:00:00+0300 -> 2026-04-25T23:55:00+0300
+LAN/Wi-Fi samples:         2026-04-25T00:00:00+0300 -> 2026-04-25T23:55:00+0300
+Home Reality samples:      2026-04-25T14:56:58+0300 -> 2026-04-25T23:55:00+0300
+
+LAN/Wi-Fi via VPS:      11.38 GiB
+LAN/Wi-Fi RU direct:       365.4 MiB
+Home Reality ingress:      1.93 GiB
+```
+
+Important:
+
+- day/week/month reports retain exact interface, LAN device and Home Reality
+  ingress byte deltas;
+- they do not retain destination-level sing-box logs;
+- use `today` for current destination popularity and routing mistake checks;
+- use DNS forensics for historical “who queried what” questions.
 
 ---
 

@@ -194,6 +194,25 @@ cd ..
 ./scripts/router-health-report
 ```
 
+Traffic and observability:
+
+```bash
+# Main usage report: exits, devices, Home Reality ingress clients,
+# popular destinations and routing mistake checks.
+./scripts/traffic-report today
+./scripts/traffic-report yesterday
+./scripts/traffic-report week
+./scripts/traffic-report month
+
+# Human/LLM-safe operational snapshot.
+./scripts/router-health-report
+```
+
+The traffic report answers how much went through the VPS VPS, how much
+stayed on the home Russian WAN, which devices and Home Reality ingress clients
+were active, and whether likely routing mistakes appeared. See
+[docs/traffic-observability.md](docs/traffic-observability.md).
+
 Expected invariants:
 
 - LAN TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS` is redirected to `:<lan-redirect-port>`.
@@ -230,6 +249,7 @@ See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-managem
 - [README-ru.md](README-ru.md) - main Russian documentation
 - [docs/architecture.md](docs/architecture.md) - current routing architecture
 - [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
+- [docs/traffic-observability.md](docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
 - [docs/routing-performance-troubleshooting.md](docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations and channel switching
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
