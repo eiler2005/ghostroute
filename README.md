@@ -38,6 +38,8 @@ Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRA
 - Automatic domain discovery that writes `STEALTH_DOMAINS` only.
 - Local QR/VLESS profile generation from Ansible Vault.
 - Health, traffic and catalog reports suitable for humans and LLM handoff.
+- Local GhostRoute health monitor with router-side `STATUS_OK` / `STATUS_FAIL`,
+  `summary-latest.md`, and internal alert ledgers on router storage.
 
 ---
 
@@ -213,6 +215,34 @@ stayed on the home Russian WAN, which devices and Home Reality ingress clients
 were active, and whether likely routing mistakes appeared. See
 [docs/traffic-observability.md](docs/traffic-observability.md).
 
+Health monitor:
+
+```bash
+# Install/update with deploy.sh or ansible, then run a local router-side sample.
+ssh admin@192.168.50.1 '/jffs/scripts/health-monitor/run-once'
+
+# Primary storage on the router:
+ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
+ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
+ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
+```
+
+The health monitor is read-only for production routing state. It writes local
+internal alerts and reports to router storage only. Primary path:
+`/opt/var/log/router_configuration/health-monitor`; fallback:
+`/jffs/addons/router_configuration/health-monitor`.
+Scheduled collection runs hourly; use `/jffs/scripts/health-monitor/run-once`
+for an immediate fresh snapshot.
+
+How to read a router-side alert:
+
+1. Check `STATUS_OK` / `STATUS_FAIL`.
+2. Read `summary-latest.md`.
+3. Read `alerts/<today>.md`.
+4. Use `raw/<today>.jsonl` only for exact evidence.
+5. After manual recovery, run `run-once` or wait for the next hourly cycle and
+   confirm `STATUS_OK`; do not delete alert history.
+
 Expected invariants:
 
 - LAN TCP for `STEALTH_DOMAINS` and `VPN_STATIC_NETS` is redirected to `:<lan-redirect-port>`.
@@ -250,6 +280,8 @@ See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-managem
 - [docs/architecture.md](docs/architecture.md) - current routing architecture
 - [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [docs/traffic-observability.md](docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
+- [docs/stealth-monitoring-implementation-guide.md](docs/stealth-monitoring-implementation-guide.md) - GhostRoute health monitor implementation
+- [docs/stealth-monitor-runbook.md](docs/stealth-monitor-runbook.md) - health monitor alerts and recovery runbook
 - [docs/routing-performance-troubleshooting.md](docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
 - [docs/channel-routing-operations.md](docs/channel-routing-operations.md) - day-2 operations and channel switching
 - [docs/stealth-channel-implementation-guide.md](docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide

@@ -15,6 +15,19 @@ cru d MobileRealityCounters 2>/dev/null
 [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && \
   cru a MobileRealityCounters "*/5 * * * * /jffs/scripts/mobile-reality-accounting-refresh"
 
+# GhostRoute health monitor: read-only probes + local status/alert reports.
+cru d HealthMonitorProbes 2>/dev/null
+[ -x /jffs/scripts/health-monitor/run-probes ] && \
+  cru a HealthMonitorProbes "0 * * * * /jffs/scripts/health-monitor/run-probes"
+
+cru d HealthMonitorAggregate 2>/dev/null
+[ -x /jffs/scripts/health-monitor/aggregate ] && \
+  cru a HealthMonitorAggregate "2 * * * * /jffs/scripts/health-monitor/aggregate"
+
+cru d HealthMonitorDaily 2>/dev/null
+[ -x /jffs/scripts/health-monitor/daily-digest ] && \
+  cru a HealthMonitorDaily "10 3 * * * /jffs/scripts/health-monitor/daily-digest"
+
 # Save a close-of-day LAN / remote-access baseline for readable daily reports.
 cru d TrafficDailyClose 2>/dev/null
 [ -x /jffs/scripts/cron-traffic-daily-close ] && \
@@ -35,3 +48,4 @@ cru d UpdateBlockedList 2>/dev/null
 
 # Seed an initial traffic sample after boot/deploy so same-day reports have a baseline.
 [ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1
+[ -x /jffs/scripts/health-monitor/run-once ] && /jffs/scripts/health-monitor/run-once >/dev/null 2>&1 || true

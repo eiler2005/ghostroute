@@ -1,0 +1,24 @@
+---
+- name: Ensure GhostRoute health monitor script directory exists
+  ansible.builtin.raw: mkdir -p /jffs/scripts/health-monitor
+  changed_when: false
+
+- name: Install GhostRoute health monitor scripts
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/health-monitor/"
+    dest: /jffs/scripts/health-monitor/
+    mode: preserve
+
+- name: Ensure GhostRoute health monitor scripts are executable
+  ansible.builtin.raw: chmod 0755 /jffs/scripts/health-monitor/lib.sh /jffs/scripts/health-monitor/run-probes /jffs/scripts/health-monitor/aggregate /jffs/scripts/health-monitor/daily-digest /jffs/scripts/health-monitor/run-once
+  changed_when: false
+
+- name: Register GhostRoute health monitor cron jobs via Merlin cru
+  ansible.builtin.raw: |
+    cru d HealthMonitorProbes 2>/dev/null || true
+    cru d HealthMonitorAggregate 2>/dev/null || true
+    cru d HealthMonitorDaily 2>/dev/null || true
+    cru a HealthMonitorProbes "0 * * * * /jffs/scripts/health-monitor/run-probes"
+    cru a HealthMonitorAggregate "2 * * * * /jffs/scripts/health-monitor/aggregate"
+    cru a HealthMonitorDaily "10 3 * * * /jffs/scripts/health-monitor/daily-digest"
+  changed_when: false

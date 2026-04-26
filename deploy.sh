@@ -123,6 +123,11 @@ require_local_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh"
 require_local_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/scripts/mobile-reality-accounting-refresh"
 require_local_file "${PROJECT_ROOT}/scripts/mobile-reality-counters-snapshot"
+require_local_file "${PROJECT_ROOT}/scripts/health-monitor/lib.sh"
+require_local_file "${PROJECT_ROOT}/scripts/health-monitor/run-probes"
+require_local_file "${PROJECT_ROOT}/scripts/health-monitor/aggregate"
+require_local_file "${PROJECT_ROOT}/scripts/health-monitor/daily-digest"
+require_local_file "${PROJECT_ROOT}/scripts/health-monitor/run-once"
 require_local_file "${PROJECT_ROOT}/scripts/services-start"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   require_local_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add"
@@ -141,7 +146,7 @@ if ! router_has_port "$ROUTER_PORT"; then
   exit 1
 fi
 
-ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
+ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts/health-monitor' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
 
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-stealth.conf.add"
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
@@ -160,6 +165,11 @@ upload_file "${PROJECT_ROOT}/scripts/lan-traffic-accounting-refresh" "${REMOTE_S
 upload_file "${PROJECT_ROOT}/scripts/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
 upload_file "${PROJECT_ROOT}/scripts/mobile-reality-accounting-refresh" "${REMOTE_STAGE}/scripts/mobile-reality-accounting-refresh"
 upload_file "${PROJECT_ROOT}/scripts/mobile-reality-counters-snapshot" "${REMOTE_STAGE}/scripts/mobile-reality-counters-snapshot"
+upload_file "${PROJECT_ROOT}/scripts/health-monitor/lib.sh" "${REMOTE_STAGE}/scripts/health-monitor/lib.sh"
+upload_file "${PROJECT_ROOT}/scripts/health-monitor/run-probes" "${REMOTE_STAGE}/scripts/health-monitor/run-probes"
+upload_file "${PROJECT_ROOT}/scripts/health-monitor/aggregate" "${REMOTE_STAGE}/scripts/health-monitor/aggregate"
+upload_file "${PROJECT_ROOT}/scripts/health-monitor/daily-digest" "${REMOTE_STAGE}/scripts/health-monitor/daily-digest"
+upload_file "${PROJECT_ROOT}/scripts/health-monitor/run-once" "${REMOTE_STAGE}/scripts/health-monitor/run-once"
 upload_file "${PROJECT_ROOT}/scripts/services-start" "${REMOTE_STAGE}/scripts/services-start"
 upload_file "${PROJECT_ROOT}/scripts/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
 upload_file "${PROJECT_ROOT}/scripts/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
@@ -328,6 +338,13 @@ install_fully_managed_script \
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/mobile-reality-counters-snapshot" \
   /jffs/scripts/mobile-reality-counters-snapshot
+
+mkdir -p /jffs/scripts/health-monitor
+for health_monitor_script in lib.sh run-probes aggregate daily-digest run-once; do
+  install_fully_managed_script \
+    "$REMOTE_STAGE/scripts/health-monitor/$health_monitor_script" \
+    "/jffs/scripts/health-monitor/$health_monitor_script"
+done
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/services-start" \

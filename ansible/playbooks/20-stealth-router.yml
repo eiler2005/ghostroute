@@ -27,6 +27,7 @@
     - stealth_routing
     - dnscrypt_proxy
     - dnsmasq_blocklists
+    - health_monitor
   post_tasks:
     - name: Restart sing-box after all router service restarts
       ansible.builtin.raw: |
