@@ -65,6 +65,6 @@ counters and snapshot files on the router.
 
 ## Related Docs
 
-- `docs/traffic-observability.md`
-- `docs/llm-traffic-runbook.md`
-- `docs/network-flow-and-observer-model.md`
+- `modules/traffic-observatory/docs/traffic-observability.md`
+- `modules/traffic-observatory/docs/llm-traffic-runbook.md`
+- `modules/routing-core/docs/network-flow-and-observer-model.md`

@@ -27,7 +27,7 @@ assert_executable "modules/secrets-management/bin/secret-scan"
 assert_executable "modules/secrets-management/bin/init-stealth-vault.sh"
 
 if find "${PROJECT_ROOT}/scripts" -type f ! -name README.md | grep . >/dev/null; then
-  echo "scripts/ must only contain common utilities, not module wrappers:" >&2
+  echo "scripts/ must only contain common utilities, not module aliases:" >&2
   find "${PROJECT_ROOT}/scripts" -type f ! -name README.md >&2
   exit 1
 fi
@@ -41,14 +41,14 @@ if rg -n "$stale_scripts_pattern" "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/R
   exit 1
 fi
 
-wrapper_test_name='test-wrapper''-compat'
-wrapper_pattern='compatibility wrapper''s|stable wrapper''s|scripts/lib wrap''per'
-wrapper_pattern="${wrapper_pattern}|${wrapper_test_name}"
-if rg -n "$wrapper_pattern" \
+alias_test_name='test-module-aliases'
+alias_pattern='stable alias''es|scripts/lib alias'
+alias_pattern="${alias_pattern}|${alias_test_name}"
+if rg -n "$alias_pattern" \
   "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/README-ru.md" "${PROJECT_ROOT}/docs" \
-  "${PROJECT_ROOT}/modules" --glob '!docs/vpn-domain-journal.md' >/tmp/ghostroute-stale-wrappers.txt; then
-  cat /tmp/ghostroute-stale-wrappers.txt >&2
-  echo "Found stale compatibility-wrapper language." >&2
+  "${PROJECT_ROOT}/modules" --glob '!docs/vpn-domain-journal.md' >/tmp/ghostroute-stale-aliases.txt; then
+  cat /tmp/ghostroute-stale-aliases.txt >&2
+  echo "Found stale scripts-alias language." >&2
   exit 1
 fi
 

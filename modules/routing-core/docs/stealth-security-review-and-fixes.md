@@ -5,7 +5,7 @@
 **Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, LTE performance hardening, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
 **Primary goal (unchanged):** RKN/ISP DPI cannot classify our home traffic as VPN. Everything else is secondary.
 
-This document is self-contained. Read [docs/architecture.md], [docs/channel-routing-operations.md], and [docs/stealth-channel-implementation-guide.md] for context if needed, but every fix below has its own self-sufficient problem statement, scope, patch, and verification.
+This document is self-contained. Read [docs/architecture.md], [modules/routing-core/docs/channel-routing-operations.md], and [modules/routing-core/docs/stealth-channel-implementation-guide.md] for context if needed, but every fix below has its own self-sufficient problem statement, scope, patch, and verification.
 
 ---
 
@@ -43,14 +43,14 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 | §1.1 IPv6 kill-switch | Applied | `20-stealth-router.yml`, `ipv6_kill`, `verify.sh`: IPv6 disabled / no LAN GUA; dnsmasq `filter-AAAA` blocks dead dual-stack answers |
 | §1.2 UDP/443 REJECT → DROP | Applied | `stealth-route-init.sh`, `99-verify.yml`, `verify.sh`: DROP present, REJECT absent |
 | §1.3 OpenClaw off shared IP | Done via SSH-only access | Old public `sslip.io` hostname removed from public Caddy surface; OpenClaw is reached through an SSH tunnel to VPS loopback `127.0.0.1:<private-forward-port>`. |
-| §2.1 SNI switch | Applied | Vault/client profiles, Caddy L4 route, and Xray/3x-ui Reality inbound use `gateway.icloud.com`; `docs/sni-rotation-candidates.md` contains decision log |
+| §2.1 SNI switch | Applied | Vault/client profiles, Caddy L4 route, and Xray/3x-ui Reality inbound use `gateway.icloud.com`; `modules/reality-sni-rotation/docs/sni-rotation-candidates.md` contains decision log |
 | §2.2 DoH through stealth | Applied | sing-box SOCKS `127.0.0.1:<router-socks-port>`; dnscrypt `proxy = 'socks5://127.0.0.1:<router-socks-port>'` |
 | §2.3 TCP keepalive / flow tuning | Applied | sing-box VLESS outbound has keepalive interval, connect timeout, no multiplex, no TFO |
 | §2.4 sing-box watchdog | Applied | `/jffs/scripts/singbox-watchdog.sh` cron installed |
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
-| §2.6 docs/checklists | Applied | `architecture.md`, `stealth-channel-implementation-guide.md`, `failure-modes.md` updated |
+| §2.6 docs/checklists | Applied | `architecture.md`, `modules/routing-core/docs/stealth-channel-implementation-guide.md`, `modules/recovery-verification/docs/failure-modes.md` updated |
 | Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/<home-reality-port>; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
-| LTE performance hardening | Applied follow-up | MSS clamp on both mobile ingress handshake directions, TCP high-BDP sysctl tuning, connlimit raised to 300, and `routing-performance-troubleshooting.md` added. |
+| LTE performance hardening | Applied follow-up | MSS clamp on both mobile ingress handshake directions, TCP high-BDP sysctl tuning, connlimit raised to 300, and `modules/performance-diagnostics/docs/routing-performance-troubleshooting.md` added. |
 
 ---
 
@@ -68,7 +68,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
 - **Router Ansible role:** `ansible/roles/stealth_routing/`
 - **Router script:** `modules/routing-core/router/firewall-start` (may contain commented IPv6 block per review findings)
 - **Verification:** `verify.sh`
-- **Documentation:** `docs/stealth-channel-implementation-guide.md` §6 acceptance checklist
+- **Documentation:** `modules/routing-core/docs/stealth-channel-implementation-guide.md` §6 acceptance checklist
 
 ### Fix
 
@@ -142,7 +142,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
    '
    ```
 
-4. Add to the acceptance checklist in `docs/stealth-channel-implementation-guide.md` §6:
+4. Add to the acceptance checklist in `modules/routing-core/docs/stealth-channel-implementation-guide.md` §6:
    ```
    - [ ] `nvram get ipv6_service` == `disabled`
    - [ ] `ip -6 addr show dev br0` shows no global unicast IPv6 addresses
@@ -387,13 +387,13 @@ Recommendation: use `gateway.icloud.com` as the primary replacement for Microsof
 
 ### Fix
 
-Exact procedure is already documented in [docs/sni-rotation-candidates.md §4](sni-rotation-candidates.md). Summary of the switch:
+Exact procedure is already documented in [modules/reality-sni-rotation/docs/sni-rotation-candidates.md §4](/modules/reality-sni-rotation/docs/sni-rotation-candidates.md). Summary of the switch:
 
 1. Pre-flight validate the candidate:
    ```
    ssh deploy@<vps-ip> '/tmp/validate-sni-candidate.sh gateway.icloud.com'
    ```
-   Abort if any `[FAIL]` line. Follow the script in §3 of sni-rotation-candidates.md — copy it to the VPS first if not already there.
+   Abort if any `[FAIL]` line. Follow the script in §3 of modules/reality-sni-rotation/docs/sni-rotation-candidates.md — copy it to the VPS first if not already there.
 
 2. Backup current client QR bundle:
    ```
@@ -437,11 +437,11 @@ Exact procedure is already documented in [docs/sni-rotation-candidates.md §4](s
 
 7. Redistribute 7 new QRs to external clients (router profile auto-applied in step 4).
 
-8. Append entry to decision log (see sni-rotation-candidates.md §8).
+8. Append entry to decision log (see modules/reality-sni-rotation/docs/sni-rotation-candidates.md §8).
 
 ### Verification
 
-Included in `playbooks/99-verify.yml` and the post-switch §7 of sni-rotation-candidates.md. Specifically:
+Included in `playbooks/99-verify.yml` and the post-switch §7 of modules/reality-sni-rotation/docs/sni-rotation-candidates.md. Specifically:
 - VPS: `curl -k --resolve gateway.icloud.com:443:<vps-ip> https://gateway.icloud.com/` returns iCloud-fallback cert and a plausible Apple response, commonly HTTP 400 for a bare request.
 - Router: `echo | nc -w 3 <vps-ip> 443` returns `rc=0`.
 - Router: `tail -F /opt/var/log/sing-box.log` shows handshake success.
@@ -451,7 +451,7 @@ Included in `playbooks/99-verify.yml` and the post-switch §7 of sni-rotation-ca
 
 ### Rollback
 
-Follow sni-rotation-candidates.md §5. Restore vault to `www.microsoft.com`, re-deploy, redistribute the backup QR bundle. ~5 min.
+Follow modules/reality-sni-rotation/docs/sni-rotation-candidates.md §5. Restore vault to `www.microsoft.com`, re-deploy, redistribute the backup QR bundle. ~5 min.
 
 ### Estimated effort
 45 min including client redistribution.
@@ -703,7 +703,7 @@ Smaller, curated STEALTH_DOMAINS = less bandwidth through VPS = closer to legiti
 
 ### Scope
 - `modules/dns-catalog-intelligence/router/domain-auto-add.sh`
-- Possibly `docs/domain-management.md` if it describes behavior.
+- Possibly `modules/dns-catalog-intelligence/docs/domain-management.md` if it describes behavior.
 
 ### Fix
 
@@ -759,8 +759,8 @@ Maintenance correctness. Prevents well-meaning "improvements" that regress steal
 
 ### Scope
 - `docs/architecture.md` — add a "Design decisions" or "Trade-offs" section.
-- `docs/stealth-channel-implementation-guide.md` §6 — extend acceptance checklist.
-- `docs/stealth-channel-implementation-guide.md` §10 — extend non-goals list.
+- `modules/routing-core/docs/stealth-channel-implementation-guide.md` §6 — extend acceptance checklist.
+- `modules/routing-core/docs/stealth-channel-implementation-guide.md` §10 — extend non-goals list.
 
 ### Fix
 
@@ -775,7 +775,7 @@ REJECT emits ICMP port-unreachable; this is itself a behavioral fingerprint
 the first connection, imperceptible in UX, but leaves no ICMP trace.
 
 ### Why SNI=gateway.icloud.com
-See docs/sni-rotation-candidates.md. Summary: iCloud sync's native traffic
+See modules/reality-sni-rotation/docs/sni-rotation-candidates.md. Summary: iCloud sync's native traffic
 is persistent long-lived TCP, matching Reality's flow profile exactly.
 iPhone/Mac users in RU constantly hold such connections.
 
@@ -813,7 +813,7 @@ not yet executed.
   by sophisticated DPI only.
 ```
 
-Add to `docs/stealth-channel-implementation-guide.md` §6 acceptance checklist:
+Add to `modules/routing-core/docs/stealth-channel-implementation-guide.md` §6 acceptance checklist:
 ```
 - [ ] `nvram get ipv6_service` == `disabled` (channel-B IPv6 kill-switch)
 - [ ] dig <openclaw-host> +short does NOT return <vps-ip> publicly
@@ -823,7 +823,7 @@ Add to `docs/stealth-channel-implementation-guide.md` §6 acceptance checklist:
 - [x] `domain-auto-add.sh` default-skips when `blocked-domains.lst` is missing or empty
 ```
 
-Add to `docs/stealth-channel-implementation-guide.md` §10 non-goals:
+Add to `modules/routing-core/docs/stealth-channel-implementation-guide.md` §10 non-goals:
 ```
 - IPv6 connectivity (killed by NVRAM)
 - Shared-pool exit IP (requires cascade through commercial VPN on VPS)
@@ -848,7 +848,7 @@ Docs-only; rollback is git revert of the edits.
 These items are valuable but not time-critical. Leave as tickets for future work.
 
 ## 3.1 Failure-modes runbook
-New doc `docs/failure-modes.md`: what user sees when sing-box dies / Caddy L4 unloads / dnscrypt-proxy crashes / VPS unreachable; symptom → quick diagnosis → recovery. Populate from watchdog logic in §2.4 and existing `docs/troubleshooting.md`.
+New doc `modules/recovery-verification/docs/failure-modes.md`: what user sees when sing-box dies / Caddy L4 unloads / dnscrypt-proxy crashes / VPS unreachable; symptom → quick diagnosis → recovery. Populate from watchdog logic in §2.4 and existing `docs/troubleshooting.md`.
 
 ## 3.2 Disaster-recovery runbook
 New doc `docs/disaster-recovery.md`: procedure for VPS-lost (restore from backup → rebuild stack → regenerate keys → redistribute), VPS-IP blocked (floating IP swap, DNS update), vault password lost (re-encrypt from memory or regenerate ALL secrets).
@@ -857,7 +857,7 @@ New doc `docs/disaster-recovery.md`: procedure for VPS-lost (restore from backup
 New section or doc on Reality keypair rotation (every ~6 months, or after suspected compromise). Steps: regenerate server keypair in Xray, re-seed 3x-ui inbound, regenerate ALL 8 clients' pubkey reference, redistribute QRs. Downtime: ~10 min.
 
 ## 3.4 Client revocation workflow
-`docs/client-profiles.md` extension: remove one UUID from `clients[]` in vault, re-run `10-stealth-vps.yml` (which syncs Xray inbound). Add a helper `modules/client-profile-factory/bin/revoke-client.sh <name>`.
+`modules/client-profile-factory/docs/client-profiles.md` extension: remove one UUID from `clients[]` in vault, re-run `10-stealth-vps.yml` (which syncs Xray inbound). Add a helper `modules/client-profile-factory/bin/revoke-client.sh <name>`.
 
 ## 3.5 Monitoring/alerting hooks
 Send `modules/ghostroute-health-monitor/bin/router-health-report` output hourly to a Telegram bot or similar. Alert thresholds: REDIRECT counter == 0 for > 1 hour -> warn; UDP DROP count > 10x redirect count -> warn; sing-box restart count > 3/day -> warn.
@@ -969,7 +969,7 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 # 7. What this document does NOT cover
 
 - **Implementation of specific Ansible module versions.** Assume current `community.docker`, `community.general.ufw`, `ansible.builtin` at latest. Pin if reproducibility matters.
-- **The actual SNI rotation decision logic.** That lives in `docs/sni-rotation-candidates.md`; this file only references §2.1.
+- **The actual SNI rotation decision logic.** That lives in `modules/reality-sni-rotation/docs/sni-rotation-candidates.md`; this file only references §2.1.
 - **How the review was conducted.** If you need the underlying findings log, see chat history in session where this document was produced.
 - **Migration off wgc1 or wgs1.** Channel A is out of scope for this hardening pass.
 
@@ -995,15 +995,15 @@ Primary files touched (or should be touched) by the fixes:
 
 | Fix | File | Notes |
 |---|---|---|
-| §1.1 | `ansible/roles/ipv6_kill/**` (new), `ansible/playbooks/20-stealth-router.yml`, `verify.sh`, `docs/stealth-channel-implementation-guide.md` | Kill-switch via NVRAM |
+| §1.1 | `ansible/roles/ipv6_kill/**` (new), `ansible/playbooks/20-stealth-router.yml`, `verify.sh`, `modules/routing-core/docs/stealth-channel-implementation-guide.md` | Kill-switch via NVRAM |
 | §1.2 | `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2` | REJECT → DROP |
-| §1.3 | `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`, `docs/stealth-channel-implementation-guide.md` | Remove OpenClaw from public Caddy; SSH-only loopback access |
-| §2.1 | `ansible/secrets/stealth.yml`, `ansible/roles/xray_reality/tasks/main.yml`, `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`, `docs/sni-rotation-candidates.md` | SNI switch and existing Xray inbound sync |
+| §1.3 | `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`, `modules/routing-core/docs/stealth-channel-implementation-guide.md` | Remove OpenClaw from public Caddy; SSH-only loopback access |
+| §2.1 | `ansible/secrets/stealth.yml`, `ansible/roles/xray_reality/tasks/main.yml`, `ansible/roles/caddy_l4/templates/SystemCaddyfile.j2`, `modules/reality-sni-rotation/docs/sni-rotation-candidates.md` | SNI switch and existing Xray inbound sync |
 | §2.2 | `ansible/roles/singbox_client/templates/config.json.j2`, `ansible/roles/dnscrypt_proxy/templates/dnscrypt-proxy.toml.j2` | DoH over stealth |
 | §2.3 | `ansible/roles/singbox_client/templates/config.json.j2` | TCP keepalive |
 | §2.4 | `ansible/roles/singbox_client/templates/singbox-watchdog.sh.j2` (new), `ansible/roles/singbox_client/tasks/main.yml` | Watchdog |
 | §2.5 | `modules/dns-catalog-intelligence/router/domain-auto-add.sh`, optional new `modules/dns-catalog-intelligence/router/domain-force-add.sh` | Default-skip |
-| §2.6 | `docs/architecture.md`, `docs/stealth-channel-implementation-guide.md` | Design rationale |
+| §2.6 | `docs/architecture.md`, `modules/routing-core/docs/stealth-channel-implementation-guide.md` | Design rationale |
 
 ---
 

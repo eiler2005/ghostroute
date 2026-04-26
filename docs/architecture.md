@@ -102,7 +102,7 @@ client app
 
 The mobile carrier sees domestic home ingress traffic. Websites still see the
 VPS exit IP for managed traffic; non-managed destinations see the home WAN
-IP. See [network-flow-and-observer-model.md](network-flow-and-observer-model.md)
+IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md)
 for the full workflow and observer table.
 
 ### Router-Originated Traffic

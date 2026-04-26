@@ -73,6 +73,6 @@ operator action.
 
 ## Related Docs
 
-- `docs/stealth-monitoring-implementation-guide.md`
-- `docs/stealth-monitor-runbook.md`
+- `modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md`
+- `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`
 - `docs/troubleshooting.md`

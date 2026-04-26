@@ -69,7 +69,7 @@ inspect its state, but must not silently change routing.
 ## Related Docs
 
 - `docs/architecture.md`
-- `docs/current-routing-explained.md`
-- `docs/network-flow-and-observer-model.md`
-- `docs/channel-routing-operations.md`
-- `docs/stealth-channel-implementation-guide.md`
+- `modules/routing-core/docs/current-routing-explained.md`
+- `modules/routing-core/docs/network-flow-and-observer-model.md`
+- `modules/routing-core/docs/channel-routing-operations.md`
+- `modules/routing-core/docs/stealth-channel-implementation-guide.md`

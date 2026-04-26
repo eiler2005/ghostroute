@@ -44,7 +44,7 @@ only for `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
    Home Reality ingress.
 
 Подробная схема от клиента до конечного сайта, включая процессы, порты и
-observer model: [network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+observer model: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ## Доменный каталог
 

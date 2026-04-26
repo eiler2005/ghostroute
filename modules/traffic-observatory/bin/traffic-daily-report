@@ -330,7 +330,7 @@ puts
 
 puts '=== 6. ROUTING MISTAKES / CHECKS ==='
 puts 'Destination-level mistake checks are available for current-day logs only.'
-puts 'Catalog-level review is covered by `./modules/dns-catalog-intelligence/bin/catalog-review-report` and `docs/stealth-domains-curation-audit.md`.'
+puts 'Catalog-level review is covered by `./modules/dns-catalog-intelligence/bin/catalog-review-report` and `modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md`.'
 puts
 
 puts '=== NOTES ==='

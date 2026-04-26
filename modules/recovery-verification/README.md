@@ -63,7 +63,7 @@ an operator after reading the relevant runbook.
 
 ## Related Docs
 
-- `docs/failure-modes.md`
+- `modules/recovery-verification/docs/failure-modes.md`
 - `docs/troubleshooting.md`
-- `docs/stealth-monitor-runbook.md`
-- `docs/channel-routing-operations.md`
+- `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`
+- `modules/routing-core/docs/channel-routing-operations.md`

@@ -287,7 +287,7 @@ DNS latency can still affect page-load feel if the mobile app does not cache or
 fake DNS efficiently. This is usually visible as slow initial page start rather
 than low sustained video/download throughput.
 
-See [docs/client-profiles.md](client-profiles.md) for client-side DNS settings.
+See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) for client-side DNS settings.
 
 ## 7. How To Test After Changes
 

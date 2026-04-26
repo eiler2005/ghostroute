@@ -14,7 +14,7 @@ It is a support component rather than a user-facing operational module.
 ## How It Works
 
 Module commands source shared shell libraries directly from
-`modules/shared/lib`. There is no public compatibility path for these helpers.
+`modules/shared/lib`. There is no public import path for these helpers.
 
 ## Architecture
 
@@ -24,8 +24,8 @@ Module commands source shared shell libraries directly from
 
 ## Read-only / Mutating Contract
 
-Shared helpers inherit the contract of the caller. Helper changes must preserve
-BusyBox/router compatibility where they are sourced by router-facing scripts.
+Shared helpers inherit the contract of the caller. Helper changes must stay
+BusyBox-safe where they are sourced by router-facing scripts.
 
 ## Public Commands
 
@@ -53,5 +53,5 @@ BusyBox/router compatibility where they are sourced by router-facing scripts.
 
 ## Related Docs
 
-- `docs/traffic-observability.md`
-- `docs/secrets-management.md`
+- `modules/traffic-observatory/docs/traffic-observability.md`
+- `modules/secrets-management/docs/secrets-management.md`

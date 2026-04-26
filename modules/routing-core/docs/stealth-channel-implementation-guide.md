@@ -7,7 +7,7 @@ VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 **Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS host; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
 
 For the current end-to-end flow and observer model, see
-[network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+[modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ---
 
@@ -133,8 +133,8 @@ modules/
 
 docs/
   architecture.md
-  channel-routing-operations.md
-  stealth-channel-implementation-guide.md
+  modules/routing-core/docs/channel-routing-operations.md
+  modules/routing-core/docs/stealth-channel-implementation-guide.md
 ```
 
 ---

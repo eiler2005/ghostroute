@@ -108,7 +108,7 @@ unexpectedly sees VPS, check whether its domain or CDN CIDR was added to the
 managed catalog.
 
 For the full end-to-end workflow and observer table, see
-[network-flow-and-observer-model.md](network-flow-and-observer-model.md).
+[modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ---
 
