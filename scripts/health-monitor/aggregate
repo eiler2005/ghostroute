@@ -1,0 +1,221 @@
+#!/bin/sh
+# Build status.json, summary-latest.md and local alert ledgers.
+
+set -u
+. "$(dirname "$0")/lib.sh"
+
+ALERT_COOLDOWN_SECONDS="${HEALTH_MONITOR_ALERT_COOLDOWN_SECONDS:-3600}"
+RAW_FILE="$(hm_raw_file)"
+LATEST_TSV="$STATE_DIR/latest.tsv"
+PREV_TSV="$STATE_DIR/previous-status.tsv"
+ALERT_STATE="$STATE_DIR/alert-state.tsv"
+NEW_ALERT_STATE="$STATE_DIR/alert-state.new"
+STATUS_FILE="$LOG_DIR/status.json"
+SUMMARY_FILE="$LOG_DIR/summary-latest.md"
+NOW_TS="$(hm_ts)"
+NOW_EPOCH="$(hm_now_epoch)"
+
+hm_init_dirs
+
+if [ ! -s "$RAW_FILE" ]; then
+  hm_emit monitor_runtime UNKNOWN "monitor runtime" \
+    "No raw probe events exist for today yet." \
+    "raw=$RAW_FILE" \
+    "Wait for the probe cron or run run-probes manually."
+fi
+
+awk '
+  function json_get(line, key,   pat, rest, idx, end) {
+    pat = "\"" key "\":\""
+    idx = index(line, pat)
+    if (idx == 0) return ""
+    rest = substr(line, idx + length(pat))
+    end = index(rest, "\"")
+    if (end == 0) return rest
+    return substr(rest, 1, end - 1)
+  }
+  {
+    probe = json_get($0, "probe")
+    if (probe == "") next
+    ts[probe] = json_get($0, "ts")
+    status[probe] = json_get($0, "status")
+    risk[probe] = json_get($0, "risk")
+    message[probe] = json_get($0, "message")
+    evidence[probe] = json_get($0, "evidence")
+    action[probe] = json_get($0, "action")
+    order[++n] = probe
+  }
+  END {
+    for (i = 1; i <= n; i++) {
+      p = order[i]
+      if (printed[p]) continue
+      printed[p] = 1
+      latest[++m] = p
+    }
+    for (i = 1; i <= m; i++) {
+      p = latest[i]
+      print p "\t" status[p] "\t" risk[p] "\t" message[p] "\t" evidence[p] "\t" action[p] "\t" ts[p]
+    }
+  }' "$RAW_FILE" > "$LATEST_TSV"
+
+overall="OK"
+if awk -F'\t' '$2 == "CRIT" { found = 1 } END { exit(found ? 0 : 1) }' "$LATEST_TSV"; then
+  overall="CRIT"
+elif awk -F'\t' '$2 == "WARN" || $2 == "UNKNOWN" { found = 1 } END { exit(found ? 0 : 1) }' "$LATEST_TSV"; then
+  overall="WARN"
+fi
+
+json_escape_file="$STATE_DIR/json-escape.tmp"
+: > "$json_escape_file"
+
+{
+  printf '{'
+  printf '"ts":"%s",' "$(hm_json_escape "$NOW_TS")"
+  printf '"overall":"%s",' "$overall"
+  printf '"version":%s,' "$HEALTH_MONITOR_VERSION"
+  printf '"storage":"%s",' "$(hm_json_escape "$LOG_DIR")"
+  printf '"checks":{'
+  first=1
+  while IFS='	' read -r probe status risk message evidence action last_ts; do
+    [ -n "$probe" ] || continue
+    [ "$first" = "1" ] || printf ','
+    first=0
+    printf '"%s":{"status":"%s","last_ts":"%s","risk":"%s","message":"%s","evidence":"%s","action":"%s"}' \
+      "$(hm_json_escape "$probe")" \
+      "$(hm_json_escape "$status")" \
+      "$(hm_json_escape "$last_ts")" \
+      "$(hm_json_escape "$risk")" \
+      "$(hm_json_escape "$message")" \
+      "$(hm_json_escape "$evidence")" \
+      "$(hm_json_escape "$action")"
+  done < "$LATEST_TSV"
+  printf '}}'
+  printf '\n'
+} > "$STATUS_FILE.tmp"
+mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+
+rm -f "$LOG_DIR/STATUS_OK" "$LOG_DIR/STATUS_FAIL"
+if [ "$overall" = "OK" ]; then
+  : > "$LOG_DIR/STATUS_OK"
+else
+  : > "$LOG_DIR/STATUS_FAIL"
+fi
+
+touch "$PREV_TSV" "$ALERT_STATE"
+: > "$NEW_ALERT_STATE"
+
+append_alert() {
+  probe="$1"
+  status="$2"
+  previous="$3"
+  risk="$4"
+  message="$5"
+  evidence="$6"
+  action="$7"
+  last_ts="$8"
+  alert_jsonl="$(hm_alert_jsonl_file)"
+  alert_md="$(hm_alert_md_file)"
+  alert_ts="$(hm_ts)"
+
+  printf '{"ts":"%s","probe":"%s","status":"%s","previous_status":"%s","risk":"%s","message":"%s","evidence":"%s","action":"%s","probe_ts":"%s","version":%s}\n' \
+    "$(hm_json_escape "$alert_ts")" \
+    "$(hm_json_escape "$probe")" \
+    "$(hm_json_escape "$status")" \
+    "$(hm_json_escape "$previous")" \
+    "$(hm_json_escape "$risk")" \
+    "$(hm_json_escape "$message")" \
+    "$(hm_json_escape "$evidence")" \
+    "$(hm_json_escape "$action")" \
+    "$(hm_json_escape "$last_ts")" \
+    "$HEALTH_MONITOR_VERSION" >> "$alert_jsonl"
+
+  if [ ! -s "$alert_md" ]; then
+    {
+      printf '# GhostRoute Health Monitor Alerts - %s\n\n' "$(hm_today)"
+      printf 'Local internal alert ledger. These alerts are not sent outside the router.\n\n'
+      printf '| Time | Probe | Status | Previous | Risk | Evidence | Action |\n'
+      printf '|---|---|---|---|---|---|---|\n'
+    } > "$alert_md"
+  fi
+
+  printf '| %s | `%s` | `%s` | `%s` | %s | %s | %s |\n' \
+    "$alert_ts" "$probe" "$status" "$previous" "$risk" "$evidence" "$action" >> "$alert_md"
+}
+
+while IFS='	' read -r probe status risk message evidence action last_ts; do
+  [ -n "$probe" ] || continue
+  previous="$(awk -F'\t' -v p="$probe" '$1 == p { print $2; found = 1; exit } END { if (!found) print "UNKNOWN" }' "$PREV_TSV")"
+  last_alert="$(awk -F'\t' -v p="$probe" -v s="$status" '$1 == p && $2 == s { print $3; found = 1; exit } END { if (!found) print "0" }' "$ALERT_STATE")"
+  case "$last_alert" in ''|*[!0-9]*) last_alert=0 ;; esac
+
+  should_alert=0
+  if [ "$status" != "SKIP" ] && [ "$status" != "$previous" ]; then
+    should_alert=1
+  elif [ "$status" = "CRIT" ] && [ $((NOW_EPOCH - last_alert)) -ge "$ALERT_COOLDOWN_SECONDS" ]; then
+    should_alert=1
+  fi
+
+  if [ "$should_alert" = "1" ]; then
+    append_alert "$probe" "$status" "$previous" "$risk" "$message" "$evidence" "$action" "$last_ts"
+    last_alert="$NOW_EPOCH"
+  fi
+  printf '%s\t%s\t%s\n' "$probe" "$status" "$last_alert" >> "$NEW_ALERT_STATE"
+done < "$LATEST_TSV"
+
+mv "$NEW_ALERT_STATE" "$ALERT_STATE"
+awk -F'\t' '{ print $1 "\t" $2 }' "$LATEST_TSV" > "$PREV_TSV.tmp"
+mv "$PREV_TSV.tmp" "$PREV_TSV"
+
+{
+  printf '# Модуль мониторинга работоспособности GhostRoute\n\n'
+  printf '%s\n' "- Generated: **$NOW_TS**"
+  printf '%s\n' "- Overall: **$overall**"
+  printf '%s\n' "- Storage: \`$LOG_DIR\`"
+  printf '%s\n' "- Sentinel: \`$( [ "$overall" = "OK" ] && printf 'STATUS_OK' || printf 'STATUS_FAIL' )\`"
+  printf '\n'
+  printf '## Quick Read\n\n'
+  printf '1. If `STATUS_FAIL` exists, read this file first.\n'
+  printf '2. Read `alerts/%s.md` for state changes and repeated CRIT alerts.\n' "$(hm_today)"
+  printf '3. Use `raw/%s.jsonl` only when exact probe evidence is needed.\n' "$(hm_today)"
+  printf '4. Do not delete alert history after manual recovery; wait for `STATUS_OK`.\n'
+  printf '\n'
+  printf '## Risk Card\n\n'
+  printf '| Probe | Status | Risk | Evidence | Operator action |\n'
+  printf '|---|---|---|---|---|\n'
+  while IFS='	' read -r probe status risk message evidence action last_ts; do
+    [ -n "$probe" ] || continue
+    printf '| `%s` | `%s` | %s | %s | %s |\n' "$probe" "$status" "$risk" "$evidence" "$action"
+  done < "$LATEST_TSV"
+  printf '\n'
+  printf '## Non-OK Checks\n\n'
+  non_ok=0
+  while IFS='	' read -r probe status risk message evidence action last_ts; do
+    [ -n "$probe" ] || continue
+    if [ "$status" != "OK" ] && [ "$status" != "SKIP" ]; then
+      non_ok=1
+      printf '### `%s` - %s\n\n' "$probe" "$status"
+      printf '%s\n' "- Risk: $risk"
+      printf '%s\n' "- Message: $message"
+      printf '%s\n' "- Evidence: \`$evidence\`"
+      printf '%s\n\n' "- Action: $action"
+    fi
+  done < "$LATEST_TSV"
+  [ "$non_ok" = "1" ] || printf 'No non-OK checks.\n\n'
+  printf '## Files\n\n'
+  printf '%s\n' "- Current machine status: \`$LOG_DIR/status.json\`"
+  printf '%s\n' "- Latest summary: \`$LOG_DIR/summary-latest.md\`"
+  printf '%s\n' "- Today alerts Markdown: \`$LOG_DIR/alerts/$(hm_today).md\`"
+  printf '%s\n' "- Today alerts JSONL: \`$LOG_DIR/alerts/$(hm_today).jsonl\`"
+  printf '%s\n' "- Today raw events: \`$LOG_DIR/raw/$(hm_today).jsonl\`"
+  printf '\n'
+  printf '## Guardrails\n\n'
+  printf '%s\n' '- This module is read-only for production routing state.'
+  printf '%s\n' '- It writes local reports and alert ledgers only.'
+  printf '%s\n' '- Recovery actions that restart services, edit iptables, deploy Ansible, or change NVRAM require explicit operator approval.'
+} > "$SUMMARY_FILE.tmp"
+mv "$SUMMARY_FILE.tmp" "$SUMMARY_FILE"
+
+find "$RAW_DIR" -name '*.jsonl' -mtime +30 -delete 2>/dev/null || true
+find "$ALERT_DIR" -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
+find "$ALERT_DIR" -name '*.md' -mtime +90 -delete 2>/dev/null || true
+find "$DAILY_DIR" -name '*.md' -mtime +90 -delete 2>/dev/null || true

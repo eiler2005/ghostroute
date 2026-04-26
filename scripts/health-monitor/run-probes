@@ -1,0 +1,548 @@
+#!/bin/sh
+# Read-only local health probes for GhostRoute.
+
+set -u
+. "$(dirname "$0")/lib.sh"
+
+PROBE_FILTER=""
+if [ "${1:-}" = "--probe" ]; then
+  PROBE_FILTER="${2:-}"
+elif [ -n "${HEALTH_MONITOR_PROBE_FILTER:-}" ]; then
+  PROBE_FILTER="$HEALTH_MONITOR_PROBE_FILTER"
+fi
+
+should_run() {
+  [ -z "$PROBE_FILTER" ] || [ "$PROBE_FILTER" = "$1" ]
+}
+
+probe_channel_b_reality() {
+  should_run channel_b_reality || return 0
+  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:1080}"
+  expected="$(hm_extract_reality_server 2>/dev/null || true)"
+  log="$(hm_singbox_log)"
+  recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
+  curl_err="/tmp/health-monitor-curl.$$"
+  exit_ip="$(hm_curl -sS --max-time 8 --proxy "socks5h://$socks" https://api.ipify.org 2>"$curl_err")"
+  curl_rc=$?
+  curl_error="$(head -c 120 "$curl_err" 2>/dev/null | tr '\n' ' ')"
+  rm -f "$curl_err"
+
+  if [ -z "$exit_ip" ]; then
+    if [ "${recent_reality:-0}" -gt 0 ]; then
+      hm_emit channel_b_reality OK "Channel B / Reality path down" \
+        "Active SOCKS exit-IP probe is unavailable, but recent reality-out traffic is visible." \
+        "active_check=unavailable curl_rc=$curl_rc recent_reality_out=$recent_reality expected=${expected:-unknown}" \
+        "No action unless users report managed-site failures."
+    else
+      hm_emit channel_b_reality CRIT "Channel B / Reality path down" \
+        "SOCKS path through sing-box did not return an exit IP and no recent reality-out traffic was visible." \
+        "socks=$socks curl_rc=$curl_rc curl_error=$curl_error expected=${expected:-unknown}" \
+        "Check sing-box, Caddy/Xray on VPS, and the VPS path before changing routing."
+    fi
+  elif printf '%s\n' "$expected" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && [ "$exit_ip" != "$expected" ]; then
+    hm_emit channel_b_reality WARN "Managed traffic exits via unexpected IP" \
+      "Reality path works, but the observed exit IP differs from the configured VPS IP." \
+      "exit_ip=$exit_ip expected=$expected" \
+      "Confirm the VPS address, DNS, and any planned VPS IP rotation."
+  else
+    hm_emit channel_b_reality OK "Channel B / Reality path down" \
+      "Reality SOCKS path is reachable." \
+      "exit_ip=$exit_ip expected=${expected:-not_ipv4_literal}" \
+      "No action."
+  fi
+}
+
+probe_vps_path() {
+  should_run vps_path || return 0
+  server="$(hm_extract_reality_server 2>/dev/null || true)"
+  if [ -z "$server" ]; then
+    hm_emit vps_path UNKNOWN "VPS path unavailable" \
+      "Could not read reality-out server from sing-box config." \
+      "config=$(hm_singbox_config)" \
+      "Check sing-box config rendering."
+    return 0
+  fi
+
+  log="$(hm_singbox_log)"
+  recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
+  if hm_tcp_open "$server" 443 || hm_curl -skI --max-time 5 "https://$server/" >/dev/null 2>&1; then
+    hm_emit vps_path OK "VPS path unavailable" \
+      "Router can open TCP/443 to the configured Reality VPS." \
+      "server=$server port=443" \
+      "No action."
+  elif [ "${recent_reality:-0}" -gt 0 ]; then
+    hm_emit vps_path OK "VPS path unavailable" \
+      "Direct TCP probe tool could not verify the VPS, but recent reality-out traffic is visible." \
+      "server=$server port=443 active_check=unavailable recent_reality_out=$recent_reality" \
+      "No action unless users report managed-site failures."
+  else
+    hm_emit vps_path CRIT "VPS path unavailable" \
+      "Router cannot open TCP/443 to the configured Reality VPS." \
+      "server=$server port=443" \
+      "Check home WAN, VPS reachability, Caddy listener, and provider status."
+  fi
+}
+
+probe_singbox_health() {
+  should_run singbox_health || return 0
+  ps_out="$(ps 2>/dev/null | grep '[s]ing-box' || true)"
+  netstat_out="$(netstat -nlp 2>/dev/null || true)"
+  missing=""
+
+  printf '%s\n' "$netstat_out" | grep -q ':<lan-redirect-port> ' || missing="${missing} redirect_<lan-redirect-port>"
+  printf '%s\n' "$netstat_out" | grep -q '127.0.0.1:1080 ' || missing="${missing} socks_1080"
+  printf '%s\n' "$netstat_out" | grep -q '0.0.0.0:<home-reality-port>' || missing="${missing} home_reality_<home-reality-port>"
+
+  if [ -z "$ps_out" ]; then
+    hm_emit singbox_health CRIT "sing-box unhealthy" \
+      "sing-box process is not visible in ps output." \
+      "missing_process=1" \
+      "Inspect logs and restart sing-box only with operator approval."
+  elif [ -n "$missing" ]; then
+    hm_emit singbox_health CRIT "sing-box unhealthy" \
+      "sing-box is running but one or more expected listeners are missing." \
+      "missing=${missing# }" \
+      "Check /opt/etc/sing-box/config.json and S99singbox status."
+  else
+    hm_emit singbox_health OK "sing-box unhealthy" \
+      "sing-box process and expected listeners are present." \
+      "listeners=<lan-redirect-port>,1080,<home-reality-port>" \
+      "No action."
+  fi
+}
+
+probe_home_reality_ingress() {
+  should_run home_reality_ingress || return 0
+  netstat_out="$(netstat -nlp 2>/dev/null || true)"
+  input_rules="$(iptables -S INPUT 2>/dev/null || true)"
+  mangle_rules="$(iptables -t mangle -S 2>/dev/null || true)"
+  issues=""
+
+  printf '%s\n' "$netstat_out" | grep -q '0.0.0.0:<home-reality-port>' || issues="${issues} listener_missing"
+  printf '%s\n' "$input_rules" | grep -- '--dport <home-reality-port>' | grep -q -- '-j ACCEPT' || issues="${issues} input_accept_missing"
+  printf '%s\n' "$mangle_rules" | grep -- '--dport <home-reality-port>' | grep -q 'TCPMSS' || issues="${issues} mss_prerouting_missing"
+  printf '%s\n' "$mangle_rules" | grep -- '--sport <home-reality-port>' | grep -q 'TCPMSS' || issues="${issues} mss_output_missing"
+
+  if printf '%s\n' "$issues" | grep -q 'listener_missing'; then
+    hm_emit home_reality_ingress CRIT "Home Reality ingress :<home-reality-port> down" \
+      "The router is not listening on 0.0.0.0:<home-reality-port>." \
+      "issues=${issues# }" \
+      "Check sing-box home Reality inbound and firewall-start state."
+  elif [ -n "$issues" ]; then
+    hm_emit home_reality_ingress WARN "Home Reality ingress :<home-reality-port> degraded" \
+      "Home Reality listener is present but supporting firewall/MSS rules drifted." \
+      "issues=${issues# }" \
+      "Run diagnostics from the runbook before re-applying routing hooks."
+  else
+    hm_emit home_reality_ingress OK "Home Reality ingress :<home-reality-port> down" \
+      "Home Reality listener and supporting rules are present." \
+      "port=<home-reality-port>" \
+      "No action."
+  fi
+}
+
+probe_mobile_activity() {
+  should_run mobile_activity || return 0
+  log="$(hm_singbox_log)"
+  today="$(date +%Y-%m-%d)"
+  [ -r "$log" ] || {
+    hm_emit mobile_activity UNKNOWN "Remote device inactivity" \
+      "sing-box log is not readable, so Home Reality activity cannot be assessed." \
+      "log=$log" \
+      "Check log path and rotation."
+    return 0
+  }
+
+  count="$(grep " $today " "$log" 2>/dev/null | grep -c 'inbound/vless\[reality-in\]' || true)"
+  if [ "${count:-0}" -gt 0 ]; then
+    hm_emit mobile_activity OK "Remote device inactivity" \
+      "Home Reality clients were observed today." \
+      "reality_in_log_lines=$count" \
+      "No action."
+  else
+    hm_emit mobile_activity WARN "Remote device inactivity" \
+      "No Home Reality client activity was observed in today's sing-box log." \
+      "reality_in_log_lines=0" \
+      "If remote devices should be active, check client profiles and home ingress reachability."
+  fi
+}
+
+probe_mobile_routing_leaks() {
+  should_run mobile_routing_leaks || return 0
+  log="$(hm_singbox_log)"
+  today="$(date +%Y-%m-%d)"
+  [ -r "$log" ] || {
+    hm_emit mobile_routing_leaks UNKNOWN "Mobile route split cannot be assessed" \
+      "sing-box log is not readable." \
+      "log=$log" \
+      "Check log path and rotation."
+    return 0
+  }
+
+  managed_direct="$(grep " $today " "$log" 2>/dev/null | grep 'outbound/direct\[direct-out\]' | grep -Eic 'youtube|googlevideo|telegram|openai|anthropic|github|instagram|discord|twitter|x\.com' || true)"
+  direct_via_vps="$(grep " $today " "$log" 2>/dev/null | grep 'outbound/vless\[reality-out\]' | grep -Eic '\.ru|yandex|vk\.com|ok\.ru|ozon|wildberries|avito|sber|tbank|gosuslugi|mail\.ru' || true)"
+
+  if [ "${managed_direct:-0}" -gt 0 ] || [ "${direct_via_vps:-0}" -gt 0 ]; then
+    hm_emit mobile_routing_leaks WARN "Mobile managed/direct routing leak suspected" \
+      "Heuristic log scan found destinations that may have used the wrong outbound." \
+      "managed_direct=$managed_direct direct_via_vps=$direct_via_vps" \
+      "Review traffic-report today and rule-set sync before changing catalogs."
+  else
+    hm_emit mobile_routing_leaks OK "Mobile managed/direct routing leak suspected" \
+      "No obvious Home Reality split-routing leak was found in today's sing-box log." \
+      "managed_direct=0 direct_via_vps=0" \
+      "No action."
+  fi
+}
+
+extract_stealth_domains() {
+  awk -v target_set="STEALTH_DOMAINS" '
+    /^ipset=\// {
+      line = $0
+      sub(/[[:space:]]*#.*/, "", line)
+      n = split(line, parts, "/")
+      if (n < 3) next
+      set_name = parts[n]
+      if (set_name != target_set) next
+      for (i = 2; i < n; i++) {
+        domain = parts[i]
+        gsub(/^[.]+/, "", domain)
+        gsub(/[[:space:]]/, "", domain)
+        if (domain != "" && domain !~ /[*]/) print tolower(domain)
+      }
+    }' "$@" 2>/dev/null | sort -u
+}
+
+extract_rule_domains() {
+  sed -n 's/.*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null |
+    grep -Ev '^(version|rules|domain_suffix|ip_cidr)$' |
+    sort -u
+}
+
+probe_rule_set_sync() {
+  should_run rule_set_sync || return 0
+  dnsmasq_file="${HEALTH_MONITOR_DNSMASQ_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
+  auto_file="${HEALTH_MONITOR_DNSMASQ_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+  ruleset_file="${HEALTH_MONITOR_RULESET_FILE:-/opt/etc/sing-box/rule-sets/stealth-domains.json}"
+  tmp_prefix="/tmp/health-monitor-rules.$$"
+  dns_tmp="${tmp_prefix}.dns"
+  rule_tmp="${tmp_prefix}.rules"
+  only_dns="${tmp_prefix}.only_dns"
+  only_rule="${tmp_prefix}.only_rule"
+
+  if [ ! -r "$dnsmasq_file" ]; then
+    hm_emit rule_set_sync CRIT "rule-set drift" \
+      "dnsmasq STEALTH catalog is missing." \
+      "path=$dnsmasq_file" \
+      "Check router deploy state."
+    return 0
+  fi
+  if [ ! -r "$ruleset_file" ]; then
+    hm_emit rule_set_sync CRIT "rule-set drift" \
+      "sing-box source rule-set is missing." \
+      "path=$ruleset_file" \
+      "Run update-singbox-rule-sets.sh with operator approval."
+    return 0
+  fi
+
+  extract_stealth_domains "$dnsmasq_file" "$auto_file" > "$dns_tmp"
+  extract_rule_domains "$ruleset_file" > "$rule_tmp"
+
+  awk 'NR==FNR { a[$0]=1; next } $0 != "" && !($0 in a) { print }' "$rule_tmp" "$dns_tmp" > "$only_dns"
+  awk 'NR==FNR { a[$0]=1; next } $0 != "" && !($0 in a) { print }' "$dns_tmp" "$rule_tmp" > "$only_rule"
+
+  dns_count="$(wc -l < "$dns_tmp" 2>/dev/null | tr -d ' ')"
+  rule_count="$(wc -l < "$rule_tmp" 2>/dev/null | tr -d ' ')"
+  only_dns_count="$(wc -l < "$only_dns" 2>/dev/null | tr -d ' ')"
+  only_rule_count="$(wc -l < "$only_rule" 2>/dev/null | tr -d ' ')"
+  only_dns_sample="$(head -5 "$only_dns" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+  only_rule_sample="$(head -5 "$only_rule" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+
+  rm -f "$dns_tmp" "$rule_tmp" "$only_dns" "$only_rule"
+
+  if [ "${only_dns_count:-0}" -gt 0 ] || [ "${only_rule_count:-0}" -gt 0 ]; then
+    hm_emit rule_set_sync CRIT "rule-set drift" \
+      "dnsmasq STEALTH catalog and sing-box rule-set differ." \
+      "dnsmasq=$dns_count ruleset=$rule_count only_dns=$only_dns_count only_rule=$only_rule_count sample_dns=$only_dns_sample sample_rule=$only_rule_sample" \
+      "Regenerate sing-box rule-sets after confirming the catalog change."
+  else
+    hm_emit rule_set_sync OK "rule-set drift" \
+      "dnsmasq STEALTH catalog and sing-box domain_suffix rule-set are in sync." \
+      "domains=$dns_count" \
+      "No action."
+  fi
+}
+
+probe_dns_ipv6_leaks() {
+  should_run dns_ipv6_leaks || return 0
+  issues=""
+  ipv6_service="$(nvram get ipv6_service 2>/dev/null || true)"
+  [ "${ipv6_service:-disabled}" = "disabled" ] || issues="${issues} ipv6_service=$ipv6_service"
+  ip -6 -o addr show dev br0 2>/dev/null | grep -qE 'inet6 (2|3)[0-9a-f]{1,3}:' && issues="${issues} br0_global_ipv6"
+  ip -6 -o addr show dev wan0 2>/dev/null | grep -qE 'inet6 (2|3)[0-9a-f]{1,3}:' && issues="${issues} wan0_global_ipv6"
+  grep -q '^filter-AAAA$' /jffs/configs/dnsmasq.conf.add 2>/dev/null || issues="${issues} filter_aaaa_missing"
+
+  tcpdump_bin="$(hm_command tcpdump 2>/dev/null || true)"
+  plain_dns="skip"
+  if [ -n "$tcpdump_bin" ]; then
+    wan_if="$(hm_wan_if)"
+    plain_dns="$(hm_timeout 5 "$tcpdump_bin" -i "$wan_if" -nn -c 5 'udp port 53' 2>/dev/null | wc -l | tr -d ' ')"
+    [ "${plain_dns:-0}" -gt 0 ] && issues="${issues} plain_dns_packets=$plain_dns"
+  fi
+
+  if printf '%s\n' "$issues" | grep -q 'plain_dns_packets\|global_ipv6'; then
+    hm_emit dns_ipv6_leaks CRIT "DNS/plain-53 or IPv6 leak" \
+      "Potential DNS or IPv6 leak signal was detected." \
+      "issues=${issues# } plain_dns_sample=$plain_dns" \
+      "Stop and diagnose DNS/IPv6 policy before changing catalogs."
+  elif [ -n "$issues" ]; then
+    hm_emit dns_ipv6_leaks WARN "DNS/plain-53 or IPv6 leak" \
+      "DNS/IPv6 policy drift was detected." \
+      "issues=${issues# } plain_dns_sample=$plain_dns" \
+      "Check dnsmasq filter-AAAA and Merlin IPv6 settings."
+  else
+    hm_emit dns_ipv6_leaks OK "DNS/plain-53 or IPv6 leak" \
+      "IPv6 policy and DNS leak sample are clean." \
+      "plain_dns_sample=$plain_dns" \
+      "No action."
+  fi
+}
+
+probe_channel_a_resurrection() {
+  should_run channel_a_resurrection || return 0
+  issues=""
+  [ "$(nvram get wgs1_enable 2>/dev/null || true)" = "0" ] || issues="${issues} wgs1_enable"
+  [ "$(nvram get wgc1_enable 2>/dev/null || true)" = "0" ] || issues="${issues} wgc1_enable"
+  ip link show wgs1 >/dev/null 2>&1 && issues="${issues} wgs1_iface"
+  ip link show wgc1 >/dev/null 2>&1 && issues="${issues} wgc1_iface"
+  ipset list VPN_DOMAINS >/dev/null 2>&1 && issues="${issues} VPN_DOMAINS"
+  ip rule show 2>/dev/null | grep -q '0x1000' && issues="${issues} fwmark_0x1000"
+
+  if [ -n "$issues" ]; then
+    hm_emit channel_a_resurrection CRIT "retired WG/Channel A resurrection" \
+      "Retired Channel A/WireGuard runtime state is visible again." \
+      "issues=${issues# }" \
+      "Use the Channel A cleanup runbook; do not enable fallback unless explicitly needed."
+  else
+    hm_emit channel_a_resurrection OK "retired WG/Channel A resurrection" \
+      "No retired Channel A runtime state was detected." \
+      "wgs1=absent wgc1=absent VPN_DOMAINS=absent" \
+      "No action."
+  fi
+}
+
+probe_catalog_health() {
+  should_run catalog_health || return 0
+  stealth_count="$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Number of entries:/ { print $4; exit }')"
+  static_count="$(ipset list VPN_STATIC_NETS 2>/dev/null | awk '/^Number of entries:/ { print $4; exit }')"
+  header="$(ipset list STEALTH_DOMAINS 2>/dev/null | awk -F'Header: ' '/^Header:/ { print $2; exit }')"
+  maxelem="$(printf '%s\n' "$header" | awk '{ for (i=1; i<=NF; i++) if ($i == "maxelem") { print $(i+1); exit } }')"
+  stealth_count="${stealth_count:-0}"
+  static_count="${static_count:-0}"
+  maxelem="${maxelem:-65536}"
+  usage_pct="$(awk -v cur="$stealth_count" -v max="$maxelem" 'BEGIN { if (max <= 0) print 0; else printf "%.1f", cur * 100 / max }')"
+  usage_int="${usage_pct%.*}"
+
+  if ! ipset list STEALTH_DOMAINS >/dev/null 2>&1 || ! ipset list VPN_STATIC_NETS >/dev/null 2>&1; then
+    hm_emit catalog_health CRIT "catalog availability/freshness" \
+      "Required ipsets are missing." \
+      "STEALTH_DOMAINS=$stealth_count VPN_STATIC_NETS=$static_count" \
+      "Check firewall-start and stealth-route-init state."
+  elif [ "$usage_int" -ge 50 ] 2>/dev/null; then
+    hm_emit catalog_health CRIT "catalog capacity" \
+      "STEALTH_DOMAINS usage is in the critical band." \
+      "stealth=$stealth_count max=$maxelem usage_pct=$usage_pct static=$static_count" \
+      "Review catalog growth before adding more domains."
+  elif [ "$usage_int" -ge 20 ] 2>/dev/null; then
+    hm_emit catalog_health WARN "catalog capacity" \
+      "STEALTH_DOMAINS usage reached the warning band." \
+      "stealth=$stealth_count max=$maxelem usage_pct=$usage_pct static=$static_count" \
+      "Review catalog growth and auto-discovery."
+  else
+    hm_emit catalog_health OK "catalog capacity" \
+      "Catalog ipsets are present and capacity is healthy." \
+      "stealth=$stealth_count max=$maxelem usage_pct=$usage_pct static=$static_count" \
+      "No action."
+  fi
+}
+
+probe_performance_rtt() {
+  should_run performance_rtt || return 0
+  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:1080}"
+  log="$(hm_singbox_log)"
+  recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
+  timing="$(hm_curl -sS --max-time 8 --proxy "socks5h://$socks" -o /dev/null -w '%{time_total}' https://api.ipify.org 2>/dev/null)"
+  curl_rc=$?
+  if [ "$curl_rc" -ne 0 ] || [ -z "$timing" ] || [ "$timing" = "0.000000" ]; then
+    log_sample="$(tail -1000 "$log" 2>/dev/null | awk '
+      /outbound\/vless\[reality-out\]/ {
+        if (match($0, /\[[^]]+ [0-9]+ms\]/)) {
+          sample = substr($0, RSTART, RLENGTH)
+          sub(/^.* /, "", sample)
+          sub(/ms\]$/, "", sample)
+          print sample
+        }
+      }' | sort -n | awk '{ values[NR] = $1 } END { if (NR > 0) print values[int((NR + 1) / 2)] "|" NR }')"
+    log_p50="${log_sample%%|*}"
+    log_count="${log_sample##*|}"
+    if [ -n "$log_sample" ] && [ "$log_sample" != "$log_p50" ]; then
+      if [ "$log_p50" -gt 5000 ] 2>/dev/null; then
+        hm_emit performance_rtt CRIT "RTT/performance degradation" \
+          "Passive sing-box log latency is critically high." \
+          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
+          "Check VPS load, home WAN, and provider path."
+      elif [ "$log_p50" -gt 2000 ] 2>/dev/null; then
+        hm_emit performance_rtt WARN "RTT/performance degradation" \
+          "Passive sing-box log latency is elevated." \
+          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
+          "Correlate with user reports and traffic-report."
+      else
+        hm_emit performance_rtt OK "RTT/performance degradation" \
+          "Passive sing-box log latency is within the v1 threshold." \
+          "source=singbox_log p50_ms=$log_p50 sample_count=$log_count active_curl_rc=$curl_rc" \
+          "No action."
+      fi
+      return 0
+    fi
+    if [ "${recent_reality:-0}" -gt 0 ]; then
+      hm_emit performance_rtt SKIP "RTT/performance degradation" \
+        "RTT probe skipped because router curl cannot perform the SOCKS active check." \
+        "socks=$socks curl_rc=$curl_rc recent_reality_out=$recent_reality" \
+        "No action; use traffic-report and user reports for performance until Entware curl is installed."
+    else
+      hm_emit performance_rtt UNKNOWN "RTT/performance degradation" \
+        "Could not collect RTT sample and no recent reality-out traffic was visible." \
+        "socks=$socks curl_rc=$curl_rc recent_reality_out=0" \
+        "Check Channel B before interpreting performance."
+    fi
+    return 0
+  fi
+  ms="$(awk -v t="$timing" 'BEGIN { printf "%d", t * 1000 }')"
+  if [ "$ms" -gt 5000 ] 2>/dev/null; then
+    hm_emit performance_rtt CRIT "RTT/performance degradation" \
+      "Reality RTT sample is critically high." \
+      "time_total_ms=$ms" \
+      "Check VPS load, home WAN, and provider path."
+  elif [ "$ms" -gt 2000 ] 2>/dev/null; then
+    hm_emit performance_rtt WARN "RTT/performance degradation" \
+      "Reality RTT sample is elevated." \
+      "time_total_ms=$ms" \
+      "Compare with traffic-report and retry before changing config."
+  else
+    hm_emit performance_rtt OK "RTT/performance degradation" \
+      "Reality RTT sample is within the v1 static threshold." \
+      "time_total_ms=$ms" \
+      "No action."
+  fi
+}
+
+probe_tcp_retransmits() {
+  should_run tcp_retransmits || return 0
+  state_file="$STATE_DIR/tcp-retrans.state"
+  pair="$(awk '
+    /^Tcp:/ && !seen {
+      for (i = 1; i <= NF; i++) idx[$i] = i
+      seen = 1
+      next
+    }
+    /^Tcp:/ && seen {
+      print $(idx["OutSegs"]) " " $(idx["RetransSegs"])
+      exit
+    }' /proc/net/snmp 2>/dev/null)"
+  outsegs="$(printf '%s\n' "$pair" | awk '{ print $1 }')"
+  retrans="$(printf '%s\n' "$pair" | awk '{ print $2 }')"
+  case "$outsegs" in
+    ''|*[!0-9]*) hm_emit tcp_retransmits UNKNOWN "TCP retransmit ratio" \
+      "Could not parse /proc/net/snmp TCP counters." \
+      "pair=$pair" \
+      "Check router kernel counters manually."; return 0 ;;
+  esac
+  case "$retrans" in
+    ''|*[!0-9]*) hm_emit tcp_retransmits UNKNOWN "TCP retransmit ratio" \
+      "Could not parse /proc/net/snmp TCP counters." \
+      "pair=$pair" \
+      "Check router kernel counters manually."; return 0 ;;
+  esac
+
+  prev_out=0
+  prev_retrans=0
+  if [ -r "$state_file" ]; then
+    prev_out="$(awk '{ print $1 }' "$state_file")"
+    prev_retrans="$(awk '{ print $2 }' "$state_file")"
+  fi
+  printf '%s %s\n' "$outsegs" "$retrans" > "$state_file"
+
+  delta_out=$((outsegs - prev_out))
+  delta_retrans=$((retrans - prev_retrans))
+  [ "$delta_out" -le 0 ] && delta_out=1
+  [ "$delta_retrans" -lt 0 ] && delta_retrans=0
+  ratio="$(awk -v r="$delta_retrans" -v o="$delta_out" 'BEGIN { printf "%.2f", r * 100 / o }')"
+  ratio_int="${ratio%.*}"
+
+  if [ "$prev_out" = "0" ]; then
+    hm_emit tcp_retransmits OK "TCP retransmit ratio" \
+      "TCP retransmit baseline sample was initialized." \
+      "ratio_pct=0.00 delta_out=0 delta_retrans=0" \
+      "No action."
+  elif [ "$ratio_int" -gt 5 ] 2>/dev/null; then
+    hm_emit tcp_retransmits CRIT "TCP retransmit ratio" \
+      "TCP retransmit ratio is critically high." \
+      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
+      "Check Wi-Fi/WAN packet loss, MTU/MSS, and VPS path."
+  elif [ "$ratio_int" -gt 1 ] 2>/dev/null; then
+    hm_emit tcp_retransmits WARN "TCP retransmit ratio" \
+      "TCP retransmit ratio is elevated." \
+      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
+      "Correlate with RTT and user reports."
+  else
+    hm_emit tcp_retransmits OK "TCP retransmit ratio" \
+      "TCP retransmit ratio is healthy." \
+      "ratio_pct=$ratio delta_out=$delta_out delta_retrans=$delta_retrans" \
+      "No action."
+  fi
+}
+
+probe_snapshot_freshness() {
+  should_run snapshot_freshness || return 0
+  base="/jffs/addons/router_configuration/traffic"
+  [ -d /opt/var/log/router_configuration ] && base="/opt/var/log/router_configuration"
+  now="$(hm_now_epoch)"
+  iface="$base/interface-counters.tsv"
+  daily="$(ls "$base"/daily/*-lan-conntrack.txt 2>/dev/null | sort | tail -1 || true)"
+  iface_age=$((now - $(hm_file_epoch "$iface")))
+  daily_age=$((now - $(hm_file_epoch "$daily")))
+  [ "$iface_age" -lt 0 ] && iface_age=999999
+  [ "$daily_age" -lt 0 ] && daily_age=999999
+
+  if [ "$iface_age" -gt 86400 ] || [ "$daily_age" -gt 259200 ]; then
+    hm_emit snapshot_freshness CRIT "stale cron/report snapshots" \
+      "Traffic/report snapshots are critically stale." \
+      "interface_age=$(hm_human_age "$iface_age") daily_age=$(hm_human_age "$daily_age") base=$base" \
+      "Check cron service and services-start cron registration."
+  elif [ "$iface_age" -gt 28800 ] || [ "$daily_age" -gt 129600 ]; then
+    hm_emit snapshot_freshness WARN "stale cron/report snapshots" \
+      "Traffic/report snapshots are stale." \
+      "interface_age=$(hm_human_age "$iface_age") daily_age=$(hm_human_age "$daily_age") base=$base" \
+      "Check TrafficSnapshot and TrafficDailyClose cron jobs."
+  else
+    hm_emit snapshot_freshness OK "stale cron/report snapshots" \
+      "Traffic/report snapshots are fresh." \
+      "interface_age=$(hm_human_age "$iface_age") daily_age=$(hm_human_age "$daily_age") base=$base" \
+      "No action."
+  fi
+}
+
+hm_init_dirs
+probe_channel_b_reality
+probe_vps_path
+probe_singbox_health
+probe_home_reality_ingress
+probe_mobile_activity
+probe_mobile_routing_leaks
+probe_rule_set_sync
+probe_dns_ipv6_leaks
+probe_channel_a_resurrection
+probe_catalog_health
+probe_performance_rtt
+probe_tcp_retransmits
+probe_snapshot_freshness
