@@ -28,7 +28,7 @@
 - `./verify.sh --verbose` оставлен для deep diagnostics
 - `./scripts/router-health-report` даёт sanitised Markdown snapshot для человека и LLM
 - `./scripts/router-health-report --save` обновляет:
-  - tracked `docs/router-health-latest.md`
+  - local `reports/router-health-latest.md`
   - local `docs/vpn-domain-journal.md`
   - router-side USB-backed reports в `/opt/var/log/router_configuration/reports/`
 - traffic-отчёты приведены к более стабильной форме секций
@@ -106,7 +106,7 @@
 - recommendational layer уже реализован:
   - `./scripts/catalog-review-report`
   - `./scripts/catalog-review-report --save`
-  - tracked `docs/catalog-review-latest.md`
+  - local `reports/catalog-review-latest.md`
   - USB-backed advisory snapshots на роутере
 - текущая реализация ничего не меняет в runtime и не делает cleanup автоматически
 - в backlog остаётся следующий шаг:
@@ -166,7 +166,7 @@
   - drift показывается как human-readable mismatch list, а не как full dump
   - `Growth Trends` уже встроен в default summary
   - exit codes уже разделены на `OK / Warning / Critical`
-  - tracked `router-health-latest.md` и local journal дают стабильную точку сравнения
+  - local `router-health-latest.md` и local journal дают стабильную точку сравнения
 - в backlog остаётся только эволюционно улучшать сами проверки, тексты предупреждений и пороги, если появится реальная operational-боль
 
 Желаемый результат:
@@ -200,7 +200,7 @@
     - log-attributed connection counts by profile, outbound
       (`reality-out`/`direct-out`) and destination
     - explicit caveat for shared carrier NAT IPs: byte rows can be combined by source label
-  - tracked sanitised `router-health-latest.md`
+  - local sanitised `router-health-latest.md`
   - явный LLM-runbook
   - USB-backed health snapshots на роутере
   - fixture/smoke тесты фиксируют текстовый контракт observability-слоя

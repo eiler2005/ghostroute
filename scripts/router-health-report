@@ -33,9 +33,11 @@ router_render_health_markdown "$STATE_FILE" "$HISTORY_FILE" "$TRAFFIC_SUMMARY" >
 cat "$MARKDOWN_OUTPUT"
 
 if [ "$SAVE_MODE" = "1" ]; then
-  TRACKED_LATEST="${PROJECT_ROOT}/docs/router-health-latest.md"
   JOURNAL_FILE="${PROJECT_ROOT}/docs/vpn-domain-journal.md"
-  cp "$MARKDOWN_OUTPUT" "$TRACKED_LATEST"
+  LOCAL_REPORT_DIR="${PROJECT_ROOT}/reports"
+  LOCAL_LATEST="${LOCAL_REPORT_DIR}/router-health-latest.md"
+  mkdir -p "$LOCAL_REPORT_DIR"
+  cp "$MARKDOWN_OUTPUT" "$LOCAL_LATEST"
 
   ROUTER_STATE_DIR="$(router_kv_get "$STATE_FILE" STATE_DIR)"
   ROUTER_REPORT_DIR="${ROUTER_STATE_DIR}/reports"
@@ -106,7 +108,7 @@ if [ "$SAVE_MODE" = "1" ]; then
 
 ### Health snapshot [operational]
 
-- sanitised tracked summary: [router-health-latest.md](router-health-latest.md)
+- sanitised local summary: ${LOCAL_LATEST}
 - router-side USB report: ${ROUTER_REPORT_FILE}
 - local command: ./scripts/router-health-report --save
 - traffic baseline for this save comes from ./scripts/traffic-report

@@ -22,6 +22,7 @@ id_ecdsa
 # VPN domain journal (local-only, не для репозитория)
 docs/vpn-domain-journal.md
 docs/router-health-latest.md
+docs/catalog-review-latest.md
 docs/private/
 configs/private/
 reports/
