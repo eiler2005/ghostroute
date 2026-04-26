@@ -16,12 +16,12 @@ When the user asks for a router traffic report or router health/capacity report 
    - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./scripts/catalog-review-report
    - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./scripts/catalog-review-report --save
    - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, docs/domain-management.md, docs/current-routing-explained.md, docs/traffic-observability.md and answer with a review/plan by default
-   - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report
-   - "вчера", "yesterday" -> ./scripts/traffic-daily-report yesterday
-   - specific date like 2026-04-14 -> ./scripts/traffic-daily-report 2026-04-14
-   - "неделя", "за неделю", "week" -> ./scripts/traffic-daily-report week
-   - "месяц", "за месяц", "month" -> ./scripts/traffic-daily-report month
-   - "что было в 5 утра", "кто шумел ночью", "what happened around 5am", "dns forensics", "who queried what", "что скачивали" -> ./scripts/dns-forensics-report <hour-prefix> and correlate with ./scripts/traffic-report or ./scripts/traffic-daily-report
+   - "сегодня", "текущий день", "today", "current day" -> ./scripts/traffic-report today
+   - "вчера", "yesterday" -> ./scripts/traffic-report yesterday
+   - specific date like 2026-04-14 -> ./scripts/traffic-report 2026-04-14
+   - "неделя", "за неделю", "week" -> ./scripts/traffic-report week
+   - "месяц", "за месяц", "month" -> ./scripts/traffic-report month
+   - "что было в 5 утра", "кто шумел ночью", "what happened around 5am", "dns forensics", "who queried what", "что скачивали" -> ./scripts/dns-forensics-report <hour-prefix> and correlate with ./scripts/traffic-report
 
 2. Default to redacted mode. Use REPORT_REDACT_NAMES=0 only for trusted local inspection when the user explicitly wants device-level identification.
 
@@ -278,20 +278,21 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 - такие данные хорошо объясняют вероятный сервис/тип активности
 - но для утверждения про объём трафика их нужно сверять с `traffic-report` / `traffic-daily-report`
 
-### Закрытый дневной отчёт
+### Отчёт использования схемы
 
 ```bash
-./scripts/traffic-daily-report yesterday
-./scripts/traffic-daily-report 2026-04-14
-./scripts/traffic-daily-report week
-./scripts/traffic-daily-report month
+./scripts/traffic-report today
+./scripts/traffic-report yesterday
+./scripts/traffic-report 2026-04-14
+./scripts/traffic-report week
+./scripts/traffic-report month
 ```
 
 При необходимости trusted local inspection:
 
 ```bash
-REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
-REPORT_REDACT_NAMES=0 ./scripts/traffic-report
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report today
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report yesterday
 ```
 
 Trusted mode uses the shared local label map from

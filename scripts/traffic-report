@@ -15,6 +15,18 @@ router_health_load_env
 
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
+PERIOD_ARG="${1:-today}"
+
+case "$PERIOD_ARG" in
+  ""|today|current|current-day) ;;
+  yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+    exec "${PROJECT_ROOT}/scripts/traffic-daily-report" "$PERIOD_ARG"
+    ;;
+  *)
+    echo "Usage: ./scripts/traffic-report [today|yesterday|week|month|YYYY-MM-DD]" >&2
+    exit 1
+    ;;
+esac
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -41,6 +53,9 @@ MOBILE_BYTES_CURRENT="$TMPDIR/mobile-reality-counters-current.tsv"
 MOBILE_BYTES_BASE="$TMPDIR/mobile-reality-counters-base.tsv"
 MOBILE_BYTES_PARSED="$TMPDIR/mobile-reality-bytes.txt"
 MOBILE_BYTES_TOTALS="$TMPDIR/mobile-reality-byte-totals.txt"
+ROUTING_WARN_RU_VPS="$TMPDIR/routing-warn-ru-vps.txt"
+ROUTING_WARN_MANAGED_DIRECT="$TMPDIR/routing-warn-managed-direct.txt"
+ROUTING_WARN_CATALOG_RU="$TMPDIR/routing-warn-catalog-ru.txt"
 CURRENT_TAILSCALE="$TMPDIR/current-tailscale.json"
 BASE_TAILSCALE="$TMPDIR/base-tailscale.json"
 TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
@@ -65,6 +80,17 @@ human_pct() {
     BEGIN {
       if (total <= 0) printf "n/a";
       else printf "%.1f%%", (part / total) * 100;
+    }'
+}
+
+estimate_share_bytes() {
+  local total_bytes="${1:-0}"
+  local part="${2:-0}"
+  local total="${3:-0}"
+  awk -v bytes="$total_bytes" -v part="$part" -v total="$total" '
+    BEGIN {
+      if (total <= 0 || bytes <= 0) print 0;
+      else printf "%.0f\n", bytes * part / total;
     }'
 }
 
@@ -140,6 +166,26 @@ awk -F'|' '$1 == "CUR" { print $2 "|" $3 "|" $4 }' "$STATE_FILE" > "$CURRENT_COU
 awk -F'|' '$1 != "CUR" && NF == 4 { print $0 }' "$STATE_FILE" > "$HISTORY_COUNTERS"
 
 TODAY="$(awk -F= '/^TODAY=/{print $2}' "$STATE_FILE")"
+STEALTH_IPSET_ACTIVE="$(router_ssh 'ipset list STEALTH_DOMAINS 2>/dev/null' 2>/dev/null | awk -F': ' '/Number of entries/ { print $2; exit }' || true)"
+STEALTH_IPSET_ACTIVE="${STEALTH_IPSET_ACTIVE:-n/a}"
+STEALTH_RULES_CONFIG="$(
+  awk -F'/' '/^[[:space:]]*ipset=\/.*\/STEALTH_DOMAINS/ { count++ } END { print count + 0 }' \
+    "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" 2>/dev/null || printf '0'
+)"
+STATIC_NETS_CONFIG="$(
+  awk 'NF && $1 !~ /^[[:space:]]*#/ { count++ } END { print count + 0 }' \
+    "${PROJECT_ROOT}/configs/static-networks.txt" 2>/dev/null || printf '0'
+)"
+
+awk -F'/' '
+  /^[[:space:]]*ipset=\/.*\/STEALTH_DOMAINS/ {
+    domain = $2
+    if (domain ~ /(^|\.)(ru|рф)$/ ||
+        domain ~ /(yandex|kinopoisk|vk\.com|ok\.ru|gosuslugi|sber|tinkoff|tbank|ozon|wildberries|avito|dzen|mail\.ru)/) {
+      print domain
+    }
+  }
+' "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" 2>/dev/null | sort -u > "$ROUTING_WARN_CATALOG_RU"
 
 router_ssh '/opt/bin/tailscale status --json 2>/dev/null || printf "{}\n"' > "$CURRENT_TAILSCALE"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); SNAP=\$(ls \"\$STATE_DIR/tailscale\"/${TODAY}T*.json 2>/dev/null | sort | head -1); [ -n \"\$SNAP\" ] && cat \"\$SNAP\" || printf '{}\n'" > "$BASE_TAILSCALE"
@@ -420,6 +466,8 @@ if [ -s "$MOBILE_BYTES_PARSED" ]; then
     {
       label = $2
       if (label == "") label = $1
+      if (($5 + 0) <= 0) next
+      if (label ~ /^remote:#/ || label ~ /^remote:\*/) next
       upload[label] += $3 + 0
       download[label] += $4 + 0
       total[label] += $5 + 0
@@ -514,6 +562,32 @@ if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBI
   fi
 fi
 
+if [ -s "$MOBILE_DESTS" ]; then
+  awk -F'|' '
+    BEGIN { IGNORECASE = 1 }
+    function is_ru_direct_candidate(dest) {
+      return dest ~ /(^|\.)(ru|рф)$/ ||
+        dest ~ /(yandex|kinopoisk|vk\.com|ok\.ru|gosuslugi|sber|tinkoff|tbank|ozon|wildberries|avito|dzen|mail\.ru)/
+    }
+    is_ru_direct_candidate($1) && ($3 + 0) > 0 {
+      printf "%s|%d|%d|%d\n", $1, $2 + 0, $3 + 0, $4 + 0
+    }
+  ' "$MOBILE_DESTS" | sort -t'|' -k3,3nr -k1,1 | head -10 > "$ROUTING_WARN_RU_VPS"
+
+  awk -F'|' '
+    BEGIN { IGNORECASE = 1 }
+    function is_managed_candidate(dest) {
+      return dest ~ /(youtube|googlevideo|ytimg|telegram|t\.me|instagram|whatsapp|openai|anthropic)/
+    }
+    is_managed_candidate($1) && ($4 + 0) > 0 {
+      printf "%s|%d|%d|%d\n", $1, $2 + 0, $3 + 0, $4 + 0
+    }
+  ' "$MOBILE_DESTS" | sort -t'|' -k4,4nr -k1,1 | head -10 > "$ROUTING_WARN_MANAGED_DIRECT"
+else
+  : > "$ROUTING_WARN_RU_VPS"
+  : > "$ROUTING_WARN_MANAGED_DIRECT"
+fi
+
 ROUTER_WINDOW_LINE="${REPORT_START} -> current router state"
 if [ -s "$LAN_BYTES_PARSED" ] && [ -n "$LAN_BYTES_START" ]; then
   DEVICE_WINDOW_LINE="${LAN_BYTES_START} -> current router state"
@@ -526,47 +600,84 @@ else
   MOBILE_WINDOW_LINE="n/a (no byte baseline yet)"
 fi
 
-echo "=== WINDOW ==="
+if [ -s "$DEVICE_MIX_TOTALS" ]; then
+  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_REALITY_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
+else
+  DEVICE_TOTAL_BYTES=0
+  DEVICE_REALITY_BYTES=0
+  DEVICE_WAN_BYTES=0
+  DEVICE_OTHER_BYTES=0
+  DEVICE_COUNT=0
+fi
+
+if [ -s "$MOBILE_TOTALS" ]; then
+  IFS='|' read -r MOBILE_TOTAL MOBILE_REALITY MOBILE_DIRECT MOBILE_UNRESOLVED MOBILE_ERRORS MOBILE_CLIENT_COUNT < "$MOBILE_TOTALS"
+else
+  MOBILE_TOTAL=0
+  MOBILE_REALITY=0
+  MOBILE_DIRECT=0
+  MOBILE_UNRESOLVED=0
+  MOBILE_ERRORS=0
+  MOBILE_CLIENT_COUNT=0
+fi
+
+if [ -s "$MOBILE_BYTES_TOTALS" ]; then
+  IFS='|' read -r MOBILE_BYTE_TOTAL MOBILE_BYTE_UPLOAD MOBILE_BYTE_DOWNLOAD MOBILE_BYTE_SOURCES < "$MOBILE_BYTES_TOTALS"
+else
+  MOBILE_BYTE_TOTAL=0
+  MOBILE_BYTE_UPLOAD=0
+  MOBILE_BYTE_DOWNLOAD=0
+  MOBILE_BYTE_SOURCES=0
+fi
+
+MOBILE_EST_REALITY_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_REALITY" "$MOBILE_TOTAL")"
+MOBILE_EST_DIRECT_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_DIRECT" "$MOBILE_TOTAL")"
+TOTAL_VPS_EST=$(( DEVICE_REALITY_BYTES + MOBILE_EST_REALITY_BYTES ))
+TOTAL_HOME_DIRECT_EST=$(( DEVICE_WAN_BYTES + MOBILE_EST_DIRECT_BYTES ))
+
+echo "=== GHOSTROUTE USAGE REPORT ==="
+echo "Period:                  today"
 echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
 echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
 echo "Mobile byte window:      ${MOBILE_WINDOW_LINE}"
 echo
-echo "=== TOTALS ==="
+
+echo "=== 1. EXIT SUMMARY ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
-if [ -s "$DEVICE_MIX_TOTALS" ]; then
-  IFS='|' read -r DEVICE_TOTAL_BYTES DEVICE_REALITY_BYTES DEVICE_WAN_BYTES DEVICE_OTHER_BYTES DEVICE_COUNT < "$DEVICE_MIX_TOTALS"
-  echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
-else
-  echo "Reality-managed total:   n/a"
-fi
 echo "Wi-Fi total:             $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
 echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
+echo "Mobile LTE ingress:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (LTE -> home RU IP :<home-reality-port>)"
+echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  (LAN exact + mobile estimated)"
+echo "Via home RU direct:      $(human_bytes "$TOTAL_HOME_DIRECT_EST")  (LAN exact + mobile estimated)"
+echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
+echo "Reality share/WAN:       $(human_pct "$DEVICE_REALITY_BYTES" "$WAN_TOTAL")"
+echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
+echo "Via Reality:             $(human_bytes "$DEVICE_REALITY_BYTES")  ($(human_pct "$DEVICE_REALITY_BYTES" "$DEVICE_TOTAL_BYTES"))"
+echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
+echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
 echo "Tailscale total:         $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib "$TAILSCALE_RX_TOTAL") / TX $(human_gib "$TAILSCALE_TX_TOTAL"))"
-if [ -s "$DEVICE_MIX_TOTALS" ]; then
-  echo "Reality share/WAN:       $(human_pct "$DEVICE_REALITY_BYTES" "$WAN_TOTAL")"
-else
-  echo "Reality share/WAN:       n/a"
-fi
 echo
-echo "=== DEVICE TRAFFIC MIX ==="
-if [ -s "$DEVICE_MIX_TOTALS" ]; then
-  echo "Devices in byte view:    ${DEVICE_COUNT}"
-  echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
-  echo "Via Reality:             $(human_bytes "$DEVICE_REALITY_BYTES")  ($(human_pct "$DEVICE_REALITY_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
-  echo "Interpretation:          Reality = managed REDIRECT/sing-box flows; Direct WAN = traffic that bypassed REDIRECT."
-else
-  echo "Devices in byte view:    n/a"
-  echo "Device byte total:       n/a"
-  echo "Via Reality:             n/a"
-  echo "Direct WAN:              n/a"
-  echo "Other:                   n/a"
-fi
+
+echo "=== 2. PATH MATRIX ==="
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Source" "First hop" "Router" "Exit" "Site sees"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "REDIRECT :<lan-redirect-port>" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no redirect" "Home WAN direct" "Home Russian IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Mobile LTE" "LTE -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Mobile LTE" "LTE -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
 echo
-echo "=== TOP BY REALITY ==="
+
+echo "=== 3. MANAGED CATALOG ==="
+echo "STEALTH_DOMAINS active:  ${STEALTH_IPSET_ACTIVE} IPs in router ipset"
+echo "Managed domain rules:    ${STEALTH_RULES_CONFIG} rules in configs/dnsmasq-stealth.conf.add"
+echo "Static CIDR routes:      ${STATIC_NETS_CONFIG} rules in configs/static-networks.txt"
+echo "LAN/Wi-Fi via VPS:       $(human_bytes "$DEVICE_REALITY_BYTES")"
+echo "Mobile via VPS:          $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} mobile connections)"
+echo
+
+echo "=== 4. LAN/WI-FI DEVICES ==="
+printf "%-42s %12s %12s %9s\n" "Device" "VPS" "RU direct" "VPS share"
 if [ -s "$DEVICE_TOP_REALITY" ]; then
-  awk -F'|' '
+  awk -F'|' -v top_wan="$DEVICE_TOP_WAN" '
     function human_bytes(x) {
       x += 0
       if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
@@ -580,114 +691,112 @@ if [ -s "$DEVICE_TOP_REALITY" ]; then
       if (total <= 0) return "n/a"
       return sprintf("%.1f%%", (part / total) * 100)
     }
-    NR <= 5 {
-      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($3), pct($3, $8)
+    BEGIN {
+      while ((getline line < top_wan) > 0) {
+        split(line, fields, "|")
+        wan[fields[1]] = fields[4] + 0
+      }
+      close(top_wan)
+    }
+    NR <= 8 {
+      printf "%-42s %12s %12s %9s\n", $2, human_bytes($3), human_bytes(wan[$1]), pct($3, $8)
     }' "$DEVICE_TOP_REALITY"
 else
-  echo "  none"
+  echo "No LAN/Wi-Fi byte baseline yet."
 fi
 echo
-echo "=== TOP BY DIRECT WAN ==="
-if [ -s "$DEVICE_TOP_WAN" ]; then
-  awk -F'|' '
-    function human_bytes(x) {
-      x += 0
-      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
-      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
-      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
-      return sprintf("%d B", x)
-    }
-    NR <= 5 {
-      printf "  %-30s %10s  (%s of device total)\n", $2, human_bytes($4), ( ($8 + 0) > 0 ? sprintf("%.1f%%", (($4 + 0) / ($8 + 0)) * 100) : "n/a" )
-    }' "$DEVICE_TOP_WAN"
-else
-  echo "  none"
-fi
-echo
-echo "=== TAILSCALE PEERS ==="
-printf "%-22s  %-7s  %12s  %12s  %s\n" "Name" "Online" "RX" "TX" "Last seen"
-awk -F'|' '
-  function human_gib(x) {
-    return sprintf("%.2f GiB", x / 1024 / 1024 / 1024);
-  }
-  {
-    last_seen = ($5 == "" ? "-" : $5);
-    printf "%-22s  %-7s  %12s  %12s  %s\n", $1, $2, human_gib($3 + 0), human_gib($4 + 0), last_seen;
-  }' "$TAILSCALE_PARSED"
-echo
-echo "=== MOBILE HOME REALITY ==="
-if [ -s "$MOBILE_TOTALS" ]; then
-  IFS='|' read -r MOBILE_TOTAL MOBILE_REALITY MOBILE_DIRECT MOBILE_UNRESOLVED MOBILE_ERRORS MOBILE_CLIENT_COUNT < "$MOBILE_TOTALS"
-  echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
-  echo "Mobile connections:      ${MOBILE_TOTAL}"
-  if [ -s "$MOBILE_BYTES_TOTALS" ]; then
-    IFS='|' read -r MOBILE_BYTE_TOTAL MOBILE_BYTE_UPLOAD MOBILE_BYTE_DOWNLOAD MOBILE_BYTE_SOURCES < "$MOBILE_BYTES_TOTALS"
-    echo "Mobile byte sources:     ${MOBILE_BYTE_SOURCES}"
-    echo "Mobile byte total:       $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
-  else
-    echo "Mobile byte sources:     n/a"
-    echo "Mobile byte total:       n/a"
-  fi
-  echo "Mobile via Reality:      ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
-  echo "Mobile direct-out:       ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
-  echo "Mobile unresolved:       ${MOBILE_UNRESOLVED}"
-  echo "Mobile EOF/errors:       ${MOBILE_ERRORS}"
-  if [ -s "$MOBILE_CLIENTS" ]; then
-    echo
-    printf "%-18s  %8s  %8s  %8s  %10s\n" "Client" "Total" "Reality" "Direct" "Unresolved"
-    awk -F'|' 'NR <= 10 { printf "%-18s  %8d  %8d  %8d  %10d\n", $1, $2, $3, $4, $5 }' "$MOBILE_CLIENTS"
-  fi
-  if [ -s "$MOBILE_BYTES_PARSED" ]; then
-    echo
-    printf "%-18s  %10s  %10s  %10s\n" "Byte source" "Total" "Upload" "Download"
-    awk -F'|' '
-      function human_bytes(x) {
-        x += 0
-        if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
-        if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
-        if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
-        return sprintf("%d B", x)
-      }
-      NR <= 10 { printf "%-18s  %10s  %10s  %10s\n", $2, human_bytes($5), human_bytes($3), human_bytes($4) }
-    ' "$MOBILE_BYTES_PARSED"
-  fi
-  if [ -s "$MOBILE_DESTS" ]; then
-    echo
-    echo "Top mobile destinations:"
-    awk -F'|' 'NR <= 10 { printf "  %-42s %5d  (Reality %d / Direct %d)\n", $1, $2, $3, $4 }' "$MOBILE_DESTS"
-  fi
-else
-  echo "No mobile Home Reality log data for today."
-fi
-echo
-echo "=== LAN DEVICE BYTES ==="
-if [ -s "$LAN_BYTES_PARSED" ]; then
-  printf "%-8s  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n" "Device" "Host" "Total" "Reality" "WAN" "Other" "Upload" "Download"
-  awk -F'|' '
-    function human_bytes(x) {
-      x += 0
-      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
-      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
-      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
-      return sprintf("%d B", x)
-    }
-    BEGIN { idx = 0 }
-    {
-      idx++
-      printf "LAN-%-4d  %-18s  %10s  %10s  %10s  %10s  %10s  %10s\n",
-        idx, $2, human_bytes($8), human_bytes($3), human_bytes($4), human_bytes($5), human_bytes($6), human_bytes($7)
-    }' "$LAN_BYTES_PARSED"
+
+echo "=== 5. MOBILE QR CLIENTS ==="
+echo "Mobile byte sources:     ${MOBILE_BYTE_SOURCES}"
+echo "Mobile byte total:       $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
+echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
+echo "Mobile connections:      ${MOBILE_TOTAL}"
+echo "Mobile via Reality:      ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
+echo "Mobile direct-out:       ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
+echo "Mobile unresolved:       ${MOBILE_UNRESOLVED}"
+echo "Mobile EOF/errors:       ${MOBILE_ERRORS}"
+if [ -s "$MOBILE_CLIENTS" ]; then
   echo
-  echo "Rows above are cumulative byte deltas since ${LAN_BYTES_START}."
+  printf "%-18s %8s %8s %8s %10s\n" "QR/profile" "Conn" "VPS" "Direct" "Unresolved"
+  awk -F'|' 'NR <= 8 { printf "%-18s %8d %8d %8d %10d\n", $1, $2, $3, $4, $5 }' "$MOBILE_CLIENTS"
+fi
+if [ -s "$MOBILE_BYTES_PARSED" ]; then
+  echo
+  printf "%-24s %12s %12s %12s\n" "LTE source" "Total" "Upload" "Download"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    ($5 + 0) > 0 && NR <= 8 {
+      printf "%-24s %12s %12s %12s\n", $2, human_bytes($5), human_bytes($3), human_bytes($4)
+    }' "$MOBILE_BYTES_PARSED"
+fi
+echo
+
+echo "=== 6. SITES / DESTINATIONS ==="
+if [ -s "$MOBILE_DESTS" ]; then
+  printf "%-44s %8s %-18s %s\n" "Destination" "Conn" "Path" "Split"
+  awk -F'|' '
+    NR <= 12 {
+      path = "mixed"
+      if (($3 + 0) > 0 && ($4 + 0) == 0) path = "VPS"
+      else if (($4 + 0) > 0 && ($3 + 0) == 0) path = "Home RU direct"
+      else if (($3 + 0) >= ($4 + 0)) path = "mostly VPS"
+      else path = "mostly Home RU direct"
+      printf "%-44s %8d %-18s Reality %d / Direct %d\n", $1, $2, path, $3, $4
+    }' "$MOBILE_DESTS"
 else
-  echo "No LAN byte baseline for today yet. Wait for the next scheduled snapshot or run cron-traffic-snapshot on the router."
+  echo "No mobile destination log data for today."
+fi
+echo
+
+echo "=== 7. ROUTING MISTAKES / CHECKS ==="
+mistakes=0
+if [ -s "$ROUTING_WARN_RU_VPS" ]; then
+  mistakes=$((mistakes + 1))
+  echo "WARN: RU/direct-looking mobile destinations used VPS:"
+  awk -F'|' 'NR <= 8 { printf "  %-36s total=%d reality=%d direct=%d\n", $1, $2, $3, $4 }' "$ROUTING_WARN_RU_VPS"
+else
+  echo "OK: no RU/direct-looking mobile destination via VPS found in today logs."
+fi
+if [ -s "$ROUTING_WARN_MANAGED_DIRECT" ]; then
+  mistakes=$((mistakes + 1))
+  echo "WARN: managed-looking mobile destinations had direct-out connections:"
+  awk -F'|' 'NR <= 8 { printf "  %-36s total=%d reality=%d direct=%d\n", $1, $2, $3, $4 }' "$ROUTING_WARN_MANAGED_DIRECT"
+else
+  echo "OK: no obvious managed mobile destination went direct."
+fi
+dns_direct="$(awk -F'|' '$1 == "1.1.1.1" || $1 == "8.8.8.8" || $1 == "9.9.9.9" { direct += $4 + 0 } END { print direct + 0 }' "$MOBILE_DESTS" 2>/dev/null || printf '0')"
+if [ "${dns_direct:-0}" -gt 0 ]; then
+  mistakes=$((mistakes + 1))
+  echo "WARN: mobile direct DNS-like destinations observed: ${dns_direct} direct connections."
+else
+  echo "OK: no mobile direct DNS-like destinations observed."
+fi
+if [ "${MOBILE_UNRESOLVED:-0}" -gt 0 ]; then
+  mistakes=$((mistakes + 1))
+  echo "WARN: mobile unresolved connections: ${MOBILE_UNRESOLVED}."
+else
+  echo "OK: mobile unresolved connections: 0."
+fi
+if [ -s "$ROUTING_WARN_CATALOG_RU" ]; then
+  mistakes=$((mistakes + 1))
+  echo "REVIEW: RU-looking domains currently present in managed catalog:"
+  awk 'NR <= 10 { printf "  %s\n", $0 }' "$ROUTING_WARN_CATALOG_RU"
+else
+  echo "OK: no obvious RU-looking domain in managed catalog."
 fi
 echo
 echo "=== NOTES ==="
-echo "- Channel A WireGuard is retired; wgs1/wgc1 are intentionally not inspected."
-echo "- Reality-managed bytes are mangle-accounted managed REDIRECT flows, not a wgc1 interface counter."
-echo "- Mobile Home Reality bytes are encrypted TCP/<home-reality-port> ingress counters by remote source IP; if several profiles share one carrier NAT IP, bytes are shown under a combined source label."
-echo "- Mobile Reality/direct split is still log-attributed by connection count/client/outbound; byte counters cover the whole Home Reality tunnel before split."
+echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP for Home WAN direct paths."
+echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
+echo "- Mobile LTE ingress bytes are exact TCP/<home-reality-port> counters; mobile VPS/direct bytes are estimated from connection split until per-outbound byte attribution is added."
+echo "- Mobile direct-out can be Russian sites, Apple/CDN/API traffic, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
+echo "- Routing mistakes are heuristics: WARN means review catalog/no-vpn rules, not automatic proof of breakage."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then
-  echo "- LAN hostnames are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
+  echo "- LAN/mobile names are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection."
 fi
