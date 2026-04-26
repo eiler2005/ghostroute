@@ -291,7 +291,14 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 
 ```bash
 REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
+REPORT_REDACT_NAMES=0 ./scripts/traffic-report
 ```
+
+Trusted mode uses the shared local label map from
+`secrets/device-metadata.local.tsv`, parsed by `scripts/lib/device-labels.sh`.
+That lets reports show device types such as `iPhone`, `iPad`, `Windows laptop`
+or `MacBook` instead of `lan-host-XX`. Keep this output local; do not commit or
+paste it into public docs.
 
 Использовать, когда нужен ответ:
 

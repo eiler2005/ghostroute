@@ -47,6 +47,36 @@ For the full end-to-end workflow and observer table, see
 
 ---
 
+## Device Labels
+
+Traffic and DNS reports share one local device label source:
+
+```text
+secrets/device-metadata.local.tsv
+```
+
+Format:
+
+```text
+# ip-or-key|friendly alias|device type
+192.168.50.21|Denis laptop|Windows laptop
+192.168.50.150||iPad
+192.168.50.195||iPad
+```
+
+The shared parser lives in `scripts/lib/device-labels.sh`. These reports consume
+the same map:
+
+- `./scripts/traffic-report`
+- `./scripts/traffic-daily-report`
+- `./scripts/dns-forensics-report`
+
+Default output stays redacted (`lan-host-01`, `mobile-source-01`). For trusted
+local inspection set `REPORT_REDACT_NAMES=0`; then LAN rows show aliases/types
+such as `iPad`, `Windows laptop`, or `Office desktop (Windows PC)`.
+
+---
+
 ## Health Invariants
 
 `router-health-report` now expects:
@@ -218,6 +248,8 @@ For trusted local inspection:
 
 ```bash
 REPORT_REDACT_NAMES=0 ./scripts/traffic-report
+REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report today
+REPORT_REDACT_NAMES=0 ./scripts/traffic-daily-report yesterday
 ```
 
 Do not commit unredacted output.
