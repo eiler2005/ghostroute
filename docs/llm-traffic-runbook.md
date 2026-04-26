@@ -74,6 +74,10 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention Direct WAN
    - mention top devices by Reality-managed bytes when present
    - mention top devices by direct WAN bytes
+   Explain that LAN/Wi-Fi direct means home WAN exit, not necessarily Russian
+   sites only. It can include Russian services, foreign destinations outside
+   the managed catalog, Apple/CDN/API/background traffic, and resolver-like
+   infrastructure.
 
 9. If the report contains "HOME REALITY INGRESS CLIENTS", include Home Reality ingress activity:
    - client profiles seen

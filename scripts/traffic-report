@@ -1016,6 +1016,7 @@ echo
 echo "=== NOTES ==="
 echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP for Home WAN direct paths."
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
+echo "- LAN/Wi-Fi RU direct means device -> home router -> home ISP/WAN -> destination. It often includes Russian services, but can also include foreign sites outside STEALTH_DOMAINS, Apple/CDN/API/background traffic, and resolver-like infrastructure."
 echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; VPS/direct bytes for this ingress are estimated from connection split until per-outbound byte attribution is added."
 echo "- Home Reality direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
 echo "- Resolver-like direct-out is a review signal, not necessarily your mistake and not proof of LTE-side DNS leak."
