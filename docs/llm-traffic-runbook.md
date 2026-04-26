@@ -81,6 +81,7 @@ When the user asks for a router traffic report or router health/capacity report 
    - Home Reality byte window / ingress byte total when present
    - ingress via Reality vs ingress direct-out
    - unresolved and EOF/error counts
+   - `Ingress source` byte rows, including `VPS est.`, `RU est.`, and `VPS share`
    - top Home Reality destinations when useful, prioritizing the estimated traffic
      columns over raw connection counts
    Explain the distinction: Home Reality ingress bytes are encrypted TCP/<home-reality-port>
@@ -302,9 +303,10 @@ REPORT_REDACT_NAMES=0 ./scripts/traffic-report yesterday
 
 Trusted mode uses the shared local label map from
 `secrets/device-metadata.local.tsv`, parsed by `scripts/lib/device-labels.sh`.
-That lets reports show device types such as `iPhone`, `iPad`, `Windows laptop`
-or `MacBook` instead of `lan-host-XX`. Keep this output local; do not commit or
-paste it into public docs.
+Redacted reports keep stable `lan-host-XX` labels and may append safe device
+types such as `(iPhone)`, `(iPad)`, `(Windows laptop)`, or `(MacBook)`.
+Trusted mode can show the full friendly aliases. Keep trusted output local; do
+not commit or paste it into public docs.
 
 Использовать, когда нужен ответ:
 
