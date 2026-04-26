@@ -639,14 +639,14 @@ echo "=== GHOSTROUTE USAGE REPORT ==="
 echo "Period:                  today"
 echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
 echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
-echo "Mobile/QR byte window:   ${MOBILE_WINDOW_LINE}"
+echo "Home Reality byte window: ${MOBILE_WINDOW_LINE}"
 echo
 
 echo "=== 1. EXIT SUMMARY ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
 echo "Wi-Fi total:             $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
 echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
-echo "QR/Home Reality ingress: $(human_bytes "$MOBILE_BYTE_TOTAL")  (client -> home RU IP :<home-reality-port>)"
+echo "Home Reality ingress:    $(human_bytes "$MOBILE_BYTE_TOTAL")  (client -> home RU IP :<home-reality-port>)"
 echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  (LAN exact + mobile estimated)"
 echo "Via home RU direct:      $(human_bytes "$TOTAL_HOME_DIRECT_EST")  (LAN exact + mobile estimated)"
 echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
@@ -662,8 +662,8 @@ echo "=== 2. PATH MATRIX ==="
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Source" "First hop" "Router" "Exit" "Site sees"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "REDIRECT :<lan-redirect-port>" "VLESS+Reality -> VPS" "VPS VPS IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no redirect" "Home WAN direct" "Home Russian IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "QR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "QR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "VLESS+Reality -> VPS" "VPS VPS IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home :<home-reality-port>" "reality-in" "Home WAN direct" "Home Russian IP"
 echo
 
 echo "=== 3. MANAGED CATALOG ==="
@@ -671,7 +671,7 @@ echo "STEALTH_DOMAINS active:  ${STEALTH_IPSET_ACTIVE} IPs in router ipset"
 echo "Managed domain rules:    ${STEALTH_RULES_CONFIG} rules in configs/dnsmasq-stealth.conf.add"
 echo "Static CIDR routes:      ${STATIC_NETS_CONFIG} rules in configs/static-networks.txt"
 echo "LAN/Wi-Fi via VPS:       $(human_bytes "$DEVICE_REALITY_BYTES")"
-echo "QR clients via VPS:      $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} QR connections)"
+echo "Home Reality via VPS:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} ingress connections)"
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
@@ -706,20 +706,20 @@ else
 fi
 echo
 
-echo "=== 5. MOBILE QR CLIENTS ==="
-echo "QR byte sources:         ${MOBILE_BYTE_SOURCES}"
-echo "QR byte total:           $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
-echo "QR via VPS est.:         $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS VPS IP)"
-echo "QR RU direct est.:       $(human_bytes "$MOBILE_EST_DIRECT_BYTES")  (sites see home Russian IP)"
+echo "=== 5. HOME REALITY INGRESS CLIENTS ==="
+echo "Ingress byte sources:    ${MOBILE_BYTE_SOURCES}"
+echo "Ingress byte total:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
+echo "Ingress via VPS est.:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS VPS IP)"
+echo "Ingress RU direct est.:  $(human_bytes "$MOBILE_EST_DIRECT_BYTES")  (sites see home Russian IP)"
 echo "Client profiles seen:    ${MOBILE_CLIENT_COUNT}"
-echo "QR connections:          ${MOBILE_TOTAL}"
-echo "QR via Reality:          ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
-echo "QR direct-out:           ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
-echo "QR unresolved:           ${MOBILE_UNRESOLVED}"
-echo "QR EOF/errors:           ${MOBILE_ERRORS}"
+echo "Ingress connections:     ${MOBILE_TOTAL}"
+echo "Ingress via Reality:     ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY" "$MOBILE_TOTAL"))"
+echo "Ingress direct-out:      ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
+echo "Ingress unresolved:      ${MOBILE_UNRESOLVED}"
+echo "Ingress EOF/errors:      ${MOBILE_ERRORS}"
 if [ -s "$MOBILE_CLIENTS" ]; then
   echo
-  printf "%-18s %8s %8s %8s %12s %12s %10s\n" "QR/profile" "Conn" "VPS" "Direct" "VPS est." "RU est." "Unresolved"
+  printf "%-18s %8s %8s %8s %12s %12s %10s\n" "Client/profile" "Conn" "VPS" "Direct" "VPS est." "RU est." "Unresolved"
   awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
     function human_bytes(x) {
       x += 0
@@ -739,7 +739,7 @@ if [ -s "$MOBILE_CLIENTS" ]; then
 fi
 if [ -s "$MOBILE_BYTES_PARSED" ]; then
   echo
-  printf "%-24s %12s %12s %12s\n" "QR source" "Total" "Upload" "Download"
+  printf "%-24s %12s %12s %12s\n" "Ingress source" "Total" "Upload" "Download"
   awk -F'|' '
     function human_bytes(x) {
       x += 0
@@ -756,8 +756,8 @@ echo
 
 echo "=== 6. SITES / DESTINATIONS ==="
 if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_TOTAL:-0}" -gt 0 ]; then
-  echo "Top QR destinations overall (estimated bytes from QR ingress):"
-  printf "%-20s %-38s %12s %8s %-20s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Path" "Split"
+  echo "Top Home Reality ingress destinations overall (estimated bytes from ingress traffic):"
+  printf "%-20s %-38s %12s %9s %-20s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Path" "Split"
   awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
     function human_bytes(x) {
       x += 0
@@ -795,12 +795,12 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
       else if (direct > 0 && reality == 0) path = "Home RU direct"
       else if (reality >= direct) path = "mostly VPS"
       else path = "mostly Home RU direct"
-      printf "%-20s %-38s %12s %8s %-20s R %d / D %d\n", family($1), $1, human_bytes(bytes), pct(total, mobile_total), path, reality, direct
+      printf "%-20s %-38s %12s %9s %-20s R %d / D %d\n", family($1), $1, human_bytes(bytes), pct(total, mobile_total), path, reality, direct
     }' "$MOBILE_DESTS"
 
   echo
   echo "Popular via VPS (estimated; final site sees VPS VPS IP):"
-  printf "%-20s %-38s %12s %8s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Reality conn"
+  printf "%-20s %-38s %12s %9s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Reality conn"
   awk -F'|' '($3 + 0) > 0 { print $3 "|" $0 }' "$MOBILE_DESTS" \
     | sort -t'|' -k1,1nr -k2,2 \
     | head -10 \
@@ -835,12 +835,12 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
         dest = $2
         reality = $4 + 0
         bytes = mobile_bytes * reality / mobile_total
-        printf "%-20s %-38s %12s %8s %d\n", family(dest), dest, human_bytes(bytes), pct(reality, mobile_total), reality
+        printf "%-20s %-38s %12s %9s %d\n", family(dest), dest, human_bytes(bytes), pct(reality, mobile_total), reality
       }'
 
   echo
   echo "Popular via home RU direct (estimated; final site sees home Russian IP):"
-  printf "%-20s %-38s %12s %8s %s\n" "App/family" "Destination" "Est. traffic" "% QR" "Direct conn"
+  printf "%-20s %-38s %12s %9s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Direct conn"
   awk -F'|' '($4 + 0) > 0 { print $4 "|" $0 }' "$MOBILE_DESTS" \
     | sort -t'|' -k1,1nr -k2,2 \
     | head -10 \
@@ -875,7 +875,7 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
         dest = $2
         direct = $5 + 0
         bytes = mobile_bytes * direct / mobile_total
-        printf "%-20s %-38s %12s %8s %d\n", family(dest), dest, human_bytes(bytes), pct(direct, mobile_total), direct
+        printf "%-20s %-38s %12s %9s %d\n", family(dest), dest, human_bytes(bytes), pct(direct, mobile_total), direct
       }'
 elif [ -s "$MOBILE_DESTS" ]; then
   printf "%-44s %8s %-18s %s\n" "Destination" "Conn" "Path" "Split"
@@ -888,9 +888,9 @@ elif [ -s "$MOBILE_DESTS" ]; then
       else path = "mostly Home RU direct"
       printf "%-44s %8d %-18s Reality %d / Direct %d\n", $1, $2, path, $3, $4
     }' "$MOBILE_DESTS"
-  echo "No QR byte baseline yet, so destination traffic is shown as connections only."
+  echo "No Home Reality byte baseline yet, so destination traffic is shown as connections only."
 else
-  echo "No QR destination log data for today."
+  echo "No Home Reality destination log data for today."
 fi
 echo
 
@@ -898,7 +898,7 @@ echo "=== 7. ROUTING MISTAKES / CHECKS ==="
 mistakes=0
 if [ -s "$ROUTING_WARN_RU_VPS" ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: RU/direct-looking QR destinations used VPS:"
+  echo "WARN: RU/direct-looking Home Reality destinations used VPS:"
   awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
     function human_bytes(x) {
       x += 0
@@ -912,11 +912,11 @@ if [ -s "$ROUTING_WARN_RU_VPS" ]; then
       printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2, $3, $4
     }' "$ROUTING_WARN_RU_VPS"
 else
-  echo "OK: no RU/direct-looking QR destination via VPS found in today logs."
+  echo "OK: no RU/direct-looking Home Reality destination via VPS found in today logs."
 fi
 if [ -s "$ROUTING_WARN_MANAGED_DIRECT" ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: managed-looking QR destinations had direct-out connections:"
+  echo "WARN: managed-looking Home Reality destinations had direct-out connections:"
   awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
     function human_bytes(x) {
       x += 0
@@ -930,12 +930,12 @@ if [ -s "$ROUTING_WARN_MANAGED_DIRECT" ]; then
       printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2, $3, $4
     }' "$ROUTING_WARN_MANAGED_DIRECT"
 else
-  echo "OK: no obvious managed QR destination went direct."
+  echo "OK: no obvious managed Home Reality destination went direct."
 fi
 dns_direct="$(awk -F'|' '$1 == "1.1.1.1" || $1 == "8.8.8.8" || $1 == "9.9.9.9" { direct += $4 + 0 } END { print direct + 0 }' "$MOBILE_DESTS" 2>/dev/null || printf '0')"
 if [ "${dns_direct:-0}" -gt 0 ]; then
   mistakes=$((mistakes + 1))
-  echo "REVIEW: QR direct resolver-like destinations observed: ${dns_direct} direct connections."
+  echo "REVIEW: Home Reality direct resolver-like destinations observed: ${dns_direct} direct connections."
   echo "  This is not automatically an LTE DNS leak. It means traffic already inside"
   echo "  the Home Reality tunnel reached resolver-like IPs and then exited via"
   echo "  home Russian direct, so the destination sees the home Russian IP."
@@ -952,13 +952,13 @@ if [ "${dns_direct:-0}" -gt 0 ]; then
       printf "  %-36s est=%s total=%d reality=%d direct=%d\n", $1, human_bytes(bytes), $2 + 0, $3 + 0, $4 + 0
     }' "$MOBILE_DESTS"
 else
-  echo "OK: no QR direct DNS-like destinations observed."
+  echo "OK: no Home Reality direct DNS-like destinations observed."
 fi
 if [ "${MOBILE_UNRESOLVED:-0}" -gt 0 ]; then
   mistakes=$((mistakes + 1))
-  echo "WARN: QR unresolved connections: ${MOBILE_UNRESOLVED}."
+  echo "WARN: Home Reality unresolved connections: ${MOBILE_UNRESOLVED}."
 else
-  echo "OK: QR unresolved connections: 0."
+  echo "OK: Home Reality unresolved connections: 0."
 fi
 if [ -s "$ROUTING_WARN_CATALOG_RU" ]; then
   mistakes=$((mistakes + 1))
@@ -971,8 +971,8 @@ echo
 echo "=== NOTES ==="
 echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP for Home WAN direct paths."
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
-echo "- QR/Home Reality ingress bytes are exact TCP/<home-reality-port> counters; QR VPS/direct bytes are estimated from connection split until per-outbound byte attribution is added."
-echo "- QR direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
+echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; VPS/direct bytes for this ingress are estimated from connection split until per-outbound byte attribution is added."
+echo "- Home Reality direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
 echo "- Resolver-like direct-out is a review signal, not necessarily your mistake and not proof of LTE-side DNS leak."
 echo "- Routing mistakes are heuristics: WARN means review catalog/no-vpn rules, not automatic proof of breakage."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then

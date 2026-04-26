@@ -74,18 +74,18 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention top devices by Reality-managed bytes when present
    - mention top devices by direct WAN bytes
 
-9. If the report contains "MOBILE QR CLIENTS", include QR/Home Reality activity:
+9. If the report contains "HOME REALITY INGRESS CLIENTS", include Home Reality ingress activity:
    - client profiles seen
-   - total QR connections
-   - Mobile/QR byte window / QR byte total when present
-   - QR via Reality vs QR direct-out
+   - total ingress connections
+   - Home Reality byte window / ingress byte total when present
+   - ingress via Reality vs ingress direct-out
    - unresolved and EOF/error counts
-   - top QR destinations when useful, prioritizing the estimated traffic
+   - top Home Reality destinations when useful, prioritizing the estimated traffic
      columns over raw connection counts
-   Explain the distinction: QR bytes are encrypted TCP/<home-reality-port> ingress counters
-   and the client may be on LTE or Wi-Fi. Per-profile and per-destination
-   VPS/direct byte splits are estimated from log-attributed connection counts
-   until exact per-outbound byte attribution exists.
+   Explain the distinction: Home Reality ingress bytes are encrypted TCP/<home-reality-port>
+   counters and the client may be on LTE or Wi-Fi. Per-profile and
+   per-destination VPS/direct byte splits are estimated from log-attributed
+   connection counts until exact per-outbound byte attribution exists.
 
 10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
 
@@ -312,8 +312,8 @@ paste it into public docs.
 - сколько уже накопилось за текущий месяц
 - какие LAN-устройства дали основной объём трафика за день/неделю/месяц
 - сколько LAN traffic ушло через Reality-managed REDIRECT и сколько напрямую в WAN
-- сколько Mobile/QR Home Reality bytes пришло через QR-туннель за период
-- какие сайты/приложения популярны через QR, отдельно через VPS и
+- сколько Home Reality ingress bytes пришло через TCP/<home-reality-port> за период
+- какие сайты/приложения популярны через Home Reality ingress, отдельно через VPS и
   home Russian direct, с оценочными MiB/GiB и процентами
 
 ### Когда данные закрытого дня появляются
@@ -331,7 +331,7 @@ paste it into public docs.
 Для `week/month`:
 
 - если история начала собираться недавно, окно начнётся с самого раннего доступного snapshot внутри периода
-- это нормально и должно отражаться в строках `Interface sample window`, `LAN byte sample window`, `Mobile/QR byte sample window`
+- это нормально и должно отражаться в строках `Interface sample window`, `LAN byte sample window`, `Home Reality byte sample window`
 
 ## Как интерпретировать вывод
 
@@ -339,13 +339,13 @@ paste it into public docs.
 
 - `WAN total`
 - `LAN Reality-managed`
-- `Mobile/QR Home Reality`
+- `Home Reality ingress`
 - `Combined observed`
 - `Wi-Fi radios`
 - `LAN bridge`
 - строки `Top LAN by Reality`
 - строки `Top LAN by Direct WAN`
-- строки `MOBILE QR CLIENTS`
+- строки `HOME REALITY INGRESS CLIENTS`
 
 Все эти выводы по умолчанию уже в redacted-виде.
 
