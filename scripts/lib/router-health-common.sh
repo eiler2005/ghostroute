@@ -602,6 +602,7 @@ router_extract_traffic_summary() {
     /^Router-wide window:/   { key = "TRAFFIC_ROUTER_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^Per-device byte window:/ { key = "TRAFFIC_DEVICE_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^Mobile byte window:/   { key = "TRAFFIC_MOBILE_BYTE_WINDOW"; value = substr($0, index($0, ":") + 1) }
+    /^Mobile\/QR byte window:/ { key = "TRAFFIC_MOBILE_BYTE_WINDOW"; value = substr($0, index($0, ":") + 1) }
     /^WAN total:/            { key = "TRAFFIC_WAN_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^VPN total:/            { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Reality-managed total:/ { key = "TRAFFIC_REALITY_TOTAL"; value = substr($0, index($0, ":") + 1) }
@@ -615,12 +616,19 @@ router_extract_traffic_summary() {
     /^Other:/                { key = "TRAFFIC_DEVICE_OTHER"; value = substr($0, index($0, ":") + 1) }
     /^Client profiles seen:/ { key = "TRAFFIC_MOBILE_CLIENTS"; value = substr($0, index($0, ":") + 1) }
     /^Mobile connections:/   { key = "TRAFFIC_MOBILE_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^QR connections:/       { key = "TRAFFIC_MOBILE_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Mobile byte sources:/  { key = "TRAFFIC_MOBILE_BYTE_SOURCES"; value = substr($0, index($0, ":") + 1) }
+    /^QR byte sources:/      { key = "TRAFFIC_MOBILE_BYTE_SOURCES"; value = substr($0, index($0, ":") + 1) }
     /^Mobile byte total:/    { key = "TRAFFIC_MOBILE_BYTE_TOTAL"; value = substr($0, index($0, ":") + 1) }
+    /^QR byte total:/        { key = "TRAFFIC_MOBILE_BYTE_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Mobile via Reality:/   { key = "TRAFFIC_MOBILE_REALITY"; value = substr($0, index($0, ":") + 1) }
+    /^QR via Reality:/       { key = "TRAFFIC_MOBILE_REALITY"; value = substr($0, index($0, ":") + 1) }
     /^Mobile direct-out:/    { key = "TRAFFIC_MOBILE_DIRECT"; value = substr($0, index($0, ":") + 1) }
+    /^QR direct-out:/        { key = "TRAFFIC_MOBILE_DIRECT"; value = substr($0, index($0, ":") + 1) }
     /^Mobile unresolved:/    { key = "TRAFFIC_MOBILE_UNRESOLVED"; value = substr($0, index($0, ":") + 1) }
+    /^QR unresolved:/        { key = "TRAFFIC_MOBILE_UNRESOLVED"; value = substr($0, index($0, ":") + 1) }
     /^Mobile EOF\/errors:/   { key = "TRAFFIC_MOBILE_ERRORS"; value = substr($0, index($0, ":") + 1) }
+    /^QR EOF\/errors:/       { key = "TRAFFIC_MOBILE_ERRORS"; value = substr($0, index($0, ":") + 1) }
     key != "" {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       print key "=" value
@@ -1043,7 +1051,7 @@ EOF
 
 - Router-wide window: **${traffic_router_window:-n/a}**
 - Per-device byte window: **${traffic_device_window:-n/a}**
-- Mobile byte window: **${traffic_mobile_byte_window:-n/a}**
+- Mobile/QR byte window: **${traffic_mobile_byte_window:-n/a}**
 - WAN total: **${traffic_wan:-n/a}**
 - Reality-managed total: **${traffic_reality:-n/a}**
 - Tailscale total: **${traffic_ts:-n/a}**
@@ -1052,14 +1060,14 @@ EOF
 - Via Reality: **${traffic_device_reality:-n/a}**
 - Direct WAN: **${traffic_device_wan:-n/a}**
 - Other: **${traffic_device_other:-n/a}**
-- Mobile clients seen: **${traffic_mobile_clients:-n/a}**
-- Mobile connections: **${traffic_mobile_total:-n/a}**
-- Mobile byte sources: **${traffic_mobile_byte_sources:-n/a}**
-- Mobile byte total: **${traffic_mobile_byte_total:-n/a}**
-- Mobile via Reality: **${traffic_mobile_reality:-n/a}**
-- Mobile direct-out: **${traffic_mobile_direct:-n/a}**
-- Mobile unresolved: **${traffic_mobile_unresolved:-n/a}**
-- Mobile EOF/errors: **${traffic_mobile_errors:-n/a}**
+- Mobile/QR clients seen: **${traffic_mobile_clients:-n/a}**
+- Mobile/QR connections: **${traffic_mobile_total:-n/a}**
+- Mobile/QR byte sources: **${traffic_mobile_byte_sources:-n/a}**
+- Mobile/QR byte total: **${traffic_mobile_byte_total:-n/a}**
+- Mobile/QR via Reality: **${traffic_mobile_reality:-n/a}**
+- Mobile/QR direct-out: **${traffic_mobile_direct:-n/a}**
+- Mobile/QR unresolved: **${traffic_mobile_unresolved:-n/a}**
+- Mobile/QR EOF/errors: **${traffic_mobile_errors:-n/a}**
 
 ## Drift
 EOF

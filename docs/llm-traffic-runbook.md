@@ -74,14 +74,18 @@ When the user asks for a router traffic report or router health/capacity report 
    - mention top devices by Reality-managed bytes when present
    - mention top devices by direct WAN bytes
 
-9. If the report contains "MOBILE HOME REALITY", include mobile profile activity:
+9. If the report contains "MOBILE QR CLIENTS", include QR/Home Reality activity:
    - client profiles seen
-   - total mobile connections
-   - Mobile byte window / Mobile byte total when present
-   - Mobile via Reality vs Mobile direct-out
+   - total QR connections
+   - Mobile/QR byte window / QR byte total when present
+   - QR via Reality vs QR direct-out
    - unresolved and EOF/error counts
-   - top mobile destinations when useful
-   Explain the distinction: bytes are encrypted TCP/<home-reality-port> ingress counters by remote source IP; Reality/direct split remains log-attributed connection counts.
+   - top QR destinations when useful, prioritizing the estimated traffic
+     columns over raw connection counts
+   Explain the distinction: QR bytes are encrypted TCP/<home-reality-port> ingress counters
+   and the client may be on LTE or Wi-Fi. Per-profile and per-destination
+   VPS/direct byte splits are estimated from log-attributed connection counts
+   until exact per-outbound byte attribution exists.
 
 10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
 
@@ -308,7 +312,9 @@ paste it into public docs.
 - сколько уже накопилось за текущий месяц
 - какие LAN-устройства дали основной объём трафика за день/неделю/месяц
 - сколько LAN traffic ушло через Reality-managed REDIRECT и сколько напрямую в WAN
-- сколько Mobile Home Reality bytes пришло через QR-туннель за период
+- сколько Mobile/QR Home Reality bytes пришло через QR-туннель за период
+- какие сайты/приложения популярны через QR, отдельно через VPS и
+  home Russian direct, с оценочными MiB/GiB и процентами
 
 ### Когда данные закрытого дня появляются
 
@@ -325,7 +331,7 @@ paste it into public docs.
 Для `week/month`:
 
 - если история начала собираться недавно, окно начнётся с самого раннего доступного snapshot внутри периода
-- это нормально и должно отражаться в строках `Interface sample window`, `LAN byte sample window`, `Mobile byte sample window`
+- это нормально и должно отражаться в строках `Interface sample window`, `LAN byte sample window`, `Mobile/QR byte sample window`
 
 ## Как интерпретировать вывод
 
@@ -333,13 +339,13 @@ paste it into public docs.
 
 - `WAN total`
 - `LAN Reality-managed`
-- `Mobile Home Reality`
+- `Mobile/QR Home Reality`
 - `Combined observed`
 - `Wi-Fi radios`
 - `LAN bridge`
 - строки `Top LAN by Reality`
 - строки `Top LAN by Direct WAN`
-- строки `MOBILE HOME REALITY BYTES`
+- строки `MOBILE QR CLIENTS`
 
 Все эти выводы по умолчанию уже в redacted-виде.
 

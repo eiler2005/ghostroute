@@ -155,8 +155,8 @@ DNS forensics show interest, not bytes.
 
 - interface deltas
 - per-device mangle counter deltas
-- mobile Home Reality encrypted tunnel byte deltas
-- mobile Home Reality connection attribution from `sing-box.log`
+- QR/Home Reality encrypted tunnel byte deltas
+- QR/Home Reality connection attribution from `sing-box.log`
 - Tailscale peer deltas
 - current conntrack snapshot
 
@@ -172,9 +172,12 @@ Canonical sections:
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
   much traffic used the managed path.
 - `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
-- `MOBILE QR CLIENTS` — QR/profile connection split plus LTE ingress bytes.
-- `SITES / DESTINATIONS` — current-day top mobile destinations and whether they
-  used VPS or home Russian direct.
+- `MOBILE QR CLIENTS` — QR/profile connection split plus QR/Home Reality
+  ingress bytes. The QR client can be on LTE or Wi-Fi; the common signal is
+  TCP/<home-reality-port> into the home Reality inbound.
+- `SITES / DESTINATIONS` — current-day top QR destinations with estimated
+  traffic, percentage of QR usage, app/family labels, and separate popularity
+  blocks for VPS vs home Russian direct.
 - `ROUTING MISTAKES / CHECKS` — heuristic warnings for likely wrong routing,
   such as RU/direct-looking destinations via VPS, managed destinations going
   direct, direct DNS-like mobile destinations, unresolved mobile flows, or
@@ -184,8 +187,8 @@ For current-day reports it combines:
 
 - live interface deltas;
 - LAN/Wi-Fi byte counters;
-- Mobile Home Reality byte counters;
-- mobile destination attribution from `sing-box.log`;
+- QR/Home Reality byte counters;
+- QR destination attribution from `sing-box.log`;
 - routing mistake heuristics.
 
 For closed day/week/month reports it uses the saved snapshot backend
@@ -196,7 +199,7 @@ The saved snapshot backend builds period deltas from:
 
 - `interface-counters.tsv` for WAN/LAN bridge/Wi-Fi totals
 - `lan-device-counters.tsv` for LAN `Reality` / direct `WAN` / `Other`
-- `mobile-reality-counters.tsv` for Mobile Home Reality upload/download bytes
+- `mobile-reality-counters.tsv` for QR/Home Reality upload/download bytes
 
 The script takes a fresh snapshot first, then computes first-to-last deltas
 inside the requested nominal window.
@@ -212,15 +215,24 @@ Important interpretation:
     (`RC_MOBILE_REALITY_IN/OUT`)
   - connection attribution from `sing-box.log`: client profile names,
     `reality-out` vs `direct-out`, EOF/error count and top destinations
-- Mobile byte counters are measured at the encrypted Home Reality ingress. They
-  show how much traffic came through the QR tunnel, not how those bytes split
-  after sing-box chose `reality-out` vs `direct-out`.
-- Per-profile mobile bytes are attributed by remote source IP observed in
+- QR/Home Reality byte counters are measured at the encrypted Home Reality
+  ingress. They show how much traffic came through the QR tunnel, whether the
+  client was on LTE or Wi-Fi.
+- Per-profile and per-destination VPS/direct byte splits are estimated from the
+  `sing-box.log` connection split until sing-box exposes exact per-outbound
+  byte attribution. The report marks these columns as `est.`.
+- Per-profile QR source bytes are attributed by remote source IP observed in
   `sing-box.log`. If several profiles share one carrier NAT IP during the same
   window, the report uses a combined source label.
-- `router-health-report` includes the mobile Home Reality summary in the common
+- `SITES / DESTINATIONS` separates popularity into:
+  - overall QR destinations;
+  - destinations that exited through VPS, where final sites see the
+    VPS VPS IP;
+  - destinations that exited through home Russian direct, where final sites see
+    the home Russian IP.
+- `router-health-report` includes the QR/Home Reality summary in the common
   `Traffic Snapshot` block.
-- Mobile Home Reality clients are not LAN devices; use `MOBILE QR CLIENTS` for
+- QR/Home Reality clients are not LAN devices; use `MOBILE QR CLIENTS` for
   profile activity and `LAN/WI-FI DEVICES` for home Wi-Fi/LAN devices.
 - `ROUTING MISTAKES / CHECKS` is heuristic. A warning means "review catalog or
   no-vpn rules", not automatic proof of breakage.
