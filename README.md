@@ -43,6 +43,44 @@ Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRA
 
 ---
 
+## Operational Modules
+
+GhostRoute is organized as a small operational platform around the routing
+core, not just a set of firewall scripts:
+
+- **GhostRoute Health Monitor** — a read-only reliability module for the
+  router + VPS setup. It produces local `STATUS_OK` / `STATUS_FAIL` sentinels,
+  `status.json`, Markdown summaries, daily digests and disk-based alert
+  ledgers without changing production routing state.
+- **Traffic Observatory** — usage and routing reports for WAN, LAN/Wi-Fi,
+  Home Reality QR clients, popular destinations and split-routing mistakes.
+  It is designed for day-to-day inspection and safe LLM handoff with redacted
+  device labels by default.
+- **DNS & Catalog Intelligence** — DNS lookup observation, domain discovery
+  and managed-catalog maintenance. It helps identify which domains a service
+  uses, keeps manual and auto-discovered rules separated, and feeds
+  `STEALTH_DOMAINS` / `VPN_STATIC_NETS` without requiring VPN apps on home
+  devices.
+- **Performance Diagnostics Toolkit** — checks and documentation for latency,
+  retransmits, TCP tuning, MSS clamp, keepalive behavior and LTE/Home Reality
+  performance symptoms, so speed issues can be diagnosed separately from
+  routing correctness.
+- **Client Profile Factory** — local generation and cleanup of QR/VLESS
+  profiles from Ansible Vault, including separate router, home-mobile and
+  emergency profile flows. Generated credentials stay outside git.
+- **Security & Secret Hygiene** — vault templates, local secret storage rules,
+  generated-artifact isolation and a repo-specific `secret-scan` for catching
+  real URIs, UUIDs, keys, public endpoints and production literals before push.
+- **Recovery & Verification Toolkit** — `verify.sh`, Ansible verification,
+  incident runbooks and explicit cold-fallback scripts for controlled manual
+  recovery when Reality, VPS, DNS or routing invariants drift.
+
+Together these modules make the repo auditable: routing, health, traffic,
+performance and recovery procedures are documented as separate operational
+surfaces with clear read-only diagnostics and explicit manual recovery steps.
+
+---
+
 ## How It Works
 
 ### 1. Home Wi-Fi / LAN Devices
