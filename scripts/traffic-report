@@ -632,8 +632,11 @@ fi
 
 MOBILE_EST_REALITY_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_REALITY" "$MOBILE_TOTAL")"
 MOBILE_EST_DIRECT_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_DIRECT" "$MOBILE_TOTAL")"
+MOBILE_EST_UNRESOLVED_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_UNRESOLVED" "$MOBILE_TOTAL")"
 TOTAL_VPS_EST=$(( DEVICE_REALITY_BYTES + MOBILE_EST_REALITY_BYTES ))
 TOTAL_HOME_DIRECT_EST=$(( DEVICE_WAN_BYTES + MOBILE_EST_DIRECT_BYTES ))
+TOTAL_OTHER_EST=$(( DEVICE_OTHER_BYTES + MOBILE_EST_UNRESOLVED_BYTES ))
+CLIENT_OBSERVED_TOTAL=$(( DEVICE_TOTAL_BYTES + MOBILE_BYTE_TOTAL ))
 
 echo "=== GHOSTROUTE USAGE REPORT ==="
 echo "Period:                  today"
@@ -643,19 +646,22 @@ echo "Home Reality byte window: ${MOBILE_WINDOW_LINE}"
 echo
 
 echo "=== 1. EXIT SUMMARY ==="
-echo "WAN total:               $(human_gib "$WAN_TOTAL")  (RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
-echo "Wi-Fi total:             $(human_gib "$WIFI_TOTAL")  (RX $(human_gib "$WIFI_RX_TOTAL") / TX $(human_gib "$WIFI_TX_TOTAL"))"
-echo "LAN bridge:              $(human_gib "$BR0_TOTAL")  (RX $(human_gib "$BR0_RX") / TX $(human_gib "$BR0_TX"))"
+echo "WAN total:               $(human_gib "$WAN_TOTAL")  (actual ISP/WAN interface RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
+echo "Client observed total:   $(human_bytes "$CLIENT_OBSERVED_TOTAL")  (LAN/Wi-Fi exact + Home Reality ingress exact)"
+echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  ($(human_pct "$TOTAL_VPS_EST" "$CLIENT_OBSERVED_TOTAL"); LAN exact + ingress estimated)"
+echo "Via home RU direct:      $(human_bytes "$TOTAL_HOME_DIRECT_EST")  ($(human_pct "$TOTAL_HOME_DIRECT_EST" "$CLIENT_OBSERVED_TOTAL"); LAN exact + ingress estimated)"
+echo "Other/unresolved:        $(human_bytes "$TOTAL_OTHER_EST")  ($(human_pct "$TOTAL_OTHER_EST" "$CLIENT_OBSERVED_TOTAL"))"
+echo "LAN/Wi-Fi observed:      $(human_bytes "$DEVICE_TOTAL_BYTES")"
 echo "Home Reality ingress:    $(human_bytes "$MOBILE_BYTE_TOTAL")  (client -> home RU IP :<home-reality-port>)"
-echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  (LAN exact + mobile estimated)"
-echo "Via home RU direct:      $(human_bytes "$TOTAL_HOME_DIRECT_EST")  (LAN exact + mobile estimated)"
-echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")"
+echo "Interface counters:      Wi-Fi $(human_gib "$WIFI_TOTAL") / LAN bridge $(human_gib "$BR0_TOTAL")"
+echo "Reality-managed total:   $(human_bytes "$DEVICE_REALITY_BYTES")  (LAN/Wi-Fi exact only)"
 echo "Reality share/WAN:       $(human_pct "$DEVICE_REALITY_BYTES" "$WAN_TOTAL")"
 echo "Device byte total:       $(human_bytes "$DEVICE_TOTAL_BYTES")"
 echo "Via Reality:             $(human_bytes "$DEVICE_REALITY_BYTES")  ($(human_pct "$DEVICE_REALITY_BYTES" "$DEVICE_TOTAL_BYTES"))"
 echo "Direct WAN:              $(human_bytes "$DEVICE_WAN_BYTES")  ($(human_pct "$DEVICE_WAN_BYTES" "$DEVICE_TOTAL_BYTES"))"
 echo "Other:                   $(human_bytes "$DEVICE_OTHER_BYTES")  ($(human_pct "$DEVICE_OTHER_BYTES" "$DEVICE_TOTAL_BYTES"))"
 echo "Tailscale total:         $(human_gib "$TAILSCALE_TOTAL")  (RX $(human_gib "$TAILSCALE_RX_TOTAL") / TX $(human_gib "$TAILSCALE_TX_TOTAL"))"
+echo "Accounting note:         WAN includes Home Reality ingress and its second WAN egress leg; client observed total is the user-facing split base."
 echo
 
 echo "=== 2. PATH MATRIX ==="

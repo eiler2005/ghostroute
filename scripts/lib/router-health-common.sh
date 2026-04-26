@@ -610,6 +610,7 @@ router_extract_traffic_summary() {
     /^Tailscale total:/      { key = "TRAFFIC_TS_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^VPN share\/WAN:/       { key = "TRAFFIC_REALITY_SHARE"; value = substr($0, index($0, ":") + 1) }
     /^Reality share\/WAN:/   { key = "TRAFFIC_REALITY_SHARE"; value = substr($0, index($0, ":") + 1) }
+    /^Client observed total:/ { key = "TRAFFIC_CLIENT_OBSERVED_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Device byte total:/    { key = "TRAFFIC_DEVICE_TOTAL"; value = substr($0, index($0, ":") + 1) }
     /^Via VPN:/              { key = "TRAFFIC_DEVICE_VIA_REALITY"; value = substr($0, index($0, ":") + 1) }
     /^Via Reality:/          { key = "TRAFFIC_DEVICE_VIA_REALITY"; value = substr($0, index($0, ":") + 1) }
@@ -725,7 +726,7 @@ router_render_health_markdown() {
   local week_vpn_delta week_static_delta week_manual_delta week_auto_delta
   local latest_rule_total_delta week_rule_total_delta
   local latest_growth_level week_growth_level latest_auto_note week_auto_note
-  local traffic_router_window traffic_device_window traffic_wan traffic_reality traffic_ts traffic_share traffic_device_total traffic_device_reality traffic_device_wan traffic_device_other
+  local traffic_router_window traffic_device_window traffic_wan traffic_reality traffic_ts traffic_share traffic_client_observed traffic_device_total traffic_device_reality traffic_device_wan traffic_device_other
   local result_level
   local -a drift_lines
 
@@ -844,6 +845,7 @@ router_render_health_markdown() {
   traffic_reality="$(router_kv_get "$traffic_file" TRAFFIC_REALITY_TOTAL)"
   traffic_ts="$(router_kv_get "$traffic_file" TRAFFIC_TS_TOTAL)"
   traffic_share="$(router_kv_get "$traffic_file" TRAFFIC_REALITY_SHARE)"
+  traffic_client_observed="$(router_kv_get "$traffic_file" TRAFFIC_CLIENT_OBSERVED_TOTAL)"
   traffic_device_total="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_TOTAL)"
   traffic_device_reality="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_VIA_REALITY)"
   traffic_device_wan="$(router_kv_get "$traffic_file" TRAFFIC_DEVICE_DIRECT_WAN)"
@@ -1061,6 +1063,7 @@ EOF
 - Per-device byte window: **${traffic_device_window:-n/a}**
 - Home Reality byte window: **${traffic_mobile_byte_window:-n/a}**
 - WAN total: **${traffic_wan:-n/a}**
+- Client observed total: **${traffic_client_observed:-n/a}**
 - Reality-managed total: **${traffic_reality:-n/a}**
 - Tailscale total: **${traffic_ts:-n/a}**
 - Reality share/WAN: **${traffic_share:-n/a}**
