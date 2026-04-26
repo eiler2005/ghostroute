@@ -48,6 +48,9 @@ Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRA
 GhostRoute is organized as a small operational platform around the routing
 core, not just a set of firewall scripts:
 
+- **Routing Core** — the production data plane: dnsmasq/ipset classification,
+  sing-box REDIRECT and home Reality ingress, managed Reality egress to VPS,
+  direct-out fallback for non-managed traffic, and Channel A cold fallback.
 - **GhostRoute Health Monitor** — a read-only reliability module for the
   router + VPS setup. It produces local `STATUS_OK` / `STATUS_FAIL` sentinels,
   `status.json`, Markdown summaries, daily digests and disk-based alert
@@ -81,6 +84,8 @@ core, not just a set of firewall scripts:
 Together these modules make the repo auditable: routing, health, traffic,
 performance and recovery procedures are documented as separate operational
 surfaces with clear read-only diagnostics and explicit manual recovery steps.
+See the full module map in
+[docs/operational-modules.md](docs/operational-modules.md).
 
 ---
 
@@ -104,11 +109,14 @@ Home Wi-Fi/LAN ---- DNS ----> ASUS Merlin router <---- Reality QR ---- iPhone/Ma
                                     -> direct-out -> home WAN -> Internet
 
 Operational layer:
+  Routing Core        -> dnsmasq/ipset/sing-box/Reality split
   Health Monitor      -> STATUS_OK/FAIL, summaries, local alerts
   Traffic Observatory -> WAN/LAN/Home Reality usage and routing checks
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
+  Client Profiles     -> QR/VLESS generation from Vault
+  Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
 
@@ -356,6 +364,7 @@ See [docs/client-profiles.md](docs/client-profiles.md) and [docs/secrets-managem
 ## Detailed Documentation
 
 - [README-ru.md](README-ru.md) - main Russian documentation
+- [docs/operational-modules.md](docs/operational-modules.md) - canonical module map and operating surfaces
 - [docs/architecture.md](docs/architecture.md) - current routing architecture
 - [docs/network-flow-and-observer-model.md](docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [docs/traffic-observability.md](docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
