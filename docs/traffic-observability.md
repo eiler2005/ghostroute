@@ -66,6 +66,9 @@ Why some numbers are estimated:
 
 Important accounting rule:
 
+- Traffic volume is the primary signal. Always read the MiB/GiB value first.
+  Percentages are reference context only: they help compare rows quickly, but
+  they are not the accounting base.
 - `WAN total` is the physical ISP-interface volume. It includes everything that
   crossed `wan0`.
 - `LAN/Wi-Fi observed + Home Reality ingress + WAN remainder/unattributed`
@@ -352,14 +355,14 @@ Typical summary:
 
 ```text
 === 1. EXIT SUMMARY ===
-WAN total:               13.78 GiB  (physical router/ISP base = 100%)
-LAN/Wi-Fi observed:      4.22 GiB   (30.6% of WAN)
-Home Reality ingress:    5.32 GiB   (38.6% of WAN)
-WAN remainder/unattributed: 4.24 GiB (30.8% of WAN)
-Client observed total:   9.54 GiB   (69.2% of WAN)
-Via VPS:         8.07 GiB   (88.4%; LAN exact + ingress estimated)
-Via home RU direct:      1.05 GiB   (11.5%; LAN exact + ingress estimated)
-Other/unresolved:        0 B        (0.0%)
+WAN total:               13.78 GiB  (physical router/ISP traffic)
+LAN/Wi-Fi observed:      4.22 GiB   (reference: 30.6% of WAN)
+Home Reality ingress:    5.32 GiB   (reference: 38.6% of WAN)
+WAN remainder/unattributed: 4.24 GiB (reference: 30.8% of WAN)
+Client observed total:   9.54 GiB   (reference: 69.2% of WAN)
+Via VPS:         8.07 GiB   (reference: 88.4% of observed)
+Via home RU direct:      1.05 GiB   (reference: 11.5% of observed)
+Other/unresolved:        0 B        (reference: 0.0% of observed)
 Interface counters:      Wi-Fi 4.88 GiB / LAN bridge 4.70 GiB
 ```
 
@@ -367,6 +370,7 @@ How to read this:
 
 - `WAN total` is the physical ISP-facing counter. It is the correct answer to
   “how much crossed the router's WAN interface?”.
+- The GiB/MiB values are the main story. Percentages are only reference context.
 - `Client observed total` is the correct base for “how much user traffic did
   the GhostRoute accounting observe?”.
 - `WAN remainder/unattributed` explains the gap between physical WAN and
