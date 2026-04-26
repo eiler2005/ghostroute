@@ -9,6 +9,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${PROJECT_ROOT}/scripts/lib/device-labels.sh"
 [ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
 [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
 
@@ -17,7 +18,7 @@ ROUTER_PORT="${ROUTER_PORT:-22}"
 CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
 ROUTER="${ROUTER:-}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
-DNS_FORENSICS_DEVICE_METADATA_FILE="${DNS_FORENSICS_DEVICE_METADATA_FILE:-${PROJECT_ROOT}/secrets/device-metadata.local.tsv}"
+DNS_FORENSICS_DEVICE_METADATA_FILE="${DNS_FORENSICS_DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 
 WINDOW_PREFIX=""
 FILTER_IP=""
@@ -73,6 +74,7 @@ detect_router_ip() {
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 SNAPSHOT_FILE="$TMPDIR/dns-forensics.tsv"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
 
 if [ -n "${DNS_FORENSICS_SOURCE_DIR:-}" ]; then
   if [ -n "$WINDOW_PREFIX" ]; then
@@ -111,8 +113,10 @@ REMOTE
   SNAPSHOT_SOURCE="$SELECTED_FILE"
 fi
 
-ruby - "$SNAPSHOT_FILE" "$DNS_FORENSICS_DEVICE_METADATA_FILE" "$FILTER_IP" "$SNAPSHOT_SOURCE" <<'RUBY'
-snapshot_file, metadata_file, filter_ip, snapshot_source = ARGV
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DNS_FORENSICS_DEVICE_METADATA_FILE"
+
+ruby - "$SNAPSHOT_FILE" "$DEVICE_METADATA_MAP" "$FILTER_IP" "$SNAPSHOT_SOURCE" <<'RUBY'
+snapshot_file, metadata_map_file, filter_ip, snapshot_source = ARGV
 
 meta = {}
 clients = []
@@ -120,18 +124,12 @@ top_domains = Hash.new { |h, k| h[k] = [] }
 top_families = Hash.new { |h, k| h[k] = [] }
 metadata = {}
 
-if File.file?(metadata_file)
-  File.readlines(metadata_file, chomp: true).each do |line|
+if File.file?(metadata_map_file)
+  File.readlines(metadata_map_file, chomp: true).each do |line|
     next if line.strip.empty? || line.lstrip.start_with?("#")
-    ip, alias_name, type, = line.split("|", 4)
+    ip, label, = line.split("|", 4)
     next if ip.to_s.empty?
-    alias_name = alias_name.to_s.strip
-    type = type.to_s.strip
-    label = alias_name
-    label = type if label.empty? || label == "?"
-    if !label.empty? && !type.empty? && label != type
-      label = "#{label} (#{type})"
-    end
+    label = label.to_s.strip
     metadata[ip] = label unless label.empty?
   end
 end

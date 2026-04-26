@@ -10,10 +10,11 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+. "${PROJECT_ROOT}/scripts/lib/device-labels.sh"
 router_health_load_env
 
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
-DEVICE_METADATA_FILE="${PROJECT_ROOT}/secrets/device-metadata.local.tsv"
+DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -75,28 +76,6 @@ delta_or_current() {
   else
     echo "$current"
   fi
-}
-
-build_device_metadata_map() {
-  [ -s "$DEVICE_METADATA_FILE" ] || return 0
-
-  awk -F'|' '
-    BEGIN { OFS="|" }
-    /^[[:space:]]*#/ { next }
-    {
-      key = $1
-      alias = $2
-      type = $3
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", alias)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", type)
-      if (key == "") next
-      label = alias
-      if (label == "" || label == "?") label = type
-      if (label != "" && type != "" && label != type) label = label " (" type ")"
-      print key, label, type
-    }
-  ' "$DEVICE_METADATA_FILE" > "$DEVICE_METADATA_MAP"
 }
 
 apply_device_metadata() {
@@ -271,6 +250,10 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
 else
   : > "$LAN_BYTES_PARSED"
 fi
+
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DEVICE_METADATA_FILE"
+apply_device_metadata
+redact_report_tables
 
 if [ -s "$LAN_BYTES_PARSED" ]; then
   awk -F'|' '
@@ -495,10 +478,6 @@ ruby -rjson -e '
 TAILSCALE_RX_TOTAL="$(awk -F'|' '{ sum += ($3 + 0) } END { print sum + 0 }' "$TAILSCALE_PARSED")"
 TAILSCALE_TX_TOTAL="$(awk -F'|' '{ sum += ($4 + 0) } END { print sum + 0 }' "$TAILSCALE_PARSED")"
 TAILSCALE_TOTAL=$(( TAILSCALE_RX_TOTAL + TAILSCALE_TX_TOTAL ))
-
-build_device_metadata_map
-apply_device_metadata
-redact_report_tables
 
 if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBILE_BYTES_PARSED" ]; }; then
   {

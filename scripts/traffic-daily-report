@@ -5,10 +5,12 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${PROJECT_ROOT}/scripts/lib/router-health-common.sh"
+. "${PROJECT_ROOT}/scripts/lib/device-labels.sh"
 router_health_load_env
 
 PERIOD_ARG="${1:-today}"
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
+DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -16,6 +18,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 INTERFACE_COUNTERS="$TMPDIR/interface-counters.tsv"
 LAN_COUNTERS="$TMPDIR/lan-device-counters.tsv"
 MOBILE_COUNTERS="$TMPDIR/mobile-reality-counters.tsv"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
 
 # Add a fresh endpoint sample before reading the history. This keeps "today",
 # "week" and "month" reports useful without waiting for the next 6-hour cron.
@@ -41,8 +44,10 @@ STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -f "$STATE_DIR/mobile-reality-counters.tsv" ] && cat "$STATE_DIR/mobile-reality-counters.tsv" || true
 REMOTE
 
-ruby -rdate -rtime - "$PERIOD_ARG" "$REPORT_REDACT_NAMES" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" <<'RUBY'
-period_arg, redact_names, interface_path, lan_path, mobile_path = ARGV
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DEVICE_METADATA_FILE"
+
+ruby -rdate -rtime - "$PERIOD_ARG" "$REPORT_REDACT_NAMES" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" "$DEVICE_METADATA_MAP" <<'RUBY'
+period_arg, redact_names, interface_path, lan_path, mobile_path, metadata_map_path = ARGV
 
 def human_bytes(bytes)
   bytes = bytes.to_i
@@ -157,7 +162,25 @@ def window_for(rows)
   "#{sorted.first[0].strftime('%Y-%m-%dT%H:%M:%S%z')} -> #{sorted.last[0].strftime('%Y-%m-%dT%H:%M:%S%z')}"
 end
 
+def load_device_metadata_map(path)
+  metadata = {}
+  return metadata if path.nil? || path.empty? || !File.exist?(path)
+
+  File.foreach(path) do |line|
+    next if line.strip.empty? || line.lstrip.start_with?('#')
+
+    key, label, = line.chomp.split('|', -1).map { |part| part.to_s.strip }
+    next if key.nil? || key.empty?
+    next if label.nil? || label.empty?
+
+    metadata[key] = label
+  end
+
+  metadata
+end
+
 period_label, start_time, end_time = period_range(period_arg)
+device_metadata = load_device_metadata_map(metadata_map_path)
 interface_rows = rows_in_period(interface_path, start_time, end_time)
 lan_rows = rows_in_period(lan_path, start_time, end_time)
 mobile_rows = rows_in_period(mobile_path, start_time, end_time)
@@ -170,6 +193,7 @@ lan_devices = lan_devices_raw.map do |ip, data|
   last = data[:last]
   host = last[2]
   host = ip if host.nil? || host.empty? || host == '?'
+  label = device_metadata.fetch(ip, host)
   reality_up, reality_down, wan_up, wan_down, other_up, other_down = data[:values]
   reality = reality_up + reality_down
   wan = wan_up + wan_down
@@ -179,7 +203,7 @@ lan_devices = lan_devices_raw.map do |ip, data|
   total = upload + download
   {
     key: ip,
-    label: host,
+    label: label,
     reality: reality,
     wan: wan,
     other: other,

@@ -27,6 +27,22 @@ ansible/secrets/stealth.yml.example # placeholder template; safe for git
 ansible/out/clients/                # generated QR/.conf files; gitignored
 ```
 
+`secrets/device-metadata.local.tsv` is the shared local source for report device
+labels. It is intentionally gitignored because it maps LAN IPs to people/devices.
+Format:
+
+```text
+# ip-or-key|friendly alias|device type
+192.168.50.21|Denis laptop|Windows laptop
+192.168.50.150||iPad
+192.168.50.195||iPad
+192.168.50.228|Office desktop|Windows PC
+```
+
+Reports use `scripts/lib/device-labels.sh` to build one common label map from
+this file. `traffic-report`, `traffic-daily-report` and `dns-forensics-report`
+all consume that same map.
+
 ## First-Time Setup
 
 ```bash
