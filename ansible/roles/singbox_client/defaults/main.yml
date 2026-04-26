@@ -1,0 +1,21 @@
+---
+# Router sing-box defaults. Real ports and keys are supplied by vault/group_vars.
+singbox_tun_name: singbox0
+singbox_bin_path: /opt/bin/sing-box
+singbox_log_path: /opt/var/log/sing-box.log
+singbox_config_path: /opt/etc/sing-box/config.json
+singbox_init_path: /opt/etc/init.d/S99sing-box
+singbox_redirect_port: ""
+singbox_dnscrypt_socks_port: ""
+singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
+home_reality_enabled: true
+home_reality_listen: 0.0.0.0
+home_reality_ingress_port: ""
+home_reality_dest: gateway.icloud.com:443
+home_reality_dest_host: gateway.icloud.com
+home_reality_dest_port: 443
+home_reality_server_names:
+  - gateway.icloud.com
+clients: []
+home_clients: []
+emergency_clients: []

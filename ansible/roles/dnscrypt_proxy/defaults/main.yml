@@ -1,0 +1,12 @@
+---
+# Router-side DNSCrypt defaults. Real ports may be overridden by vault/group_vars.
+dnscrypt_port: ""
+dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"
+dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy
+dnscrypt_config_path: /opt/etc/dnscrypt-proxy.toml
+dnscrypt_init_path: /opt/etc/init.d/S09dnscrypt-proxy2
+singbox_dnscrypt_socks_port: ""
+services_start_hook: /jffs/scripts/services-start
+system_caddy_site_enabled: false
+system_caddy_site_host: example.invalid
+vps_ssh_host: example.invalid

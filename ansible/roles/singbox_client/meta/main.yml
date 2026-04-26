@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: singbox_client
+  author: GhostRoute
+  description: Project role for router sing-box REDIRECT and home Reality ingress.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericUNIX
+      versions: ["all"]
+dependencies: []

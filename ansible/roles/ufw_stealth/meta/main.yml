@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: ufw_stealth
+  author: GhostRoute
+  description: Project role for VPS firewall rules required by the Reality listener.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericLinux
+      versions: ["all"]
+dependencies: []

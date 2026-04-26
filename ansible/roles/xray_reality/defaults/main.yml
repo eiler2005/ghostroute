@@ -1,0 +1,16 @@
+---
+# VPS Reality defaults. Credentials, UUIDs and real hosts belong in vault.
+stealth_stack_dir: /opt/stealth
+stealth_caddy_mode: system_listener_wrapper
+caddy_image_tag: caddy-l4:local
+xui_image: ghcr.io/mhsanaei/3x-ui:latest
+xui_admin_web_port: 2053
+xui_admin_web_path: /
+xray_reality_listen_port: 8443
+reality_dest: gateway.icloud.com:443
+reality_server_names:
+  - gateway.icloud.com
+reality_short_ids: []
+reality_server_public_key: ""
+clients: []
+emergency_clients: []

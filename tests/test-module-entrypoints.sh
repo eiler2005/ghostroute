@@ -15,6 +15,7 @@ assert_executable() {
 assert_executable "deploy.sh"
 assert_executable "verify.sh"
 assert_executable "modules/recovery-verification/bin/verify.sh"
+assert_executable "modules/recovery-verification/bin/audit-fixes"
 assert_executable "modules/traffic-observatory/bin/traffic-report"
 assert_executable "modules/traffic-observatory/bin/traffic-daily-report"
 assert_executable "modules/ghostroute-health-monitor/bin/router-health-report"

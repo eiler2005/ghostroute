@@ -9,6 +9,7 @@ controlled manual fallback procedures for Reality, VPS, DNS and routing drift.
 
 - Platform health gate through root `./verify.sh`.
 - Module-native verification implementation in `bin/verify.sh`.
+- Static architecture/security audit through `bin/audit-fixes`.
 - Manual cold fallback tooling for catastrophic Reality outage.
 - Fixture tests for router health parsing and rendering.
 
@@ -34,6 +35,7 @@ an operator after reading the relevant runbook.
 - `./verify.sh`
 - `./verify.sh --verbose`
 - `./modules/recovery-verification/bin/verify.sh`
+- `./modules/recovery-verification/bin/audit-fixes`
 - Runtime-only router fallback: `/jffs/scripts/emergency-enable-wgc1.sh`
 
 ## Runtime Storage & Artifacts
@@ -58,12 +60,15 @@ an operator after reading the relevant runbook.
 ## Tests
 
 - `./modules/recovery-verification/tests/test-router-health.sh`
+- `./modules/recovery-verification/tests/test-audit-fixes.sh`
 - `./tests/run-all.sh`
 - Ansible `playbooks/99-verify.yml`
 
 ## Related Docs
 
 - `modules/recovery-verification/docs/failure-modes.md`
+- `docs/architecture-improvement-roadmap-2026-04-26.md`
+- `docs/adr/`
 - `docs/troubleshooting.md`
 - `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`
 - `modules/routing-core/docs/channel-routing-operations.md`

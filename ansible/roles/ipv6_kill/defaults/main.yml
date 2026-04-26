@@ -1,0 +1,3 @@
+---
+ipv6_desired_service_state: disabled
+ipv6_dnsmasq_config_path: /jffs/configs/dnsmasq.conf.add

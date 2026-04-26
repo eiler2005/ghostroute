@@ -1,0 +1,7 @@
+---
+stealth_stack_dir: /opt/stealth
+vps_health_log_dir: /var/log/ghostroute/health-monitor
+system_caddy_binary_path: /usr/bin/caddy
+xray_reality_listen_port: 8443
+xui_admin_web_port: 2053
+xui_admin_web_path: /

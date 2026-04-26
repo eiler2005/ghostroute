@@ -1,0 +1,28 @@
+---
+stealth_fwmark: "0x2000"
+stealth_route_table: 200
+stealth_ipset_name: STEALTH_DOMAINS
+stealth_static_source_ipset: VPN_STATIC_NETS
+stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
+stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
+stealth_test_domain: ifconfig.me
+stealth_channel_b_lan_enabled: true
+singbox_tun_name: singbox0
+singbox_init_path: /opt/etc/init.d/S99sing-box
+singbox_redirect_port: ""
+home_reality_ingress_port: ""
+home_reality_connlimit_above: 300
+home_reality_mss: 1360
+router_tcp_perf_tuning_enabled: true
+router_tcp_rmem: "4096 262144 16777216"
+router_tcp_wmem: "4096 65536 16777216"
+router_tcp_rmem_max: 16777216
+router_tcp_wmem_max: 16777216
+router_tcp_mtu_probing: 1
+router_tcp_slow_start_after_idle: 0
+router_tcp_window_scaling: 1
+router_tcp_sack: 1
+router_tcp_timestamps: 1
+firewall_start_hook: /jffs/scripts/firewall-start
+services_start_hook: /jffs/scripts/services-start
+vps_ssh_host: example.invalid

@@ -1,0 +1,6 @@
+---
+# Router health monitor runtime layout. Secret ports are rendered from vault.
+health_monitor_router_dir: /jffs/scripts/health-monitor
+health_monitor_probe_cron: "0 * * * * /jffs/scripts/health-monitor/run-probes"
+health_monitor_aggregate_cron: "2 * * * * /jffs/scripts/health-monitor/aggregate"
+health_monitor_daily_cron: "10 3 * * * /jffs/scripts/health-monitor/daily-digest"

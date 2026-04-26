@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: dnsmasq_blocklists
+  author: GhostRoute
+  description: Project role for router dnsmasq blocklist refresh automation.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericUNIX
+      versions: ["all"]
+dependencies: []
