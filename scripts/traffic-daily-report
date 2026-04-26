@@ -225,6 +225,11 @@ mobile_raw.each_value do |data|
   mobile_sources_by_label[label][:total] += total
 end
 mobile_sources = mobile_sources_by_label.values
+mobile_sources.reject! do |row|
+  row[:total].to_i <= 0 ||
+    row[:label].to_s.start_with?('remote:#') ||
+    row[:label].to_s.start_with?('remote:*')
+end
 
 if redact_names == '1'
   lan_devices.sort_by { |row| row[:key] }.each_with_index do |row, idx|
@@ -260,66 +265,66 @@ mobile_upload = mobile_sources.sum { |row| row[:upload] }
 mobile_download = mobile_sources.sum { |row| row[:download] }
 combined_reality_observed = lan_reality + mobile_total
 
-puts '=== PERIOD REQUEST ==='
-puts format('%-26s %s', 'Requested period:', period_arg)
-puts format('%-26s %s', 'Resolved period:', period_label)
+puts '=== GHOSTROUTE USAGE REPORT ==='
+puts format('%-26s %s', 'Period:', period_label)
 puts format('%-26s %s -> %s', 'Nominal window:', start_time.strftime('%Y-%m-%dT%H:%M:%S%z'), end_time.strftime('%Y-%m-%dT%H:%M:%S%z'))
-puts format('%-26s %s', 'Interface sample window:', window_for(interface_rows))
-puts format('%-26s %s', 'LAN byte sample window:', window_for(lan_rows))
-puts format('%-26s %s', 'Mobile byte sample window:', window_for(mobile_rows))
+puts format('%-26s %s', 'Interface samples:', window_for(interface_rows))
+puts format('%-26s %s', 'LAN/Wi-Fi samples:', window_for(lan_rows))
+puts format('%-26s %s', 'Mobile LTE samples:', window_for(mobile_rows))
 puts
 
-puts '=== INTERFACE TOTALS ==='
+puts '=== 1. EXIT SUMMARY ==='
 puts format('%-26s %s  (RX %s / TX %s)', 'WAN total:', human_bytes(wan[:total]), human_bytes(wan[:rx]), human_bytes(wan[:tx]))
+puts format('%-26s %s  (RX %s / TX %s)', 'Wi-Fi total:', human_bytes(wifi[:total]), human_bytes(wifi[:rx]), human_bytes(wifi[:tx]))
 puts format('%-26s %s  (RX %s / TX %s)', 'LAN bridge:', human_bytes(br0[:total]), human_bytes(br0[:rx]), human_bytes(br0[:tx]))
-puts format('%-26s %s  (RX %s / TX %s)', 'Wi-Fi radios:', human_bytes(wifi[:total]), human_bytes(wifi[:rx]), human_bytes(wifi[:tx]))
-puts
-
-puts '=== REALITY SUMMARY ==='
-puts format('%-26s %s', 'LAN Reality-managed:', human_bytes(lan_reality))
-puts format('%-26s %s  (upload %s / download %s)', 'Mobile Home Reality:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
+puts format('%-26s %s', 'LAN/Wi-Fi via VPS:', human_bytes(lan_reality))
+puts format('%-26s %s', 'LAN/Wi-Fi RU direct:', human_bytes(lan_wan))
+puts format('%-26s %s  (upload %s / download %s)', 'Mobile LTE ingress:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
 puts format('%-26s %s', 'Combined observed:', human_bytes(combined_reality_observed))
-puts format('%-26s %s', 'LAN direct WAN:', human_bytes(lan_wan))
-puts format('%-26s %s', 'LAN other:', human_bytes(lan_other))
 puts format('%-26s %s', 'LAN Reality share:', pct(lan_reality, lan_total))
 puts
 
-puts '=== LAN DEVICE MIX ==='
+puts '=== 2. PATH MATRIX ==='
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Source', 'First hop', 'Router', 'Exit', 'Site sees')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'REDIRECT :<lan-redirect-port>', 'VLESS+Reality -> VPS', 'VPS VPS IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'no redirect', 'Home WAN direct', 'Home Russian IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Mobile LTE', 'LTE -> home :<home-reality-port>', 'reality-in', 'split not byte-attributed', 'VPS or home RU IP')
+puts
+
+puts '=== 3. LAN/WI-FI DEVICES ==='
 if lan_devices.empty?
   puts 'No LAN device byte samples in this period.'
 else
-  puts format('%-26s %d', 'Devices in byte view:', lan_devices.length)
-  puts format('%-26s %s', 'Device byte total:', human_bytes(lan_total))
-  puts format('%-26s %s  (%s)', 'Via Reality:', human_bytes(lan_reality), pct(lan_reality, lan_total))
-  puts format('%-26s %s  (%s)', 'Direct WAN:', human_bytes(lan_wan), pct(lan_wan, lan_total))
-  puts format('%-26s %s  (%s)', 'Other:', human_bytes(lan_other), pct(lan_other, lan_total))
-  puts
-  puts 'Top LAN by Reality:'
+  puts format('%-42s %12s %12s %9s', 'Device', 'VPS', 'RU direct', 'VPS share')
   lan_devices.sort_by { |row| [-row[:reality], row[:label]] }.first(8).select { |row| row[:reality] > 0 }.each do |row|
-    puts format('  %-24s %10s  (%s of device total)', row[:label], human_bytes(row[:reality]), pct(row[:reality], row[:total]))
+    puts format('%-42s %12s %12s %9s', row[:label], human_bytes(row[:reality]), human_bytes(row[:wan]), pct(row[:reality], row[:total]))
   end
   puts '  none' unless lan_devices.any? { |row| row[:reality] > 0 }
-  puts
-  puts 'Top LAN by Direct WAN:'
-  lan_devices.sort_by { |row| [-row[:wan], row[:label]] }.first(8).select { |row| row[:wan] > 0 }.each do |row|
-    puts format('  %-24s %10s  (%s of device total)', row[:label], human_bytes(row[:wan]), pct(row[:wan], row[:total]))
-  end
-  puts '  none' unless lan_devices.any? { |row| row[:wan] > 0 }
 end
 puts
 
-puts '=== MOBILE HOME REALITY BYTES ==='
+puts '=== 4. MOBILE QR CLIENTS ==='
 if mobile_sources.empty?
   puts 'No Mobile Home Reality byte samples in this period.'
 else
   puts format('%-26s %d', 'Mobile byte sources:', mobile_sources.length)
-  puts format('%-26s %s  (upload %s / download %s)', 'Mobile byte total:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
+  puts format('%-26s %s  (upload %s / download %s)', 'Mobile LTE ingress:', human_bytes(mobile_total), human_bytes(mobile_upload), human_bytes(mobile_download))
   puts
-  puts format('%-24s %12s %12s %12s', 'Source', 'Total', 'Upload', 'Download')
+  puts format('%-24s %12s %12s %12s', 'LTE source', 'Total', 'Upload', 'Download')
   mobile_sources.sort_by { |row| [-row[:total], row[:label]] }.first(12).each do |row|
     puts format('%-24s %12s %12s %12s', row[:label], human_bytes(row[:total]), human_bytes(row[:upload]), human_bytes(row[:download]))
   end
 end
+puts
+
+puts '=== 5. SITES / DESTINATIONS ==='
+puts 'Period snapshot reports do not retain destination-level sing-box logs.'
+puts 'Use `./scripts/traffic-report today` for top destinations and routing checks.'
+puts
+
+puts '=== 6. ROUTING MISTAKES / CHECKS ==='
+puts 'Destination-level mistake checks are available for current-day logs only.'
+puts 'Catalog-level review is covered by `./scripts/catalog-review-report` and `docs/stealth-domains-curation-audit.md`.'
 puts
 
 puts '=== NOTES ==='

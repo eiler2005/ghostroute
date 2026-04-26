@@ -40,8 +40,8 @@ For the full end-to-end workflow and observer table, see
 | `./verify.sh` | compact live health summary |
 | `./scripts/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./scripts/router-health-report --save` | tracked snapshot + local journal + router-side copy |
-| `./scripts/traffic-report` | current-day traffic summary |
-| `./scripts/traffic-daily-report` | day/week/month byte summary from saved snapshots |
+| `./scripts/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, mobile QR, destinations, routing checks |
+| `./scripts/traffic-daily-report` | compatibility backend for saved day/week/month snapshot periods |
 | `./scripts/catalog-review-report` | advisory review of domains/static networks |
 | `./scripts/dns-forensics-report` | hourly DNS-interest snapshots |
 
@@ -160,15 +160,46 @@ DNS forensics show interest, not bytes.
 - Tailscale peer deltas
 - current conntrack snapshot
 
-`traffic-daily-report` builds period deltas from saved snapshots:
+`traffic-report [period]` is the main human-facing report. Supported periods are
+`today`, `yesterday`, `week`, `month`, and a specific `YYYY-MM-DD`.
+
+Canonical sections:
+
+- `EXIT SUMMARY` — WAN/Wi-Fi totals plus how much left via VPS vs home
+  Russian direct exit.
+- `PATH MATRIX` — source, first hop, router decision, exit and what the final
+  site sees.
+- `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
+  much traffic used the managed path.
+- `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
+- `MOBILE QR CLIENTS` — QR/profile connection split plus LTE ingress bytes.
+- `SITES / DESTINATIONS` — current-day top mobile destinations and whether they
+  used VPS or home Russian direct.
+- `ROUTING MISTAKES / CHECKS` — heuristic warnings for likely wrong routing,
+  such as RU/direct-looking destinations via VPS, managed destinations going
+  direct, direct DNS-like mobile destinations, unresolved mobile flows, or
+  RU-looking domains in the managed catalog.
+
+For current-day reports it combines:
+
+- live interface deltas;
+- LAN/Wi-Fi byte counters;
+- Mobile Home Reality byte counters;
+- mobile destination attribution from `sing-box.log`;
+- routing mistake heuristics.
+
+For closed day/week/month reports it uses the saved snapshot backend
+(`traffic-daily-report`) and keeps the same high-level section names where the
+data exists.
+
+The saved snapshot backend builds period deltas from:
 
 - `interface-counters.tsv` for WAN/LAN bridge/Wi-Fi totals
 - `lan-device-counters.tsv` for LAN `Reality` / direct `WAN` / `Other`
 - `mobile-reality-counters.tsv` for Mobile Home Reality upload/download bytes
 
-Supported period arguments are `today`, `yesterday`, `week`, `month`, and a
-specific `YYYY-MM-DD`. The script takes a fresh snapshot first, then computes
-first-to-last deltas inside the requested nominal window.
+The script takes a fresh snapshot first, then computes first-to-last deltas
+inside the requested nominal window.
 
 Important interpretation:
 
@@ -176,7 +207,7 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
-- `MOBILE HOME REALITY` combines two signals:
+- `MOBILE QR CLIENTS` combines two signals:
   - byte totals from router-side TCP/<home-reality-port> counters
     (`RC_MOBILE_REALITY_IN/OUT`)
   - connection attribution from `sing-box.log`: client profile names,
@@ -189,8 +220,10 @@ Important interpretation:
   window, the report uses a combined source label.
 - `router-health-report` includes the mobile Home Reality summary in the common
   `Traffic Snapshot` block.
-- Mobile Home Reality clients are not LAN devices; use the `MOBILE HOME REALITY`
-  block for profile activity and `LAN DEVICE BYTES` for home Wi-Fi/LAN devices.
+- Mobile Home Reality clients are not LAN devices; use `MOBILE QR CLIENTS` for
+  profile activity and `LAN/WI-FI DEVICES` for home Wi-Fi/LAN devices.
+- `ROUTING MISTAKES / CHECKS` is heuristic. A warning means "review catalog or
+  no-vpn rules", not automatic proof of breakage.
 
 ---
 
@@ -199,10 +232,10 @@ Important interpretation:
 ```bash
 ./verify.sh
 ./scripts/router-health-report
-./scripts/traffic-report
-./scripts/traffic-daily-report yesterday
-./scripts/traffic-daily-report week
-./scripts/traffic-daily-report month
+./scripts/traffic-report today
+./scripts/traffic-report yesterday
+./scripts/traffic-report week
+./scripts/traffic-report month
 ./scripts/catalog-review-report
 ```
 
