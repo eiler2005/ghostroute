@@ -15,9 +15,23 @@ should_run() {
   [ -z "$PROBE_FILTER" ] || [ "$PROBE_FILTER" = "$1" ]
 }
 
+hm_runtime_port() {
+  name="$1"
+  value="$2"
+  if [ -z "$value" ]; then
+    hm_emit "$name" UNKNOWN "monitor runtime configuration missing" \
+      "The health monitor runtime port configuration is missing." \
+      "missing=$name env=$HEALTH_MONITOR_ENV" \
+      "Re-render the health monitor env from Ansible before interpreting this probe."
+    return 1
+  fi
+  printf '%s\n' "$value"
+}
+
 probe_channel_b_reality() {
   should_run channel_b_reality || return 0
-  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:1080}"
+  socks_port="$(hm_runtime_port channel_b_reality "${HEALTH_MONITOR_SOCKS_PORT:-}")" || return 0
+  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:$socks_port}"
   expected="$(hm_extract_reality_server 2>/dev/null || true)"
   log="$(hm_singbox_log)"
   recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
@@ -85,13 +99,16 @@ probe_vps_path() {
 
 probe_singbox_health() {
   should_run singbox_health || return 0
+  redirect_port="$(hm_runtime_port singbox_health "${HEALTH_MONITOR_REDIRECT_PORT:-}")" || return 0
+  socks_port="$(hm_runtime_port singbox_health "${HEALTH_MONITOR_SOCKS_PORT:-}")" || return 0
+  home_port="$(hm_runtime_port singbox_health "${HEALTH_MONITOR_HOME_REALITY_PORT:-}")" || return 0
   ps_out="$(ps 2>/dev/null | grep '[s]ing-box' || true)"
   netstat_out="$(netstat -nlp 2>/dev/null || true)"
   missing=""
 
-  printf '%s\n' "$netstat_out" | grep -q ':<lan-redirect-port> ' || missing="${missing} redirect_<lan-redirect-port>"
-  printf '%s\n' "$netstat_out" | grep -q '127.0.0.1:1080 ' || missing="${missing} socks_1080"
-  printf '%s\n' "$netstat_out" | grep -q '0.0.0.0:<home-reality-port>' || missing="${missing} home_reality_<home-reality-port>"
+  printf '%s\n' "$netstat_out" | grep -q ":$redirect_port " || missing="${missing} redirect_listener"
+  printf '%s\n' "$netstat_out" | grep -q "127.0.0.1:$socks_port " || missing="${missing} socks_listener"
+  printf '%s\n' "$netstat_out" | grep -q "0.0.0.0:$home_port" || missing="${missing} home_reality_listener"
 
   if [ -z "$ps_out" ]; then
     hm_emit singbox_health CRIT "sing-box unhealthy" \
@@ -106,37 +123,38 @@ probe_singbox_health() {
   else
     hm_emit singbox_health OK "sing-box unhealthy" \
       "sing-box process and expected listeners are present." \
-      "listeners=<lan-redirect-port>,1080,<home-reality-port>" \
+      "listeners=redirect,socks,home_reality" \
       "No action."
   fi
 }
 
 probe_home_reality_ingress() {
   should_run home_reality_ingress || return 0
+  home_port="$(hm_runtime_port home_reality_ingress "${HEALTH_MONITOR_HOME_REALITY_PORT:-}")" || return 0
   netstat_out="$(netstat -nlp 2>/dev/null || true)"
   input_rules="$(iptables -S INPUT 2>/dev/null || true)"
   mangle_rules="$(iptables -t mangle -S 2>/dev/null || true)"
   issues=""
 
-  printf '%s\n' "$netstat_out" | grep -q '0.0.0.0:<home-reality-port>' || issues="${issues} listener_missing"
-  printf '%s\n' "$input_rules" | grep -- '--dport <home-reality-port>' | grep -q -- '-j ACCEPT' || issues="${issues} input_accept_missing"
-  printf '%s\n' "$mangle_rules" | grep -- '--dport <home-reality-port>' | grep -q 'TCPMSS' || issues="${issues} mss_prerouting_missing"
-  printf '%s\n' "$mangle_rules" | grep -- '--sport <home-reality-port>' | grep -q 'TCPMSS' || issues="${issues} mss_output_missing"
+  printf '%s\n' "$netstat_out" | grep -q "0.0.0.0:$home_port" || issues="${issues} listener_missing"
+  printf '%s\n' "$input_rules" | grep -- "--dport $home_port" | grep -q -- '-j ACCEPT' || issues="${issues} input_accept_missing"
+  printf '%s\n' "$mangle_rules" | grep -- "--dport $home_port" | grep -q 'TCPMSS' || issues="${issues} mss_prerouting_missing"
+  printf '%s\n' "$mangle_rules" | grep -- "--sport $home_port" | grep -q 'TCPMSS' || issues="${issues} mss_output_missing"
 
   if printf '%s\n' "$issues" | grep -q 'listener_missing'; then
-    hm_emit home_reality_ingress CRIT "Home Reality ingress :<home-reality-port> down" \
-      "The router is not listening on 0.0.0.0:<home-reality-port>." \
+    hm_emit home_reality_ingress CRIT "Home Reality ingress down" \
+      "The router is not listening on the configured Home Reality ingress." \
       "issues=${issues# }" \
       "Check sing-box home Reality inbound and firewall-start state."
   elif [ -n "$issues" ]; then
-    hm_emit home_reality_ingress WARN "Home Reality ingress :<home-reality-port> degraded" \
+    hm_emit home_reality_ingress WARN "Home Reality ingress degraded" \
       "Home Reality listener is present but supporting firewall/MSS rules drifted." \
       "issues=${issues# }" \
       "Run diagnostics from the runbook before re-applying routing hooks."
   else
-    hm_emit home_reality_ingress OK "Home Reality ingress :<home-reality-port> down" \
+    hm_emit home_reality_ingress OK "Home Reality ingress down" \
       "Home Reality listener and supporting rules are present." \
-      "port=<home-reality-port>" \
+      "port=configured" \
       "No action."
   fi
 }
@@ -412,7 +430,8 @@ emit_performance_rtt_sample() {
 
 probe_performance_rtt() {
   should_run performance_rtt || return 0
-  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:1080}"
+  socks_port="$(hm_runtime_port performance_rtt "${HEALTH_MONITOR_SOCKS_PORT:-}")" || return 0
+  socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:$socks_port}"
   log="$(hm_singbox_log)"
   recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
   timing="$(hm_curl -sS --max-time 8 --proxy "socks5h://$socks" -o /dev/null -w '%{time_total}' https://api.ipify.org 2>/dev/null)"

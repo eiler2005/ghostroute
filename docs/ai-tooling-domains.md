@@ -114,7 +114,7 @@ fragment.com / graph.org / contest.com / comments.app
 usercontent.dev / tdesktop.com
 ```
 
-**Static IP routing** (Telegram uses direct IP connections, bypassing DNS):  
+**Static IP routing** (Telegram uses direct IP connections, bypassing DNS):
 ASN-based CIDR ranges in `configs/static-networks.txt` → `VPN_STATIC_NETS` ipset.
 
 ---
@@ -164,7 +164,7 @@ Common patterns:
 Что смотреть:
 
 - `Routing Health`
-  - на месте ли `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, home Reality `:<home-reality-port>`, DNS через `127.0.0.1:5354`
+  - на месте ли `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, home Reality `:<home-reality-port>`, DNS через `127.0.0.1:<dnscrypt-port>`
   - отсутствуют ли legacy `VPN_DOMAINS`, `RC_VPN_ROUTE` и `0x1000`
 - `Catalog Capacity`
   - не вырос ли `STEALTH_DOMAINS` неожиданно сильно после нового семейства

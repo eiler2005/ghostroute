@@ -36,17 +36,17 @@
 ### Public surface тогда
 
 - `wgs1_enable=1`
-- `wgs1_port=51820`
+- `wgs1_port=<legacy-wg-port>`
 - `wgs1` слушает:
-  - `udp 0.0.0.0:51820`
-  - `udp :::51820`
+  - `udp 0.0.0.0:<legacy-wg-port>`
+  - `udp :::<legacy-wg-port>`
 - `wan0_ipaddr=<wan_public_ip>`
 - enabled peer count на `wgs1`: `6`
 - у нескольких peer'ов есть свежие handshake
 
 ### Дополнительная внешняя поверхность
 
-- web admin выглядит публично доступной через `8443`
+- web admin выглядит публично доступной через `<xray-local-port>`
 - `UPnP` включён
 - `SSH` слушает на `0.0.0.0:22`, что требует отдельной WAN-проверки и, вероятно, ужесточения
 

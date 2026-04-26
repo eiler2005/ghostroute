@@ -19,7 +19,7 @@ Check:
 ```sh
 netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
 netstat -nlp 2>/dev/null | grep ':<home-reality-port> '
-netstat -nlp 2>/dev/null | grep '127.0.0.1:1080 '
+netstat -nlp 2>/dev/null | grep '127.0.0.1:<router-socks-port> '
 tail -80 /opt/var/log/sing-box.log
 ```
 
@@ -39,7 +39,7 @@ Symptom: DNS resolution fails or `STEALTH_DOMAINS` stops populating.
 Check:
 
 ```sh
-netstat -nlp 2>/dev/null | grep ':5354 '
+netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 grep '^proxy = ' /opt/etc/dnscrypt-proxy.toml
 nslookup ifconfig.me 127.0.0.1
 ```
@@ -51,8 +51,8 @@ Recover:
 service restart_dnsmasq
 ```
 
-Expected design: dnsmasq sends upstream DNS to `127.0.0.1#5354`;
-dnscrypt-proxy sends DoH through sing-box SOCKS at `socks5://127.0.0.1:1080`.
+Expected design: dnsmasq sends upstream DNS to `127.0.0.1#<dnscrypt-port>`;
+dnscrypt-proxy sends DoH through sing-box SOCKS at `socks5://127.0.0.1:<router-socks-port>`.
 
 ## VPS 443 Broken
 
@@ -61,8 +61,8 @@ Symptom: local sing-box is healthy, but Reality handshakes fail.
 Check from laptop:
 
 ```bash
-curl -sk --resolve gateway.icloud.com:443:198.51.100.10 -I https://gateway.icloud.com/
-nc -vz 198.51.100.10 443
+curl -sk --resolve gateway.icloud.com:443:<vps-ip> -I https://gateway.icloud.com/
+nc -vz <vps-ip> 443
 ```
 
 Recover on VPS:

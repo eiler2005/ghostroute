@@ -15,8 +15,8 @@
       ansible.builtin.shell: "ss -tlnp '( sport = :443 )' | grep -q caddy"
       changed_when: false
 
-    - name: Xray listening on 127.0.0.1:8443
-      ansible.builtin.shell: "ss -tlnp '( sport = :8443 )' | grep -q '127.0.0.1:8443'"
+    - name: Xray listening on configured localhost Reality port
+      ansible.builtin.shell: "ss -tlnp '( sport = :{{ xray_reality_listen_port }} )' | grep -q '127.0.0.1:{{ xray_reality_listen_port }}'"
       changed_when: false
 
     - name: maxtg_bridge container still running

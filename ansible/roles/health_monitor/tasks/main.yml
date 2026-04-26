@@ -9,6 +9,12 @@
     dest: /jffs/scripts/health-monitor/
     mode: preserve
 
+- name: Render GhostRoute health monitor runtime env
+  ansible.builtin.template:
+    src: env.j2
+    dest: /jffs/scripts/health-monitor/env
+    mode: "0600"
+
 - name: Ensure GhostRoute health monitor scripts are executable
   ansible.builtin.raw: chmod 0755 /jffs/scripts/health-monitor/lib.sh /jffs/scripts/health-monitor/run-probes /jffs/scripts/health-monitor/aggregate /jffs/scripts/health-monitor/daily-digest /jffs/scripts/health-monitor/run-once
   changed_when: false

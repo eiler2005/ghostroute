@@ -82,15 +82,15 @@ tail -200 /opt/var/log/sing-box.log
 
 ### `channel_b_reality` CRIT
 
-Смысл: router-side SOCKS path `127.0.0.1:1080 -> reality-out -> VPS` не вернул
+Смысл: router-side SOCKS path `127.0.0.1:<router-socks-port> -> reality-out -> VPS` не вернул
 exit IP.
 
 Read-only диагностика:
 
 ```sh
-netstat -nlp 2>/dev/null | grep -E ':(1080|<lan-redirect-port>|<home-reality-port>) '
+netstat -nlp 2>/dev/null | grep -E ':(<router-socks-port>|<lan-redirect-port>|<home-reality-port>) '
 tail -100 /opt/var/log/sing-box.log
-curl -sm 8 --proxy socks5h://127.0.0.1:1080 https://api.ipify.org
+curl -sm 8 --proxy socks5h://127.0.0.1:<router-socks-port> https://api.ipify.org
 ```
 
 Вероятные причины:
@@ -121,7 +121,7 @@ provider status. Не меняй routing catalog: это transport problem.
 
 ```sh
 ps | grep '[s]ing-box'
-netstat -nlp 2>/dev/null | grep -E ':(<lan-redirect-port>|1080|<home-reality-port>) '
+netstat -nlp 2>/dev/null | grep -E ':(<lan-redirect-port>|<router-socks-port>|<home-reality-port>) '
 tail -200 /opt/var/log/sing-box.log
 ```
 
@@ -258,7 +258,7 @@ For growth/capacity review:
 Смысл: bounded RTT sample through Reality SOCKS is slow.
 
 ```sh
-curl -sm 8 --proxy socks5h://127.0.0.1:1080 -o /dev/null -w '%{time_total}\n' https://api.ipify.org
+curl -sm 8 --proxy socks5h://127.0.0.1:<router-socks-port> -o /dev/null -w '%{time_total}\n' https://api.ipify.org
 cat /proc/net/snmp | grep '^Tcp:'
 ```
 
@@ -311,7 +311,7 @@ If cron is stopped, restarting cron is a runtime action and needs OK.
 
 ### 3. На iPhone показывает не тот IP
 
-- Symptom: checker показывает домашний IP для managed site или VPS IP для direct site.
+- Symptom: checker показывает домашний IP для managed site или VPS exit IP для direct site.
 - First files: `summary-latest.md`, `alerts/<today>.md`, `traffic-report today`.
 - Likely probes: `mobile_routing_leaks`, `rule_set_sync`, будущий `mobile_self_check`.
 - Read-only diagnostics: проверить `reality-in -> reality-out/direct-out` в sing-box log.

@@ -331,7 +331,7 @@ Important interpretation:
 - `SITES / DESTINATIONS` separates popularity into:
   - overall Home Reality ingress destinations;
   - destinations that exited through VPS, where final sites see the
-    VPS VPS IP;
+    VPS exit IP;
   - destinations that exited through home Russian direct, where final sites see
     the home Russian IP.
 - `router-health-report` includes the Home Reality ingress summary in the common
@@ -392,15 +392,15 @@ Path matrix:
 
 ```text
 Source      First hop                 Router             Exit                      Site sees
-Wi-Fi/LAN   device -> router          REDIRECT :<lan-redirect-port>    VLESS+Reality -> VPS   VPS VPS IP
+Wi-Fi/LAN   device -> router          REDIRECT :<lan-redirect-port>    VLESS+Reality -> VPS   VPS exit IP
 Wi-Fi/LAN   device -> router          no redirect        Home WAN direct           Home Russian IP
-HR client   LTE/Wi-Fi -> home :<home-reality-port>  reality-in         VLESS+Reality -> VPS   VPS VPS IP
+HR client   LTE/Wi-Fi -> home :<home-reality-port>  reality-in         VLESS+Reality -> VPS   VPS exit IP
 HR client   LTE/Wi-Fi -> home :<home-reality-port>  reality-in         Home WAN direct           Home Russian IP
 ```
 
 This is the core mental model:
 
-- managed path -> final site sees VPS VPS IP;
+- managed path -> final site sees VPS exit IP;
 - direct path -> final site sees home Russian IP;
 - first-hop network for Home Reality ingress sees only the home IP on TCP/<home-reality-port>.
 
@@ -438,7 +438,7 @@ Home Reality ingress clients:
 ```text
 === 5. HOME REALITY INGRESS CLIENTS ===
 Ingress byte total:      5.22 GiB
-Ingress via VPS est.:    4.27 GiB  (sites see VPS VPS IP)
+Ingress via VPS est.:    4.27 GiB  (sites see VPS exit IP)
 Ingress RU direct est.:  972.5 MiB (sites see home Russian IP)
 
 Client/profile       Conn    VPS    Direct   VPS est.    RU est.
@@ -472,7 +472,7 @@ ingress:
 Top Home Reality ingress destinations overall:
 App/family      Destination             Est. traffic  % ingress  Path
 Google/YouTube  www.google.com          1.03 GiB      19.8%      VPS
-Telegram        203.0.113.35          550.2 MiB     10.3%      VPS
+Telegram        <example-managed-ip>          550.2 MiB     10.3%      VPS
 Apple/iCloud    gs-loc.apple.com        357.0 MiB      6.7%      VPS
 AWS/CDN         ...amazonaws.com         190.6 MiB      3.6%      Home RU direct
 DNS/CDN         1.1.1.1                  119.9 MiB      2.2%      mostly Home RU direct
@@ -484,7 +484,7 @@ Then it splits the same data into two practical views:
 Popular via VPS:
 App/family      Destination        Est. traffic  % ingress
 Google/YouTube  www.google.com     1.03 GiB      19.8%
-Telegram        203.0.113.35     550.2 MiB     10.3%
+Telegram        <example-managed-ip>     550.2 MiB     10.3%
 
 Popular via home RU direct:
 App/family      Destination        Est. traffic  % ingress
@@ -496,7 +496,7 @@ RU services     api.ozon.ru         17.0 MiB      0.3%
 Use this section to answer:
 
 - what is popular on Home Reality ingress;
-- what actually used the VPS VPS;
+- what actually used the VPS;
 - what stayed in the Russian direct internet;
 - whether a service family is unexpectedly heavy.
 
@@ -525,7 +525,7 @@ OK: no obvious RU-looking domain in managed catalog.
 Meaning:
 
 - `RU/direct-looking ... via VPS`:
-  a destination that looks Russian or normally direct went through VPS region.
+  a destination that looks Russian or normally direct went through the VPS path.
   Review `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, and auto-add history.
 - `managed ... went direct`:
   something that looks like YouTube/Telegram/OpenAI/etc. escaped to home WAN.
@@ -540,7 +540,7 @@ Meaning:
   growth should be investigated.
 - `RU-looking domain in managed catalog`:
   a Russian-looking domain is present in `STEALTH_DOMAINS`. This may be
-  intentional, but it deserves review because final sites may see VPS VPS.
+  intentional, but it deserves review because final sites may see VPS.
 
 ---
 

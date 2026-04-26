@@ -159,7 +159,7 @@ Caddy/Xray: только читает `ss`, `caddy list-modules`, `docker ps/log
 |---|---|
 | `caddy_listener` | Caddy не слушает public TCP/443 |
 | `caddy_layer4` | host Caddy потерял layer4 module |
-| `xray_reality_listener` | Xray Reality inbound не слушает `127.0.0.1:8443` |
+| `xray_reality_listener` | Xray Reality inbound не слушает `127.0.0.1:<xray-local-port>` |
 | `xray_container` | Docker container `xray` не запущен |
 | `xui_health` | 3x-ui localhost endpoint не отвечает |
 | `vps_disk_space` | VPS disk usage высокий/критичный |

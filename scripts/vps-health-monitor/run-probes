@@ -53,15 +53,21 @@ probe_caddy_layer4() {
 
 probe_xray_reality_listener() {
   should_run xray_reality_listener || return 0
-  if hm_ss -tlnp '( sport = :8443 )' 2>/dev/null | grep -q '127.0.0.1:8443'; then
+  port="${VPS_HEALTH_XRAY_PORT:-}"
+  if [ -z "$port" ]; then
+    hm_emit xray_reality_listener UNKNOWN "Xray Reality listener configuration missing" \
+      "VPS_HEALTH_XRAY_PORT is not configured." \
+      "env=$VPS_HEALTH_ENV" \
+      "Re-render the VPS health monitor env from Ansible."
+  elif hm_ss -tlnp "( sport = :$port )" 2>/dev/null | grep -q "127.0.0.1:$port"; then
     hm_emit xray_reality_listener OK "Xray Reality listener unavailable" \
       "Xray Reality inbound is listening on localhost." \
-      "listener=127.0.0.1:8443" \
+      "listener=127.0.0.1:configured" \
       "No action."
   else
     hm_emit xray_reality_listener CRIT "Xray Reality listener unavailable" \
-      "Xray Reality inbound is not listening on 127.0.0.1:8443." \
-      "listener=127.0.0.1:8443" \
+      "Xray Reality inbound is not listening on the configured localhost port." \
+      "listener=127.0.0.1:configured" \
       "Check xray container and 3x-ui inbound state."
   fi
 }
@@ -83,7 +89,14 @@ probe_xray_container() {
 
 probe_xui_health() {
   should_run xui_health || return 0
-  port="${VPS_HEALTH_XUI_PORT:-<xui-admin-port>}"
+  port="${VPS_HEALTH_XUI_PORT:-}"
+  if [ -z "$port" ]; then
+    hm_emit xui_health UNKNOWN "3x-ui localhost health configuration missing" \
+      "VPS_HEALTH_XUI_PORT is not configured." \
+      "env=$VPS_HEALTH_ENV" \
+      "Re-render the VPS health monitor env from Ansible."
+    return 0
+  fi
   path="${VPS_HEALTH_XUI_PATH:-/}"
   case "$path" in
     "") path="/" ;;

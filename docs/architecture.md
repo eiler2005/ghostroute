@@ -31,9 +31,9 @@ only as a cold fallback through `scripts/emergency-enable-wgc1.sh`.
 |---|---|
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off |
-| `dnscrypt-proxy` | upstream DNS on `127.0.0.1:5354`, proxied through sing-box SOCKS |
+| `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
 | `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, Reality outbound to VPS |
-| VPS VPS | Caddy :443 plus Xray Reality backend on localhost |
+| VPS host | Caddy :443 plus Xray Reality backend on localhost |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel B |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 

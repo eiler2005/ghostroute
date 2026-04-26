@@ -292,7 +292,7 @@ puts
 
 puts '=== 2. PATH MATRIX ==='
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Source', 'First hop', 'Router', 'Exit', 'Site sees')
-puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'REDIRECT :<lan-redirect-port>', 'VLESS+Reality -> VPS', 'VPS VPS IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'REDIRECT', 'VLESS+Reality -> VPS', 'VPS exit IP')
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'no redirect', 'Home WAN direct', 'Home Russian IP')
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'HR client', 'LTE/Wi-Fi -> home :<home-reality-port>', 'reality-in', 'split not byte-attributed', 'VPS or home RU IP')
 puts

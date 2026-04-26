@@ -35,7 +35,7 @@ only for `scripts/emergency-enable-wgc1.sh`.
    iPhone к VPS.
 
 2. **Сайт или checker.** Если домен идёт через managed route, финальный выход —
-   VPS VPS. Это нормально для YouTube/Googlevideo/AI/dev/social-доменов,
+   VPS host. Это нормально для YouTube/Googlevideo/AI/dev/social-доменов,
    которые сознательно отправлены через Reality.
 
 3. **Российские сервисы вне managed route.** Домены, которых нет в
@@ -70,8 +70,8 @@ ipset=/youtube.com/STEALTH_DOMAINS
 Supported-схема:
 
 ```text
-dnsmasq -> dnscrypt-proxy 127.0.0.1:5354
-dnscrypt-proxy -> sing-box SOCKS 127.0.0.1:1080
+dnsmasq -> dnscrypt-proxy 127.0.0.1:<dnscrypt-port>
+dnscrypt-proxy -> sing-box SOCKS 127.0.0.1:<router-socks-port>
 ```
 
 IPv6 выключен, поэтому dnsmasq фильтрует AAAA:

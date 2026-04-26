@@ -5,7 +5,7 @@
             layer4 {
                 @reality tls sni {{ reality_server_names[0] }}
                 route @reality {
-                    proxy 127.0.0.1:8443
+                    proxy 127.0.0.1:{{ xray_reality_listen_port }}
                 }
             }
             tls

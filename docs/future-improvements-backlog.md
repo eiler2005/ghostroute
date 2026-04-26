@@ -19,7 +19,7 @@
   - egress: managed split policy; `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → VPS/Xray, остальные назначения → home WAN direct
 - Channel A (`wgs1` + `wgc1`) runtime выключен; `wgc1_*` NVRAM сохранён только как cold fallback
 - `VPN_DOMAINS` отсутствует в steady state; active domain catalog is `STEALTH_DOMAINS`
-- DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:5354`
+- DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:<dnscrypt-port>`
 - traffic observability и device mix reporting работают с этой новой routing matrix
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:

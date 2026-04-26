@@ -14,7 +14,7 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 DNS is shared:
 
 ```text
-dnsmasq -> dnscrypt-proxy 127.0.0.1:5354
+dnsmasq -> dnscrypt-proxy 127.0.0.1:<dnscrypt-port>
 ```
 
 Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
@@ -131,16 +131,16 @@ exist unless `scripts/emergency-enable-wgc1.sh --enable` was explicitly used.
 ### DNS
 
 ```sh
-grep '^server=127.0.0.1#5354$' /jffs/configs/dnsmasq.conf.add
+grep '^server=127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq.conf.add
 grep '@wgc1' /jffs/configs/dnsmasq.conf.add
-netstat -nlp 2>/dev/null | grep ':5354 '
+netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 ```
 
 Expected:
 
-- `server=127.0.0.1#5354` exists.
+- `server=127.0.0.1#<dnscrypt-port>` exists.
 - active `@wgc1` entries do not exist.
-- `dnscrypt-proxy` listens on `127.0.0.1:5354`.
+- `dnscrypt-proxy` listens on `127.0.0.1:<dnscrypt-port>`.
 
 ### ipsets
 
@@ -304,7 +304,7 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 |---|---|
 | LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 DROP, sing-box log |
 | Emergency WGC1 fallback unexpectedly active | `wgs1`, `RC_VPN_ROUTE`, `0x1000`, table `wgc1`, emergency script state |
-| DNS looks wrong | `server=127.0.0.1#5354`, dnscrypt listener, no active `@wgc1` |
+| DNS looks wrong | `server=127.0.0.1#<dnscrypt-port>`, dnscrypt listener, no active `@wgc1` |
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |
 | Reality tunnel down | `sing-box` status/log, VPS Caddy/Xray, `99-verify.yml` |
 

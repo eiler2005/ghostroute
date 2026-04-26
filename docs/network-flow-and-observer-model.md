@@ -30,10 +30,10 @@ GhostRoute: какие клиенты куда подключаются, как�
 | Client at home | Browser/app on Wi-Fi/LAN | Работает без VPN-приложения; роутер принимает решение прозрачно |
 | Router OS | ASUS RT-AX88U Pro + Asuswrt-Merlin | dnsmasq, ipset, iptables, sing-box hooks |
 | Router DNS | `dnsmasq` | Наполняет `STEALTH_DOMAINS`, фильтрует AAAA while IPv6 is off |
-| Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:5354` | Upstream DNS, при необходимости через локальный sing-box SOCKS |
+| Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS, при необходимости через локальный sing-box SOCKS |
 | Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow TCP/<home-reality-port> |
 | Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `reality-out`, `direct-out` |
-| VPS ingress | VPS VPS + Caddy L4 TCP/443 | Принимает router-side Reality connection |
+| VPS ingress | VPS host + Caddy L4 TCP/443 | Принимает router-side Reality connection |
 | VPS proxy | Xray Reality inbound | Финальный Reality ingress перед выходом в интернет |
 | Cold fallback | Preserved `wgc1_*` NVRAM | Не активен; включается только emergency script вручную |
 
@@ -57,13 +57,13 @@ Laptop / TV / phone at home
   -> sing-box redirect-in
   -> sing-box route rule: managed rule-set
   -> sing-box reality-out
-  -> VPS VPS TCP/443
+  -> VPS host TCP/443
   -> Caddy L4
   -> Xray Reality inbound
   -> target site
 ```
 
-Expected website-facing exit: VPS/datacenter IP.
+Expected website-facing exit: VPS datacenter IP.
 
 UDP/443 for managed destinations is dropped on the router. This forces apps to
 fall back from QUIC/HTTP3 to TCP, where the transparent REDIRECT path can carry
@@ -109,7 +109,7 @@ The mobile profile uses router-side Reality identity:
 - TCP/<home-reality-port> on home WAN
 
 This means the LTE carrier sees the phone connecting to the home Russian IP,
-not to the VPS VPS.
+not to the VPS.
 
 ### Managed Destination from Mobile
 
@@ -122,13 +122,13 @@ iPhone LTE
   -> sing-box route rule:
        destination matches STEALTH_DOMAINS or VPN_STATIC_NETS rule-set
   -> sing-box reality-out
-  -> VPS VPS TCP/443
+  -> VPS host TCP/443
   -> Caddy L4
   -> Xray Reality inbound
   -> YouTube / checker / managed site
 ```
 
-Expected website-facing exit: VPS/datacenter IP.
+Expected website-facing exit: VPS datacenter IP.
 
 ### Non-Managed Destination from Mobile
 
@@ -167,8 +167,8 @@ router-originated traffic can loop sing-box outbound connections.
 |---|---|---|---|---|
 | LTE carrier | iPhone -> home RU IP TCP/<home-reality-port> | iPhone -> home RU IP TCP/<home-reality-port> | n/a | n/a |
 | Home ISP | home router -> VPS TCP/443 | home router -> target site directly | home router -> VPS TCP/443 | home router -> target site directly |
-| VPS VPS | connection from home router | does not see this flow | connection from home router | does not see this flow |
-| Target website | VPS/datacenter IP | approved regional egress IP | VPS/datacenter IP | approved regional egress IP |
+| VPS host | connection from home router | does not see this flow | connection from home router | does not see this flow |
+| Target website | VPS datacenter IP | approved regional egress IP | VPS datacenter IP | approved regional egress IP |
 | Router logs | destination metadata and selected outbound | destination metadata and `direct-out` | REDIRECT/reality metadata | normal WAN path |
 | Router traffic report | TCP/<home-reality-port> byte counters + `reality-out` connection counts | TCP/<home-reality-port> byte counters + `direct-out` connection counts | LAN mangle byte counters | LAN direct WAN byte counters |
 
@@ -181,13 +181,13 @@ Checker result depends on whether the checker domain itself is managed.
 
 ```text
 checker domain in STEALTH_DOMAINS or VPN_STATIC_NETS
-  -> checker sees VPS/datacenter IP
+  -> checker sees VPS datacenter IP
 
 checker domain not managed
   -> checker sees approved regional egress IP
 ```
 
-So a result like "VPS datacenter / suspicious" is expected only
+So a result like "VPS datacenter/suspicious" is expected only
 for managed checker traffic. It describes the final website-facing exit, not
 what the LTE carrier saw as the first hop.
 

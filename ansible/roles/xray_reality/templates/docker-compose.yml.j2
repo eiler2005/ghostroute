@@ -25,7 +25,7 @@ services:
       - TZ=Europe/Helsinki
     ports:
       - "127.0.0.1:{{ xui_admin_web_port }}:{{ xui_admin_web_port }}"
-      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:{{ xray_reality_listen_port }}:{{ xray_reality_listen_port }}"
 {% if stealth_caddy_mode == 'docker_sidecar' %}
 volumes:
   caddy_data:

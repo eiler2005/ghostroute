@@ -6,7 +6,7 @@
     :443 {
       @reality tls sni {{ reality_server_names[0] }}
       route @reality {
-        proxy 127.0.0.1:8443
+        proxy 127.0.0.1:{{ xray_reality_listen_port }}
       }
       # Future L7 web сервисы добавляются сюда:
       # @web tls sni web.example.ru
@@ -16,7 +16,7 @@
       # не-Reality трафик на настоящий cover-SNI. Это даёт единое
       # индистингуишабл поведение для сторонних сканеров.
       route {
-        proxy 127.0.0.1:8443
+        proxy 127.0.0.1:{{ xray_reality_listen_port }}
       }
     }
   }
