@@ -53,6 +53,10 @@ MOBILE_BYTES_CURRENT="$TMPDIR/mobile-reality-counters-current.tsv"
 MOBILE_BYTES_BASE="$TMPDIR/mobile-reality-counters-base.tsv"
 MOBILE_BYTES_PARSED="$TMPDIR/mobile-reality-bytes.txt"
 MOBILE_BYTES_TOTALS="$TMPDIR/mobile-reality-byte-totals.txt"
+MOBILE_BYTES_ATTRIBUTED="$TMPDIR/mobile-reality-attributed.txt"
+MOBILE_BYTES_LAN_HAIRPIN="$TMPDIR/mobile-reality-lan-hairpin.txt"
+MOBILE_BYTES_UNKNOWN_EXTERNAL="$TMPDIR/mobile-reality-unknown-external.txt"
+MOBILE_BYTES_CATEGORY_TOTALS="$TMPDIR/mobile-reality-category-totals.txt"
 ROUTING_WARN_RU_VPS="$TMPDIR/routing-warn-ru-vps.txt"
 ROUTING_WARN_MANAGED_DIRECT="$TMPDIR/routing-warn-managed-direct.txt"
 ROUTING_WARN_CATALOG_RU="$TMPDIR/routing-warn-catalog-ru.txt"
@@ -537,10 +541,39 @@ TAILSCALE_TOTAL=$(( TAILSCALE_RX_TOTAL + TAILSCALE_TX_TOTAL ))
 
 if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBILE_BYTES_PARSED" ]; }; then
   {
-    awk -F'|' '$1 != "" { print $1 }' "$MOBILE_CLIENTS"
-    awk -F'|' '$2 != "" { print $2 }' "$MOBILE_BYTES_PARSED"
-  } | sort -u | awk '
-    NF { printf "%s|mobile-client-%02d\n", $1, ++idx }
+    awk -F'|' '$1 != "" { print "profile|" $1 }' "$MOBILE_CLIENTS"
+    awk -F'|' '$2 != "" { print "source|" $2 }' "$MOBILE_BYTES_PARSED"
+  } | sort -u | awk -F'|' '
+    function source_ip(label,   ip) {
+      ip = label
+      sub(/^remote:/, "", ip)
+      return ip
+    }
+    function is_private_ip(ip,   octets) {
+      split(ip, octets, ".")
+      return octets[1] == "10" ||
+        (octets[1] == "192" && octets[2] == "168") ||
+        (octets[1] == "172" && octets[2] + 0 >= 16 && octets[2] + 0 <= 31)
+    }
+    BEGIN { OFS = "|" }
+    $1 == "profile" && $2 != "" {
+      if (!($2 in alias)) alias[$2] = sprintf("mobile-client-%02d", ++profile_idx)
+      next
+    }
+    $1 == "source" && $2 != "" {
+      if ($2 in alias) next
+
+      if ($2 ~ /^remote:/) {
+        ip = source_ip($2)
+        if (is_private_ip(ip)) alias[$2] = sprintf("lan-hairpin-%02d", ++lan_idx)
+        else alias[$2] = sprintf("unattributed-external-%02d", ++external_idx)
+      } else {
+        alias[$2] = sprintf("unattributed-source-%02d", ++source_idx)
+      }
+    }
+    END {
+      for (key in alias) print key, alias[key]
+    }
   ' > "$MOBILE_ALIAS_MAP"
 
   if [ -s "$DEVICE_METADATA_MAP" ]; then
@@ -582,6 +615,53 @@ if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBI
         print
       }' "$MOBILE_ALIAS_MAP" "$MOBILE_BYTES_PARSED" > "$MOBILE_BYTES_PARSED.redacted" && mv "$MOBILE_BYTES_PARSED.redacted" "$MOBILE_BYTES_PARSED"
   fi
+fi
+
+: > "$MOBILE_BYTES_ATTRIBUTED"
+: > "$MOBILE_BYTES_LAN_HAIRPIN"
+: > "$MOBILE_BYTES_UNKNOWN_EXTERNAL"
+: > "$MOBILE_BYTES_CATEGORY_TOTALS"
+if [ -s "$MOBILE_BYTES_PARSED" ]; then
+  awk -F'|' \
+    -v attributed_file="$MOBILE_BYTES_ATTRIBUTED" \
+    -v lan_file="$MOBILE_BYTES_LAN_HAIRPIN" \
+    -v unknown_file="$MOBILE_BYTES_UNKNOWN_EXTERNAL" \
+    -v totals_file="$MOBILE_BYTES_CATEGORY_TOTALS" '
+    function source_ip(raw,   ip) {
+      ip = raw
+      sub(/^remote:/, "", ip)
+      return ip
+    }
+    function is_private_ip(ip,   octets) {
+      split(ip, octets, ".")
+      return octets[1] == "10" ||
+        (octets[1] == "192" && octets[2] == "168") ||
+        (octets[1] == "172" && octets[2] + 0 >= 16 && octets[2] + 0 <= 31)
+    }
+    function add(category, file) {
+      count[category]++
+      upload[category] += $3 + 0
+      download[category] += $4 + 0
+      total[category] += $5 + 0
+      print $0 >> file
+    }
+    BEGIN { OFS = "|" }
+    ($5 + 0) <= 0 { next }
+    {
+      raw = $1
+      if (raw ~ /^remote:/) {
+        ip = source_ip(raw)
+        if (is_private_ip(ip)) add("lan_hairpin", lan_file)
+        else add("unknown_external", unknown_file)
+      } else {
+        add("attributed", attributed_file)
+      }
+    }
+    END {
+      print "attributed", count["attributed"] + 0, upload["attributed"] + 0, download["attributed"] + 0, total["attributed"] + 0 > totals_file
+      print "lan_hairpin", count["lan_hairpin"] + 0, upload["lan_hairpin"] + 0, download["lan_hairpin"] + 0, total["lan_hairpin"] + 0 >> totals_file
+      print "unknown_external", count["unknown_external"] + 0, upload["unknown_external"] + 0, download["unknown_external"] + 0, total["unknown_external"] + 0 >> totals_file
+    }' "$MOBILE_BYTES_PARSED"
 fi
 
 if [ -s "$MOBILE_DESTS" ]; then
@@ -650,6 +730,43 @@ else
   MOBILE_BYTE_UPLOAD=0
   MOBILE_BYTE_DOWNLOAD=0
   MOBILE_BYTE_SOURCES=0
+fi
+
+MOBILE_ATTRIBUTED_SOURCES=0
+MOBILE_ATTRIBUTED_UPLOAD=0
+MOBILE_ATTRIBUTED_DOWNLOAD=0
+MOBILE_ATTRIBUTED_TOTAL=0
+MOBILE_LAN_HAIRPIN_SOURCES=0
+MOBILE_LAN_HAIRPIN_UPLOAD=0
+MOBILE_LAN_HAIRPIN_DOWNLOAD=0
+MOBILE_LAN_HAIRPIN_TOTAL=0
+MOBILE_UNKNOWN_EXTERNAL_SOURCES=0
+MOBILE_UNKNOWN_EXTERNAL_UPLOAD=0
+MOBILE_UNKNOWN_EXTERNAL_DOWNLOAD=0
+MOBILE_UNKNOWN_EXTERNAL_TOTAL=0
+if [ -s "$MOBILE_BYTES_CATEGORY_TOTALS" ]; then
+  while IFS='|' read -r category sources upload download total; do
+    case "$category" in
+      attributed)
+        MOBILE_ATTRIBUTED_SOURCES="${sources:-0}"
+        MOBILE_ATTRIBUTED_UPLOAD="${upload:-0}"
+        MOBILE_ATTRIBUTED_DOWNLOAD="${download:-0}"
+        MOBILE_ATTRIBUTED_TOTAL="${total:-0}"
+        ;;
+      lan_hairpin)
+        MOBILE_LAN_HAIRPIN_SOURCES="${sources:-0}"
+        MOBILE_LAN_HAIRPIN_UPLOAD="${upload:-0}"
+        MOBILE_LAN_HAIRPIN_DOWNLOAD="${download:-0}"
+        MOBILE_LAN_HAIRPIN_TOTAL="${total:-0}"
+        ;;
+      unknown_external)
+        MOBILE_UNKNOWN_EXTERNAL_SOURCES="${sources:-0}"
+        MOBILE_UNKNOWN_EXTERNAL_UPLOAD="${upload:-0}"
+        MOBILE_UNKNOWN_EXTERNAL_DOWNLOAD="${download:-0}"
+        MOBILE_UNKNOWN_EXTERNAL_TOTAL="${total:-0}"
+        ;;
+    esac
+  done < "$MOBILE_BYTES_CATEGORY_TOTALS"
 fi
 
 MOBILE_EST_REALITY_BYTES="$(estimate_share_bytes "$MOBILE_BYTE_TOTAL" "$MOBILE_REALITY" "$MOBILE_TOTAL")"
@@ -748,6 +865,7 @@ echo "Ingress via Reality:     ${MOBILE_REALITY}  ($(human_pct "$MOBILE_REALITY"
 echo "Ingress direct-out:      ${MOBILE_DIRECT}  ($(human_pct "$MOBILE_DIRECT" "$MOBILE_TOTAL"))"
 echo "Ingress unresolved:      ${MOBILE_UNRESOLVED}"
 echo "Ingress EOF/errors:      ${MOBILE_ERRORS}"
+echo "Ingress attribution:     profiles $(human_bytes "$MOBILE_ATTRIBUTED_TOTAL") from ${MOBILE_ATTRIBUTED_SOURCES} sources; LAN hairpin $(human_bytes "$MOBILE_LAN_HAIRPIN_TOTAL") from ${MOBILE_LAN_HAIRPIN_SOURCES}; unattributed external $(human_bytes "$MOBILE_UNKNOWN_EXTERNAL_TOTAL") from ${MOBILE_UNKNOWN_EXTERNAL_SOURCES}"
 if [ -s "$MOBILE_CLIENTS" ]; then
   echo
   printf "%-18s %8s %8s %8s %12s %12s %10s\n" "Client/profile" "Conn" "VPS" "Direct" "VPS est." "RU est." "Unresolved"
@@ -810,6 +928,38 @@ if [ -s "$MOBILE_BYTES_PARSED" ]; then
       direct_bytes = split_total > 0 ? bytes * split_direct / split_total : 0
       printf "%-24s %12s %12s %12s %12s %12s %9s\n", label, human_bytes(bytes), human_bytes($3), human_bytes($4), human_bytes(vps_bytes), human_bytes(direct_bytes), pct(vps_bytes, bytes)
     }' "$MOBILE_BYTES_PARSED"
+fi
+if [ -s "$MOBILE_BYTES_LAN_HAIRPIN" ]; then
+  echo
+  echo "Home Reality used from inside LAN:"
+  printf "%-24s %12s %12s %12s\n" "LAN hairpin source" "Total" "Upload" "Download"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    ($5 + 0) > 0 {
+      printf "%-24s %12s %12s %12s\n", $2, human_bytes($5), human_bytes($3), human_bytes($4)
+    }' "$MOBILE_BYTES_LAN_HAIRPIN"
+fi
+if [ -s "$MOBILE_BYTES_UNKNOWN_EXTERNAL" ]; then
+  echo
+  echo "Unattributed external ingress sources:"
+  printf "%-24s %12s %12s %12s\n" "External source" "Total" "Upload" "Download"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 8 && ($5 + 0) > 0 {
+      printf "%-24s %12s %12s %12s\n", $2, human_bytes($5), human_bytes($3), human_bytes($4)
+    }' "$MOBILE_BYTES_UNKNOWN_EXTERNAL"
 fi
 echo
 
@@ -1032,6 +1182,8 @@ echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP 
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
 echo "- LAN/Wi-Fi RU direct means device -> home router -> home ISP/WAN -> destination. It often includes Russian services, but can also include foreign sites outside STEALTH_DOMAINS, Apple/CDN/API/background traffic, and resolver-like infrastructure."
 echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; VPS/direct bytes for this ingress are estimated from connection split until per-outbound byte attribution is added."
+echo "- Home Reality used from inside LAN usually means a QR/Home Reality profile was active while the device was on home Wi-Fi; this is tracked separately as LAN hairpin traffic."
+echo "- Unattributed external ingress sources are byte-counter sources that were not confidently tied to a VLESS client identity in the current log window; review sustained high volume before blocking anything."
 echo "- Home Reality direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
 echo "- Resolver-like direct-out is a review signal, not necessarily your mistake and not proof of LTE-side DNS leak."
 echo "- Routing mistakes are heuristics: WARN means review catalog/no-vpn rules, not automatic proof of breakage."
