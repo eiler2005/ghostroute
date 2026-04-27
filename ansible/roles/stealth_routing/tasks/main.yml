@@ -58,11 +58,11 @@
     chmod +x {{ firewall_start_hook }}
     sed -i '\|{{ stealth_route_init_script }}|d' {{ firewall_start_hook }}
 
-- name: Enable firewall-start stealth hook when Channel B owns LAN
+- name: Enable firewall-start stealth hook when Channel A owns LAN
   ansible.builtin.raw: |
     grep -qx '{{ stealth_route_init_script }}' {{ firewall_start_hook }} || \
       echo '{{ stealth_route_init_script }}' >> {{ firewall_start_hook }}
-  when: stealth_channel_b_lan_enabled | bool
+  when: stealth_channel_a_lan_enabled | bool
 
 - name: Ensure services-start hook starts singbox on boot
   ansible.builtin.raw: |
@@ -94,4 +94,4 @@
 - name: Run stealth-route-init now
   ansible.builtin.raw: "{{ stealth_route_init_script }}"
   changed_when: false
-  when: stealth_channel_b_lan_enabled | bool
+  when: stealth_channel_a_lan_enabled | bool

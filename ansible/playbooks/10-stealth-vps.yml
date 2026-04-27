@@ -8,6 +8,7 @@
   roles:
     - caddy_l4
     - xray_reality
+    - xray_xhttp
     - ufw_stealth
     - role: vps_health_monitor
       tags:

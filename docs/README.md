@@ -19,7 +19,7 @@ Module-owned deep dives live next to their implementation under
 
 ## Module Docs
 
-- [modules/routing-core/docs/](/modules/routing-core/docs/) - routing data plane, Channel B and Reality flow.
+- [modules/routing-core/docs/](/modules/routing-core/docs/) - routing data plane, Channel A and Reality flow.
 - [modules/ghostroute-health-monitor/docs/](/modules/ghostroute-health-monitor/docs/) - health monitor implementation and runbook.
 - [modules/traffic-observatory/docs/](/modules/traffic-observatory/docs/) - traffic reporting and LLM handoff.
 - [modules/dns-catalog-intelligence/docs/](/modules/dns-catalog-intelligence/docs/) - domain discovery and catalog curation.

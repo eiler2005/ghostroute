@@ -91,6 +91,29 @@ Expected:
 - INPUT firewall allows TCP/<home-reality-port>;
 - sing-box has no fresh fatal errors.
 
+## Channel B/C Manual Profiles Не Работают
+
+Channel B access logs пишутся в Caddy stdout/journal. Channel C with the
+`stunnel_squid` compatibility backend is routed by Caddy layer4 before the HTTP
+app, so live client requests are visible in Squid/stunnel logs instead of the
+Caddy HTTP access logger.
+
+```bash
+ssh deploy@<vps-ip> '
+  sudo journalctl -u caddy --since "15 minutes ago" -o cat |
+    grep -E "channel_b_xhttp|channel_c_naive" | tail -80
+'
+```
+
+Expected:
+
+- Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
+  hostname, and either the configured random path or `404` for wrong paths.
+- Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
+- Channel C `stunnel_squid` requests show in
+  `/var/log/squid/channel-c-access.log` and `/var/log/stunnel4/channel-c.log`.
+- No Caddy restart loop: `sudo systemctl is-active caddy` returns `active`.
+
 ## VPS Emergency Clients Drift
 
 VPS Reality inbound should contain the router identity plus
@@ -115,7 +138,7 @@ Expected count is `1 + len(emergency_clients)` from
 `ansible/secrets/stealth.yml`: one router identity plus emergency direct-VPS
 fallback identities.
 
-## Legacy Channel A Снова Появился
+## Legacy WireGuard Снова Появился
 
 Проверка:
 
@@ -132,7 +155,7 @@ iptables -t mangle -S | grep -E 'wgs1|wgc1|0x1000|RC_VPN_ROUTE|VPN_DOMAINS' || t
 Expected:
 
 - both NVRAM enable flags are `0`;
-- `wg show` has no active Channel A interface;
+- `wg show` has no active WireGuard interface;
 - no `0x1000`, `wgs1`, `wgc1`, `RC_VPN_ROUTE` hooks;
 - `VPN_DOMAINS` does not exist.
 

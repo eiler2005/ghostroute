@@ -8,7 +8,7 @@ STATE_FILE="$STATE_DIR/STEALTH_DOMAINS.ipset"
 STATIC_NETWORKS_FILE="/jffs/configs/router_configuration.static_nets"
 PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
 
-# Create/restore the active Channel B target sets.
+# Create/restore the active Channel A target sets.
 ipset create STEALTH_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
 ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
 [ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
@@ -28,6 +28,6 @@ iptables -I INPUT 1 ! -i br0 -p tcp --dport 22 -j DROP
 # their counters during ordinary refreshes.
 [ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
 
-# Re-apply Channel B REDIRECT/QUIC-drop and home Reality INPUT rules after
+# Re-apply Channel A REDIRECT/QUIC-drop and home Reality INPUT rules after
 # Merlin rebuilds firewall chains.
 [ -x /jffs/scripts/stealth-route-init.sh ] && /jffs/scripts/stealth-route-init.sh >/dev/null 2>&1 || true

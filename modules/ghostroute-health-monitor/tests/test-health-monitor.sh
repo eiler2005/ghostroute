@@ -40,7 +40,8 @@ assert_jsonl_valid() {
 }
 
 cat > "$RAW_FILE" <<EOF
-{"ts":"2026-04-26T10:00:00+0300","probe":"channel_b_reality","status":"OK","risk":"Channel B / Reality path down","message":"ok","evidence":"exit_ip=198.51.100.10","action":"No action.","version":1}
+{"ts":"2026-04-26T09:59:00+0300","probe":"channel_b_reality","status":"OK","risk":"Channel B / Reality path down","message":"legacy ok","evidence":"exit_ip=198.51.100.10","action":"No action.","version":1}
+{"ts":"2026-04-26T10:00:00+0300","probe":"channel_a_reality","status":"OK","risk":"Channel A / Reality path down","message":"ok","evidence":"exit_ip=198.51.100.10","action":"No action.","version":1}
 {"ts":"2026-04-26T10:00:00+0300","probe":"rule_set_sync","status":"CRIT","risk":"rule-set drift","message":"drift","evidence":"only_dns=1","action":"Regenerate rule-sets after approval.","version":1}
 EOF
 
@@ -48,6 +49,11 @@ EOF
 
 assert_json_valid "$HEALTH_MONITOR_LOG_DIR/status.json"
 assert_contains "$HEALTH_MONITOR_LOG_DIR/status.json" '"overall":"CRIT"'
+assert_contains "$HEALTH_MONITOR_LOG_DIR/status.json" '"channel_a_reality"'
+if grep -F -- 'channel_b_reality' "$HEALTH_MONITOR_LOG_DIR/status.json" >/dev/null 2>&1; then
+  echo "Expected legacy channel_b_reality to be canonicalized" >&2
+  exit 1
+fi
 assert_contains "$HEALTH_MONITOR_LOG_DIR/summary-latest.md" '# Модуль мониторинга работоспособности GhostRoute'
 assert_contains "$HEALTH_MONITOR_LOG_DIR/summary-latest.md" '| `rule_set_sync` | `CRIT` |'
 assert_contains "$HEALTH_MONITOR_LOG_DIR/alerts/${TODAY}.md" '| `rule_set_sync` | `CRIT` | `UNKNOWN` |'

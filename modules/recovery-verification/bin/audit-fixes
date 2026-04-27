@@ -110,16 +110,16 @@ check_udp_443_drop() {
     "health common checks UDP/443 DROP"
 }
 
-check_channel_a_drift() {
+check_wireguard_drift() {
   require_pattern \
     "modules/recovery-verification/bin/verify.sh" \
-    'Channel A|WGS1|WGC1|RC_VPN_ROUTE|RULE_MARK_0X1000' \
-    "verify.sh checks Channel A drift"
+    'WireGuard|WGS1|WGC1|RC_VPN_ROUTE|RULE_MARK_0X1000' \
+    "verify.sh checks retired WireGuard drift"
   require_pattern \
     "modules/ghostroute-health-monitor/router/run-probes" \
-    'channel_a_resurrection' \
-    "health monitor checks Channel A resurrection"
-  require_file "docs/adr/0004-channel-a-cold-fallback.md"
+    'wireguard_resurrection' \
+    "health monitor checks retired WireGuard resurrection"
+  require_file "docs/adr/0004-deprecated-wireguard-cold-fallback.md"
 }
 
 check_module_native_contract() {
@@ -193,7 +193,7 @@ check_secret_hygiene() {
 }
 
 check_udp_443_drop
-check_channel_a_drift
+check_wireguard_drift
 check_module_native_contract
 check_ansible_role_contracts
 check_secret_hygiene

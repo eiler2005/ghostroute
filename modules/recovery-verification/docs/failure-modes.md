@@ -7,7 +7,7 @@ LAN -> sing-box REDIRECT :<lan-redirect-port> -> Reality
 Mobile QR -> home Reality ingress :<home-reality-port> -> Reality
 ```
 
-Channel A (`wgs1`/`wgc1`) is decommissioned. `wgc1_*` NVRAM remains only for
+Legacy WireGuard (`wgs1`/`wgc1`) is decommissioned. `wgc1_*` NVRAM remains only for
 manual cold fallback through `/jffs/scripts/emergency-enable-wgc1.sh`.
 
 ## sing-box Down
@@ -142,7 +142,7 @@ Recover:
 The update script downloads through sing-box SOCKS, not WireGuard. Default-skip
 behavior is intentional to prevent stealth-catalog pollution.
 
-## Channel A Drift Appears
+## WireGuard Drift Appears
 
 Symptom: `verify.sh` reports `VPN_DOMAINS`, `0x1000`, `wgs1`, `wgc1` or
 `RC_VPN_ROUTE`.

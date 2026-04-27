@@ -1,6 +1,6 @@
 # Remote Access Overlay Migration
 
-> **SUPERSEDED** — Channel A was decommissioned on 2026-04-25. Normal remote
+> **SUPERSEDED** — the legacy WireGuard path was decommissioned on 2026-04-25. Normal remote
 > mobile egress now uses Home Reality as described in
 > [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md). This
 > document is retained only as historical planning context for a future remote
@@ -12,11 +12,11 @@
 
 - это **planning-only** документ
 - в этой итерации **ничего не внедряется**
-- Channel A уже выключен в normal runtime; документ оставлен как planning-only контекст на случай отдельного проекта remote LAN access
+- legacy WireGuard уже выключен в normal runtime; документ оставлен как planning-only контекст на случай отдельного проекта remote LAN access
 
 ## Цель
 
-На момент исходного анализа remote access шёл через raw `WireGuard server` на `wgs1`, а сам `wgs1` был публичным WAN ingress. После Channel A cleanup это больше не active path.
+На момент исходного анализа remote access шёл через raw `WireGuard server` на `wgs1`, а сам `wgs1` был публичным WAN ingress. После WireGuard cleanup это больше не active path.
 
 Целевое состояние:
 
@@ -31,7 +31,7 @@
 
 ## Что было зафиксировано по historical live-state
 
-Проверка ниже сделана по live-роутеру **24 апреля 2026**, до финального Channel A cleanup.
+Проверка ниже сделана по live-роутеру **24 апреля 2026**, до финального WireGuard cleanup.
 
 ### Public surface тогда
 

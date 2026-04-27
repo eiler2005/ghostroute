@@ -887,8 +887,8 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" WGS1_ENABLE)" = "0" ] || drift_lines+=("wgs1_enable should be 0")
   [ "$(router_kv_get "$state_file" WGC1_ENABLE)" = "0" ] || drift_lines+=("wgc1_enable should be 0")
   [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] || drift_lines+=("wgc1 cold-fallback NVRAM fields are missing")
-  [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("Channel A RC_VPN_ROUTE chain should be absent")
-  [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("Channel A fwmark 0x1000 -> wgc1 rule should be absent")
+  [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("WireGuard RC_VPN_ROUTE chain should be absent")
+  [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("WireGuard fwmark 0x1000 -> wgc1 rule should be absent")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener")
   [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener")
   [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] || drift_lines+=("home Reality listener should bind IPv4 0.0.0.0 only, not IPv6 wildcard")
@@ -914,12 +914,12 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy mangle br0 -> STEALTH_DOMAINS hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_OUTPUT)" = "0" ] || drift_lines+=("legacy mangle OUTPUT -> STEALTH_DOMAINS hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_PREROUTING_BR0)" = "0" ] || drift_lines+=("legacy br0 -> RC_VPN_ROUTE hook should be disabled")
-  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "0" ] || drift_lines+=("Channel A PREROUTING wgs1 -> RC_VPN_ROUTE hook should be absent")
+  [ "$(router_kv_get "$state_file" HOOK_PREROUTING_WGS1)" = "0" ] || drift_lines+=("WireGuard PREROUTING wgs1 -> RC_VPN_ROUTE hook should be absent")
   [ "$(router_kv_get "$state_file" HOOK_OUTPUT)" = "0" ] || drift_lines+=("legacy OUTPUT -> RC_VPN_ROUTE hook should be disabled")
   [ "$(router_kv_get "$state_file" HOOK_STEALTH_PREROUTING_WGS1)" = "0" ] || drift_lines+=("wgs1 should not be hooked into STEALTH_DOMAINS")
-  [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "0" ] || drift_lines+=("Channel A wgs1 udp/53 redirect should be absent")
-  [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] || drift_lines+=("Channel A wgs1 tcp/53 redirect should be absent")
-  [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" = "0" ] || drift_lines+=("Channel A wgs1 interface should be absent")
+  [ "$(router_kv_get "$state_file" DNS_REDIRECT_UDP)" = "0" ] || drift_lines+=("WireGuard wgs1 udp/53 redirect should be absent")
+  [ "$(router_kv_get "$state_file" DNS_REDIRECT_TCP)" = "0" ] || drift_lines+=("WireGuard wgs1 tcp/53 redirect should be absent")
+  [ "$(router_kv_get "$state_file" WGS1_IFACE_EXISTS)" = "0" ] || drift_lines+=("WireGuard wgs1 interface should be absent")
   [ "$(router_kv_get "$state_file" CRON_SINGBOX_WATCHDOG)" = "1" ] || drift_lines+=("missing sing-box watchdog cron")
   [ "$(router_kv_get "$state_file" CRON_MOBILE_REALITY_COUNTERS)" = "1" ] || drift_lines+=("missing Mobile Home Reality byte-counter refresh cron")
   if [ "$ipv6_policy_level" = "Critical" ]; then
@@ -970,7 +970,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | wgc1 cold-fallback NVRAM preserved | $( [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] && printf 'OK' || printf 'Missing fields' ) |
 | RC_VPN_ROUTE chain absent | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | ip rule fwmark 0x1000 -> wgc1 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] && printf 'OK' || printf 'Present' ) |
-| Channel B REDIRECT listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel A REDIRECT listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality IPv4-only listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] && printf 'OK' || printf 'IPv6/wildcard drift' ) |
 | Home Reality INPUT allow | $( [ "$(router_kv_get "$state_file" HOME_REALITY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing' ) |
@@ -981,7 +981,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Home Reality managed split | $( [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality direct fallback | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
-| Channel B dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel A dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |

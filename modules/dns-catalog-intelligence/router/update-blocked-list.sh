@@ -25,7 +25,7 @@ else
 fi
 MAX_TIME=120
 
-# Download through Channel B SOCKS (use which — BusyBox ash lacks 'command -v').
+# Download through Channel A SOCKS (use which — BusyBox ash lacks 'command -v').
 if which curl >/dev/null 2>&1; then
   curl -sf --proxy "$SOCKS_PROXY" --max-time "$MAX_TIME" "$URL" -o "$CACHE_TMP"
 elif which wget >/dev/null 2>&1; then

@@ -1,8 +1,18 @@
 {
+{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') == 'caddy_forward_proxy' %}
+    order forward_proxy first
+{% endif %}
     servers :443 {
-        protocols h1
+        protocols h1 h2
         listener_wrappers {
             layer4 {
+                matching_timeout {{ caddy_l4_matching_timeout | default('15s') }}
+{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+                @channel_c_naive tls sni {{ channel_c_naive_public_host }}
+                route @channel_c_naive {
+                    proxy 127.0.0.1:{{ channel_c_naive_stunnel_local_port | default(18443) }}
+                }
+{% endif %}
                 @reality tls sni {{ reality_server_names[0] }}
                 route @reality {
                     proxy 127.0.0.1:{{ xray_reality_listen_port }}
@@ -13,12 +23,93 @@
     }
 }
 
+{% if channel_c_naive_enabled | default(false) | bool %}
+:443, {{ channel_c_naive_public_host }} {
+{% if channel_bc_access_log_enabled | default(true) | bool %}
+    log channel_c_naive {
+        output stdout
+        format json
+    }
+
+{% endif %}
+    # Fallback site creates the public TLS listener for forward-proxy CONNECT
+    # requests, whose HTTP Host is the target site rather than the proxy host.
+    # Reality traffic is intercepted by the layer4 wrapper before HTTP routing.
+    @channel_c_naive_sni expression `{http.request.tls.server_name} == "{{ channel_c_naive_public_host }}"`
+    handle @channel_c_naive_sni {
+{% if channel_c_naive_backend | default('caddy_forward_proxy') == 'tinyproxy' %}
+        reverse_proxy 127.0.0.1:{{ channel_c_naive_tinyproxy_local_port | default(18888) }} {
+            header_up Host {http.request.host}
+            header_up Proxy-Authorization {http.request.header.Proxy-Authorization}
+            transport http {
+                versions 1.1
+            }
+        }
+{% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+        respond 404
+{% else %}
+        header {
+            -Padding
+            -Transfer-Encoding
+        }
+
+        forward_proxy {
+            basic_auth {{ channel_c_naive_username }} {{ channel_c_naive_password }}
+{% if channel_c_naive_hide_ip_enabled | default(true) | bool %}
+            hide_ip
+{% endif %}
+{% if channel_c_naive_hide_via_enabled | default(true) | bool %}
+            hide_via
+{% endif %}
+{% if channel_c_naive_probe_resistance_enabled | default(true) | bool %}
+{% if channel_c_naive_probe_resistance_host | default('') | length > 0 %}
+            probe_resistance {{ channel_c_naive_probe_resistance_host | default(channel_c_naive_public_host) }}
+{% else %}
+            probe_resistance
+{% endif %}
+{% endif %}
+        }
+
+        respond 404
+{% endif %}
+    }
+
+    respond 404
+}
+{% else %}
 :443 {
     # Fallback site only creates the public TLS listener. Reality traffic is
     # intercepted by the layer4 wrapper above before Caddy's HTTP app handles it.
     tls internal
     respond 404
 }
+{% endif %}
+
+{% if channel_b_xhttp_enabled | default(false) | bool %}
+https://{{ channel_b_xhttp_public_host }} {
+{% if channel_bc_access_log_enabled | default(true) | bool %}
+    log channel_b_xhttp {
+        output stdout
+        format json
+    }
+
+{% endif %}
+    @channel_b_xhttp path {{ channel_b_xhttp_path }}*
+    handle @channel_b_xhttp {
+        reverse_proxy 127.0.0.1:{{ channel_b_xhttp_local_port }} {
+            flush_interval -1
+            header_up Host {http.request.host}
+            header_up X-Forwarded-Host {http.request.host}
+            header_up X-Forwarded-Proto https
+            transport http {
+                versions 1.1
+            }
+        }
+    }
+
+    respond 404
+}
+{% endif %}
 
 {% if system_caddy_site_enabled | bool %}
 https://{{ system_caddy_site_host }}:{{ system_caddy_site_port | default(9443) }} {

@@ -39,6 +39,10 @@ reports/
 !/ansible/out/clients-home/.gitkeep
 /ansible/out/clients-emergency/*
 !/ansible/out/clients-emergency/.gitkeep
+/ansible/out/clients-channel-b/*
+!/ansible/out/clients-channel-b/.gitkeep
+/ansible/out/clients-channel-c/*
+!/ansible/out/clients-channel-c/.gitkeep
 /ansible/out/clients-backup-*/
 /ansible/out/clients-home-backup-*/
 ansible/*.retry

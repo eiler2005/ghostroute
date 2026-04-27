@@ -1,0 +1,21 @@
+User tinyproxy
+Group tinyproxy
+Port {{ channel_c_naive_tinyproxy_local_port | default(18888) }}
+Listen 127.0.0.1
+Timeout 600
+DefaultErrorFile "/usr/share/tinyproxy/default.html"
+StatFile "/usr/share/tinyproxy/stats.html"
+LogFile "/var/log/tinyproxy/channel-c-access.log"
+LogLevel Info
+PidFile "/run/tinyproxy/channel-c.pid"
+MaxClients 100
+Allow 127.0.0.1
+BasicAuth {{ channel_c_naive_username }} {{ channel_c_naive_password }}
+ConnectPort 80
+ConnectPort 443
+ConnectPort 5222
+ConnectPort 5223
+ConnectPort 853
+ConnectPort 993
+ConnectPort 995
+ViaProxyName "tinyproxy"

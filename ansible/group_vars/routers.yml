@@ -35,7 +35,7 @@ stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
 stealth_test_domain: ifconfig.me
 stealth_test_upstream: 1.1.1.1
 stealth_static_source_ipset: VPN_STATIC_NETS
-stealth_channel_b_lan_enabled: true
+stealth_channel_a_lan_enabled: true
 router_tcp_perf_tuning_enabled: true
 router_tcp_rmem: "4096 262144 16777216"
 router_tcp_wmem: "4096 65536 16777216"

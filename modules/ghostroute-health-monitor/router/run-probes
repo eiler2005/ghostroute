@@ -32,9 +32,9 @@ hm_runtime_port() {
   printf '%s\n' "$value"
 }
 
-probe_channel_b_reality() {
-  should_run channel_b_reality || return 0
-  socks_port="$(hm_runtime_port channel_b_reality "${HEALTH_MONITOR_SOCKS_PORT:-}" dnscrypt-socks-in)" || return 0
+probe_channel_a_reality() {
+  should_run channel_a_reality || should_run channel_b_reality || return 0
+  socks_port="$(hm_runtime_port channel_a_reality "${HEALTH_MONITOR_SOCKS_PORT:-}" dnscrypt-socks-in)" || return 0
   socks="${HEALTH_MONITOR_SOCKS:-127.0.0.1:$socks_port}"
   expected="$(hm_extract_reality_server 2>/dev/null || true)"
   log="$(hm_singbox_log)"
@@ -47,23 +47,23 @@ probe_channel_b_reality() {
 
   if [ -z "$exit_ip" ]; then
     if [ "${recent_reality:-0}" -gt 0 ]; then
-      hm_emit channel_b_reality OK "Channel B / Reality path down" \
+      hm_emit channel_a_reality OK "Channel A / Reality path down" \
         "Active SOCKS exit-IP probe is unavailable, but recent reality-out traffic is visible." \
         "active_check=unavailable curl_rc=$curl_rc recent_reality_out=$recent_reality expected=${expected:-unknown}" \
         "No action unless users report managed-site failures."
     else
-      hm_emit channel_b_reality CRIT "Channel B / Reality path down" \
+      hm_emit channel_a_reality CRIT "Channel A / Reality path down" \
         "SOCKS path through sing-box did not return an exit IP and no recent reality-out traffic was visible." \
         "socks=$socks curl_rc=$curl_rc curl_error=$curl_error expected=${expected:-unknown}" \
         "Check sing-box, Caddy/Xray on VPS, and the VPS path before changing routing."
     fi
   elif printf '%s\n' "$expected" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && [ "$exit_ip" != "$expected" ]; then
-    hm_emit channel_b_reality WARN "Managed traffic exits via unexpected IP" \
+    hm_emit channel_a_reality WARN "Managed traffic exits via unexpected IP" \
       "Reality path works, but the observed exit IP differs from the configured VPS IP." \
       "exit_ip=$exit_ip expected=$expected" \
       "Confirm the VPS address, DNS, and any planned VPS IP rotation."
   else
-    hm_emit channel_b_reality OK "Channel B / Reality path down" \
+    hm_emit channel_a_reality OK "Channel A / Reality path down" \
       "Reality SOCKS path is reachable." \
       "exit_ip=$exit_ip expected=${expected:-not_ipv4_literal}" \
       "No action."
@@ -367,8 +367,8 @@ probe_dns_ipv6_leaks() {
   fi
 }
 
-probe_channel_a_resurrection() {
-  should_run channel_a_resurrection || return 0
+probe_wireguard_resurrection() {
+  should_run wireguard_resurrection || should_run channel_a_resurrection || return 0
   issues=""
   [ "$(nvram get wgs1_enable 2>/dev/null || true)" = "0" ] || issues="${issues} wgs1_enable"
   [ "$(nvram get wgc1_enable 2>/dev/null || true)" = "0" ] || issues="${issues} wgc1_enable"
@@ -378,13 +378,13 @@ probe_channel_a_resurrection() {
   ip rule show 2>/dev/null | grep -q '0x1000' && issues="${issues} fwmark_0x1000"
 
   if [ -n "$issues" ]; then
-    hm_emit channel_a_resurrection CRIT "retired WG/Channel A resurrection" \
-      "Retired Channel A/WireGuard runtime state is visible again." \
+    hm_emit wireguard_resurrection CRIT "retired WireGuard resurrection" \
+      "Retired WireGuard runtime state is visible again." \
       "issues=${issues# }" \
-      "Use the Channel A cleanup runbook; do not enable fallback unless explicitly needed."
+      "Use the WireGuard cleanup runbook; do not enable fallback unless explicitly needed."
   else
-    hm_emit channel_a_resurrection OK "retired WG/Channel A resurrection" \
-      "No retired Channel A runtime state was detected." \
+    hm_emit wireguard_resurrection OK "retired WireGuard resurrection" \
+      "No retired WireGuard runtime state was detected." \
       "wgs1=absent wgc1=absent VPN_DOMAINS=absent" \
       "No action."
   fi
@@ -502,7 +502,7 @@ probe_performance_rtt() {
       hm_emit performance_rtt UNKNOWN "RTT/performance degradation" \
         "Could not collect RTT sample and no recent reality-out traffic was visible." \
         "socks=$socks curl_rc=$curl_rc recent_reality_out=0" \
-        "Check Channel B before interpreting performance."
+        "Check Channel A before interpreting performance."
     fi
     return 0
   fi
@@ -637,7 +637,7 @@ probe_snapshot_freshness() {
 }
 
 hm_init_dirs
-probe_channel_b_reality
+probe_channel_a_reality
 probe_vps_path
 probe_singbox_health
 probe_home_reality_ingress
@@ -645,7 +645,7 @@ probe_mobile_activity
 probe_mobile_routing_leaks
 probe_rule_set_sync
 probe_dns_ipv6_leaks
-probe_channel_a_resurrection
+probe_wireguard_resurrection
 probe_catalog_health
 probe_performance_rtt
 probe_tcp_retransmits

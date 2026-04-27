@@ -80,9 +80,9 @@ tail -200 /opt/var/log/sing-box.log
 
 ## Recovery by probe
 
-### `channel_b_reality` CRIT
+### `channel_a_reality` CRIT
 
-Смысл: router-side SOCKS path `127.0.0.1:<router-socks-port> -> reality-out -> VPS` не вернул
+Смысл: Channel A router-side SOCKS path `127.0.0.1:<router-socks-port> -> reality-out -> VPS` не вернул
 exit IP.
 
 Read-only диагностика:
@@ -221,9 +221,9 @@ timeout 30 /opt/bin/tcpdump -nn -i "$WAN" 'udp port 53'
 Plain DNS or global IPv6 is privacy-sensitive. Do not "fix" by changing
 catalog. First identify source and policy drift.
 
-### `channel_a_resurrection` CRIT
+### `wireguard_resurrection` CRIT
 
-Смысл: retired WireGuard/Channel A снова появился в runtime.
+Смысл: retired WireGuard снова появился в runtime.
 
 ```sh
 nvram get wgs1_enable
@@ -234,7 +234,7 @@ ip rule show | grep -E '0x1000|wgc1'
 ipset list VPN_DOMAINS
 ```
 
-Manual recovery follows Channel A cleanup docs. Emergency fallback is separate
+Manual recovery follows WireGuard cleanup docs. Emergency fallback is separate
 and should be enabled only for catastrophic Reality outage.
 
 ### `catalog_health` WARN/CRIT
@@ -333,7 +333,7 @@ If cron is stopped, restarting cron is a runtime action and needs OK.
 
 - Symptom: managed-сайт видит home WAN вместо VPS.
 - First files: `alerts/<today>.md`, raw events по `mobile_routing_leaks` и `rule_set_sync`.
-- Likely probes: `rule_set_sync`, `mobile_routing_leaks`, `channel_b_reality`.
+- Likely probes: `rule_set_sync`, `mobile_routing_leaks`, `channel_a_reality`.
 - Read-only diagnostics: `grep domain /jffs/configs/dnsmasq.conf.add`, проверить `domain_suffix`.
 - Forbidden: менять VPS/Xray, если drift только в catalog/rule-set.
 - Recovery with OK: `/jffs/scripts/update-singbox-rule-sets.sh --restart-if-changed`.
@@ -341,9 +341,9 @@ If cron is stopped, restarting cron is a runtime action and needs OK.
 
 ### 6. VPS / Reality down
 
-- Symptom: managed-трафик массово не работает или `channel_b_reality`/`vps_path` CRIT.
+- Symptom: managed-трафик массово не работает или `channel_a_reality`/`vps_path` CRIT.
 - First files: router `summary-latest.md`, VPS `summary-latest.md`, merged report.
-- Likely probes: router `channel_b_reality`, `vps_path`; VPS `caddy_listener`, `xray_reality_listener`, `xray_container`.
+- Likely probes: router `channel_a_reality`, `vps_path`; VPS `caddy_listener`, `xray_reality_listener`, `xray_container`.
 - Read-only diagnostics: `nc -z -w 5 <vps_host> 443`, `ss -tlnp`, `docker ps`.
 - Forbidden: включать emergency fallback без понимания, что VPS или home path сломан.
 - Recovery with OK: service recovery на конкретном сломанном слое.
@@ -363,19 +363,19 @@ If cron is stopped, restarting cron is a runtime action and needs OK.
 
 - Symptom: `dns_ipv6_leaks` WARN/CRIT или подозрение на обход DNS policy.
 - First files: `summary-latest.md`, raw evidence по `dns_ipv6_leaks`.
-- Likely probes: `dns_ipv6_leaks`, `channel_a_resurrection`.
+- Likely probes: `dns_ipv6_leaks`, `wireguard_resurrection`.
 - Read-only diagnostics: `nvram get ipv6_service`, `ip -6 addr`, bounded tcpdump sample.
 - Forbidden: включать IPv6 или менять DNS upstream без отдельного решения.
 - Recovery with OK: вернуть Merlin IPv6 disabled, восстановить DNS guard/filter-AAAA.
 - Confirmation: `dns_ipv6_leaks OK`, `verify.sh` IPv6 Policy OK.
 
-### 9. Channel A resurrection
+### 9. WireGuard resurrection
 
-- Symptom: старый WireGuard/Channel A появился в runtime.
+- Symptom: старый WireGuard появился в runtime.
 - First files: `summary-latest.md`, `verify.sh` output.
-- Likely probes: `channel_a_resurrection`.
+- Likely probes: `wireguard_resurrection`.
 - Read-only diagnostics: `nvram get wgs1_enable`, `ip link show wgs1`, `ip rule show`.
-- Forbidden: использовать Channel A как обычный режим.
+- Forbidden: использовать retired WireGuard как обычный режим.
 - Recovery with OK: выполнить decommission cleanup или emergency flow по отдельному runbook.
 - Confirmation: `wgs1/wgc1` inactive, `VPN_DOMAINS` absent, `verify.sh OK`.
 

@@ -1,0 +1,67 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "channel-b-xhttp-in",
+      "listen": "{{ channel_b_xhttp_listen }}",
+      "port": {{ channel_b_xhttp_local_port }},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+{% for client in channel_b_xhttp_clients %}
+          {
+            "id": "{{ client.uuid }}",
+            "email": "{{ client.email | default(client.name) }}",
+            "flow": "",
+            "level": 0
+          }{{ "," if not loop.last else "" }}
+{% endfor %}
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "host": "{{ channel_b_xhttp_public_host }}",
+          "path": "{{ channel_b_xhttp_path }}",
+          "mode": "{{ channel_b_xhttp_mode }}",
+          "extra": {
+            "scMaxBufferedPosts": 30,
+            "noSSEHeader": false
+          }
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+{% if channel_b_xhttp_block_udp_443 | bool %}
+      {
+        "type": "field",
+        "inboundTag": ["channel-b-xhttp-in"],
+        "network": "udp",
+        "port": "443",
+        "outboundTag": "block"
+      }
+{% endif %}
+    ]
+  }
+}

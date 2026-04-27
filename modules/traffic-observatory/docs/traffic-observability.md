@@ -90,7 +90,7 @@ Important accounting rule:
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
-Channel A (`wgs1` + `wgc1`) is retired in normal operation. `wgc1_*` NVRAM remains as cold fallback only; active reports should not depend on a live WireGuard interface.
+Legacy WireGuard (`wgs1` + `wgc1`) is retired in normal operation. `wgc1_*` NVRAM remains as cold fallback only; active reports should not depend on a live WireGuard interface.
 
 ## Observer Semantics
 
@@ -200,7 +200,7 @@ wgs1/wgc1 runtime interfaces are absent or disabled
 wgc1 cold-fallback NVRAM fields are preserved
 ```
 
-This is intentional drift detection. If the report complains about `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, `wgs1`, or `wgc1` runtime hooks, the router has slipped back toward the legacy Channel A path.
+This is intentional drift detection. If the report complains about `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, `wgs1`, or `wgc1` runtime hooks, the router has slipped back toward the retired WireGuard path.
 
 ---
 

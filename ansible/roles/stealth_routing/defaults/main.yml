@@ -6,7 +6,7 @@ stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
 stealth_test_domain: ifconfig.me
-stealth_channel_b_lan_enabled: true
+stealth_channel_a_lan_enabled: "{{ stealth_channel_b_lan_enabled | default(true) }}"
 singbox_tun_name: singbox0
 singbox_init_path: /opt/etc/init.d/S99sing-box
 singbox_redirect_port: ""

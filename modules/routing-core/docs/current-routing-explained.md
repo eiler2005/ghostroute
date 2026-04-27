@@ -2,7 +2,7 @@
 
 ## Что сейчас сделано
 
-GhostRoute больше не использует active WireGuard Channel A. Текущая модель:
+GhostRoute больше не использует active Legacy WireGuard. Текущая модель:
 
 ```text
 LAN/Wi-Fi TCP             -> STEALTH_DOMAINS/VPN_STATIC_NETS
@@ -118,7 +118,7 @@ Expected:
 
 - `wgs1_enable=0`
 - `wgc1_enable=0`
-- `wg show` has no active Channel A interfaces
+- `wg show` has no active WireGuard interfaces
 - `VPN_DOMAINS` does not exist
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist
 - TCP REDIRECT and UDP/443 DROP rules are present

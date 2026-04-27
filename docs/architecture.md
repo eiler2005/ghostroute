@@ -2,14 +2,14 @@
 
 ## Коротко
 
-Текущая архитектура — Reality-first, без активного WireGuard Channel A:
+Текущая архитектура — Channel A Reality-first, без активного legacy WireGuard:
 
 ```text
 LAN/Wi-Fi clients
   -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
   -> br0 TCP nat REDIRECT :<lan-redirect-port>
   -> ASUS sing-box redirect inbound
-  -> VLESS+Reality outbound
+  -> Channel A VLESS+Reality+Vision outbound
   -> VPS Caddy :443
   -> Xray Reality inbound
   -> Internet
@@ -20,9 +20,24 @@ Remote mobile QR clients
   -> managed split:
        STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
        other destinations              -> direct-out via home WAN
+
+Channel B manual clients
+  -> separate generated VLESS+XHTTP+TLS profile
+  -> separate public VPS hostname on :443
+  -> Caddy TLS routing
+  -> local-only XHTTP backend
+  -> Internet
+
+Channel C manual clients
+  -> separate generated NaiveProxy profile
+     (plus HTTPS forward-proxy compatibility profile where needed)
+  -> separate public VPS hostname on :443
+  -> Caddy layer4 SNI routing
+  -> TLS wrapper to localhost-only Squid compatibility proxy
+  -> Internet
 ```
 
-`wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
+Legacy `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
 only as a cold fallback through `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
 
 ## Components
@@ -34,16 +49,21 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
 | `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, Reality outbound to VPS |
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
-| `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel B |
+| Channel A | primary `sing-box -> VLESS+Reality+Vision` path |
+| Channel B | optional manual XHTTP `packet-up` device profiles via local-only Xray backend |
+| Channel C | optional manual NaiveProxy profile artifacts, plus HTTPS proxy compatibility artifacts backed by a localhost-only Squid proxy |
+| `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
 ## Routing Matrix
 
 | Source | Selector | Mechanism | Egress |
 |---|---|---|---|
-| LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | sing-box -> Reality |
+| LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
 | Mobile QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
+| Channel B manual profile | selected device only | separate XHTTP hostname on VPS `:443` | manual fallback egress |
+| Channel C manual profile | selected device only | separate Naive hostname on VPS `:443` | manual fallback egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -111,6 +131,15 @@ Router `OUTPUT` is not transparently captured. Capturing router-originated
 traffic globally can loop sing-box outbound connections. Diagnostics that need
 Reality should use an explicit proxy or client profile.
 
+### Channel B/C Manual Clients
+
+Channel B and Channel C profiles are generated separately from normal Home
+Reality and emergency Reality profiles. They are imported manually on selected
+devices and connect directly to dedicated VPS hostnames on public `:443`.
+
+In v1, Channel B/C do not install binaries on the router, do not add local
+router SOCKS/HTTP ports, and do not add domain routing rules.
+
 ## Boot Hooks
 
 | Hook | Responsibility |
@@ -138,3 +167,5 @@ Critical invariants:
 - no `RC_VPN_ROUTE`
 - no `0x1000` rule outside emergency fallback
 - `filter-AAAA` present while IPv6 is disabled
+- Channel B/C, when enabled, are VPS/client-profile only and keep router
+  REDIRECT/TUN/DNS unchanged

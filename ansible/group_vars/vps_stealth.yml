@@ -28,3 +28,28 @@ system_caddy_client_ca_file: "{{ vault_system_caddy_client_ca_file | default(sys
 mobile_checkin_enabled: "{{ vault_mobile_checkin_enabled | default(false) }}"
 mobile_checkin_public_host: "{{ vault_mobile_checkin_public_host | default('') }}"
 mobile_checkin_token: "{{ vault_mobile_checkin_token | default('') }}"
+
+# Channel B and C are manual QR/profile-only fallbacks. They share public :443
+# via Caddy SNI but do not touch router REDIRECT/TUN/DNS or current Reality SNI.
+channel_b_xhttp_enabled: "{{ vault_channel_b_xhttp_enabled | default(false) }}"
+channel_b_xhttp_image: "{{ vault_channel_b_xhttp_image | default('ghcr.io/xtls/xray-core:26.3.27') }}"
+channel_b_xhttp_public_host: "{{ vault_channel_b_xhttp_public_host | default('') }}"
+channel_b_xhttp_local_port: "{{ vault_channel_b_xhttp_local_port | default(18081) }}"
+channel_b_xhttp_path: "{{ vault_channel_b_xhttp_path | default('/assets/update') }}"
+channel_b_xhttp_mode: packet-up
+channel_b_xhttp_clients: "{{ vault_channel_b_xhttp_clients | default([]) }}"
+channel_b_xhttp_block_udp_443: "{{ vault_channel_b_xhttp_block_udp_443 | default(false) }}"
+
+channel_c_naive_enabled: "{{ vault_channel_c_naive_enabled | default(false) }}"
+channel_c_naive_backend: "{{ vault_channel_c_naive_backend | default('stunnel_squid') }}"
+channel_c_naive_public_host: "{{ vault_channel_c_naive_public_host | default('') }}"
+channel_c_naive_username: "{{ vault_channel_c_naive_username | default('') }}"
+channel_c_naive_password: "{{ vault_channel_c_naive_password | default('') }}"
+channel_c_naive_tinyproxy_local_port: "{{ vault_channel_c_naive_tinyproxy_local_port | default(18888) }}"
+channel_c_naive_squid_local_port: "{{ vault_channel_c_naive_squid_local_port | default(18889) }}"
+channel_c_naive_stunnel_local_port: "{{ vault_channel_c_naive_stunnel_local_port | default(18443) }}"
+channel_c_naive_hide_ip_enabled: "{{ vault_channel_c_naive_hide_ip_enabled | default(false) }}"
+channel_c_naive_hide_via_enabled: "{{ vault_channel_c_naive_hide_via_enabled | default(false) }}"
+channel_c_naive_probe_resistance_enabled: "{{ vault_channel_c_naive_probe_resistance_enabled | default(false) }}"
+channel_c_naive_probe_resistance_host: "{{ vault_channel_c_naive_probe_resistance_host | default('') }}"
+channel_c_naive_clients: "{{ vault_channel_c_naive_clients | default(channel_b_xhttp_clients | default([])) }}"

@@ -17,3 +17,24 @@ system_caddy_client_ca_file: /etc/caddy/certs/example-access-ca.crt
 xray_reality_listen_port: 8443
 reality_server_names:
   - gateway.icloud.com
+
+# Channels B/C are add-only and disabled until real vault-only public hostnames,
+# paths and credentials are supplied.
+channel_b_xhttp_enabled: false
+channel_b_xhttp_public_host: ""
+channel_b_xhttp_local_port: 18081
+channel_b_xhttp_path: /assets/update
+channel_c_naive_enabled: false
+channel_c_naive_backend: caddy_forward_proxy
+channel_c_naive_public_host: ""
+channel_c_naive_username: ""
+channel_c_naive_password: ""
+channel_c_naive_tinyproxy_local_port: 18888
+channel_c_naive_squid_local_port: 18889
+channel_c_naive_stunnel_local_port: 18443
+channel_c_naive_hide_ip_enabled: true
+channel_c_naive_hide_via_enabled: true
+channel_c_naive_probe_resistance_enabled: true
+channel_c_naive_probe_resistance_host: ""
+channel_bc_access_log_enabled: true
+caddy_l4_matching_timeout: 15s

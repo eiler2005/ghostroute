@@ -11,6 +11,14 @@
       changed_when: false
       when: stealth_caddy_mode == 'system_listener_wrapper'
 
+    - name: Host Caddy has Naive forward_proxy module when Channel C Naive is enabled
+      ansible.builtin.shell: "caddy list-modules | grep -q '^http.handlers.forward_proxy$'"
+      changed_when: false
+      when:
+        - stealth_caddy_mode == 'system_listener_wrapper'
+        - channel_c_naive_enabled | default(false) | bool
+        - channel_c_naive_backend | default('caddy_forward_proxy') == 'caddy_forward_proxy'
+
     - name: Caddy listening on :443
       ansible.builtin.shell: "ss -tlnp '( sport = :443 )' | grep -q caddy"
       changed_when: false
@@ -18,6 +26,60 @@
     - name: Xray listening on configured localhost Reality port
       ansible.builtin.shell: "ss -tlnp '( sport = :{{ xray_reality_listen_port }} )' | grep -q '127.0.0.1:{{ xray_reality_listen_port }}'"
       changed_when: false
+
+    - name: Channel B XHTTP container is running when enabled
+      ansible.builtin.shell: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q '^{{ channel_b_xhttp_container_name | default('xray-xhttp') }}$'"
+      changed_when: false
+      when: channel_b_xhttp_enabled | default(false) | bool
+
+    - name: Channel B XHTTP listens only on localhost when enabled
+      ansible.builtin.shell: |
+        ss -tlnp '( sport = :{{ channel_b_xhttp_local_port }} )' | grep -q '127.0.0.1:{{ channel_b_xhttp_local_port }}' &&
+        ! ss -tlnp '( sport = :{{ channel_b_xhttp_local_port }} )' | grep -qE '0\.0\.0\.0:{{ channel_b_xhttp_local_port }}|:::{{ channel_b_xhttp_local_port }}'
+      changed_when: false
+      when: channel_b_xhttp_enabled | default(false) | bool
+
+    - name: Channel B/C Caddy routes are present when enabled
+      ansible.builtin.shell: |
+        set -e
+        {% if channel_b_xhttp_enabled | default(false) | bool %}
+        grep -q 'https://{{ channel_b_xhttp_public_host }}' {{ system_caddyfile_path }} &&
+        grep -q '{{ channel_b_xhttp_path }}' {{ system_caddyfile_path }}
+        {% else %}
+        true
+        {% endif %}
+        {% if channel_c_naive_enabled | default(false) | bool %}
+        grep -q '{{ channel_c_naive_public_host }}' {{ system_caddyfile_path }}
+        {% if channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+        grep -q '127.0.0.1:{{ channel_c_naive_stunnel_local_port }}' {{ system_caddyfile_path }}
+        {% elif channel_c_naive_backend | default('caddy_forward_proxy') == 'tinyproxy' %}
+        grep -q '127.0.0.1:{{ channel_c_naive_tinyproxy_local_port }}' {{ system_caddyfile_path }}
+        {% else %}
+        grep -q 'forward_proxy' {{ system_caddyfile_path }}
+        {% endif %}
+        {% else %}
+        true
+        {% endif %}
+      changed_when: false
+      when: (channel_b_xhttp_enabled | default(false) | bool) or (channel_c_naive_enabled | default(false) | bool)
+
+    - name: Channel C Squid backend is running when enabled
+      ansible.builtin.shell: |
+        systemctl is-active --quiet channel-c-squid &&
+        ss -tlnp '( sport = :{{ channel_c_naive_squid_local_port }} )' | grep -q '127.0.0.1:{{ channel_c_naive_squid_local_port }}'
+      changed_when: false
+      when:
+        - channel_c_naive_enabled | default(false) | bool
+        - channel_c_naive_backend | default('caddy_forward_proxy') == 'stunnel_squid'
+
+    - name: Channel C stunnel backend is running when enabled
+      ansible.builtin.shell: |
+        systemctl is-active --quiet channel-c-stunnel &&
+        ss -tlnp '( sport = :{{ channel_c_naive_stunnel_local_port }} )' | grep -q '127.0.0.1:{{ channel_c_naive_stunnel_local_port }}'
+      changed_when: false
+      when:
+        - channel_c_naive_enabled | default(false) | bool
+        - channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid']
 
     - name: maxtg_bridge container still running
       ansible.builtin.shell: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q deploy-bridge-1"
@@ -156,7 +218,7 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ singbox_redirect_port }} '"
       changed_when: false
 
-    - name: sing-box uses REDIRECT inbound for stable LAN TCP through Channel B
+    - name: sing-box uses REDIRECT inbound for stable LAN TCP through Channel A
       ansible.builtin.shell: |
         grep -q '"type": "redirect"' {{ singbox_config_path }} &&
         grep -q '"listen_port": {{ singbox_redirect_port }}' {{ singbox_config_path }}
@@ -173,29 +235,29 @@
       ansible.builtin.shell: "ipset list -n | grep -q '^{{ stealth_ipset_name }}$'"
       changed_when: false
 
-    - name: legacy VPN_DOMAINS ipset is absent after Channel A cleanup
+    - name: legacy VPN_DOMAINS ipset is absent after WireGuard cleanup
       ansible.builtin.shell: "! ipset list -n | grep -q '^VPN_DOMAINS$'"
       changed_when: false
 
-    - name: LAN TCP redirect routes STEALTH_DOMAINS to Channel B
+    - name: LAN TCP redirect routes STEALTH_DOMAINS to Channel A
       ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_ipset_name }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
       changed_when: false
 
-    - name: LAN TCP redirect routes shared static nets to Channel B
+    - name: LAN TCP redirect routes shared static nets to Channel A
       ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_static_source_ipset }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
       changed_when: false
 
-    - name: Channel A wgs1 interface is absent after decommission
+    - name: WireGuard wgs1 interface is absent after decommission
       ansible.builtin.shell: "! ip link show wgs1 >/dev/null 2>&1"
       changed_when: false
 
-    - name: old Channel B TUN policy route is absent
+    - name: old TUN policy route is absent
       ansible.builtin.shell: |
         ! ip rule show | grep -q 'fwmark {{ stealth_fwmark }} .*lookup' &&
         ! ip route show table {{ stealth_route_table }} | grep -q '{{ singbox_tun_name }}'
       changed_when: false
 
-    - name: LAN QUIC fallback is silently enforced for Channel B destinations
+    - name: LAN QUIC fallback is silently enforced for Channel A destinations
       ansible.builtin.shell: |
         iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_ipset_name }} dst .*DROP' &&
         iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*DROP' &&
@@ -215,7 +277,7 @@
       ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
       changed_when: false
 
-    - name: Channel A NVRAM services are disabled
+    - name: WireGuard NVRAM services are disabled
       ansible.builtin.shell: |
         [ "$(nvram get wgs1_enable)" = "0" ] &&
         [ "$(nvram get wgc1_enable)" = "0" ]
@@ -325,14 +387,14 @@
       ansible.builtin.shell: "cru l 2>/dev/null | grep -q '{{ singbox_watchdog_path }}'"
       changed_when: false
 
-    - name: Channel A mangle hooks are absent
+    - name: WireGuard mangle hooks are absent
       ansible.builtin.shell: |
         ! iptables -t mangle -S PREROUTING | grep -q -- '-i wgs1 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S PREROUTING | grep -q -- '-i br0 -j RC_VPN_ROUTE' &&
         ! iptables -t mangle -S OUTPUT | grep -q -- '-j RC_VPN_ROUTE'
       changed_when: false
 
-    - name: Channel A stale NAT and fwmark rules are absent
+    - name: WireGuard stale NAT and fwmark rules are absent
       ansible.builtin.shell: |
         ! ip rule show | grep -Eq '0x1000|wgc1' &&
         ! iptables -t nat -S | grep -Eq 'wgs1|wgc1|0x1000|VPN_DOMAINS' &&

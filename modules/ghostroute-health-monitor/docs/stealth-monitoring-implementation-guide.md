@@ -119,7 +119,7 @@ GhostRoute VPS daily       15 3 * * *  /opt/stealth/health-monitor/daily-digest
 
 | Probe | Что ловит |
 |---|---|
-| `channel_b_reality` | Reality path через локальный SOCKS перестал работать |
+| `channel_a_reality` | Channel A Reality path через локальный SOCKS перестал работать |
 | `vps_path` | router не может открыть TCP/443 к Reality VPS |
 | `singbox_health` | sing-box process/listeners unhealthy |
 | `home_reality_ingress` | Home Reality ingress `:<home-reality-port>` down/degraded |
@@ -127,7 +127,7 @@ GhostRoute VPS daily       15 3 * * *  /opt/stealth/health-monitor/daily-digest
 | `mobile_routing_leaks` | heuristic split-routing leak по sing-box logs |
 | `rule_set_sync` | dnsmasq STEALTH catalog != sing-box `domain_suffix` rule-set |
 | `dns_ipv6_leaks` | IPv6 drift, missing `filter-AAAA`, plain DNS sample |
-| `channel_a_resurrection` | retired WireGuard/Channel A вернулся в runtime |
+| `wireguard_resurrection` | retired WireGuard вернулся в runtime |
 | `catalog_health` | ipset availability/capacity |
 | `performance_rtt` | RTT через Reality SOCKS сильно вырос |
 | `tcp_retransmits` | TCP retransmit ratio вырос |

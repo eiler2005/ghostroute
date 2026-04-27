@@ -1,5 +1,5 @@
 #!/bin/sh
-# Idempotent setup of channel B routing on Merlin router.
+# Idempotent setup of Channel A routing on Merlin router.
 # Safe to re-run from firewall-start on every reconnect.
 
 set -e
@@ -46,7 +46,7 @@ done
 ipset create "$IPSET" hash:net family inet -exist
 ipset create "$STATIC_IPSET" hash:net family inet -exist
 
-# 2. mangle cleanup: remove the previous TUN/policy-routing Channel B hooks.
+# 2. mangle cleanup: remove the previous TUN/policy-routing hooks.
 iptables -t mangle -D PREROUTING -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i br0 -m set --match-set "$STATIC_IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
@@ -57,14 +57,14 @@ iptables -t mangle -D OUTPUT -m set --match-set "$STATIC_IPSET" dst -j MARK --se
 while ip rule del fwmark "$MARK" table "$TABLE" 2>/dev/null; do :; done
 ip route flush table "$TABLE" 2>/dev/null || true
 
-# 3. nat: Channel B owns LAN TCP by redirecting selected destinations into
+# 3. nat: Channel A owns LAN TCP by redirecting selected destinations into
 # sing-box. This avoids Merlin TUN/TUNSETIFF races.
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
-# 4. filter: force QUIC/HTTP3 fallback to TCP for Channel B.
+# 4. filter: force QUIC/HTTP3 fallback to TCP for Channel A.
 # VLESS+Reality TCP is the stable path. Silently dropping UDP/443 avoids the
 # local ICMP port-unreachable signature created by REJECT.
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true

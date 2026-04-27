@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Channel B NAT is owned by stealth-route-init.sh from firewall-start.
-# This hook intentionally has no Channel A policy-routing work after the
+# Channel A NAT is owned by stealth-route-init.sh from firewall-start.
+# This hook intentionally has no legacy WireGuard policy-routing work after the
 # WireGuard decommission cleanup.
 exit 0

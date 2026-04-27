@@ -1,0 +1,37 @@
+http_port 127.0.0.1:{{ channel_c_naive_squid_local_port | default(18889) }}
+
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/channel-c.htpasswd
+auth_param basic realm channel-c
+acl channel_c_auth proxy_auth REQUIRED
+
+acl SSL_ports port 443
+acl SSL_ports port 5222
+acl SSL_ports port 5223
+acl SSL_ports port 853
+acl SSL_ports port 993
+acl SSL_ports port 995
+acl Safe_ports port 80
+acl Safe_ports port 443
+acl Safe_ports port 5222
+acl Safe_ports port 5223
+acl Safe_ports port 853
+acl Safe_ports port 993
+acl Safe_ports port 995
+acl CONNECT method CONNECT
+
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow channel_c_auth
+http_access deny all
+
+via off
+forwarded_for delete
+request_header_access X-Forwarded-For deny all
+request_header_access Via deny all
+reply_header_access Via deny all
+
+access_log /var/log/squid/channel-c-access.log
+cache_log /var/log/squid/channel-c-cache.log
+pid_filename /run/squid/channel-c.pid
+cache deny all
+coredump_dir /var/spool/squid
