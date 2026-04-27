@@ -67,7 +67,7 @@ an operator after reading the relevant runbook.
 ## Related Docs
 
 - `modules/recovery-verification/docs/failure-modes.md`
-- `docs/architecture-improvement-roadmap-2026-04-26.md`
+- `docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md`
 - `docs/adr/`
 - `docs/troubleshooting.md`
 - `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`

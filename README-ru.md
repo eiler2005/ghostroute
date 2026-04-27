@@ -417,7 +417,7 @@ VPS observer хранит свой local-only статус на VPS в
 - [README.md](README.md) - English overview
 - [ansible/README.md](/ansible/README.md) - control plane для deploy, Vault, QR/profile generation и live verification
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map и operating surfaces
-- [docs/architecture-improvement-roadmap-2026-04-26.md](/docs/architecture-improvement-roadmap-2026-04-26.md) - приоритетный roadmap архитектурных/security улучшений
+- [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - архивный roadmap архитектурных/security улучшений
 - [docs/adr/](/docs/adr/) - короткие architecture decision records
 - [docs/architecture.md](/docs/architecture.md) - текущая routing architecture
 - [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - подробная схема потоков и кто что видит
