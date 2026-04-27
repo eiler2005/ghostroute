@@ -194,12 +194,15 @@ does not apply for that period.
 
 ## Channel B XHTTP Manual Live-Tested Profiles
 
-Channel B is a VLESS+XHTTP+TLS manual device-client lane. It is not a production
-fallback today. It does not replace Home Reality/Channel A, does not alter
-router REDIRECT/DNS/TUN state, and does not enable automatic failover.
+Channel B is a manual home-first lane. The device profile is VLESS+XHTTP+TLS to
+the home router, and the router relays upstream via local sing-box SOCKS to the
+existing Reality outbound toward VPS. It is not a production fallback today and
+does not enable automatic failover.
 
 ```text
-iPhone/Mac/PC -> Channel B XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet
+iPhone/Mac/PC -> home public IP :<home-channel-b-port> -> router XHTTP+TLS ingress
+               -> local router Xray relay (to local sing-box SOCKS)
+               -> sing-box Reality outbound -> VPS Caddy L4 -> Xray Reality -> Internet
 ```
 
 Generated artifacts can be viewed with the same factory command when the vault
@@ -211,11 +214,11 @@ values are present:
 ./modules/client-profile-factory/bin/client-profiles channel-b-open
 ```
 
-The intended Channel B output includes VLESS URI text files, QR PNG files and
-raw Xray JSON profiles under `ansible/out/clients-channel-b/`. A 2026-04-27
-live smoke pass verified the VPS path and generated `macbook-b` profile through
-a local Xray client container. iOS and Android app import remain manual
-compatibility checks before considering broader readiness.
+The intended Channel B output includes home-first VLESS URI text files and QR
+PNG files under `ansible/out/clients-channel-b/`. In direct-XHTTP mode (when
+home relay is disabled) the generator also emits compatibility URI variants and
+raw Xray JSON artifacts. iOS and Android app import remain manual compatibility
+checks before considering broader readiness.
 
 ## Channel C NaiveProxy Future Experiment
 

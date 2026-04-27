@@ -1,0 +1,41 @@
+- name: Preflight router for Channel B home relay
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Ensure bash + python3 via opkg
+      ansible.builtin.raw: |
+        /opt/bin/opkg list-installed | grep -q '^bash ' || /opt/bin/opkg install bash
+        /opt/bin/opkg list-installed | grep -q '^python3 ' || /opt/bin/opkg install python3
+      changed_when: false
+
+- name: Deploy Channel B home-first XHTTP lane on router
+  hosts: routers
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  pre_tasks:
+    - name: Channel B home relay is enabled
+      ansible.builtin.assert:
+        that:
+          - channel_b_home_relay_enabled | default(false) | bool
+        fail_msg: "Set vault_channel_b_home_relay_enabled=true before running 21-channel-b-router.yml."
+  roles:
+    - singbox_client
+    - channel_b_home_relay
+    - stealth_routing
+  post_tasks:
+    - name: Restart sing-box after Channel B home relay deployment
+      ansible.builtin.raw: |
+        {{ singbox_init_path }} restart
+        sleep 3
+      changed_when: false
+
+    - name: Re-apply stealth routing after final sing-box restart
+      ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false

@@ -12,7 +12,7 @@
 
 GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pro с Asuswrt-Merlin: выбранные домены и IP-сети отправляются через нужный egress-канал без VPN-приложений на домашних устройствах.
 
-Модель каналов разделяет три разные задачи:
+Модель каналов разделяет основные traffic-задачи:
 
 - Channel A — домашняя router-managed линия:
   `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality+Vision -> VPS/Xray`.
@@ -20,15 +20,17 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
   `iPhone/Mac -> домашний белый IP :<home-reality-port> -> sing-box home Reality inbound`.
   Дальше роутер применяет тот же managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
   уходят через VPS Reality, остальные направления идут напрямую через домашний WAN.
-- Channel B — non-production ручная live-tested линия для отдельных устройств:
-  клиентское устройство -> `VLESS+XHTTP+TLS` -> отдельный Xray backend на VPS.
+- Channel B — non-production ручная live-tested home-first линия:
+  клиентское устройство -> `VLESS+XHTTP+TLS` до домашнего роутера ->
+  отдельный router Xray ingress -> локальный sing-box SOCKS -> существующий
+  `Reality/Vision` upstream на VPS.
 - Channel C — будущая ручная линия для camouflage-экспериментов:
   клиентское устройство -> NaiveProxy / HTTPS forward-proxy style hostname на VPS.
 
-Только Channel A входит в активный router data plane. Channel B live-tested как
-ручная selected-device линия на VPS, а Channel C остается planned/manual
-compatibility lane; они не должны менять router REDIRECT, TUN, DNS, local ports
-или automatic failover.
+Только Channel A входит в production automatic router data plane. Channel B —
+опциональный ручной add-on с отдельным ingress/relay и без захвата Channel A
+REDIRECT. Channel C остается planned/manual compatibility lane. Автоматический
+failover через B/C не включается.
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
 `wgc1_*` NVRAM сохранён только как cold fallback.
@@ -45,8 +47,10 @@ Caddy/VPS или Reality/Vision data plane.
 - Единый активный каталог для домашней LAN (`STEALTH_DOMAINS`).
 - Общий static CIDR каталог для direct-IP сервисов через `VPN_STATIC_NETS`.
 - Channel A VLESS+Reality+Vision egress через VPS host за общим Caddy L4 на TCP/443.
-- Channel B manual live-tested lane: VLESS+XHTTP+TLS для тестов на выбранных
-  клиентских устройствах через отдельный public hostname поверх VPS `:443`.
+- Channel B manual live-tested home-first lane: выбранные устройства сначала
+  подключаются к домашнему ingress через XHTTP/TLS, затем роутер relays трафик
+  в локальный sing-box SOCKS и переиспользует Reality/Vision upstream на VPS
+  `:443`.
 - Channel C design lane: NaiveProxy / HTTPS forward proxy для
   camouflage-экспериментов через отдельный public hostname поверх VPS `:443`.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных мобильных клиентов: LTE-оператор видит домашний российский IP, а не VPS.
@@ -125,9 +129,10 @@ Home Wi-Fi/LAN ---- DNS ----> ASUS Merlin router <---- Reality QR ---- iPhone/Ma
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
 
-Future manual device-client lanes:
-  Channel B -> Device client -> XHTTP hostname :443
-            -> Caddy TLS -> local Xray XHTTP -> Internet
+Manual device-client lanes:
+  Channel B -> Device client -> home public IP :<home-channel-b-port>
+            -> router local Xray XHTTP/TLS ingress
+            -> local sing-box SOCKS -> Reality/Vision -> VPS -> Internet
   Channel C -> Device client -> Naive/HTTPS hostname :443
             -> Caddy forward_proxy / compatible backend -> Internet
 
@@ -218,21 +223,17 @@ WireGuard не активен в steady state. Сохранённый `wgc1_*` N
 ### 4. Channel B/C manual profiles
 
 Channel B и Channel C — ручные device-client линии с разными design goals.
-Channel B — кандидат на fallback с другим transport family: обычный TLS на
-отдельном hostname, XHTTP transport и local-only Xray backend. Channel C —
-camouflage-эксперимент: отдельный hostname, который выглядит как обычная
+Channel B теперь работает в home-first режиме: выбранные устройства
+подключаются к отдельному домашнему XHTTP/TLS ingress на роутере. Локальный
+Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, поэтому
+второй hop переиспользует существующий Reality/Vision upstream на VPS.
+Channel C остаётся camouflage-экспериментом с обычной
 authenticated HTTPS/Naive-style proxy surface.
 
-Планируемая v1-модель — ручное тестирование на выбранных устройствах через
-отдельные VPS hostnames на том же public `:443`: Channel B через
-VLESS+XHTTP+TLS, Channel C через NaiveProxy или HTTPS-forward-proxy-compatible
-вариант.
-
-Они не ставят binaries на роутер, не добавляют router SOCKS/HTTP listeners, не
-меняют REDIRECT/TUN/DNS и не дают automatic failover. Channel B прошёл
-VPS-side live smoke 2026-04-27 через локальный Xray client container и
-сгенерированный профиль `macbook-b`; import в iOS и Android приложениях остаётся
-ручной compatibility-проверкой. Artifacts в `ansible/out/clients-channel-b/`
+Границы изоляции Channel B жесткие: отдельный ingress-port и локальный relay на
+роутере без захвата Channel A REDIRECT, router DNS, TUN state и automatic
+failover. Artifacts в
+`ansible/out/clients-channel-b/`
 или `ansible/out/clients-channel-c/` остаются non-production manual profiles.
 
 ---
@@ -245,6 +246,8 @@ Router:
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
   sing-box home Reality inbound on :<home-reality-port>
+  optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
+  optional Channel B local Xray relay к sing-box SOCKS на 127.0.0.1:<router-socks-port>
   dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
@@ -252,7 +255,7 @@ VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
-  manual live-tested Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
+  optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   future Channel C NaiveProxy / HTTPS forward-proxy scaffolding
   stealth stack under /opt/stealth
 
@@ -277,6 +280,7 @@ ansible/
   playbooks/11-channel-b-vps.yml
   playbooks/12-channel-c-vps.yml
   playbooks/20-stealth-router.yml
+  playbooks/21-channel-b-router.yml
   playbooks/30-generate-client-profiles.yml
   playbooks/99-verify.yml
   secrets/stealth.yml             # ansible-vault, gitignored
@@ -325,7 +329,10 @@ ROUTER=192.168.50.1 ./deploy.sh
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 
-# Ручные VPS device-client линии (не мутируют router Channel A path)
+# Ручной Channel B home-first add-on на роутере
+ansible-playbook playbooks/21-channel-b-router.yml
+
+# Ручные VPS device-client линии
 ansible-playbook playbooks/11-channel-b-vps.yml
 ansible-playbook playbooks/12-channel-c-vps.yml
 
@@ -342,6 +349,9 @@ cd ..
 Channel A (`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,
 `update-blocked-list.sh`), чтобы REDIRECT и накопленный `STEALTH_DOMAINS`
 переживали reboot роутера и Merlin firewall rebuild.
+
+`21-channel-b-router.yml` — add-on для Channel B: отдельный домашний XHTTP ingress
+и локальный router relay в sing-box Reality upstream без изменения Channel A REDIRECT.
 
 Traffic и observability:
 

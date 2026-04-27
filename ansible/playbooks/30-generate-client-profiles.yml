@@ -16,6 +16,7 @@
     channel_c_naive_out_dir: "{{ channel_c_out_dir }}/naive"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
+    channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
     channel_c_https_proxy_url: "https://{{ channel_c_naive_username | default('') | urlencode }}:{{ channel_c_naive_password | default('') | urlencode }}@{{ channel_c_naive_public_host | default('') }}:443"
     channel_c_shadowrocket_https_proxy_url: "{{ channel_c_https_proxy_url }}?method=connect&tls=true&plugin=none"
     channel_c_naive_proxy_url: "naive+{{ channel_c_https_proxy_url }}"
@@ -225,38 +226,48 @@
       tags:
         - emergency_clients_only
 
-    - name: Render Channel B XHTTP URI for each client
+    - name: Render Channel B primary URI for each client
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/{{ item.name }}.conf"
         mode: "0600"
         content: |
+          {% if channel_b_home_relay_enabled | default(false) | bool %}
+          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
+          {% else %}
           vless://{{ item.uuid }}@{{ channel_b_xhttp_public_host }}:443?encryption=none&security=tls&sni={{ channel_b_xhttp_public_host }}&host={{ channel_b_xhttp_public_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_xhttp_mode | default('packet-up') }}#{{ item.name }}-xhttp
-      loop: "{{ channel_b_xhttp_clients | default([]) }}"
+          {% endif %}
+      loop: "{{ channel_b_profile_clients }}"
       when: channel_b_xhttp_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel B XHTTP text URI for iOS text import
+    - name: Render Channel B primary text URI for iOS import
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/{{ item.name }}.txt"
         mode: "0600"
         content: |
+          {% if channel_b_home_relay_enabled | default(false) | bool %}
+          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
+          {% else %}
           vless://{{ item.uuid }}@{{ channel_b_xhttp_public_host }}:443?encryption=none&security=tls&sni={{ channel_b_xhttp_public_host }}&host={{ channel_b_xhttp_public_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_xhttp_mode | default('packet-up') }}#{{ item.name }}-xhttp
-      loop: "{{ channel_b_xhttp_clients | default([]) }}"
+          {% endif %}
+      loop: "{{ channel_b_profile_clients }}"
       when: channel_b_xhttp_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel B XHTTP compatibility URI variants
+    - name: Render Channel B direct-XHTTP compatibility URI variants
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/{{ item.0.name }}-{{ item.1.name }}.txt"
         mode: "0600"
         content: |
           vless://{{ item.0.uuid }}@{{ channel_b_xhttp_public_host }}:443?encryption=none&security=tls&sni={{ channel_b_xhttp_public_host }}&host={{ channel_b_xhttp_public_host }}{{ item.1.alpn }}&fp=chrome&type=xhttp&path={{ item.1.path }}{{ item.1.mode }}#{{ item.0.name }}-xhttp-{{ item.1.name }}
       loop: "{{ channel_b_xhttp_clients | default([]) | product(channel_b_xhttp_uri_variants) | list }}"
-      when: channel_b_xhttp_enabled | default(false) | bool
+      when:
+        - channel_b_xhttp_enabled | default(false) | bool
+        - not (channel_b_home_relay_enabled | default(false) | bool)
       no_log: true
       tags:
         - channel_b_clients_only
@@ -279,7 +290,7 @@
             path: "{{ channel_b_xhttp_path | replace('/', '%2F') }}"
             mode: "&mode={{ channel_b_xhttp_mode | default('packet-up') }}"
 
-    - name: Render Channel B XHTTP raw Xray JSON for each client
+    - name: Render Channel B direct-XHTTP raw Xray JSON for each client
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/{{ item.name }}.json"
         mode: "0600"
@@ -344,12 +355,14 @@
             }
           }
       loop: "{{ channel_b_xhttp_clients | default([]) }}"
-      when: channel_b_xhttp_enabled | default(false) | bool
+      when:
+        - channel_b_xhttp_enabled | default(false) | bool
+        - not (channel_b_home_relay_enabled | default(false) | bool)
       no_log: true
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel B XHTTP outbound-only JSON for app import
+    - name: Render Channel B direct-XHTTP outbound-only JSON for app import
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/{{ item.name }}-outbound.json"
         mode: "0600"
@@ -388,7 +401,9 @@
             }
           }
       loop: "{{ channel_b_xhttp_clients | default([]) }}"
-      when: channel_b_xhttp_enabled | default(false) | bool
+      when:
+        - channel_b_xhttp_enabled | default(false) | bool
+        - not (channel_b_home_relay_enabled | default(false) | bool)
       no_log: true
       tags:
         - channel_b_clients_only
@@ -397,13 +412,13 @@
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
         qrencode -t PNG -o "{{ channel_b_out_dir }}/{{ item.name }}.png" -r "{{ channel_b_out_dir }}/{{ item.name }}.conf"
-      loop: "{{ channel_b_xhttp_clients | default([]) }}"
+      loop: "{{ channel_b_profile_clients }}"
       when: channel_b_xhttp_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel B XHTTP QR index
+    - name: Render Channel B QR index
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/qr-index.html"
         mode: "0600"
@@ -413,7 +428,7 @@
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Channel B XHTTP Client Artifacts</title>
+            <title>Channel B Client Artifacts</title>
             <style>
               body { margin: 0; font-family: system-ui, sans-serif; background: #f7f7f4; color: #1f2528; }
               main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
@@ -429,20 +444,27 @@
           </head>
           <body>
             <main>
+              {% if channel_b_home_relay_enabled | default(false) | bool %}
+              <h1>Channel B Home-First XHTTP Clients</h1>
+              <p>Primary Channel B import path: device -> home router XHTTP/TLS ingress -> router Reality upstream -> VPS.</p>
+              {% else %}
               <h1>Channel B XHTTP Client Artifacts</h1>
               <p>Manual fallback profiles only. Do not import as the primary Channel A profile.</p>
+              {% endif %}
               <section class="grid">
-          {% for client in channel_b_xhttp_clients | default([]) %}
+          {% for client in channel_b_profile_clients %}
                 <article>
-                  <h2>{{ client.name }}-xhttp</h2>
-                  <img src="{{ client.name }}.png" alt="{{ client.name }} XHTTP QR">
+                  <h2>{{ client.name }}</h2>
+                  <img src="{{ client.name }}.png" alt="{{ client.name }} Channel B QR">
                   <div class="links">
                     <a href="{{ client.name }}.txt">text URI</a>
+          {% if not (channel_b_home_relay_enabled | default(false) | bool) %}
                     <a href="{{ client.name }}-outbound.json">outbound JSON</a>
                     <a href="{{ client.name }}.json">raw JSON</a>
                     <a href="{{ client.name }}-noalpn.txt">no ALPN URI</a>
                     <a href="{{ client.name }}-h1.txt">h1 URI</a>
                     <a href="{{ client.name }}-rawpath.txt">raw path URI</a>
+          {% endif %}
                   </div>
                 </article>
           {% endfor %}

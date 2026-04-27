@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: channel_b_home_relay
+  author: GhostRoute
+  description: Router-side Channel B XHTTP/TLS home ingress relayed through local sing-box SOCKS/Reality upstream.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: GenericUNIX
+      versions: ["all"]
+dependencies: []
