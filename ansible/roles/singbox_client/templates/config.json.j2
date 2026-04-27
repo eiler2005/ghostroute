@@ -46,6 +46,13 @@
           "short_id": {{ home_reality_server_short_ids | to_json }}
         }
       }
+    },
+    {
+      "type": "socks",
+      "tag": "channel-b-relay-socks",
+      "listen": "127.0.0.1",
+      "listen_port": {{ channel_b_home_upstream_socks_port }},
+      "sniff": false
     }
 {% endif %}
   ],
@@ -96,7 +103,7 @@
       }
     ],
     "rules": [
-      { "inbound": "redirect-in", "outbound": "reality-out" },
+    { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
       {
         "inbound": "reality-in",
@@ -114,7 +121,24 @@
         "outbound": "direct-out"
       },
       { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
-      { "inbound": "reality-in", "outbound": "direct-out" }
+      { "inbound": "reality-in", "outbound": "direct-out" },
+      {
+        "inbound": "channel-b-relay-socks",
+        "port": [53, 853],
+        "outbound": "reality-out"
+      },
+      {
+        "inbound": "channel-b-relay-socks",
+        "domain_suffix": [
+          "vtb.ru",
+          "app-analytics-services-att.com",
+          "app-measurement.com",
+          "firebaseinstallations.googleapis.com"
+        ],
+        "outbound": "direct-out"
+      },
+      { "inbound": "channel-b-relay-socks", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "channel-b-relay-socks", "outbound": "direct-out" }
 {% endif %}
     ],
     "final": "direct-out"

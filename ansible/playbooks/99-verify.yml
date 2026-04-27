@@ -424,6 +424,17 @@
       changed_when: false
       when: channel_b_home_relay_enabled | default(false) | bool
 
+    - name: sing-box has dedicated Channel B relay SOCKS inbound for split routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-b-relay-socks"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":[53,853],"outbound":"reality-out"'
+      changed_when: false
+      when: channel_b_home_relay_enabled | default(false) | bool
+
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"
       changed_when: false
