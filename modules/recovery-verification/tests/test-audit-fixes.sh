@@ -32,8 +32,8 @@ EOF
 cat >"${fixture}/README-ru.md" <<'EOF'
 module native
 EOF
-cat >"${fixture}/docs/adr/0004-channel-a-cold-fallback.md" <<'EOF'
-Channel A cold fallback
+cat >"${fixture}/docs/adr/0004-deprecated-wireguard-cold-fallback.md" <<'EOF'
+Deprecated WireGuard cold fallback
 EOF
 cat >"${fixture}/ansible/roles/example/defaults/main.yml" <<'EOF'
 ---
@@ -49,13 +49,13 @@ dport 443 match-set anything DROP
 EOF
 cat >"${fixture}/modules/recovery-verification/bin/verify.sh" <<'EOF'
 CHANNEL_B_DROP_QUIC_STEALTH
-Channel A RC_VPN_ROUTE RULE_MARK_0X1000
+WireGuard RC_VPN_ROUTE RULE_MARK_0X1000
 EOF
 cat >"${fixture}/modules/shared/lib/router-health-common.sh" <<'EOF'
 CHANNEL_B_DROP_QUIC_STATIC
 EOF
 cat >"${fixture}/modules/ghostroute-health-monitor/router/run-probes" <<'EOF'
-channel_a_resurrection
+wireguard_resurrection
 EOF
 
 for path in \

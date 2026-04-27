@@ -192,11 +192,83 @@ Trade-off: during emergency use, the LTE carrier sees the device connecting
 directly to the VPS host, so the domestic-first-hop billing/privacy property
 does not apply for that period.
 
+## Channel B XHTTP Manual Fallback Profiles
+
+Channel B profiles are separate VLESS+XHTTP+TLS manual fallbacks. They do not
+replace Home Reality/Channel A, do not alter router REDIRECT/DNS/TUN state, and
+do not enable automatic failover.
+
+```text
+iPhone/Mac/PC -> Channel B XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet
+```
+
+Generate and view them with the same factory command:
+
+```bash
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles channel-b-list
+./modules/client-profile-factory/bin/client-profiles channel-b-open
+```
+
+The Channel B output includes VLESS URI text files, QR PNG files and raw Xray
+JSON profiles under `ansible/out/clients-channel-b/`. The default URI and JSON
+profiles pin XHTTP `mode=packet-up`, matching the Caddy reverse-proxy backend.
+For iOS XHTTP clients, prefer text/clipboard import first: QR recognition and
+parser behavior is less reliable for longer XHTTP links.
+
+## Channel C NaiveProxy Manual Fallback Profile
+
+Channel C is a separate NaiveProxy experiment. It is also manual-only and does
+not participate in router domain routing or automatic failover.
+
+```text
+client app -> Channel C Naive hostname :443 -> Caddy SNI route -> local Squid compatibility proxy -> Internet
+```
+
+Generate and view it with:
+
+```bash
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles channel-c-list
+./modules/client-profile-factory/bin/client-profiles channel-c-open
+```
+
+The Channel C output now separates true NaiveProxy artifacts from plain HTTPS
+forward-proxy compatibility artifacts:
+
+- `<client>.txt` and QR PNG: `naive+https://...` URI for clients with native
+  NaiveProxy import support.
+- `<client>-https.txt`: plain `https://...` forward-proxy URI for clients that
+  expose only an HTTPS proxy type.
+- `<client>-shadowrocket-https.txt` and QR PNG: Shadowrocket-targeted HTTPS
+  proxy URI with explicit `method=connect`, `tls=true` and `plugin=none`
+  import hints.
+- `<client>-shadowrocket-add.txt` and QR PNG: Shadowrocket URL-scheme wrapper
+  around the same HTTPS proxy URI, used when the plain QR import drops
+  credentials.
+- `<client>-shadowrocket-fields-*.txt` and QR PNG variants: compact
+  `host:port:user:pass` and `user:pass@host:port` field-import formats for
+  Shadowrocket versions that ignore credentials in HTTPS URLs.
+- `<client>-shadowrocket.conf`: Shadowrocket config-file import with the
+  HTTPS proxy predeclared under `[Proxy]`, `method=connect`, TLS enabled and
+  `FINAL,PROXY`.
+- `<client>-shadowrocket-positional.conf`: alternate Shadowrocket config-file
+  import using positional `user,password` fields for app versions that ignore
+  `username=...` / `password=...` on HTTPS proxy nodes. It also pins
+  `method=connect`.
+- `<client>.json`: naiveproxy CLI JSON using the plain HTTPS proxy URL.
+- `<client>-sing-box-outbound.json`: sing-box `type: naive` outbound JSON.
+
+Keep Channel B/C profiles disabled/off until manually testing a specific
+device.
+
 ## Clean Local Artifacts
 
 ```bash
 ./modules/client-profile-factory/bin/client-profiles home-clean
 ./modules/client-profile-factory/bin/client-profiles emergency-clean
+./modules/client-profile-factory/bin/client-profiles channel-b-clean
+./modules/client-profile-factory/bin/client-profiles channel-c-clean
 ```
 
 This removes generated home mobile files under `ansible/out/clients-home/` and keeps only `.gitkeep`. `ansible/out/clients/router.conf` is the router's VPS identity, not a mobile QR.

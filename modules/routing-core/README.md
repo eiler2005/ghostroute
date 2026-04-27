@@ -58,7 +58,7 @@ inspect its state, but must not silently change routing.
 - Missing Merlin hook files.
 - Rule-set drift between router runtime and repo catalogs.
 - sing-box REDIRECT not receiving managed traffic.
-- Channel A cold fallback accidentally re-enabled.
+- WireGuard cold fallback accidentally re-enabled.
 
 ## Tests
 

@@ -451,7 +451,7 @@ not commit or paste it into public docs.
 - ipset'ы
 - routing hooks
 - `ip rule`
-- отсутствие legacy Channel A DNS redirect для `wgs1`
+- отсутствие legacy WireGuard DNS redirect для `wgs1`
 
 Если drift пустой, можно честно говорить:
 

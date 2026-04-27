@@ -3,7 +3,7 @@
 This document explains which domains each service uses and why they need to be routed through VPN. Useful when diagnosing issues or adding similar services.
 
 All domains listed here belong in `configs/dnsmasq-stealth.conf.add`
-(`STEALTH_DOMAINS`). That catalog feeds both LAN Channel B and mobile Home
+(`STEALTH_DOMAINS`). That catalog feeds both LAN Channel A and mobile Home
 Reality split routing. Legacy `VPN_DOMAINS` and per-domain VPN DNS upstream
 rules are retired.
 

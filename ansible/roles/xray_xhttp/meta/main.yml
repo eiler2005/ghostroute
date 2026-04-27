@@ -1,0 +1,4 @@
+galaxy_info:
+  role_name: xray_xhttp
+  author: router_configuration
+  description: Add-only Channel B Xray-core XHTTP endpoint behind Caddy TLS.

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Emergency cold fallback for Channel A.
+# Emergency cold fallback for retired WireGuard.
 #
 # Default mode is --dry-run. Only --enable creates WireGuard traffic.
-# The script keeps normal Channel B rules in place, but marks selected LAN
+# The script keeps normal Channel A REDIRECT rules in place, but marks selected LAN
 # traffic and bypasses the REDIRECT rules so wgc1 can carry it.
 
 set -eu

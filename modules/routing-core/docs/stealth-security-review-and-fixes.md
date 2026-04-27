@@ -1,7 +1,7 @@
 # Stealth Channel — Security Review & Hardening Implementation Guide
 
 **Audience:** LLM agent or engineer implementing hardening fixes on the deployed `router_configuration` stealth channel.
-**Scope:** Channel B (VLESS+Reality on VPS CX23 `<vps-ip>`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Channel A (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
+**Scope:** Channel A (VLESS+Reality+Vision on VPS CX23 `<vps-ip>`, system Caddy + Xray, sing-box REDIRECT mode on Merlin router) plus the applied home Reality ingress for remote QR clients. Legacy WireGuard (`wgc1`/`wgs1` via commercial VPN) is out of scope for fixes but referenced where it affects posture.
 **Status:** Implementation guide plus applied local baseline for P0 §1.1, P0 §1.2, P0 §1.3, P1 §2.1, P1 §2.2, P1 §2.3, P1 §2.4, P1 §2.5, P1 §2.6, LTE performance hardening, and P2 §3.1 as of 2026-04-25. Remaining P2 items stay backlog.
 **Primary goal (unchanged):** RKN/ISP DPI cannot classify our home traffic as VPN. Everything else is secondary.
 
@@ -611,7 +611,7 @@ Remove the added directives, restart sing-box.
 ## 2.4 sing-box liveness watchdog
 
 ### Problem
-`/opt/etc/init.d/S99singbox` restarts a crashed process, but a hung process (not crashed, not responding) will silently break Channel B for LAN clients until a human notices. Fail-closed behavior means connections time out, but there is no alert.
+`/opt/etc/init.d/S99singbox` restarts a crashed process, but a hung process (not crashed, not responding) will silently break Channel A for LAN clients until a human notices. Fail-closed behavior means connections time out, but there is no alert.
 
 ### Why it matters
 Operational reliability. Not a stealth issue per se, but a long outage degrades trust; users may switch back to plain WAN or disable VPN on their iPhones to "fix" slow internet, exposing themselves.
@@ -804,7 +804,7 @@ inbound endpoint. Design in docs/remote-access-overlay-migration.md;
 not yet executed.
 
 ### Residual risks
-- Single VPS = single point of failure for Channel B. If VPS exit IP
+- Single VPS = single point of failure for Channel A. If VPS exit IP
   is RKN-blocked, stealth channel is down until failover (manual).
 - Router OUTPUT chain not stealth-captured. NTP, firmware updates,
   dnscrypt-proxy upstream DoH would flow directly over WAN if §2.2 regresses.
@@ -908,7 +908,7 @@ cd ..
 Then functional tests:
 
 ```bash
-# Channel B sanity — LAN device
+# Channel A sanity — LAN device
 curl https://ifconfig.me     # expect: <vps-ip> (if ifconfig.me in STEALTH)
 curl -6 https://ipv6.google.com  # expect: Network unreachable
 
@@ -938,12 +938,12 @@ If any of the above fails, pause before moving to the next P-level; pick up the 
 
 All fixes are individually reversible (each fix has its own rollback). If the entire stealth channel breaks badly:
 
-1. Disable Channel B entirely at the router (fail-open is NOT wanted here; we want fail-closed):
+1. Disable Channel A entirely at the router (fail-open is NOT wanted here; we want fail-closed):
    ```
    ssh "$ROUTER_SSH" '
      ipset flush STEALTH_DOMAINS
      /opt/etc/init.d/S99singbox stop
-     # Channel B traffic now fails-closed for STEALTH_DOMAINS
+     # Channel A traffic now fails-closed for STEALTH_DOMAINS
    '
    ```
    LAN devices: domains in STEALTH_DOMAINS go dark. Rest of internet (plain routes) still works. wgs1 + wgc1 unaffected.
@@ -979,10 +979,10 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 
 | Date/time | Milestone | Evidence |
 |---|---|---|
-| 2026-04-25 14:00 | Channel A runtime decommissioned | `wgs1_enable=0`, `wgc1_enable=0`, `wg show` empty, no `0x1000`/`RC_VPN_ROUTE` steady-state hooks |
+| 2026-04-25 14:00 | WireGuard runtime decommissioned | `wgs1_enable=0`, `wgc1_enable=0`, `wg show` empty, no `0x1000`/`RC_VPN_ROUTE` steady-state hooks |
 | 2026-04-25 16:00 | Mobile Home Reality relay deployed | Router `sing-box` has `reality-in` on TCP/<home-reality-port> and normal mobile QR clients dial the home IP first |
 | 2026-04-25 18:00 | Old mobile UUIDs removed from normal VPS path | VPS `clients[]` source of truth reduced to router identity; router-side `home_clients[]` kept separate |
-| 2026-04-25 20:00 | Channel A repo cleanup completed | Legacy `VPN_DOMAINS`, `wgs1/wgc1` hooks and stale docs/checks removed or marked historical |
+| 2026-04-25 20:00 | WireGuard repo cleanup completed | Legacy `VPN_DOMAINS`, `wgs1/wgc1` hooks and stale docs/checks removed or marked historical |
 | 2026-04-25 21:00 | Mobile traffic observability added | Mobile Home Reality byte counters and period reports added for TCP/<home-reality-port> ingress |
 | 2026-04-25 22:00 | Emergency direct-VPS fallback made explicit | `emergency_clients[]` documented as disabled/off fallback for rare home relay outages |
 | 2026-04-25 23:00 | LTE performance hardening applied | Commits `afaa912`, `0bec8c5`, `feb8fd2`, `3a71207`: MSS 1360 clamp, TCP sysctl tuning, connlimit 300, and performance runbook |

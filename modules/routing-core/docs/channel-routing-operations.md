@@ -52,7 +52,7 @@ Drift items: 0
 
 ## Live Router Checks
 
-### Channel B REDIRECT
+### Channel A REDIRECT
 
 ```sh
 netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
@@ -152,7 +152,7 @@ ipset list VPN_STATIC_NETS | awk '/^Number of entries:/ {print $4}'
 
 `STEALTH_DOMAINS` is populated dynamically after DNS resolution. A low value
 immediately after restart is not necessarily a failure. `VPN_DOMAINS` should not
-exist in steady state. `VPN_STATIC_NETS` should exist because Channel B still
+exist in steady state. `VPN_STATIC_NETS` should exist because Channel A still
 uses that historical static-CIDR set name.
 
 ---
@@ -180,12 +180,12 @@ Why both deploy mechanisms exist:
 
 ## Switch LAN Back To WGC1 Temporarily
 
-Use only as an emergency rollback if Channel B is unhealthy.
+Use only as an emergency rollback if Channel A is unhealthy.
 
 Implementation intent:
 
 1. Hook `RC_VPN_ROUTE` back to `br0`.
-2. Disable or remove Channel B REDIRECT rules in `stealth-route-init.sh`.
+2. Disable or remove Channel A REDIRECT rules in `stealth-route-init.sh`.
 3. Optionally handle router `OUTPUT` explicitly only if needed.
 4. Deploy and verify.
 
@@ -210,11 +210,11 @@ Do not leave both `RC_VPN_ROUTE` and REDIRECT rules active for the same LAN sour
 
 ---
 
-## Move Remote WGS1 Clients To Channel B
+## Move Remote WGS1 Clients To Channel A
 
 Not the current baseline.
 
-Because this router supports `REDIRECT` but not `TPROXY`, moving `wgs1` to Channel B should be designed carefully. A naive mangle mark is not enough in the current REDIRECT model.
+Because this router supports `REDIRECT` but not `TPROXY`, moving `wgs1` to Channel A should be designed carefully. A naive mangle mark is not enough in the current REDIRECT model.
 
 Implementation options:
 

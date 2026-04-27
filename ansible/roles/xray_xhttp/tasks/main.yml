@@ -1,0 +1,72 @@
+- name: Stop Channel B XHTTP container when disabled
+  community.docker.docker_container:
+    name: "{{ channel_b_xhttp_container_name }}"
+    state: absent
+  when: not (channel_b_xhttp_enabled | bool)
+
+- name: Manage Channel B XHTTP service
+  when: channel_b_xhttp_enabled | bool
+  block:
+    - name: Validate Channel B XHTTP settings
+      ansible.builtin.assert:
+        that:
+          - channel_b_xhttp_public_host | length > 0
+          - channel_b_xhttp_public_host is not search('(?i)(vpn|proxy|xray|xhttp|naive)')
+          - channel_b_xhttp_path is match('^/\\S+$')
+          - channel_b_xhttp_mode == 'packet-up'
+          - channel_b_xhttp_clients | length > 0
+          - channel_b_xhttp_listen == '127.0.0.1'
+        fail_msg: "Channel B XHTTP requires a vault-only hostname, random path, packet-up mode and dedicated clients."
+      no_log: true
+
+    - name: Ensure Channel B XHTTP config directory exists
+      ansible.builtin.file:
+        path: "{{ channel_b_xhttp_config_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render Channel B XHTTP config
+      ansible.builtin.template:
+        src: config.json.j2
+        dest: "{{ channel_b_xhttp_config_path }}"
+        mode: "0600"
+      register: xray_xhttp_config_render
+      no_log: true
+
+    - name: Pull pinned Xray-core image for Channel B XHTTP
+      community.docker.docker_image:
+        name: "{{ channel_b_xhttp_image }}"
+        source: pull
+
+    - name: Validate Channel B XHTTP config with Xray
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --user
+          - 0:0
+          - --network
+          - host
+          - -v
+          - "{{ channel_b_xhttp_config_path }}:/etc/xray/config.json:ro"
+          - "{{ channel_b_xhttp_image }}"
+          - run
+          - -test
+          - -config
+          - /etc/xray/config.json
+      changed_when: false
+      no_log: true
+
+    - name: Run Channel B XHTTP container
+      community.docker.docker_container:
+        name: "{{ channel_b_xhttp_container_name }}"
+        image: "{{ channel_b_xhttp_image }}"
+        state: started
+        user: "0:0"
+        restart_policy: unless-stopped
+        network_mode: host
+        command: run -config /etc/xray/config.json
+        volumes:
+          - "{{ channel_b_xhttp_config_path }}:/etc/xray/config.json:ro"
+        restart: "{{ xray_xhttp_config_render is changed }}"

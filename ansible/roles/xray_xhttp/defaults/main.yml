@@ -1,0 +1,15 @@
+---
+# Channel B XHTTP is a device-client-only fallback. It does not participate in
+# router REDIRECT, DNS, TUN or automatic failover.
+channel_b_xhttp_enabled: false
+channel_b_xhttp_image: ghcr.io/xtls/xray-core:26.3.27
+channel_b_xhttp_container_name: xray-xhttp
+channel_b_xhttp_config_dir: "{{ stealth_stack_dir }}/xray-xhttp"
+channel_b_xhttp_config_path: "{{ channel_b_xhttp_config_dir }}/config.json"
+channel_b_xhttp_listen: 127.0.0.1
+channel_b_xhttp_local_port: 18081
+channel_b_xhttp_public_host: ""
+channel_b_xhttp_path: /assets/update
+channel_b_xhttp_mode: packet-up
+channel_b_xhttp_clients: []
+channel_b_xhttp_block_udp_443: false

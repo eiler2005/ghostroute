@@ -54,7 +54,7 @@ an operator after reading the relevant runbook.
 
 - Reality/VPS path unavailable.
 - Rule-set drift or missing cron hooks.
-- Channel A fallback unexpectedly active.
+- WireGuard fallback unexpectedly active.
 - IPv6, DNS or direct traffic leaks.
 
 ## Tests

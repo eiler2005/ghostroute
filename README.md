@@ -15,15 +15,19 @@
 
 GhostRoute lets an ASUS Merlin router decide which domains and IP networks should leave through a stealth Reality channel, while ordinary home devices stay configuration-free.
 
-The current production model has two active paths:
+The current production model has one primary channel and two manual fallbacks:
 
-- Home Wi-Fi/LAN uses Channel B: `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS/Xray`.
+- Channel A is the primary fast path:
+  `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality+Vision -> VPS/Xray`.
 - Remote mobile QR/VLESS clients connect to the home ASUS first:
   `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound`.
   The router then applies the same managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
   leave through VPS Reality, while non-managed destinations leave through the home WAN.
+- Channel B is manual `VLESS+XHTTP+TLS` on a separate Xray backend.
+- Channel C is manual `NaiveProxy` through Caddy `forward_proxy`.
 
-Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRAM remains only as a cold fallback.
+Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
+`wgc1_*` NVRAM remains only as a cold fallback.
 
 ---
 
@@ -32,7 +36,11 @@ Channel A (`wgs1` + `wgc1`) is decommissioned in normal operation. `wgc1_*` NVRA
 - Domain-based routing with `dnsmasq` + `ipset`.
 - Single active domain catalog for home LAN (`STEALTH_DOMAINS`).
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
-- VLESS+Reality egress through a VPS host behind shared Caddy L4 on TCP/443.
+- Channel A VLESS+Reality+Vision egress through a VPS host behind shared Caddy L4 on TCP/443.
+- Optional Channel B manual fallback profiles: VLESS+XHTTP+TLS on a separate
+  public hostname sharing the VPS `:443`.
+- Optional Channel C manual fallback profile: NaiveProxy on a separate public
+  hostname sharing the VPS `:443`.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
 - Automatic domain discovery that writes `STEALTH_DOMAINS` only.
@@ -50,7 +58,7 @@ core, not just a set of firewall scripts:
 
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
   sing-box REDIRECT and home Reality ingress, managed Reality egress to VPS,
-  direct-out fallback for non-managed traffic, and Channel A cold fallback.
+  direct-out fallback for non-managed traffic, and WireGuard cold fallback.
 - **GhostRoute Health Monitor** — a read-only reliability module for the
   router + VPS setup. It produces local `STATUS_OK` / `STATUS_FAIL` sentinels,
   `status.json`, Markdown summaries, daily digests and disk-based alert
@@ -115,7 +123,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS generation from Vault
+  Client Profiles     -> QR/VLESS and Channel B/C profile generation from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -192,6 +200,14 @@ Detailed workflow, ports, components and observer model:
 
 WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `modules/recovery-verification/router/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
 
+### 4. Channel B/C Manual Profiles
+
+Channel B and Channel C are device-client fallback lanes, not router data-plane
+changes. Generated profiles under `ansible/out/clients-channel-b/` and
+`ansible/out/clients-channel-c/` let selected devices manually test
+VLESS+XHTTP+TLS or NaiveProxy through separate VPS hostnames on the same public
+`:443`. There is no automatic failover and no per-domain router routing in v1.
+
 ---
 
 ## Technical Stack
@@ -203,12 +219,14 @@ Router:
   sing-box REDIRECT inbound on :<lan-redirect-port>
   sing-box home Reality inbound on :<home-reality-port>
   dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
-  WireGuard Channel A disabled; wgc1 NVRAM preserved for cold fallback
+  Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
+  optional Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
+  optional Channel C NaiveProxy via Caddy forward_proxy
   stealth stack under /opt/stealth
 
 Control:
@@ -223,7 +241,7 @@ Control:
 
 ```text
 configs/
-  dnsmasq-stealth.conf.add        # STEALTH_DOMAINS for home LAN Channel B
+  dnsmasq-stealth.conf.add        # STEALTH_DOMAINS for home LAN Channel A
   static-networks.txt             # shared CIDR catalog
 
 ansible/
@@ -270,7 +288,7 @@ overviews.
 # Base router deploy: dnsmasq, firewall-start, nat-start, cron scripts
 ROUTER=192.168.50.1 ./deploy.sh
 
-# Channel B router layer: sing-box, dnscrypt-proxy, REDIRECT routing
+# Channel A router layer: sing-box, dnscrypt-proxy, REDIRECT routing
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 

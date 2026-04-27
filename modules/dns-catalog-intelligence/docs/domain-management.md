@@ -14,7 +14,7 @@ Advisory-only идеи по сужению каталога лежат в
 предложения.
 
 `VPN_DOMAINS` удалён из нормальной схемы. `VPN_STATIC_NETS` остаётся, потому что
-Channel B использует этот исторически названный ipset для direct-IP/static CIDR.
+Channel A использует этот исторически названный ipset для direct-IP/static CIDR.
 
 Remote mobile QR/VLESS-клиенты не зависят от ipset на первом hop: они идут на
 домашний ASUS `:<home-reality-port>` и попадают в router-side Reality inbound. После этого

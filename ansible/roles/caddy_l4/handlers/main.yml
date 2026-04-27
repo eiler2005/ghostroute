@@ -13,3 +13,24 @@
   ansible.builtin.service:
     name: caddy
     state: restarted
+
+- name: restart channel c tinyproxy
+  listen: restart channel c tinyproxy
+  ansible.builtin.systemd:
+    name: channel-c-tinyproxy
+    state: restarted
+    daemon_reload: true
+
+- name: restart channel c stunnel
+  listen: restart channel c stunnel
+  ansible.builtin.systemd:
+    name: channel-c-stunnel
+    state: restarted
+    daemon_reload: true
+
+- name: restart channel c squid
+  listen: restart channel c squid
+  ansible.builtin.systemd:
+    name: channel-c-squid
+    state: restarted
+    daemon_reload: true

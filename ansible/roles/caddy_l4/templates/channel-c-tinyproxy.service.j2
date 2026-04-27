@@ -1,0 +1,13 @@
+[Unit]
+Description=Channel C local Tinyproxy compatibility proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tinyproxy -d -c /etc/tinyproxy/channel-c.conf
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

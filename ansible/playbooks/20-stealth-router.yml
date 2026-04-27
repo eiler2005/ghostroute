@@ -36,9 +36,9 @@
         {{ singbox_init_path }} restart
         sleep 3
       changed_when: false
-      when: stealth_channel_b_lan_enabled | bool
+      when: stealth_channel_a_lan_enabled | bool
 
     - name: Re-apply stealth routing after final sing-box restart
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
       changed_when: false
-      when: stealth_channel_b_lan_enabled | bool
+      when: stealth_channel_a_lan_enabled | bool

@@ -34,13 +34,29 @@ awk '
     if (end == 0) return rest
     return substr(rest, 1, end - 1)
   }
+  function canonical_probe(probe) {
+    if (probe == "channel_b_reality") return "channel_a_reality"
+    if (probe == "channel_a_resurrection") return "wireguard_resurrection"
+    return probe
+  }
+  function canonical_risk(probe, risk) {
+    if (probe == "channel_b_reality" && risk == "Channel B / Reality path down") return "Channel A / Reality path down"
+    if (probe == "channel_a_resurrection" && risk == "retired WG/Channel A resurrection") return "retired WireGuard resurrection"
+    return risk
+  }
+  function canonical_message(probe, message) {
+    if (probe == "channel_a_resurrection" && message == "No retired Channel A runtime state was detected.") return "No retired WireGuard runtime state was detected."
+    if (probe == "channel_a_resurrection" && message == "Retired Channel A/WireGuard runtime state is visible again.") return "Retired WireGuard runtime state is visible again."
+    return message
+  }
   {
-    probe = json_get($0, "probe")
-    if (probe == "") next
+    raw_probe = json_get($0, "probe")
+    if (raw_probe == "") next
+    probe = canonical_probe(raw_probe)
     ts[probe] = json_get($0, "ts")
     status[probe] = json_get($0, "status")
-    risk[probe] = json_get($0, "risk")
-    message[probe] = json_get($0, "message")
+    risk[probe] = canonical_risk(raw_probe, json_get($0, "risk"))
+    message[probe] = canonical_message(raw_probe, json_get($0, "message"))
     evidence[probe] = json_get($0, "evidence")
     action[probe] = json_get($0, "action")
     order[++n] = probe

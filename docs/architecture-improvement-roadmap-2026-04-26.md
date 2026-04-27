@@ -35,7 +35,7 @@ The highest-value work is:
 | Review item | Status | Why |
 | --- | --- | --- |
 | UDP/443 DROP may be missing | Already covered | The routing template installs DROP rules, Ansible verify checks them, `verify.sh` checks them, and health common checks them. |
-| Channel A decommission guide may be lost | Downgraded | The old execution guide should not be restored verbatim. The durable need is a concise cold-fallback ADR/policy. |
+| WireGuard decommission guide may be lost | Downgraded | The old execution guide should not be restored verbatim. The durable need is a concise cold-fallback ADR/policy. |
 | Full reusable Galaxy-grade Ansible roles | Deferred | These roles are project roles for ASUS Merlin/VPS operations, not generic Galaxy roles. |
 | Full idempotency rewrite | Deferred | Merlin/BusyBox/NVRAM/`cru` work often needs raw commands; broad rewrites are higher risk than incremental role-level cleanup. |
 | Mermaid diagrams everywhere | Deferred | Diagrams are useful, but secondary to audited invariants and ADRs. |
@@ -48,7 +48,7 @@ Importance: Critical.
 
 - Keep `UDP/443 DROP` as a verified invariant.
 - Add `modules/recovery-verification/bin/audit-fixes` for repo/static checks.
-- Add Channel A cold-fallback ADR.
+- Add WireGuard cold-fallback ADR.
 - Keep all checks read-only by default.
 
 ### P1 — Repo Engineering Hygiene
@@ -132,7 +132,7 @@ little operational benefit.
 - Do not add external alerts to v1 health monitoring.
 - Do not store real endpoints, UUIDs, ports, keys or VLESS URIs in tracked docs.
 - Do not turn `scripts/` back into a module-command alias layer.
-- Do not automatically enable Channel A fallback.
+- Do not automatically enable WireGuard fallback.
 
 ## Acceptance Criteria
 

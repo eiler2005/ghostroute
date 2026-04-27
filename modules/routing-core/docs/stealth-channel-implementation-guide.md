@@ -3,8 +3,8 @@
 VLESS+Reality + shared Caddy L4 + sing-box REDIRECT + Ansible.
 
 **Audience:** future engineer, LLM agent, or operator maintaining the deployed stack.
-**Status:** implemented and verified; Channel A cleanup and Home Reality split-routing refinements have landed after the original draft.
-**Primary goal:** Channel B for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS host; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
+**Status:** implemented and verified; WireGuard cleanup and Home Reality split-routing refinements have landed after the original draft.
+**Primary goal:** Channel A for LAN/router egress plus home Reality ingress for mobile clients. Managed destinations exit through the VPS host; non-managed destinations stay on the home WAN. WGC1 remains cold fallback only.
 
 For the current end-to-end flow and observer model, see
 [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
@@ -17,10 +17,12 @@ For the current end-to-end flow and observer model, see
 
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
-| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | sing-box redirect -> Reality |
+| LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | Channel A sing-box redirect -> Reality/Vision |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
+| Channel B manual clients | separate generated XHTTP profiles | direct client app to separate VPS hostname on `:443` | manual fallback only |
+| Channel C manual clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | manual fallback only |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
-| Legacy WireGuard Channel A | n/a | inactive in steady state | cold fallback only |
+| Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |
 
 ### Server side
 
@@ -31,6 +33,8 @@ VPS host
   -> Reality traffic routed to Xray/3x-ui on 127.0.0.1:<xray-local-port>
   -> Xray/3x-ui stack lives under /opt/stealth
   -> existing services keep using shared system Caddy
+  -> optional Channel B XHTTP hostname routes through Caddy TLS to local-only xray-xhttp
+  -> optional Channel C Naive hostname uses Caddy layer4 to a localhost-only Squid compatibility proxy
 ```
 
 This is intentionally not a fully isolated Docker-only ingress. The compromise is:
@@ -220,7 +224,7 @@ ROUTER=192.168.50.1 ./deploy.sh
 
 This manages historical Merlin scripts and dnsmasq managed blocks.
 
-### 4.3 Router Channel B layer
+### 4.3 Router Channel A layer
 
 ```bash
 cd ansible
@@ -253,9 +257,16 @@ ansible/out/clients-home/iphone-1.png
 ansible/out/clients-home/macbook.conf
 ansible/out/clients-home/macbook.png
 ansible/out/clients-home/qr-index.html
+ansible/out/clients-channel-b/qr-index.html
+ansible/out/clients-channel-c/qr-index.html
 ```
 
 `router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files live under `clients-home/`, point at the home public IP first, and use router-side `home_clients[]` identities.
+
+Channel B and C artifacts live under `clients-channel-b/` and
+`clients-channel-c/` and are manual fallback profiles only. They do not change
+the router data plane and should not be imported as replacements for the normal
+Home Reality profiles.
 
 ### 4.5 Verify
 
@@ -272,7 +283,7 @@ cd ..
 
 ### `configs/dnsmasq-stealth.conf.add`
 
-Populates `STEALTH_DOMAINS` for LAN Channel B and mobile Home Reality split:
+Populates `STEALTH_DOMAINS` for LAN Channel A and mobile Home Reality split:
 
 ```text
 ipset=/example.com/STEALTH_DOMAINS
@@ -386,7 +397,7 @@ Fix:
 - If logs mention Microsoft certificates, sync the existing 3x-ui/Xray Reality inbound to `gateway.icloud.com:443` and restart `xray`.
 - Regenerate and redistribute client QR codes after the SNI change.
 
-### Channel A runtime unexpectedly reappears
+### WireGuard runtime unexpectedly reappears
 
 Check:
 
@@ -436,7 +447,7 @@ This keeps OpenClaw off public DNS and off the shared public `:443` Caddy surfac
 
 Possible future changes:
 
-- Move remote `wgs1` clients to Channel B.
+- Move remote `wgs1` clients to Channel A.
 - Add cascade: Reality VPS -> commercial VPN exit.
 - Add domain migration tooling that mirrors `VPN_DOMAINS` into `STEALTH_DOMAINS` automatically.
 - Add AdGuard Home instead of the lightweight dnsmasq blocklist layer.

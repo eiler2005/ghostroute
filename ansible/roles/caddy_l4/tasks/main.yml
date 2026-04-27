@@ -43,6 +43,38 @@
       register: caddy_version
       changed_when: false
 
+    - name: Validate Channel B/C Caddy hostnames and credentials
+      ansible.builtin.assert:
+        that:
+          - not (channel_b_xhttp_enabled | bool) or (channel_b_xhttp_public_host | length > 0)
+          - not (channel_b_xhttp_enabled | bool) or channel_b_xhttp_public_host is not search('(?i)(vpn|proxy|xray|xhttp|naive)')
+          - not (channel_b_xhttp_enabled | bool) or (channel_b_xhttp_public_host != reality_server_names[0])
+          - not (channel_b_xhttp_enabled | bool) or (channel_b_xhttp_path is match('^/\\S+$'))
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_public_host | length > 0)
+          - not (channel_c_naive_enabled | bool) or channel_c_naive_public_host is not search('(?i)(vpn|proxy|xray|xhttp|naive)')
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_public_host != reality_server_names[0])
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_public_host != channel_b_xhttp_public_host)
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_username | length > 0)
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_password | length > 0)
+          - not (channel_c_naive_enabled | bool) or channel_c_naive_backend in ['caddy_forward_proxy', 'tinyproxy', 'stunnel_tinyproxy', 'stunnel_squid']
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_tinyproxy_local_port | int > 1024)
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_squid_local_port | int > 1024)
+          - not (channel_c_naive_enabled | bool) or (channel_c_naive_stunnel_local_port | int > 1024)
+        fail_msg: "Channel B/C hostnames must be separate, ordinary-looking, vault-only names with required credentials."
+      no_log: true
+
+    - name: Decide whether Caddy needs a custom module rebuild
+      ansible.builtin.set_fact:
+        _caddy_needs_module_rebuild: >-
+          {{
+            ('layer4' not in caddy_modules.stdout)
+            or (
+              (channel_c_naive_enabled | bool)
+              and (channel_c_naive_backend == 'caddy_forward_proxy')
+              and ('http.handlers.forward_proxy' not in caddy_modules.stdout)
+            )
+          }}
+
     - name: Backup stock Caddy binary before first layer4 build
       ansible.builtin.copy:
         src: "{{ system_caddy_binary_path }}"
@@ -50,7 +82,7 @@
         remote_src: true
         mode: "0755"
         force: false
-      when: "'layer4' not in caddy_modules.stdout"
+      when: _caddy_needs_module_rebuild
 
     - name: Ensure xcaddy is installed
       ansible.builtin.shell: |
@@ -58,7 +90,7 @@
           GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
       args:
         creates: /usr/local/bin/xcaddy
-      when: "'layer4' not in caddy_modules.stdout"
+      when: _caddy_needs_module_rebuild
 
     - name: Build host Caddy with layer4 plugin
       ansible.builtin.shell: |
@@ -66,10 +98,242 @@
         TMPDIR="$(mktemp -d)"
         trap 'rm -rf "$TMPDIR"' EXIT
         cd "$TMPDIR"
-        /usr/local/bin/xcaddy build "{{ system_caddy_target_version }}" --with github.com/mholt/caddy-l4
+        XCADDY_ARGS="--with github.com/mholt/caddy-l4"
+        {% if channel_c_naive_enabled | bool and channel_c_naive_backend == 'caddy_forward_proxy' %}
+        XCADDY_ARGS="$XCADDY_ARGS --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive"
+        {% endif %}
+        /usr/local/bin/xcaddy build "{{ system_caddy_target_version }}" $XCADDY_ARGS
         install -m 0755 caddy "{{ system_caddy_binary_path }}"
-      when: "'layer4' not in caddy_modules.stdout"
+      when: _caddy_needs_module_rebuild
       notify: restart caddy
+
+    - name: Install Tinyproxy for Channel C compatibility backend
+      ansible.builtin.apt:
+        name: tinyproxy
+        state: present
+        update_cache: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+
+    - name: Stop default Tinyproxy service for Channel C compatibility backend
+      ansible.builtin.systemd:
+        name: tinyproxy
+        state: stopped
+        enabled: false
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+
+    - name: Ensure Channel C Tinyproxy runtime directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: tinyproxy
+        group: tinyproxy
+        mode: "0755"
+      loop:
+        - /run/tinyproxy
+        - /var/log/tinyproxy
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+
+    - name: Render Channel C Tinyproxy config
+      ansible.builtin.template:
+        src: channel-c-tinyproxy.conf.j2
+        dest: /etc/tinyproxy/channel-c.conf
+        owner: root
+        group: root
+        mode: "0600"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+      no_log: true
+      notify: restart channel c tinyproxy
+
+    - name: Render Channel C Tinyproxy service
+      ansible.builtin.template:
+        src: channel-c-tinyproxy.service.j2
+        dest: /etc/systemd/system/channel-c-tinyproxy.service
+        mode: "0644"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+      notify: restart channel c tinyproxy
+
+    - name: Enable Channel C Tinyproxy service
+      ansible.builtin.systemd:
+        name: channel-c-tinyproxy
+        state: started
+        enabled: true
+        daemon_reload: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['tinyproxy', 'stunnel_tinyproxy']
+
+    - name: Stop Channel C Tinyproxy service when unused
+      ansible.builtin.systemd:
+        name: channel-c-tinyproxy
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      failed_when: false
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend not in ['tinyproxy', 'stunnel_tinyproxy']
+
+    - name: Install Squid for Channel C compatibility backend
+      ansible.builtin.apt:
+        name:
+          - squid
+          - openssl
+        state: present
+        update_cache: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+
+    - name: Stop default Squid service for Channel C compatibility backend
+      ansible.builtin.systemd:
+        name: squid
+        state: stopped
+        enabled: false
+      failed_when: false
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+
+    - name: Ensure Channel C Squid runtime directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: proxy
+        group: proxy
+        mode: "0755"
+      loop:
+        - /run/squid
+        - /var/log/squid
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+
+    - name: Hash Channel C Squid basic auth password
+      ansible.builtin.command: openssl passwd -apr1 -stdin
+      args:
+        stdin: "{{ channel_c_naive_password }}"
+      register: channel_c_squid_password_hash
+      changed_when: false
+      no_log: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+
+    - name: Render Channel C Squid htpasswd
+      ansible.builtin.copy:
+        dest: /etc/squid/channel-c.htpasswd
+        content: "{{ channel_c_naive_username }}:{{ channel_c_squid_password_hash.stdout }}\n"
+        owner: root
+        group: proxy
+        mode: "0640"
+      no_log: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+      notify: restart channel c squid
+
+    - name: Render Channel C Squid config
+      ansible.builtin.template:
+        src: channel-c-squid.conf.j2
+        dest: /etc/squid/channel-c.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+      notify: restart channel c squid
+
+    - name: Render Channel C Squid service
+      ansible.builtin.template:
+        src: channel-c-squid.service.j2
+        dest: /etc/systemd/system/channel-c-squid.service
+        mode: "0644"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+      notify: restart channel c squid
+
+    - name: Enable Channel C Squid service
+      ansible.builtin.systemd:
+        name: channel-c-squid
+        state: started
+        enabled: true
+        daemon_reload: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'stunnel_squid'
+
+    - name: Stop Channel C Squid service when unused
+      ansible.builtin.systemd:
+        name: channel-c-squid
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      failed_when: false
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend != 'stunnel_squid'
+
+    - name: Install stunnel for Channel C TLS compatibility backend
+      ansible.builtin.apt:
+        name: stunnel4
+        state: present
+        update_cache: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
+
+    - name: Ensure Channel C stunnel log directory
+      ansible.builtin.file:
+        path: /var/log/stunnel4
+        state: directory
+        mode: "0755"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
+
+    - name: Render Channel C stunnel config
+      ansible.builtin.template:
+        src: channel-c-stunnel.conf.j2
+        dest: /etc/stunnel/channel-c.conf
+        owner: root
+        group: root
+        mode: "0600"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
+      notify: restart channel c stunnel
+
+    - name: Render Channel C stunnel service
+      ansible.builtin.template:
+        src: channel-c-stunnel.service.j2
+        dest: /etc/systemd/system/channel-c-stunnel.service
+        mode: "0644"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
+      notify: restart channel c stunnel
+
+    - name: Enable Channel C stunnel service
+      ansible.builtin.systemd:
+        name: channel-c-stunnel
+        state: started
+        enabled: true
+        daemon_reload: true
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
 
     - name: Ensure private OpenClaw certificate directory exists
       when: system_caddy_site_enabled | bool
@@ -115,3 +379,6 @@
           - --adapter
           - caddyfile
       changed_when: false
+
+    - name: Apply validated host Caddy changes before dependent services
+      ansible.builtin.meta: flush_handlers

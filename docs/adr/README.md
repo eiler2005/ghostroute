@@ -18,3 +18,12 @@ Each ADR uses:
 - Consequences
 
 Long implementation details stay in module docs and runbooks.
+
+## Records
+
+- `0001-module-native-repo.md`
+- `0002-scripts-reserved-policy.md`
+- `0003-local-only-health-alerts.md`
+- `0004-deprecated-wireguard-cold-fallback.md`
+- `0005-secrets-outside-git.md`
+- `0006-channel-terminology-and-manual-fallbacks.md`
