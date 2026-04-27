@@ -303,7 +303,8 @@ docs/
 
 Подробная физическая карта модулей: [docs/operational-modules.md](/docs/operational-modules.md).
 Глобальный README остаётся верхнеуровневым workflow; внутри `modules/` лежат
-локальные overview по реализации каждого модуля.
+локальные overview по реализации каждого модуля. Карта Ansible-деплоя по
+компонентам router/VPS описана в [ansible/README.md](/ansible/README.md).
 
 ---
 
