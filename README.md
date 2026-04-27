@@ -315,7 +315,7 @@ overviews.
 # Base router deploy: dnsmasq, firewall-start, nat-start, cron scripts
 ROUTER=192.168.50.1 ./deploy.sh
 
-# Channel A router layer: sing-box, dnscrypt-proxy, REDIRECT routing
+# Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 
@@ -327,6 +327,11 @@ cd ..
 ./verify.sh
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ```
+
+`20-stealth-router.yml` also installs the Channel A reboot hooks and catalog
+scripts (`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,
+`update-blocked-list.sh`) so REDIRECT and the accumulated `STEALTH_DOMAINS`
+state survive router reboots and Merlin firewall rebuilds.
 
 Traffic and observability:
 

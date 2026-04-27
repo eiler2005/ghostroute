@@ -159,11 +159,17 @@ domain routing rules.
 
 | Hook | Responsibility |
 |---|---|
-| `firewall-start` | create/restore `STEALTH_DOMAINS`, load `VPN_STATIC_NETS`, enforce LAN-only SSH, call stealth-route-init |
+| `firewall-start` | create `STEALTH_DOMAINS` as `hash:ip`, replay persisted `add STEALTH_DOMAINS ...` entries, load `VPN_STATIC_NETS`, enforce LAN-only SSH, call stealth-route-init |
 | `stealth-route-init.sh` | apply REDIRECT, QUIC DROP and mobile Reality INPUT rules |
 | `cron-save-ipset` | persist `STEALTH_DOMAINS.ipset` |
 | `cron-traffic-snapshot` | collect WAN/LAN/Tailscale/device counters |
 | `nat-start` | intentionally no Channel A work |
+
+`STEALTH_DOMAINS` is a dnsmasq-populated set of resolved IPv4 addresses, so it
+must stay `hash:ip`. `VPN_STATIC_NETS` is the static CIDR set and remains
+`hash:net`. Replaying only saved `add STEALTH_DOMAINS ...` lines avoids Merlin
+`ipset restore` aborting on the saved `create` line after a reboot or firewall
+rebuild.
 
 ## Verification
 

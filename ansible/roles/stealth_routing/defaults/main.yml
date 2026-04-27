@@ -5,6 +5,9 @@ stealth_ipset_name: STEALTH_DOMAINS
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
+static_networks_path: /jffs/configs/router_configuration.static_nets
+no_vpn_ip_ports_path: /jffs/configs/router_configuration.no_vpn_ip_ports
+domains_no_vpn_path: /jffs/configs/domains-no-vpn.txt
 stealth_test_domain: ifconfig.me
 stealth_channel_a_lan_enabled: "{{ stealth_channel_b_lan_enabled | default(true) }}"
 singbox_tun_name: singbox0
@@ -24,5 +27,10 @@ router_tcp_window_scaling: 1
 router_tcp_sack: 1
 router_tcp_timestamps: 1
 firewall_start_hook: /jffs/scripts/firewall-start
+nat_start_hook: /jffs/scripts/nat-start
+cron_save_ipset_script: /jffs/scripts/cron-save-ipset
 services_start_hook: /jffs/scripts/services-start
+dns_catalog_script_dir: /jffs/addons/x3mRouting
+domain_auto_add_script: /jffs/addons/x3mRouting/domain-auto-add.sh
+update_blocked_list_script: /jffs/addons/x3mRouting/update-blocked-list.sh
 vps_ssh_host: example.invalid

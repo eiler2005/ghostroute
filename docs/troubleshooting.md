@@ -45,6 +45,48 @@ tail -100 /opt/var/log/sing-box.log | grep redirect-in
 `configs/dnsmasq-stealth.conf.add`, `/jffs/configs/dnsmasq-stealth.conf.add` и
 перезапуск dnsmasq после deploy.
 
+## После Reboot Нет REDIRECT
+
+Симптом: обычный интернет в Wi-Fi есть, `sing-box` запущен, но managed-домены
+не уходят через VPS. `./verify.sh` обычно показывает missing LAN TCP REDIRECT
+или UDP/443 DROP.
+
+Проверка:
+
+```sh
+ssh admin@192.168.50.1 '
+  pidof sing-box
+  ipset list STEALTH_DOMAINS | awk "/^Type:|^Number of entries:/ {print}"
+  iptables -t nat -S PREROUTING | grep REDIRECT
+  iptables -S FORWARD | grep "dport 443"
+  sh -n /jffs/scripts/firewall-start /jffs/scripts/stealth-route-init.sh
+'
+```
+
+Expected:
+
+- `STEALTH_DOMAINS` type is `hash:ip`;
+- `VPN_STATIC_NETS` type is `hash:net`;
+- `PREROUTING -i br0` has REDIRECT rules for both sets;
+- `FORWARD -i br0` has UDP/443 DROP for both sets.
+
+Fast recovery:
+
+```sh
+ssh admin@192.168.50.1 '
+  chmod +x /jffs/scripts/firewall-start /jffs/scripts/stealth-route-init.sh
+  /jffs/scripts/firewall-start
+  /jffs/scripts/cron-save-ipset 2>/dev/null || true
+'
+```
+
+The managed files are reboot-safe: `firewall-start` recreates the ipsets,
+restores persisted `STEALTH_DOMAINS` entries without replaying the saved
+`create` line, loads `VPN_STATIC_NETS`, and calls `stealth-route-init.sh`.
+`stealth-route-init.sh` must create `STEALTH_DOMAINS` as `hash:ip`; creating it
+as `hash:net` breaks restored dnsmasq/ipset state and prevents REDIRECT rules
+from being installed.
+
 ## YouTube Или Другой Dual-Stack Сайт Не Открывается
 
 Проверьте AAAA leakage:
@@ -201,7 +243,8 @@ ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --disable'
 
 ## Blocked-List Update Fails
 
-`update-blocked-list.sh` fetches through sing-box SOCKS:
+`update-blocked-list.sh` first tries sing-box SOCKS, then falls back to direct
+download if the router curl build has no SOCKS proxy support:
 
 ```sh
 ssh admin@192.168.50.1 '
@@ -211,5 +254,6 @@ ssh admin@192.168.50.1 '
 '
 ```
 
-If SOCKS is missing, check sing-box first; do not re-enable WireGuard just to
+If both paths fail, refresh `/opt/tmp/blocked-domains.lst` from the control
+machine and then rerun `./verify.sh`. Do not re-enable WireGuard just to
 download the blocklist.

@@ -174,7 +174,33 @@ cd ..
 Why both deploy mechanisms exist:
 
 - `deploy.sh` manages historical router scripts, dnsmasq managed blocks and catalogs.
-- Ansible manages `sing-box`, `dnscrypt-proxy`, stealth redirect init and VPS/router Reality pieces.
+- Ansible manages `sing-box`, `dnscrypt-proxy`, stealth redirect init,
+  reboot-safe Channel A hooks, runtime env, catalogs and VPS/router Reality
+  pieces.
+
+The router Ansible path must install these files for Channel A to survive reboot
+and Merlin firewall rebuilds:
+
+```text
+/jffs/scripts/firewall-start
+/jffs/scripts/nat-start
+/jffs/scripts/cron-save-ipset
+/jffs/scripts/services-start
+/jffs/scripts/stealth-route-init.sh
+/jffs/scripts/ghostroute-runtime.env
+/jffs/addons/x3mRouting/domain-auto-add.sh
+/jffs/addons/x3mRouting/update-blocked-list.sh
+```
+
+Post-deploy invariants:
+
+- `STEALTH_DOMAINS` is `hash:ip`, not `hash:net`.
+- `firewall-start` restores persisted entries by replaying `add
+  STEALTH_DOMAINS ...`, not by replaying the saved `create` line.
+- `stealth-route-init.sh` installs both REDIRECT rules and both UDP/443 DROP
+  rules.
+- `update-blocked-list.sh` can refresh via SOCKS or direct fallback and
+  `./verify.sh` reports blocked-list freshness as OK.
 
 ---
 

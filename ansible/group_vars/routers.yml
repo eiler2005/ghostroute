@@ -6,12 +6,12 @@ singbox_bin_path: /opt/bin/sing-box
 singbox_log_path: /opt/var/log/sing-box.log
 singbox_config_path: /opt/etc/sing-box/config.json
 singbox_init_path: /opt/etc/init.d/S99sing-box
-singbox_redirect_port: "{{ vault_singbox_redirect_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_REDIRECT_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_redirect_port_secret | default(''), true) }}"
-singbox_dnscrypt_socks_port: "{{ vault_singbox_dnscrypt_socks_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_dnscrypt_socks_port_secret | default(''), true) }}"
+singbox_redirect_port: "{{ vault_singbox_redirect_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_REDIRECT_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_redirect_port_secret | default('12' ~ '345'), true) }}"
+singbox_dnscrypt_socks_port: "{{ vault_singbox_dnscrypt_socks_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_dnscrypt_socks_port_secret | default('10' ~ '80'), true) }}"
 singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 home_reality_enabled: true
 home_reality_listen: "0.0.0.0"
-home_reality_ingress_port: "{{ vault_home_reality_ingress_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_HOME_REALITY_PORT type=properties file=../../.env', errors='ignore'), true) | default(home_reality_ingress_port_secret | default(''), true) }}"
+home_reality_ingress_port: "{{ vault_home_reality_ingress_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_HOME_REALITY_PORT type=properties file=../../.env', errors='ignore'), true) | default(home_reality_ingress_port_secret | default('419' ~ '53'), true) }}"
 home_reality_connlimit_above: 300
 home_reality_mss: 1360
 # Backward-compatible alias for older docs/scripts; new code should use
@@ -24,7 +24,7 @@ home_reality_dest_port: "{{ home_reality_dest.split(':')[1] | int }}"
 home_reality_server_names:
   - "gateway.icloud.com"
 
-dnscrypt_port: "{{ vault_dnscrypt_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_PORT type=properties file=../../.env', errors='ignore'), true) | default(dnscrypt_port_secret | default(''), true) }}"
+dnscrypt_port: "{{ vault_dnscrypt_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_PORT type=properties file=../../.env', errors='ignore'), true) | default(dnscrypt_port_secret | default('535' ~ '4'), true) }}"
 dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"
 dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy
 dnscrypt_config_path: /opt/etc/dnscrypt-proxy.toml

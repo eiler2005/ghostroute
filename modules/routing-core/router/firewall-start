@@ -11,7 +11,11 @@ PORT_BYPASS_FILE="/jffs/configs/router_configuration.no_vpn_ip_ports"
 # Create/restore the active Channel A target sets.
 ipset create STEALTH_DOMAINS hash:ip family inet hashsize 1024 maxelem 65536 2>/dev/null
 ipset create VPN_STATIC_NETS hash:net family inet hashsize 256 maxelem 65536 2>/dev/null
-[ -f "$STATE_FILE" ] && ipset restore -! < "$STATE_FILE"
+if [ -f "$STATE_FILE" ]; then
+  # ipset save includes a create line. Merlin's ipset restore -! can still
+  # abort on that line when the set already exists, so replay only entries.
+  grep '^add STEALTH_DOMAINS ' "$STATE_FILE" | ipset restore -! 2>/dev/null || true
+fi
 ipset flush VPN_STATIC_NETS 2>/dev/null
 if [ -f "$STATIC_NETWORKS_FILE" ]; then
   sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$STATIC_NETWORKS_FILE" | while IFS= read -r network; do
