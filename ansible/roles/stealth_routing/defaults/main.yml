@@ -16,6 +16,10 @@ singbox_redirect_port: ""
 home_reality_ingress_port: ""
 home_reality_connlimit_above: 300
 home_reality_mss: 1360
+channel_b_home_relay_enabled: false
+channel_b_home_ingress_port: ""
+channel_b_home_connlimit_above: 300
+channel_b_home_mss: 1360
 router_tcp_perf_tuning_enabled: true
 router_tcp_rmem: "4096 262144 16777216"
 router_tcp_wmem: "4096 65536 16777216"

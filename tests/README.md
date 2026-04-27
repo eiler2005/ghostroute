@@ -56,7 +56,11 @@ bash -n modules/ghostroute-health-monitor/bin/ghostroute-health-report modules/g
 ```bash
 cd ansible
 ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook --syntax-check playbooks/21-channel-b-router.yml
 ansible-playbook --syntax-check playbooks/10-stealth-vps.yml
+ansible-playbook --syntax-check playbooks/11-channel-b-vps.yml
+ansible-playbook --syntax-check playbooks/12-channel-c-vps.yml
+ansible-playbook --syntax-check playbooks/30-generate-client-profiles.yml
 ansible-playbook --syntax-check playbooks/99-verify.yml
 ```
 

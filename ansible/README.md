@@ -28,6 +28,7 @@ ansible-playbook playbooks/10-stealth-vps.yml
 ansible-playbook playbooks/11-channel-b-vps.yml
 ansible-playbook playbooks/12-channel-c-vps.yml
 ansible-playbook playbooks/20-stealth-router.yml
+ansible-playbook playbooks/21-channel-b-router.yml
 ansible-playbook playbooks/30-generate-client-profiles.yml
 ansible-playbook playbooks/99-verify.yml
 ```
@@ -50,7 +51,7 @@ described in the root README and `docs/architecture.md`.
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
-| Manual device-client lanes | Channel B/C profile artifacts and VPS-side manual-lane scaffolding when explicitly enabled. | Keeps manual device-client experiments separate from the router production deploy and automatic routing. |
+| Manual device-client lanes | Channel B/C profile artifacts plus explicit channel add-on playbooks when enabled. | Keeps non-production experiments isolated from the Channel A production baseline. |
 
 Playbook ownership is intentionally narrow:
 
@@ -58,15 +59,18 @@ Playbook ownership is intentionally narrow:
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
-| `11-channel-b-vps.yml` | VPS | Channel B XHTTP backend and route validation. | Rotate or refresh the manual XHTTP lane without touching Reality/Channel A. |
+| `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
 | `12-channel-c-vps.yml` | VPS | Channel C Caddy/backend compatibility path. | Refresh the manual Naive/HTTPS lane without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
+| `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
-Channel B and Channel C are not production router lanes today. They are managed
-through their own VPS playbooks and local artifact generation, and they must not
-modify router REDIRECT, TUN, DNS, local ports or automatic failover.
+Channel B and Channel C are not production automatic lanes today. Channel B can
+run in direct-XHTTP VPS mode (`11`) or in manual home-first mode (`21`) where
+router ingress is XHTTP and upstream egress is reused via sing-box Reality.
+Channel C remains VPS-only (`12`). Neither channel may mutate Channel A
+REDIRECT ownership or introduce automatic failover.
 
 ## Directory Map
 
@@ -91,9 +95,10 @@ scripts/                         # Ansible-local helper scripts
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Mutating | Installs base packages and prepares the VPS stack directory. |
 | `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, UFW policy and VPS health observer. |
-| `11-channel-b-vps.yml` | VPS | Mutating | Deploys the Channel B XHTTP backend and checks the existing Caddy route. |
+| `11-channel-b-vps.yml` | VPS | Mutating | Deploys the optional direct-mode Channel B XHTTP backend and checks the existing Caddy route. |
 | `12-channel-c-vps.yml` | VPS | Mutating | Deploys the Channel C compatibility backend/Caddy path. |
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
+| `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
 | `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 
@@ -110,6 +115,7 @@ scripts/                         # Ansible-local helper scripts
 | `stealth_routing` | Router dnsmasq/ipset/firewall integration. |
 | `dnscrypt_proxy` | Router DNS resolver layer. |
 | `dnsmasq_blocklists` | Router managed blocklist and catalog support. |
+| `channel_b_home_relay` | Router Channel B XHTTP ingress plus local relay into sing-box SOCKS/Reality upstream. |
 | `health_monitor` | Router-side GhostRoute health monitor. |
 
 ## Safety Contract
@@ -143,6 +149,13 @@ Refresh manual Channel B/C VPS lanes:
 cd ansible
 ansible-playbook playbooks/11-channel-b-vps.yml
 ansible-playbook playbooks/12-channel-c-vps.yml
+```
+
+Refresh Channel B home-first router add-on:
+
+```bash
+cd ansible
+ansible-playbook playbooks/21-channel-b-router.yml
 ```
 
 Refresh router stealth layer:

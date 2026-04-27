@@ -1,0 +1,142 @@
+- name: Stop Channel B home relay service when disabled
+  ansible.builtin.raw: |
+    if [ -x "{{ channel_b_home_router_xray_init_path }}" ]; then
+      {{ channel_b_home_router_xray_init_path }} stop || true
+    fi
+  changed_when: false
+  when: not (channel_b_home_relay_enabled | bool)
+
+- name: Manage Channel B home relay service
+  when: channel_b_home_relay_enabled | bool
+  block:
+    - name: Validate Channel B home relay settings
+      ansible.builtin.assert:
+        that:
+          - channel_b_home_ingress_port | string | length > 0
+          - channel_b_home_ingress_port | int > 0
+          - channel_b_home_upstream_socks_port | string | length > 0
+          - channel_b_home_upstream_socks_port | int > 0
+          - channel_b_home_xhttp_host | length > 0
+          - channel_b_home_xhttp_path is match('^/\\S+$')
+          - channel_b_home_xhttp_mode == 'packet-up'
+          - channel_b_home_clients | length > 0
+          - (channel_b_home_clients | selectattr('uuid', 'defined') | list | length) == (channel_b_home_clients | length)
+        fail_msg: "Channel B home relay needs ingress port, XHTTP host/path/mode, upstream SOCKS port and client UUIDs."
+      no_log: true
+
+    - name: Ensure Channel B relay directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ channel_b_home_router_xray_config_path | dirname }}"
+        - "{{ channel_b_home_router_xray_log_path | dirname }}"
+        - "{{ channel_b_home_tls_cert_path | dirname }}"
+        - "{{ channel_b_home_tls_key_path | dirname }}"
+        - /opt/var/run
+
+    - name: Ensure Xray is installed on router for Channel B relay
+      ansible.builtin.raw: |
+        if ! /opt/bin/opkg list-installed | grep -Eq '^(xray-core|xray) '; then
+          /opt/bin/opkg update
+          /opt/bin/opkg install xray-core || /opt/bin/opkg install xray
+        fi
+      register: channel_b_home_xray_install
+      changed_when: "'Installing' in (channel_b_home_xray_install.stdout + channel_b_home_xray_install.stderr)"
+
+    - name: Ensure OpenSSL is available on router for Channel B TLS certs
+      ansible.builtin.raw: |
+        if ! command -v openssl >/dev/null 2>&1 && [ ! -x /opt/bin/openssl ]; then
+          /opt/bin/opkg update
+          /opt/bin/opkg install openssl-util || /opt/bin/opkg install openssl
+        fi
+      changed_when: false
+
+    - name: Detect OpenSSL binary path for Channel B relay
+      ansible.builtin.raw: |
+        if command -v openssl >/dev/null 2>&1; then
+          command -v openssl
+          exit 0
+        fi
+        for candidate in /opt/bin/openssl /opt/sbin/openssl; do
+          if [ -x "$candidate" ]; then
+            echo "$candidate"
+            exit 0
+          fi
+        done
+        exit 1
+      register: channel_b_home_openssl_bin_detect
+      changed_when: false
+
+    - name: Validate OpenSSL binary detection for Channel B relay
+      ansible.builtin.assert:
+        that:
+          - channel_b_home_openssl_bin_detect.stdout | trim | length > 0
+        fail_msg: "OpenSSL binary not found after Entware install; expected /opt/bin/openssl."
+
+    - name: Ensure Channel B home relay TLS certificate exists
+      ansible.builtin.raw: |
+        if [ ! -s "{{ channel_b_home_tls_cert_path }}" ] || [ ! -s "{{ channel_b_home_tls_key_path }}" ]; then
+          {{ channel_b_home_openssl_bin_detect.stdout | trim }} req -x509 -newkey rsa:2048 -nodes -sha256 \
+            -days {{ channel_b_home_tls_days | int }} \
+            -subj "/CN={{ channel_b_home_xhttp_host }}" \
+            -keyout "{{ channel_b_home_tls_key_path }}" \
+            -out "{{ channel_b_home_tls_cert_path }}"
+          chmod 600 "{{ channel_b_home_tls_key_path }}" "{{ channel_b_home_tls_cert_path }}"
+        fi
+      changed_when: false
+
+    - name: Detect Xray binary path for Channel B relay
+      ansible.builtin.raw: |
+        for candidate in {{ channel_b_home_router_xray_bin_path | quote }} /opt/bin/xray /opt/sbin/xray; do
+          if [ -x "$candidate" ]; then
+            echo "$candidate"
+            exit 0
+          fi
+        done
+        command -v xray 2>/dev/null || true
+      register: channel_b_home_xray_bin_detect
+      changed_when: false
+
+    - name: Validate Xray binary detection for Channel B relay
+      ansible.builtin.assert:
+        that:
+          - channel_b_home_xray_bin_detect.stdout | trim | length > 0
+        fail_msg: "Xray binary not found after Entware install; expected /opt/bin/xray or /opt/sbin/xray."
+
+    - name: Use detected Xray binary path for Channel B relay
+      ansible.builtin.set_fact:
+        channel_b_home_router_xray_bin_path: "{{ channel_b_home_xray_bin_detect.stdout | trim }}"
+
+    - name: Render Channel B home relay Xray config
+      ansible.builtin.template:
+        src: config.json.j2
+        dest: "{{ channel_b_home_router_xray_config_path }}"
+        mode: "0600"
+      notify: restart channel b home relay
+      no_log: true
+
+    - name: Install Channel B home relay init script
+      ansible.builtin.template:
+        src: S99xray-channel-b-home.j2
+        dest: "{{ channel_b_home_router_xray_init_path }}"
+        mode: "0755"
+      notify: restart channel b home relay
+
+    - name: Ensure services-start hook starts Channel B home relay
+      ansible.builtin.raw: |
+        touch {{ services_start_hook }}
+        chmod +x {{ services_start_hook }}
+        sed -i '\|{{ channel_b_home_router_xray_init_path }} start|d' {{ services_start_hook }}
+        grep -q '# BEGIN channel-b-home-relay-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
+        # BEGIN channel-b-home-relay-bootstrap
+        {{ channel_b_home_router_xray_init_path }} start
+        # END channel-b-home-relay-bootstrap
+        EOF
+      changed_when: false
+
+    - name: Enable + start Channel B home relay service
+      ansible.builtin.raw: |
+        {{ channel_b_home_router_xray_init_path }} enable >/dev/null 2>&1 || true
+        {{ channel_b_home_router_xray_init_path }} restart
+      changed_when: false

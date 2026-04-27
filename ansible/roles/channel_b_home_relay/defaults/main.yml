@@ -1,0 +1,21 @@
+---
+channel_b_home_relay_enabled: false
+
+channel_b_home_listen: 0.0.0.0
+channel_b_home_ingress_port: ""
+channel_b_home_clients: []
+
+channel_b_home_xhttp_host: ""
+channel_b_home_xhttp_path: /assets/update
+channel_b_home_xhttp_mode: packet-up
+channel_b_home_upstream_socks_port: ""
+
+channel_b_home_tls_cert_path: /opt/etc/xray/channel-b-home.crt
+channel_b_home_tls_key_path: /opt/etc/xray/channel-b-home.key
+channel_b_home_tls_days: 3650
+
+channel_b_home_router_xray_bin_path: /opt/bin/xray
+channel_b_home_router_xray_config_path: /opt/etc/xray/channel-b-home-relay.json
+channel_b_home_router_xray_init_path: /opt/etc/init.d/S99xray-channel-b-home
+channel_b_home_router_xray_log_path: /opt/var/log/xray-channel-b-home.log
+services_start_hook: /jffs/scripts/services-start

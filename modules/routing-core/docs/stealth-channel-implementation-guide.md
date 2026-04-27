@@ -19,7 +19,7 @@ For the current end-to-end flow and observer model, see
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | Channel A sing-box redirect -> Reality/Vision |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
-| Channel B manual clients | separate generated XHTTP profiles | direct client app to separate VPS hostname on `:443` | manual fallback only |
+| Channel B manual clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> sing-box Reality outbound | manual fallback only |
 | Channel C manual clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | manual fallback only |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |
@@ -33,7 +33,7 @@ VPS host
   -> Reality traffic routed to Xray/3x-ui on 127.0.0.1:<xray-local-port>
   -> Xray/3x-ui stack lives under /opt/stealth
   -> existing services keep using shared system Caddy
-  -> optional Channel B XHTTP hostname routes through Caddy TLS to local-only xray-xhttp
+  -> optional direct-mode Channel B XHTTP hostname routes through Caddy TLS to local-only xray-xhttp
   -> optional Channel C Naive hostname uses Caddy layer4 to a localhost-only Squid compatibility proxy
 ```
 
@@ -53,6 +53,8 @@ Merlin router
   -> dnscrypt-proxy sends DoH through sing-box SOCKS on 127.0.0.1:<router-socks-port>
   -> sing-box listens on 0.0.0.0:<lan-redirect-port> redirect inbound
   -> sing-box listens on 0.0.0.0:<home-reality-port> home Reality inbound for remote mobile clients
+  -> optional local Xray Channel B ingress on 0.0.0.0:<home-channel-b-port>
+  -> local Xray relay forwards to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
   -> mobile reality-in uses STEALTH_DOMAINS/VPN_STATIC_NETS rule-sets for split routing
@@ -224,9 +226,15 @@ ansible-playbook playbooks/11-channel-b-vps.yml
 ansible-playbook playbooks/12-channel-c-vps.yml
 ```
 
-`11-channel-b-vps.yml` updates only the Channel B XHTTP backend and validates
-that the Caddy route is present. `12-channel-c-vps.yml` owns the Channel C
+`11-channel-b-vps.yml` updates only the optional direct Channel B XHTTP backend
+and validates that the Caddy route is present. `12-channel-c-vps.yml` owns the Channel C
 compatibility backend/Caddy path. Neither playbook targets the router.
+
+Channel B home-first router add-on is managed separately:
+
+```bash
+ansible-playbook playbooks/21-channel-b-router.yml
+```
 
 ### 4.2 Router base layer
 
@@ -277,9 +285,9 @@ ansible/out/clients-channel-c/qr-index.html
 `router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files live under `clients-home/`, point at the home public IP first, and use router-side `home_clients[]` identities.
 
 Channel B and C artifacts live under `clients-channel-b/` and
-`clients-channel-c/` and are manual fallback profiles only. They do not change
-the router data plane and should not be imported as replacements for the normal
-Home Reality profiles.
+`clients-channel-c/` and are manual fallback profiles only. Channel B artifacts
+use home-first import when `channel_b_home_relay_enabled=true`, while Channel C
+stays direct-to-VPS. They should not replace normal Home Reality profiles.
 
 ### 4.5 Verify
 

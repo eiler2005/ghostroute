@@ -1,0 +1,72 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "channel-b-home-in",
+      "listen": "{{ channel_b_home_listen }}",
+      "port": {{ channel_b_home_ingress_port }},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+{% for client in channel_b_home_clients %}
+          {
+            "id": "{{ client.uuid }}",
+            "email": "{{ client.email | default(client.name ~ '-channel-b-home@home.lan') }}",
+            "flow": ""
+          }{{ "," if not loop.last else "" }}
+{% endfor %}
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "{{ channel_b_home_xhttp_host }}",
+          "alpn": ["h2", "http/1.1"],
+          "certificates": [
+            {
+              "certificateFile": "{{ channel_b_home_tls_cert_path }}",
+              "keyFile": "{{ channel_b_home_tls_key_path }}"
+            }
+          ]
+        },
+        "xhttpSettings": {
+          "host": "{{ channel_b_home_xhttp_host }}",
+          "path": "{{ channel_b_home_xhttp_path }}",
+          "mode": "{{ channel_b_home_xhttp_mode }}"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "channel-b-upstream-socks",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": {{ channel_b_home_upstream_socks_port }}
+          }
+        ]
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["channel-b-home-in"],
+        "outboundTag": "channel-b-upstream-socks"
+      }
+    ]
+  }
+}

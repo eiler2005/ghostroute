@@ -1,0 +1,4 @@
+- name: restart channel b home relay
+  ansible.builtin.raw: |
+    {{ channel_b_home_router_xray_init_path }} enable >/dev/null 2>&1 || true
+    {{ channel_b_home_router_xray_init_path }} restart

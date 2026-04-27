@@ -3,13 +3,14 @@
 ## Коротко
 
 Текущая production-архитектура — Channel A Reality-first, без активного legacy
-WireGuard. Channel B уже live-tested как manual device-client lane, а Channel C
-остается planned/manual lane со своим набором целей:
+WireGuard. Channel B реализован как manual home-first lane, Channel C остается
+planned/manual lane:
 
 - Channel A — прозрачная домашняя магистраль: роутер сам перехватывает managed
   LAN/Wi-Fi traffic и отправляет его через Reality/Vision на VPS.
-- Channel B — protocol-diverse fallback candidate: selected device напрямую
-  подключается к XHTTP/TLS hostname на VPS, не меняя роутер.
+- Channel B — protocol-diverse fallback candidate в home-first форме:
+  selected device подключается к отдельному домашнему XHTTP/TLS ingress, а
+  роутер relays трафик дальше через sing-box Reality outbound на VPS.
 - Channel C — camouflage experiment: selected device подключается к
   Naive/HTTPS-forward-proxy-style hostname на VPS, не меняя роутер.
 
@@ -31,10 +32,11 @@ Remote mobile QR clients
        other destinations              -> direct-out via home WAN
 
 Channel B manual live-tested protocol-diverse clients
-  -> VLESS+XHTTP+TLS profile for selected devices
-  -> separate public VPS hostname on :443
-  -> Caddy TLS routing
-  -> local-only XHTTP backend
+  -> VLESS+XHTTP+TLS profile to home public IP :<home-channel-b-port>
+  -> router local Xray Channel B ingress
+  -> local sing-box SOCKS inbound
+  -> Channel A Reality outbound to VPS
+  -> Caddy :443 -> Xray Reality inbound
   -> Internet
 
 Channel C future camouflage clients
@@ -58,10 +60,10 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off |
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, Reality outbound to VPS |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Reality outbound to VPS |
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
-| Channel B | non-production manual live-tested XHTTP `packet-up` device-client lane via local-only Xray backend |
+| Channel B | non-production manual live-tested home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | future camouflage-oriented NaiveProxy / HTTPS forward-proxy device-client lane |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
@@ -73,12 +75,14 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | Playbook | Scope | Ownership boundary |
 |---|---|---|
 | `10-stealth-vps.yml` | VPS base | Shared Caddy listener, Channel A/Reality backend, UFW, VPS health. |
-| `11-channel-b-vps.yml` | VPS Channel B | Only XHTTP backend + Caddy route presence validation for Channel B. |
+| `11-channel-b-vps.yml` | VPS Channel B | Optional direct-XHTTP backend + Caddy route validation for direct Channel B mode. |
 | `12-channel-c-vps.yml` | VPS Channel C | Only Channel C compatibility backend/Caddy path. |
 | `20-stealth-router.yml` | Router | Channel A router data plane and router runtime hooks. |
+| `21-channel-b-router.yml` | Router Channel B | Channel B home XHTTP ingress + local relay add-on, isolated from Channel A REDIRECT ownership. |
 
-`11` и `12` не должны менять router REDIRECT/TUN/DNS и не должны мутировать
-Channel A/Reality state.
+`21` включает home-first вариант Channel B на роутере. `11` нужен только для
+direct-XHTTP варианта Channel B. `12` остается отдельным manual Channel C lane.
+Эти playbooks не должны мутировать Channel A/Reality state.
 
 ## Routing Matrix
 
@@ -87,7 +91,7 @@ Channel A/Reality state.
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
 | Mobile QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
-| Channel B manual live-tested profile | selected device only | separate XHTTP hostname on VPS `:443` | manual device-client egress |
+| Channel B manual live-tested profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS -> Reality | manual home-first egress |
 | Channel C future manual profile | selected device only | separate Naive/HTTPS hostname on VPS `:443` | future experimental device-client egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
@@ -158,18 +162,25 @@ Reality should use an explicit proxy or client profile.
 
 ### Channel B/C Manual Clients
 
-Channel B and Channel C are manual device-client lanes. They are
-documented separately from normal Home Reality and emergency Reality profiles
-because their purpose is different: B tests a different transport family,
-while C tests an ordinary-looking authenticated proxy surface.
+Channel B and Channel C remain manual lanes and are documented separately from
+normal Home Reality and emergency Reality profiles.
 
-The v1 shape is direct device-to-VPS connectivity on dedicated public `:443`
-hostnames: Channel B via VLESS+XHTTP+TLS, Channel C via NaiveProxy or an HTTPS
-forward-proxy-compatible variant. Channel B has server-side and one local Xray
-client smoke coverage as of 2026-04-27; iOS and Android app import are still
-manual compatibility checks. B/C must not install binaries on the router, add
-local router SOCKS/HTTP ports, modify REDIRECT/TUN/DNS, or add domain routing
-rules.
+Current Channel B shape is home-first:
+
+```text
+client app
+  -> VLESS+XHTTP+TLS to home public IP :<home-channel-b-port>
+  -> router local Xray Channel B ingress
+  -> router local relay -> sing-box SOCKS inbound
+  -> sing-box Reality outbound -> VPS Caddy/Xray Reality
+  -> Internet
+```
+
+This keeps the first hop domestic for the mobile operator while keeping a
+different first-hop fingerprint from Channel A.
+
+Channel C remains direct device-to-VPS on its dedicated public `:443` hostname
+with NaiveProxy / HTTPS forward-proxy-compatible profiles.
 
 ## Boot Hooks
 
@@ -205,4 +216,5 @@ Critical invariants:
 - no `0x1000` rule outside emergency fallback
 - `filter-AAAA` present while IPv6 is disabled
 - Channel B/C are not required for production health; any manual enablement
-  must remain VPS/client-profile only and keep router REDIRECT/TUN/DNS unchanged
+  must keep Channel A REDIRECT/TUN/DNS ownership unchanged and remain explicit
+  (`11` + `21` for B, `12` for C)

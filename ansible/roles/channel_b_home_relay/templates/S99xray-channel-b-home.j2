@@ -1,0 +1,46 @@
+#!/bin/sh
+
+ENABLED=yes
+PROCS=xray
+BIN="{{ channel_b_home_router_xray_bin_path }}"
+CONFIG="{{ channel_b_home_router_xray_config_path }}"
+LOG="{{ channel_b_home_router_xray_log_path }}"
+PIDFILE=/opt/var/run/xray-channel-b-home.pid
+
+start() {
+  [ "$ENABLED" = "yes" ] || return 0
+  [ -x "$BIN" ] || return 1
+  [ -f "$CONFIG" ] || return 1
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+    return 0
+  fi
+  mkdir -p /opt/var/run "$(dirname "$LOG")"
+  nohup "$BIN" run -config "$CONFIG" >> "$LOG" 2>&1 </dev/null &
+  echo $! > "$PIDFILE"
+}
+
+stop() {
+  if [ -f "$PIDFILE" ]; then
+    kill "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null || true
+    rm -f "$PIDFILE"
+  fi
+  killall -q xray 2>/dev/null || true
+}
+
+restart() {
+  stop
+  sleep 1
+  start
+}
+
+case "$1" in
+  start|stop|restart)
+    "$1"
+    ;;
+  enable|disable)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|enable|disable}"
+    exit 1
+    ;;
+esac
