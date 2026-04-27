@@ -10,6 +10,22 @@
     wan_if: "{{ (wan_detect.stdout | regex_search('wan_if=(\\S+)', '\\1')) | first }}"
     wan_gw: "{{ (wan_detect.stdout | regex_search('wan_gw=(\\S+)', '\\1')) | first }}"
 
+- name: Ensure router script directories exist
+  ansible.builtin.raw: |
+    mkdir -p /jffs/scripts {{ dns_catalog_script_dir }} /jffs/configs
+  changed_when: false
+
+- name: Install managed routing-core boot hooks
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/routing-core/router/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0755"
+  loop:
+    - { src: firewall-start, dest: "{{ firewall_start_hook }}" }
+    - { src: nat-start, dest: "{{ nat_start_hook }}" }
+    - { src: cron-save-ipset, dest: "{{ cron_save_ipset_script }}" }
+    - { src: services-start, dest: "{{ services_start_hook }}" }
+
 - name: Install stealth-route-init.sh
   ansible.builtin.template:
     src: stealth-route-init.sh.j2
@@ -26,7 +42,7 @@
   ansible.builtin.copy:
     content: |
       {{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/dnsmasq-stealth.conf.add') }}
-      {% set private_catalog = lookup('ansible.builtin.file', playbook_dir + '/../../configs/private/dnsmasq-stealth.local.conf.add', errors='ignore') %}
+      {% set private_catalog = lookup('ansible.builtin.file', playbook_dir + '/../../configs/private/dnsmasq-stealth.local.conf.add', errors='ignore') | default('', true) %}
       {% if private_catalog | length > 0 %}
       # BEGIN local private dnsmasq stealth catalog
       {{ private_catalog }}
@@ -34,6 +50,38 @@
       {% endif %}
     dest: "{{ stealth_dnsmasq_conf_path }}"
     mode: "0644"
+
+- name: Install Channel A static CIDR catalog
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../configs/static-networks.txt"
+    dest: "{{ static_networks_path }}"
+    mode: "0644"
+
+- name: Install Channel A per-IP port bypass catalog
+  ansible.builtin.copy:
+    content: |
+      {{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/no-vpn-ip-ports.txt') }}
+      {% set private_bypass = lookup('ansible.builtin.file', playbook_dir + '/../../secrets/no-vpn-ip-ports.local.txt', errors='ignore') | default('', true) %}
+      {% if private_bypass | length > 0 %}
+      {{ private_bypass }}
+      {% endif %}
+    dest: "{{ no_vpn_ip_ports_path }}"
+    mode: "0644"
+
+- name: Install domain auto-discovery allowlist
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../configs/domains-no-vpn.txt"
+    dest: "{{ domains_no_vpn_path }}"
+    mode: "0644"
+
+- name: Install DNS catalog intelligence scripts
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/dns-catalog-intelligence/router/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0755"
+  loop:
+    - { src: domain-auto-add.sh, dest: "{{ domain_auto_add_script }}" }
+    - { src: update-blocked-list.sh, dest: "{{ update_blocked_list_script }}" }
 
 - name: Remove retired inline dnsmasq managed blocks
   ansible.builtin.raw: |
@@ -50,19 +98,6 @@
         !skip { print }
       ' "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
     done
-
-- name: Ensure stale firewall-start stealth hook is absent
-  ansible.builtin.raw: |
-    mkdir -p /jffs/scripts
-    touch {{ firewall_start_hook }}
-    chmod +x {{ firewall_start_hook }}
-    sed -i '\|{{ stealth_route_init_script }}|d' {{ firewall_start_hook }}
-
-- name: Enable firewall-start stealth hook when Channel A owns LAN
-  ansible.builtin.raw: |
-    grep -qx '{{ stealth_route_init_script }}' {{ firewall_start_hook }} || \
-      echo '{{ stealth_route_init_script }}' >> {{ firewall_start_hook }}
-  when: stealth_channel_a_lan_enabled | bool
 
 - name: Ensure services-start hook starts singbox on boot
   ansible.builtin.raw: |
@@ -86,6 +121,22 @@
     grep -q '^conf-file={{ stealth_dnsmasq_conf_path }}$' $CONF || \
       echo 'conf-file={{ stealth_dnsmasq_conf_path }}' >> $CONF
     service restart_dnsmasq
+
+- name: Ensure Channel A persistence and catalog cron entries
+  ansible.builtin.raw: |
+    cru d SaveIPSet 2>/dev/null || true
+    cru a SaveIPSet "0 */6 * * * {{ cron_save_ipset_script }}"
+    cru d DomainAutoAdd 2>/dev/null || true
+    [ -x {{ domain_auto_add_script }} ] && \
+      cru a DomainAutoAdd "0 * * * * {{ domain_auto_add_script }}"
+    cru d UpdateBlockedList 2>/dev/null || true
+    [ -x {{ update_blocked_list_script }} ] && \
+      cru a UpdateBlockedList "0 5 * * * {{ update_blocked_list_script }}"
+  changed_when: false
+
+- name: Refresh blocked-domain cache opportunistically
+  ansible.builtin.raw: "{{ update_blocked_list_script }} || true"
+  changed_when: false
 
 - name: Resolve test stealth domain through router dnsmasq to populate ipset
   ansible.builtin.raw: |

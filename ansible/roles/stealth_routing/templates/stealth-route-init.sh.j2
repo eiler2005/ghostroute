@@ -43,7 +43,10 @@ for RPF_IF in all default br0; do
 done
 
 # 1. ipset (match type: net, IPv4 only for now)
-ipset create "$IPSET" hash:net family inet -exist
+# STEALTH_DOMAINS is populated by dnsmasq ipset= rules and persisted as single
+# resolved IPv4 addresses. Keep it hash:ip; hash:net makes ipset create fail
+# against the restored set and prevents REDIRECT rules from being installed.
+ipset create "$IPSET" hash:ip family inet -exist
 ipset create "$STATIC_IPSET" hash:net family inet -exist
 
 # 2. mangle cleanup: remove the previous TUN/policy-routing hooks.

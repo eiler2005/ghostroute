@@ -49,6 +49,19 @@
   when: home_reality_enabled | default(false) | bool
   no_log: true
 
+- name: Validate Channel A runtime ports before rendering config
+  ansible.builtin.assert:
+    that:
+      - singbox_redirect_port | string | length > 0
+      - singbox_dnscrypt_socks_port | string | length > 0
+      - dnscrypt_port | string | length > 0
+      - home_reality_ingress_port | string | length > 0
+      - singbox_redirect_port | int > 0
+      - singbox_dnscrypt_socks_port | int > 0
+      - dnscrypt_port | int > 0
+      - home_reality_ingress_port | int > 0
+    fail_msg: "Channel A router ports must resolve before rendering sing-box config."
+
 - name: Install sing-box rule-set generator
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../modules/routing-core/router/update-singbox-rule-sets.sh"
