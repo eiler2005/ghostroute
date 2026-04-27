@@ -25,8 +25,8 @@ The channel model separates the main traffic responsibilities:
   leave through VPS Reality, while non-managed destinations leave through the home WAN.
 - Channel B is a non-production, manual live-tested home-first lane:
   device client -> `VLESS+XHTTP+TLS` to the home router -> dedicated router
-  Xray ingress -> local sing-box SOCKS -> the existing `Reality/Vision`
-  upstream to VPS.
+  Xray ingress -> local sing-box SOCKS -> managed split: `Reality/Vision` for
+  managed destinations, direct home WAN for non-managed destinations.
 - Channel C is a manual compatibility lane:
   device client -> dedicated VPS `:443` hostname -> forward-proxy/naive-compatible
   backend (managed separately from Channel A).

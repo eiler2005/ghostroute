@@ -16,6 +16,8 @@
           - channel_b_home_ingress_port | int > 0
           - channel_b_home_upstream_socks_port | string | length > 0
           - channel_b_home_upstream_socks_port | int > 0
+          - channel_b_home_upstream_socks_port | string != singbox_dnscrypt_socks_port | string
+          - channel_b_home_upstream_socks_port | string != channel_b_home_ingress_port | string
           - channel_b_home_xhttp_host | length > 0
           - channel_b_home_xhttp_path is match('^/\\S+$')
           - channel_b_home_xhttp_mode == 'packet-up'

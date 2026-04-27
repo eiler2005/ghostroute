@@ -195,14 +195,15 @@ does not apply for that period.
 ## Channel B XHTTP Manual Live-Tested Profiles
 
 Channel B is a manual home-first lane. The device profile is VLESS+XHTTP+TLS to
-the home router, and the router relays upstream via local sing-box SOCKS to the
-existing Reality outbound toward VPS. It is not a production fallback today and
-does not enable automatic failover.
+the home router, and the router relays upstream via local sing-box SOCKS using
+the same managed split as Home Reality: managed destinations go through
+Reality/VPS, non-managed destinations go direct via home WAN.
+It is not a production fallback today and does not enable automatic failover.
 
 ```text
 iPhone/Mac/PC -> home public IP :<home-channel-b-port> -> router XHTTP+TLS ingress
                -> local router Xray relay (to local sing-box SOCKS)
-               -> sing-box Reality outbound -> VPS Caddy L4 -> Xray Reality -> Internet
+               -> managed split -> sing-box Reality outbound -> VPS Caddy L4 -> Xray Reality -> Internet
 ```
 
 Generated artifacts can be viewed with the same factory command when the vault

@@ -232,7 +232,7 @@
         mode: "0600"
         content: |
           {% if channel_b_home_relay_enabled | default(false) | bool %}
-          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
+          vless://{{ item.uuid }}@{{ channel_b_home_xhttp_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
           {% else %}
           vless://{{ item.uuid }}@{{ channel_b_xhttp_public_host }}:443?encryption=none&security=tls&sni={{ channel_b_xhttp_public_host }}&host={{ channel_b_xhttp_public_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_xhttp_mode | default('packet-up') }}#{{ item.name }}-xhttp
           {% endif %}
@@ -248,7 +248,7 @@
         mode: "0600"
         content: |
           {% if channel_b_home_relay_enabled | default(false) | bool %}
-          vless://{{ item.uuid }}@{{ home_reality_public_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
+          vless://{{ item.uuid }}@{{ channel_b_home_xhttp_host }}:{{ channel_b_home_ingress_port }}?encryption=none&security=tls&sni={{ channel_b_home_xhttp_host }}&host={{ channel_b_home_xhttp_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_home_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_home_xhttp_mode | default('packet-up') }}&allowInsecure=1#{{ item.name }}-channel-b-home
           {% else %}
           vless://{{ item.uuid }}@{{ channel_b_xhttp_public_host }}:443?encryption=none&security=tls&sni={{ channel_b_xhttp_public_host }}&host={{ channel_b_xhttp_public_host }}&alpn=h2&fp=chrome&type=xhttp&path={{ channel_b_xhttp_path | replace('/', '%2F') }}&mode={{ channel_b_xhttp_mode | default('packet-up') }}#{{ item.name }}-xhttp
           {% endif %}

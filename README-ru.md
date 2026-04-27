@@ -22,8 +22,9 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
   уходят через VPS Reality, остальные направления идут напрямую через домашний WAN.
 - Channel B — non-production ручная live-tested home-first линия:
   клиентское устройство -> `VLESS+XHTTP+TLS` до домашнего роутера ->
-  отдельный router Xray ingress -> локальный sing-box SOCKS -> существующий
-  `Reality/Vision` upstream на VPS.
+  отдельный router Xray ingress -> локальный sing-box SOCKS -> managed split
+  как у Channel A: `Reality/Vision` в VPS для managed доменов и direct-out в
+  domestic WAN для не-managed доменов.
 - Channel C — будущая ручная линия для camouflage-экспериментов:
   клиентское устройство -> NaiveProxy / HTTPS forward-proxy style hostname на VPS.
 
@@ -225,8 +226,9 @@ WireGuard не активен в steady state. Сохранённый `wgc1_*` N
 Channel B и Channel C — ручные device-client линии с разными design goals.
 Channel B теперь работает в home-first режиме: выбранные устройства
 подключаются к отдельному домашнему XHTTP/TLS ingress на роутере. Локальный
-Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, поэтому
-второй hop переиспользует существующий Reality/Vision upstream на VPS.
+Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, где
+managed домены продолжают идти через существующий Reality/Vision upstream на VPS,
+а не-managed — сразу в domestic WAN.
 Channel C остаётся camouflage-экспериментом с обычной
 authenticated HTTPS/Naive-style proxy surface.
 

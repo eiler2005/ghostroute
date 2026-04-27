@@ -19,7 +19,7 @@ For the current end-to-end flow and observer model, see
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | Channel A sing-box redirect -> Reality/Vision |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
-| Channel B manual clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> sing-box Reality outbound | manual fallback only |
+| Channel B manual clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> managed sing-box split (Reality for managed domains, direct home WAN for others) | manual fallback only |
 | Channel C manual clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | manual fallback only |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |

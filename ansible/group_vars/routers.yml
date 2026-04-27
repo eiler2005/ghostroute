@@ -41,7 +41,7 @@ channel_b_home_mss: 1360
 channel_b_home_xhttp_host: "{{ vault_channel_b_home_xhttp_host | default(home_reality_public_host, true) }}"
 channel_b_home_xhttp_path: "{{ vault_channel_b_home_xhttp_path | default(channel_b_xhttp_path, true) }}"
 channel_b_home_xhttp_mode: "{{ vault_channel_b_home_xhttp_mode | default(channel_b_xhttp_mode, true) }}"
-channel_b_home_upstream_socks_port: "{{ vault_channel_b_home_upstream_socks_port | default(singbox_dnscrypt_socks_port, true) }}"
+channel_b_home_upstream_socks_port: "{{ vault_channel_b_home_upstream_socks_port | default((singbox_dnscrypt_socks_port | int) + 1, true) }}"
 channel_b_home_router_xray_bin_path: /opt/bin/xray
 channel_b_home_router_xray_config_path: /opt/etc/xray/channel-b-home-relay.json
 channel_b_home_router_xray_init_path: /opt/etc/init.d/S99xray-channel-b-home
