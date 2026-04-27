@@ -32,6 +32,8 @@ channel_c_naive_password: ""
 channel_c_naive_tinyproxy_local_port: 18888
 channel_c_naive_squid_local_port: 18889
 channel_c_naive_stunnel_local_port: 18443
+channel_c_naive_squid_ipv4_only: true
+channel_c_naive_squid_outgoing_address: ""
 channel_c_naive_hide_ip_enabled: true
 channel_c_naive_hide_via_enabled: true
 channel_c_naive_probe_resistance_enabled: true

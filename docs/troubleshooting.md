@@ -112,6 +112,10 @@ Expected:
 - Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
 - Channel C `stunnel_squid` requests show in
   `/var/log/squid/channel-c-access.log` and `/var/log/stunnel4/channel-c.log`.
+- Channel C Shadowrocket HTTPS-proxy profiles are kept import-safe: no
+  custom UDP/QUIC rule is embedded in the generated `.conf`, and proxy line is
+  generated in keyword form:
+  `https, <host>, 443, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.
 - No Caddy restart loop: `sudo systemctl is-active caddy` returns `active`.
 
 ## VPS Emergency Clients Drift
