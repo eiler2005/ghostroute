@@ -10,18 +10,42 @@ acl channel_c_auth proxy_auth REQUIRED
 
 acl SSL_ports port 80
 acl SSL_ports port 443
+acl SSL_ports port 2052
+acl SSL_ports port 2053
+acl SSL_ports port 2082
+acl SSL_ports port 2083
+acl SSL_ports port 2086
+acl SSL_ports port 2087
+acl SSL_ports port 2095
+acl SSL_ports port 2096
 acl SSL_ports port 5222
 acl SSL_ports port 5223
+acl SSL_ports port 5228
+acl SSL_ports port 5229
+acl SSL_ports port 5230
 acl SSL_ports port 853
 acl SSL_ports port 993
 acl SSL_ports port 995
+acl SSL_ports port 4070
 acl Safe_ports port 80
 acl Safe_ports port 443
+acl Safe_ports port 2052
+acl Safe_ports port 2053
+acl Safe_ports port 2082
+acl Safe_ports port 2083
+acl Safe_ports port 2086
+acl Safe_ports port 2087
+acl Safe_ports port 2095
+acl Safe_ports port 2096
 acl Safe_ports port 5222
 acl Safe_ports port 5223
+acl Safe_ports port 5228
+acl Safe_ports port 5229
+acl Safe_ports port 5230
 acl Safe_ports port 853
 acl Safe_ports port 993
 acl Safe_ports port 995
+acl Safe_ports port 4070
 acl CONNECT method CONNECT
 
 http_access deny !Safe_ports

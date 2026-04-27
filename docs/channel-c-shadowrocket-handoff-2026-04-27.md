@@ -220,3 +220,23 @@ The same public hostname/profile should continue to work. Caddy still owns
 public `:443`, and Squid remains localhost-only. The Caddy-managed Channel C
 certificate/key are copied to `/etc/squid/channel-c-tls.{crt,key}` during deploy
 for Squid TLS termination.
+
+## Update - Plain HTTP Test Result
+
+The `http://neverssl.com` test from iPhone produced `TCP_TUNNEL/200` in Squid
+with nonzero byte counts, for example `CONNECT neverssl.com:80` with around
+2 KB transferred. This proves:
+
+- Shadowrocket is using the active Channel C profile.
+- Basic auth is present and accepted.
+- The public hostname/SNI reaches the correct Caddy route.
+- Squid can connect upstream and return bytes to the iPhone.
+
+Because the proxy path itself is working, the next applied changes target the
+iOS/Shadowrocket profile behavior and app-port compatibility:
+
+- Shadowrocket generated `.conf` profiles now use `bypass-system = false`.
+- Shadowrocket generated `.conf` profiles use explicit public DNS instead of
+  `system`.
+- Squid allows additional common mobile/Cloudflare/FCM CONNECT ports, including
+  `5228-5230`, because `mtalk.google.com:5228` was observed as denied.
