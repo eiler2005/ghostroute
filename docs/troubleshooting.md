@@ -91,12 +91,17 @@ Expected:
 - INPUT firewall allows TCP/<home-reality-port>;
 - sing-box has no fresh fatal errors.
 
-## Channel B/C Manual Profiles Не Работают
+## Channel B/C Future Manual Profiles Не Работают
 
-Channel B access logs пишутся в Caddy stdout/journal. Channel C with the
-`stunnel_squid` compatibility backend is routed by Caddy layer4 before the HTTP
-app, so live client requests are visible in Squid/stunnel logs instead of the
-Caddy HTTP access logger.
+Channel B и Channel C не являются production-ready fallback-каналами. Этот
+раздел нужен только для будущих manual device-client экспериментов и не
+участвует в health-check Channel A. B/C не должны менять router
+REDIRECT/DNS/TUN и не дают automatic failover.
+
+Для будущих Channel B проверок access logs пишутся в Caddy stdout/journal. Для
+будущих Channel C вариантов фактический лог зависит от выбранного backend:
+Caddy `forward_proxy` пишет в Caddy HTTP logger, а compatibility backend может
+писать в Squid/stunnel logs.
 
 ```bash
 ssh deploy@<vps-ip> '
@@ -107,12 +112,12 @@ ssh deploy@<vps-ip> '
 
 Expected:
 
-- Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
+- Future Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
   hostname, and either the configured random path or `404` for wrong paths.
-- Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
-- Channel C `stunnel_squid` requests show in
+- Future Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
+- Future Channel C `stunnel_squid` requests show in
   `/var/log/squid/channel-c-access.log` and `/var/log/stunnel4/channel-c.log`.
-- Channel C Shadowrocket HTTPS-proxy profiles are kept import-safe: no
+- Historical Channel C Shadowrocket HTTPS-proxy profiles are kept import-safe: no
   custom UDP/QUIC rule is embedded in the generated `.conf`, and proxy line is
   generated in keyword form:
   `https, <host>, 443, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.

@@ -2,7 +2,16 @@
 
 ## Коротко
 
-Текущая архитектура — Channel A Reality-first, без активного legacy WireGuard:
+Текущая production-архитектура — Channel A Reality-first, без активного legacy
+WireGuard. Channel B и Channel C описаны как будущие manual device-client lanes
+с отдельными design goals:
+
+- Channel A — прозрачная домашняя магистраль: роутер сам перехватывает managed
+  LAN/Wi-Fi traffic и отправляет его через Reality/Vision на VPS.
+- Channel B — protocol-diverse fallback candidate: selected device напрямую
+  подключается к XHTTP/TLS hostname на VPS, не меняя роутер.
+- Channel C — camouflage experiment: selected device подключается к
+  Naive/HTTPS-forward-proxy-style hostname на VPS, не меняя роутер.
 
 ```text
 LAN/Wi-Fi clients
@@ -21,21 +30,23 @@ Remote mobile QR clients
        STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
        other destinations              -> direct-out via home WAN
 
-Channel B manual clients
-  -> separate generated VLESS+XHTTP+TLS profile
+Channel B future protocol-diverse clients
+  -> VLESS+XHTTP+TLS profile for selected devices
   -> separate public VPS hostname on :443
   -> Caddy TLS routing
   -> local-only XHTTP backend
   -> Internet
 
-Channel C manual clients
-  -> separate generated NaiveProxy profile
-     (plus HTTPS forward-proxy compatibility profile where needed)
+Channel C future camouflage clients
+  -> NaiveProxy or HTTPS forward-proxy-compatible profile
   -> separate public VPS hostname on :443
-  -> Caddy layer4 SNI routing
-  -> TLS wrapper to localhost-only Squid compatibility proxy
+  -> Caddy forward_proxy / compatible backend
   -> Internet
 ```
+
+During a WAN incident where `wan0` reports `carrier=0`, the router has no
+physical/provider link. That condition is below GhostRoute and does not change
+the architectural status of Channel A.
 
 Legacy `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
 only as a cold fallback through `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
@@ -49,9 +60,9 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
 | `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, Reality outbound to VPS |
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
-| Channel A | primary `sing-box -> VLESS+Reality+Vision` path |
-| Channel B | optional manual XHTTP `packet-up` device profiles via local-only Xray backend |
-| Channel C | optional manual NaiveProxy profile artifacts, plus HTTPS proxy compatibility artifacts backed by a localhost-only Squid proxy |
+| Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
+| Channel B | future protocol-diverse XHTTP `packet-up` device-client lane via local-only Xray backend |
+| Channel C | future camouflage-oriented NaiveProxy / HTTPS forward-proxy device-client lane |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
@@ -62,8 +73,8 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
 | Mobile QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
-| Channel B manual profile | selected device only | separate XHTTP hostname on VPS `:443` | manual fallback egress |
-| Channel C manual profile | selected device only | separate Naive hostname on VPS `:443` | manual fallback egress |
+| Channel B future manual profile | selected device only | separate XHTTP hostname on VPS `:443` | future manual device-client egress |
+| Channel C future manual profile | selected device only | separate Naive/HTTPS hostname on VPS `:443` | future experimental device-client egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -133,12 +144,16 @@ Reality should use an explicit proxy or client profile.
 
 ### Channel B/C Manual Clients
 
-Channel B and Channel C profiles are generated separately from normal Home
-Reality and emergency Reality profiles. They are imported manually on selected
-devices and connect directly to dedicated VPS hostnames on public `:443`.
+Channel B and Channel C are future manual device-client lanes. They are
+documented separately from normal Home Reality and emergency Reality profiles
+because their purpose is different: B tests a different transport family,
+while C tests an ordinary-looking authenticated proxy surface.
 
-In v1, Channel B/C do not install binaries on the router, do not add local
-router SOCKS/HTTP ports, and do not add domain routing rules.
+The intended v1 shape is direct device-to-VPS connectivity on dedicated public
+`:443` hostnames: Channel B via VLESS+XHTTP+TLS, Channel C via NaiveProxy or an
+HTTPS forward-proxy-compatible variant. They must not install binaries on the
+router, add local router SOCKS/HTTP ports, modify REDIRECT/TUN/DNS, or add
+domain routing rules.
 
 ## Boot Hooks
 
@@ -167,5 +182,5 @@ Critical invariants:
 - no `RC_VPN_ROUTE`
 - no `0x1000` rule outside emergency fallback
 - `filter-AAAA` present while IPv6 is disabled
-- Channel B/C, when enabled, are VPS/client-profile only and keep router
-  REDIRECT/TUN/DNS unchanged
+- Channel B/C are not required for production health; any future enablement
+  must remain VPS/client-profile only and keep router REDIRECT/TUN/DNS unchanged
