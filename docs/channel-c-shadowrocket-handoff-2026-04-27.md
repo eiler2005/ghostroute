@@ -240,3 +240,27 @@ iOS/Shadowrocket profile behavior and app-port compatibility:
   `system`.
 - Squid allows additional common mobile/Cloudflare/FCM CONNECT ports, including
   `5228-5230`, because `mtalk.google.com:5228` was observed as denied.
+
+## Update - Squid Dual-Stack Tuning
+
+Fresh iPhone attempts continued to show authenticated `TCP_TUNNEL/200` entries
+with nonzero bytes for `api.ipify.org`, `www.google.com`, `neverssl.com`,
+Telegram, Google and Apple endpoints. This rules out missing auth, inactive
+profile, Caddy SNI mismatch and local Squid listener failure.
+
+The remaining server-side signal was intermittent `TCP_TUNNEL/503` entries after
+long connect waits, including dual-stack/IPv6 upstream selections. Squid 6.14 no
+longer supports `dns_v4_first`; a parse test reports the directive as obsolete.
+The deployed-compatible mitigation is to keep Happy Eyeballs enabled but race the
+spare address family quickly and fail bad upstream connects sooner:
+
+```squid
+connect_timeout 15 seconds
+happy_eyeballs_connect_timeout 10
+happy_eyeballs_connect_gap 10
+```
+
+If this still does not make Shadowrocket usable while Squid keeps logging
+successful tunnels, the next high-signal path is to stop treating HTTPS proxy as
+the long-term Channel C mobile profile and test a first-class mobile protocol:
+VLESS+WS+TLS or Trojan on the Channel C hostname.

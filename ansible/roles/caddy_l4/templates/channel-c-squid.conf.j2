@@ -59,6 +59,10 @@ request_header_access X-Forwarded-For deny all
 request_header_access Via deny all
 reply_header_access Via deny all
 
+connect_timeout 15 seconds
+happy_eyeballs_connect_timeout 10
+happy_eyeballs_connect_gap 10
+
 access_log /var/log/squid/channel-c-access.log
 cache_log /var/log/squid/channel-c-cache.log
 pid_filename /run/squid/channel-c.pid
