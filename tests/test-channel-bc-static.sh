@@ -86,7 +86,7 @@ assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'Render Chan
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'Render Channel C Shadowrocket positional config QR PNG for each named client'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" '\[Proxy\]'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'tls=true'
-assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'method=connect, tls=true'
+assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'method=connect,tls=true'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'bypass-system = false'
 assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'shadowrocket-positional\.conf'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'Render Channel C sing-box Naive outbound JSON for each named client'
