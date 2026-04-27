@@ -192,17 +192,18 @@ Trade-off: during emergency use, the LTE carrier sees the device connecting
 directly to the VPS host, so the domestic-first-hop billing/privacy property
 does not apply for that period.
 
-## Channel B XHTTP Manual Fallback Profiles
+## Channel B XHTTP Future Manual Profiles
 
-Channel B profiles are separate VLESS+XHTTP+TLS manual fallbacks. They do not
-replace Home Reality/Channel A, do not alter router REDIRECT/DNS/TUN state, and
-do not enable automatic failover.
+Channel B is a planned VLESS+XHTTP+TLS manual device-client lane. It is not a
+production fallback today. It does not replace Home Reality/Channel A, does not
+alter router REDIRECT/DNS/TUN state, and does not enable automatic failover.
 
 ```text
 iPhone/Mac/PC -> Channel B XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet
 ```
 
-Generate and view them with the same factory command:
+Future generated artifacts can be viewed with the same factory command when
+the vault values are present:
 
 ```bash
 ./modules/client-profile-factory/bin/client-profiles generate
@@ -210,22 +211,22 @@ Generate and view them with the same factory command:
 ./modules/client-profile-factory/bin/client-profiles channel-b-open
 ```
 
-The Channel B output includes VLESS URI text files, QR PNG files and raw Xray
-JSON profiles under `ansible/out/clients-channel-b/`. The default URI and JSON
-profiles pin XHTTP `mode=packet-up`, matching the Caddy reverse-proxy backend.
-For iOS XHTTP clients, prefer text/clipboard import first: QR recognition and
-parser behavior is less reliable for longer XHTTP links.
+The intended Channel B output includes VLESS URI text files, QR PNG files and
+raw Xray JSON profiles under `ansible/out/clients-channel-b/`. Future
+production readiness requires a live client pass proving import, connection
+and real egress on the target iOS/macOS/Android clients.
 
-## Channel C NaiveProxy Manual Fallback Profile
+## Channel C NaiveProxy Future Experiment
 
-Channel C is a separate NaiveProxy experiment. It is also manual-only and does
-not participate in router domain routing or automatic failover.
+Channel C is a future experimental NaiveProxy / HTTPS forward-proxy lane. It is
+manual-only, not production-ready, and does not participate in router domain
+routing or automatic failover.
 
 ```text
-client app -> Channel C Naive hostname :443 -> Caddy SNI route -> local Squid compatibility proxy -> Internet
+client app -> Channel C Naive/HTTPS hostname :443 -> Caddy forward_proxy / compatible backend -> Internet
 ```
 
-Generate and view it with:
+Future generated artifacts can be viewed with:
 
 ```bash
 ./modules/client-profile-factory/bin/client-profiles generate
@@ -233,8 +234,8 @@ Generate and view it with:
 ./modules/client-profile-factory/bin/client-profiles channel-c-open
 ```
 
-The Channel C output now separates true NaiveProxy artifacts from plain HTTPS
-forward-proxy compatibility artifacts:
+The intended Channel C output separates true NaiveProxy artifacts from plain
+HTTPS forward-proxy compatibility artifacts:
 
 - `<client>.txt` and QR PNG: `naive+https://...` URI for clients with native
   NaiveProxy import support.
@@ -253,14 +254,14 @@ forward-proxy compatibility artifacts:
   HTTPS proxy predeclared under `[Proxy]`, `method=connect`, TLS enabled and
   `FINAL,PROXY`.
 - `<client>-shadowrocket-positional.conf`: alternate Shadowrocket config-file
-  import using positional `user,password` fields for app versions that ignore
-  `username=...` / `password=...` on HTTPS proxy nodes. It also pins
-  `method=connect`.
+  import using positional user/auth-secret fields for app versions that ignore
+  named auth fields on HTTPS proxy nodes. It also pins `method=connect`.
 - `<client>.json`: naiveproxy CLI JSON using the plain HTTPS proxy URL.
 - `<client>-sing-box-outbound.json`: sing-box `type: naive` outbound JSON.
 
-Keep Channel B/C profiles disabled/off until manually testing a specific
-device.
+Keep Channel B/C profiles disabled/off. Treat them as experimental artifacts
+until a future implementation pass chooses supported clients, confirms import
+behavior and proves live egress. These profiles never change router behavior.
 
 ## Clean Local Artifacts
 

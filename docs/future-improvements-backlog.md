@@ -21,6 +21,10 @@
 - `VPN_DOMAINS` отсутствует в steady state; active domain catalog is `STEALTH_DOMAINS`
 - DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:<dnscrypt-port>`
 - traffic observability и device mix reporting работают с этой новой routing matrix
+- Channel B и Channel C не являются production-ready каналами. Они остаются
+  future/manual device-client направлениями: B как `VLESS+XHTTP+TLS`, C как
+  экспериментальный NaiveProxy / HTTPS forward-proxy подход без изменений
+  router REDIRECT/DNS/TUN.
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -317,6 +321,41 @@
 - основной remote access больше не зависит от публичного `wgs1`
 - старые `wgs1` клиенты мигрированы на Reality QR или будущий overlay по назначению
 - внешний surface роутера становится меньше без слома текущего routing catalog
+
+### 9. Реализовать Channel B и Channel C как future manual device-client lanes
+
+Текущий статус:
+
+- Channel A остаётся единственным production data plane:
+  `router sing-box REDIRECT -> VLESS+Reality+Vision -> VPS`.
+- Channel B и Channel C описаны архитектурно, но не считаются рабочими
+  fallback-каналами для пользователя.
+- Любые существующие B/C артефакты и диагностические заметки считать
+  экспериментальными до отдельного live compatibility pass.
+
+Channel B target:
+
+- `Device client -> XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet`
+- не менять router REDIRECT/DNS/TUN
+- не добавлять automatic failover
+- готовность: профиль реально импортируется и работает на целевых клиентах
+  iOS/macOS/Android, live egress подтвержден внешними checks и логами VPS
+
+Channel C target:
+
+- `Device client -> Naive/HTTPS hostname :443 -> Caddy forward_proxy /
+  compatible backend -> Internet`
+- оставить NaiveProxy экспериментом, пока не выбран надежный клиентский стек
+- не считать Shadowrocket/Hiddify compatibility достаточной без end-to-end
+  проверки обычного app traffic, а не только CONNECT/API checker
+- готовность: выбран поддерживаемый клиент/протокол, import стабилен,
+  authenticated egress работает для обычных приложений
+
+Желаемый результат:
+
+- B/C можно безопасно тестировать на отдельных устройствах без риска для
+  Channel A и домашнего роутера
+- документация явно отделяет production Channel A от будущих ручных опций
 
 ## Что не делать по умолчанию
 

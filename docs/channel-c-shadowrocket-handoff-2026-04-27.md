@@ -1,5 +1,11 @@
 # Channel C Shadowrocket Handoff - 2026-04-27
 
+> Historical diagnostic note. Channel A is the only production data plane.
+> Channel B and Channel C were explored with server-side scaffolding and client
+> artifacts, but they are not production-ready fallback channels. Treat the
+> details below as implementation/debug history for future work, not as current
+> operator guidance.
+
 ## Context
 
 This repo manages a home router/VPS stealth routing setup.
@@ -7,13 +13,13 @@ This repo manages a home router/VPS stealth routing setup.
 Current terminology:
 
 - Channel A: primary router-managed `sing-box -> VLESS + Reality + Vision -> VPS`.
-- Channel B: manual device-client fallback, `VLESS + XHTTP + TLS` on a standalone Xray service behind Caddy.
-- Channel C: manual device-client fallback, Naive/HTTPS forward-proxy style profile on a separate VPS SNI hostname.
+- Channel B: planned manual device-client lane, `VLESS + XHTTP + TLS` on a standalone Xray service behind Caddy.
+- Channel C: future experimental device-client lane, Naive/HTTPS forward-proxy style profile on a separate VPS SNI hostname.
 - Deprecated WireGuard cold fallback: previously used WireGuard path, disabled in steady state.
 
 Channel A is still healthy according to `./verify.sh`; the only warning is stale blocked-list freshness, not a listener/routing failure.
 
-## What Was Implemented
+## What Was Explored
 
 Channel B:
 
@@ -255,12 +261,27 @@ The deployed-compatible mitigation is to keep Happy Eyeballs enabled but race th
 spare address family quickly and fail bad upstream connects sooner:
 
 ```squid
-connect_timeout 15 seconds
-happy_eyeballs_connect_timeout 10
-happy_eyeballs_connect_gap 10
+connect_timeout 8 seconds
+happy_eyeballs_connect_timeout 250 milliseconds
+happy_eyeballs_connect_gap 50 milliseconds
 ```
 
-If this still does not make Shadowrocket usable while Squid keeps logging
-successful tunnels, the next high-signal path is to stop treating HTTPS proxy as
-the long-term Channel C mobile profile and test a first-class mobile protocol:
-VLESS+WS+TLS or Trojan on the Channel C hostname.
+## Update - Squid IPv4 Egress Guard
+
+The router-side network intentionally blocks IPv6, but Channel C Squid runs on
+the VPS and was still able to select IPv6 upstream addresses. That produced
+reproducible failures such as `neverssl.com` returning `TCP_MISS_TIMEDOUT/503`
+through Squid while IPv4 direct access from the VPS worked.
+
+The confirmed mitigation is two-part:
+
+- `/etc/gai.conf` prefers IPv4-mapped addresses via
+  `precedence ::ffff:0:0/96 100`.
+- `channel-c-squid-ipv4-egress.service` installs a narrow `ip6tables` OUTPUT
+  rejection only for the `proxy` user that runs Squid. This leaves Caddy,
+  Channel A Reality/Vision and other VPS services untouched.
+
+After this, local Channel C HTTPS-proxy checks pass for `example.com`,
+`api.ipify.org`, `ifconfig.me/ip` and `google.com/generate_204`. `neverssl.com`
+is no longer a reliable acceptance target from this VPS because the upstream
+itself intermittently takes longer than the Channel C fail-fast timeout.

@@ -1,8 +1,14 @@
 # Channel C Shadowrocket — Debug Research & Solution Paths (2026-04-27)
 
+> Historical diagnostic note. Channel C is not production-ready and is not an
+> active fallback channel. The research below records experiments and possible
+> future paths; Channel A remains the production router-managed path.
+
 ## Context
 
-Channel C — это manual-only fallback-канал клиент-к-VPS, реализованный как HTTPS forward-proxy: `iPhone (Shadowrocket) → TLS+CONNECT → public_host:443 → Caddy L4 (SNI route) → stunnel → Squid → upstream`.
+Channel C — это будущий manual-only экспериментальный канал клиент-к-VPS. В этой
+диагностической ветке он тестировался как HTTPS forward-proxy:
+`iPhone (Shadowrocket) → TLS+CONNECT → public_host:443 → Caddy L4 (SNI route) → stunnel → Squid → upstream`.
 
 **Текущее состояние:**
 
@@ -22,7 +28,7 @@ Channel C — это manual-only fallback-канал клиент-к-VPS, реа
 Три самые вероятные причины, в порядке убывания (с учётом того, что серверный curl работает):
 
 1. **iOS iCloud Private Relay / Limit IP Address Tracking активен** — самый частый «тихий saboteur» при HTTPS-proxy профилях. Симптом «Data log показывает `mask.icloud.com` и `gateway.icloud.com`» — почти signature. **Проверка: 30 секунд в Settings.**
-2. **Shadowrocket-positional конфиг неправильно парсит `username`/`password`** — Surge-стиль `https, host, port, USER, PASS` исторически работает только в keyword-форме `https, host, port, username=USER, password=PASS`. Без auth Squid отвечает 407, tunnel не открывается, но Shadowrocket Data-log всё равно показывает routing. **Проверка: переимпорт keyword-варианта.**
+2. **Shadowrocket-positional конфиг неправильно парсит auth-поля** — Surge-стиль `https, host, port, USER, PASS` исторически работает только в keyword-форме `https, host, port, auth_user=USER, auth_pass=PASS`. Без auth Squid отвечает 407, tunnel не открывается, но Shadowrocket Data-log всё равно показывает routing. **Проверка: переимпорт keyword-варианта.**
 3. **Профиль импортирован, но активный server в работающем VPN-инстансе — другой** — Shadowrocket гочи: импорт `.conf` через subscription создаёт новый Server List, но запущенный tunnel держит ссылку на старый Server. **Проверка: VPN OFF → подождать 5 сек → VPN ON.**
 
 Если все три отбросили — переходим к остальным 10 гипотезам в §3.
@@ -145,7 +151,7 @@ App socket
 
 ### H2 — Positional `.conf` не парсит username/password 🔴 ВЫСОКАЯ
 
-**Severity:** высокая. Surge-syntax `Type = https, host, port, USER, PASS` поддерживается не всеми Shadowrocket-билдами; keyword `username=USER, password=PASS` — официальный документированный путь.
+**Severity:** высокая. Surge-syntax `Type = https, host, port, USER, PASS` поддерживается не всеми Shadowrocket-билдами; keyword-форма с явно названными auth-полями — официальный документированный путь.
 
 **Механика:**
 - `iphone-1-shadowrocket-positional.conf` (то что используется сейчас):
@@ -165,7 +171,7 @@ App socket
 4. Открыть http://neverssl.com.
 5. Если в логе появляется `TCP_TUNNEL/200 CONNECT neverssl.com:80` — это H2.
 
-**Fix:** Использовать keyword вариант `iphone-1-shadowrocket.conf` или один из QR'ов с `&password=...` в URL form (`iphone-1-shadowrocket-https.txt`).
+**Fix:** Использовать keyword вариант `iphone-1-shadowrocket.conf` или один из QR'ов с явно заданным auth secret в URL form (`iphone-1-shadowrocket-https.txt`).
 
 **Cost:** 1 минута переимпорта.
 
@@ -604,8 +610,8 @@ sing-box on VPS:
       listen: 127.0.0.1
       listen_port: 18443
       users:
-        - username: USER
-          password: PASS
+        - user_name: USER
+          auth_secret: PASS
       tls:
         enabled: true
         certificate_path: /var/lib/caddy/certificates/.../host/host.crt
