@@ -18,6 +18,11 @@ Home Reality ingress client
   -> ASUS router
   -> either VLESS+Reality -> VPS
   -> or home Russian WAN direct
+
+Channel C device
+  -> dedicated VPS hostname :443
+  -> HTTPS/Naive-compatible backend
+  -> Internet
 ```
 
 `Home Reality ingress client` — это не обязательно телефон и не обязательно
@@ -87,6 +92,7 @@ Important accounting rule:
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; `RC_LAN_REALITY_*` mangle counters provide the `Via Reality` view |
 | Home Reality ingress clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | First-hop network sees the home IP; `RC_MOBILE_REALITY_*` counters show encrypted Home Reality ingress bytes by source IP/profile |
+| Channel C device clients | dedicated VPS hostname `:443` -> HTTPS/Naive-compatible backend | Channel C is not routed through router split-path accounting; VPS-side logs are authoritative |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 

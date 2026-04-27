@@ -27,13 +27,14 @@ The channel model separates the main traffic responsibilities:
   device client -> `VLESS+XHTTP+TLS` to the home router -> dedicated router
   Xray ingress -> local sing-box SOCKS -> the existing `Reality/Vision`
   upstream to VPS.
-- Channel C is the future camouflage-oriented manual lane:
-  device client -> NaiveProxy / HTTPS forward-proxy style hostname on the VPS.
+- Channel C is a manual compatibility lane:
+  device client -> dedicated VPS `:443` hostname -> forward-proxy/naive-compatible
+  backend (managed separately from Channel A).
 
 Only Channel A is part of the production automatic router data plane. Channel B
 is an optional manual add-on with its own ingress/relay surface and must stay
-isolated from Channel A REDIRECT ownership. Channel C remains a planned manual
-compatibility lane. No automatic failover is introduced by B/C.
+isolated from Channel A REDIRECT ownership. Channel C is also manual and separate
+from Channel A routing, with no automatic failover by B/C.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -53,8 +54,8 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Channel B manual live-tested home-first lane: selected device-client tests
   connect to the home router first via XHTTP/TLS, then the router relays into
   local sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
-- Channel C design lane: NaiveProxy / HTTPS forward proxy for camouflage
-  experiments on a separate public hostname sharing the VPS `:443`.
+- Channel C manual compatibility lane: NaiveProxy/HTTPS-proxy style profile path
+  on a dedicated public VPS hostname under `:443`.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
 - Automatic domain discovery that writes `STEALTH_DOMAINS` only.
@@ -136,7 +137,7 @@ Manual device-client lanes:
             -> router local Xray XHTTP/TLS ingress
             -> local sing-box SOCKS -> Reality/Vision -> VPS -> Internet
   Channel C -> Device client -> Naive/HTTPS hostname :443
-            -> Caddy forward_proxy / compatible backend -> Internet
+            -> dedicated Channel C VPS route -> forward-proxy/naive-compatible backend
 
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
@@ -225,12 +226,15 @@ WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be use
 ### 4. Channel B/C Manual Profiles
 
 Channel B and Channel C are manual device-client lanes with different design
-goals. Channel B now uses a home-first shape: selected devices connect to a
-dedicated home XHTTP/TLS ingress port on the router. A local Xray process
-terminates that first hop and forwards traffic into the local sing-box SOCKS
-listener, so the second hop reuses the existing Reality/Vision upstream to VPS.
-Channel C remains the camouflage experiment: a separate hostname that behaves
-like an ordinary authenticated HTTPS/Naive-style proxy surface.
+goals:
+
+- Channel B is home-first: selected devices connect to dedicated home ingress on
+  `:<home-channel-b-port>`. A local Xray process terminates that first hop and
+  forwards traffic into local sing-box SOCKS, so the second hop reuses the same
+  existing Reality/Vision upstream to VPS as Channel A.
+- Channel C is direct to a dedicated public VPS hostname on `:443` and uses a
+  Naive/HTTPS-proxy-compatible backend. It is VPS-only and does not create a new
+  router-managed split path.
 
 Channel B isolation boundaries are strict: it has its own ingress port and
 local Xray relay process, but it does not mutate Channel A REDIRECT ownership,
@@ -259,7 +263,7 @@ VPS:
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
-  future Channel C NaiveProxy / HTTPS forward-proxy scaffolding
+  dedicated Channel C manual lane backend on :443 via shared system Caddy
   stealth stack under /opt/stealth
 
 Control:
