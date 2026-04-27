@@ -88,7 +88,9 @@
       changed_when: false
 
     - name: Shared OpenClaw site still requires mTLS after Caddy restart
-      when: system_caddy_site_enabled | default(false) | bool
+      when:
+        - verify_openclaw_checks_enabled | default(true) | bool
+        - system_caddy_site_enabled | default(false) | bool
       ansible.builtin.shell: |
         (curl -k -I -sS --max-time 10 \
           --resolve {{ system_caddy_site_host }}:443:127.0.0.1 \
@@ -103,10 +105,14 @@
             or 'tlsv1 alert' in (probe.stdout + probe.stderr)
             or 'alert certificate' in (probe.stdout + probe.stderr)
         fail_msg: "OpenClaw mTLS probe no longer behaves as expected: {{ probe.stdout }} {{ probe.stderr }}"
-      when: system_caddy_site_enabled | default(false) | bool
+      when:
+        - verify_openclaw_checks_enabled | default(true) | bool
+        - system_caddy_site_enabled | default(false) | bool
 
     - name: OpenClaw upstream remains localhost-only for SSH tunnel access
-      when: not (system_caddy_site_enabled | default(false) | bool)
+      when:
+        - verify_openclaw_checks_enabled | default(true) | bool
+        - not (system_caddy_site_enabled | default(false) | bool)
       ansible.builtin.uri:
         url: "http://{{ system_caddy_site_upstream }}/"
         method: HEAD
@@ -382,6 +388,7 @@
       changed_when: false
 
     - name: OpenClaw private DNS override is absent in SSH-only mode
+      when: verify_openclaw_checks_enabled | default(true) | bool
       ansible.builtin.shell: "! grep -q '^address=/{{ system_caddy_site_host }}/' /jffs/configs/dnsmasq.conf.add"
       changed_when: false
 

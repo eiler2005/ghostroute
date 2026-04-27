@@ -20,14 +20,14 @@ GhostRoute управляет маршрутизацией на ASUS RT-AX88U Pr
   `iPhone/Mac -> домашний белый IP :<home-reality-port> -> sing-box home Reality inbound`.
   Дальше роутер применяет тот же managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
   уходят через VPS Reality, остальные направления идут напрямую через домашний WAN.
-- Channel B — будущая ручная линия с другим transport family:
+- Channel B — non-production ручная live-tested линия для отдельных устройств:
   клиентское устройство -> `VLESS+XHTTP+TLS` -> отдельный Xray backend на VPS.
 - Channel C — будущая ручная линия для camouflage-экспериментов:
   клиентское устройство -> NaiveProxy / HTTPS forward-proxy style hostname на VPS.
 
-Только Channel A входит в активный router data plane. Channel B и Channel C
-описаны как архитектурные направления для будущих тестов на выбранных
-устройствах; в v1 они не должны менять router REDIRECT, TUN, DNS, local ports
+Только Channel A входит в активный router data plane. Channel B live-tested как
+ручная selected-device линия на VPS, а Channel C остается planned/manual
+compatibility lane; они не должны менять router REDIRECT, TUN, DNS, local ports
 или automatic failover.
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
@@ -45,8 +45,8 @@ Caddy/VPS или Reality/Vision data plane.
 - Единый активный каталог для домашней LAN (`STEALTH_DOMAINS`).
 - Общий static CIDR каталог для direct-IP сервисов через `VPN_STATIC_NETS`.
 - Channel A VLESS+Reality+Vision egress через VPS host за общим Caddy L4 на TCP/443.
-- Channel B design lane: VLESS+XHTTP+TLS для тестов на выбранных клиентских
-  устройствах через отдельный public hostname поверх VPS `:443`.
+- Channel B manual live-tested lane: VLESS+XHTTP+TLS для тестов на выбранных
+  клиентских устройствах через отдельный public hostname поверх VPS `:443`.
 - Channel C design lane: NaiveProxy / HTTPS forward proxy для
   camouflage-экспериментов через отдельный public hostname поверх VPS `:443`.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных мобильных клиентов: LTE-оператор видит домашний российский IP, а не VPS.
@@ -138,7 +138,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS и future Channel B/C artifacts from Vault
+  Client Profiles     -> QR/VLESS и manual Channel B/C artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -217,7 +217,7 @@ WireGuard не активен в steady state. Сохранённый `wgc1_*` N
 
 ### 4. Channel B/C manual profiles
 
-Channel B и Channel C — будущие device-client линии с разными design goals.
+Channel B и Channel C — ручные device-client линии с разными design goals.
 Channel B — кандидат на fallback с другим transport family: обычный TLS на
 отдельном hostname, XHTTP transport и local-only Xray backend. Channel C —
 camouflage-эксперимент: отдельный hostname, который выглядит как обычная
@@ -229,10 +229,11 @@ VLESS+XHTTP+TLS, Channel C через NaiveProxy или HTTPS-forward-proxy-comp
 вариант.
 
 Они не ставят binaries на роутер, не добавляют router SOCKS/HTTP listeners, не
-меняют REDIRECT/TUN/DNS и не дают automatic failover. Любые artifacts в
-`ansible/out/clients-channel-b/` или `ansible/out/clients-channel-c/` считаются
-экспериментальными, пока будущая live-проверка клиента не подтвердит import,
-connection и реальный egress.
+меняют REDIRECT/TUN/DNS и не дают automatic failover. Channel B прошёл
+VPS-side live smoke 2026-04-27 через локальный Xray client container и
+сгенерированный профиль `macbook-b`; import в iOS и Android приложениях остаётся
+ручной compatibility-проверкой. Artifacts в `ansible/out/clients-channel-b/`
+или `ansible/out/clients-channel-c/` остаются non-production manual profiles.
 
 ---
 
@@ -251,7 +252,7 @@ VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
-  future Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
+  manual live-tested Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   future Channel C NaiveProxy / HTTPS forward-proxy scaffolding
   stealth stack under /opt/stealth
 
@@ -273,11 +274,17 @@ configs/
 ansible/
   README.md                       # Ansible control plane overview
   playbooks/10-stealth-vps.yml
+  playbooks/11-channel-b-vps.yml
+  playbooks/12-channel-c-vps.yml
   playbooks/20-stealth-router.yml
   playbooks/30-generate-client-profiles.yml
   playbooks/99-verify.yml
   secrets/stealth.yml             # ansible-vault, gitignored
   out/clients/                    # generated QR/profile artifacts, gitignored
+  out/clients-home/               # generated home QR/profile artifacts, gitignored
+  out/clients-emergency/          # generated emergency artifacts, gitignored
+  out/clients-channel-b/          # generated Channel B artifacts, gitignored
+  out/clients-channel-c/          # generated Channel C artifacts, gitignored
 
 modules/
   routing-core/
@@ -317,6 +324,10 @@ ROUTER=192.168.50.1 ./deploy.sh
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
+
+# Ручные VPS device-client линии (не мутируют router Channel A path)
+ansible-playbook playbooks/11-channel-b-vps.yml
+ansible-playbook playbooks/12-channel-c-vps.yml
 
 # End-to-end verification: VPS + router
 ansible-playbook playbooks/99-verify.yml

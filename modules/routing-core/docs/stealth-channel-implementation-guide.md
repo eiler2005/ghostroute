@@ -110,6 +110,8 @@ ansible/
   playbooks/
     00-bootstrap-vps.yml
     10-stealth-vps.yml
+    11-channel-b-vps.yml
+    12-channel-c-vps.yml
     20-stealth-router.yml
     30-generate-client-profiles.yml
     99-verify.yml
@@ -215,6 +217,17 @@ ansible-playbook playbooks/10-stealth-vps.yml
 - clients from vault
 - UFW rules needed for the stealth stack
 
+Manual device-client lanes are refreshed separately:
+
+```bash
+ansible-playbook playbooks/11-channel-b-vps.yml
+ansible-playbook playbooks/12-channel-c-vps.yml
+```
+
+`11-channel-b-vps.yml` updates only the Channel B XHTTP backend and validates
+that the Caddy route is present. `12-channel-c-vps.yml` owns the Channel C
+compatibility backend/Caddy path. Neither playbook targets the router.
+
 ### 4.2 Router base layer
 
 ```bash
@@ -276,6 +289,19 @@ cd ..
 ./verify.sh
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ```
+
+Operational note (2026-04-27): during Vault secret recovery, run VPS-only verify
+first:
+
+```bash
+cd ansible
+ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+```
+
+OpenClaw checks are enabled by default via
+`verify_openclaw_checks_enabled=true`, because GhostRoute and OpenClaw share
+the VPS/Caddy surface. For isolated GhostRoute-only troubleshooting, run verify
+with `-e verify_openclaw_checks_enabled=false`.
 
 ---
 

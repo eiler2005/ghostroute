@@ -192,18 +192,18 @@ Trade-off: during emergency use, the LTE carrier sees the device connecting
 directly to the VPS host, so the domestic-first-hop billing/privacy property
 does not apply for that period.
 
-## Channel B XHTTP Future Manual Profiles
+## Channel B XHTTP Manual Live-Tested Profiles
 
-Channel B is a planned VLESS+XHTTP+TLS manual device-client lane. It is not a
-production fallback today. It does not replace Home Reality/Channel A, does not
-alter router REDIRECT/DNS/TUN state, and does not enable automatic failover.
+Channel B is a VLESS+XHTTP+TLS manual device-client lane. It is not a production
+fallback today. It does not replace Home Reality/Channel A, does not alter
+router REDIRECT/DNS/TUN state, and does not enable automatic failover.
 
 ```text
 iPhone/Mac/PC -> Channel B XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet
 ```
 
-Future generated artifacts can be viewed with the same factory command when
-the vault values are present:
+Generated artifacts can be viewed with the same factory command when the vault
+values are present:
 
 ```bash
 ./modules/client-profile-factory/bin/client-profiles generate
@@ -212,9 +212,10 @@ the vault values are present:
 ```
 
 The intended Channel B output includes VLESS URI text files, QR PNG files and
-raw Xray JSON profiles under `ansible/out/clients-channel-b/`. Future
-production readiness requires a live client pass proving import, connection
-and real egress on the target iOS/macOS/Android clients.
+raw Xray JSON profiles under `ansible/out/clients-channel-b/`. A 2026-04-27
+live smoke pass verified the VPS path and generated `macbook-b` profile through
+a local Xray client container. iOS and Android app import remain manual
+compatibility checks before considering broader readiness.
 
 ## Channel C NaiveProxy Future Experiment
 

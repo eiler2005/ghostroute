@@ -1,3 +1,13 @@
+- name: Validate 3x-ui credentials before mutating Reality stack
+  ansible.builtin.assert:
+    that:
+      - xui_admin_username is defined
+      - xui_admin_username | string | length > 0
+      - xui_admin_password is defined
+      - xui_admin_password | string | length > 0
+    fail_msg: "xui_admin_username/xui_admin_password must be present in Vault before running the Reality VPS role."
+  no_log: true
+
 - name: Ensure xray volumes dir
   ansible.builtin.file:
     path: "{{ stealth_stack_dir }}/xray/{{ item }}"

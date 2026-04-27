@@ -28,6 +28,13 @@
     state: restarted
     daemon_reload: true
 
+- name: restart channel c squid ipv4 egress
+  listen: restart channel c squid ipv4 egress
+  ansible.builtin.systemd:
+    name: channel-c-squid-ipv4-egress
+    state: restarted
+    daemon_reload: true
+
 - name: restart channel c squid
   listen: restart channel c squid
   ansible.builtin.systemd:

@@ -1,0 +1,34 @@
+- name: Deploy Channel B XHTTP manual lane on VPS
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  roles:
+    - xray_xhttp
+  tasks:
+    - name: Channel B Caddy route is present
+      ansible.builtin.shell: |
+        set -euo pipefail
+        grep -q 'https://{{ channel_b_xhttp_public_host }}' {{ system_caddyfile_path }}
+        grep -q '{{ channel_b_xhttp_path }}' {{ system_caddyfile_path }}
+        grep -q '127.0.0.1:{{ channel_b_xhttp_local_port }}' {{ system_caddyfile_path }}
+      args:
+        executable: /bin/bash
+      changed_when: false
+      when: channel_b_xhttp_enabled | default(false) | bool
+
+    - name: Host Caddy configuration remains valid after Channel B backend deploy
+      ansible.builtin.command:
+        argv:
+          - "{{ system_caddy_binary_path }}"
+          - validate
+          - --config
+          - "{{ system_caddyfile_path }}"
+          - --adapter
+          - caddyfile
+      changed_when: false
+      when:
+        - channel_b_xhttp_enabled | default(false) | bool
+        - stealth_caddy_mode == 'system_listener_wrapper'

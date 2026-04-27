@@ -41,7 +41,9 @@
       - home_clients is defined
       - home_clients | length == 7
       - home_reality_server_private_key is defined
+      - home_reality_server_private_key | string | length > 0
       - home_reality_server_public_key is defined
+      - home_reality_server_public_key | string | length > 0
       - home_reality_server_short_ids is defined
       - (home_reality_server_short_ids | length) >= (home_clients | length)
       - ((home_clients | map(attribute='uuid') | list) | intersect((clients | rejectattr('name', 'equalto', 'router') | map(attribute='uuid') | list))) | length == 0

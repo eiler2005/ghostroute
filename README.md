@@ -23,14 +23,15 @@ The channel model separates three responsibilities:
   `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound`.
   The router then applies the same managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
   leave through VPS Reality, while non-managed destinations leave through the home WAN.
-- Channel B is the future protocol-diverse manual lane:
+- Channel B is a non-production, manual live-tested device-client lane:
   device client -> `VLESS+XHTTP+TLS` -> separate Xray backend on the VPS.
 - Channel C is the future camouflage-oriented manual lane:
   device client -> NaiveProxy / HTTPS forward-proxy style hostname on the VPS.
 
-Only Channel A is part of the active router data plane. Channel B and Channel C
-are documented design lanes for future selected-device testing; in v1 they must
-not change router REDIRECT, TUN, DNS, local ports, or automatic failover.
+Only Channel A is part of the active router data plane. Channel B is live-tested
+as a manual selected-device lane on the VPS, while Channel C remains a planned
+manual compatibility lane; neither may change router REDIRECT, TUN, DNS, local
+ports, or automatic failover.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -47,8 +48,8 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Single active domain catalog for home LAN (`STEALTH_DOMAINS`).
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
 - Channel A VLESS+Reality+Vision egress through a VPS host behind shared Caddy L4 on TCP/443.
-- Channel B design lane: VLESS+XHTTP+TLS for selected device-client tests on a
-  separate public hostname sharing the VPS `:443`.
+- Channel B manual live-tested lane: VLESS+XHTTP+TLS for selected device-client
+  tests on a separate public hostname sharing the VPS `:443`.
 - Channel C design lane: NaiveProxy / HTTPS forward proxy for camouflage
   experiments on a separate public hostname sharing the VPS `:443`.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
@@ -91,7 +92,7 @@ core, not just a set of firewall scripts:
   regional reachability and rollback considerations.
 - **Client Profile Factory** — local generation and cleanup of QR/VLESS
   profiles from Ansible Vault, including separate router, home-mobile,
-  emergency and future Channel B/C artifact flows. Generated credentials stay
+  emergency, Channel B and Channel C artifact flows. Generated credentials stay
   outside git.
 - **Secrets Management** — Ansible Vault templates, local secret storage rules,
   generated-artifact isolation and a repo-specific `secret-scan` for catching
@@ -140,7 +141,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS and future Channel B/C artifacts from Vault
+  Client Profiles     -> QR/VLESS and manual Channel B/C artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -219,7 +220,7 @@ WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be use
 
 ### 4. Channel B/C Manual Profiles
 
-Channel B and Channel C are future device-client lanes with different design
+Channel B and Channel C are manual device-client lanes with different design
 goals. Channel B is the protocol-diverse fallback candidate: ordinary TLS on a
 separate hostname, XHTTP transport, and a local-only Xray backend. Channel C is
 the camouflage experiment: a separate hostname that behaves like an ordinary
@@ -231,9 +232,11 @@ Channel C with NaiveProxy or an HTTPS forward-proxy-compatible variant.
 
 They do not install binaries on the router, do not add router SOCKS/HTTP
 listeners, do not change REDIRECT/TUN/DNS, and do not provide automatic
-failover. Treat any generated `ansible/out/clients-channel-b/` or
-`ansible/out/clients-channel-c/` artifacts as experimental until a future live
-client compatibility pass confirms import, connection and real egress.
+failover. Channel B has a VPS-side live smoke pass as of 2026-04-27 using a
+local Xray client container and generated `macbook-b` profile; iOS and Android
+app import remain manual compatibility checks. Treat any generated
+`ansible/out/clients-channel-b/` or `ansible/out/clients-channel-c/` artifacts
+as non-production manual profiles.
 
 ---
 
@@ -252,7 +255,7 @@ VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
-  future Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
+  manual live-tested Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   future Channel C NaiveProxy / HTTPS forward-proxy scaffolding
   stealth stack under /opt/stealth
 
@@ -274,11 +277,17 @@ configs/
 ansible/
   README.md                       # Ansible control plane overview
   playbooks/10-stealth-vps.yml
+  playbooks/11-channel-b-vps.yml
+  playbooks/12-channel-c-vps.yml
   playbooks/20-stealth-router.yml
   playbooks/30-generate-client-profiles.yml
   playbooks/99-verify.yml
   secrets/stealth.yml             # ansible-vault, gitignored
   out/clients/                    # generated QR/profile artifacts, gitignored
+  out/clients-home/               # generated home QR/profile artifacts, gitignored
+  out/clients-emergency/          # generated emergency artifacts, gitignored
+  out/clients-channel-b/          # generated Channel B artifacts, gitignored
+  out/clients-channel-c/          # generated Channel C artifacts, gitignored
 
 modules/
   routing-core/
@@ -319,6 +328,10 @@ ROUTER=192.168.50.1 ./deploy.sh
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
+
+# Manual VPS device-client lanes (do not mutate router Channel A path)
+ansible-playbook playbooks/11-channel-b-vps.yml
+ansible-playbook playbooks/12-channel-c-vps.yml
 
 # End-to-end verification: VPS + router
 ansible-playbook playbooks/99-verify.yml

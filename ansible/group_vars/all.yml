@@ -4,3 +4,6 @@ project: router-stealth
 stealth_fwmark: "0x2000"
 stealth_route_table: 200
 stealth_ipset_name: STEALTH_DOMAINS
+
+# OpenClaw checks are enabled in 99-verify by default because Caddy surface is shared.
+verify_openclaw_checks_enabled: true
