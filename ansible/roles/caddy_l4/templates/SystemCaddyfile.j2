@@ -7,10 +7,14 @@
         listener_wrappers {
             layer4 {
                 matching_timeout {{ caddy_l4_matching_timeout | default('15s') }}
-{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid', 'squid_tls'] %}
                 @channel_c_naive tls sni {{ channel_c_naive_public_host }}
                 route @channel_c_naive {
+{% if channel_c_naive_backend | default('caddy_forward_proxy') == 'squid_tls' %}
+                    proxy 127.0.0.1:{{ channel_c_naive_squid_local_port | default(18889) }}
+{% else %}
                     proxy 127.0.0.1:{{ channel_c_naive_stunnel_local_port | default(18443) }}
+{% endif %}
                 }
 {% endif %}
                 @reality tls sni {{ reality_server_names[0] }}
@@ -45,7 +49,7 @@
                 versions 1.1
             }
         }
-{% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+{% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid', 'squid_tls'] %}
         respond 404
 {% else %}
         header {

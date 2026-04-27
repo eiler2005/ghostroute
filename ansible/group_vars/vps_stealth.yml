@@ -41,7 +41,7 @@ channel_b_xhttp_clients: "{{ vault_channel_b_xhttp_clients | default([]) }}"
 channel_b_xhttp_block_udp_443: "{{ vault_channel_b_xhttp_block_udp_443 | default(false) }}"
 
 channel_c_naive_enabled: "{{ vault_channel_c_naive_enabled | default(false) }}"
-channel_c_naive_backend: "{{ vault_channel_c_naive_backend | default('stunnel_squid') }}"
+channel_c_naive_backend: "{{ vault_channel_c_naive_backend | default('squid_tls') }}"
 channel_c_naive_public_host: "{{ vault_channel_c_naive_public_host | default('') }}"
 channel_c_naive_username: "{{ vault_channel_c_naive_username | default('') }}"
 channel_c_naive_password: "{{ vault_channel_c_naive_password | default('') }}"

@@ -1,4 +1,8 @@
+{% if channel_c_naive_backend | default('stunnel_squid') == 'squid_tls' %}
+https_port 127.0.0.1:{{ channel_c_naive_squid_local_port | default(18889) }} tls-cert=/etc/squid/channel-c-tls.crt tls-key=/etc/squid/channel-c-tls.key
+{% else %}
 http_port 127.0.0.1:{{ channel_c_naive_squid_local_port | default(18889) }}
+{% endif %}
 
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/channel-c.htpasswd
 auth_param basic realm channel-c
