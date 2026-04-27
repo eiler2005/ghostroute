@@ -49,6 +49,45 @@ Channel C manual camouflage clients
   -> Internet
 ```
 
+## Channel A / Channel B (текущая схема)
+
+### Channel A
+
+Непосредственно для Channel A применяем единственную production-схему:
+
+```text
+Мобильный QR-клиент
+  -> home public IP :<home-reality-port>
+  -> ASUS sing-box Reality inbound
+  -> managed split:
+       STEALTH_DOMAINS / VPN_STATIC_NETS -> Reality outbound to VPS
+       other destinations                 -> direct home WAN
+  -> Интернет
+```
+
+### Channel B
+
+В текущей схеме Channel B работает как отдельная manual home-first lane:
+
+```text
+Mobile client
+  -> VLESS + XHTTP + TLS to home ingress :<home-channel-b-port>
+  -> router local Xray ingress `channel-b-home-in`
+  -> local sing-box SOCKS (inbound `channel-b-relay-socks`)
+  -> managed split по `stealth-domains` / `stealth-static`
+       - managed    -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - non-managed -> direct-out -> home WAN
+  -> Интернет
+```
+
+Как это понимать в проде:
+
+- Оба канала дают первичный hop в home-network для мобильного клиента, чтобы оператор видел домашний IP.
+- У A managed split делается прямо на home Reality inbound.
+- У B managed split делается после локального relay в sing-box.
+- Власть над инкапсуляцией и правилами изолирована: `20-stealth-router.yml` для A и
+  `21-channel-b-router.yml` для B.
+
 During a WAN incident where `wan0` reports `carrier=0`, the router has no
 physical/provider link. That condition is below GhostRoute and does not change
 the architectural status of Channel A.

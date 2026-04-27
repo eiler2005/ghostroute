@@ -139,6 +139,25 @@ Manual device-client lanes:
   Channel C -> Device client -> Naive/HTTPS hostname :443
             -> dedicated Channel C VPS route -> forward-proxy/naive-compatible backend
 
+Current A/B path summary:
+
+```text
+Channel A (mobile QR/VLESS)
+  Mobile client -> home public IP :<home-reality-port>
+  -> ASUS sing-box reality-in
+  -> managed domains (STEALTH_DOMAINS/VPN_STATIC_NETS) -> reality-out -> VPS Caddy/Xray Reality
+  -> other domains -> sing-box direct-out -> home WAN
+  -> Internet
+
+Channel B (manual device lane)
+  Mobile client -> home public IP :<home-channel-b-port>
+  -> local router xray ingress `channel-b-home-in` (VLESS+XHTTP+TLS)
+  -> local sing-box SOCKS inbound `channel-b-relay-socks`
+  -> managed domains -> reality-out -> VPS Caddy/Xray Reality
+  -> other domains -> direct-out -> home WAN
+  -> Internet
+```
+
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
   Health Monitor      -> STATUS_OK/FAIL, summaries, local alerts
