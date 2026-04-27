@@ -184,3 +184,22 @@ ssh deploy@<vps-ip> '
 ```
 
 Keep Channel A untouched while debugging Channel C. Channel C is manual device-client-only and should not alter router REDIRECT/DNS/TUN behavior.
+
+## Update - Squid CONNECT Port 80
+
+Fresh iPhone attempts after the Squid backend change showed many successful
+authenticated tunnels, including:
+
+```text
+TCP_TUNNEL/200 CONNECT api.ipify.org:443
+TCP_TUNNEL/200 CONNECT www.youtube.com:443
+TCP_TUNNEL/200 CONNECT www.google.com:443
+TCP_TUNNEL/200 CONNECT api.whatsapp.net:443
+TCP_TUNNEL/200 CONNECT imap.gmail.com:993
+```
+
+The same log also showed `TCP_DENIED/403 CONNECT <ip>:80` for Telegram-like
+destinations. Squid was denying `CONNECT` to port `80` before authentication
+because the Channel C config allowed CONNECT only to TLS-ish ports. Since
+Channel C is already authenticated and hidden behind the TLS/SNI wrapper, port
+`80` is now included in the allowed CONNECT ports for compatibility.

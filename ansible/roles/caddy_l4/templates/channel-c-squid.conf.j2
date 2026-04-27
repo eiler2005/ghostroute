@@ -4,6 +4,7 @@ auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/channel-c.htp
 auth_param basic realm channel-c
 acl channel_c_auth proxy_auth REQUIRED
 
+acl SSL_ports port 80
 acl SSL_ports port 443
 acl SSL_ports port 5222
 acl SSL_ports port 5223
