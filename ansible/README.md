@@ -37,6 +37,33 @@ Ansible Vault.
 Generated client profiles and QR files are written under `out/`. They are local
 operator artifacts and must stay out of git.
 
+## Deployment Component Map
+
+Ansible is the repeatable control plane, not the data plane itself. It keeps
+the router, VPS and local generated artifacts aligned with the architecture
+described in the root README and `docs/architecture.md`.
+
+| Zone | What Ansible manages | Why it exists |
+|---|---|---|
+| Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
+| Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
+| VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
+| Future device-client lanes | Planned Channel B/C profile artifacts and server-side scaffolding when explicitly enabled later. | Keeps future manual device-client experiments separate from the router production deploy and automatic routing. |
+
+Playbook ownership is intentionally narrow:
+
+| Playbook | Target | Owns | Reason |
+|---|---|---|---|
+| `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
+| `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
+| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
+| `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
+| `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
+
+Channel B and Channel C are not production router lanes today. Future work may
+add or refresh their artifacts from Ansible, but v1 manual clients must not
+modify router REDIRECT, TUN, DNS, local ports or automatic failover.
+
 ## Directory Map
 
 ```text

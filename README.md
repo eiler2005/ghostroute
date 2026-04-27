@@ -305,7 +305,8 @@ docs/
 The detailed physical module map lives in
 [docs/operational-modules.md](/docs/operational-modules.md). The global README
 keeps the high-level workflow; module folders contain local implementation
-overviews.
+overviews. The Ansible router/VPS deployment component map lives in
+[ansible/README.md](/ansible/README.md).
 
 ---
 

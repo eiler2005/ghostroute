@@ -7,6 +7,10 @@ Repository-wide platform entrypoints remain visible at the root (`deploy.sh`,
 cross-repo utilities that do not have a clear module owner. Generated reports
 remain local or on router/VPS runtime storage.
 
+For the Ansible-specific deployment map of what is installed on the router,
+what is installed on the VPS, and what remains local control-machine output,
+see [ansible/README.md](/ansible/README.md).
+
 ## Module Map
 
 | Module | Purpose | Implementation | Public commands | Runtime / deploy target | Main docs | Tests | Mode |
