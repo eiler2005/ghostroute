@@ -133,17 +133,17 @@ Expected:
 - INPUT firewall allows TCP/<home-reality-port>;
 - sing-box has no fresh fatal errors.
 
-## Channel B/C Future Manual Profiles Не Работают
+## Channel B/C Manual Profiles Не Работают
 
-Channel B и Channel C не являются production-ready fallback-каналами. Этот
-раздел нужен только для будущих manual device-client экспериментов и не
-участвует в health-check Channel A. B/C не должны менять router
+Channel B live-tested как non-production manual device-client lane; Channel C
+остается planned/manual. Они не являются production-ready fallback-каналами и
+не участвуют в health-check Channel A. B/C не должны менять router
 REDIRECT/DNS/TUN и не дают automatic failover.
 
-Для будущих Channel B проверок access logs пишутся в Caddy stdout/journal. Для
-будущих Channel C вариантов фактический лог зависит от выбранного backend:
-Caddy `forward_proxy` пишет в Caddy HTTP logger, а compatibility backend может
-писать в Squid/stunnel logs.
+Для Channel B проверок access logs пишутся в Caddy stdout/journal. Для Channel C
+вариантов фактический лог зависит от выбранного backend: Caddy `forward_proxy`
+пишет в Caddy HTTP logger, а compatibility backend может писать в Squid/stunnel
+logs.
 
 ```bash
 ssh deploy@<vps-ip> '
@@ -154,7 +154,7 @@ ssh deploy@<vps-ip> '
 
 Expected:
 
-- Future Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
+- Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
   hostname, and either the configured random path or `404` for wrong paths.
 - Future Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
 - Future Channel C `stunnel_squid` requests show in
@@ -188,6 +188,55 @@ PY
 Expected count is `1 + len(emergency_clients)` from
 `ansible/secrets/stealth.yml`: one router identity plus emergency direct-VPS
 fallback identities.
+
+## Потеряны Deploy-Only Secrets В Vault
+
+Симптом: Channel B продолжает работать через `11-channel-b-vps.yml`, но
+широкие `10-stealth-vps.yml`/`20-stealth-router.yml` опасно запускать, потому
+что в Vault пустые:
+
+- `xui_admin_password`
+- `reality_server_private_key`
+- `home_reality_server_private_key`
+
+Без этих полей mutating deploy может сбить Reality/3x-ui state или упасть в
+непредсказуемом месте.
+
+Безопасный recovery-порядок:
+
+1. С VPS read-only извлечь текущий Reality private key и short_ids из
+   `/etc/x-ui/x-ui.db` (контейнер `xray`) и вернуть их в Vault.
+2. С роутера read-only извлечь `home` Reality private key из
+   `/opt/etc/sing-box/config.json` (inbound `reality-in`) и вернуть в Vault.
+3. Если пароль 3x-ui неизвестен: сделать controlled reset credentials на VPS с
+   сохранением live `port` и `webBasePath`, затем записать новые
+   `xui_admin_password`, `xui_admin_web_port`, `xui_admin_web_path` в Vault.
+4. Сначала запускать только read-only post-check:
+   `cd ansible && ansible-playbook playbooks/99-verify.yml --limit vps_stealth`.
+5. Только после этого возвращаться к широким mutating playbooks.
+
+Факт 2026-04-27: recovery выполнен именно по этому порядку без router deploy и
+без broad VPS redeploy; Channel A/Channel B runtime остались рабочими.
+
+## 99-verify Падает На OpenClaw Upstream
+
+Проверка OpenClaw в `99-verify.yml` включена по умолчанию
+(`verify_openclaw_checks_enabled=true`), потому что OpenClaw и GhostRoute
+используют общий VPS/Caddy контур. Это осознанно ловит side-effect regressions.
+Для изолированного GhostRoute-only прогона можно временно отключить:
+`-e verify_openclaw_checks_enabled=false`.
+
+Симптом при `--limit vps_stealth`:
+
+```text
+OpenClaw upstream remains localhost-only for SSH tunnel access
+... urlopen error [Errno 111] Connection refused ...
+```
+
+Это проверка side-service, не dataplane Channel A/B. Если
+`system_caddy_site_enabled=false` и локальный upstream OpenClaw на
+`system_caddy_site_upstream` не должен слушать в этот момент, возможен
+единичный fail именно в этой задаче при зелёных Reality/XHTTP проверках.
 
 ## Legacy WireGuard Снова Появился
 

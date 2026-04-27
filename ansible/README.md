@@ -25,6 +25,8 @@ The control machine runs playbooks from this directory:
 ```bash
 cd ansible
 ansible-playbook playbooks/10-stealth-vps.yml
+ansible-playbook playbooks/11-channel-b-vps.yml
+ansible-playbook playbooks/12-channel-c-vps.yml
 ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/30-generate-client-profiles.yml
 ansible-playbook playbooks/99-verify.yml
@@ -48,7 +50,7 @@ described in the root README and `docs/architecture.md`.
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
-| Future device-client lanes | Planned Channel B/C profile artifacts and server-side scaffolding when explicitly enabled later. | Keeps future manual device-client experiments separate from the router production deploy and automatic routing. |
+| Manual device-client lanes | Channel B/C profile artifacts and VPS-side manual-lane scaffolding when explicitly enabled. | Keeps manual device-client experiments separate from the router production deploy and automatic routing. |
 
 Playbook ownership is intentionally narrow:
 
@@ -56,12 +58,14 @@ Playbook ownership is intentionally narrow:
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
+| `11-channel-b-vps.yml` | VPS | Channel B XHTTP backend and route validation. | Rotate or refresh the manual XHTTP lane without touching Reality/Channel A. |
+| `12-channel-c-vps.yml` | VPS | Channel C Caddy/backend compatibility path. | Refresh the manual Naive/HTTPS lane without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
-Channel B and Channel C are not production router lanes today. Future work may
-add or refresh their artifacts from Ansible, but v1 manual clients must not
+Channel B and Channel C are not production router lanes today. They are managed
+through their own VPS playbooks and local artifact generation, and they must not
 modify router REDIRECT, TUN, DNS, local ports or automatic failover.
 
 ## Directory Map
@@ -87,6 +91,8 @@ scripts/                         # Ansible-local helper scripts
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Mutating | Installs base packages and prepares the VPS stack directory. |
 | `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, UFW policy and VPS health observer. |
+| `11-channel-b-vps.yml` | VPS | Mutating | Deploys the Channel B XHTTP backend and checks the existing Caddy route. |
+| `12-channel-c-vps.yml` | VPS | Mutating | Deploys the Channel C compatibility backend/Caddy path. |
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
@@ -114,6 +120,12 @@ scripts/                         # Ansible-local helper scripts
 - Secrets live in Vault or gitignored local files only.
 - Generated QR payloads, UUIDs, keys, short IDs, public endpoints and real
   client configs must not be committed or pasted into public docs.
+- `xui_admin_password`, `reality_server_private_key` and
+  `home_reality_server_private_key` are deploy-critical secrets. If any of them
+  is empty in Vault, do not run broad mutating playbooks (`10`/`20`) until
+  recovery is complete.
+- Keep `xui_admin_web_port` and `xui_admin_web_path` aligned with live 3x-ui
+  settings. A credentials reset should preserve live port/path values.
 
 ## Common Workflows
 
@@ -123,6 +135,14 @@ Bootstrap or refresh VPS:
 cd ansible
 ansible-playbook playbooks/00-bootstrap-vps.yml
 ansible-playbook playbooks/10-stealth-vps.yml
+```
+
+Refresh manual Channel B/C VPS lanes:
+
+```bash
+cd ansible
+ansible-playbook playbooks/11-channel-b-vps.yml
+ansible-playbook playbooks/12-channel-c-vps.yml
 ```
 
 Refresh router stealth layer:
@@ -145,6 +165,33 @@ Verify the live setup:
 cd ansible
 ansible-playbook playbooks/99-verify.yml
 ```
+
+## Incident Recovery Notes
+
+### Deploy-only secret recovery (2026-04-27)
+
+Recovery pattern used safely in production:
+
+1. Recover VPS Reality key material read-only from `/etc/x-ui/x-ui.db` inside
+   the `xray` container, then restore `reality_server_private_key` and
+   `reality_short_ids` in Vault.
+2. Recover router home Reality private key read-only from router sing-box
+   config (`/opt/etc/sing-box/config.json`, inbound tag `reality-in`), then
+   restore `home_reality_server_private_key` and
+   `home_reality_server_short_ids` in Vault.
+3. If current 3x-ui password is unknown, perform a controlled credentials reset
+   on the VPS while preserving live `port`/`webBasePath`, then update
+   `xui_admin_password`, `xui_admin_web_port` and `xui_admin_web_path` in Vault.
+4. After recovery, run read-only checks first:
+   `ansible-playbook playbooks/99-verify.yml --limit vps_stealth`.
+
+### 99-verify OpenClaw note
+
+OpenClaw checks in `99-verify.yml` are enabled by default via
+`verify_openclaw_checks_enabled=true`, because OpenClaw and GhostRoute share
+the VPS/Caddy surface. If you need an isolated GhostRoute-only run, disable
+them explicitly with:
+`ansible-playbook playbooks/99-verify.yml -e verify_openclaw_checks_enabled=false`.
 
 ## Related Docs
 

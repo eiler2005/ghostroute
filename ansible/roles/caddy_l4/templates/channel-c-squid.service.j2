@@ -2,6 +2,10 @@
 Description=Channel C local Squid compatibility proxy
 After=network-online.target
 Wants=network-online.target
+{% if channel_c_naive_squid_ipv4_only | default(true) | bool %}
+After=channel-c-squid-ipv4-egress.service
+Wants=channel-c-squid-ipv4-egress.service
+{% endif %}
 
 [Service]
 Type=simple

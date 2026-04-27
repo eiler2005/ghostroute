@@ -59,9 +59,9 @@ request_header_access X-Forwarded-For deny all
 request_header_access Via deny all
 reply_header_access Via deny all
 
-connect_timeout 15 seconds
-happy_eyeballs_connect_timeout 10
-happy_eyeballs_connect_gap 10
+connect_timeout {{ channel_c_naive_squid_connect_timeout | default('8 seconds') }}
+happy_eyeballs_connect_timeout {{ channel_c_naive_squid_happy_eyeballs_connect_timeout | default('250 milliseconds') }}
+happy_eyeballs_connect_gap {{ channel_c_naive_squid_happy_eyeballs_connect_gap | default('50 milliseconds') }}
 {% if channel_c_naive_squid_ipv4_only | default(true) | bool %}
 tcp_outgoing_address {{ channel_c_naive_squid_outgoing_address | default('', true) or ansible_facts.default_ipv4.address }}
 {% endif %}

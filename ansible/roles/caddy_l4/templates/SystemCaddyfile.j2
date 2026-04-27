@@ -1,6 +1,6 @@
 {
 {% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') == 'caddy_forward_proxy' %}
-    order forward_proxy first
+    order forward_proxy before file_server
 {% endif %}
     servers :443 {
         protocols h1 h2
@@ -52,29 +52,36 @@
 {% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid', 'squid_tls'] %}
         respond 404
 {% else %}
-        header {
-            -Padding
-            -Transfer-Encoding
-        }
+        route {
+            @channel_c_hiddify_sub path /mobile/channel-c-*.yaml /mobile/channel-c-*.json
+            handle @channel_c_hiddify_sub {
+                uri strip_prefix /mobile
+                root * /etc/caddy/channel-c-subscriptions
+                header Content-Type text/yaml
+                file_server
+            }
 
-        forward_proxy {
-            basic_auth {{ channel_c_naive_username }} {{ channel_c_naive_password }}
+            forward_proxy {
+                basic_auth {{ channel_c_naive_username }} {{ channel_c_naive_password }}
 {% if channel_c_naive_hide_ip_enabled | default(true) | bool %}
-            hide_ip
+                hide_ip
 {% endif %}
 {% if channel_c_naive_hide_via_enabled | default(true) | bool %}
-            hide_via
+                hide_via
 {% endif %}
 {% if channel_c_naive_probe_resistance_enabled | default(true) | bool %}
 {% if channel_c_naive_probe_resistance_host | default('') | length > 0 %}
-            probe_resistance {{ channel_c_naive_probe_resistance_host | default(channel_c_naive_public_host) }}
+                probe_resistance {{ channel_c_naive_probe_resistance_host | default(channel_c_naive_public_host) }}
 {% else %}
-            probe_resistance
+                probe_resistance
 {% endif %}
 {% endif %}
-        }
+            }
 
-        respond 404
+            file_server {
+                root /var/www/html
+            }
+        }
 {% endif %}
     }
 
