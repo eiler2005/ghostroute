@@ -106,7 +106,7 @@ https://{{ channel_b_xhttp_public_host }} {
             header_up X-Forwarded-Host {http.request.host}
             header_up X-Forwarded-Proto https
             transport http {
-                versions 1.1
+                versions h2c
             }
         }
     }

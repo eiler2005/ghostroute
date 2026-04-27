@@ -62,6 +62,9 @@ reply_header_access Via deny all
 connect_timeout 15 seconds
 happy_eyeballs_connect_timeout 10
 happy_eyeballs_connect_gap 10
+{% if channel_c_naive_squid_ipv4_only | default(true) | bool %}
+tcp_outgoing_address {{ channel_c_naive_squid_outgoing_address | default('', true) or ansible_facts.default_ipv4.address }}
+{% endif %}
 
 access_log /var/log/squid/channel-c-access.log
 cache_log /var/log/squid/channel-c-cache.log

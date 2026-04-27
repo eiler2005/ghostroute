@@ -567,7 +567,7 @@
           fallback-dns-server = 1.1.1.1, 8.8.4.4
 
           [Proxy]
-          {{ item.name }}-https-proxy = https, {{ channel_c_naive_public_host }}, 443, username={{ channel_c_naive_username }}, password={{ channel_c_naive_password }}, method=connect, tls=true, tfo=false
+          {{ item.name }}-https-proxy = https,{{ channel_c_naive_public_host }},443,username={{ channel_c_naive_username }},password={{ channel_c_naive_password }},method=connect,tls=true,tfo=false
 
           [Proxy Group]
           PROXY = select, {{ item.name }}-https-proxy
@@ -592,7 +592,7 @@
           fallback-dns-server = 1.1.1.1, 8.8.4.4
 
           [Proxy]
-          {{ item.name }}-https-proxy = https, {{ channel_c_naive_public_host }}, 443, {{ channel_c_naive_username }}, {{ channel_c_naive_password }}, method=connect, tls=true, tfo=false
+          {{ item.name }}-https-proxy = https,{{ channel_c_naive_public_host }},443,{{ channel_c_naive_username }},{{ channel_c_naive_password }},method=connect,tls=true,tfo=false
 
           [Proxy Group]
           PROXY = select, {{ item.name }}-https-proxy
