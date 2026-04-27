@@ -56,7 +56,7 @@
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_public_host != channel_b_xhttp_public_host)
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_username | length > 0)
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_password | length > 0)
-          - not (channel_c_naive_enabled | bool) or channel_c_naive_backend in ['caddy_forward_proxy', 'tinyproxy', 'stunnel_tinyproxy', 'stunnel_squid']
+          - not (channel_c_naive_enabled | bool) or channel_c_naive_backend in ['caddy_forward_proxy', 'tinyproxy', 'stunnel_tinyproxy', 'stunnel_squid', 'squid_tls']
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_tinyproxy_local_port | int > 1024)
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_squid_local_port | int > 1024)
           - not (channel_c_naive_enabled | bool) or (channel_c_naive_stunnel_local_port | int > 1024)
@@ -192,7 +192,7 @@
         update_cache: true
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
 
     - name: Stop default Squid service for Channel C compatibility backend
       ansible.builtin.systemd:
@@ -202,7 +202,7 @@
       failed_when: false
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
 
     - name: Ensure Channel C Squid runtime directories
       ansible.builtin.file:
@@ -216,7 +216,7 @@
         - /var/log/squid
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
 
     - name: Hash Channel C Squid basic auth password
       ansible.builtin.command: openssl passwd -apr1 -stdin
@@ -227,7 +227,7 @@
       no_log: true
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
 
     - name: Render Channel C Squid htpasswd
       ansible.builtin.copy:
@@ -239,7 +239,33 @@
       no_log: true
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
+      notify: restart channel c squid
+
+    - name: Copy Channel C public certificate for Squid TLS backend
+      ansible.builtin.copy:
+        src: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ channel_c_naive_public_host }}/{{ channel_c_naive_public_host }}.crt"
+        dest: /etc/squid/channel-c-tls.crt
+        remote_src: true
+        owner: root
+        group: proxy
+        mode: "0640"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'squid_tls'
+      notify: restart channel c squid
+
+    - name: Copy Channel C private key for Squid TLS backend
+      ansible.builtin.copy:
+        src: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ channel_c_naive_public_host }}/{{ channel_c_naive_public_host }}.key"
+        dest: /etc/squid/channel-c-tls.key
+        remote_src: true
+        owner: root
+        group: proxy
+        mode: "0640"
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend == 'squid_tls'
       notify: restart channel c squid
 
     - name: Render Channel C Squid config
@@ -251,7 +277,7 @@
         mode: "0644"
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
       notify: restart channel c squid
 
     - name: Render Channel C Squid service
@@ -261,7 +287,7 @@
         mode: "0644"
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
       notify: restart channel c squid
 
     - name: Enable Channel C Squid service
@@ -272,7 +298,7 @@
         daemon_reload: true
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend == 'stunnel_squid'
+        - channel_c_naive_backend in ['stunnel_squid', 'squid_tls']
 
     - name: Stop Channel C Squid service when unused
       ansible.builtin.systemd:
@@ -283,7 +309,7 @@
       failed_when: false
       when:
         - channel_c_naive_enabled | bool
-        - channel_c_naive_backend != 'stunnel_squid'
+        - channel_c_naive_backend not in ['stunnel_squid', 'squid_tls']
 
     - name: Install stunnel for Channel C TLS compatibility backend
       ansible.builtin.apt:
@@ -334,6 +360,17 @@
       when:
         - channel_c_naive_enabled | bool
         - channel_c_naive_backend in ['stunnel_tinyproxy', 'stunnel_squid']
+
+    - name: Stop Channel C stunnel service when unused
+      ansible.builtin.systemd:
+        name: channel-c-stunnel
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      failed_when: false
+      when:
+        - channel_c_naive_enabled | bool
+        - channel_c_naive_backend not in ['stunnel_tinyproxy', 'stunnel_squid']
 
     - name: Ensure private OpenClaw certificate directory exists
       when: system_caddy_site_enabled | bool

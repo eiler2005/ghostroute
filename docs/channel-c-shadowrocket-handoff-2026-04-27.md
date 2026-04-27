@@ -28,10 +28,10 @@ Channel C:
 - Extended `ansible/roles/caddy_l4` for Channel C backends.
 - Initial Caddy `forward_proxy` backend remains available as `channel_c_naive_backend: caddy_forward_proxy`.
 - Tried compatibility backend `stunnel_tinyproxy`.
-- Current deployed default is `channel_c_naive_backend: stunnel_squid`.
+- Tried compatibility backend `stunnel_squid`.
+- Current deployed default is `channel_c_naive_backend: squid_tls`.
 - Public `:443` remains owned by system Caddy.
-- Caddy layer4 routes Channel C SNI to local stunnel.
-- stunnel terminates TLS and forwards to localhost-only Squid.
+- Caddy layer4 routes Channel C SNI directly to localhost-only Squid `https_port`.
 - Squid handles authenticated HTTP CONNECT.
 - Client artifacts are generated under `ansible/out/clients-channel-c/`.
 
@@ -82,29 +82,27 @@ CONNECT response is clean:
 HTTP/1.1 200 Connection established
 ```
 
-Current VPS services:
+Current VPS services after the `squid_tls` switch:
 
 ```text
 caddy: active
 channel-c-squid: active
-channel-c-stunnel: active
+channel-c-stunnel: inactive
 channel-c-tinyproxy: inactive
 ```
 
-Current listeners:
+Current listeners after the `squid_tls` switch:
 
 ```text
 Caddy public :443
-stunnel 127.0.0.1:18443
 Squid 127.0.0.1:18889
 ```
 
-Current stunnel config routes to Squid:
+Current Caddy layer4 route sends Channel C SNI directly to Squid:
 
 ```text
-accept = 127.0.0.1:18443
-connect = 127.0.0.1:18889
-TIMEOUTclose = 0
+@channel_c_naive tls sni <channel-c-host>
+proxy 127.0.0.1:18889
 ```
 
 Squid access log shows successful proxy tunnels for local curl:
@@ -203,3 +201,22 @@ destinations. Squid was denying `CONNECT` to port `80` before authentication
 because the Channel C config allowed CONNECT only to TLS-ish ports. Since
 Channel C is already authenticated and hidden behind the TLS/SNI wrapper, port
 `80` is now included in the allowed CONNECT ports for compatibility.
+
+## Update - Remove stunnel from Active Channel C Path
+
+Fresh logs showed that Squid was returning many successful authenticated
+`TCP_TUNNEL/200` responses with nonzero bytes, but stunnel kept logging
+`TIMEOUTclose exceeded` on almost every connection. Local curl tolerated this,
+but iOS/Shadowrocket still did not behave as expected.
+
+Squid 6 on the VPS is built with GnuTLS and supports `https_port`, so Channel C
+was changed again to remove stunnel from the active path:
+
+```text
+client -> Caddy :443 layer4 SNI -> Squid https_port on 127.0.0.1:18889 -> Internet
+```
+
+The same public hostname/profile should continue to work. Caddy still owns
+public `:443`, and Squid remains localhost-only. The Caddy-managed Channel C
+certificate/key are copied to `/etc/squid/channel-c-tls.{crt,key}` during deploy
+for Squid TLS termination.

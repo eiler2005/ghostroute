@@ -50,7 +50,9 @@
         {% endif %}
         {% if channel_c_naive_enabled | default(false) | bool %}
         grep -q '{{ channel_c_naive_public_host }}' {{ system_caddyfile_path }}
-        {% if channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
+        {% if channel_c_naive_backend | default('caddy_forward_proxy') == 'squid_tls' %}
+        grep -q '127.0.0.1:{{ channel_c_naive_squid_local_port }}' {{ system_caddyfile_path }}
+        {% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
         grep -q '127.0.0.1:{{ channel_c_naive_stunnel_local_port }}' {{ system_caddyfile_path }}
         {% elif channel_c_naive_backend | default('caddy_forward_proxy') == 'tinyproxy' %}
         grep -q '127.0.0.1:{{ channel_c_naive_tinyproxy_local_port }}' {{ system_caddyfile_path }}
@@ -70,7 +72,7 @@
       changed_when: false
       when:
         - channel_c_naive_enabled | default(false) | bool
-        - channel_c_naive_backend | default('caddy_forward_proxy') == 'stunnel_squid'
+        - channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_squid', 'squid_tls']
 
     - name: Channel C stunnel backend is running when enabled
       ansible.builtin.shell: |
