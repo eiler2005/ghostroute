@@ -1102,6 +1102,18 @@ EOF
 - Home Reality unresolved: **${traffic_mobile_unresolved:-n/a}**
 - Home Reality EOF/errors: **${traffic_mobile_errors:-n/a}**
 
+## Channel C Status
+
+Channel C is split into two variants and they must not be mixed.
+
+| Variant | Current status | First hop | Router ingress | Profile artifacts |
+|---|---|---|---|---|
+| C1-Shadowrocket / 1-SR | Working and iPhone-proven | iPhone LTE -> home Russian IP :4443, TLS/HTTPS CONNECT | sing-box http inbound :41956 -> managed split | ansible/out/clients-channel-c/1-SR/ |
+| C1-sing-box / native Naive | Server-ready, client-blocked on tested iPhone SFI 1.11.4 | intended iPhone SFI -> home Russian IP :443, Naive over TLS | sing-box naive inbound :41955 -> managed split | disabled by default via channel_c_sfi_native_profiles_enabled=false |
+
+- C1-Shadowrocket is not native Naive. It is the current compatibility lane for Shadowrocket and uses short HTTPS CONNECT URL QR artifacts such as iphone-N-c1-shadowrocket-https.png and iphone-N-c1-shadowrocket-https.txt.
+- C1-sing-box/native Naive is the intended stealth-primary design. The router side has real LE TLS and per-client username/password, but the tested SFI build failed with "unknown outbound type: naive"; return to it when an iOS sing-box/SFI client supports naive outbound, target sing-box >= 1.13.
+
 ## Drift
 EOF
 

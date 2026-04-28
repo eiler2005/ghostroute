@@ -92,7 +92,8 @@ Important accounting rule:
 |---|---|---|
 | LAN/Wi-Fi (`br0`) | REDIRECT `:<lan-redirect-port>` -> sing-box -> Reality for matched TCP destinations | Device byte accounting is best-effort; `RC_LAN_REALITY_*` mangle counters provide the `Via Reality` view |
 | Home Reality ingress clients | home IP `:<home-reality-port>` -> sing-box home Reality inbound -> managed split | First-hop network sees the home IP; `RC_MOBILE_REALITY_*` counters show encrypted Home Reality ingress bytes by source IP/profile |
-| Channel C1 device clients | home IP `:<home-channel-c-public-port>` -> sing-box Naive inbound -> managed split | First-hop network sees the home IP; detailed C1 byte attribution is planned separately from Home Reality counters |
+| Channel C1 Shadowrocket / 1-SR | home IP `:4443` -> sing-box HTTP inbound -> managed split | Works now on the tested iPhone. First-hop network sees the home Russian IP and TLS/HTTPS CONNECT traffic, not the VPS. |
+| Channel C1 sing-box / native Naive | home IP `:443` -> sing-box Naive inbound -> managed split | Router side is ready, but tested iPhone SFI/sing-box `1.11.4` cannot run outbound type `naive`; keep native profile generation disabled until an iOS client supports Naive outbound. |
 | Router `OUTPUT` | main routing unless an explicit proxy is used | Router-originated traffic is not transparently captured to avoid proxy loops |
 | WAN/default | ISP WAN | Non-matched traffic remains direct |
 
@@ -279,6 +280,9 @@ Canonical sections:
   how that observed traffic splits into VPS vs home Russian direct.
 - `PATH MATRIX` — source, first hop, router decision, exit and what the final
   site sees.
+- `CHANNEL C STATUS` — explicit C1 split: working C1-Shadowrocket / 1-SR on
+  `:4443` versus server-ready but client-blocked C1-sing-box/native Naive on
+  `:443`.
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
   much traffic used the managed path.
 - `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
