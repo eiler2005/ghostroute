@@ -17,8 +17,9 @@ REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 PERIOD_ARG="${1:-today}"
 
-channel_c_quick_report() {
-  router_ssh 'sh -s' <<'REMOTE'
+channels_quick_report() {
+  local filter="${1:-all}"
+  router_ssh "GHOSTROUTE_QUICK_FILTER='$filter' sh -s" <<'REMOTE'
 set -eu
 
 runtime_env=""
@@ -45,6 +46,10 @@ legacy_value() {
   fi
 }
 
+redirect_port="$(env_value GHOSTROUTE_REDIRECT_PORT)"
+home_reality_port="$(env_value GHOSTROUTE_HOME_REALITY_PORT)"
+channel_b_enabled="$(env_value GHOSTROUTE_CHANNEL_B_HOME_ENABLED)"
+channel_b_port="$(env_value GHOSTROUTE_CHANNEL_B_HOME_PORT)"
 home_enabled="$(env_value GHOSTROUTE_CHANNEL_C_HOME_ENABLED)"
 home_public="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT)"
 home_port="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PORT)"
@@ -52,6 +57,10 @@ sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
 sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
 sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
 
+redirect_port="${redirect_port:-$(legacy_value REDIRECT_PORT)}"
+home_reality_port="${home_reality_port:-$(legacy_value HOME_REALITY_PORT)}"
+channel_b_enabled="${channel_b_enabled:-$(legacy_value CHANNEL_B_HOME_ENABLED)}"
+channel_b_port="${channel_b_port:-$(legacy_value CHANNEL_B_HOME_PORT)}"
 home_enabled="${home_enabled:-$(legacy_value CHANNEL_C_HOME_ENABLED)}"
 home_public="${home_public:-$(legacy_value CHANNEL_C_HOME_PUBLIC_PORT)}"
 home_port="${home_port:-$(legacy_value CHANNEL_C_HOME_PORT)}"
@@ -59,6 +68,10 @@ sr_enabled="${sr_enabled:-$(legacy_value CHANNEL_C_SHADOWROCKET_ENABLED)}"
 sr_public="${sr_public:-$(legacy_value CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)}"
 sr_port="${sr_port:-$(legacy_value CHANNEL_C_SHADOWROCKET_PORT)}"
 
+redirect_port="${redirect_port:-16000}"
+home_reality_port="${home_reality_port:-4433}"
+channel_b_enabled="${channel_b_enabled:-0}"
+channel_b_port="${channel_b_port:-0}"
 home_enabled="${home_enabled:-0}"
 home_public="${home_public:-443}"
 home_port="${home_port:-41955}"
@@ -69,6 +82,8 @@ sr_port="${sr_port:-41956}"
 listen_sockets="$(netstat -nlp 2>/dev/null || true)"
 nat_prerouting="$(iptables -t nat -S PREROUTING 2>/dev/null || true)"
 filter_input="$(iptables -S INPUT 2>/dev/null || true)"
+singbox_config="$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)"
+singbox_config_compact="$(printf '%s\n' "$singbox_config" | awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }')"
 
 listener_status() {
   port="$1"
@@ -87,13 +102,28 @@ redirect_status() {
   fi
 }
 
+lan_redirect_status() {
+  port="$1"
+  printf '%s\n' "$nat_prerouting" | grep -F -- "-i br0" | grep -F -- "--to-ports $port" >/dev/null 2>&1 && printf 'OK' || printf 'MISSING'
+}
+
 input_status() {
   port="$1"
   printf '%s\n' "$filter_input" | grep -F -- "--dport $port" | grep -F -- "-j ACCEPT" >/dev/null 2>&1 && printf 'OK' || printf 'MISSING'
 }
 
+split_status() {
+  inbound="$1"
+  if printf '%s\n' "$singbox_config_compact" | grep -F -- "\"inbound\":\"$inbound\",\"rule_set\":[\"stealth-domains\",\"stealth-static\"],\"outbound\":\"reality-out\"" >/dev/null 2>&1 &&
+    printf '%s\n' "$singbox_config_compact" | grep -F -- "\"inbound\":\"$inbound\",\"outbound\":\"direct-out\"" >/dev/null 2>&1; then
+    printf 'OK'
+  else
+    printf 'MISSING'
+  fi
+}
+
 log="/opt/var/log/sing-box.log"
-tmp="/tmp/ghostroute-channel-c-check.$$"
+tmp="/tmp/ghostroute-channels-check.$$"
 trap 'rm -f "$tmp"' EXIT
 if [ -f "$log" ]; then
   tail -5000 "$log" 2>/dev/null > "$tmp" || : > "$tmp"
@@ -108,44 +138,100 @@ sanitize_line() {
     -e 's/to <ip>:[0-9]+/to <ip>:<port>/g'
 }
 
+reality_count="$(grep -F 'inbound/vless[reality-in]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
+channel_b_count="$(grep -F 'inbound/socks[channel-b-relay-socks]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
 sr_count="$(grep -F 'inbound/http[channel-c-shadowrocket-http-in]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
 native_count="$(grep -F 'inbound/naive[channel-c-naive-in]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
-sr_last="$(grep -F 'inbound/http[channel-c-shadowrocket-http-in]' "$tmp" 2>/dev/null | tail -1 | sanitize_line || true)"
-native_last="$(grep -F 'inbound/naive[channel-c-naive-in]' "$tmp" 2>/dev/null | tail -1 | sanitize_line || true)"
+reality_last="$(grep -F 'inbound/vless[reality-in]' "$tmp" 2>/dev/null | grep -F 'inbound connection to ' | tail -1 | sanitize_line || true)"
+channel_b_last="$(grep -F 'inbound/socks[channel-b-relay-socks]' "$tmp" 2>/dev/null | grep -F 'inbound connection to ' | tail -1 | sanitize_line || true)"
+sr_last="$(grep -F 'inbound/http[channel-c-shadowrocket-http-in]' "$tmp" 2>/dev/null | grep -F 'inbound connection to ' | tail -1 | sanitize_line || true)"
+native_last="$(grep -F 'inbound/naive[channel-c-naive-in]' "$tmp" 2>/dev/null | grep -F 'inbound connection to ' | tail -1 | sanitize_line || true)"
 
+redirect_listener="$(listener_status "$redirect_port")"
+lan_redirect="$(lan_redirect_status "$redirect_port")"
+reality_listener="$(listener_status "$home_reality_port")"
+reality_input="$(input_status "$home_reality_port")"
+reality_split="$(split_status reality-in)"
+channel_b_listener="N/A"
+channel_b_input="N/A"
+if [ "$channel_b_enabled" = "1" ] && [ "$channel_b_port" != "0" ] && [ -n "$channel_b_port" ]; then
+  channel_b_listener="$(listener_status "$channel_b_port")"
+  channel_b_input="$(input_status "$channel_b_port")"
+fi
+channel_b_split="$(split_status channel-b-relay-socks)"
 sr_listener="$(listener_status "$sr_port")"
 sr_redirect="$(redirect_status "$sr_public" "$sr_port")"
 sr_input="$(input_status "$sr_port")"
 native_listener="$(listener_status "$home_port")"
 native_redirect="$(redirect_status "$home_public" "$home_port")"
 native_input="$(input_status "$home_port")"
+native_split="$(split_status channel-c-naive-in)"
+sr_split="$(split_status channel-c-shadowrocket-http-in)"
 
-printf 'GhostRoute Channel C Quick Check\n'
-printf 'C1-Shadowrocket / 1-SR: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s recent_log_lines=%s\n' "$sr_enabled" "$sr_public" "$sr_port" "$sr_listener" "$sr_redirect" "$sr_input" "${sr_count:-0}"
-if [ -n "$sr_last" ]; then
-  printf 'C1-Shadowrocket last: %s\n' "$sr_last"
-else
-  printf 'C1-Shadowrocket last: n/a in last 5000 sing-box log lines\n'
-fi
-printf 'C1-sing-box / native Naive: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s recent_log_lines=%s\n' "$home_enabled" "$home_public" "$home_port" "$native_listener" "$native_redirect" "$native_input" "${native_count:-0}"
-if [ -n "$native_last" ]; then
-  printf 'C1-native last: %s\n' "$native_last"
-else
-  printf 'C1-native last: n/a in last 5000 sing-box log lines; expected while tested iPhone SFI 1.11.4 lacks naive outbound\n'
+filter="${GHOSTROUTE_QUICK_FILTER:-all}"
+
+printf 'GhostRoute Channels Quick Check\n'
+if [ "$filter" = "all" ] || [ "$filter" = "channel-a" ]; then
+  printf 'Channel A/LAN managed redirect: redirect-in=:%s listener=%s br0_redirect=%s\n' "$redirect_port" "$redirect_listener" "$lan_redirect"
+  printf 'Channel A/Home Reality: public/internal=:%s listener=%s input=%s split=%s recent_log_lines=%s\n' "$home_reality_port" "$reality_listener" "$reality_input" "$reality_split" "${reality_count:-0}"
+  if [ -n "$reality_last" ]; then
+    printf 'Channel A last: %s\n' "$reality_last"
+  else
+    printf 'Channel A last: n/a in last 5000 sing-box log lines\n'
+  fi
 fi
 
-if [ "$sr_listener" = "OK" ] && [ "$sr_redirect" != "MISSING" ] && [ "$sr_input" = "OK" ]; then
-  printf 'Decision: OK - current working Channel C lane is C1-Shadowrocket on :%s -> :%s.\n' "$sr_public" "$sr_port"
+if [ "$filter" = "all" ] || [ "$filter" = "channel-b" ]; then
+  printf 'Channel B/home-first: enabled=%s public/internal=:%s listener=%s input=%s split=%s recent_relay_log_lines=%s\n' "$channel_b_enabled" "$channel_b_port" "$channel_b_listener" "$channel_b_input" "$channel_b_split" "${channel_b_count:-0}"
+  if [ -n "$channel_b_last" ]; then
+    printf 'Channel B last: %s\n' "$channel_b_last"
+  else
+    printf 'Channel B last: n/a in last 5000 sing-box log lines\n'
+  fi
+fi
+
+if [ "$filter" = "all" ] || [ "$filter" = "channel-c" ]; then
+  printf 'C1-Shadowrocket / 1-SR: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s split=%s recent_log_lines=%s\n' "$sr_enabled" "$sr_public" "$sr_port" "$sr_listener" "$sr_redirect" "$sr_input" "$sr_split" "${sr_count:-0}"
+  if [ -n "$sr_last" ]; then
+    printf 'C1-Shadowrocket last: %s\n' "$sr_last"
+  else
+    printf 'C1-Shadowrocket last: n/a in last 5000 sing-box log lines\n'
+  fi
+  printf 'C1-sing-box / native Naive: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s split=%s recent_log_lines=%s\n' "$home_enabled" "$home_public" "$home_port" "$native_listener" "$native_redirect" "$native_input" "$native_split" "${native_count:-0}"
+  if [ -n "$native_last" ]; then
+    printf 'C1-native last: %s\n' "$native_last"
+  else
+    printf 'C1-native last: n/a in last 5000 sing-box log lines; expected while tested iPhone SFI 1.11.4 lacks naive outbound\n'
+  fi
+fi
+
+if [ "$redirect_listener" = "OK" ] && [ "$lan_redirect" = "OK" ] &&
+  [ "$reality_listener" = "OK" ] && [ "$reality_input" = "OK" ] && [ "$reality_split" = "OK" ] &&
+  { [ "$channel_b_enabled" != "1" ] || { [ "$channel_b_listener" = "OK" ] && [ "$channel_b_input" = "OK" ] && [ "$channel_b_split" = "OK" ]; }; } &&
+  [ "$sr_listener" = "OK" ] && [ "$sr_redirect" != "MISSING" ] && [ "$sr_input" = "OK" ] && [ "$sr_split" = "OK" ]; then
+  printf 'Decision: OK - fast channel invariants are green. C1-Shadowrocket is the current working Channel C client lane.\n'
 else
-  printf 'Decision: WARN - C1-Shadowrocket router path is incomplete; check listener, redirect and INPUT allow above.\n'
+  printf 'Decision: WARN - one or more fast channel invariants are incomplete; check the MISSING fields above.\n'
 fi
 printf 'Note: this quick check tails only the latest 5000 sing-box log lines and does not build the full daily traffic report.\n'
 REMOTE
 }
 
 case "$PERIOD_ARG" in
+  check|quick|channels|channel-check|--check)
+    channels_quick_report all
+    exit 0
+    ;;
+  channel-a|channel-a-check|a)
+    channels_quick_report channel-a
+    exit 0
+    ;;
+  channel-b|channel-b-check|b)
+    channels_quick_report channel-b
+    exit 0
+    ;;
   channel-c|channel-c-check|c|quick-channel-c|--channel-c)
-    channel_c_quick_report
+    channels_quick_report channel-c
     exit 0
     ;;
   ""|today|current|current-day) ;;
@@ -153,7 +239,7 @@ case "$PERIOD_ARG" in
     exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
     ;;
   *)
-    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|channel-c]" >&2
+    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|check|channel-a|channel-b|channel-c]" >&2
     exit 1
     ;;
 esac
@@ -1207,7 +1293,7 @@ echo "=== CHANNEL C STATUS ==="
 echo "C1-Shadowrocket / 1-SR: WORKING NOW, HTTPS CONNECT compatibility on public :4443 -> router http-in :41956."
 echo "C1-sing-box / native Naive: SERVER-READY, CLIENT-BLOCKED on tested iPhone SFI 1.11.4 because outbound type naive is unsupported."
 echo "Profiles: ansible/out/clients-channel-c/1-SR/ for working Shadowrocket artifacts; native SFI generation stays disabled by default."
-echo "Quick live check: ./modules/traffic-observatory/bin/traffic-report channel-c"
+echo "Quick live check: ./modules/traffic-observatory/bin/traffic-report check"
 echo "Details: docs/channel-c.md"
 echo
 

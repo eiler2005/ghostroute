@@ -126,8 +126,9 @@ For the full end-to-end workflow and observer table, see
 | `./verify.sh` | compact live health summary |
 | `./modules/ghostroute-health-monitor/bin/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./modules/ghostroute-health-monitor/bin/router-health-report --save` | local report snapshot + local journal + router-side copy |
+| `./modules/traffic-observatory/bin/traffic-report check` | lightweight live A/B/C channel check: listeners, redirects, INPUT allow, managed split and recent log tail |
 | `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
-| `./modules/traffic-observatory/bin/traffic-report channel-c` | lightweight live Channel C check: listeners, WAN redirects, INPUT allow and recent Channel C log tail |
+| `./modules/traffic-observatory/bin/traffic-report channel-a|channel-b|channel-c` | filtered variant of the lightweight live channel check |
 | `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
 | `./modules/dns-catalog-intelligence/bin/catalog-review-report` | advisory review of domains/static networks |
 | `./modules/dns-catalog-intelligence/bin/dns-forensics-report` | hourly DNS-interest snapshots |
@@ -142,10 +143,11 @@ Use `traffic-report` as the main entrypoint:
 ./modules/traffic-observatory/bin/traffic-report 2026-04-25
 ```
 
-Use the lightweight Channel C check when the question is only “does the current
-C1 path work?”:
+Use the lightweight channel check when the question is only “does the current
+path work?”:
 
 ```bash
+./modules/traffic-observatory/bin/traffic-report check
 ./modules/traffic-observatory/bin/traffic-report channel-c
 ```
 
@@ -281,8 +283,8 @@ DNS forensics show interest, not bytes.
 
 `traffic-report [period]` is the main human-facing report. Supported periods are
 `today`, `yesterday`, `week`, `month`, and a specific `YYYY-MM-DD`. Use
-`traffic-report channel-c` for a short live Channel C check that tails only the
-latest sing-box log lines instead of building the full daily analytics report.
+`traffic-report check` for a short live A/B/C check that tails only the latest
+sing-box log lines instead of building the full daily analytics report.
 
 Canonical sections:
 

@@ -366,4 +366,4 @@ printf 'Channel B relay split: %s\n' "$(channel_b_relay_line)"
 printf 'Home Reality split (Channel A): %s\n' "$(home_reality_split_line)"
 printf 'Channel C: C1-SR / Shadowrocket :4443 works now; C1-sing-box native Naive :443 is server-ready but blocked by tested iPhone SFI 1.11.4 missing naive outbound\n'
 printf 'Last non-OK probe: %s\n' "$(last_non_ok)"
-printf 'Next: ./modules/traffic-observatory/bin/traffic-report channel-c | ./modules/ghostroute-health-monitor/bin/leak-check | ./modules/ghostroute-health-monitor/bin/router-health-report\n'
+printf 'Next: ./modules/traffic-observatory/bin/traffic-report check | ./modules/ghostroute-health-monitor/bin/leak-check | ./modules/ghostroute-health-monitor/bin/router-health-report\n'
