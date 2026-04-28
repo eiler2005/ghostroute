@@ -195,10 +195,11 @@ probe_mobile_routing_leaks() {
   today="$(date +%Y-%m-%d)"
   dnsmasq_file="${HEALTH_MONITOR_DNSMASQ_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
   auto_file="${HEALTH_MONITOR_DNSMASQ_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+  direct_file="${HEALTH_MONITOR_DIRECT_DOMAINS_FILE:-/jffs/configs/domains-no-vpn.txt}"
   tmp_prefix="/tmp/health-monitor-mobile-leaks.$$"
   managed_domains="${tmp_prefix}.managed"
-  direct_hosts="${tmp_prefix}.direct"
-  leak_sample="${tmp_prefix}.sample"
+  direct_domains="${tmp_prefix}.direct"
+  split_result="${tmp_prefix}.split"
   [ -r "$log" ] || {
     hm_emit mobile_routing_leaks UNKNOWN "Mobile route split cannot be assessed" \
       "sing-box log is not readable." \
@@ -208,50 +209,293 @@ probe_mobile_routing_leaks() {
   }
 
   extract_stealth_domains "$dnsmasq_file" "$auto_file" > "$managed_domains"
-  grep " $today " "$log" 2>/dev/null |
-    grep 'outbound/direct\[direct-out\]' |
-    sed -n 's/.*outbound connection to \([^:]*\):.*/\1/p' |
-    tr '[:upper:]' '[:lower:]' |
-    sort -u > "$direct_hosts"
-
-  awk '
-    NR == FNR {
-      if ($0 != "") managed[$0] = 1
-      next
-    }
-    {
-      host = $0
-      for (suffix in managed) {
-        if (host == suffix || length(host) > length(suffix) && substr(host, length(host) - length(suffix), 1) == "." && substr(host, length(host) - length(suffix) + 1) == suffix) {
-          count++
-          if (sample_count < 5) {
-            sample_count++
-            sample = sample (sample == "" ? "" : ",") host
-          }
-          next
-        }
-      }
-    }
-    END {
-      printf "%d\n%s\n", count + 0, sample
-    }
-  ' "$managed_domains" "$direct_hosts" > "$leak_sample"
-  managed_direct="$(sed -n '1p' "$leak_sample" 2>/dev/null)"
-  managed_direct_sample="$(sed -n '2p' "$leak_sample" 2>/dev/null)"
-  direct_via_vps="$(grep " $today " "$log" 2>/dev/null | grep 'outbound/vless\[reality-out\]' | grep -Eic '\.ru|yandex|vk\.com|ok\.ru|ozon|wildberries|avito|sber|tbank|gosuslugi|mail\.ru' || true)"
-  rm -f "$managed_domains" "$direct_hosts" "$leak_sample"
+  extract_direct_domains "$direct_file" "$(hm_singbox_config)" > "$direct_domains"
+  since_ts="$(split_policy_since_ts)"
+  since_label="$(printf '%s' "${since_ts:-day_start}" | tr ' ' T)"
+  analyze_client_split "$managed_domains" "$direct_domains" "$log" "$today" 'inbound/vless[reality-in]' "$since_ts" > "$split_result"
+  managed_direct="$(split_kv "$split_result" managed_direct)"
+  managed_direct_sample="$(split_kv "$split_result" managed_direct_sample)"
+  direct_via_vps="$(split_kv "$split_result" direct_via_vps)"
+  direct_via_vps_sample="$(split_kv "$split_result" direct_via_vps_sample)"
+  total="$(split_kv "$split_result" total)"
+  reality="$(split_kv "$split_result" reality)"
+  direct="$(split_kv "$split_result" direct)"
+  unresolved="$(split_kv "$split_result" unresolved)"
+  rm -f "$managed_domains" "$direct_domains" "$split_result"
 
   if [ "${managed_direct:-0}" -gt 0 ] || [ "${direct_via_vps:-0}" -gt 0 ]; then
     hm_emit mobile_routing_leaks WARN "Mobile managed/direct routing leak suspected" \
-      "Heuristic log scan found destinations that may have used the wrong outbound." \
-      "managed_direct=$managed_direct direct_via_vps=$direct_via_vps sample=${managed_direct_sample:-none}" \
+      "Home Reality connection-ID scan found destinations that may have used the wrong outbound." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=${unresolved:-0} managed_direct=${managed_direct:-0} direct_via_vps=${direct_via_vps:-0} sample_managed_direct=${managed_direct_sample:-none} sample_direct_via_vps=${direct_via_vps_sample:-none}" \
       "Review traffic-report today and rule-set sync before changing catalogs."
   else
     hm_emit mobile_routing_leaks OK "Mobile managed/direct routing leak suspected" \
-      "No obvious Home Reality split-routing leak was found in today's sing-box log." \
-      "managed_direct=0 direct_via_vps=0" \
+      "No obvious Home Reality split-routing leak was found in today's client connection IDs." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=${unresolved:-0} managed_direct=0 direct_via_vps=0" \
       "No action."
   fi
+}
+
+probe_channel_b_routing_leaks() {
+  should_run channel_b_routing_leaks || return 0
+  log="$(hm_singbox_log)"
+  today="$(date +%Y-%m-%d)"
+  dnsmasq_file="${HEALTH_MONITOR_DNSMASQ_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
+  auto_file="${HEALTH_MONITOR_DNSMASQ_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+  direct_file="${HEALTH_MONITOR_DIRECT_DOMAINS_FILE:-/jffs/configs/domains-no-vpn.txt}"
+  tmp_prefix="/tmp/health-monitor-channel-b-leaks.$$"
+  managed_domains="${tmp_prefix}.managed"
+  direct_domains="${tmp_prefix}.direct"
+  split_result="${tmp_prefix}.split"
+  [ -r "$log" ] || {
+    hm_emit channel_b_routing_leaks UNKNOWN "Channel B route split cannot be assessed" \
+      "sing-box log is not readable." \
+      "log=$log" \
+      "Check log path and rotation."
+    return 0
+  }
+
+  extract_stealth_domains "$dnsmasq_file" "$auto_file" > "$managed_domains"
+  extract_direct_domains "$direct_file" "$(hm_singbox_config)" > "$direct_domains"
+  since_ts="$(split_policy_since_ts)"
+  since_label="$(printf '%s' "${since_ts:-day_start}" | tr ' ' T)"
+  analyze_client_split "$managed_domains" "$direct_domains" "$log" "$today" 'inbound/socks[channel-b-relay-socks]' "$since_ts" > "$split_result"
+  managed_direct="$(split_kv "$split_result" managed_direct)"
+  managed_direct_sample="$(split_kv "$split_result" managed_direct_sample)"
+  direct_via_vps="$(split_kv "$split_result" direct_via_vps)"
+  direct_via_vps_sample="$(split_kv "$split_result" direct_via_vps_sample)"
+  total="$(split_kv "$split_result" total)"
+  reality="$(split_kv "$split_result" reality)"
+  direct="$(split_kv "$split_result" direct)"
+  unresolved="$(split_kv "$split_result" unresolved)"
+  rm -f "$managed_domains" "$direct_domains" "$split_result"
+
+  if [ "${managed_direct:-0}" -gt 0 ] || [ "${direct_via_vps:-0}" -gt 0 ] || [ "${unresolved:-0}" -gt 0 ]; then
+    hm_emit channel_b_routing_leaks WARN "Channel B managed/direct routing leak suspected" \
+      "Channel B relay connection-ID scan found destinations that may have used the wrong outbound." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=${unresolved:-0} managed_direct=${managed_direct:-0} direct_via_vps=${direct_via_vps:-0} sample_managed_direct=${managed_direct_sample:-none} sample_direct_via_vps=${direct_via_vps_sample:-none}" \
+      "Review Channel B relay split in traffic-report before changing catalogs."
+  else
+    hm_emit channel_b_routing_leaks OK "Channel B managed/direct routing leak suspected" \
+      "No obvious Channel B split-routing leak was found in today's relay connection IDs." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=0 managed_direct=0 direct_via_vps=0" \
+      "No action."
+  fi
+}
+
+probe_channel_c_routing_leaks() {
+  should_run channel_c_routing_leaks || return 0
+  log="$(hm_singbox_log)"
+  today="$(date +%Y-%m-%d)"
+  dnsmasq_file="${HEALTH_MONITOR_DNSMASQ_FILE:-/jffs/configs/dnsmasq-stealth.conf.add}"
+  auto_file="${HEALTH_MONITOR_DNSMASQ_AUTO_FILE:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
+  direct_file="${HEALTH_MONITOR_DIRECT_DOMAINS_FILE:-/jffs/configs/domains-no-vpn.txt}"
+  tmp_prefix="/tmp/health-monitor-channel-c-leaks.$$"
+  managed_domains="${tmp_prefix}.managed"
+  direct_domains="${tmp_prefix}.direct"
+  split_result="${tmp_prefix}.split"
+  [ -r "$log" ] || {
+    hm_emit channel_c_routing_leaks UNKNOWN "Channel C route split cannot be assessed" \
+      "sing-box log is not readable." \
+      "log=$log" \
+      "Check log path and rotation."
+    return 0
+  }
+
+  extract_stealth_domains "$dnsmasq_file" "$auto_file" > "$managed_domains"
+  extract_direct_domains "$direct_file" "$(hm_singbox_config)" > "$direct_domains"
+  since_ts="$(split_policy_since_ts)"
+  since_label="$(printf '%s' "${since_ts:-day_start}" | tr ' ' T)"
+  analyze_client_split "$managed_domains" "$direct_domains" "$log" "$today" 'channel-c-naive-in' "$since_ts" > "$split_result"
+  managed_direct="$(split_kv "$split_result" managed_direct)"
+  managed_direct_sample="$(split_kv "$split_result" managed_direct_sample)"
+  direct_via_vps="$(split_kv "$split_result" direct_via_vps)"
+  direct_via_vps_sample="$(split_kv "$split_result" direct_via_vps_sample)"
+  total="$(split_kv "$split_result" total)"
+  reality="$(split_kv "$split_result" reality)"
+  direct="$(split_kv "$split_result" direct)"
+  unresolved="$(split_kv "$split_result" unresolved)"
+  rm -f "$managed_domains" "$direct_domains" "$split_result"
+
+  if [ "${managed_direct:-0}" -gt 0 ] || [ "${direct_via_vps:-0}" -gt 0 ] || [ "${unresolved:-0}" -gt 0 ]; then
+    hm_emit channel_c_routing_leaks WARN "Channel C managed/direct routing leak suspected" \
+      "Channel C Naive connection-ID scan found destinations that may have used the wrong outbound." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=${unresolved:-0} managed_direct=${managed_direct:-0} direct_via_vps=${direct_via_vps:-0} sample_managed_direct=${managed_direct_sample:-none} sample_direct_via_vps=${direct_via_vps_sample:-none}" \
+      "Review Channel C split in traffic-report before changing catalogs."
+  else
+    hm_emit channel_c_routing_leaks OK "Channel C managed/direct routing leak suspected" \
+      "No obvious Channel C split-routing leak was found in today's Naive connection IDs." \
+      "since=$since_label total=${total:-0} reality=${reality:-0} direct=${direct:-0} unresolved=0 managed_direct=0 direct_via_vps=0" \
+      "No action."
+  fi
+}
+
+split_kv() {
+  file="$1"
+  key="$2"
+  awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); found = 1; exit } END { if (!found) print "" }' "$file" 2>/dev/null
+}
+
+split_policy_since_ts() {
+  if [ "${HEALTH_MONITOR_SPLIT_SINCE_TS+x}" = "x" ]; then
+    printf '%s\n' "$HEALTH_MONITOR_SPLIT_SINCE_TS"
+    return 0
+  fi
+
+  latest_file=""
+  latest_epoch=0
+  for file in \
+    "${HEALTH_MONITOR_RULESET_FILE:-/opt/etc/sing-box/rule-sets/stealth-domains.json}" \
+    "${HEALTH_MONITOR_STATIC_RULESET_FILE:-/opt/etc/sing-box/rule-sets/stealth-static.json}"; do
+    [ -r "$file" ] || continue
+    epoch="$(hm_file_epoch "$file")"
+    case "$epoch" in ''|*[!0-9]*) epoch=0 ;; esac
+    if [ "$epoch" -gt "$latest_epoch" ]; then
+      latest_epoch="$epoch"
+      latest_file="$file"
+    fi
+  done
+
+  if [ -n "$latest_file" ]; then
+    date -r "$latest_file" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '\n'
+  else
+    printf '\n'
+  fi
+}
+
+analyze_client_split() {
+  managed_file="$1"
+  direct_file="$2"
+  log_file="$3"
+  today="$4"
+  inbound_tag="$5"
+  since_ts="${6:-}"
+
+  {
+    printf '%s\n' '__hm_section__ managed'
+    cat "$managed_file" 2>/dev/null
+    printf '%s\n' '__hm_section__ direct'
+    cat "$direct_file" 2>/dev/null
+    printf '%s\n' '__hm_section__ log'
+    cat "$log_file" 2>/dev/null
+  } | awk -v today="$today" -v inbound_tag="$inbound_tag" -v since_ts="$since_ts" '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    function host_from_line(line,   host) {
+      host = line
+      sub(/^.* connection to /, "", host)
+      sub(/:[0-9]+.*$/, "", host)
+      return tolower(host)
+    }
+    function line_ts() {
+      return $2 " " $3
+    }
+    function is_managed(host,   suffix) {
+      for (suffix in managed) {
+        if (host == suffix) return 1
+        if (length(host) > length(suffix) &&
+            substr(host, length(host) - length(suffix), 1) == "." &&
+            substr(host, length(host) - length(suffix) + 1) == suffix) return 1
+      }
+      return 0
+    }
+    function is_direct_allowed(host,   suffix) {
+      for (suffix in direct_allow) {
+        if (host == suffix) return 1
+        if (length(host) > length(suffix) &&
+            substr(host, length(host) - length(suffix), 1) == "." &&
+            substr(host, length(host) - length(suffix) + 1) == suffix) return 1
+      }
+      return 0
+    }
+    function is_direct_like(host) {
+      return host ~ /(^|[.])ru$|[.]ru[.]|yandex|vk[.]com|ok[.]ru|ozon|wildberries|avito|sber|tbank|gosuslugi|mail[.]ru/
+    }
+    function add_sample(var_name, host) {
+      if (var_name == "managed") {
+        if (managed_sample_count < 5) {
+          managed_sample_count++
+          managed_sample = managed_sample (managed_sample == "" ? "" : ",") host
+        }
+      } else {
+        if (direct_vps_sample_count < 5) {
+          direct_vps_sample_count++
+          direct_vps_sample = direct_vps_sample (direct_vps_sample == "" ? "" : ",") host
+        }
+      }
+    }
+    /^__hm_section__ / {
+      section = $2
+      next
+    }
+    section == "managed" {
+      if ($0 != "") managed[tolower($0)] = 1
+      next
+    }
+    section == "direct" {
+      if ($0 != "") direct_allow[tolower($0)] = 1
+      next
+    }
+    section == "log" {
+      if (index($0, " " today " ") == 0) next
+      if (since_ts != "" && line_ts() < since_ts) next
+      id = conn_id($0)
+      if (index($0, inbound_tag) > 0 && $0 ~ /inbound connection to /) {
+        if (id != "") {
+          client_id[id] = 1
+          host_by_id[id] = host_from_line($0)
+        }
+      }
+      if (id != "" && !(id in outbound_by_id)) {
+        if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
+          outbound_by_id[id] = "reality"
+          outbound_host_by_id[id] = host_from_line($0)
+        } else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) {
+          outbound_by_id[id] = "direct"
+          outbound_host_by_id[id] = host_from_line($0)
+        }
+      }
+      next
+    }
+    END {
+      for (id in client_id) {
+        total++
+        host = host_by_id[id]
+        if (host == "") host = outbound_host_by_id[id]
+        managed_host = is_managed(host)
+        direct_allowed_host = is_direct_allowed(host)
+        if (outbound_by_id[id] == "reality") {
+          reality++
+          if (direct_allowed_host || (is_direct_like(host) && !managed_host)) {
+            direct_via_vps++
+            add_sample("direct_vps", host)
+          }
+        } else if (outbound_by_id[id] == "direct") {
+          direct++
+          if (managed_host && !direct_allowed_host) {
+            managed_direct++
+            add_sample("managed", host)
+          }
+        } else {
+          unresolved++
+        }
+      }
+      printf "total=%d\n", total + 0
+      printf "reality=%d\n", reality + 0
+      printf "direct=%d\n", direct + 0
+      printf "unresolved=%d\n", unresolved + 0
+      printf "managed_direct=%d\n", managed_direct + 0
+      printf "managed_direct_sample=%s\n", managed_sample
+      printf "direct_via_vps=%d\n", direct_via_vps + 0
+      printf "direct_via_vps_sample=%s\n", direct_vps_sample
+    }
+  '
 }
 
 extract_stealth_domains() {
@@ -270,6 +514,51 @@ extract_stealth_domains() {
         if (domain != "" && domain !~ /[*]/) print tolower(domain)
       }
     }' "$@" 2>/dev/null | sort -u
+}
+
+extract_direct_domains() {
+  no_vpn_file="$1"
+  config_file="$2"
+
+  {
+    if [ -r "$no_vpn_file" ]; then
+      sed 's/[[:space:]]*#.*$//' "$no_vpn_file" 2>/dev/null |
+        sed '/^[[:space:]]*$/d'
+    fi
+
+    if [ -r "$config_file" ]; then
+      awk '
+        function reset_rule() {
+          delete domains
+          domain_count = 0
+          in_domains = 0
+          direct = 0
+        }
+        function collect_quoted_domains(line,   rest, start, tail, value) {
+          rest = line
+          while (match(rest, /"[^"]+"/)) {
+            value = substr(rest, RSTART + 1, RLENGTH - 2)
+            if (value != "domain_suffix" && value != "outbound" && value != "direct-out") {
+              domains[++domain_count] = value
+            }
+            rest = substr(rest, RSTART + RLENGTH)
+          }
+        }
+        BEGIN { reset_rule() }
+        /^[[:space:]]*\{/ { reset_rule() }
+        /"domain_suffix"[[:space:]]*:/ { in_domains = 1 }
+        in_domains { collect_quoted_domains($0) }
+        in_domains && /\]/ { in_domains = 0 }
+        /"outbound"[[:space:]]*:[[:space:]]*"direct-out"/ { direct = 1 }
+        /^[[:space:]]*\}/ {
+          if (direct) {
+            for (i = 1; i <= domain_count; i++) print domains[i]
+          }
+          reset_rule()
+        }
+      ' "$config_file" 2>/dev/null
+    fi
+  } | awk '{ print tolower($0) }' | sort -u
 }
 
 extract_rule_domains() {
@@ -643,6 +932,8 @@ probe_singbox_health
 probe_home_reality_ingress
 probe_mobile_activity
 probe_mobile_routing_leaks
+probe_channel_b_routing_leaks
+probe_channel_c_routing_leaks
 probe_rule_set_sync
 probe_dns_ipv6_leaks
 probe_wireguard_resurrection

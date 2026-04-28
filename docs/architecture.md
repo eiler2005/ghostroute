@@ -381,6 +381,7 @@ client app
 | `stealth-route-init.sh` | apply REDIRECT, QUIC DROP and mobile Reality INPUT rules |
 | `cron-save-ipset` | persist `STEALTH_DOMAINS.ipset` |
 | `cron-traffic-snapshot` | collect WAN/LAN/Tailscale/device counters |
+| `rotate-singbox-log` | cap `/opt/var/log/sing-box.log` growth and retain short compressed archives |
 | `nat-start` | intentionally no Channel A work |
 
 `STEALTH_DOMAINS` is a dnsmasq-populated set of resolved IPv4 addresses, so it

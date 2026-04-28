@@ -15,6 +15,11 @@ cru d MobileRealityCounters 2>/dev/null
 [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && \
   cru a MobileRealityCounters "*/5 * * * * /jffs/scripts/mobile-reality-accounting-refresh"
 
+# sing-box can produce large connection logs during troubleshooting-heavy days.
+cru d RotateSingBoxLog 2>/dev/null
+[ -x /jffs/scripts/rotate-singbox-log ] && \
+  cru a RotateSingBoxLog "17 * * * * /jffs/scripts/rotate-singbox-log"
+
 # GhostRoute health monitor: read-only probes + local status/alert reports.
 cru d HealthMonitorProbes 2>/dev/null
 [ -x /jffs/scripts/health-monitor/run-probes ] && \
