@@ -30,6 +30,10 @@
     - channel_b_home_relay
     - stealth_routing
   post_tasks:
+    - name: Refresh sing-box rule-sets after catalog deploy
+      ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+      changed_when: false
+
     - name: Restart sing-box after Channel B home relay deployment
       ansible.builtin.raw: |
         {{ singbox_init_path }} restart

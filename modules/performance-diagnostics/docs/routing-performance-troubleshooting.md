@@ -46,7 +46,7 @@ ordinary home Wi-Fi.
 | Area | Runtime state | Why |
 |---|---|---|
 | Mobile MSS clamp | `TCPMSS --set-mss 1360` on `PREROUTING dport <home-reality-port>` and `OUTPUT sport <home-reality-port>` | Avoid LTE PMTUD blackholes and large-segment retransmits on the mobile -> home TCP leg. |
-| Mobile ingress connlimit | `connlimit --connlimit-above 300` before ACCEPT | Avoid false drops for 6-7 mobile devices, Safari tab bursts, app sync, and LTE CGNAT source sharing. |
+| Mobile ingress connlimit | `connlimit --connlimit-above 500` before ACCEPT | Avoid false drops for 7-12 mobile devices, Safari tab bursts, app sync, and LTE CGNAT source sharing. |
 | TCP socket buffers | `rmem_max/wmem_max = 16777216` and TCP r/w max `16777216` | Give high-BDP LTE paths enough receive/send window headroom for concurrent mobile flows. |
 | PMTU probing | `tcp_mtu_probing = 1` | Let Linux recover better when ICMP fragmentation-needed is blocked on other TCP paths. It does not raise the mobile ingress MSS above the static `1360` clamp. |
 | Slow-start after idle | `tcp_slow_start_after_idle = 0` | Avoid needless throughput collapse after idle periods. |
@@ -249,14 +249,15 @@ Why this can happen with normal clients:
 The limit is now:
 
 ```text
-connlimit --connlimit-above 300
+connlimit --connlimit-above 500
 ```
 
 This is intentionally generous. It keeps a minimal guard against noisy SYN
-floods on the home ingress, but should not affect normal family mobile usage.
+floods on the home ingress, but should not affect normal family mobile usage
+with 7-12 expected LTE clients.
 
-If it still drops during real LTE tests, prefer raising to `500` before removing
-the rule entirely.
+If it still drops during real LTE tests, review whether the clients share one
+LTE CGNAT source before removing the rule entirely.
 
 ### Verification
 
@@ -269,7 +270,7 @@ ssh admin@192.168.50.1 '
 Expected:
 
 ```text
-DROP ... tcp dpt:<home-reality-port> ... #conn src/32 > 300
+DROP ... tcp dpt:<home-reality-port> ... #conn src/32 > 500
 ACCEPT ... tcp dpt:<home-reality-port>
 ```
 
@@ -351,10 +352,10 @@ reset; the health invariant should be adjusted together with the change.
 Change:
 
 ```yaml
-home_reality_connlimit_above: 300
+home_reality_connlimit_above: 500
 ```
 
-to a different value, then deploy. For current traffic, `300` is the recommended
+to a different value, then deploy. For current traffic, `500` is the recommended
 baseline.
 
 ## 9. Current Recommended Baseline
@@ -362,7 +363,7 @@ baseline.
 Keep:
 
 - MSS `1360` on both mobile ingress directions.
-- connlimit `>300`.
+- connlimit `>500`.
 - TCP max buffers `16 MiB`.
 - `tcp_mtu_probing=1`.
 - `cubic`, unless a future kernel exposes `bbr`/`fq` or `westwood`.

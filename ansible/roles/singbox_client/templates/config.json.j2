@@ -24,6 +24,7 @@
       "tag": "reality-in",
       "listen": "{{ home_reality_listen }}",
       "listen_port": {{ home_reality_ingress_port }},
+      "sniff": true,
       "users": [
 {% for client in home_clients %}
         {
@@ -52,7 +53,7 @@
       "tag": "channel-b-relay-socks",
       "listen": "127.0.0.1",
       "listen_port": {{ channel_b_home_upstream_socks_port }},
-      "sniff": false
+      "sniff": true
     }
 {% endif %}
   ],

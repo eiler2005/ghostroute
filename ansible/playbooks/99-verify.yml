@@ -288,6 +288,20 @@
       ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
       changed_when: false
 
+    - name: sing-box static rule-set contains mirrored STEALTH_DOMAINS IPs
+      ansible.builtin.shell: |
+        ipset_count="$(
+          ipset save {{ stealth_ipset_name }} 2>/dev/null |
+            awk '$1 == "add" && $2 == "{{ stealth_ipset_name }}" { count++ } END { print count + 0 }'
+        )"
+        rule_count="$(
+          grep -Eo '"[0-9]+(\.[0-9]+){3}/32"' /opt/etc/sing-box/rule-sets/stealth-static.json 2>/dev/null |
+            wc -l |
+            tr -d ' '
+        )"
+        [ "$ipset_count" -gt 0 ] && [ "$rule_count" -gt 0 ]
+      changed_when: false
+
     - name: WireGuard NVRAM services are disabled
       ansible.builtin.shell: |
         [ "$(nvram get wgs1_enable)" = "0" ] &&
@@ -333,7 +347,7 @@
       ansible.builtin.shell: |
         iptables -S INPUT | awk '
           /--dport {{ home_reality_ingress_port }}/ {
-            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ home_reality_connlimit_above | default(300) }}/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ home_reality_connlimit_above | default(500) }}/ && $0 ~ /-j DROP/) drop = NR
             if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
           }
           END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
@@ -364,7 +378,7 @@
       ansible.builtin.shell: |
         iptables -S INPUT | awk '
           /--dport {{ channel_b_home_ingress_port }}/ {
-            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ channel_b_home_connlimit_above | default(300) }}/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ channel_b_home_connlimit_above | default(500) }}/ && $0 ~ /-j DROP/) drop = NR
             if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
           }
           END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
@@ -413,6 +427,14 @@
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
+    - name: Router-side Reality ingress sniffs TLS destinations for managed split
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"tag":"reality-in","listen"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ home_reality_ingress_port }},"sniff":true'
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
     - name: Channel B home relay config is XHTTP ingress to local sing-box SOCKS when enabled
       ansible.builtin.shell: |
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ channel_b_home_router_xray_config_path }})"
@@ -429,6 +451,7 @@
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
         printf '%s' "$cfg" | grep -Fq '"tag":"channel-b-relay-socks"' &&
         printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }},"sniff":true' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","outbound":"direct-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":[53,853],"outbound":"reality-out"'

@@ -50,7 +50,7 @@ Execute in numerical order: 1.1 → 1.2 → 1.3 → 2.1 → … Each fix include
 | §2.5 domain-auto-add default-skip | Applied | missing/empty `blocked-domains.lst` now skips and logs instead of adding all |
 | §2.6 docs/checklists | Applied | `architecture.md`, `modules/routing-core/docs/stealth-channel-implementation-guide.md`, `modules/recovery-verification/docs/failure-modes.md` updated |
 | Home Reality ingress for remote QR clients | Applied follow-up | iPhone/MacBook QR profiles connect to the home ASUS public IP on TCP/<home-reality-port>; mobile operators see the home Russian IP, not VPS. Router forwards those sessions through the VPS Reality outbound. |
-| LTE performance hardening | Applied follow-up | MSS clamp on both mobile ingress handshake directions, TCP high-BDP sysctl tuning, connlimit raised to 300, and `modules/performance-diagnostics/docs/routing-performance-troubleshooting.md` added. |
+| LTE performance hardening | Applied follow-up | MSS clamp on both mobile ingress handshake directions, TCP high-BDP sysctl tuning, connlimit raised to 500 for 7-12 LTE clients, and `modules/performance-diagnostics/docs/routing-performance-troubleshooting.md` added. |
 
 ---
 
@@ -985,7 +985,7 @@ All fixes are individually reversible (each fix has its own rollback). If the en
 | 2026-04-25 20:00 | WireGuard repo cleanup completed | Legacy `VPN_DOMAINS`, `wgs1/wgc1` hooks and stale docs/checks removed or marked historical |
 | 2026-04-25 21:00 | Mobile traffic observability added | Mobile Home Reality byte counters and period reports added for TCP/<home-reality-port> ingress |
 | 2026-04-25 22:00 | Emergency direct-VPS fallback made explicit | `emergency_clients[]` documented as disabled/off fallback for rare home relay outages |
-| 2026-04-25 23:00 | LTE performance hardening applied | Commits `afaa912`, `0bec8c5`, `feb8fd2`, `3a71207`: MSS 1360 clamp, TCP sysctl tuning, connlimit 300, and performance runbook |
+| 2026-04-25 23:00 | LTE performance hardening applied | Commits `afaa912`, `0bec8c5`, `feb8fd2`, `3a71207`: MSS 1360 clamp, TCP sysctl tuning, connlimit headroom, and performance runbook |
 
 ---
 
