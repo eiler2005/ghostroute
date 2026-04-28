@@ -133,12 +133,12 @@ Expected:
 - INPUT firewall allows TCP/<home-reality-port>;
 - sing-box has no fresh fatal errors.
 
-## Channel B/C Manual Profiles Не Работают
+## Channel B/C Device Profiles Не Работают
 
-Channel B live-tested как non-production manual device-client lane; Channel C
-остается planned/manual. Они не являются production-ready fallback-каналами и
-не участвуют в health-check Channel A. B/C не должны менять router
-REDIRECT/DNS/TUN и не дают automatic failover.
+Channel B is production для selected device-client profiles, но не является
+automatic failover для Channel A и не участвует в health-check Channel A.
+Channel C остается planned compatibility lane до отдельного live proof. B/C не
+должны менять router REDIRECT/DNS/TUN и не дают automatic failover.
 
 Для Channel B проверок access logs пишутся в Caddy stdout/journal. Для Channel C
 вариантов фактический лог зависит от выбранного backend: Caddy `forward_proxy`

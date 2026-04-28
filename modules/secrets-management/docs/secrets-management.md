@@ -28,6 +28,7 @@ configs/private/dnsmasq-stealth.local.conf.add
 
 ansible/secrets/stealth.yml         # encrypted ansible-vault; gitignored
 ansible/secrets/stealth.yml.example # placeholder template; safe for git
+ansible/secrets/stealth.yml.backup-* # local Vault backups; gitignored
 ansible/out/clients/                # generated QR/.conf files; gitignored
 docs/private/                       # local-only operational notes; gitignored
 reports/                            # local generated reports; gitignored
@@ -112,11 +113,16 @@ Run:
 
 ```bash
 ./modules/secrets-management/bin/secret-scan
+./modules/secrets-management/bin/cleanup-vault-backups --dry-run
 git status --short
 git diff --check
 ```
 
 `secret-scan` is lightweight and repo-specific. It does not replace judgment, but it catches the common mistakes: real VLESS URIs, UUIDs in docs, private-key markers, embedded public IP hostnames and secret-looking assignments. It also rejects known production listener/IP literals that have been removed from public documentation and history.
+
+`cleanup-vault-backups` is local hygiene only. It defaults to dry-run and should
+be used to review stale `ansible/secrets/stealth.yml.backup-*` files after a
+fresh encrypted offsite backup exists.
 
 ## Rules For Documentation
 
@@ -126,3 +132,9 @@ git diff --check
 - Never paste real QR payloads, vault contents or generated client files.
 - Keep provider-specific/admin-only domains in
   `configs/private/dnsmasq-stealth.local.conf.add`, not in the public catalog.
+
+## Offsite Backup
+
+Vault loss is a critical operational risk. Keep an encrypted offsite copy and
+test that it decrypts before you need it. See
+[vault-offsite-backup.md](vault-offsite-backup.md).

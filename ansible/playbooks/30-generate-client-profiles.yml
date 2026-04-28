@@ -849,6 +849,6 @@
           Router profile generated in {{ out_dir }}.
           HOME Reality mobile profiles generated in {{ home_out_dir }}.
           Emergency direct-VPS mobile profiles generated in {{ emergency_out_dir }}.
-          Channel B XHTTP manual fallback artifacts generated in {{ channel_b_out_dir }} when enabled.
-          Channel C NaiveProxy manual fallback artifacts generated in {{ channel_c_out_dir }} when enabled.
+          Channel B selected-client production artifacts generated in {{ channel_b_out_dir }} when enabled.
+          Channel C planned compatibility artifacts generated in {{ channel_c_out_dir }} when enabled.
           Emergency profiles must stay disabled in client apps except during a home relay outage.

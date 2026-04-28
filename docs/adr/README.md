@@ -27,3 +27,4 @@ Long implementation details stay in module docs and runbooks.
 - `0004-deprecated-wireguard-cold-fallback.md`
 - `0005-secrets-outside-git.md`
 - `0006-channel-terminology-and-manual-fallbacks.md`
+- `0007-channel-b-production-channel-c-planned.md`

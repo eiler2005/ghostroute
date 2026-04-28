@@ -21,10 +21,12 @@
 - `VPN_DOMAINS` отсутствует в steady state; active domain catalog is `STEALTH_DOMAINS`
 - DNS upstream централизован через `dnscrypt-proxy` на `127.0.0.1:<dnscrypt-port>`
 - traffic observability и device mix reporting работают с этой новой routing matrix
-- Channel B и Channel C не являются production-ready каналами. Они остаются
-  future/manual device-client направлениями: B как `VLESS+XHTTP+TLS`, C как
-  экспериментальный NaiveProxy / HTTPS forward-proxy подход без изменений
-  router REDIRECT/DNS/TUN.
+- Channel B является production для selected device-client profiles:
+  `VLESS+XHTTP+TLS` home-first ingress на роутере, затем local relay в sing-box
+  managed split без изменений router REDIRECT/DNS/TUN ownership.
+- Channel C остается planned compatibility направлением: NaiveProxy / HTTPS
+  forward-proxy подход без изменений router REDIRECT/DNS/TUN до отдельного live
+  proof.
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -322,24 +324,28 @@
 - старые `wgs1` клиенты мигрированы на Reality QR или будущий overlay по назначению
 - внешний surface роутера становится меньше без слома текущего routing catalog
 
-### 9. Реализовать Channel B и Channel C как future manual device-client lanes
+### 9. Довести Channel C и поддерживать Channel B/C device-client lanes
 
 Текущий статус:
 
 - Channel A остаётся единственным production data plane:
   `router sing-box REDIRECT -> VLESS+Reality+Vision -> VPS`.
-- Channel B и Channel C описаны архитектурно, но не считаются рабочими
-  fallback-каналами для пользователя.
-- Любые существующие B/C артефакты и диагностические заметки считать
-  экспериментальными до отдельного live compatibility pass.
+- Channel B считается production для selected device-client profiles:
+  home-first XHTTP/TLS ingress на роутере -> local sing-box relay -> тот же
+  managed split и Reality/Vision upstream.
+- Channel C остается planned compatibility lane до отдельного live compatibility
+  pass.
+- B/C не дают automatic failover и не должны менять Channel A
+  REDIRECT/DNS/TUN ownership.
 
-Channel B target:
+Channel B maintenance target:
 
-- `Device client -> XHTTP hostname :443 -> Caddy TLS -> local Xray XHTTP -> Internet`
+- `Device client -> home XHTTP/TLS ingress -> router local Xray -> sing-box managed split -> Internet`
 - не менять router REDIRECT/DNS/TUN
 - не добавлять automatic failover
-- готовность: профиль реально импортируется и работает на целевых клиентах
-  iOS/macOS/Android, live egress подтвержден внешними checks и логами VPS
+- поддерживать live evidence для selected devices: import работает, managed
+  egress подтвержден внешними checks и логами, non-managed egress остается home
+  WAN
 
 Channel C target:
 
@@ -353,9 +359,12 @@ Channel C target:
 
 Желаемый результат:
 
-- B/C можно безопасно тестировать на отдельных устройствах без риска для
+- Channel B остается стабильным selected-client production lane без риска для
   Channel A и домашнего роутера
-- документация явно отделяет production Channel A от будущих ручных опций
+- Channel C можно безопасно довести до live proof и только потом продвигать в
+  production docs
+- документация явно отделяет Channel A router data plane, Channel B
+  selected-client production и Channel C planned compatibility
 
 ## Что не делать по умолчанию
 

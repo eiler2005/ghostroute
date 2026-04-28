@@ -149,9 +149,9 @@ assert_contains "README-ru.md" 'Channel C'
 assert_contains "docs/architecture.md" 'Channel A'
 assert_contains "docs/architecture.md" 'Channel B'
 assert_contains "docs/architecture.md" 'Channel C'
-assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel B XHTTP Manual Live-Tested Profiles'
-assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel C NaiveProxy Future Experiment'
-assert_contains "modules/routing-core/docs/stealth-channel-implementation-guide.md" 'Channel B manual clients'
-assert_contains "modules/routing-core/docs/stealth-channel-implementation-guide.md" 'Channel C manual clients'
+assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel B XHTTP Selected-Client Production Profiles'
+assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel C NaiveProxy Planned Compatibility Lane'
+assert_contains "modules/routing-core/docs/stealth-channel-implementation-guide.md" 'Channel B selected clients'
+assert_contains "modules/routing-core/docs/stealth-channel-implementation-guide.md" 'Channel C planned clients'
 
 echo "channel-b/c static tests passed"

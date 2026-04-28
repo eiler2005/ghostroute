@@ -46,7 +46,7 @@ They do not connect to the router.
 ```bash
 bash -n verify.sh tests/run-all.sh tests/test-module-entrypoints.sh
 bash -n modules/recovery-verification/bin/verify.sh modules/ghostroute-health-monitor/bin/router-health-report modules/traffic-observatory/bin/traffic-report modules/traffic-observatory/bin/traffic-daily-report modules/shared/lib/router-health-common.sh modules/recovery-verification/tests/test-router-health.sh
-bash -n modules/dns-catalog-intelligence/bin/catalog-review-report modules/dns-catalog-intelligence/bin/dns-forensics-report modules/dns-catalog-intelligence/tests/test-catalog-review.sh modules/dns-catalog-intelligence/tests/test-dns-forensics.sh
+bash -n modules/dns-catalog-intelligence/bin/catalog-review-report modules/dns-catalog-intelligence/bin/dns-forensics-report modules/dns-catalog-intelligence/tests/test-catalog-review.sh modules/dns-catalog-intelligence/tests/test-dns-forensics.sh modules/secrets-management/bin/cleanup-vault-backups
 sh -n modules/routing-core/router/firewall-start modules/routing-core/router/nat-start modules/dns-catalog-intelligence/router/domain-auto-add.sh modules/ghostroute-health-monitor/router/lib.sh modules/ghostroute-health-monitor/router/run-probes modules/ghostroute-health-monitor/router/aggregate modules/ghostroute-health-monitor/router/daily-digest modules/ghostroute-health-monitor/router/run-once modules/ghostroute-health-monitor/vps/lib.sh modules/ghostroute-health-monitor/vps/run-probes modules/ghostroute-health-monitor/tests/test-health-monitor.sh
 bash -n modules/ghostroute-health-monitor/bin/ghostroute-health-report modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh
 ```

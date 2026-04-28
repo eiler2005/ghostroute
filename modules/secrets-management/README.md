@@ -9,6 +9,7 @@ public docs from accidental credential or production endpoint exposure.
 
 - Vault bootstrap helper.
 - Repo-specific secret scanner.
+- Dry-run cleanup helper for stale local Vault backup files.
 - Rules for local/private files and generated artifacts.
 - Public documentation placeholders for sensitive values.
 
@@ -22,6 +23,7 @@ production literals before commit/push.
 
 - `bin/init-stealth-vault.sh` bootstraps Vault templates.
 - `bin/secret-scan` performs repository hygiene checks.
+- `bin/cleanup-vault-backups` lists or removes stale local Vault backup files.
 - `.gitignore` keeps generated credentials and reports out of public history.
 
 ## Read-only / Mutating Contract
@@ -33,6 +35,7 @@ Secrets must never be moved into tracked docs or module READMEs.
 
 - `./modules/secrets-management/bin/init-stealth-vault.sh`
 - `./modules/secrets-management/bin/secret-scan`
+- `./modules/secrets-management/bin/cleanup-vault-backups --dry-run`
 
 ## Runtime Storage & Artifacts
 
@@ -55,6 +58,8 @@ Secrets must never be moved into tracked docs or module READMEs.
 - Generated QR/client artifact staged for git.
 - Vault value referenced directly instead of through a placeholder.
 - Scanner allowlist widened without review.
+- Local Vault backup files accumulate in `ansible/secrets/` and obscure which
+  copy is current.
 
 ## Tests
 
@@ -64,3 +69,4 @@ Secrets must never be moved into tracked docs or module READMEs.
 ## Related Docs
 
 - `modules/secrets-management/docs/secrets-management.md`
+- `modules/secrets-management/docs/vault-offsite-backup.md`

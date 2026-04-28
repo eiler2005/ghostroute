@@ -51,7 +51,7 @@ described in the root README and `docs/architecture.md`.
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
-| Manual device-client lanes | Channel B/C profile artifacts plus explicit channel add-on playbooks when enabled. | Keeps non-production experiments isolated from the Channel A production baseline. |
+| Device-client lanes | Selected-client B artifacts, planned C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
 Playbook ownership is intentionally narrow:
 
@@ -66,11 +66,12 @@ Playbook ownership is intentionally narrow:
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
-Channel B and Channel C are not production automatic lanes today. Channel B can
-run in direct-XHTTP VPS mode (`11`) or in manual home-first mode (`21`) where
-router ingress is XHTTP and upstream egress is reused via sing-box Reality.
-Channel C remains VPS-only (`12`). Neither channel may mutate Channel A
-REDIRECT ownership or introduce automatic failover.
+Channel B is production for selected device-client profiles, but it is not an
+automatic failover path for Channel A. Channel B can run in direct-XHTTP VPS
+mode (`11`) or in home-first mode (`21`) where router ingress is XHTTP and
+upstream egress is reused via sing-box Reality. Channel C remains a planned
+VPS-only compatibility lane (`12`) until live client proof. Neither channel may
+mutate Channel A REDIRECT ownership or introduce automatic failover.
 
 ## Directory Map
 
@@ -143,7 +144,7 @@ ansible-playbook playbooks/00-bootstrap-vps.yml
 ansible-playbook playbooks/10-stealth-vps.yml
 ```
 
-Refresh manual Channel B/C VPS lanes:
+Refresh Channel B/C VPS lanes:
 
 ```bash
 cd ansible

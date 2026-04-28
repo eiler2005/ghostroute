@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+VAULT_BACKUP_DIR="${PROJECT_ROOT}/ansible/secrets"
+KEEP_COUNT=2
+APPLY=0
+
+usage() {
+  cat <<'EOF'
+Usage: ./modules/secrets-management/bin/cleanup-vault-backups [--dry-run] [--apply] [--keep N]
+
+Lists local ansible/secrets/stealth.yml.backup-* files and, with --apply,
+removes all but the newest N files. Default mode is dry-run.
+
+Options:
+  --dry-run  Show what would be removed. This is the default.
+  --apply    Remove stale local backup files.
+  --keep N   Keep N newest backup files. Default: 2.
+  --help     Show this help.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dry-run)
+      APPLY=0
+      ;;
+    --apply)
+      APPLY=1
+      ;;
+    --keep)
+      if [ "$#" -lt 2 ]; then
+        echo "--keep requires a number" >&2
+        exit 2
+      fi
+      KEEP_COUNT="$2"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+case "${KEEP_COUNT}" in
+  ''|*[!0-9]*)
+    echo "--keep must be a non-negative integer" >&2
+    exit 2
+    ;;
+esac
+
+backups=()
+while IFS= read -r backup_path; do
+  backups+=("${backup_path}")
+done < <(find "${VAULT_BACKUP_DIR}" -maxdepth 1 -type f -name 'stealth.yml.backup-*' -print 2>/dev/null | sort -r)
+
+if [ "${#backups[@]}" -eq 0 ]; then
+  echo "No local vault backup files found."
+  exit 0
+fi
+
+mode="dry-run"
+if [ "${APPLY}" -eq 1 ]; then
+  mode="apply"
+fi
+
+echo "Vault backup cleanup (${mode}); keeping ${KEEP_COUNT} newest file(s)."
+
+removed=0
+for index in "${!backups[@]}"; do
+  path="${backups[$index]}"
+  rel="${path#${PROJECT_ROOT}/}"
+  if [ "$index" -lt "${KEEP_COUNT}" ]; then
+    echo "keep        ${rel}"
+    continue
+  fi
+
+  if [ "${APPLY}" -eq 1 ]; then
+    rm -f -- "${path}"
+    echo "removed     ${rel}"
+  else
+    echo "would remove ${rel}"
+  fi
+  removed=$((removed + 1))
+done
+
+if [ "${APPLY}" -eq 0 ]; then
+  echo "Dry-run only. Re-run with --apply to remove ${removed} file(s)."
+else
+  echo "Removed ${removed} file(s)."
+fi

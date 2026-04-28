@@ -8,10 +8,16 @@ Module-owned deep dives live next to their implementation under
 `modules/<module>/docs/`. This keeps each module self-contained while leaving
 `docs/` as the stable top-level navigation layer.
 
+Public presentation docs are English-first: `README.md`, ADRs and security
+docs should be readable without local context. Russian operator notes may stay
+where they capture day-to-day maintenance details, especially when they are
+local runbooks or historical planning notes.
+
 ## Start Here
 
 - [operational-modules.md](/docs/operational-modules.md) - canonical module map and ownership table.
 - [architecture.md](/docs/architecture.md) - high-level GhostRoute architecture.
+- [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and security workflow.
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and verification control plane.
 - [getting-started.md](/docs/getting-started.md) - first deploy and local setup workflow.
 - [troubleshooting.md](/docs/troubleshooting.md) - cross-module incident diagnostics.
@@ -27,4 +33,5 @@ Module-owned deep dives live next to their implementation under
 - [modules/reality-sni-rotation/docs/](/modules/reality-sni-rotation/docs/) - Reality SNI validation and rotation.
 - [modules/client-profile-factory/docs/](/modules/client-profile-factory/docs/) - QR/VLESS profile workflow.
 - [modules/secrets-management/docs/](/modules/secrets-management/docs/) - vault, local secrets and scans.
+- [modules/secrets-management/docs/vault-offsite-backup.md](/modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill.
 - [modules/recovery-verification/docs/](/modules/recovery-verification/docs/) - failure modes and recovery procedures.
