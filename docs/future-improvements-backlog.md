@@ -397,6 +397,91 @@ Future Caddy forward_proxy@naive / forwardproxy experiment:
     client fingerprint; Shadowrocket + forward_proxy не равен official
     NaiveProxy client с Chromium network stack.
 
+### 10. Policy-Based DNS / Own Resolver Strategy
+
+Текущий вывод:
+
+- Сейчас менять runtime DNS не нужно, если нет фактического DNS leak к
+  мобильному оператору.
+- BrowserLeaks с `Public IP: RF/home` и `DNS: Google/Cloudflare/Finland` — это
+  mixed fingerprint/noise, но не доказательство LTE DNS leak.
+- Основной current goal: мобильный оператор не должен видеть DNS-interest и
+  финальные managed destinations. Resolver country/ASN consistency — вторичная
+  косметика fingerprint.
+
+Future direction:
+
+```text
+local/private/RF/trusted domains
+  -> home router / ISP-like RF resolver
+
+managed foreign domains
+  -> encrypted/tunneled resolver path or VPS Unbound
+
+Channel B VPS-like profile
+  -> VPS Unbound / VPS-side DNS endpoint
+
+Channel A RF-like profile
+  -> home/router resolver only if RF consistency becomes more important than
+     DNS privacy from the home ISP/resolver
+```
+
+Возможный выигрыш:
+
+- BrowserLeaks показывает меньше resolver noise вместо 100+ Google/Cloudflare
+  anycast servers.
+- DNS fingerprint становится управляемее: можно согласовать resolver ASN/country
+  с выбранным channel profile.
+- Для Channel B/VPS-like профиля свой VPS resolver может выглядеть чище:
+  `Public IP: VPS` и `DNS: VPS`.
+- Уменьшается зависимость от публичных Google/Cloudflare/Quad9 fingerprints.
+
+Риски и trade-offs:
+
+- DNS/IP geo mismatch может стать хуже для RF-profile:
+  `Public IP: home RF`, но `DNS resolver: VPS Finland`.
+- CDN может отдавать менее оптимальные edge IP, особенно для российских сайтов.
+- Банки, стриминг, гос/операторские и antifraud-heavy сервисы могут сильнее
+  реагировать на resolver/client geography mismatch.
+- Local/provider-only names и некоторые РФ CDN optimizations могут работать хуже
+  через зарубежный recursive resolver.
+- Если Unbound на VPS случайно открыть наружу, получится public open resolver и
+  DNS amplification/abuse risk.
+- Новый DNS endpoint становится отдельной точкой отказа: `DNS down` выглядит
+  для пользователя как `internet down`.
+- DoH внутри приложений всё равно может обойти router DNS policy, если не
+  закрывать это отдельно на client/profile level.
+
+Оценка сложности:
+
+- MVP report/proof only: 1-2 дня.
+- VPS Unbound для Channel B only: 2-3 дня с firewall и verify.
+- Полноценный policy-based DNS по channel/domain classes: 3-7 дней, потому что
+  нужно синхронизировать DNS decision с routing decision, observability и
+  rollback.
+
+Рекомендуемые фазы:
+
+1. `Phase 0` — оставить текущую privacy-first DNS модель, использовать
+   [dns-policy.md](dns-policy.md) как proof checklist.
+2. `Phase 1` — read-only DNS proof/report: BrowserLeaks interpretation,
+   resolver ASN/country, no LTE carrier, IPv6 absent/routed.
+3. `Phase 2` — VPS Unbound только для Channel B/VPS-like профиля, строго
+   localhost/private access only, public `53/tcp,udp` закрыт firewall'ом.
+4. `Phase 3` — optional Channel A RF-consistent DNS mode только если будет
+   явная потребность в RF-looking BrowserLeaks.
+5. `Phase 4` — аккуратный policy split:
+   `local/private/RF/trusted -> home/RF resolver`, `managed/foreign -> tunneled
+   resolver/VPS Unbound`.
+
+Что не делать по умолчанию:
+
+- Не переключать все каналы на VPS Unbound.
+- Не заменять privacy-first DNS на RF resolver только ради красивого
+  BrowserLeaks screenshot.
+- Не открывать DNS endpoint наружу.
+- Не менять DNS runtime без rollback и external proof.
+
 ## Что не делать по умолчанию
 
 Без отдельного решения не стоит:
