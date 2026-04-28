@@ -314,6 +314,9 @@ REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report yesterday
 
 Trusted mode uses the shared local label map from
 `secrets/device-metadata.local.tsv`, parsed by `modules/shared/lib/device-labels.sh`.
+Prefer stable profile keys such as `iphone-1`, `macbook` or `c1_iphone_1` for
+mobile owners; generated aliases like `mobile-client-01` are display labels and
+can shift when the active client set changes.
 Redacted reports keep stable `lan-host-XX` labels and may append safe device
 types such as `(iPhone)`, `(iPad)`, `(Windows laptop)`, or `(MacBook)`.
 Trusted mode can show the full friendly aliases. Keep trusted output local; do

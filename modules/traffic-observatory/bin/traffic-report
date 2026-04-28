@@ -266,7 +266,12 @@ MOBILE_DESTS="$TMPDIR/mobile-reality-dests.txt"
 CHANNEL_COMBINED_LOG="$TMPDIR/channel-combined.log"
 CHANNEL_B_RELAY_LOG="$TMPDIR/channel-b-relay.log"
 CHANNEL_B_RELAY_TOTALS="$TMPDIR/channel-b-relay-totals.txt"
+CHANNEL_B_RELAY_DESTS="$TMPDIR/channel-b-relay-dests.txt"
 CHANNEL_B_HOME_STATE="$TMPDIR/channel-b-home-state.txt"
+CHANNEL_C_LOG="$TMPDIR/channel-c.log"
+CHANNEL_C_TOTALS="$TMPDIR/channel-c-totals.txt"
+CHANNEL_C_CLIENTS="$TMPDIR/channel-c-clients.txt"
+CHANNEL_C_DESTS="$TMPDIR/channel-c-dests.txt"
 MOBILE_ALIAS_MAP="$TMPDIR/mobile-alias-map.txt"
 CHANNEL_B_HOME_ENABLED="0"
 CHANNEL_B_HOME_PORT="0"
@@ -541,9 +546,10 @@ router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_con
 router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' > "$LAN_BYTES_CURRENT"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/mobile-reality-counters.tsv\" ] && cat \"\$STATE_DIR/mobile-reality-counters.tsv\" || true" > "$MOBILE_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/mobile-reality-counters-snapshot ] && /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null || true' > "$MOBILE_BYTES_CURRENT"
-router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
 grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$MOBILE_LOG" || true
 grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_B_RELAY_LOG" || true
+grep -E "inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_C_LOG" || true
 
 iface_current() {
   local iface="$1"
@@ -770,7 +776,7 @@ else
 fi
 
 if [ -s "$CHANNEL_B_RELAY_LOG" ]; then
-  awk '
+  awk -v totals="$CHANNEL_B_RELAY_TOTALS" -v dests_out="$CHANNEL_B_RELAY_DESTS" '
     function conn_id(line,   body, parts) {
       if (match(line, /\[[0-9]+ [^]]+\]/)) {
         body = substr(line, RSTART + 1, RLENGTH - 2)
@@ -779,16 +785,25 @@ if [ -s "$CHANNEL_B_RELAY_LOG" ]; then
       }
       return ""
     }
-    NR == FNR {
-      if ($0 ~ /inbound\/socks\[channel-b-relay-socks\]: inbound connection to /) {
-        id = conn_id($0)
-        if (id != "") channel_b[id] = 1
-      }
-      next
+    function human_dest(dest,   d) {
+      d = dest
+      sub(/:[0-9]+$/, "", d)
+      return d
     }
     {
       id = conn_id($0)
-      if (id == "" || !(id in channel_b) || (id in outbound_by_id)) next
+      if (id == "") next
+
+      if ($0 ~ /inbound\/socks\[channel-b-relay-socks\]: inbound connection to /) {
+        dest = $0
+        sub(/^.* inbound connection to /, "", dest)
+
+        seen[id] = 1
+        dest_by_id[id] = dest
+        next
+      }
+
+      if (id == "" || !(id in seen) || (id in outbound_by_id)) next
 
       if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
         outbound_by_id[id] = "reality"
@@ -797,17 +812,137 @@ if [ -s "$CHANNEL_B_RELAY_LOG" ]; then
       }
     }
     END {
-      for (id in channel_b) {
+      for (id in seen) {
+        dest = human_dest(dest_by_id[id])
+        outbound = outbound_by_id[id]
+        if (outbound == "") outbound = "unresolved"
+
         total++
-        if (outbound_by_id[id] == "reality") reality++
-        else if (outbound_by_id[id] == "direct") direct++
-        else unresolved++
+        dest_total[dest]++
+
+        if (outbound == "reality") {
+          reality++
+          dest_reality[dest]++
+        } else if (outbound == "direct") {
+          direct++
+          dest_direct[dest]++
+        } else {
+          unresolved++
+          dest_unresolved[dest]++
+        }
       }
-      printf "%d|%d|%d|%d\n", total + 0, reality + 0, direct + 0, unresolved + 0
+
+      printf "%d|%d|%d|%d\n", total + 0, reality + 0, direct + 0, unresolved + 0 > totals
+      for (dest in dest_total) {
+        printf "%s|%d|%d|%d|%d\n", dest, dest_total[dest] + 0, dest_reality[dest] + 0, dest_direct[dest] + 0, dest_unresolved[dest] + 0 >> dests_out
+      }
     }
-  ' "$CHANNEL_B_RELAY_LOG" "$CHANNEL_B_RELAY_LOG" > "$CHANNEL_B_RELAY_TOTALS"
+  ' "$CHANNEL_B_RELAY_LOG"
+  [ -s "$CHANNEL_B_RELAY_DESTS" ] && sort -t'|' -k2,2nr -k1,1 "$CHANNEL_B_RELAY_DESTS" -o "$CHANNEL_B_RELAY_DESTS"
 else
   printf '0|0|0|0\n' > "$CHANNEL_B_RELAY_TOTALS"
+  : > "$CHANNEL_B_RELAY_DESTS"
+fi
+
+if [ -s "$CHANNEL_C_LOG" ]; then
+  awk -v totals="$CHANNEL_C_TOTALS" -v clients_out="$CHANNEL_C_CLIENTS" -v dests_out="$CHANNEL_C_DESTS" '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    function human_dest(dest,   d) {
+      d = dest
+      sub(/:[0-9]+$/, "", d)
+      return d
+    }
+    function extract_client(line,   client) {
+      client = line
+      sub(/^.*inbound\/[^:]+: \[/, "", client)
+      if (client != line) {
+        sub(/\].*$/, "", client)
+        return client
+      }
+      return "channel-c"
+    }
+    {
+      id = conn_id($0)
+      if (id == "") next
+
+      if (($0 ~ /inbound\/http\[channel-c-shadowrocket-http-in\]: .*inbound connection to /) ||
+          ($0 ~ /inbound\/naive\[channel-c-naive-in\]: .*inbound connection to /)) {
+        client = extract_client($0)
+        dest = $0
+        sub(/^.* inbound connection to /, "", dest)
+
+        seen[id] = 1
+        client_by_id[id] = client
+        dest_by_id[id] = dest
+        next
+      }
+
+      if ($0 ~ /inbound\/(http\[channel-c-shadowrocket-http-in\]|naive\[channel-c-naive-in\]): process connection from .*: EOF/) {
+        channel_errors++
+        next
+      }
+
+      if (id == "" || !(id in seen) || (id in outbound_by_id)) next
+
+      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
+        outbound_by_id[id] = "reality"
+      } else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) {
+        outbound_by_id[id] = "direct"
+      }
+    }
+    END {
+      for (id in seen) {
+        client = client_by_id[id]
+        dest = human_dest(dest_by_id[id])
+        outbound = outbound_by_id[id]
+        if (outbound == "") outbound = "unresolved"
+
+        total++
+        clients[client] = 1
+        client_total[client]++
+        dest_total[dest]++
+
+        if (outbound == "reality") {
+          reality++
+          client_reality[client]++
+          dest_reality[dest]++
+        } else if (outbound == "direct") {
+          direct++
+          client_direct[client]++
+          dest_direct[dest]++
+        } else {
+          unresolved++
+          client_unresolved[client]++
+          dest_unresolved[dest]++
+        }
+      }
+
+      client_count = 0
+      for (client in clients) client_count++
+      printf "%d|%d|%d|%d|%d|%d\n", total + 0, reality + 0, direct + 0, unresolved + 0, channel_errors + 0, client_count + 0 > totals
+
+      for (client in clients) {
+        printf "%s|%d|%d|%d|%d\n", client, client_total[client] + 0, client_reality[client] + 0, client_direct[client] + 0, client_unresolved[client] + 0 >> clients_out
+      }
+
+      for (dest in dest_total) {
+        printf "%s|%d|%d|%d|%d\n", dest, dest_total[dest] + 0, dest_reality[dest] + 0, dest_direct[dest] + 0, dest_unresolved[dest] + 0 >> dests_out
+      }
+    }
+  ' "$CHANNEL_C_LOG"
+  [ -s "$CHANNEL_C_CLIENTS" ] && sort -t'|' -k2,2nr -k1,1 "$CHANNEL_C_CLIENTS" -o "$CHANNEL_C_CLIENTS"
+  [ -s "$CHANNEL_C_DESTS" ] && sort -t'|' -k2,2nr -k1,1 "$CHANNEL_C_DESTS" -o "$CHANNEL_C_DESTS"
+else
+  printf '0|0|0|0|0|0\n' > "$CHANNEL_C_TOTALS"
+  : > "$CHANNEL_C_CLIENTS"
+  : > "$CHANNEL_C_DESTS"
 fi
 
 if [ -n "$MOBILE_BYTES_START" ] && [ -s "$MOBILE_BYTES_CURRENT" ]; then
@@ -963,7 +1098,8 @@ if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBI
         next
       }
       {
-        if (($2 in label) && label[$2] != "") $2 = $2 " (" label[$2] ")"
+        if (($1 in label) && label[$1] != "") $2 = $2 " (" label[$1] ")"
+        else if (($2 in label) && label[$2] != "") $2 = $2 " (" label[$2] ")"
         print
       }
     ' "$DEVICE_METADATA_MAP" "$MOBILE_ALIAS_MAP" > "$MOBILE_ALIAS_MAP.named" && mv "$MOBILE_ALIAS_MAP.named" "$MOBILE_ALIAS_MAP"
@@ -1123,6 +1259,23 @@ CHANNEL_B_RELAY_CONN="$(clean_int "$CHANNEL_B_RELAY_CONN")"
 CHANNEL_B_RELAY_REALITY="$(clean_int "$CHANNEL_B_RELAY_REALITY")"
 CHANNEL_B_RELAY_DIRECT="$(clean_int "$CHANNEL_B_RELAY_DIRECT")"
 CHANNEL_B_RELAY_UNRESOLVED="$(clean_int "$CHANNEL_B_RELAY_UNRESOLVED")"
+
+if [ -s "$CHANNEL_C_TOTALS" ]; then
+  IFS='|' read -r CHANNEL_C_CONN CHANNEL_C_REALITY CHANNEL_C_DIRECT CHANNEL_C_UNRESOLVED CHANNEL_C_ERRORS CHANNEL_C_CLIENT_COUNT < "$CHANNEL_C_TOTALS"
+else
+  CHANNEL_C_CONN=0
+  CHANNEL_C_REALITY=0
+  CHANNEL_C_DIRECT=0
+  CHANNEL_C_UNRESOLVED=0
+  CHANNEL_C_ERRORS=0
+  CHANNEL_C_CLIENT_COUNT=0
+fi
+CHANNEL_C_CONN="$(clean_int "$CHANNEL_C_CONN")"
+CHANNEL_C_REALITY="$(clean_int "$CHANNEL_C_REALITY")"
+CHANNEL_C_DIRECT="$(clean_int "$CHANNEL_C_DIRECT")"
+CHANNEL_C_UNRESOLVED="$(clean_int "$CHANNEL_C_UNRESOLVED")"
+CHANNEL_C_ERRORS="$(clean_int "$CHANNEL_C_ERRORS")"
+CHANNEL_C_CLIENT_COUNT="$(clean_int "$CHANNEL_C_CLIENT_COUNT")"
 
 MOBILE_CHANNEL_A_CONN=0
 MOBILE_CHANNEL_A_REALITY=0
@@ -1309,7 +1462,11 @@ if [ "$CHANNEL_B_RELAY_CONN" -gt 0 ]; then
 else
   echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} Home Reality profile connections)"
 fi
-echo "Channel C1 via VPS:      C1-SR works now via Shadowrocket :4443/http-in; C1-native Naive :443 is server-ready but client-blocked on tested SFI 1.11.4"
+if [ "$CHANNEL_C_CONN" -gt 0 ]; then
+  echo "Channel C1 via VPS:      observed ${CHANNEL_C_REALITY}/${CHANNEL_C_CONN} connections via C1 inbounds (direct ${CHANNEL_C_DIRECT}/${CHANNEL_C_CONN}, unresolved ${CHANNEL_C_UNRESOLVED}/${CHANNEL_C_CONN})"
+else
+  echo "Channel C1 via VPS:      C1-SR works now via Shadowrocket :4443/http-in; C1-native Naive :443 is server-ready but client-blocked on tested SFI 1.11.4"
+fi
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
@@ -1344,7 +1501,8 @@ else
 fi
 echo
 
-echo "=== 5. HOME REALITY INGRESS CLIENTS ==="
+echo "=== 5. HOME REALITY INGRESS CLIENTS (CHANNEL A) ==="
+echo "Scope: Channel A/Home Reality reality-in only. Channel B/C are summarized separately below."
 echo "Ingress byte sources:    ${MOBILE_BYTE_SOURCES}"
 echo "Ingress byte total:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
 echo "Ingress via VPS est.:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS exit IP)"
@@ -1458,8 +1616,9 @@ fi
 echo
 
 echo "=== 6. SITES / DESTINATIONS ==="
+echo "Scope: Channel A/Home Reality includes estimated bytes. Channel B/C include destination connection split; byte attribution is not available yet for those lanes."
 if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_TOTAL:-0}" -gt 0 ]; then
-  echo "Top Home Reality ingress destinations overall (estimated bytes from ingress traffic):"
+  echo "Top Home Reality / Channel A ingress destinations overall (estimated bytes from ingress traffic):"
   printf "%-20s %-38s %12s %9s %-20s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Path" "Split"
   awk -F'|' -v mobile_bytes="$MOBILE_BYTE_TOTAL" -v mobile_total="$MOBILE_TOTAL" '
     function human_bytes(x) {
@@ -1502,7 +1661,7 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
     }' "$MOBILE_DESTS"
 
   echo
-  echo "Popular via VPS (estimated; final site sees VPS exit IP):"
+  echo "Popular via VPS (Channel A/Home Reality estimated; final site sees VPS exit IP):"
   printf "%-20s %-38s %12s %9s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Reality conn"
   awk -F'|' '($3 + 0) > 0 { print $3 "|" $0 }' "$MOBILE_DESTS" \
     | sort -t'|' -k1,1nr -k2,2 \
@@ -1542,7 +1701,7 @@ if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_
       }'
 
   echo
-  echo "Popular via home RU direct (estimated; final site sees home Russian IP):"
+  echo "Popular via home RU direct (Channel A/Home Reality estimated; final site sees home Russian IP):"
   printf "%-20s %-38s %12s %9s %s\n" "App/family" "Destination" "Est. traffic" "% ingress" "Direct conn"
   awk -F'|' '($4 + 0) > 0 { print $4 "|" $0 }' "$MOBILE_DESTS" \
     | sort -t'|' -k1,1nr -k2,2 \
@@ -1591,9 +1750,42 @@ elif [ -s "$MOBILE_DESTS" ]; then
       else path = "mostly Home RU direct"
       printf "%-44s %8d %-18s Reality %d / Direct %d\n", $1, $2, path, $3, $4
     }' "$MOBILE_DESTS"
-  echo "No Home Reality byte baseline yet, so destination traffic is shown as connections only."
+  echo "No Channel A/Home Reality byte baseline yet, so destination traffic is shown as connections only."
 else
-  echo "No Home Reality destination log data for today."
+  echo "No Channel A/Home Reality destination log data for today."
+fi
+echo
+
+echo "Channel B destinations (connection split; byte attribution n/a for local SOCKS relay):"
+if [ -s "$CHANNEL_B_RELAY_DESTS" ] && [ "$CHANNEL_B_RELAY_CONN" -gt 0 ]; then
+  printf "%-44s %8s %8s %8s %10s\n" "Destination" "Conn" "VPS" "Direct" "Unresolved"
+  awk -F'|' '
+    NR <= 12 {
+      printf "%-44s %8d %8d %8d %10d\n", $1, $2 + 0, $3 + 0, $4 + 0, $5 + 0
+    }' "$CHANNEL_B_RELAY_DESTS"
+else
+  echo "No Channel B destination log data for today."
+fi
+echo
+
+echo "Channel C destinations (connection split; byte attribution n/a for C1 inbounds):"
+if [ -s "$CHANNEL_C_DESTS" ] && [ "$CHANNEL_C_CONN" -gt 0 ]; then
+  printf "%-44s %8s %8s %8s %10s\n" "Destination" "Conn" "VPS" "Direct" "Unresolved"
+  awk -F'|' '
+    NR <= 12 {
+      printf "%-44s %8d %8d %8d %10d\n", $1, $2 + 0, $3 + 0, $4 + 0, $5 + 0
+    }' "$CHANNEL_C_DESTS"
+
+  if [ -s "$CHANNEL_C_CLIENTS" ]; then
+    echo
+    printf "%-24s %8s %8s %8s %10s\n" "Channel C client" "Conn" "VPS" "Direct" "Unresolved"
+    awk -F'|' '
+      NR <= 8 {
+        printf "%-24s %8d %8d %8d %10d\n", $1, $2 + 0, $3 + 0, $4 + 0, $5 + 0
+      }' "$CHANNEL_C_CLIENTS"
+  fi
+else
+  echo "No Channel C destination log data for today."
 fi
 echo
 
@@ -1676,6 +1868,7 @@ echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP 
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
 echo "- LAN/Wi-Fi RU direct means device -> home router -> home ISP/WAN -> destination. It often includes Russian services, but can also include foreign sites outside STEALTH_DOMAINS, Apple/CDN/API/background traffic, and resolver-like infrastructure."
 echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; VPS/direct bytes for this ingress are estimated from connection split until per-outbound byte attribution is added."
+echo "- SITES / DESTINATIONS gives estimated bytes for Channel A/Home Reality and connection-level destination split for Channel B/C. B/C per-destination byte attribution is not implemented yet."
 echo "- Home Reality used from inside LAN usually means a QR/Home Reality profile was active while the device was on home Wi-Fi; this is tracked separately as LAN hairpin traffic."
 echo "- Unattributed external ingress sources are byte-counter sources that were not confidently tied to a VLESS client identity in the current log window; review sustained high volume before blocking anything."
 echo "- Home Reality direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
