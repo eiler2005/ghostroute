@@ -303,7 +303,7 @@ puts '=== CHANNEL C STATUS ==='
 puts 'C1-Shadowrocket / 1-SR: WORKING NOW, HTTPS CONNECT compatibility on public :4443 -> router http-in :41956.'
 puts 'C1-sing-box / native Naive: SERVER-READY, CLIENT-BLOCKED on tested iPhone SFI 1.11.4 because outbound type naive is unsupported.'
 puts 'Profiles: ansible/out/clients-channel-c/1-SR/ for working Shadowrocket artifacts; native SFI generation stays disabled by default.'
-puts 'Quick live check: ./modules/traffic-observatory/bin/traffic-report channel-c'
+puts 'Quick live check: ./modules/traffic-observatory/bin/traffic-report check'
 puts 'Details: docs/channel-c.md'
 puts
 

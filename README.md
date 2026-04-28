@@ -597,7 +597,7 @@ verification and sanitized reports:
 cd ansible && ansible-playbook playbooks/99-verify.yml
 cd ..
 ./modules/ghostroute-health-monitor/bin/router-health-report
-./modules/traffic-observatory/bin/traffic-report channel-c
+./modules/traffic-observatory/bin/traffic-report check
 ./modules/traffic-observatory/bin/traffic-report today
 ```
 

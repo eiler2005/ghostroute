@@ -34,6 +34,7 @@ counters and snapshot files on the router.
 ## Public Commands
 
 - `./modules/traffic-observatory/bin/traffic-report`
+- `./modules/traffic-observatory/bin/traffic-report check`
 - `./modules/traffic-observatory/bin/traffic-report today`
 - `./modules/traffic-observatory/bin/traffic-report channel-c`
 - `./modules/traffic-observatory/bin/traffic-report yesterday`
