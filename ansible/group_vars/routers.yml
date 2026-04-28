@@ -62,6 +62,12 @@ channel_c_home_tls_cert_path: "{{ vault_channel_c_home_tls_cert_path | default('
 channel_c_home_tls_key_path: "{{ vault_channel_c_home_tls_key_path | default('/opt/etc/sing-box/channel-c-home-privkey.pem') }}"
 channel_c_home_tls_cert_pem: "{{ vault_channel_c_home_tls_cert_pem | default('') }}"
 channel_c_home_tls_key_pem: "{{ vault_channel_c_home_tls_key_pem | default('') }}"
+channel_c_shadowrocket_enabled: "{{ vault_channel_c_shadowrocket_enabled | default(channel_c_home_enabled) }}"
+channel_c_shadowrocket_public_port: "{{ vault_channel_c_shadowrocket_public_port | default(4443, true) }}"
+channel_c_shadowrocket_ingress_port: "{{ vault_channel_c_shadowrocket_ingress_port | default((channel_c_home_ingress_port | int) + 1, true) }}"
+channel_c_shadowrocket_clients: "{{ vault_channel_c_shadowrocket_clients | default(channel_c_home_clients, true) }}"
+channel_c_shadowrocket_connlimit_above: "{{ vault_channel_c_shadowrocket_connlimit_above | default(channel_c_home_connlimit_above, true) }}"
+channel_c_shadowrocket_mss: "{{ vault_channel_c_shadowrocket_mss | default(channel_c_home_mss, true) }}"
 
 dnscrypt_port: "{{ vault_dnscrypt_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_PORT type=properties file=../../.env', errors='ignore'), true) | default(dnscrypt_port_secret | default('535' ~ '4'), true) }}"
 dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"

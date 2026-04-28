@@ -31,7 +31,7 @@ flowchart LR
     subgraph Home["Home edge"]
         Router["ASUS Merlin router<br/>dnsmasq + ipset + sing-box"]
         ChannelB["Channel B XHTTP/TLS ingress<br/>selected clients"]
-        ChannelC["Channel C1 Naive ingress<br/>selected clients"]
+        ChannelC["Channel C<br/>C1 Naive + C1-Shadowrocket compatibility"]
     end
 
     subgraph VPS["VPS edge"]
@@ -44,9 +44,9 @@ flowchart LR
     LAN -->|"DNS/IP classification"| Router
     Mobile -->|"Channel A home Reality"| Router
     Mobile -->|"Channel B production profile"| ChannelB
-    Mobile -. "Channel C1 planned profile" .-> ChannelC
+    Mobile -. "Channel C selected-client profile" .-> ChannelC
     ChannelB -->|"local relay"| Router
-    ChannelC -->|"sing-box naive inbound"| Router
+    ChannelC -->|"sing-box C ingress"| Router
     Router -->|"managed destinations"| Caddy --> Xray --> Internet
     Router -->|"non-managed destinations"| Internet
 ```
@@ -57,7 +57,7 @@ flowchart LR
 |---|---|---|---|---|
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
-| C | Planned C1 compatibility lane | Endpoint -> home router Naive ingress | Browser-like home-first client lane after live SFI proof | No |
+| C | C1-sing-box Naive plus C1-Shadowrocket compatibility | Endpoint -> home router Naive or HTTPS CONNECT ingress | Home-first selected-client lane; C1-sing-box is stealth-primary, C1-Shadowrocket is Shadowrocket compatibility | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 ## Why This Exists
@@ -67,8 +67,8 @@ configuration-free, let mobile clients enter through the home network first,
 and preserve explicit routing control over which destinations use a remote VPS
 exit. The design favors boring operational boundaries over broad automation:
 Channel A owns the router data plane, Channel B is a separate selected-client
-production lane, Channel C is the next home-first compatibility lane, and none of them
-silently rewrites another channel.
+production lane, Channel C is the home-first Naive/compatibility lane, and none
+of them silently rewrites another channel.
 
 ## Overview
 
@@ -83,9 +83,10 @@ The layered model separates the main traffic responsibilities:
   can decide `DIRECT` vs `MANAGED/PROXY` before traffic enters GhostRoute. For
   example, Shadowrocket on an iPhone/iPad/MacBook can use domain, IP, GEOIP and
   rule-list policy; it is a routing layer, not just a VPN toggle.
-- Layer 1 is the managed channel layer. Channel A, Channel B and Channel C are home-first:
-  the first network sees endpoint -> home endpoint, not endpoint -> VPS. Channel
-  C remains planned until live C1 client proof.
+- Layer 1 is the managed channel layer. Channel A, Channel B and Channel C are
+  home-first: the first network sees endpoint -> home endpoint, not endpoint ->
+  VPS. Channel C has C1-sing-box Naive for SFI/sing-box and C1-Shadowrocket HTTPS CONNECT
+  compatibility for Shadowrocket.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
@@ -100,8 +101,7 @@ not the general architecture.
 Only Channel A is part of the automatic router data plane. Channel B is
 production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
-planned C1 home-first, separate from Channel A/B routing and has no automatic
-failover.
+home-first, separate from Channel A/B routing and has no automatic failover.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -123,9 +123,10 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Channel B selected-client production home-first lane: selected devices connect
   to the home router first via XHTTP/TLS, then the router relays into local
   sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
-- Channel C planned C1 home-first lane: Naive/HTTPS-H2-CONNECT-like clients
-  connect to the home endpoint first, then router-side sing-box applies the
-  same managed split and Reality/Vision upstream.
+- Channel C home-first lane: C1-sing-box uses sing-box Naive on the home endpoint
+  for SFI/sing-box clients; C1-Shadowrocket uses authenticated HTTPS CONNECT/TLS for
+  Shadowrocket compatibility. Both apply the same managed split and
+  Reality/Vision upstream.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -230,7 +231,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS, selected-client B and planned C1 artifacts from Vault
+  Client Profiles     -> QR/VLESS, selected-client B/C artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -327,24 +328,27 @@ WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be use
 
 ### 5. Channel B/C Device Profiles
 
-Channel B and Channel C are device-client lanes with different maturity levels:
+Channel B and Channel C are device-client lanes with different client surfaces:
 
 - Channel B is production for selected device-client profiles. It is
   home-first: selected devices connect to dedicated home ingress on
   `:<home-channel-b-port>`. A local Xray process terminates that first hop and
   forwards traffic into local sing-box SOCKS, so the second hop reuses the same
   existing Reality/Vision upstream to VPS as Channel A.
-- Channel C is the next planned compatibility lane in C1 home-first form.
-  Selected devices connect to the home endpoint with Naive/HTTPS-H2-CONNECT-like
-  traffic; router-side sing-box terminates `channel-c-naive-in` and applies the
-  same managed split as the other home-first lanes.
+- Channel C is the home-first Naive/compatibility lane. C1-sing-box selected
+  devices connect to the home endpoint with Naive/HTTPS-H2-CONNECT-like traffic;
+  router-side sing-box terminates `channel-c-naive-in`. C1-Shadowrocket
+  devices use HTTPS CONNECT/TLS and terminate at
+  `channel-c-shadowrocket-http-in`. Both apply the same managed split as the
+  other home-first lanes.
 
 Channel B isolation boundaries are strict: it has its own ingress port and
 local Xray relay process, but it does not mutate Channel A REDIRECT ownership,
 router DNS, TUN state or automatic failover. Treat generated
 `ansible/out/clients-channel-b/` artifacts as selected-client production
-credentials and generated `ansible/out/clients-channel-c/` artifacts as planned
-compatibility artifacts until Channel C1 passes a separate live SFI proof.
+credentials and generated `ansible/out/clients-channel-c/` artifacts as
+selected-client Channel C artifacts. Shadowrocket compatibility is not proof of
+native Naive; see [docs/channel-c.md](/docs/channel-c.md).
 
 ---
 
@@ -588,8 +592,9 @@ cd ..
 
 Expected live evidence: Channel A router invariants are green, Channel B
 selected-client traffic reaches the home ingress and uses the managed split, and
-Channel C remains outside production checks until its own C1 compatibility proof
-is complete.
+Channel C traffic reaches either `channel-c-naive-in` for C1-sing-box or
+`channel-c-shadowrocket-http-in` for Shadowrocket compatibility before using the
+same managed split.
 
 Sanitized live sample from the home network:
 

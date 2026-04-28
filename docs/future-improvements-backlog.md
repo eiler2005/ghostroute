@@ -24,9 +24,10 @@
 - Channel B является production для selected device-client profiles:
   `VLESS+XHTTP+TLS` home-first ingress на роутере, затем local relay в sing-box
   managed split без изменений router REDIRECT/DNS/TUN ownership.
-- Channel C остается planned C1 compatibility направлением: Naive /
-  HTTPS-H2-CONNECT-like home-first ingress на роутере без изменений Channel A
-  REDIRECT/DNS/TUN до отдельного live proof.
+- Channel C имеет C1-sing-box Naive home-first ingress на роутере и live-proven
+  C1-Shadowrocket HTTPS CONNECT compatibility, но C1-Shadowrocket еще нужно закрепить
+  в Ansible/firewall/profile generation без изменений Channel A
+  REDIRECT/DNS/TUN.
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -333,8 +334,8 @@
 - Channel B считается production для selected device-client profiles:
   home-first XHTTP/TLS ingress на роутере -> local sing-box relay -> тот же
   managed split и Reality/Vision upstream.
-- Channel C остается planned C1 home-first lane до отдельного live compatibility
-  pass.
+- Channel C C1-sing-box home-first lane существует для SFI/sing-box; C1-Shadowrocket
+  Shadowrocket compatibility прошел live proof, но пока не persisted в Ansible.
 - B/C не дают automatic failover и не должны менять Channel A
   REDIRECT/DNS/TUN ownership.
 
@@ -349,23 +350,24 @@ Channel B maintenance target:
 
 Channel C target:
 
-- `Device client -> home Naive/HTTPS-H2-CONNECT-like ingress -> router
-  sing-box channel-c-naive-in -> managed split -> Reality/Vision -> VPS ->
+- Native C1: `Device client -> home Naive/HTTPS-H2-CONNECT-like ingress ->
+  router sing-box channel-c-naive-in -> managed split -> Reality/Vision -> VPS
+  -> Internet`
+- C1-Shadowrocket: `Shadowrocket -> home HTTPS CONNECT/TLS ingress -> router sing-box
+  channel-c-shadowrocket-http-in -> managed split -> Reality/Vision -> VPS ->
   Internet`
-- оставить NaiveProxy экспериментом, пока не выбран надежный клиентский стек
-- не считать Shadowrocket/Hiddify compatibility достаточной без end-to-end
-  проверки обычного app traffic, а не только CONNECT/API checker
-- готовность: выбран поддерживаемый iPhone client/protocol, import стабилен,
-  authenticated C1 egress работает для обычных приложений через home-first path
+- оставить native Naive stealth-primary для SFI/sing-box
+- закрепить C1-Shadowrocket как explicit compatibility lane, не называя его Naive
+- готовность: Ansible persistence, firewall idempotence, generated profiles,
+  verify checks and live app traffic доказаны для каждого выбранного клиента
 
 Желаемый результат:
 
 - Channel B остается стабильным selected-client production lane без риска для
   Channel A и домашнего роутера
-- Channel C можно безопасно довести до live proof и только потом продвигать в
-  production docs
+- Channel C можно безопасно довести от live proof до persisted deployment
 - документация явно отделяет Channel A router data plane, Channel B
-  selected-client production и Channel C planned compatibility
+  selected-client production и Channel C native/compatibility split
 
 ## Что не делать по умолчанию
 

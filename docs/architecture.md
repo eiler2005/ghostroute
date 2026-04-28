@@ -6,8 +6,9 @@
 managed channels, home router и VPS egress. Channel A остается основным
 Reality-first router data plane без активного legacy WireGuard. Channel B
 реализован как production home-first lane для selected device-client profiles.
-Channel C — C1 home-first Naive lane, который будет считаться production только
-после отдельного live client proof на выбранном iPhone-клиенте.
+Channel C — home-first selected-client lane with C1-sing-box Naive as the
+stealth-primary design and C1-Shadowrocket HTTPS CONNECT as a proven
+compatibility path that still needs Ansible persistence.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
@@ -18,8 +19,9 @@ Channel C — C1 home-first Naive lane, который будет считать
   роутер relays трафик дальше через local sing-box SOCKS c managed split: managed
   домены идут через Reality на VPS, non-managed домены уходят прямо в home WAN.
 - Channel C — C1 home-first selected-client lane: selected device подключается
-  к домашнему Naive/HTTPS-H2-CONNECT-like ingress, а router-side sing-box
-  применяет тот же managed split, что и для других home-first каналов.
+  к домашнему ingress, а router-side sing-box применяет тот же managed split,
+  что и для других home-first каналов. C1-sing-box uses sing-box Naive; C1-Shadowrocket
+  uses HTTPS CONNECT for Shadowrocket compatibility and is not Naive.
 
 ```text
 Layer 0 endpoint/client routing
@@ -31,7 +33,7 @@ Layer 0 endpoint/client routing
 Layer 1 managed channels
   Channel A -> endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-  Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+  Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 
 Layer 2 home router
   LAN/Wi-Fi clients
@@ -59,9 +61,17 @@ Layer 2 home router
     -> Caddy :443 -> Xray Reality inbound
     -> Internet
 
-  Channel C1 selected device-client traffic
+  Channel C1-sing-box selected device-client traffic
     -> Naive/HTTPS-H2-CONNECT-like profile to home public IP :<home-channel-c-public-port>
     -> router sing-box Naive inbound `channel-c-naive-in`
+    -> managed split (same rule-sets as Channel A)
+    -> Channel A Reality outbound to VPS
+    -> Caddy :443 -> Xray Reality inbound
+    -> Internet
+
+  Channel C1-Shadowrocket compatibility traffic
+    -> HTTPS CONNECT/TLS profile to home public IP :4443
+    -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in`
     -> managed split (same rule-sets as Channel A)
     -> Channel A Reality outbound to VPS
     -> Caddy :443 -> Xray Reality inbound
@@ -97,13 +107,14 @@ profiles, not this general architecture document.
 ### Layer 1 — Managed Channels
 
 Layer 1 is the set of managed paths selected by Layer 0 or by explicit local
-choice. Channel A and B are production paths with different client scopes;
-Channel C1 is planned until import, connection and real app egress are proven:
+choice. Channel A and B are production paths with different client scopes.
+Channel C is split into C1-sing-box Naive and C1-Shadowrocket compatibility:
 
 ```text
 Channel A: endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel C: endpoint -> Naive/HTTPS-H2-CONNECT-like -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel C1: endpoint -> Native Naive -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel C1-Shadowrocket: endpoint -> HTTPS CONNECT/TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 ```
 
 Channel A/B/C are home-first for managed traffic: the first network sees
@@ -161,13 +172,17 @@ Endpoint client
 - A/B/C дают первичный hop в home-network для managed endpoint traffic.
 - У A managed split делается прямо на home Reality inbound.
 - У B managed split делается после локального relay в sing-box.
-- У C managed split делается прямо после sing-box Naive inbound.
+- У C1-sing-box managed split делается прямо после sing-box Naive inbound.
+- У C1-Shadowrocket managed split делается после sing-box HTTP inbound; это Shadowrocket
+  compatibility, а не Naive.
 - Власть над инкапсуляцией и правилами изолирована: `20-stealth-router.yml` для A и
   `21-channel-b-router.yml` / `22-channel-c-router.yml` для B/C.
 
 ### Channel C
 
-Channel C работает как C1 home-first Naive lane:
+Channel C has two current shapes.
+
+C1-sing-box works as a home-first Naive lane:
 
 ```text
 Endpoint client
@@ -179,6 +194,28 @@ Endpoint client
        - non-managed -> direct-out -> home WAN
   -> Интернет
 ```
+
+C1-Shadowrocket is the Shadowrocket compatibility lane proven live on 2026-04-28:
+
+```text
+Endpoint Shadowrocket client
+  -> HTTPS CONNECT over TLS to home public IP :4443
+  -> WAN REDIRECT to router internal :41956
+  -> ASUS sing-box HTTP inbound `channel-c-shadowrocket-http-in`
+  -> managed split по `stealth-domains` / `stealth-static`
+       - managed     -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - non-managed -> direct-out -> home WAN
+  -> Интернет
+```
+
+C1-Shadowrocket is not Naive. It exists because Shadowrocket imported Naive-like QR
+profiles but the router-side sing-box Naive inbound rejected the live attempts
+with `not CONNECT request`. The compatibility path proved that Shadowrocket can
+work through the home-first architecture when the router exposes authenticated
+HTTPS CONNECT over TLS.
+
+C1-Shadowrocket is persisted by `22-channel-c-router.yml`, the router firewall
+hook, client generation and verify checks.
 
 C1 не имеет VPS-only Squid/stunnel/tinyproxy backend. Старый direct-to-VPS
 Channel C дизайн удалён из активного кода.
@@ -201,11 +238,11 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off |
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, managed split, Reality outbound to VPS |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, managed split, Reality outbound to VPS |
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
-| Channel C | planned C1 home-first Naive / HTTPS-H2-CONNECT-like device-client lane |
+| Channel C | home-first selected-client lane: C1-sing-box Naive for SFI/sing-box, C1-Shadowrocket HTTPS CONNECT compatibility for Shadowrocket |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
@@ -234,7 +271,8 @@ direct-XHTTP варианта Channel B.
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
 | Endpoint QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
 | Channel B selected-client profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | production home-first egress |
-| Channel C1 selected-client profile | selected device only | TCP/<home-channel-c-public-port> to home router, then sing-box Naive inbound with managed split | planned home-first egress |
+| Channel C1-sing-box selected-client profile | selected device only | TCP/<home-channel-c-public-port> to home router, then sing-box Naive inbound with managed split | stealth-primary home-first egress |
+| Channel C1-Shadowrocket profile | selected device only | TCP/4443 to home router, then sing-box HTTP inbound with managed split | compatibility home-first egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 

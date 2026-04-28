@@ -102,6 +102,31 @@
   when: channel_c_home_enabled | default(false) | bool
   no_log: true
 
+- name: Validate Channel C1 Shadowrocket compatibility settings
+  ansible.builtin.assert:
+    that:
+      - channel_c_home_enabled | default(false) | bool
+      - channel_c_shadowrocket_public_port | int > 0
+      - channel_c_shadowrocket_public_port | int <= 65535
+      - channel_c_shadowrocket_ingress_port | int > 1024
+      - channel_c_shadowrocket_ingress_port | int <= 65535
+      - channel_c_shadowrocket_ingress_port | int not in [443, 1080, 1194, 51820, 8080, 8443]
+      - channel_c_shadowrocket_ingress_port | string != channel_c_home_ingress_port | string
+      - channel_c_shadowrocket_ingress_port | string != singbox_redirect_port | string
+      - channel_c_shadowrocket_ingress_port | string != singbox_dnscrypt_socks_port | string
+      - channel_c_shadowrocket_ingress_port | string != dnscrypt_port | string
+      - channel_c_shadowrocket_ingress_port | string != home_reality_ingress_port | string
+      - channel_c_shadowrocket_ingress_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_c_shadowrocket_public_port | string != channel_c_home_public_port | string
+      - channel_c_shadowrocket_public_port | string != home_reality_ingress_port | string
+      - channel_c_shadowrocket_public_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_c_shadowrocket_clients | length > 0
+      - (channel_c_shadowrocket_clients | selectattr('username', 'defined') | list | length) == (channel_c_shadowrocket_clients | length)
+      - (channel_c_shadowrocket_clients | selectattr('password', 'defined') | list | length) == (channel_c_shadowrocket_clients | length)
+    fail_msg: "C1-Shadowrocket needs distinct public/internal ports and username/password clients."
+  when: channel_c_shadowrocket_enabled | default(false) | bool
+  no_log: true
+
 - name: Ensure Channel C1 TLS directory exists
   ansible.builtin.file:
     path: "{{ item | dirname }}"
@@ -173,6 +198,12 @@
     dest: "{{ singbox_watchdog_path }}"
     mode: "0755"
 
+- name: Install sing-box log rotation helper
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/routing-core/router/rotate-singbox-log"
+    dest: "{{ singbox_log_rotate_path }}"
+    mode: "0755"
+
 - name: Add cron entry for sing-box watchdog
   ansible.builtin.raw: |
     if command -v cru >/dev/null 2>&1; then
@@ -184,6 +215,21 @@
       grep -v '{{ singbox_watchdog_path }}' "$CRON" > "$CRON.tmp" || true
       mv "$CRON.tmp" "$CRON"
       echo "* * * * * {{ singbox_watchdog_path }}" >> "$CRON"
+    fi
+  changed_when: false
+
+- name: Add cron entry for sing-box log rotation
+  ansible.builtin.raw: |
+    if command -v cru >/dev/null 2>&1; then
+      cru d RotateSingBoxLog 2>/dev/null || true
+      cru a RotateSingBoxLog "17 * * * * {{ singbox_log_rotate_path }}"
+    else
+      CRON=/var/spool/cron/crontabs/admin
+      mkdir -p "$(dirname "$CRON")"
+      touch "$CRON"
+      grep -v '{{ singbox_log_rotate_path }}' "$CRON" > "$CRON.tmp" || true
+      mv "$CRON.tmp" "$CRON"
+      echo "17 * * * * {{ singbox_log_rotate_path }}" >> "$CRON"
     fi
   changed_when: false
 

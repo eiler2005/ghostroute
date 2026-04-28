@@ -1,4 +1,4 @@
-{% set modern_sniff = channel_c_home_enabled | default(false) | bool %}
+{% set modern_sniff = (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool) %}
 {
   "log": {
     "level": "info",
@@ -66,6 +66,27 @@
       "listen_port": {{ channel_c_home_ingress_port }},
       "users": [
 {% for client in channel_c_home_clients %}
+        {
+          "username": "{{ client.username }}",
+          "password": "{{ client.password }}"
+        }{{ "," if not loop.last else "" }}
+{% endfor %}
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ channel_c_home_public_host }}",
+        "certificate_path": "{{ channel_c_home_tls_cert_path }}",
+        "key_path": "{{ channel_c_home_tls_key_path }}"
+      }
+    }
+{% endif %}{% if channel_c_shadowrocket_enabled | default(false) | bool %},
+    {
+      "type": "http",
+      "tag": "channel-c-shadowrocket-http-in",
+      "listen": "{{ channel_c_home_listen }}",
+      "listen_port": {{ channel_c_shadowrocket_ingress_port }},
+      "users": [
+{% for client in channel_c_shadowrocket_clients %}
         {
           "username": "{{ client.username }}",
           "password": "{{ client.password }}"
@@ -189,6 +210,27 @@
       },
       { "inbound": "channel-c-naive-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
       { "inbound": "channel-c-naive-in", "outbound": "direct-out" }
+{% endif %}{% if channel_c_shadowrocket_enabled | default(false) | bool %},
+{% if modern_sniff %}
+      { "inbound": "channel-c-shadowrocket-http-in", "action": "sniff" },
+{% endif %}
+      {
+        "inbound": "channel-c-shadowrocket-http-in",
+        "port": [53, 853],
+        "outbound": "reality-out"
+      },
+      {
+        "inbound": "channel-c-shadowrocket-http-in",
+        "domain_suffix": [
+          "vtb.ru",
+          "app-analytics-services-att.com",
+          "app-measurement.com",
+          "firebaseinstallations.googleapis.com"
+        ],
+        "outbound": "direct-out"
+      },
+      { "inbound": "channel-c-shadowrocket-http-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "channel-c-shadowrocket-http-in", "outbound": "direct-out" }
 {% endif %}
     ],
     "final": "direct-out"
