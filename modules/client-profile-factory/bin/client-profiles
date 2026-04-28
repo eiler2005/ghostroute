@@ -18,8 +18,8 @@ Commands:
   list      List generated local client artifacts.
   home-list List generated home Reality mobile client artifacts.
   emergency-list List generated emergency direct-VPS artifacts.
-  channel-b-list List generated Channel B XHTTP manual fallback artifacts.
-  channel-c-list List generated Channel C NaiveProxy manual fallback artifacts.
+  channel-b-list List generated Channel B selected-client production artifacts.
+  channel-c-list List generated Channel C planned compatibility artifacts.
   open      Open local qr-index.html when it exists.
   home-open Open local home Reality qr-index.html when it exists.
   emergency-open Open local emergency direct-VPS qr-index.html when it exists.

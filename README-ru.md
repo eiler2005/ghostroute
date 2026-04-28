@@ -57,12 +57,12 @@ Caddy/VPS или Reality/Vision data plane.
 - Optional Layer 0 endpoint/client-side routing для устройств с rule-based
   client profiles, например Shadowrocket-style configs.
 - Channel A VLESS+Reality+Vision egress через VPS host за общим Caddy L4 на TCP/443.
-- Channel B manual live-tested home-first lane: выбранные устройства сначала
+- Channel B selected-client production home-first lane: выбранные устройства сначала
   подключаются к домашнему ingress через XHTTP/TLS, затем роутер relays трафик
   в локальный sing-box SOCKS и переиспользует Reality/Vision upstream на VPS
   `:443`.
-- Channel C design lane: NaiveProxy / HTTPS forward proxy для
-  camouflage-экспериментов через отдельный public hostname поверх VPS `:443`.
+- Channel C planned compatibility lane: NaiveProxy / HTTPS forward proxy через
+  отдельный public hostname поверх VPS `:443` после live proof.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных
   клиентов: первая сеть видит home endpoint, а не VPS endpoint.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
@@ -261,22 +261,24 @@ Managed-сайты/checker видят VPS exit IP. Non-managed сайты вид
 
 WireGuard не активен в steady state. Сохранённый `wgc1_*` NVRAM используется только через `modules/recovery-verification/router/emergency-enable-wgc1.sh` при катастрофическом отказе Reality.
 
-### 5. Channel B/C manual profiles
+### 5. Channel B/C device profiles
 
-Channel B и Channel C — ручные device-client линии с разными design goals.
-Channel B теперь работает в home-first режиме: выбранные устройства
+Channel B и Channel C — device-client линии с разным уровнем зрелости.
+Channel B работает как production lane для selected clients: выбранные устройства
 подключаются к отдельному домашнему XHTTP/TLS ingress на роутере. Локальный
 Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, где
 managed домены продолжают идти через существующий Reality/Vision upstream на VPS,
 а non-managed — сразу в home WAN.
-Channel C остаётся camouflage-экспериментом с обычной
-authenticated HTTPS/Naive-style proxy surface.
+Channel C остаётся planned compatibility lane с обычной authenticated
+HTTPS/Naive-style proxy surface до отдельного live proof.
 
 Границы изоляции Channel B жесткие: отдельный ingress-port и локальный relay на
 роутере без захвата Channel A REDIRECT, router DNS, TUN state и automatic
 failover. Artifacts в
 `ansible/out/clients-channel-b/`
-или `ansible/out/clients-channel-c/` остаются non-production manual profiles.
+считаются selected-client production credentials. Artifacts в
+`ansible/out/clients-channel-c/` остаются planned compatibility artifacts до
+продвижения Channel C.
 
 ---
 

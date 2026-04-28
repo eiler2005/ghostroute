@@ -1,5 +1,11 @@
 # ADR 0006: Channel Terminology And Manual Fallbacks
 
+## Status
+
+Updated by [ADR 0007](0007-channel-b-production-channel-c-planned.md). This
+record preserves the original naming and no-automatic-failover decision. ADR
+0007 supersedes the earlier Channel B maturity statement.
+
 ## Context
 
 The router has one production data-plane path. Two additional manual

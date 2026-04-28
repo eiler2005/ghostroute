@@ -26,6 +26,7 @@ assert_executable "modules/dns-catalog-intelligence/bin/domain-report"
 assert_executable "modules/client-profile-factory/bin/client-profiles"
 assert_executable "modules/secrets-management/bin/secret-scan"
 assert_executable "modules/secrets-management/bin/init-stealth-vault.sh"
+assert_executable "modules/secrets-management/bin/cleanup-vault-backups"
 
 if find "${PROJECT_ROOT}/scripts" -type f ! -name README.md | grep . >/dev/null; then
   echo "scripts/ must only contain common utilities, not module aliases:" >&2

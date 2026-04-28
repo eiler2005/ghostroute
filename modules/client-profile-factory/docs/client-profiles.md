@@ -212,7 +212,7 @@ Trade-off: during emergency use, the LTE carrier sees the device connecting
 directly to the VPS host, so the domestic-first-hop billing/privacy property
 does not apply for that period.
 
-## Channel B XHTTP Manual Live-Tested Profiles
+## Channel B XHTTP Selected-Client Production Profiles
 
 Channel B is a manual home-first lane. The device profile is VLESS+XHTTP+TLS to
 the home router, and the router relays upstream via local sing-box SOCKS using
@@ -239,19 +239,21 @@ The intended Channel B output includes home-first VLESS URI text files and QR
 PNG files under `ansible/out/clients-channel-b/`, plus a local `README.md`
 operator checklist for Layer 0 and Shadowrocket import settings. In direct-XHTTP
 mode (when home relay is disabled) the generator also emits compatibility URI
-variants and raw Xray JSON artifacts. iOS and Android app import remain manual
-compatibility checks before considering broader readiness.
+variants and raw Xray JSON artifacts. Channel B is production for selected
+device-client profiles; new client apps still need manual import and egress
+checks before they are added to that selected-client set.
 
 For Shadowrocket Channel B profiles, keep `UDP Relay` disabled by default.
 Channel B's first hop is XHTTP/TLS over TCP; enabling UDP relay can change
 QUIC/DNS behavior and make first-hop fingerprint diagnostics harder to read.
 Enable it only when explicitly testing UDP behavior.
 
-## Channel C NaiveProxy Future Experiment
+## Channel C NaiveProxy Planned Compatibility Lane
 
-Channel C is a future experimental NaiveProxy / HTTPS forward-proxy lane. It is
-manual-only, not production-ready, and does not participate in router domain
-routing or automatic failover.
+Channel C is a planned NaiveProxy / HTTPS forward-proxy compatibility lane. It
+does not participate in router domain routing or automatic failover, and it
+should remain outside production checks until client import, connection and real
+app egress are proven.
 
 ```text
 client app -> Channel C Naive/HTTPS hostname :443 -> Caddy forward_proxy / compatible backend -> Internet

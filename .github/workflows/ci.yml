@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  repo-checks:
+    name: Repo checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.j2)
+                continue
+                ;;
+            esac
+            first_line="$(head -n 1 "$file" || true)"
+            case "$first_line" in
+              *bash*)
+                bash -n "$file"
+                ;;
+              *"/sh"*|*" env sh"*)
+                sh -n "$file"
+                ;;
+            esac
+          done < <(git ls-files -z)
+
+      - name: Secret scan
+        run: ./modules/secrets-management/bin/secret-scan
+
+      - name: Fixture tests
+        run: ./tests/run-all.sh

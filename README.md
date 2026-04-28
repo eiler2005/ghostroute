@@ -3,6 +3,7 @@
 ### Router-level Reality routing for ASUS Merlin: home ingress for mobile clients, Reality egress to VPS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/eiler2005/ghostroute/actions/workflows/ci.yml/badge.svg)](https://github.com/eiler2005/ghostroute/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Router-ASUS%20Asuswrt--Merlin-blue)](https://github.com/RMerl/asuswrt-merlin.ng)
 [![Routing](https://img.shields.io/badge/Routing-VLESS%2BReality-5B5FC7)]()
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
@@ -10,6 +11,63 @@
 **[Localized version ->](README-ru.md)**
 
 ---
+
+## TL;DR
+
+GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
+It keeps home LAN devices app-free, gives selected remote clients a home-first
+entrypoint, and sends only managed destinations through a VPS Reality/Vision
+egress. The repo is intentionally module-native: routing, health, traffic,
+catalog, client profiles, secrets and recovery all have separate ownership and
+tests.
+
+```mermaid
+flowchart LR
+    subgraph Endpoint["Endpoint devices"]
+        Mobile["Remote phone/laptop<br/>Channel A or B profile"]
+        LAN["Home Wi-Fi/LAN<br/>no VPN app"]
+    end
+
+    subgraph Home["Home edge"]
+        Router["ASUS Merlin router<br/>dnsmasq + ipset + sing-box"]
+        ChannelB["Channel B XHTTP/TLS ingress<br/>selected clients"]
+    end
+
+    subgraph VPS["VPS edge"]
+        Caddy["Caddy :443<br/>SNI/L4 routing"]
+        Xray["Xray Reality/Vision<br/>managed egress"]
+        ChannelC["Channel C backend<br/>planned compatibility lane"]
+    end
+
+    Internet["Internet"]
+
+    LAN -->|"DNS/IP classification"| Router
+    Mobile -->|"Channel A home Reality"| Router
+    Mobile -->|"Channel B production profile"| ChannelB
+    ChannelB -->|"local relay"| Router
+    Router -->|"managed destinations"| Caddy --> Xray --> Internet
+    Router -->|"non-managed destinations"| Internet
+    Mobile -. "Channel C future profile" .-> ChannelC -.-> Internet
+```
+
+## Channel Status
+
+| Channel | Status | First hop | Scope | Automatic failover |
+|---|---|---|---|---|
+| A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | No |
+| B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
+| C | Planned compatibility lane | Endpoint -> dedicated VPS hostname | Naive/HTTPS-style compatibility after live client proof | No |
+| WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
+
+## Why This Exists
+
+The project solves a narrow but real edge problem: keep ordinary home devices
+configuration-free, let mobile clients enter through the home network first,
+and preserve explicit routing control over which destinations use a remote VPS
+exit. The design favors boring operational boundaries over broad automation:
+Channel A owns the router data plane, Channel B is a separate selected-client
+production lane, Channel C is the next compatibility lane, and none of them
+silently rewrites another channel.
 
 ## Overview
 
@@ -26,7 +84,7 @@ The layered model separates the main traffic responsibilities:
   rule-list policy; it is a routing layer, not just a VPN toggle.
 - Layer 1 is the managed channel layer. Channel A and Channel B are home-first:
   the first network sees endpoint -> home endpoint, not endpoint -> VPS. Channel
-  C remains a manual compatibility lane.
+  C remains a planned compatibility lane until live client proof.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
@@ -38,10 +96,10 @@ foreign, unknown or selected destinations go `MANAGED/PROXY`; `FINAL` points to
 suffixes, GEOIP lists and service lists belong to private deployment profiles,
 not the general architecture.
 
-Only Channel A is part of the production automatic router data plane. Channel B
-is an optional manual add-on with its own ingress/relay surface and must stay
-isolated from Channel A REDIRECT ownership. Channel C is also manual and separate
-from Channel A routing, with no automatic failover by B/C.
+Only Channel A is part of the automatic router data plane. Channel B is
+production for selected device-client profiles, has its own ingress/relay
+surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
+planned, separate from Channel A/B routing and has no automatic failover.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -60,11 +118,11 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Optional Layer 0 endpoint/client-side routing for devices that support
   rule-based client profiles such as Shadowrocket-style configs.
 - Channel A VLESS+Reality+Vision egress through a VPS host behind shared Caddy L4 on TCP/443.
-- Channel B manual live-tested home-first lane: selected device-client tests
-  connect to the home router first via XHTTP/TLS, then the router relays into
-  local sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
-- Channel C manual compatibility lane: NaiveProxy/HTTPS-proxy style profile path
-  on a dedicated public VPS hostname under `:443`.
+- Channel B selected-client production home-first lane: selected devices connect
+  to the home router first via XHTTP/TLS, then the router relays into local
+  sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
+- Channel C planned compatibility lane: NaiveProxy/HTTPS-proxy style profile
+  path on a dedicated public VPS hostname under `:443` after live proof.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -263,25 +321,26 @@ Detailed workflow, ports, components and observer model:
 
 WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `modules/recovery-verification/router/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
 
-### 5. Channel B/C Manual Profiles
+### 5. Channel B/C Device Profiles
 
-Channel B and Channel C are manual device-client lanes with different design
-goals:
+Channel B and Channel C are device-client lanes with different maturity levels:
 
-- Channel B is home-first: selected devices connect to dedicated home ingress on
+- Channel B is production for selected device-client profiles. It is
+  home-first: selected devices connect to dedicated home ingress on
   `:<home-channel-b-port>`. A local Xray process terminates that first hop and
   forwards traffic into local sing-box SOCKS, so the second hop reuses the same
   existing Reality/Vision upstream to VPS as Channel A.
-- Channel C is direct to a dedicated public VPS hostname on `:443` and uses a
-  Naive/HTTPS-proxy-compatible backend. It is VPS-only and does not create a new
-  router-managed split path.
+- Channel C is the next planned compatibility lane. It is direct to a dedicated
+  public VPS hostname on `:443` and uses a Naive/HTTPS-proxy-compatible backend
+  after live client import and real app egress are proven. It is VPS-only and
+  does not create a new router-managed split path.
 
 Channel B isolation boundaries are strict: it has its own ingress port and
 local Xray relay process, but it does not mutate Channel A REDIRECT ownership,
-router DNS, TUN state or automatic failover. Channel B and C artifacts remain
-non-production/manual profiles even after live smoke checks. Treat any generated
-`ansible/out/clients-channel-b/` or `ansible/out/clients-channel-c/` artifacts
-as non-production manual profiles.
+router DNS, TUN state or automatic failover. Treat generated
+`ansible/out/clients-channel-b/` artifacts as selected-client production
+credentials and generated `ansible/out/clients-channel-c/` artifacts as planned
+compatibility artifacts until Channel C passes a separate live proof.
 
 ---
 
@@ -303,7 +362,7 @@ VPS:
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
-  dedicated Channel C manual lane backend on :443 via shared system Caddy
+  dedicated Channel C planned compatibility backend on :443 via shared system Caddy
   stealth stack under /opt/stealth
 
 Control:
@@ -377,10 +436,10 @@ ROUTER=192.168.50.1 ./deploy.sh
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 
-# Channel B manual home-first add-on on router
+# Channel B selected-client home-first add-on on router
 ansible-playbook playbooks/21-channel-b-router.yml
 
-# Manual VPS device-client lanes
+# Optional direct mode for B and planned C VPS lane
 ansible-playbook playbooks/11-channel-b-vps.yml
 ansible-playbook playbooks/12-channel-c-vps.yml
 
@@ -488,9 +547,80 @@ See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-pro
 
 ---
 
+## Demo
+
+The repo-only checks do not require router access, Vault access or generated
+client artifacts:
+
+```bash
+$ ./modules/secrets-management/bin/secret-scan
+secret-scan: ok
+
+$ ./tests/run-all.sh
+router-health fixture smoke tests passed
+catalog-review fixture smoke tests passed
+dns-forensics fixture smoke tests passed
+health-monitor fixture tests passed
+vps-health-monitor fixture tests passed
+module entrypoint tests passed
+channel-a deploy static tests passed
+channel-b/c static tests passed
+audit-fixes tests passed
+all fixture tests passed
+```
+
+When the router and VPS are reachable, the live operator flow adds read-only
+verification and sanitized reports:
+
+```bash
+./verify.sh --verbose
+cd ansible && ansible-playbook playbooks/99-verify.yml
+cd ..
+./modules/ghostroute-health-monitor/bin/router-health-report
+./modules/traffic-observatory/bin/traffic-report today
+```
+
+Expected live evidence: Channel A router invariants are green, Channel B
+selected-client traffic reaches the home ingress and uses the managed split, and
+Channel C remains outside production checks until its own compatibility proof is
+complete.
+
+---
+
+## Architecture Decisions
+
+GhostRoute uses concise ADRs for decisions that affect routing behavior,
+runtime layout, secret handling, public command structure and monitoring
+contracts.
+
+| ADR | Decision |
+|---|---|
+| [0001](/docs/adr/0001-module-native-repo.md) | Keep the repository module-native rather than script-bucket oriented. |
+| [0002](/docs/adr/0002-scripts-reserved-policy.md) | Reserve `scripts/` for future cross-module utilities. |
+| [0003](/docs/adr/0003-local-only-health-alerts.md) | Keep health alerts local and read-only by default. |
+| [0004](/docs/adr/0004-deprecated-wireguard-cold-fallback.md) | Preserve WireGuard only as an explicit cold fallback. |
+| [0005](/docs/adr/0005-secrets-outside-git.md) | Keep real credentials and generated artifacts outside git. |
+| [0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Define initial channel terminology and no automatic B/C failover. |
+| [0007](/docs/adr/0007-channel-b-production-channel-c-planned.md) | Record current B/C channel maturity. |
+
+See [docs/adr/](/docs/adr/) for the full index and when to add a new record.
+
+---
+
+## Security Considerations
+
+The public repo intentionally contains implementation logic, placeholders and
+sanitized examples only. Real endpoints, listener ports, UUIDs, keys, QR
+payloads, admin paths and generated profiles stay in Vault or gitignored local
+directories. See [SECURITY.md](/SECURITY.md) and
+[modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md).
+
+---
+
 ## Detailed Documentation
 
 - [README-ru.md](README-ru.md) - localized documentation
+- [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and recovery boundaries
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
 - [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
@@ -506,6 +636,7 @@ See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-pro
 - [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md) - domain and static-network catalog management
 - [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
 - [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md) - vault, local secrets and pre-push scan
+- [modules/secrets-management/docs/vault-offsite-backup.md](/modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill
 - [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
 - [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics
 

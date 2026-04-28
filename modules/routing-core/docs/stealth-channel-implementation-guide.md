@@ -19,8 +19,8 @@ For the current end-to-end flow and observer model, see
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | Channel A sing-box redirect -> Reality/Vision |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
-| Channel B manual clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> managed sing-box split (Reality for managed domains, direct home WAN for others) | manual fallback only |
-| Channel C manual clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | manual fallback only |
+| Channel B selected clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> managed sing-box split (Reality for managed domains, direct home WAN for others) | selected-client production |
+| Channel C planned clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | planned compatibility only |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |
 
@@ -285,9 +285,10 @@ ansible/out/clients-channel-c/qr-index.html
 `router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files live under `clients-home/`, point at the home public IP first, and use router-side `home_clients[]` identities.
 
 Channel B and C artifacts live under `clients-channel-b/` and
-`clients-channel-c/` and are manual fallback profiles only. Channel B artifacts
-use home-first import when `channel_b_home_relay_enabled=true`, while Channel C
-stays direct-to-VPS. They should not replace normal Home Reality profiles.
+`clients-channel-c/`. Channel B artifacts are selected-client production
+credentials when `channel_b_home_relay_enabled=true`, while Channel C stays a
+planned direct-to-VPS compatibility lane until live proof. They should not
+replace normal Home Reality profiles.
 
 ### 4.5 Verify
 

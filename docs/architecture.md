@@ -4,20 +4,22 @@
 
 Текущая architecture model — layered routing setup: endpoint/client routing,
 managed channels, home router и VPS egress. Channel A остается основным
-Reality-first channel без активного legacy WireGuard. Channel B реализован как
-manual home-first lane, Channel C как manual compatibility lane.
+Reality-first router data plane без активного legacy WireGuard. Channel B
+реализован как production home-first lane для selected device-client profiles.
+Channel C — planned compatibility lane, который будет считаться production
+только после отдельного live client proof.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
 - Channel A — home-first managed channel: endpoint или LAN traffic попадает на
   home router, а managed traffic уходит через Reality/Vision на VPS.
-- Channel B — protocol-diverse fallback candidate в home-first форме:
+- Channel B — production selected-client lane в home-first форме:
   selected device подключается к отдельному домашнему XHTTP/TLS ingress, а
   роутер relays трафик дальше через local sing-box SOCKS c managed split: managed
   домены идут через Reality на VPS, non-managed домены уходят прямо в home WAN.
-- Channel C — manual fallback/compatibility lane: selected device использует
+- Channel C — planned compatibility lane: selected device использует
   Naive/Hysteria2/Trojan-compatible path к home or VPS endpoint, не меняя
-  Channel A.
+  Channel A/B.
 
 ```text
 Layer 0 endpoint/client routing
@@ -29,7 +31,7 @@ Layer 0 endpoint/client routing
 Layer 1 managed channels
   Channel A -> endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-  Channel C -> endpoint -> Naive/Hysteria2/Trojan fallback -> home or VPS endpoint
+  Channel C -> endpoint -> Naive/Hysteria2/Trojan compatibility -> home or VPS endpoint
 
 Layer 2 home router
   LAN/Wi-Fi clients
@@ -48,7 +50,7 @@ Layer 2 home router
          STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
          other destinations              -> direct-out via home WAN
 
-  Channel B manual live-tested protocol-diverse clients
+  Channel B selected device-client traffic
     -> VLESS+XHTTP+TLS profile to home public IP :<home-channel-b-port>
     -> router local Xray Channel B ingress
     -> local sing-box SOCKS inbound
@@ -87,12 +89,13 @@ profiles, not this general architecture document.
 ### Layer 1 — Managed Channels
 
 Layer 1 is the set of managed paths selected by Layer 0 or by explicit local
-choice:
+choice. Channel A and B are production paths with different client scopes;
+Channel C is planned until import, connection and real app egress are proven:
 
 ```text
 Channel A: endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel C: endpoint -> Naive/Hysteria2/Trojan fallback -> home or VPS endpoint
+Channel C: endpoint -> Naive/Hysteria2/Trojan compatibility -> home or VPS endpoint
 ```
 
 Channel A/B are home-first for managed traffic: the first network sees
@@ -130,7 +133,8 @@ Endpoint QR-клиент
 
 ### Channel B
 
-В текущей схеме Channel B работает как отдельная manual home-first lane:
+В текущей схеме Channel B работает как отдельная production selected-client
+home-first lane:
 
 ```text
 Endpoint client
@@ -168,8 +172,8 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay with managed split, Reality outbound to VPS |
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
-| Channel B | non-production manual live-tested home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
-| Channel C | manual compatibility NaiveProxy / HTTPS forward-proxy device-client lane |
+| Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
+| Channel C | planned compatibility NaiveProxy / HTTPS forward-proxy device-client lane |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
@@ -186,7 +190,8 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | `21-channel-b-router.yml` | Router Channel B | Channel B home XHTTP ingress + local relay add-on, isolated from Channel A REDIRECT ownership. |
 
 `21` включает home-first вариант Channel B на роутере. `11` нужен только для
-direct-XHTTP варианта Channel B. `12` остается отдельным manual Channel C lane.
+direct-XHTTP варианта Channel B.
+`12` остается отдельным planned Channel C compatibility lane.
 Эти playbooks не должны мутировать Channel A/Reality state.
 
 ## Routing Matrix
@@ -196,8 +201,8 @@ direct-XHTTP варианта Channel B. `12` остается отдельны�
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
 | Endpoint QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
-| Channel B manual live-tested profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | manual home-first egress |
-| Channel C manual profile | selected device only | Naive/Hysteria2/Trojan-compatible home or VPS endpoint | manual experimental device-client egress |
+| Channel B selected-client profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | production home-first egress |
+| Channel C planned profile | selected device only | Naive/Hysteria2/Trojan-compatible home or VPS endpoint | planned compatibility egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -265,10 +270,11 @@ Router `OUTPUT` is not transparently captured. Capturing router-originated
 traffic globally can loop sing-box outbound connections. Diagnostics that need
 Reality should use an explicit proxy or client profile.
 
-### Channel B/C Manual Clients
+### Channel B/C Device Clients
 
-Channel B and Channel C remain manual lanes and are documented separately from
-normal Home Reality and emergency Reality profiles.
+Channel B is production for selected device-client profiles and is documented
+separately from normal Home Reality and emergency Reality profiles. Channel C is
+planned until its import, connection and real app egress proof is complete.
 
 Current Channel B shape is home-first:
 
@@ -285,7 +291,7 @@ client app
 This keeps Channel B home-first while giving it a different first-hop
 fingerprint from Channel A.
 
-Channel C remains a manual compatibility lane using NaiveProxy, Hysteria2,
+Channel C remains a planned compatibility lane using NaiveProxy, Hysteria2,
 Trojan or HTTPS forward-proxy-compatible profiles to a home or VPS endpoint.
 
 ## Boot Hooks
@@ -321,6 +327,7 @@ Critical invariants:
 - no `RC_VPN_ROUTE`
 - no `0x1000` rule outside emergency fallback
 - `filter-AAAA` present while IPv6 is disabled
-- Channel B/C are not required for production health; any manual enablement
-  must keep Channel A REDIRECT/TUN/DNS ownership unchanged and remain explicit
-  (`11` + `21` for B, `12` for C)
+- Channel B is not required for Channel A health, and Channel C is not required
+  for production health until promoted; any channel enablement must keep Channel
+  A REDIRECT/TUN/DNS ownership unchanged and remain explicit (`11` + `21` for B,
+  `12` for C)

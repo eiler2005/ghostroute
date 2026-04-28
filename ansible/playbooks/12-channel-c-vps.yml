@@ -1,4 +1,4 @@
-- name: Deploy Channel C manual compatibility lane on VPS
+- name: Deploy Channel C planned compatibility lane on VPS
   hosts: vps_stealth
   become: true
   vars_files:
