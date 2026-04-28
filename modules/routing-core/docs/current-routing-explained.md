@@ -70,6 +70,18 @@ LAN/Wi-Fi и mobile Channels A/B/C должны показывать один и
 попадания на роутер должен идти по тем же router-side правилам managed split,
 что и Wi-Fi/LAN.
 
+Источников managed policy несколько:
+
+- ручной каталог `configs/dnsmasq-stealth.conf.add` плюс optional private
+  catalog;
+- auto-discovered `/jffs/configs/dnsmasq-autodiscovered.conf.add`;
+- static CIDR catalog `configs/static-networks.txt` (`VPN_STATIC_NETS`);
+- direct/skip policy `configs/domains-no-vpn.txt` и автоматический skip
+  российских TLD.
+
+Все managed-источники зеркалятся в sing-box rule-sets для mobile Channels A/B/C.
+Skip/direct источники не должны auto-добавляться в managed route.
+
 `VPN_DOMAINS` больше не должен существовать в steady state.
 
 ## DNS
