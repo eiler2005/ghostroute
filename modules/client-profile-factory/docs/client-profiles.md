@@ -54,6 +54,110 @@ Shadowrocket config can use domain, IP, GEOIP and rule lists to choose
 a VPN on/off switch. Other endpoint clients may implement the same idea with
 different UI labels or rule syntax.
 
+### Shadowrocket Proof Config For Channels A/B/C
+
+For GhostRoute channel proof tests, use one shared Shadowrocket Config for all
+three Shadowrocket-imported lanes:
+
+```ini
+[General]
+bypass-system = false
+ipv6 = false
+prefer-ipv6 = false
+
+[Rule]
+FINAL,PROXY
+```
+
+Generated location:
+
+```text
+ansible/out/shadowrocket-proof/ghostroute-shadowrocket-proof.conf
+```
+
+This file is imported as a Shadowrocket **Config file**, not as a server
+subscription QR. Shadowrocket subscription/QR import expects server URLs; when
+given a full `[General]`/`[Rule]` config it may fail with `cannot fetch subs
+servers` or import with warnings. Use the Config import UI or the Files share
+sheet.
+
+The proof config is shared because the Shadowrocket layer should only own the
+first hop:
+
+```text
+Shadowrocket proof config = endpoint Layer 0 policy
+Channel A/B/C server      = selected transport/server profile
+Router managed split      = direct-vs-Reality decision
+```
+
+During a proof, select the same config and switch only the active server:
+
+```text
+Channel A Reality server       -> PROXY
+Channel B XHTTP server         -> PROXY
+Channel C1-Shadowrocket server -> PROXY
+```
+
+Expected canaries:
+
+```text
+https://api.ipify.org   -> VPS IP
+http://api.ipify.org    -> VPS IP
+https://api64.ipify.org -> VPS IP or blocked/timeout, but not LTE provider IP
+```
+
+Router proof should show:
+
+```text
+inbound/vless[reality-in]: [iphone-N] inbound connection to api.ipify.org:443
+outbound/vless[reality-out]: outbound connection to api.ipify.org:443
+```
+
+For Channel C1-Shadowrocket, the inbound changes to
+`channel-c-shadowrocket-http-in`, but the post-ingress rule is the same:
+managed canaries continue to `reality-out`.
+
+#### Why The Geo/RU Shadowrocket Config Is Wrong For Proofs
+
+Generic Shadowrocket geo configs are designed for client-side split routing:
+Russian sites/direct IPs go `DIRECT`, and everything else goes `PROXY`. That is
+not the GhostRoute proof model. In GhostRoute, the iPhone should first reach the
+home router; then the router decides whether a destination is managed or direct.
+
+Avoid these settings in proof configs:
+
+```ini
+bypass-system = true
+skip-proxy = *.ru,*.su,*.рф
+GEOIP,RU,DIRECT
+RULE-SET,...,DIRECT
+fallback-dns-server = ...,system
+always-real-ip = *
+```
+
+Problems they caused or can cause:
+
+- `bypass-system = true` lets some iOS/system traffic bypass the proxy.
+- `GEOIP,RU,DIRECT`, `*.ru DIRECT` and broad `skip-proxy` move the
+  direct-vs-managed decision back to the phone instead of the router.
+- `fallback-dns-server = system` can fall back to the LTE/system resolver.
+- `always-real-ip = *` reduces fake-IP/tunnel ownership and can make the
+  client resolve real IPs before the router sees the flow.
+- `private-ip-answer = true` can be useful on ordinary LAN configs, but for
+  proof mode it can also encourage local/private answers to be treated as
+  direct/local. Leave it out unless a specific local-LAN workflow needs it.
+
+Useful ideas from the expanded config, but only after proof mode is stable:
+
+- `hijack-dns = :53` can help catch plain DNS in a richer production config.
+- `dns-fallback-system = false` prevents system resolver fallback.
+- `udp-policy-not-supported-behaviour = REJECT` makes unsupported UDP fail
+  closed instead of silently going direct.
+
+Do not add these to the proof config first. They change DNS/UDP behavior and
+made diagnosis harder. Start with minimal `FINAL,PROXY`, prove that Channel
+A/B/C reaches the router, then add stricter DNS controls deliberately.
+
 ## Mobile App Configuration (Critical) — OneXray
 
 Every Home Reality mobile profile must be checked in OneXray before judging LTE
@@ -181,6 +285,21 @@ Manual LTE check:
 4. Expected: resolver is not the LTE carrier resolver.
 5. Optional router log check: no fresh mobile direct-out entries to :53/:853.
 ```
+
+Managed-split canary check:
+
+```text
+http://api.ipify.org      -> expected managed egress, normally VPS
+https://api.ipify.org     -> expected managed egress, normally VPS
+https://api64.ipify.org   -> must not show the LTE/mobile-provider IP
+```
+
+If plain HTTP shows the VPS but `https://api64.ipify.org` shows the LTE carrier
+or mobile provider, treat it as a client-side Layer-0/IPv6 ownership failure
+first. Router-side `direct-out` for a remote Home Reality client exits through
+the home WAN; it cannot produce the cellular provider IP. In that situation,
+check the iOS client profile/app settings before changing router managed split
+rules or regenerating the VLESS URI.
 
 Router-side audit helper:
 

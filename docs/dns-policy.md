@@ -146,6 +146,20 @@ DNS = home/RF resolver   -> country-consistent but possibly less private
 many DNS servers shown   -> noisy resolver anycast/load-balancing, not a leak by itself
 ```
 
+Channel A managed-split canaries:
+
+```text
+http://api.ipify.org      -> managed egress, normally VPS
+https://api.ipify.org     -> managed egress, normally VPS
+https://api64.ipify.org   -> must not show LTE/mobile-provider IP
+```
+
+If HTTP `api.ipify.org` shows the VPS but `api64.ipify.org` shows the mobile
+provider, the managed split after the router is probably working for IPv4/TCP,
+while the iPhone app/profile is not owning every Layer-0 or IPv6 path. This is
+different from router `direct-out`: router `direct-out` for remote clients exits
+through the home WAN, not through LTE.
+
 On router:
 
 ```bash

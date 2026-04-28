@@ -66,5 +66,9 @@ explicit Ansible workflow.
 ## Related Docs
 
 - `modules/client-profile-factory/docs/client-profiles.md`
+
+Shadowrocket proof config for Channel A/B/C is generated under
+`ansible/out/shadowrocket-proof/`. Import it as a Shadowrocket Config file, not
+as a server subscription QR.
 - `docs/getting-started.md`
 - `modules/secrets-management/docs/secrets-management.md`
