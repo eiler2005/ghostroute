@@ -53,6 +53,16 @@ RULESET_SCRIPT="modules/routing-core/router/update-singbox-rule-sets.sh"
 assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/ipify.org/STEALTH_DOMAINS"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_domain: ipify.org"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_host: api.ipify.org"
+assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "https://api64.ipify.org   -> must not show LTE/mobile-provider IP"
+assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "ghostroute-shadowrocket-proof.conf"
+assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "FINAL,PROXY"
+assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "the home WAN; it cannot produce the cellular provider IP"
+assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "Shadowrocket Proof Config For Channels A/B/C"
+assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "Why The Geo/RU Shadowrocket Config Is Wrong For Proofs"
+assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "given a full"
+assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "or import with warnings"
+assert_contains_fixed "docs/dns-policy.md" "https://api64.ipify.org   -> must not show LTE/mobile-provider IP"
+assert_contains_fixed "docs/troubleshooting.md" "Channel A api64 показывает LTE IP"
 
 # Channel A LAN/Wi-Fi path: DNS-populated STEALTH_DOMAINS must enter the local
 # sing-box REDIRECT listener, static CIDRs use the same path, and QUIC must be

@@ -15,6 +15,7 @@
     channel_c_out_dir: "{{ playbook_dir }}/../out/clients-channel-c"
     channel_c_sfi_out_dir: "{{ channel_c_out_dir }}/c1-SFI"
     channel_c_shadowrocket_out_dir: "{{ channel_c_out_dir }}/1-SR"
+    shadowrocket_proof_out_dir: "{{ playbook_dir }}/../out/shadowrocket-proof"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
     channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
@@ -51,6 +52,14 @@
       tags:
         - channel_b_clients_only
         - channel_c_clients_only
+
+    - name: Ensure Shadowrocket proof output dir
+      ansible.builtin.file:
+        path: "{{ shadowrocket_proof_out_dir }}"
+        state: directory
+        mode: "0700"
+      tags:
+        - shadowrocket_proof
 
     - name: Validate Channel C1 client profile fields
       ansible.builtin.assert:
@@ -181,11 +190,11 @@
                 background: white;
               }
             </style>
-          </head>
-          <body>
-            <main>
-              <h1>Home Reality Client QR Codes</h1>
-              <p>Open this file locally and scan each QR from the target device app.</p>
+              </head>
+              <body>
+                <main>
+                  <h1>Home Reality Client QR Codes</h1>
+              <p>Open this file locally and scan each QR from the target device app. Read <a href="README.md">README.md</a> before LTE proof tests.</p>
               <section class="grid">
           {% for client in home_clients %}
                 <article><h2>{{ client.name }}-home</h2><img src="{{ client.name }}.png" alt="{{ client.name }} home QR"></article>
@@ -197,6 +206,123 @@
       no_log: true
       tags:
         - home_clients_only
+
+    - name: Render HOME Reality LTE proof checklist
+      ansible.builtin.copy:
+        dest: "{{ home_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # Home Reality / Channel A LTE proof checklist
+
+          These files are the normal Home Reality profiles. The `.conf` files
+          remain simple VLESS Reality import URIs; this checklist does not change
+          client profile content.
+
+          Before judging Channel A on LTE:
+
+          1. Disable Wi-Fi.
+          2. Disable iCloud Private Relay.
+          3. Disable Limit IP Address Tracking for Cellular/LTE.
+          4. Enable exactly one GhostRoute profile.
+          5. In the client app, make sure DNS is owned by the tunnel/profile.
+          6. In the client app, make sure IPv6 cannot bypass the profile.
+
+          Expected managed-split canaries:
+
+          ```text
+          http://api.ipify.org      -> VPS egress for managed split
+          https://api.ipify.org     -> VPS egress for managed split
+          https://api64.ipify.org   -> must not show LTE/mobile-provider IP
+          ```
+
+          If `http://api.ipify.org` shows the VPS but
+          `https://api64.ipify.org` shows the LTE/mobile-provider IP, the router
+          path is not the primary suspect. That pattern means the iPhone client
+          app did not own every Layer-0/IPv6 flow before Channel A, because a
+          router-side `direct-out` fallback would exit through the home WAN, not
+          through the mobile carrier.
+
+          For OneXray/FoXray/V2Box-style clients, check the app equivalents of:
+
+          ```text
+          Fake DNS / tunnel DNS: ON
+          Override system DNS: ON
+          Bypass system DNS: ON when exposed
+          Sniffing: ON
+          Domain Strategy: AsIs
+          Mux / Fragment / TFO: OFF
+          IPv6 direct bypass: OFF
+          ```
+
+          Keep these canaries separate from router-side IPv6 proof. The router
+          intentionally runs IPv4-only with dnsmasq `filter-AAAA`; LTE
+          `api64` showing the carrier IP is a client/app ownership issue until
+          router logs prove otherwise.
+      tags:
+        - home_clients_only
+
+    - name: Render shared Shadowrocket proof config
+      ansible.builtin.copy:
+        dest: "{{ shadowrocket_proof_out_dir }}/ghostroute-shadowrocket-proof.conf"
+        mode: "0600"
+        content: |
+          [General]
+          bypass-system = false
+          ipv6 = false
+          prefer-ipv6 = false
+
+          [Rule]
+          FINAL,PROXY
+      tags:
+        - shadowrocket_proof
+
+    - name: Render shared Shadowrocket proof README
+      ansible.builtin.copy:
+        dest: "{{ shadowrocket_proof_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # GhostRoute Shadowrocket Proof Config
+
+          This is the shared Shadowrocket proof config for Channel A, Channel B
+          and C1-Shadowrocket. It is a Layer 0 endpoint policy, not a server
+          profile.
+
+          Import the config as a Shadowrocket Config file, not as a server
+          subscription QR. QR subscription import expects server URLs and can
+          fail with `cannot fetch subs servers` for full config files.
+
+          ```ini
+          [General]
+          bypass-system = false
+          ipv6 = false
+          prefer-ipv6 = false
+
+          [Rule]
+          FINAL,PROXY
+          ```
+
+          During proof tests, select this config and set the active server to
+          the channel being tested:
+
+          ```text
+          Channel A Reality server       -> PROXY
+          Channel B XHTTP server         -> PROXY
+          Channel C1-Shadowrocket server -> PROXY
+          ```
+
+          Expected managed canaries:
+
+          ```text
+          https://api.ipify.org   -> VPS IP
+          http://api.ipify.org    -> VPS IP
+          https://api64.ipify.org -> VPS IP or blocked/timeout, but not LTE provider IP
+          ```
+
+          Do not use a client-side Geo/RU split proof config for GhostRoute
+          channel tests. The router owns direct-vs-managed decisions after the
+          endpoint reaches Channel A/B/C.
+      tags:
+        - shadowrocket_proof
 
     - name: Render emergency direct-VPS URI for each mobile client
       ansible.builtin.copy:

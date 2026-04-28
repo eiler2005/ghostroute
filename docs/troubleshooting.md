@@ -152,6 +152,45 @@ Found many DNS servers
 5. IPv6 absent или явно routed through tunnel.
 ```
 
+### Channel A api64 показывает LTE IP
+
+Симптом:
+
+```text
+http://api.ipify.org      -> VPS IP
+https://api.ipify.org     -> timeout или нестабильно
+https://api64.ipify.org   -> LTE/mobile-provider IP
+```
+
+Первичная трактовка: Channel A IPv4/TCP path уже доходит до роутера и дальше в
+managed split, но iOS client app не владеет всем Layer-0/IPv6 трафиком. Если бы
+это был router-side `direct-out`, внешний сайт увидел бы home WAN/RF IP, а не
+LTE provider IP.
+
+Что проверить до изменения профилей:
+
+```text
+1. На iPhone остался ровно один активный VPN/profile.
+2. В приложении профиля включены tunnel/Fake DNS, Override system DNS и sniffing.
+3. В приложении нет direct IPv6 bypass; IPv6 либо отключён, либо routed через tunnel.
+4. Domain Strategy не заставляет локальный/LTE DNS резолв до входа в туннель.
+5. После изменения настроек: airplane mode on/off и полный restart VPN profile.
+```
+
+Router-side sanity check:
+
+```bash
+ssh admin@192.168.50.1 '
+  tail -2500 /opt/var/log/sing-box.log |
+    grep -E "api(64)?\\.ipify|reality-in|redirect-in|reality-out|direct-out" |
+    tail -160
+'
+```
+
+Expected: если `api64` не появляется рядом с `inbound/vless[reality-in]`, запрос
+не дошёл до Channel A ingress. Сначала чините iPhone client ownership, не
+router managed split.
+
 ## Mobile Home QR Не Работает
 
 ```sh
