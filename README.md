@@ -162,6 +162,10 @@ core, not just a set of firewall scripts:
   uses, keeps manual and auto-discovered rules separated, and feeds
   `STEALTH_DOMAINS` / `VPN_STATIC_NETS` without requiring VPN apps on home
   devices.
+- **DNS Policy** — channel proof guidance for DNS leak vs resolver fingerprint:
+  the primary goal is no DNS leakage to the mobile operator; resolver geography
+  shown by BrowserLeaks is a secondary consistency signal. See
+  [docs/dns-policy.md](/docs/dns-policy.md).
 - **Performance Diagnostics Toolkit** — checks and documentation for latency,
   retransmits, TCP tuning, MSS clamp, keepalive behavior and LTE/Home Reality
   performance symptoms, so speed issues can be diagnosed separately from

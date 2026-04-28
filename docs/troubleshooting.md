@@ -2,6 +2,8 @@
 
 Для скорости LTE/Home Reality, MTU/MSS, TCP buffer и `connlimit` диагностики см.
 [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md).
+Для DNS leak / BrowserLeaks интерпретации по Channel A/B/C см.
+[dns-policy.md](/docs/dns-policy.md).
 
 ## Сначала
 
@@ -116,6 +118,39 @@ ssh admin@192.168.50.1 '
 ```
 
 После этого выключите/включите Wi-Fi на клиенте или очистите DNS cache.
+
+## BrowserLeaks DNS Показывает Google/Cloudflare
+
+Это не обязательно DNS leak к мобильному оператору.
+
+Плохой сигнал:
+
+```text
+DNS resolver = LTE/mobile carrier
+IPv6 address = прямой LTE/mobile address
+```
+
+Шумный, но не обязательно плохой сигнал:
+
+```text
+Public IP = home/RF
+DNS = Google/Cloudflare/Quad9, иногда другая страна
+Found many DNS servers
+```
+
+Такой результат означает mixed fingerprint, но не доказывает, что мобильный
+оператор увидел DNS-запросы. Текущий default — privacy-first: DNS должен идти
+через активный канал/tunnel и не должен уходить напрямую к LTE resolver.
+
+Для proof-тестов на iPhone:
+
+```text
+1. LTE only, Wi-Fi off.
+2. iCloud Private Relay / Limit IP Address Tracking off.
+3. Включён ровно один GhostRoute profile.
+4. BrowserLeaks DNS не показывает mobile carrier.
+5. IPv6 absent или явно routed through tunnel.
+```
 
 ## Mobile Home QR Не Работает
 

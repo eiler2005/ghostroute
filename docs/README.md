@@ -18,6 +18,7 @@ local runbooks or historical planning notes.
 - [operational-modules.md](/docs/operational-modules.md) - canonical module map and ownership table.
 - [architecture.md](/docs/architecture.md) - high-level GhostRoute architecture.
 - [channels.md](/docs/channels.md) - compact handoff view of Channel A, B and C.
+- [dns-policy.md](/docs/dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
 - [channel-c.md](/docs/channel-c.md) - detailed Channel C C1 native Naive and Shadowrocket compatibility status.
 - [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and security workflow.
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and verification control plane.
