@@ -29,9 +29,10 @@ mobile_checkin_enabled: "{{ vault_mobile_checkin_enabled | default(false) }}"
 mobile_checkin_public_host: "{{ vault_mobile_checkin_public_host | default('') }}"
 mobile_checkin_token: "{{ vault_mobile_checkin_token | default('') }}"
 
-# Channel B and C are manual QR/profile-only lanes. They share public :443 via
-# Caddy SNI and must not touch current Reality SNI. Channel B may be consumed
-# directly by clients or via the optional home-first router relay add-on.
+# Channel B is selected-client production and Channel C is planned
+# compatibility. They share public :443 via Caddy SNI and must not touch current
+# Reality SNI. Channel B may be consumed directly by clients or via the
+# home-first router relay add-on.
 channel_b_xhttp_enabled: "{{ vault_channel_b_xhttp_enabled | default(false) }}"
 channel_b_xhttp_image: "{{ vault_channel_b_xhttp_image | default('ghcr.io/xtls/xray-core:26.3.27') }}"
 channel_b_xhttp_public_host: "{{ vault_channel_b_xhttp_public_host | default('') }}"

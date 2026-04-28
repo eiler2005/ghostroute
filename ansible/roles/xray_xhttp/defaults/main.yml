@@ -1,5 +1,5 @@
 ---
-# Channel B XHTTP is the VPS-side backend for manual Channel B lanes (direct
+# Channel B XHTTP is the VPS-side backend for selected-client Channel B lanes (direct
 # device mode or home-first router relay mode). It does not participate in
 # Channel A router REDIRECT/DNS/TUN ownership or automatic failover.
 channel_b_xhttp_enabled: false

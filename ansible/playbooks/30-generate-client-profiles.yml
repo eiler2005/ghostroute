@@ -425,8 +425,9 @@
         content: |
           # Channel B Local Import Checklist
 
-          Channel B is a manual home-first lane. Import these profiles only for
-          explicit device tests; they are not automatic production failover.
+          Channel B is a selected-client production home-first lane. Import
+          these profiles only for explicit selected clients; they are not
+          automatic production failover.
 
           ## Layer 0 Endpoint Policy
 

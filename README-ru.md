@@ -23,7 +23,7 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
   GEOIP и rule-list policy; это routing layer, а не просто VPN toggle.
 - Layer 1 — managed channels. Channel A и Channel B работают home-first:
   первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
-  остается ручной compatibility lane.
+  остается planned compatibility lane до live proof.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 — VPS. Он служит удаленным egress для выбранного managed traffic.
@@ -35,10 +35,10 @@ foreign, unknown или selected направления идут `MANAGED/PROXY`
 country suffixes, GEOIP lists и service lists относятся к private deployment
 profiles, а не к общей архитектуре.
 
-Только Channel A входит в production automatic router data plane. Channel B —
-опциональный ручной add-on с отдельным ingress/relay и без захвата Channel A
-REDIRECT. Channel C остается planned/manual compatibility lane. Автоматический
-failover через B/C не включается.
+Только Channel A входит в automatic router data plane. Channel B — production
+lane для selected device-client profiles с отдельным ingress/relay и без
+захвата Channel A REDIRECT. Channel C остается planned compatibility lane.
+Автоматический failover через B/C не включается.
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
 `wgc1_*` NVRAM сохранён только как cold fallback.
@@ -166,7 +166,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS и manual Channel B/C artifacts from Vault
+  Client Profiles     -> QR/VLESS, selected-client B и planned C artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
