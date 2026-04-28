@@ -64,8 +64,11 @@ ipset=/youtube.com/STEALTH_DOMAINS
 `www.youtube.com`, `music.youtube.com` и будущие `*.youtube.com`.
 
 `api.ipify.org` закреплён через `ipset=/ipify.org/STEALTH_DOMAINS` как
-проверочный managed-домен. Если всё собрано правильно, LAN/Wi-Fi и mobile
-Channels A/B/C должны показывать один и тот же VPS egress на этом checker.
+проверочный managed-домен. Это только canary: если всё собрано правильно,
+LAN/Wi-Fi и mobile Channels A/B/C должны показывать один и тот же VPS egress на
+этом checker. Общий контракт шире: любой managed-домен или static CIDR после
+попадания на роутер должен идти по тем же router-side правилам managed split,
+что и Wi-Fi/LAN.
 
 `VPN_DOMAINS` больше не должен существовать в steady state.
 

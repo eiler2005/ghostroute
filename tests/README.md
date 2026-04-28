@@ -38,7 +38,9 @@ These tests validate:
 - health monitor JSONL/status aggregation, local alert ledger, summary rendering
 - VPS observer fixtures and merged GhostRoute health report rendering
 - module-native entrypoints and reserved `scripts/` policy
-- A/B/C managed-split parity for the pinned checker domain `api.ipify.org`
+- A/B/C managed-split parity: all home-first mobile channels must apply the
+  same post-router `STEALTH_DOMAINS` / `VPN_STATIC_NETS` policy as Wi-Fi/LAN.
+  `api.ipify.org` is only the pinned canary for that broader invariant.
 
 They do not connect to the router.
 
@@ -84,7 +86,9 @@ Expected health semantics:
 - LAN UDP/443 DROP rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
 - `api.ipify.org` is pinned through `ipify.org` and mirrored into the sing-box
   `stealth-domains` rule-set, so LAN/Wi-Fi and Channels A/B/C classify it the
-  same way.
+  same way. This checker does not replace the general rule: all managed
+  catalog domains/static CIDRs must follow the shared managed split after the
+  traffic reaches the router.
 - legacy `fwmark 0x2000`, table `200`, and `singbox0` are absent.
 - `br0 -> RC_VPN_ROUTE` is disabled.
 - `OUTPUT -> RC_VPN_ROUTE` is disabled.
