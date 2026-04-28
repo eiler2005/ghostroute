@@ -47,6 +47,7 @@ MOBILE_LOG="$TMPDIR/mobile-reality.log"
 MOBILE_TOTALS="$TMPDIR/mobile-reality-totals.txt"
 MOBILE_CLIENTS="$TMPDIR/mobile-reality-clients.txt"
 MOBILE_DESTS="$TMPDIR/mobile-reality-dests.txt"
+CHANNEL_COMBINED_LOG="$TMPDIR/channel-combined.log"
 CHANNEL_B_RELAY_LOG="$TMPDIR/channel-b-relay.log"
 CHANNEL_B_RELAY_TOTALS="$TMPDIR/channel-b-relay-totals.txt"
 CHANNEL_B_HOME_STATE="$TMPDIR/channel-b-home-state.txt"
@@ -324,8 +325,9 @@ router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_con
 router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' > "$LAN_BYTES_CURRENT"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/mobile-reality-counters.tsv\" ] && cat \"\$STATE_DIR/mobile-reality-counters.tsv\" || true" > "$MOBILE_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/mobile-reality-counters-snapshot ] && /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null || true' > "$MOBILE_BYTES_CURRENT"
-router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$MOBILE_LOG"
-router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_B_RELAY_LOG"
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
+grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$MOBILE_LOG" || true
+grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_B_RELAY_LOG" || true
 
 iface_current() {
   local iface="$1"
