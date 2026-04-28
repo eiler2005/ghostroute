@@ -16,6 +16,16 @@ home_reality_dest_host: gateway.icloud.com
 home_reality_dest_port: 443
 home_reality_server_names:
   - gateway.icloud.com
+channel_c_home_enabled: false
+channel_c_home_listen: 0.0.0.0
+channel_c_home_public_host: ""
+channel_c_home_public_port: 443
+channel_c_home_ingress_port: ""
+channel_c_home_clients: []
+channel_c_home_tls_cert_path: /opt/etc/sing-box/channel-c-home-fullchain.pem
+channel_c_home_tls_key_path: /opt/etc/sing-box/channel-c-home-privkey.pem
+channel_c_home_tls_cert_pem: ""
+channel_c_home_tls_key_pem: ""
 clients: []
 home_clients: []
 emergency_clients: []

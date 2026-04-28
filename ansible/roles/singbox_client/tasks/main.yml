@@ -21,6 +21,18 @@
       If < 1.9, manually fetch aarch64 binary from
       https://github.com/SagerNet/sing-box/releases and place at {{ singbox_bin_path }}.
 
+- name: Require sing-box version with Naive inbound support for Channel C1
+  ansible.builtin.raw: |
+    V=$({{ singbox_bin_path }} version 2>/dev/null | head -1 | awk '{print $3}')
+    V=${V#v}
+    MAJOR=${V%%.*}
+    REST=${V#*.}
+    MINOR=${REST%%.*}
+    [ -n "$MAJOR" ] && [ -n "$MINOR" ] || exit 1
+    [ "$MAJOR" -gt 1 ] || { [ "$MAJOR" -eq 1 ] && [ "$MINOR" -ge 13 ]; }
+  changed_when: false
+  when: channel_c_home_enabled | default(false) | bool
+
 - name: Ensure sing-box config dir
   ansible.builtin.file:
     path: "{{ singbox_config_path | dirname }}"
@@ -63,6 +75,70 @@
       - dnscrypt_port | int > 0
       - home_reality_ingress_port | int > 0
     fail_msg: "Channel A router ports must resolve before rendering sing-box config."
+
+- name: Validate Channel C1 home Naive settings
+  ansible.builtin.assert:
+    that:
+      - channel_c_home_public_host | string | length > 0
+      - channel_c_home_public_port | int > 0
+      - channel_c_home_public_port | int <= 65535
+      - channel_c_home_ingress_port | int > 1024
+      - channel_c_home_ingress_port | int <= 65535
+      - channel_c_home_ingress_port | int not in [443, 1080, 1194, 51820, 8080, 8443]
+      - channel_c_home_ingress_port | string != singbox_redirect_port | string
+      - channel_c_home_ingress_port | string != singbox_dnscrypt_socks_port | string
+      - channel_c_home_ingress_port | string != dnscrypt_port | string
+      - channel_c_home_ingress_port | string != home_reality_ingress_port | string
+      - channel_c_home_ingress_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_c_home_public_port | string != home_reality_ingress_port | string
+      - channel_c_home_public_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_c_home_clients | length > 0
+      - (channel_c_home_clients | selectattr('username', 'defined') | list | length) == (channel_c_home_clients | length)
+      - (channel_c_home_clients | selectattr('password', 'defined') | list | length) == (channel_c_home_clients | length)
+      - channel_c_home_tls_cert_path | string | length > 0
+      - channel_c_home_tls_key_path | string | length > 0
+      - channel_c_home_tls_cert_path != channel_c_home_tls_key_path
+    fail_msg: "Channel C1 needs a home host, public/internal ports, TLS cert/key paths and Naive username/password clients."
+  when: channel_c_home_enabled | default(false) | bool
+  no_log: true
+
+- name: Ensure Channel C1 TLS directory exists
+  ansible.builtin.file:
+    path: "{{ item | dirname }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ channel_c_home_tls_cert_path }}"
+    - "{{ channel_c_home_tls_key_path }}"
+  when: channel_c_home_enabled | default(false) | bool
+
+- name: Install Channel C1 TLS certificate from vault content when supplied
+  ansible.builtin.copy:
+    dest: "{{ channel_c_home_tls_cert_path }}"
+    content: "{{ channel_c_home_tls_cert_pem }}"
+    mode: "0644"
+  when:
+    - channel_c_home_enabled | default(false) | bool
+    - channel_c_home_tls_cert_pem | default('') | length > 0
+  no_log: true
+
+- name: Install Channel C1 TLS private key from vault content when supplied
+  ansible.builtin.copy:
+    dest: "{{ channel_c_home_tls_key_path }}"
+    content: "{{ channel_c_home_tls_key_pem }}"
+    mode: "0600"
+  when:
+    - channel_c_home_enabled | default(false) | bool
+    - channel_c_home_tls_key_pem | default('') | length > 0
+  no_log: true
+
+- name: Validate Channel C1 TLS certificate files exist
+  ansible.builtin.raw: |
+    [ -s "{{ channel_c_home_tls_cert_path }}" ] &&
+    [ -s "{{ channel_c_home_tls_key_path }}" ]
+  changed_when: false
+  when: channel_c_home_enabled | default(false) | bool
+  no_log: true
 
 - name: Install sing-box rule-set generator
   ansible.builtin.copy:

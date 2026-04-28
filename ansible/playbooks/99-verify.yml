@@ -11,14 +11,6 @@
       changed_when: false
       when: stealth_caddy_mode == 'system_listener_wrapper'
 
-    - name: Host Caddy has Naive forward_proxy module when Channel C Naive is enabled
-      ansible.builtin.shell: "caddy list-modules | grep -q '^http.handlers.forward_proxy$'"
-      changed_when: false
-      when:
-        - stealth_caddy_mode == 'system_listener_wrapper'
-        - channel_c_naive_enabled | default(false) | bool
-        - channel_c_naive_backend | default('caddy_forward_proxy') == 'caddy_forward_proxy'
-
     - name: Caddy listening on :443
       ansible.builtin.shell: "ss -tlnp '( sport = :443 )' | grep -q caddy"
       changed_when: false
@@ -39,7 +31,7 @@
       changed_when: false
       when: channel_b_xhttp_enabled | default(false) | bool
 
-    - name: Channel B/C Caddy routes are present when enabled
+    - name: Channel B Caddy route is present when enabled
       ansible.builtin.shell: |
         set -e
         {% if channel_b_xhttp_enabled | default(false) | bool %}
@@ -48,40 +40,8 @@
         {% else %}
         true
         {% endif %}
-        {% if channel_c_naive_enabled | default(false) | bool %}
-        grep -q '{{ channel_c_naive_public_host }}' {{ system_caddyfile_path }}
-        {% if channel_c_naive_backend | default('caddy_forward_proxy') == 'squid_tls' %}
-        grep -q '127.0.0.1:{{ channel_c_naive_squid_local_port }}' {{ system_caddyfile_path }}
-        {% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid'] %}
-        grep -q '127.0.0.1:{{ channel_c_naive_stunnel_local_port }}' {{ system_caddyfile_path }}
-        {% elif channel_c_naive_backend | default('caddy_forward_proxy') == 'tinyproxy' %}
-        grep -q '127.0.0.1:{{ channel_c_naive_tinyproxy_local_port }}' {{ system_caddyfile_path }}
-        {% else %}
-        grep -q 'forward_proxy' {{ system_caddyfile_path }}
-        {% endif %}
-        {% else %}
-        true
-        {% endif %}
       changed_when: false
-      when: (channel_b_xhttp_enabled | default(false) | bool) or (channel_c_naive_enabled | default(false) | bool)
-
-    - name: Channel C Squid backend is running when enabled
-      ansible.builtin.shell: |
-        systemctl is-active --quiet channel-c-squid &&
-        ss -tlnp '( sport = :{{ channel_c_naive_squid_local_port }} )' | grep -q '127.0.0.1:{{ channel_c_naive_squid_local_port }}'
-      changed_when: false
-      when:
-        - channel_c_naive_enabled | default(false) | bool
-        - channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_squid', 'squid_tls']
-
-    - name: Channel C stunnel backend is running when enabled
-      ansible.builtin.shell: |
-        systemctl is-active --quiet channel-c-stunnel &&
-        ss -tlnp '( sport = :{{ channel_c_naive_stunnel_local_port }} )' | grep -q '127.0.0.1:{{ channel_c_naive_stunnel_local_port }}'
-      changed_when: false
-      when:
-        - channel_c_naive_enabled | default(false) | bool
-        - channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid']
+      when: channel_b_xhttp_enabled | default(false) | bool
 
     - name: maxtg_bridge container still running
       ansible.builtin.shell: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q deploy-bridge-1"
@@ -196,11 +156,15 @@
         GHOSTROUTE_DNSCRYPT_SOCKS_PORT="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(port_by_tag dnscrypt-socks-in)}"
         GHOSTROUTE_HOME_REALITY_PORT="${GHOSTROUTE_HOME_REALITY_PORT:-$(port_by_tag reality-in)}"
         GHOSTROUTE_CHANNEL_B_HOME_PORT="${GHOSTROUTE_CHANNEL_B_HOME_PORT:-{{ channel_b_home_ingress_port | default('') }}}"
+        GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT:-{{ channel_c_home_public_port | default('') }}}"
+        GHOSTROUTE_CHANNEL_C_HOME_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PORT:-$(port_by_tag channel-c-naive-in)}"
         GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-$(awk -F'#' '/^server=127[.]0[.]0[.]1#/ { gsub(/[^0-9].*/, "", $2); print $2; exit }' /jffs/configs/dnsmasq.conf.add 2>/dev/null)}"
         printf 'GHOSTROUTE_REDIRECT_PORT=%s\n' "$GHOSTROUTE_REDIRECT_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_SOCKS_PORT"
         printf 'GHOSTROUTE_HOME_REALITY_PORT=%s\n' "$GHOSTROUTE_HOME_REALITY_PORT"
         printf 'GHOSTROUTE_CHANNEL_B_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_B_HOME_PORT"
+        printf 'GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT"
+        printf 'GHOSTROUTE_CHANNEL_C_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_PORT"
       register: router_runtime_ports
       changed_when: false
@@ -212,6 +176,8 @@
         singbox_dnscrypt_socks_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_SOCKS_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_SOCKS_PORT=', '') }}"
         home_reality_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_HOME_REALITY_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_HOME_REALITY_PORT=', '') }}"
         channel_b_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_B_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_B_HOME_PORT=', '') }}"
+        channel_c_home_public_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=', '') }}"
+        channel_c_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PORT=', '') }}"
         dnscrypt_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_PORT=', '') }}"
       no_log: true
 
@@ -395,6 +361,55 @@
       changed_when: false
       when: channel_b_home_relay_enabled | default(false) | bool
 
+    - name: Channel C1 Naive ingress listener is running when enabled
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_home_ingress_port }}'"
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+
+    - name: Channel C1 TLS files are present when enabled
+      ansible.builtin.shell: |
+        [ -s {{ channel_c_home_tls_cert_path | quote }} ] &&
+        [ -s {{ channel_c_home_tls_key_path | quote }} ]
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel C1 public port redirects to internal Naive listener when needed
+      ansible.builtin.shell: |
+        wan_if="$(nvram get wan0_ifname)"
+        iptables -t nat -S PREROUTING |
+          grep -q -- "-i ${wan_if} -p tcp .*--dport {{ channel_c_home_public_port }} .*REDIRECT --to-ports {{ channel_c_home_ingress_port }}"
+      changed_when: false
+      when:
+        - channel_c_home_enabled | default(false) | bool
+        - channel_c_home_public_port | string != channel_c_home_ingress_port | string
+
+    - name: Channel C1 Naive ingress is allowed by INPUT firewall when enabled
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ channel_c_home_ingress_port }} .*ACCEPT'"
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+
+    - name: Channel C1 Naive ingress connlimit DROP precedes ACCEPT when enabled
+      ansible.builtin.shell: |
+        iptables -S INPUT | awk '
+          /--dport {{ channel_c_home_ingress_port }}/ {
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ channel_c_home_connlimit_above | default(500) }}/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
+          }
+          END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
+        '
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+
+    - name: Channel C1 Naive ingress has MSS clamp when enabled
+      ansible.builtin.shell: |
+        iptables -t mangle -S PREROUTING |
+          grep -q -- '--dport {{ channel_c_home_public_port }} .*TCPMSS --set-mss {{ channel_c_home_mss | default(1360) }}' &&
+        iptables -t mangle -S OUTPUT |
+          grep -q -- '--sport {{ channel_c_home_ingress_port }} .*TCPMSS --set-mss {{ channel_c_home_mss | default(1360) }}'
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+
     - name: Router TCP high-BDP tuning is applied
       ansible.builtin.shell: |
         tcp_rmem="$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)"
@@ -431,7 +446,11 @@
       ansible.builtin.shell: |
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
         printf '%s' "$cfg" | grep -Fq '"tag":"reality-in","listen"' &&
-        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ home_reality_ingress_port }},"sniff":true'
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ home_reality_ingress_port }}' &&
+        {
+          printf '%s' "$cfg" | grep -Fq '"listen_port":{{ home_reality_ingress_port }},"sniff":true' ||
+          printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","action":"sniff"'
+        }
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
@@ -451,12 +470,30 @@
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
         printf '%s' "$cfg" | grep -Fq '"tag":"channel-b-relay-socks"' &&
         printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }}' &&
-        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }},"sniff":true' &&
+        {
+          printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }},"sniff":true' ||
+          printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","action":"sniff"'
+        } &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","outbound":"direct-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":[53,853],"outbound":"reality-out"'
       changed_when: false
       when: channel_b_home_relay_enabled | default(false) | bool
+
+    - name: sing-box has Channel C1 Naive inbound with managed split routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"type":"naive"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-c-naive-in"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_c_home_ingress_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"certificate_path":"{{ channel_c_home_tls_cert_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"key_path":"{{ channel_c_home_tls_key_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","action":"sniff"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":[53,853],"outbound":"reality-out"'
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
 
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"

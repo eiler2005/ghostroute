@@ -137,18 +137,19 @@ Expected:
 
 Channel B is production для selected device-client profiles, но не является
 automatic failover для Channel A и не участвует в health-check Channel A.
-Channel C остается planned compatibility lane до отдельного live proof. B/C не
-должны менять router REDIRECT/DNS/TUN и не дают automatic failover.
+Channel C остается planned C1 home-first lane до отдельного SFI/sing-box live
+proof. B/C не должны менять router REDIRECT/DNS/TUN и не дают automatic
+failover.
 
-Для Channel B проверок access logs пишутся в Caddy stdout/journal. Для Channel C
-вариантов фактический лог зависит от выбранного backend: Caddy `forward_proxy`
-пишет в Caddy HTTP logger, а compatibility backend может писать в Squid/stunnel
-logs.
+Для Channel B direct-mode проверок access logs пишутся в Caddy stdout/journal.
+Для Channel C1 основной runtime signal находится на роутере в sing-box log и
+iptables counters.
 
 ```bash
-ssh deploy@<vps-ip> '
-  sudo journalctl -u caddy --since "15 minutes ago" -o cat |
-    grep -E "channel_b_xhttp|channel_c_naive" | tail -80
+ssh admin@<router-ip> '
+  tail -200 /opt/var/log/sing-box.log |
+    grep -E "channel-b-relay-socks|channel-c-naive-in|reality-out|direct-out" |
+    tail -80
 '
 ```
 
@@ -156,13 +157,11 @@ Expected:
 
 - Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
   hostname, and either the configured random path or `404` for wrong paths.
-- Future Channel C `caddy_forward_proxy` requests show logger `channel_c_naive`.
-- Future Channel C `stunnel_squid` requests show in
-  `/var/log/squid/channel-c-access.log` and `/var/log/stunnel4/channel-c.log`.
-- Historical Channel C Shadowrocket HTTPS-proxy profiles are kept import-safe: no
-  custom UDP/QUIC rule is embedded in the generated `.conf`, and proxy line is
-  generated in keyword form:
-  `https, <host>, 443, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.
+- Channel C1 requests enter `channel-c-naive-in`.
+- Managed Channel C1 destinations continue to `reality-out`.
+- Non-managed Channel C1 destinations use `direct-out`.
+- Shadowrocket Channel C1 compatibility config uses keyword auth form:
+  `https, <home-host>, <public-port>, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.
 - No Caddy restart loop: `sudo systemctl is-active caddy` returns `active`.
 
 ## VPS Emergency Clients Drift

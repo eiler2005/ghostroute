@@ -26,9 +26,9 @@ The control machine runs playbooks from this directory:
 cd ansible
 ansible-playbook playbooks/10-stealth-vps.yml
 ansible-playbook playbooks/11-channel-b-vps.yml
-ansible-playbook playbooks/12-channel-c-vps.yml
 ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/21-channel-b-router.yml
+ansible-playbook playbooks/22-channel-c-router.yml
 ansible-playbook playbooks/30-generate-client-profiles.yml
 ansible-playbook playbooks/99-verify.yml
 ```
@@ -51,7 +51,7 @@ described in the root README and `docs/architecture.md`.
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
-| Device-client lanes | Selected-client B artifacts, planned C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
+| Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
 Playbook ownership is intentionally narrow:
 
@@ -60,18 +60,19 @@ Playbook ownership is intentionally narrow:
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
-| `12-channel-c-vps.yml` | VPS | Channel C Caddy/backend compatibility path. | Refresh the planned Naive/HTTPS lane without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
+| `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh Channel C without touching VPS Caddy backends or Channel A ownership. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
 Channel B is production for selected device-client profiles, but it is not an
 automatic failover path for Channel A. Channel B can run in direct-XHTTP VPS
 mode (`11`) or in home-first mode (`21`) where router ingress is XHTTP and
-upstream egress is reused via sing-box Reality. Channel C remains a planned
-VPS-only compatibility lane (`12`) until live client proof. Neither channel may
-mutate Channel A REDIRECT ownership or introduce automatic failover.
+upstream egress is reused via sing-box Reality. Channel C is C1 home-first
+Naive (`22`): clients connect to the home endpoint first, then router-side
+sing-box applies the same managed split. Neither channel may mutate Channel A
+REDIRECT ownership or introduce automatic failover.
 
 ## Directory Map
 
@@ -97,9 +98,9 @@ scripts/                         # Ansible-local helper scripts
 | `00-bootstrap-vps.yml` | VPS | Mutating | Installs base packages and prepares the VPS stack directory. |
 | `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, UFW policy and VPS health observer. |
 | `11-channel-b-vps.yml` | VPS | Mutating | Deploys the optional direct-mode Channel B XHTTP backend and checks the existing Caddy route. |
-| `12-channel-c-vps.yml` | VPS | Mutating | Deploys the Channel C compatibility backend/Caddy path. |
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
+| `22-channel-c-router.yml` | Router | Mutating | Deploys the Channel C1 home-first Naive ingress. |
 | `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 
@@ -144,12 +145,11 @@ ansible-playbook playbooks/00-bootstrap-vps.yml
 ansible-playbook playbooks/10-stealth-vps.yml
 ```
 
-Refresh Channel B/C VPS lanes:
+Refresh Channel B direct VPS lane:
 
 ```bash
 cd ansible
 ansible-playbook playbooks/11-channel-b-vps.yml
-ansible-playbook playbooks/12-channel-c-vps.yml
 ```
 
 Refresh Channel B home-first router add-on:
@@ -158,6 +158,17 @@ Refresh Channel B home-first router add-on:
 cd ansible
 ansible-playbook playbooks/21-channel-b-router.yml
 ```
+
+Refresh Channel C1 home-first router add-on:
+
+```bash
+cd ansible
+ansible-playbook playbooks/22-channel-c-router.yml
+```
+
+C1 uses sing-box `naive` inbound/outbound support, so the router binary must be
+`>= 1.13`. The playbook fails fast when C1 is enabled and `sing-box` is older
+than the Naive-capable line.
 
 Refresh router stealth layer:
 

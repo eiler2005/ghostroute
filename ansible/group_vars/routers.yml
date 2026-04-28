@@ -47,6 +47,22 @@ channel_b_home_router_xray_config_path: /opt/etc/xray/channel-b-home-relay.json
 channel_b_home_router_xray_init_path: /opt/etc/init.d/S99xray-channel-b-home
 channel_b_home_router_xray_log_path: /opt/var/log/xray-channel-b-home.log
 
+# Channel C1 home-first Naive lane: selected clients connect to a browser-like
+# HTTPS/H2 CONNECT-compatible ingress on the home endpoint. Router-side
+# sing-box then applies the same managed split as the other home-first lanes.
+channel_c_home_enabled: "{{ vault_channel_c_home_enabled | default(false) }}"
+channel_c_home_listen: "0.0.0.0"
+channel_c_home_public_host: "{{ vault_channel_c_home_public_host | default(home_reality_public_host, true) }}"
+channel_c_home_public_port: "{{ vault_channel_c_home_public_port | default(443, true) }}"
+channel_c_home_ingress_port: "{{ vault_channel_c_home_ingress_port | default((home_reality_ingress_port | int) + 2, true) }}"
+channel_c_home_clients: "{{ vault_channel_c_home_clients | default([]) }}"
+channel_c_home_connlimit_above: "{{ vault_channel_c_home_connlimit_above | default(300) }}"
+channel_c_home_mss: "{{ vault_channel_c_home_mss | default(1360) }}"
+channel_c_home_tls_cert_path: "{{ vault_channel_c_home_tls_cert_path | default('/opt/etc/sing-box/channel-c-home-fullchain.pem') }}"
+channel_c_home_tls_key_path: "{{ vault_channel_c_home_tls_key_path | default('/opt/etc/sing-box/channel-c-home-privkey.pem') }}"
+channel_c_home_tls_cert_pem: "{{ vault_channel_c_home_tls_cert_pem | default('') }}"
+channel_c_home_tls_key_pem: "{{ vault_channel_c_home_tls_key_pem | default('') }}"
+
 dnscrypt_port: "{{ vault_dnscrypt_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_PORT type=properties file=../../.env', errors='ignore'), true) | default(dnscrypt_port_secret | default('535' ~ '4'), true) }}"
 dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"
 dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy

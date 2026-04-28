@@ -1038,7 +1038,7 @@ echo "=== 1. EXIT SUMMARY ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (physical router/ISP traffic; RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
 echo "LAN/Wi-Fi observed:      $(human_bytes "$DEVICE_TOTAL_BYTES")  (reference: $(human_pct "$DEVICE_TOTAL_BYTES" "$WAN_TOTAL") of WAN)"
 echo "Home Reality ingress:    $(human_bytes "$MOBILE_BYTE_TOTAL")  (reference: $(human_pct "$MOBILE_BYTE_TOTAL" "$WAN_TOTAL") of WAN; client -> home RU IP ${HOME_REALITY_PORT_LABEL})"
-echo "Home Reality profile split: A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") + B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") + C/VPS-only $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")  (estimated, Home Reality profile-derived)"
+echo "Home Reality profile split: A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") + B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") + C1 $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")  (estimated, Home Reality profile-derived)"
 echo "Channel B ingress:       $(human_bytes "$BHOME_IN_BYTES") observed on ${CHANNEL_B_ACTIVE_NOTE} (${BHOME_PACKETS} accepted packets; router INPUT counter)"
 echo "Channel B relay split:   VPS ${CHANNEL_B_RELAY_REALITY}/${CHANNEL_B_RELAY_CONN} conn + direct ${CHANNEL_B_RELAY_DIRECT}/${CHANNEL_B_RELAY_CONN} + unresolved ${CHANNEL_B_RELAY_UNRESOLVED}/${CHANNEL_B_RELAY_CONN}  (sing-box channel-b-relay-socks log)"
 echo "WAN remainder/unattributed: $(human_bytes "$WAN_REMAINDER")  (reference: $(human_pct "$WAN_REMAINDER" "$WAN_TOTAL") of WAN; second WAN legs + router/background/counter gaps)"
@@ -1065,7 +1065,8 @@ printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no red
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home ${HOME_REALITY_PORT_LABEL}" "reality-in" "VLESS+Reality -> VPS" "VPS exit IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home ${HOME_REALITY_PORT_LABEL}" "reality-in" "Home WAN direct" "Home Russian IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "B client" "LTE/Wi-Fi -> home ${CHANNEL_B_HOME_PORT_LABEL}" "reality-in via local relay" "VLESS+Reality -> VPS" "VPS exit IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C client" "direct to dedicated host:443" "VPS layer" "HTTPS/Naive backend" "VPS / backend exit IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C client" "LTE/Wi-Fi -> home :<channel-c-public-port>" "naive-in" "VLESS+Reality -> VPS" "VPS exit IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C client" "LTE/Wi-Fi -> home :<channel-c-public-port>" "naive-in" "Home WAN direct" "Home Russian IP"
 echo
 
 echo "=== 3. MANAGED CATALOG ==="
@@ -1080,7 +1081,7 @@ if [ "$CHANNEL_B_RELAY_CONN" -gt 0 ]; then
 else
   echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} Home Reality profile connections)"
 fi
-echo "Channel C via VPS:       not observed on router (VPS-only planned compatibility lane)"
+echo "Channel C1 via VPS:      router-side Naive ingress planned; byte attribution is not yet separated from Home Reality counters"
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
@@ -1120,7 +1121,7 @@ echo "Ingress byte sources:    ${MOBILE_BYTE_SOURCES}"
 echo "Ingress byte total:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
 echo "Ingress via VPS est.:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (sites see VPS exit IP)"
 echo "Ingress RU direct est.:  $(human_bytes "$MOBILE_EST_DIRECT_BYTES")  (sites see home Russian IP)"
-echo "A/B/C split (est.):    A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") / B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") / C/VPS-only $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")"
+echo "A/B/C split (est.):    A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") / B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") / C1 $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")"
 echo "A direct est.:          $(human_bytes "$MOBILE_CHANNEL_A_BYTE_DIRECT")"
 echo "B direct est.:          $(human_bytes "$MOBILE_CHANNEL_B_BYTE_DIRECT")"
 echo "C direct est.:          $(human_bytes "$MOBILE_CHANNEL_C_BYTE_DIRECT")"

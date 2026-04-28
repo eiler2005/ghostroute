@@ -1,22 +1,9 @@
 {
-{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') == 'caddy_forward_proxy' %}
-    order forward_proxy before file_server
-{% endif %}
     servers :443 {
         protocols h1 h2
         listener_wrappers {
             layer4 {
                 matching_timeout {{ caddy_l4_matching_timeout | default('15s') }}
-{% if channel_c_naive_enabled | default(false) | bool and channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid', 'squid_tls'] %}
-                @channel_c_naive tls sni {{ channel_c_naive_public_host }}
-                route @channel_c_naive {
-{% if channel_c_naive_backend | default('caddy_forward_proxy') == 'squid_tls' %}
-                    proxy 127.0.0.1:{{ channel_c_naive_squid_local_port | default(18889) }}
-{% else %}
-                    proxy 127.0.0.1:{{ channel_c_naive_stunnel_local_port | default(18443) }}
-{% endif %}
-                }
-{% endif %}
                 @reality tls sni {{ reality_server_names[0] }}
                 route @reality {
                     proxy 127.0.0.1:{{ xray_reality_listen_port }}
@@ -27,74 +14,12 @@
     }
 }
 
-{% if channel_c_naive_enabled | default(false) | bool %}
-:443, {{ channel_c_naive_public_host }} {
-{% if channel_bc_access_log_enabled | default(true) | bool %}
-    log channel_c_naive {
-        output stdout
-        format json
-    }
-
-{% endif %}
-    # Fallback site creates the public TLS listener for forward-proxy CONNECT
-    # requests, whose HTTP Host is the target site rather than the proxy host.
-    # Reality traffic is intercepted by the layer4 wrapper before HTTP routing.
-    @channel_c_naive_sni expression `{http.request.tls.server_name} == "{{ channel_c_naive_public_host }}"`
-    handle @channel_c_naive_sni {
-{% if channel_c_naive_backend | default('caddy_forward_proxy') == 'tinyproxy' %}
-        reverse_proxy 127.0.0.1:{{ channel_c_naive_tinyproxy_local_port | default(18888) }} {
-            header_up Host {http.request.host}
-            header_up Proxy-Authorization {http.request.header.Proxy-Authorization}
-            transport http {
-                versions 1.1
-            }
-        }
-{% elif channel_c_naive_backend | default('caddy_forward_proxy') in ['stunnel_tinyproxy', 'stunnel_squid', 'squid_tls'] %}
-        respond 404
-{% else %}
-        route {
-            @channel_c_hiddify_sub path /mobile/channel-c-*.yaml /mobile/channel-c-*.json
-            handle @channel_c_hiddify_sub {
-                uri strip_prefix /mobile
-                root * /etc/caddy/channel-c-subscriptions
-                header Content-Type text/yaml
-                file_server
-            }
-
-            forward_proxy {
-                basic_auth {{ channel_c_naive_username }} {{ channel_c_naive_password }}
-{% if channel_c_naive_hide_ip_enabled | default(true) | bool %}
-                hide_ip
-{% endif %}
-{% if channel_c_naive_hide_via_enabled | default(true) | bool %}
-                hide_via
-{% endif %}
-{% if channel_c_naive_probe_resistance_enabled | default(true) | bool %}
-{% if channel_c_naive_probe_resistance_host | default('') | length > 0 %}
-                probe_resistance {{ channel_c_naive_probe_resistance_host | default(channel_c_naive_public_host) }}
-{% else %}
-                probe_resistance
-{% endif %}
-{% endif %}
-            }
-
-            file_server {
-                root /var/www/html
-            }
-        }
-{% endif %}
-    }
-
-    respond 404
-}
-{% else %}
 :443 {
     # Fallback site only creates the public TLS listener. Reality traffic is
     # intercepted by the layer4 wrapper above before Caddy's HTTP app handles it.
     tls internal
     respond 404
 }
-{% endif %}
 
 {% if channel_b_xhttp_enabled | default(false) | bool %}
 https://{{ channel_b_xhttp_public_host }} {

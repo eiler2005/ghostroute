@@ -20,7 +20,7 @@ For the current end-to-end flow and observer model, see
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 silent DROP | Channel A sing-box redirect -> Reality/Vision |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
 | Channel B selected clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> managed sing-box split (Reality for managed domains, direct home WAN for others) | selected-client production |
-| Channel C planned clients | separate generated NaiveProxy profile | direct client app to separate VPS hostname on `:443` | planned compatibility only |
+| Channel C1 planned clients | separate generated home-first Naive profile | device app -> home Channel C1 Naive ingress -> managed sing-box split | planned compatibility only |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |
 
@@ -34,7 +34,6 @@ VPS host
   -> Xray/3x-ui stack lives under /opt/stealth
   -> existing services keep using shared system Caddy
   -> optional direct-mode Channel B XHTTP hostname routes through Caddy TLS to local-only xray-xhttp
-  -> optional Channel C Naive hostname uses Caddy layer4 to a localhost-only Squid compatibility proxy
 ```
 
 This is intentionally not a fully isolated Docker-only ingress. The compromise is:
@@ -55,9 +54,10 @@ Merlin router
   -> sing-box listens on 0.0.0.0:<home-reality-port> home Reality inbound for remote mobile clients
   -> optional local Xray Channel B ingress on 0.0.0.0:<home-channel-b-port>
   -> local Xray relay forwards to sing-box SOCKS on 127.0.0.1:<router-socks-port>
+  -> optional sing-box Channel C1 Naive ingress on 0.0.0.0:<home-channel-c-ingress-port>
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
-  -> mobile reality-in uses STEALTH_DOMAINS/VPN_STATIC_NETS rule-sets for split routing
+  -> mobile reality-in / channel-c-naive-in use STEALTH_DOMAINS/VPN_STATIC_NETS rule-sets for split routing
   -> legacy 0x1000/0x2000/table 200/singbox0/RC_VPN_ROUTE state is removed
 ```
 
@@ -113,8 +113,9 @@ ansible/
     00-bootstrap-vps.yml
     10-stealth-vps.yml
     11-channel-b-vps.yml
-    12-channel-c-vps.yml
     20-stealth-router.yml
+    21-channel-b-router.yml
+    22-channel-c-router.yml
     30-generate-client-profiles.yml
     99-verify.yml
   roles/
@@ -223,17 +224,21 @@ Manual device-client lanes are refreshed separately:
 
 ```bash
 ansible-playbook playbooks/11-channel-b-vps.yml
-ansible-playbook playbooks/12-channel-c-vps.yml
 ```
 
 `11-channel-b-vps.yml` updates only the optional direct Channel B XHTTP backend
-and validates that the Caddy route is present. `12-channel-c-vps.yml` owns the Channel C
-compatibility backend/Caddy path. Neither playbook targets the router.
+and validates that the Caddy route is present.
 
 Channel B home-first router add-on is managed separately:
 
 ```bash
 ansible-playbook playbooks/21-channel-b-router.yml
+```
+
+Channel C1 home-first router add-on is managed separately:
+
+```bash
+ansible-playbook playbooks/22-channel-c-router.yml
 ```
 
 ### 4.2 Router base layer
@@ -287,8 +292,8 @@ ansible/out/clients-channel-c/qr-index.html
 Channel B and C artifacts live under `clients-channel-b/` and
 `clients-channel-c/`. Channel B artifacts are selected-client production
 credentials when `channel_b_home_relay_enabled=true`, while Channel C stays a
-planned direct-to-VPS compatibility lane until live proof. They should not
-replace normal Home Reality profiles.
+planned C1 home-first Naive lane until live proof. They should not replace
+normal Home Reality profiles.
 
 ### 4.5 Verify
 

@@ -13,7 +13,8 @@ Current production guidance lives in:
 
 Archive areas:
 
-- `channel-c/` - historical Channel C client/debug research. Channel C remains a
-  future experimental manual device-client lane.
+- `channel-c/` - historical Channel C client/debug research for the removed
+  VPS-only C0 design. Current Channel C guidance lives in the C1 home-first
+  docs, not in this archive.
 - `roadmaps/` - dated improvement roadmaps kept for traceability after the main
   architecture docs were updated.
