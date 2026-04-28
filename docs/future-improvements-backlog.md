@@ -24,10 +24,9 @@
 - Channel B является production для selected device-client profiles:
   `VLESS+XHTTP+TLS` home-first ingress на роутере, затем local relay в sing-box
   managed split без изменений router REDIRECT/DNS/TUN ownership.
-- Channel C имеет C1-sing-box Naive home-first ingress на роутере и live-proven
-  C1-Shadowrocket HTTPS CONNECT compatibility, но C1-Shadowrocket еще нужно закрепить
-  в Ansible/firewall/profile generation без изменений Channel A
-  REDIRECT/DNS/TUN.
+- Channel C имеет live-proven C1-Shadowrocket HTTPS CONNECT compatibility на
+  роутере и C1-sing-box native Naive design, который server-ready, но
+  client-blocked на tested iPhone SFI `1.11.4`.
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -334,8 +333,11 @@
 - Channel B считается production для selected device-client profiles:
   home-first XHTTP/TLS ingress на роутере -> local sing-box relay -> тот же
   managed split и Reality/Vision upstream.
-- Channel C C1-sing-box home-first lane существует для SFI/sing-box; C1-Shadowrocket
-  Shadowrocket compatibility прошел live proof, но пока не persisted в Ansible.
+- Channel C C1-Shadowrocket compatibility прошел live proof и persisted в
+  Ansible/firewall/profile generation/verify.
+- Channel C C1-sing-box native Naive server-side lane существует на роутере,
+  но tested iPhone SFI `1.11.4` rejected outbound `type: naive`; native SFI
+  profile generation disabled by default до совместимого iOS клиента.
 - B/C не дают automatic failover и не должны менять Channel A
   REDIRECT/DNS/TUN ownership.
 
@@ -368,6 +370,32 @@ Channel C target:
 - Channel C можно безопасно довести от live proof до persisted deployment
 - документация явно отделяет Channel A router data plane, Channel B
   selected-client production и Channel C native/compatibility split
+
+Future Caddy forward_proxy@naive / forwardproxy experiment:
+
+- Рассмотреть только как отдельную future research lane, не как замену текущему
+  рабочему C1-Shadowrocket.
+- Цель эксперимента: проверить, даст ли `Shadowrocket -> Caddy
+  forward_proxy/forwardproxy@naive -> managed split` более похожий на
+  HTTPS/H2/NaiveProxy traffic профиль, чем текущий sing-box HTTP inbound
+  compatibility path.
+- Не подвешивать эксперимент на существующий VPS Caddy `:443` без отдельного
+  design review: VPS Caddy уже держит shared Reality edge и optional Channel B
+  direct-XHTTP route, поэтому ошибка в Caddyfile может затронуть Channel A/B.
+- Предпочтительная форма для исследования: isolated home/router-side или
+  отдельный hostname/port, отдельные credentials, отдельный playbook/flag,
+  отдельные verify checks и явный rollback.
+- Риски, которые нужно закрыть до implementation:
+  - не открыть public unauthenticated forward proxy;
+  - не сломать VPS Caddy/Reality edge;
+  - не перепутать C1-SR compatibility с native Naive proof;
+  - проверить, что Shadowrocket реально использует ожидаемый HTTP/2/CONNECT
+    режим, а не просто импортирует профиль;
+  - состыковать egress с router managed split без изменения Channel A
+    REDIRECT/DNS/TUN ownership.
+  - учесть, что Chrome-like masking зависит не только от Caddy backend, но и от
+    client fingerprint; Shadowrocket + forward_proxy не равен official
+    NaiveProxy client с Chromium network stack.
 
 ## Что не делать по умолчанию
 
