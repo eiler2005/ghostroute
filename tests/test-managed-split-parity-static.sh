@@ -32,24 +32,41 @@ assert_generated_contains_fixed() {
   fi
 }
 
+assert_compact_contains() {
+  local path="$1"
+  local needle="$2"
+  local compact
+  compact="$(tr -d '[:space:]' < "${PROJECT_ROOT}/${path}")"
+  if ! grep -F -- "$needle" >/dev/null <<<"$compact"; then
+    echo "Expected ${path} compact form to contain text: ${needle}" >&2
+    exit 1
+  fi
+}
+
 SINGBOX_TEMPLATE="ansible/roles/singbox_client/templates/config.json.j2"
 ROUTING_TEMPLATE="ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2"
 RULESET_SCRIPT="modules/routing-core/router/update-singbox-rule-sets.sh"
 
-# api.ipify.org is the explicit A/B/C parity checker. Pin the parent domain so
-# dnsmasq and sing-box both classify it as managed, regardless of subdomain.
+# api.ipify.org is only the explicit A/B/C parity canary. The real contract is
+# broader: every domain/CIDR classified as managed after reaching the router
+# must follow the same managed-vs-direct split on LAN/Wi-Fi and Channels A/B/C.
 assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/ipify.org/STEALTH_DOMAINS"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_domain: ipify.org"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_host: api.ipify.org"
 
 # Channel A LAN/Wi-Fi path: DNS-populated STEALTH_DOMAINS must enter the local
-# sing-box REDIRECT listener and QUIC must be dropped to force TCP inspection.
+# sing-box REDIRECT listener, static CIDRs use the same path, and QUIC must be
+# dropped to force TCP inspection.
 assert_contains "$ROUTING_TEMPLATE" 'iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "\$IPSET" dst -j REDIRECT --to-ports "\$REDIRECT_PORT"'
+assert_contains "$ROUTING_TEMPLATE" 'iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "\$STATIC_IPSET" dst -j REDIRECT --to-ports "\$REDIRECT_PORT"'
 assert_contains "$ROUTING_TEMPLATE" 'iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "\$IPSET" dst -j DROP'
+assert_contains "$ROUTING_TEMPLATE" 'iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "\$STATIC_IPSET" dst -j DROP'
 assert_contains_fixed "$SINGBOX_TEMPLATE" '{ "inbound": "redirect-in", "outbound": "reality-out" }'
 
-# Selected-client home-first paths: every remote ingress must sniff the target,
-# send managed destinations to Reality/VPS, then fall back to home WAN direct.
+# Selected-client home-first paths: every remote ingress must apply the same
+# post-ingress policy: sniff target, send tunneled DNS through Reality, keep
+# local direct exceptions direct, send managed destinations to Reality/VPS, then
+# fall back to home WAN direct.
 for inbound in \
   "reality-in" \
   "channel-b-relay-socks" \
@@ -59,8 +76,10 @@ for inbound in \
   if [ "$inbound" != "reality-in" ] || rg -n -F -- '"inbound": "reality-in", "action": "sniff"' "${PROJECT_ROOT}/${SINGBOX_TEMPLATE}" >/dev/null; then
     assert_contains_fixed "$SINGBOX_TEMPLATE" "\"inbound\": \"${inbound}\", \"action\": \"sniff\""
   fi
-  assert_contains_fixed "$SINGBOX_TEMPLATE" "\"inbound\": \"${inbound}\", \"rule_set\": [\"stealth-domains\", \"stealth-static\"], \"outbound\": \"reality-out\""
-  assert_contains_fixed "$SINGBOX_TEMPLATE" "\"inbound\": \"${inbound}\", \"outbound\": \"direct-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"port\":[53,853],\"outbound\":\"reality-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"domain_suffix\":[\"vtb.ru\",\"app-analytics-services-att.com\",\"app-measurement.com\",\"firebaseinstallations.googleapis.com\"],\"outbound\":\"direct-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"rule_set\":[\"stealth-domains\",\"stealth-static\"],\"outbound\":\"reality-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"outbound\":\"direct-out\""
 done
 
 # The rule-set generator is the bridge between dnsmasq/ipset state and mobile

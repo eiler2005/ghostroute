@@ -74,10 +74,16 @@ The same repo catalogs feed mobile Home Reality split routing. During deploy,
 Do not edit `/opt/etc/sing-box/rule-sets/*.json` manually; they are generated
 artifacts and will be overwritten.
 
-`api.ipify.org` is intentionally covered by `ipset=/ipify.org/STEALTH_DOMAINS`.
-It is the managed-split parity checker: LAN/Wi-Fi, Channel A mobile, Channel B,
-and both Channel C variants should all classify it as managed and show VPS
-egress.
+`api.ipify.org` is intentionally covered by `ipset=/ipify.org/STEALTH_DOMAINS`
+only as a managed-split parity checker. The real invariant is broader:
+LAN/Wi-Fi, Channel A mobile, Channel B, and both Channel C variants must all use
+the same router-side policy after ingress:
+
+```text
+STEALTH_DOMAINS / VPN_STATIC_NETS -> Reality outbound -> VPS
+direct exceptions                 -> home WAN direct
+everything else                   -> home WAN direct
+```
 
 ## Проверить домен
 
