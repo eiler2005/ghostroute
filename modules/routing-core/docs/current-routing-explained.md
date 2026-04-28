@@ -63,6 +63,10 @@ ipset=/youtube.com/STEALTH_DOMAINS
 `ipset=/youtube.com/STEALTH_DOMAINS` покрывает `youtube.com`,
 `www.youtube.com`, `music.youtube.com` и будущие `*.youtube.com`.
 
+`api.ipify.org` закреплён через `ipset=/ipify.org/STEALTH_DOMAINS` как
+проверочный managed-домен. Если всё собрано правильно, LAN/Wi-Fi и mobile
+Channels A/B/C должны показывать один и тот же VPS egress на этом checker.
+
 `VPN_DOMAINS` больше не должен существовать в steady state.
 
 ## DNS

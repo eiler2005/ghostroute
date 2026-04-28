@@ -8,7 +8,7 @@ Docs and health tests should assume the current production policy:
 
 ```text
 br0 TCP     -> STEALTH_DOMAINS / VPN_STATIC_NETS -> nat REDIRECT :<lan-redirect-port> -> sing-box -> Reality
-br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> REJECT, forcing TCP fallback
+br0 UDP/443 -> STEALTH_DOMAINS / VPN_STATIC_NETS -> DROP, forcing TCP fallback
 OUTPUT      -> main routing by default; explicit proxy only for router-local diagnostics
 wgs1        -> VPN_DOMAINS / VPN_STATIC_NETS    -> 0x1000 -> table wgc1
 ```
@@ -38,6 +38,7 @@ These tests validate:
 - health monitor JSONL/status aggregation, local alert ledger, summary rendering
 - VPS observer fixtures and merged GhostRoute health report rendering
 - module-native entrypoints and reserved `scripts/` policy
+- A/B/C managed-split parity for the pinned checker domain `api.ipify.org`
 
 They do not connect to the router.
 
@@ -80,7 +81,10 @@ Expected health semantics:
 - `STEALTH_DOMAINS` exists.
 - sing-box REDIRECT listener on `:<lan-redirect-port>` exists.
 - LAN TCP REDIRECT rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
-- LAN UDP/443 reject rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- LAN UDP/443 DROP rules exist for `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- `api.ipify.org` is pinned through `ipify.org` and mirrored into the sing-box
+  `stealth-domains` rule-set, so LAN/Wi-Fi and Channels A/B/C classify it the
+  same way.
 - legacy `fwmark 0x2000`, table `200`, and `singbox0` are absent.
 - `br0 -> RC_VPN_ROUTE` is disabled.
 - `OUTPUT -> RC_VPN_ROUTE` is disabled.

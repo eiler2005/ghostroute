@@ -5,6 +5,10 @@
 #   - mobile clients -> router Reality ingress :<home-reality-port> -> sing-box -> Reality
 # Channel A WireGuard is decommissioned; wgc1 remains only as cold-fallback NVRAM.
 
+# Managed split checker. Keep this pinned so LAN/Wi-Fi and all home-first
+# mobile channels report the same VPS egress for https://api.ipify.org.
+ipset=/ipify.org/STEALTH_DOMAINS
+
 ipset=/atlassian.com/STEALTH_DOMAINS
 ipset=/anthropic.com/STEALTH_DOMAINS
 ipset=/chatgpt.com/STEALTH_DOMAINS
