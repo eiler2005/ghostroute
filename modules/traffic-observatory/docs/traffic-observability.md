@@ -180,9 +180,13 @@ Format:
 
 ```text
 # ip-or-key|friendly alias|device type
-192.168.50.21|Denis laptop|Windows laptop
+192.168.50.21|owner-a laptop|Windows laptop
 192.168.50.150||iPad
 192.168.50.195||iPad
+iphone-1|owner-a|Home Reality profile
+iphone-2|owner-b|Home Reality profile
+macbook|owner-a laptop|Home Reality profile
+c1_iphone_1|owner-a|Channel C Shadowrocket profile
 ```
 
 The shared parser lives in `modules/shared/lib/device-labels.sh` and is exposed
@@ -192,9 +196,15 @@ through the module-native `modules/shared/lib` helper. These reports consume the
 - `./modules/traffic-observatory/bin/traffic-daily-report`
 - `./modules/dns-catalog-intelligence/bin/dns-forensics-report`
 
-Default output stays redacted (`lan-host-01`, `mobile-source-01`). For trusted
-local inspection set `REPORT_REDACT_NAMES=0`; then LAN rows show aliases/types
-such as `iPad`, `Windows laptop`, or `Office desktop (Windows PC)`.
+Use stable client/profile keys such as `iphone-1`, `macbook` or `c1_iphone_1`
+instead of generated report aliases like `mobile-client-01`; the generated
+number can change when the active client set changes.
+
+Default output stays redacted (`lan-host-01`, `mobile-source-01`). If a stable
+profile key has a local alias, mobile rows may show it as context, for example
+`mobile-client-01 (owner-a)`. For trusted local inspection set
+`REPORT_REDACT_NAMES=0`; then LAN rows show aliases/types such as `iPad`,
+`Windows laptop`, or `Office desktop (Windows PC)`.
 
 ---
 
@@ -298,12 +308,14 @@ Canonical sections:
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
   much traffic used the managed path.
 - `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
-- `HOME REALITY INGRESS CLIENTS` — client/profile connection split plus Home
-  Reality ingress bytes. The client can be on LTE or Wi-Fi; the common signal
-  is TCP/<home-reality-port> into the home Reality inbound.
-- `SITES / DESTINATIONS` — current-day top Home Reality destinations with
-  estimated traffic, percentage of ingress usage, app/family labels, and
-  separate popularity blocks for VPS vs home Russian direct.
+- `HOME REALITY INGRESS CLIENTS` — Channel A/Home Reality client/profile
+  connection split plus ingress bytes. The client can be on LTE or Wi-Fi; the
+  common signal is TCP/<home-reality-port> into the home Reality inbound.
+- `SITES / DESTINATIONS` — current-day top Channel A/Home Reality destinations
+  with estimated traffic, percentage of ingress usage, app/family labels, and
+  separate popularity blocks for VPS vs home Russian direct. The same section
+  also shows Channel B/C destination connection split when those lanes have
+  traffic, but B/C per-destination byte attribution is not implemented yet.
 - `ROUTING MISTAKES / CHECKS` — heuristic warnings for likely wrong routing,
   such as RU/direct-looking destinations via VPS, managed destinations going
   direct, direct DNS-like mobile destinations, unresolved mobile flows, or
@@ -486,12 +498,12 @@ Interpretation:
 
 ## Example: Popular Sites And Apps
 
-The current-day report includes destination-level popularity for Home Reality
-ingress:
+The current-day report includes destination-level popularity for Channel A/Home
+Reality ingress:
 
 ```text
 === 6. SITES / DESTINATIONS ===
-Top Home Reality ingress destinations overall:
+Top Home Reality / Channel A ingress destinations overall:
 App/family      Destination             Est. traffic  % ingress  Path
 Google/YouTube  www.google.com          1.03 GiB      19.8%      VPS
 Telegram        <example-managed-ip>          550.2 MiB     10.3%      VPS
@@ -517,7 +529,7 @@ RU services     api.ozon.ru         17.0 MiB      0.3%
 
 Use this section to answer:
 
-- what is popular on Home Reality ingress;
+- what is popular on Channel A/Home Reality ingress;
 - what actually used the VPS;
 - what stayed in the Russian direct internet;
 - whether a service family is unexpectedly heavy.
@@ -525,6 +537,17 @@ Use this section to answer:
 For LAN/Wi-Fi destinations, exact per-site byte attribution is not currently
 available; use DNS forensics to see interest and LAN/Wi-Fi device counters to
 see volume.
+
+For Channel B/C, the current report shows destination-level connection split,
+but not the same estimated byte table:
+
+- Channel B shows ingress counters and `channel-b-relay-socks` VPS/direct
+  connection split by destination. Its local SOCKS relay path does not yet
+  provide per-destination byte attribution.
+- Channel C is covered by `traffic-report check` and the Channel C status block.
+  The current-day report also parses C1-SR/native inbound destinations by
+  connection-id and splits them into VPS/direct/unresolved. C1 per-destination
+  byte attribution is not implemented yet.
 
 ---
 
