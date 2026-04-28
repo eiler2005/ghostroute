@@ -413,6 +413,9 @@ Traffic и observability:
 ./modules/traffic-observatory/bin/traffic-report week
 ./modules/traffic-observatory/bin/traffic-report month
 
+# Быстрая проверка Channel C без полного дневного отчёта.
+./modules/traffic-observatory/bin/traffic-report channel-c
+
 # Безопасный operational snapshot для человека/LLM.
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ```

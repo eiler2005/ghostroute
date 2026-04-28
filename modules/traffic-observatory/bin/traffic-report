@@ -17,13 +17,143 @@ REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 PERIOD_ARG="${1:-today}"
 
+channel_c_quick_report() {
+  router_ssh 'sh -s' <<'REMOTE'
+set -eu
+
+runtime_env=""
+for candidate in /jffs/scripts/ghostroute-runtime.env /jffs/scripts/ghostroute-runtime-env; do
+  [ -f "$candidate" ] && runtime_env="$candidate" && break
+done
+
+env_value() {
+  key="$1"
+  if [ -n "$runtime_env" ]; then
+    awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$runtime_env"
+  fi
+}
+
+legacy_value() {
+  key="$1"
+  if [ -f /jffs/scripts/stealth-route-init.sh ]; then
+    awk -F= -v key="$key" '
+      $1 == key {
+        gsub(/["'\''"]/, "", $2)
+        print $2
+        exit
+      }' /jffs/scripts/stealth-route-init.sh
+  fi
+}
+
+home_enabled="$(env_value GHOSTROUTE_CHANNEL_C_HOME_ENABLED)"
+home_public="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT)"
+home_port="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PORT)"
+sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
+sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
+sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
+
+home_enabled="${home_enabled:-$(legacy_value CHANNEL_C_HOME_ENABLED)}"
+home_public="${home_public:-$(legacy_value CHANNEL_C_HOME_PUBLIC_PORT)}"
+home_port="${home_port:-$(legacy_value CHANNEL_C_HOME_PORT)}"
+sr_enabled="${sr_enabled:-$(legacy_value CHANNEL_C_SHADOWROCKET_ENABLED)}"
+sr_public="${sr_public:-$(legacy_value CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)}"
+sr_port="${sr_port:-$(legacy_value CHANNEL_C_SHADOWROCKET_PORT)}"
+
+home_enabled="${home_enabled:-0}"
+home_public="${home_public:-443}"
+home_port="${home_port:-41955}"
+sr_enabled="${sr_enabled:-0}"
+sr_public="${sr_public:-4443}"
+sr_port="${sr_port:-41956}"
+
+listen_sockets="$(netstat -nlp 2>/dev/null || true)"
+nat_prerouting="$(iptables -t nat -S PREROUTING 2>/dev/null || true)"
+filter_input="$(iptables -S INPUT 2>/dev/null || true)"
+
+listener_status() {
+  port="$1"
+  printf '%s\n' "$listen_sockets" | grep -E "[:.]${port}[[:space:]]" >/dev/null 2>&1 && printf 'OK' || printf 'MISSING'
+}
+
+redirect_status() {
+  public_port="$1"
+  inner_port="$2"
+  if [ "$public_port" = "$inner_port" ]; then
+    printf 'N/A'
+  elif printf '%s\n' "$nat_prerouting" | grep -F -- "--dport $public_port" | grep -F -- "--to-ports $inner_port" >/dev/null 2>&1; then
+    printf 'OK'
+  else
+    printf 'MISSING'
+  fi
+}
+
+input_status() {
+  port="$1"
+  printf '%s\n' "$filter_input" | grep -F -- "--dport $port" | grep -F -- "-j ACCEPT" >/dev/null 2>&1 && printf 'OK' || printf 'MISSING'
+}
+
+log="/opt/var/log/sing-box.log"
+tmp="/tmp/ghostroute-channel-c-check.$$"
+trap 'rm -f "$tmp"' EXIT
+if [ -f "$log" ]; then
+  tail -5000 "$log" 2>/dev/null > "$tmp" || : > "$tmp"
+else
+  : > "$tmp"
+fi
+
+sanitize_line() {
+  sed -E \
+    -e 's/[0-9]{1,3}(\.[0-9]{1,3}){3}/<ip>/g' \
+    -e 's/from <ip>:[0-9]+/from <ip>:<port>/g' \
+    -e 's/to <ip>:[0-9]+/to <ip>:<port>/g'
+}
+
+sr_count="$(grep -F 'inbound/http[channel-c-shadowrocket-http-in]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
+native_count="$(grep -F 'inbound/naive[channel-c-naive-in]' "$tmp" 2>/dev/null | wc -l | tr -d ' ')"
+sr_last="$(grep -F 'inbound/http[channel-c-shadowrocket-http-in]' "$tmp" 2>/dev/null | tail -1 | sanitize_line || true)"
+native_last="$(grep -F 'inbound/naive[channel-c-naive-in]' "$tmp" 2>/dev/null | tail -1 | sanitize_line || true)"
+
+sr_listener="$(listener_status "$sr_port")"
+sr_redirect="$(redirect_status "$sr_public" "$sr_port")"
+sr_input="$(input_status "$sr_port")"
+native_listener="$(listener_status "$home_port")"
+native_redirect="$(redirect_status "$home_public" "$home_port")"
+native_input="$(input_status "$home_port")"
+
+printf 'GhostRoute Channel C Quick Check\n'
+printf 'C1-Shadowrocket / 1-SR: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s recent_log_lines=%s\n' "$sr_enabled" "$sr_public" "$sr_port" "$sr_listener" "$sr_redirect" "$sr_input" "${sr_count:-0}"
+if [ -n "$sr_last" ]; then
+  printf 'C1-Shadowrocket last: %s\n' "$sr_last"
+else
+  printf 'C1-Shadowrocket last: n/a in last 5000 sing-box log lines\n'
+fi
+printf 'C1-sing-box / native Naive: enabled=%s public=:%s internal=:%s listener=%s redirect=%s input=%s recent_log_lines=%s\n' "$home_enabled" "$home_public" "$home_port" "$native_listener" "$native_redirect" "$native_input" "${native_count:-0}"
+if [ -n "$native_last" ]; then
+  printf 'C1-native last: %s\n' "$native_last"
+else
+  printf 'C1-native last: n/a in last 5000 sing-box log lines; expected while tested iPhone SFI 1.11.4 lacks naive outbound\n'
+fi
+
+if [ "$sr_listener" = "OK" ] && [ "$sr_redirect" != "MISSING" ] && [ "$sr_input" = "OK" ]; then
+  printf 'Decision: OK - current working Channel C lane is C1-Shadowrocket on :%s -> :%s.\n' "$sr_public" "$sr_port"
+else
+  printf 'Decision: WARN - C1-Shadowrocket router path is incomplete; check listener, redirect and INPUT allow above.\n'
+fi
+printf 'Note: this quick check tails only the latest 5000 sing-box log lines and does not build the full daily traffic report.\n'
+REMOTE
+}
+
 case "$PERIOD_ARG" in
+  channel-c|channel-c-check|c|quick-channel-c|--channel-c)
+    channel_c_quick_report
+    exit 0
+    ;;
   ""|today|current|current-day) ;;
   yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
     exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
     ;;
   *)
-    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD]" >&2
+    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|channel-c]" >&2
     exit 1
     ;;
 esac
@@ -1074,12 +1204,11 @@ printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C1-native" "LTE -> home :443" "naive-
 echo
 
 echo "=== CHANNEL C STATUS ==="
-echo "Channel C is split into two variants and they must not be mixed."
-echo "C1-Shadowrocket / 1-SR: working iPhone path; Shadowrocket HTTPS CONNECT over TLS -> home DDNS/public RU IP :4443 -> router sing-box http inbound :41956 -> managed split -> reality-out/Vision -> VPS -> internet."
-echo "C1-Shadowrocket first hop: the mobile operator sees iPhone -> home Russian IP and TLS/HTTPS CONNECT traffic; the VPS is not the first hop."
-echo "C1-Shadowrocket profiles: ansible/out/clients-channel-c/1-SR/ with iphone-N-c1-shadowrocket-https.png and iphone-N-c1-shadowrocket-https.txt."
-echo "C1-sing-box / native Naive: intended stealth-primary path on :443 via channel-c-naive-in :41955 with real LE TLS and per-client username/password."
-echo "C1-sing-box status: router side is ready, but the tested iPhone SFI sing-box 1.11.4 failed with 'unknown outbound type: naive'; native SFI profile generation is disabled by default via channel_c_sfi_native_profiles_enabled=false until an iOS client supports naive outbound, target sing-box >= 1.13."
+echo "C1-Shadowrocket / 1-SR: WORKING NOW, HTTPS CONNECT compatibility on public :4443 -> router http-in :41956."
+echo "C1-sing-box / native Naive: SERVER-READY, CLIENT-BLOCKED on tested iPhone SFI 1.11.4 because outbound type naive is unsupported."
+echo "Profiles: ansible/out/clients-channel-c/1-SR/ for working Shadowrocket artifacts; native SFI generation stays disabled by default."
+echo "Quick live check: ./modules/traffic-observatory/bin/traffic-report channel-c"
+echo "Details: docs/channel-c.md"
 echo
 
 echo "=== 3. MANAGED CATALOG ==="
