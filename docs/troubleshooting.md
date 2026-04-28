@@ -137,9 +137,10 @@ Expected:
 
 Channel B is production для selected device-client profiles, но не является
 automatic failover для Channel A и не участвует в health-check Channel A.
-Channel C остается planned C1 home-first lane до отдельного SFI/sing-box live
-proof. B/C не должны менять router REDIRECT/DNS/TUN и не дают automatic
-failover.
+Channel C has C1-sing-box Naive for SFI/sing-box and a live-proven C1-Shadowrocket
+Shadowrocket compatibility path using HTTPS CONNECT/TLS. C1-Shadowrocket is not Naive and
+must not be treated as proof that Shadowrocket speaks native Naive. B/C не
+должны менять router REDIRECT/DNS/TUN и не дают automatic failover.
 
 Для Channel B direct-mode проверок access logs пишутся в Caddy stdout/journal.
 Для Channel C1 основной runtime signal находится на роутере в sing-box log и
@@ -148,7 +149,7 @@ iptables counters.
 ```bash
 ssh admin@<router-ip> '
   tail -200 /opt/var/log/sing-box.log |
-    grep -E "channel-b-relay-socks|channel-c-naive-in|reality-out|direct-out" |
+    grep -E "channel-b-relay-socks|channel-c-naive-in|channel-c-shadowrocket-http-in|reality-out|direct-out" |
     tail -80
 '
 ```
@@ -157,11 +158,16 @@ Expected:
 
 - Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
   hostname, and either the configured random path or `404` for wrong paths.
-- Channel C1 requests enter `channel-c-naive-in`.
-- Managed Channel C1 destinations continue to `reality-out`.
+- C1-sing-box requests enter `channel-c-naive-in`.
+- C1-Shadowrocket compatibility requests enter
+  `channel-c-shadowrocket-http-in`.
+- Managed Channel C destinations continue to `reality-out`.
 - Non-managed Channel C1 destinations use `direct-out`.
 - Shadowrocket Channel C1 compatibility config uses keyword auth form:
   `https, <home-host>, <public-port>, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.
+- If Shadowrocket hits `channel-c-naive-in` and the log says `not CONNECT
+  request`, Shadowrocket imported the profile but did not speak the expected
+  native Naive protocol. Use C1-Shadowrocket or SFI/sing-box for C1-sing-box proof.
 - No Caddy restart loop: `sudo systemctl is-active caddy` returns `active`.
 
 ## VPS Emergency Clients Drift

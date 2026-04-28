@@ -54,13 +54,27 @@
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
       changed_when: false
 
-    - name: Channel C1 internal Naive listener is running
+    - name: Channel C1 native Naive listener is running
       ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_home_ingress_port }}'"
       changed_when: false
 
-    - name: Channel C1 public port redirects to internal Naive listener when needed
+    - name: Channel C1 native public port redirects to internal Naive listener when needed
       ansible.builtin.raw: |
         iptables -t nat -S PREROUTING |
           grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_c_home_public_port }} .*REDIRECT --to-ports {{ channel_c_home_ingress_port }}'
       changed_when: false
       when: channel_c_home_public_port | string != channel_c_home_ingress_port | string
+
+    - name: C1-Shadowrocket compatibility listener is running when enabled
+      ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_shadowrocket_ingress_port }}'"
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: C1-Shadowrocket public port redirects to internal HTTP listener when needed
+      ansible.builtin.raw: |
+        iptables -t nat -S PREROUTING |
+          grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_c_shadowrocket_public_port }} .*REDIRECT --to-ports {{ channel_c_shadowrocket_ingress_port }}'
+      changed_when: false
+      when:
+        - channel_c_shadowrocket_enabled | default(false) | bool
+        - channel_c_shadowrocket_public_port | string != channel_c_shadowrocket_ingress_port | string

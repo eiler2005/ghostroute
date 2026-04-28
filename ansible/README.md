@@ -62,17 +62,19 @@ Playbook ownership is intentionally narrow:
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
-| `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh Channel C without touching VPS Caddy backends or Channel A ownership. |
+| `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
 Channel B is production for selected device-client profiles, but it is not an
 automatic failover path for Channel A. Channel B can run in direct-XHTTP VPS
 mode (`11`) or in home-first mode (`21`) where router ingress is XHTTP and
-upstream egress is reused via sing-box Reality. Channel C is C1 home-first
-Naive (`22`): clients connect to the home endpoint first, then router-side
-sing-box applies the same managed split. Neither channel may mutate Channel A
-REDIRECT ownership or introduce automatic failover.
+upstream egress is reused via sing-box Reality. Channel C native is C1
+home-first Naive (`22`): clients connect to the home endpoint first, then
+router-side sing-box applies the same managed split. The live-proven
+Shadowrocket path is C1-Shadowrocket HTTPS CONNECT compatibility and is
+persisted by the Channel C router playbook when enabled. Neither channel may
+mutate Channel A REDIRECT ownership or introduce automatic failover.
 
 ## Directory Map
 
@@ -169,6 +171,11 @@ ansible-playbook playbooks/22-channel-c-router.yml
 C1 uses sing-box `naive` inbound/outbound support, so the router binary must be
 `>= 1.13`. The playbook fails fast when C1 is enabled and `sing-box` is older
 than the Naive-capable line.
+
+Shadowrocket compatibility is intentionally separate from C1-sing-box Naive. The
+live C1-Shadowrocket proof uses sing-box HTTP inbound over TLS on a separate
+public port and is persisted through the Channel C router playbook, firewall
+hook and generated profiles.
 
 Refresh router stealth layer:
 

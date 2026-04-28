@@ -3,6 +3,7 @@
 singbox_tun_name: singbox0
 singbox_bin_path: /opt/bin/sing-box
 singbox_log_path: /opt/var/log/sing-box.log
+singbox_log_rotate_path: /jffs/scripts/rotate-singbox-log
 singbox_config_path: /opt/etc/sing-box/config.json
 singbox_init_path: /opt/etc/init.d/S99sing-box
 singbox_redirect_port: ""
@@ -26,6 +27,12 @@ channel_c_home_tls_cert_path: /opt/etc/sing-box/channel-c-home-fullchain.pem
 channel_c_home_tls_key_path: /opt/etc/sing-box/channel-c-home-privkey.pem
 channel_c_home_tls_cert_pem: ""
 channel_c_home_tls_key_pem: ""
+channel_c_shadowrocket_enabled: false
+channel_c_shadowrocket_public_port: 4443
+channel_c_shadowrocket_ingress_port: ""
+channel_c_shadowrocket_clients: []
+channel_c_shadowrocket_connlimit_above: 300
+channel_c_shadowrocket_mss: 1360
 clients: []
 home_clients: []
 emergency_clients: []

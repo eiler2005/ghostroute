@@ -16,6 +16,7 @@
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
     channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
+    channel_c_shadowrocket_profile_clients: "{{ channel_c_shadowrocket_clients | default(channel_c_home_clients | default([]), true) }}"
   tasks:
     - name: Ensure router output dir
       ansible.builtin.file:
@@ -58,6 +59,21 @@
           - (channel_c_home_clients | selectattr('password', 'defined') | list | length) == (channel_c_home_clients | length)
         fail_msg: "Channel C1 profile generation needs home host/port and clients with name, username and password."
       when: channel_c_home_enabled | default(false) | bool
+      no_log: true
+      tags:
+        - channel_c_clients_only
+
+    - name: Validate C1-Shadowrocket profile fields
+      ansible.builtin.assert:
+        that:
+          - channel_c_home_public_host | string | length > 0
+          - channel_c_shadowrocket_public_port | int > 0
+          - channel_c_shadowrocket_profile_clients | length > 0
+          - (channel_c_shadowrocket_profile_clients | selectattr('name', 'defined') | list | length) == (channel_c_shadowrocket_profile_clients | length)
+          - (channel_c_shadowrocket_profile_clients | selectattr('username', 'defined') | list | length) == (channel_c_shadowrocket_profile_clients | length)
+          - (channel_c_shadowrocket_profile_clients | selectattr('password', 'defined') | list | length) == (channel_c_shadowrocket_profile_clients | length)
+        fail_msg: "C1-Shadowrocket profile generation needs home host/public port and clients with name, username and password."
+      when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -549,7 +565,7 @@
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C1 HTTPS proxy compatibility URL for each selected client
+    - name: Render C1-sing-box HTTPS probe URL for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/{{ item.name }}-https.txt"
         mode: "0600"
@@ -610,7 +626,19 @@
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C1 Shadowrocket HTTPS proxy config for each selected client
+    - name: Render C1-Shadowrocket HTTPS CONNECT URL for each selected client
+      ansible.builtin.copy:
+        dest: "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
+        mode: "0600"
+        content: |
+          https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_shadowrocket_public_port }}#{{ item.name }}-c1-shadowrocket
+      loop: "{{ channel_c_shadowrocket_profile_clients }}"
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+      no_log: true
+      tags:
+        - channel_c_clients_only
+
+    - name: Render C1-Shadowrocket HTTPS CONNECT config for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
         mode: "0600"
@@ -622,10 +650,10 @@
           fallback-dns-server = 1.1.1.1, 8.8.4.4
 
           [Proxy]
-          {{ item.name }}-channel-c-home = https,{{ channel_c_home_public_host }},{{ channel_c_home_public_port }},username={{ item.username }},password={{ item.password }},method=connect,tls=true,tfo=false
+          {{ item.name }}-c1-shadowrocket = https,{{ channel_c_home_public_host }},{{ channel_c_shadowrocket_public_port }},username={{ item.username }},password={{ item.password }},method=connect,tls=true,tfo=false
 
           [Proxy Group]
-          PROXY = select, {{ item.name }}-channel-c-home
+          PROXY = select, {{ item.name }}-c1-shadowrocket
 
           [Rule]
           IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
@@ -633,8 +661,8 @@
           IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
           IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
           FINAL,PROXY
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
+      loop: "{{ channel_c_shadowrocket_profile_clients }}"
+      when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -663,8 +691,18 @@
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
         qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-conf.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
+      loop: "{{ channel_c_shadowrocket_profile_clients }}"
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+      no_log: true
+      tags:
+        - channel_c_clients_only
+
+    - name: Render C1-Shadowrocket URL QR PNG for each selected client
+      ansible.builtin.shell: |
+        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
+      loop: "{{ channel_c_shadowrocket_profile_clients }}"
+      when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -674,28 +712,36 @@
         dest: "{{ channel_c_out_dir }}/README.md"
         mode: "0600"
         content: |
-          # Channel C1 Home-First Naive Import Checklist
+          # Channel C1 Home-First Import Checklist
 
-          Channel C1 is a selected-client home-first Naive/HTTPS-H2-CONNECT-like
-          lane. The mobile network should see the endpoint connecting to the
-          home DDNS/public IP, while router-side managed traffic continues
-          through Reality/Vision to the VPS.
+          Channel C has two selected-client home-first variants:
+
+          - C1-sing-box: native sing-box Naive, primary QR `*-sfi-sing-box.png`.
+          - C1-Shadowrocket: HTTPS CONNECT compatibility, primary QR
+            `*-c1-shadowrocket-https.png`.
 
           ```text
-          endpoint -> Naive/HTTPS-like -> home endpoint -> router sing-box naive inbound
-                   -> managed split -> Reality/Vision -> VPS -> Internet
+          C1-sing-box:
+          endpoint -> Naive/TLS :{{ channel_c_home_public_port }}
+                   -> router `channel-c-naive-in`
+                   -> managed split -> reality-out -> VPS -> Internet
+
+          C1-Shadowrocket:
+          endpoint -> HTTPS CONNECT/TLS :{{ channel_c_shadowrocket_public_port }}
+                   -> router `channel-c-shadowrocket-http-in`
+                   -> managed split -> reality-out -> VPS -> Internet
           ```
 
-          Primary proof target: SFI/sing-box using `*-sfi-sing-box.json`.
-          Shadowrocket `*-shadowrocket.conf` is a compatibility artifact only.
-          Do not promote Channel C1 from Shadowrocket alone.
+          C1-Shadowrocket is not native Naive. It is a compatibility path.
+          C1-sing-box is the native Naive proof target.
 
           Requirements before import:
 
           - `{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}` presents a valid public TLS certificate.
           - iOS Private Relay / Limit IP Address Tracking is disabled during proof tests.
           - The selected client is listed in `vault_channel_c_home_clients`.
-          - Router logs show `channel-c-naive-in -> reality-out` for managed destinations.
+          - C1-sing-box proof logs show `channel-c-naive-in -> reality-out`.
+          - C1-Shadowrocket proof logs show `channel-c-shadowrocket-http-in -> reality-out`.
       when: channel_c_home_enabled | default(false) | bool
       tags:
         - channel_c_clients_only
@@ -710,7 +756,7 @@
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Channel C1 Home-First Naive Client Artifacts</title>
+            <title>Channel C1 Home-First Client Artifacts</title>
             <style>
               body { margin: 0; font-family: system-ui, sans-serif; background: #f7f7f4; color: #1f2528; }
               main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
@@ -726,20 +772,29 @@
           </head>
           <body>
             <main>
-              <h1>Channel C1 Home-First Naive Clients</h1>
+              <h1>Channel C1 Home-First Clients</h1>
               <p><a href="README.md">Read the local C1 import checklist before importing.</a></p>
               <section class="grid">
           {% for client in channel_c_home_clients | default([]) %}
                 <article>
-                  <h2>{{ client.name }}</h2>
+                  <h2>{{ client.name }} C1-sing-box</h2>
                   <img src="{{ client.name }}-sfi-sing-box.png" alt="{{ client.name }} Channel C1 SFI QR">
                   <div class="links">
                     <a href="{{ client.name }}-sfi-sing-box.json">SFI JSON</a>
                     <a href="{{ client.name }}.txt">naive URI</a>
                     <a href="{{ client.name }}-https.txt">HTTPS URL</a>
-                    <a href="{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
                   </div>
                   <p><img src="{{ client.name }}.png" alt="{{ client.name }} Naive URI QR"></p>
+                </article>
+          {% endfor %}
+          {% for client in channel_c_shadowrocket_profile_clients if channel_c_shadowrocket_enabled | default(false) | bool %}
+                <article>
+                  <h2>{{ client.name }} C1-Shadowrocket</h2>
+                  <img src="{{ client.name }}-c1-shadowrocket-https.png" alt="{{ client.name }} C1-Shadowrocket QR">
+                  <div class="links">
+                    <a href="{{ client.name }}-c1-shadowrocket-https.txt">Shadowrocket URL</a>
+                    <a href="{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
+                  </div>
                   <p><img src="{{ client.name }}-shadowrocket-conf.png" alt="{{ client.name }} Shadowrocket config QR"></p>
                 </article>
           {% endfor %}
@@ -759,5 +814,5 @@
           HOME Reality mobile profiles generated in {{ home_out_dir }}.
           Emergency direct-VPS mobile profiles generated in {{ emergency_out_dir }}.
           Channel B selected-client production artifacts generated in {{ channel_b_out_dir }} when enabled.
-          Channel C1 home-first Naive artifacts generated in {{ channel_c_out_dir }} when enabled.
+          Channel C1 home-first artifacts generated in {{ channel_c_out_dir }} when enabled.
           Emergency profiles must stay disabled in client apps except during a home relay outage.

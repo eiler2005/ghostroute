@@ -410,6 +410,47 @@
       changed_when: false
       when: channel_c_home_enabled | default(false) | bool
 
+    - name: C1-Shadowrocket compatibility listener is running when enabled
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_shadowrocket_ingress_port }}'"
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: C1-Shadowrocket public port redirects to internal HTTP listener when needed
+      ansible.builtin.shell: |
+        wan_if="$(nvram get wan0_ifname)"
+        iptables -t nat -S PREROUTING |
+          grep -q -- "-i ${wan_if} -p tcp .*--dport {{ channel_c_shadowrocket_public_port }} .*REDIRECT --to-ports {{ channel_c_shadowrocket_ingress_port }}"
+      changed_when: false
+      when:
+        - channel_c_shadowrocket_enabled | default(false) | bool
+        - channel_c_shadowrocket_public_port | string != channel_c_shadowrocket_ingress_port | string
+
+    - name: C1-Shadowrocket ingress is allowed by INPUT firewall when enabled
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ channel_c_shadowrocket_ingress_port }} .*ACCEPT'"
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: C1-Shadowrocket ingress connlimit DROP precedes ACCEPT when enabled
+      ansible.builtin.shell: |
+        iptables -S INPUT | awk '
+          /--dport {{ channel_c_shadowrocket_ingress_port }}/ {
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ channel_c_shadowrocket_connlimit_above | default(500) }}/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
+          }
+          END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
+        '
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: C1-Shadowrocket ingress has MSS clamp when enabled
+      ansible.builtin.shell: |
+        iptables -t mangle -S PREROUTING |
+          grep -q -- '--dport {{ channel_c_shadowrocket_public_port }} .*TCPMSS --set-mss {{ channel_c_shadowrocket_mss | default(1360) }}' &&
+        iptables -t mangle -S OUTPUT |
+          grep -q -- '--sport {{ channel_c_shadowrocket_ingress_port }} .*TCPMSS --set-mss {{ channel_c_shadowrocket_mss | default(1360) }}'
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+
     - name: Router TCP high-BDP tuning is applied
       ansible.builtin.shell: |
         tcp_rmem="$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)"
@@ -494,6 +535,21 @@
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":[53,853],"outbound":"reality-out"'
       changed_when: false
       when: channel_c_home_enabled | default(false) | bool
+
+    - name: sing-box has C1-Shadowrocket HTTP inbound with managed split routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"type":"http"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-c-shadowrocket-http-in"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_c_shadowrocket_ingress_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"certificate_path":"{{ channel_c_home_tls_cert_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"key_path":"{{ channel_c_home_tls_key_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","action":"sniff"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":[53,853],"outbound":"reality-out"'
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
 
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"
