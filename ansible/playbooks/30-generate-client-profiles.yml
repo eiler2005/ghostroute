@@ -13,13 +13,9 @@
     emergency_out_dir: "{{ playbook_dir }}/../out/clients-emergency"
     channel_b_out_dir: "{{ playbook_dir }}/../out/clients-channel-b"
     channel_c_out_dir: "{{ playbook_dir }}/../out/clients-channel-c"
-    channel_c_naive_out_dir: "{{ channel_c_out_dir }}/naive"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
     channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
-    channel_c_https_proxy_url: "https://{{ channel_c_naive_username | default('') | urlencode }}:{{ channel_c_naive_password | default('') | urlencode }}@{{ channel_c_naive_public_host | default('') }}:443"
-    channel_c_shadowrocket_https_proxy_url: "{{ channel_c_https_proxy_url }}?method=connect&tls=true&plugin=none"
-    channel_c_naive_proxy_url: "naive+{{ channel_c_https_proxy_url }}"
   tasks:
     - name: Ensure router output dir
       ansible.builtin.file:
@@ -47,9 +43,23 @@
       loop:
         - "{{ channel_b_out_dir }}"
         - "{{ channel_c_out_dir }}"
-        - "{{ channel_c_naive_out_dir }}"
       tags:
         - channel_b_clients_only
+        - channel_c_clients_only
+
+    - name: Validate Channel C1 client profile fields
+      ansible.builtin.assert:
+        that:
+          - channel_c_home_public_host | string | length > 0
+          - channel_c_home_public_port | int > 0
+          - channel_c_home_clients | length > 0
+          - (channel_c_home_clients | selectattr('name', 'defined') | list | length) == (channel_c_home_clients | length)
+          - (channel_c_home_clients | selectattr('username', 'defined') | list | length) == (channel_c_home_clients | length)
+          - (channel_c_home_clients | selectattr('password', 'defined') | list | length) == (channel_c_home_clients | length)
+        fail_msg: "Channel C1 profile generation needs home host/port and clients with name, username and password."
+      when: channel_c_home_enabled | default(false) | bool
+      no_log: true
+      tags:
         - channel_c_clients_only
 
     - name: Render VLESS URI for router VPS identity
@@ -527,107 +537,80 @@
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel C generic NaiveProxy client URL
-      ansible.builtin.copy:
-        dest: "{{ channel_c_naive_out_dir }}/proxy.txt"
-        mode: "0600"
-        content: |
-          {{ channel_c_naive_proxy_url }}
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C NaiveProxy JSON config
-      ansible.builtin.copy:
-        dest: "{{ channel_c_naive_out_dir }}/config.json"
-        mode: "0600"
-        content: |
-          {
-            "listen": "socks://127.0.0.1:1080",
-            "proxy": {{ channel_c_https_proxy_url | to_json }}
-          }
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C NaiveProxy QR PNG
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_naive_out_dir }}/proxy.png" -r "{{ channel_c_naive_out_dir }}/proxy.txt"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C NaiveProxy URL for each named client
+    - name: Render Channel C1 home Naive URI for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/{{ item.name }}.txt"
         mode: "0600"
         content: |
-          {{ channel_c_naive_proxy_url }}#{{ item.name }}-naive
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+          naive+https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-home
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C HTTPS proxy compatibility URL for each named client
+    - name: Render Channel C1 HTTPS proxy compatibility URL for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/{{ item.name }}-https.txt"
         mode: "0600"
         content: |
-          {{ channel_c_https_proxy_url }}#{{ item.name }}-https-proxy
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+          https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-https
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket HTTPS proxy URL for each named client
+    - name: Render Channel C1 SFI sing-box full config for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-https.txt"
+        dest: "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.json"
         mode: "0600"
         content: |
-          {{ channel_c_shadowrocket_https_proxy_url }}#{{ item.name }}-https-proxy
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+          {
+            "log": {
+              "level": "info",
+              "timestamp": true
+            },
+            "inbounds": [
+              {
+                "type": "tun",
+                "tag": "tun-in",
+                "interface_name": "tun0",
+                "address": ["172.19.10.1/30"],
+                "auto_route": true,
+                "strict_route": true
+              }
+            ],
+            "outbounds": [
+              {
+                "type": "naive",
+                "tag": "channel-c",
+                "server": {{ channel_c_home_public_host | to_json }},
+                "server_port": {{ channel_c_home_public_port }},
+                "username": {{ item.username | to_json }},
+                "password": {{ item.password | to_json }},
+                "tls": {
+                  "enabled": true,
+                  "server_name": {{ channel_c_home_public_host | to_json }}
+                }
+              },
+              {
+                "type": "direct",
+                "tag": "direct"
+              }
+            ],
+            "route": {
+              "auto_detect_interface": true,
+              "final": "channel-c"
+            }
+          }
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket add-node URL for each named client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-add.txt"
-        mode: "0600"
-        content: |
-          shadowrocket://add/{{ (channel_c_shadowrocket_https_proxy_url ~ '#' ~ item.name ~ '-https-proxy') | urlencode }}
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C Shadowrocket field import variants for each named client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.0.name }}-shadowrocket-{{ item.1.name }}.txt"
-        mode: "0600"
-        content: |
-          {{ item.1.value }}
-      loop: "{{ channel_c_naive_clients | default([]) | product(channel_c_shadowrocket_field_variants) | list }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-      vars:
-        channel_c_shadowrocket_field_variants:
-          - name: fields-host-port-user-pass
-            value: "{{ channel_c_naive_public_host }}:443:{{ channel_c_naive_username }}:{{ channel_c_naive_password }}"
-          - name: fields-user-pass-host-port
-            value: "{{ channel_c_naive_username }}:{{ channel_c_naive_password }}@{{ channel_c_naive_public_host }}:443"
-
-    - name: Render Channel C Shadowrocket HTTPS proxy config for each named client
+    - name: Render Channel C1 Shadowrocket HTTPS proxy config for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
         mode: "0600"
@@ -639,147 +622,85 @@
           fallback-dns-server = 1.1.1.1, 8.8.4.4
 
           [Proxy]
-          {{ item.name }}-https-proxy = https,{{ channel_c_naive_public_host }},443,username={{ channel_c_naive_username }},password={{ channel_c_naive_password }},method=connect,tls=true,tfo=false
+          {{ item.name }}-channel-c-home = https,{{ channel_c_home_public_host }},{{ channel_c_home_public_port }},username={{ item.username }},password={{ item.password }},method=connect,tls=true,tfo=false
 
           [Proxy Group]
-          PROXY = select, {{ item.name }}-https-proxy
+          PROXY = select, {{ item.name }}-channel-c-home
 
           [Rule]
+          IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+          IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+          IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+          IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
           FINAL,PROXY
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket positional HTTPS proxy config for each named client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-positional.conf"
-        mode: "0600"
-        content: |
-          [General]
-          bypass-system = false
-          ipv6 = false
-          dns-server = 1.1.1.1, 8.8.8.8
-          fallback-dns-server = 1.1.1.1, 8.8.4.4
-
-          [Proxy]
-          {{ item.name }}-https-proxy = https,{{ channel_c_naive_public_host }},443,{{ channel_c_naive_username }},{{ channel_c_naive_password }},method=connect,tls=true,tfo=false
-
-          [Proxy Group]
-          PROXY = select, {{ item.name }}-https-proxy
-
-          [Rule]
-          FINAL,PROXY
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C NaiveProxy JSON config for each named client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}.json"
-        mode: "0600"
-        content: |
-          {
-            "listen": "socks://127.0.0.1:1080",
-            "proxy": {{ channel_c_https_proxy_url | to_json }}
-          }
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C sing-box Naive outbound JSON for each named client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-sing-box-outbound.json"
-        mode: "0600"
-        content: |
-          {
-            "type": "naive",
-            "tag": "{{ item.name }}-channel-c-naive",
-            "server": {{ channel_c_naive_public_host | to_json }},
-            "server_port": 443,
-            "username": {{ channel_c_naive_username | to_json }},
-            "password": {{ channel_c_naive_password | to_json }},
-            "tls": {
-              "enabled": true,
-              "server_name": {{ channel_c_naive_public_host | to_json }}
-            }
-          }
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C NaiveProxy QR PNG for each named client
+    - name: Render Channel C1 Naive URI QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
         qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}.png" -r "{{ channel_c_out_dir }}/{{ item.name }}.txt"
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket HTTPS QR PNG for each named client
+    - name: Render Channel C1 SFI config QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-https.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-https.txt"
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.json"
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket add-node QR PNG for each named client
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-add.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-add.txt"
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C Shadowrocket field import QR PNG variants
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.0.name }}-shadowrocket-{{ item.1.name }}.png" -r "{{ channel_c_out_dir }}/{{ item.0.name }}-shadowrocket-{{ item.1.name }}.txt"
-      loop: "{{ channel_c_naive_clients | default([]) | product(channel_c_shadowrocket_field_variant_names) | list }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-      vars:
-        channel_c_shadowrocket_field_variant_names:
-          - name: fields-host-port-user-pass
-          - name: fields-user-pass-host-port
-
-    - name: Render Channel C Shadowrocket config QR PNG for each named client
+    - name: Render Channel C1 Shadowrocket config QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
         qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-conf.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
+      loop: "{{ channel_c_home_clients | default([]) }}"
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C Shadowrocket positional config QR PNG for each named client
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-positional-conf.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-positional.conf"
-      loop: "{{ channel_c_naive_clients | default([]) }}"
-      when: channel_c_naive_enabled | default(false) | bool
-      no_log: true
+    - name: Render Channel C1 local operator checklist
+      ansible.builtin.copy:
+        dest: "{{ channel_c_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # Channel C1 Home-First Naive Import Checklist
+
+          Channel C1 is a selected-client home-first Naive/HTTPS-H2-CONNECT-like
+          lane. The mobile network should see the endpoint connecting to the
+          home DDNS/public IP, while router-side managed traffic continues
+          through Reality/Vision to the VPS.
+
+          ```text
+          endpoint -> Naive/HTTPS-like -> home endpoint -> router sing-box naive inbound
+                   -> managed split -> Reality/Vision -> VPS -> Internet
+          ```
+
+          Primary proof target: SFI/sing-box using `*-sfi-sing-box.json`.
+          Shadowrocket `*-shadowrocket.conf` is a compatibility artifact only.
+          Do not promote Channel C1 from Shadowrocket alone.
+
+          Requirements before import:
+
+          - `{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}` presents a valid public TLS certificate.
+          - iOS Private Relay / Limit IP Address Tracking is disabled during proof tests.
+          - The selected client is listed in `vault_channel_c_home_clients`.
+          - Router logs show `channel-c-naive-in -> reality-out` for managed destinations.
+      when: channel_c_home_enabled | default(false) | bool
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C NaiveProxy QR index
+    - name: Render Channel C1 QR index
       ansible.builtin.copy:
         dest: "{{ channel_c_out_dir }}/qr-index.html"
         mode: "0600"
@@ -789,57 +710,44 @@
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Channel C NaiveProxy Client Artifacts</title>
+            <title>Channel C1 Home-First Naive Client Artifacts</title>
             <style>
               body { margin: 0; font-family: system-ui, sans-serif; background: #f7f7f4; color: #1f2528; }
               main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
               h1 { margin: 0 0 8px; font-size: 34px; }
               p { margin: 0 0 24px; color: #566; }
-              h2 { margin: 28px 0 12px; font-size: 22px; }
               .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
               article { border: 1px solid #d8d8cf; border-radius: 8px; background: white; padding: 16px; }
-              h3 { margin: 0 0 12px; font-size: 18px; }
+              h2 { margin: 0 0 12px; font-size: 18px; }
+              a { color: #145c7c; font-weight: 650; }
+              .links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
               img { width: 100%; max-width: 320px; aspect-ratio: 1; display: block; margin: 0 auto; image-rendering: pixelated; }
             </style>
           </head>
           <body>
             <main>
-              <h1>Channel C NaiveProxy Client Artifacts</h1>
-              <p>Manual experimental profile only. Do not import as the primary Channel A profile.</p>
-          {% if channel_c_naive_enabled | default(false) | bool %}
-              <h2>NaiveProxy</h2>
+              <h1>Channel C1 Home-First Naive Clients</h1>
+              <p><a href="README.md">Read the local C1 import checklist before importing.</a></p>
               <section class="grid">
-          {% for client in channel_c_naive_clients | default([]) %}
+          {% for client in channel_c_home_clients | default([]) %}
                 <article>
-                  <h3>{{ client.name }}-naive</h3>
-                  <img src="{{ client.name }}.png" alt="{{ client.name }} NaiveProxy QR">
-                  <p>
-                    <a href="{{ client.name }}.txt">naive URI</a> ·
-                    <a href="{{ client.name }}-https.txt">HTTPS proxy URI</a> ·
-                    <a href="{{ client.name }}-shadowrocket-https.txt">Shadowrocket HTTPS URI</a> ·
-                    <a href="{{ client.name }}-shadowrocket-add.txt">Shadowrocket add-node URI</a> ·
-                    <a href="{{ client.name }}-shadowrocket-fields-host-port-user-pass.txt">Shadowrocket fields host:port:user:pass</a> ·
-                    <a href="{{ client.name }}-shadowrocket-fields-user-pass-host-port.txt">Shadowrocket fields user:pass@host:port</a> ·
-                    <a href="{{ client.name }}-shadowrocket.conf">Shadowrocket config</a> ·
-                    <a href="{{ client.name }}-shadowrocket-positional.conf">Shadowrocket positional config</a> ·
-                    <a href="{{ client.name }}.json">naiveproxy JSON</a> ·
-                    <a href="{{ client.name }}-sing-box-outbound.json">sing-box outbound</a>
-                  </p>
-                  <p><img src="{{ client.name }}-shadowrocket-add.png" alt="{{ client.name }} Shadowrocket add-node QR"></p>
-                  <p><img src="{{ client.name }}-shadowrocket-fields-host-port-user-pass.png" alt="{{ client.name }} Shadowrocket fields host port user pass QR"></p>
-                  <p><img src="{{ client.name }}-shadowrocket-fields-user-pass-host-port.png" alt="{{ client.name }} Shadowrocket fields user pass host port QR"></p>
-                  <p><img src="{{ client.name }}-shadowrocket-https.png" alt="{{ client.name }} Shadowrocket HTTPS QR"></p>
+                  <h2>{{ client.name }}</h2>
+                  <img src="{{ client.name }}-sfi-sing-box.png" alt="{{ client.name }} Channel C1 SFI QR">
+                  <div class="links">
+                    <a href="{{ client.name }}-sfi-sing-box.json">SFI JSON</a>
+                    <a href="{{ client.name }}.txt">naive URI</a>
+                    <a href="{{ client.name }}-https.txt">HTTPS URL</a>
+                    <a href="{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
+                  </div>
+                  <p><img src="{{ client.name }}.png" alt="{{ client.name }} Naive URI QR"></p>
                   <p><img src="{{ client.name }}-shadowrocket-conf.png" alt="{{ client.name }} Shadowrocket config QR"></p>
-                  <p><img src="{{ client.name }}-shadowrocket-positional-conf.png" alt="{{ client.name }} Shadowrocket positional config QR"></p>
                 </article>
           {% endfor %}
-                <article><h3>naive-generic</h3><img src="naive/proxy.png" alt="NaiveProxy QR"></article>
               </section>
-          {% endif %}
             </main>
           </body>
           </html>
-      when: channel_c_naive_enabled | default(false) | bool
+      when: channel_c_home_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -851,5 +759,5 @@
           HOME Reality mobile profiles generated in {{ home_out_dir }}.
           Emergency direct-VPS mobile profiles generated in {{ emergency_out_dir }}.
           Channel B selected-client production artifacts generated in {{ channel_b_out_dir }} when enabled.
-          Channel C planned compatibility artifacts generated in {{ channel_c_out_dir }} when enabled.
+          Channel C1 home-first Naive artifacts generated in {{ channel_c_out_dir }} when enabled.
           Emergency profiles must stay disabled in client apps except during a home relay outage.

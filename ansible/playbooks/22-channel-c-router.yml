@@ -1,0 +1,66 @@
+- name: Preflight router for Channel C1 home Naive lane
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Channel C1 home lane is enabled
+      ansible.builtin.assert:
+        that:
+          - channel_c_home_enabled | default(false) | bool
+        fail_msg: "Set vault_channel_c_home_enabled=true before running 22-channel-c-router.yml."
+
+    - name: Ensure bash + python3 via opkg
+      ansible.builtin.raw: |
+        /opt/bin/opkg list-installed | grep -q '^bash ' || /opt/bin/opkg install bash
+        /opt/bin/opkg list-installed | grep -q '^python3 ' || /opt/bin/opkg install python3
+      changed_when: false
+
+    - name: Fail fast if public TCP/443 is already owned by a router service
+      ansible.builtin.raw: |
+        if netstat -nlp 2>/dev/null | awk '$4 ~ /(^|[.:])443$/ { found = 1 } END { exit(found ? 0 : 1) }'; then
+          echo "TCP/443 is already listening on the router; choose vault_channel_c_home_public_port or disable the conflicting WAN service." >&2
+          exit 1
+        fi
+      changed_when: false
+      when:
+        - channel_c_home_public_port | int == 443
+        - channel_c_home_ingress_port | int != 443
+
+- name: Deploy Channel C1 home-first Naive lane on router
+  hosts: routers
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  roles:
+    - singbox_client
+    - stealth_routing
+  post_tasks:
+    - name: Refresh sing-box rule-sets after Channel C1 deploy
+      ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+      changed_when: false
+
+    - name: Restart sing-box after Channel C1 deploy
+      ansible.builtin.raw: |
+        {{ singbox_init_path }} restart
+        sleep 3
+      changed_when: false
+
+    - name: Re-apply stealth routing after Channel C1 restart
+      ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false
+
+    - name: Channel C1 internal Naive listener is running
+      ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_home_ingress_port }}'"
+      changed_when: false
+
+    - name: Channel C1 public port redirects to internal Naive listener when needed
+      ansible.builtin.raw: |
+        iptables -t nat -S PREROUTING |
+          grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_c_home_public_port }} .*REDIRECT --to-ports {{ channel_c_home_ingress_port }}'
+      changed_when: false
+      when: channel_c_home_public_port | string != channel_c_home_ingress_port | string

@@ -1,3 +1,4 @@
+{% set modern_sniff = channel_c_home_enabled | default(false) | bool %}
 {
   "log": {
     "level": "info",
@@ -9,22 +10,24 @@
       "type": "redirect",
       "tag": "redirect-in",
       "listen": "0.0.0.0",
-      "listen_port": {{ singbox_redirect_port }},
-      "sniff": true
+      "listen_port": {{ singbox_redirect_port }}{% if not modern_sniff %},
+      "sniff": true{% endif %}
     },
     {
       "type": "socks",
       "tag": "dnscrypt-socks-in",
       "listen": "127.0.0.1",
-      "listen_port": {{ singbox_dnscrypt_socks_port }},
-      "sniff": false
+      "listen_port": {{ singbox_dnscrypt_socks_port }}{% if not modern_sniff %},
+      "sniff": false{% endif %}
     }{% if home_reality_enabled | default(false) | bool %},
     {
       "type": "vless",
       "tag": "reality-in",
       "listen": "{{ home_reality_listen }}",
       "listen_port": {{ home_reality_ingress_port }},
+{% if not modern_sniff %}
       "sniff": true,
+{% endif %}
       "users": [
 {% for client in home_clients %}
         {
@@ -52,8 +55,29 @@
       "type": "socks",
       "tag": "channel-b-relay-socks",
       "listen": "127.0.0.1",
-      "listen_port": {{ channel_b_home_upstream_socks_port }},
-      "sniff": true
+      "listen_port": {{ channel_b_home_upstream_socks_port }}{% if not modern_sniff %},
+      "sniff": true{% endif %}
+    }
+{% endif %}{% if channel_c_home_enabled | default(false) | bool %},
+    {
+      "type": "naive",
+      "tag": "channel-c-naive-in",
+      "listen": "{{ channel_c_home_listen }}",
+      "listen_port": {{ channel_c_home_ingress_port }},
+      "users": [
+{% for client in channel_c_home_clients %}
+        {
+          "username": "{{ client.username }}",
+          "password": "{{ client.password }}"
+        }{{ "," if not loop.last else "" }}
+{% endfor %}
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ channel_c_home_public_host }}",
+        "certificate_path": "{{ channel_c_home_tls_cert_path }}",
+        "key_path": "{{ channel_c_home_tls_key_path }}"
+      }
     }
 {% endif %}
   ],
@@ -106,6 +130,10 @@
     "rules": [
     { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
+{% if modern_sniff %}
+      { "inbound": "reality-in", "action": "sniff" },
+      { "inbound": "channel-b-relay-socks", "action": "sniff" },
+{% endif %}
       {
         "inbound": "reality-in",
         "port": [53, 853],
@@ -140,6 +168,27 @@
       },
       { "inbound": "channel-b-relay-socks", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
       { "inbound": "channel-b-relay-socks", "outbound": "direct-out" }
+{% endif %}{% if channel_c_home_enabled | default(false) | bool %},
+{% if modern_sniff %}
+      { "inbound": "channel-c-naive-in", "action": "sniff" },
+{% endif %}
+      {
+        "inbound": "channel-c-naive-in",
+        "port": [53, 853],
+        "outbound": "reality-out"
+      },
+      {
+        "inbound": "channel-c-naive-in",
+        "domain_suffix": [
+          "vtb.ru",
+          "app-analytics-services-att.com",
+          "app-measurement.com",
+          "firebaseinstallations.googleapis.com"
+        ],
+        "outbound": "direct-out"
+      },
+      { "inbound": "channel-c-naive-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "channel-c-naive-in", "outbound": "direct-out" }
 {% endif %}
     ],
     "final": "direct-out"

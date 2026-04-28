@@ -249,18 +249,24 @@ Channel B's first hop is XHTTP/TLS over TCP; enabling UDP relay can change
 QUIC/DNS behavior and make first-hop fingerprint diagnostics harder to read.
 Enable it only when explicitly testing UDP behavior.
 
-## Channel C NaiveProxy Planned Compatibility Lane
+## Channel C1 Home-First Naive
 
-Channel C is a planned NaiveProxy / HTTPS forward-proxy compatibility lane. It
-does not participate in router domain routing or automatic failover, and it
-should remain outside production checks until client import, connection and real
-app egress are proven.
+Channel C is C1: a planned selected-client home-first Naive /
+HTTPS-H2-CONNECT-like lane. The device connects to the home router first; after
+router ingress, sing-box applies the same managed split used by Home Reality and
+Channel B. It does not provide automatic failover and should remain outside
+production checks until SFI/sing-box import, connection and real app egress are
+proven.
 
 ```text
-client app -> Channel C Naive/HTTPS hostname :443 -> Caddy forward_proxy / compatible backend -> Internet
+client app -> home public IP :<home-channel-c-public-port>
+           -> router sing-box Naive inbound `channel-c-naive-in`
+           -> managed split
+           -> managed destinations: Reality/Vision -> VPS -> Internet
+           -> non-managed destinations: home WAN -> Internet
 ```
 
-Future generated artifacts can be viewed with:
+Generated artifacts can be viewed with:
 
 ```bash
 ./modules/client-profile-factory/bin/client-profiles generate
@@ -268,35 +274,22 @@ Future generated artifacts can be viewed with:
 ./modules/client-profile-factory/bin/client-profiles channel-c-open
 ```
 
-The intended Channel C output separates true NaiveProxy artifacts from plain
-HTTPS forward-proxy compatibility artifacts:
+The intended Channel C output is home-first only:
 
+- `<client>-sfi-sing-box.json` and QR PNG: primary SFI/sing-box proof profile
+  with a `naive` outbound to `channel_c_home_public_host`.
 - `<client>.txt` and QR PNG: `naive+https://...` URI for clients with native
-  NaiveProxy import support.
-- `<client>-https.txt`: plain `https://...` forward-proxy URI for clients that
-  expose only an HTTPS proxy type.
-- `<client>-shadowrocket-https.txt` and QR PNG: Shadowrocket-targeted HTTPS
-  proxy URI with explicit `method=connect`, `tls=true` and `plugin=none`
-  import hints.
-- `<client>-shadowrocket-add.txt` and QR PNG: Shadowrocket URL-scheme wrapper
-  around the same HTTPS proxy URI, used when the plain QR import drops
-  credentials.
-- `<client>-shadowrocket-fields-*.txt` and QR PNG variants: compact
-  `host:port:user:pass` and `user:pass@host:port` field-import formats for
-  Shadowrocket versions that ignore credentials in HTTPS URLs.
-- `<client>-shadowrocket.conf`: Shadowrocket config-file import with the
-  HTTPS proxy predeclared under `[Proxy]`, `method=connect`, TLS enabled and
-  `FINAL,PROXY`.
-- `<client>-shadowrocket-positional.conf`: alternate Shadowrocket config-file
-  import using positional user/auth-secret fields for app versions that ignore
-  named auth fields on HTTPS proxy nodes. It also pins `method=connect`.
-- `<client>.json`: naiveproxy CLI JSON using the plain HTTPS proxy URL.
-- `<client>-sing-box-outbound.json`: sing-box `type: naive` outbound JSON.
+  NaiveProxy-style import support.
+- `<client>-https.txt`: plain `https://...` compatibility URL.
+- `<client>-shadowrocket.conf` and QR PNG: Shadowrocket HTTPS CONNECT
+  compatibility config with `method=connect`, TLS enabled and `FINAL,PROXY`.
+- `README.md`: local import checklist and acceptance notes.
 
-Keep Channel C profiles disabled/off until its compatibility proof is complete.
-Treat Channel B profiles as selected-client production credentials and Channel C
-profiles as planned compatibility artifacts. These profiles never change router
-behavior by themselves.
+Keep Channel C profiles disabled/off until its C1 compatibility proof is
+complete. Treat Channel B profiles as selected-client production credentials and
+Channel C profiles as planned C1 credentials. These profiles never change router
+behavior by themselves; the router C1 ingress is deployed separately with
+`ansible-playbook playbooks/22-channel-c-router.yml`.
 
 ## Clean Local Artifacts
 

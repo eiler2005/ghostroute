@@ -31,12 +31,12 @@ flowchart LR
     subgraph Home["Home edge"]
         Router["ASUS Merlin router<br/>dnsmasq + ipset + sing-box"]
         ChannelB["Channel B XHTTP/TLS ingress<br/>selected clients"]
+        ChannelC["Channel C1 Naive ingress<br/>selected clients"]
     end
 
     subgraph VPS["VPS edge"]
         Caddy["Caddy :443<br/>SNI/L4 routing"]
         Xray["Xray Reality/Vision<br/>managed egress"]
-        ChannelC["Channel C backend<br/>planned compatibility lane"]
     end
 
     Internet["Internet"]
@@ -44,10 +44,11 @@ flowchart LR
     LAN -->|"DNS/IP classification"| Router
     Mobile -->|"Channel A home Reality"| Router
     Mobile -->|"Channel B production profile"| ChannelB
+    Mobile -. "Channel C1 planned profile" .-> ChannelC
     ChannelB -->|"local relay"| Router
+    ChannelC -->|"sing-box naive inbound"| Router
     Router -->|"managed destinations"| Caddy --> Xray --> Internet
     Router -->|"non-managed destinations"| Internet
-    Mobile -. "Channel C future profile" .-> ChannelC -.-> Internet
 ```
 
 ## Channel Status
@@ -56,7 +57,7 @@ flowchart LR
 |---|---|---|---|---|
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
-| C | Planned compatibility lane | Endpoint -> dedicated VPS hostname | Naive/HTTPS-style compatibility after live client proof | No |
+| C | Planned C1 compatibility lane | Endpoint -> home router Naive ingress | Browser-like home-first client lane after live SFI proof | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 ## Why This Exists
@@ -66,7 +67,7 @@ configuration-free, let mobile clients enter through the home network first,
 and preserve explicit routing control over which destinations use a remote VPS
 exit. The design favors boring operational boundaries over broad automation:
 Channel A owns the router data plane, Channel B is a separate selected-client
-production lane, Channel C is the next compatibility lane, and none of them
+production lane, Channel C is the next home-first compatibility lane, and none of them
 silently rewrites another channel.
 
 ## Overview
@@ -82,9 +83,9 @@ The layered model separates the main traffic responsibilities:
   can decide `DIRECT` vs `MANAGED/PROXY` before traffic enters GhostRoute. For
   example, Shadowrocket on an iPhone/iPad/MacBook can use domain, IP, GEOIP and
   rule-list policy; it is a routing layer, not just a VPN toggle.
-- Layer 1 is the managed channel layer. Channel A and Channel B are home-first:
+- Layer 1 is the managed channel layer. Channel A, Channel B and Channel C are home-first:
   the first network sees endpoint -> home endpoint, not endpoint -> VPS. Channel
-  C remains a planned compatibility lane until live client proof.
+  C remains planned until live C1 client proof.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
@@ -99,7 +100,8 @@ not the general architecture.
 Only Channel A is part of the automatic router data plane. Channel B is
 production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
-planned, separate from Channel A/B routing and has no automatic failover.
+planned C1 home-first, separate from Channel A/B routing and has no automatic
+failover.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -121,8 +123,9 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Channel B selected-client production home-first lane: selected devices connect
   to the home router first via XHTTP/TLS, then the router relays into local
   sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
-- Channel C planned compatibility lane: NaiveProxy/HTTPS-proxy style profile
-  path on a dedicated public VPS hostname under `:443` after live proof.
+- Channel C planned C1 home-first lane: Naive/HTTPS-H2-CONNECT-like clients
+  connect to the home endpoint first, then router-side sing-box applies the
+  same managed split and Reality/Vision upstream.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -199,8 +202,9 @@ Layer 1 managed channels
             -> ASUS sing-box Reality inbound
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint :<home-channel-b-port>
             -> router local Xray XHTTP/TLS ingress
-  Channel C -> endpoint -> Naive/Hysteria2/Trojan fallback
-            -> home or VPS endpoint
+  Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like
+            -> home endpoint :<home-channel-c-public-port>
+            -> router sing-box Naive ingress
                   |
                   v
 Layer 2 home router
@@ -226,7 +230,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS, selected-client B and planned C artifacts from Vault
+  Client Profiles     -> QR/VLESS, selected-client B and planned C1 artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -330,17 +334,17 @@ Channel B and Channel C are device-client lanes with different maturity levels:
   `:<home-channel-b-port>`. A local Xray process terminates that first hop and
   forwards traffic into local sing-box SOCKS, so the second hop reuses the same
   existing Reality/Vision upstream to VPS as Channel A.
-- Channel C is the next planned compatibility lane. It is direct to a dedicated
-  public VPS hostname on `:443` and uses a Naive/HTTPS-proxy-compatible backend
-  after live client import and real app egress are proven. It is VPS-only and
-  does not create a new router-managed split path.
+- Channel C is the next planned compatibility lane in C1 home-first form.
+  Selected devices connect to the home endpoint with Naive/HTTPS-H2-CONNECT-like
+  traffic; router-side sing-box terminates `channel-c-naive-in` and applies the
+  same managed split as the other home-first lanes.
 
 Channel B isolation boundaries are strict: it has its own ingress port and
 local Xray relay process, but it does not mutate Channel A REDIRECT ownership,
 router DNS, TUN state or automatic failover. Treat generated
 `ansible/out/clients-channel-b/` artifacts as selected-client production
 credentials and generated `ansible/out/clients-channel-c/` artifacts as planned
-compatibility artifacts until Channel C passes a separate live proof.
+compatibility artifacts until Channel C1 passes a separate live SFI proof.
 
 ---
 
@@ -354,6 +358,7 @@ Router:
   sing-box home Reality inbound on :<home-reality-port>
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
+  optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
   dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
@@ -362,7 +367,6 @@ VPS:
   shared system Caddy with layer4 plugin on :443
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
-  dedicated Channel C planned compatibility backend on :443 via shared system Caddy
   stealth stack under /opt/stealth
 
 Control:
@@ -384,9 +388,9 @@ ansible/
   README.md                       # Ansible control plane overview
   playbooks/10-stealth-vps.yml
   playbooks/11-channel-b-vps.yml
-  playbooks/12-channel-c-vps.yml
   playbooks/20-stealth-router.yml
   playbooks/21-channel-b-router.yml
+  playbooks/22-channel-c-router.yml
   playbooks/30-generate-client-profiles.yml
   playbooks/99-verify.yml
   secrets/stealth.yml             # ansible-vault, gitignored
@@ -439,9 +443,11 @@ ansible-playbook playbooks/20-stealth-router.yml
 # Channel B selected-client home-first add-on on router
 ansible-playbook playbooks/21-channel-b-router.yml
 
-# Optional direct mode for B and planned C VPS lane
+# Optional direct mode for B
 ansible-playbook playbooks/11-channel-b-vps.yml
-ansible-playbook playbooks/12-channel-c-vps.yml
+
+# Channel C1 selected-client home-first add-on on router
+ansible-playbook playbooks/22-channel-c-router.yml
 
 # End-to-end verification: VPS + router
 ansible-playbook playbooks/99-verify.yml
@@ -582,8 +588,8 @@ cd ..
 
 Expected live evidence: Channel A router invariants are green, Channel B
 selected-client traffic reaches the home ingress and uses the managed split, and
-Channel C remains outside production checks until its own compatibility proof is
-complete.
+Channel C remains outside production checks until its own C1 compatibility proof
+is complete.
 
 Sanitized live sample from the home network:
 

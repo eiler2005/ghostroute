@@ -18,6 +18,11 @@ CHANNEL_B_HOME_ENABLED={{ channel_b_home_relay_enabled | default(false) | ternar
 CHANNEL_B_HOME_PORT={{ channel_b_home_ingress_port | default(0) }}
 CHANNEL_B_HOME_CONNLIMIT_ABOVE={{ channel_b_home_connlimit_above | default(500) }}
 CHANNEL_B_HOME_MSS={{ channel_b_home_mss | default(1360) }}
+CHANNEL_C_HOME_ENABLED={{ channel_c_home_enabled | default(false) | ternary('1', '0') }}
+CHANNEL_C_HOME_PUBLIC_PORT={{ channel_c_home_public_port | default(0) }}
+CHANNEL_C_HOME_PORT={{ channel_c_home_ingress_port | default(0) }}
+CHANNEL_C_HOME_CONNLIMIT_ABOVE={{ channel_c_home_connlimit_above | default(500) }}
+CHANNEL_C_HOME_MSS={{ channel_c_home_mss | default(1360) }}
 ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
 VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
@@ -138,4 +143,39 @@ if [ "$CHANNEL_B_HOME_ENABLED" = "1" ]; then
     || logger -t stealth-route-init "comment match unavailable; Channel B home ingress counter is unnamed"
 fi
 
-echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, channel_b_home=$CHANNEL_B_HOME_ENABLED, vps=$VPS_IP via normal WAN)"
+if [ "$CHANNEL_C_HOME_ENABLED" = "1" ]; then
+  # Channel C1 listens on an internal high port. The browser-like public port
+  # can be TCP/443 and is redirected on WAN ingress before local delivery.
+  if [ "$CHANNEL_C_HOME_PUBLIC_PORT" != "$CHANNEL_C_HOME_PORT" ]; then
+    iptables -t nat -D PREROUTING -i "$WAN_IF" -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_C_HOME_PORT" 2>/dev/null || true
+    iptables -t nat -A PREROUTING -i "$WAN_IF" -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_C_HOME_PORT"
+  else
+    iptables -t nat -D PREROUTING -i "$WAN_IF" -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_C_HOME_PORT" 2>/dev/null || true
+  fi
+
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above 300 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above 500 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above "$CHANNEL_C_HOME_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" -j ACCEPT 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" -m comment --comment "mobile-naive-channel-c-ingress" -j ACCEPT 2>/dev/null || true
+
+  for OLD_MSS in 1280 1360 1380 1400 "$CHANNEL_C_HOME_MSS"; do
+    iptables -t mangle -D PREROUTING -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+    iptables -t mangle -D PREROUTING -p tcp --dport "$CHANNEL_C_HOME_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -p tcp --sport "$CHANNEL_C_HOME_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+  done
+  iptables -t mangle -I PREROUTING 1 -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$CHANNEL_C_HOME_MSS" 2>/dev/null \
+    || logger -t stealth-route-init "TCPMSS unavailable; Channel C1 home public SYN has no MSS clamp"
+  iptables -t mangle -I OUTPUT 1 -p tcp --sport "$CHANNEL_C_HOME_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$CHANNEL_C_HOME_MSS" 2>/dev/null \
+    || logger -t stealth-route-init "TCPMSS unavailable; Channel C1 home ingress SYN-ACK has no MSS clamp"
+
+  iptables -I INPUT 1 -p tcp --dport "$CHANNEL_C_HOME_PORT" --syn -m connlimit --connlimit-above "$CHANNEL_C_HOME_CONNLIMIT_ABOVE" -j DROP 2>/dev/null \
+    || logger -t stealth-route-init "connlimit unavailable; Channel C1 home ingress has no kernel connlimit"
+  iptables -I INPUT 2 -p tcp --dport "$CHANNEL_C_HOME_PORT" -j ACCEPT
+  iptables -A INPUT -p tcp --dport "$CHANNEL_C_HOME_PORT" -m comment --comment "mobile-naive-channel-c-ingress" -j ACCEPT 2>/dev/null \
+    || logger -t stealth-route-init "comment match unavailable; Channel C1 home ingress counter is unnamed"
+fi
+
+echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, channel_b_home=$CHANNEL_B_HOME_ENABLED, channel_c_home=$CHANNEL_C_HOME_ENABLED, vps=$VPS_IP via normal WAN)"

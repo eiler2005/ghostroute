@@ -7,7 +7,8 @@ GhostRoute: какие клиенты куда подключаются, как�
 
 ## Executive Summary
 
-В steady state активны два сценария:
+В steady state активны два production-сценария и один planned selected-client
+C1 сценарий:
 
 1. Домашние Wi-Fi/LAN устройства используют transparent routing на роутере.
    Только managed-направления из `STEALTH_DOMAINS` и `VPN_STATIC_NETS` уходят
@@ -17,6 +18,10 @@ GhostRoute: какие клиенты куда подключаются, как�
    TCP/<home-reality-port>. После входа в домашний роутер применяется тот же split policy:
    managed-направления идут через VPS, non-managed-направления идут через
    домашний WAN.
+
+3. Channel C1 selected clients подключаются к домашнему ASUS через
+   Naive/HTTPS-H2-CONNECT-like ingress на TCP/<home-channel-c-public-port>.
+   После входа в sing-box `channel-c-naive-in` применяется тот же split policy.
 
 Ключевой результат: для LTE-оператора первый hop мобильного клиента выглядит
 как domestic `iPhone -> home RU IP`. Для сайтов страна/IP зависят от того,
@@ -31,8 +36,8 @@ GhostRoute: какие клиенты куда подключаются, как�
 | Router OS | ASUS RT-AX88U Pro + Asuswrt-Merlin | dnsmasq, ipset, iptables, sing-box hooks |
 | Router DNS | `dnsmasq` | Наполняет `STEALTH_DOMAINS`, фильтрует AAAA while IPv6 is off |
 | Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS, при необходимости через локальный sing-box SOCKS |
-| Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow TCP/<home-reality-port> |
-| Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `reality-out`, `direct-out` |
+| Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow/redirect home mobile ingress ports |
+| Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `channel-c-naive-in`, `reality-out`, `direct-out` |
 | VPS ingress | VPS host + Caddy L4 TCP/443 | Принимает router-side Reality connection |
 | VPS proxy | Xray Reality inbound | Финальный Reality ingress перед выходом в интернет |
 | Cold fallback | Preserved `wgc1_*` NVRAM | Не активен; включается только emergency script вручную |
@@ -150,7 +155,41 @@ Expected website-facing exit: домашний российский WAN IP.
 This is the important post-cleanup nuance: Home Reality ingress is not an
 all-traffic relay to VPS. It is a home ingress plus split routing policy.
 
-## Scenario C: Router-Originated Traffic
+## Scenario C: Channel C1 Home-First Naive
+
+### Managed Destination from C1
+
+```text
+iPhone LTE
+  -> Naive/HTTPS-H2-CONNECT-like to home public RU IP TCP/<home-channel-c-public-port>
+  -> optional WAN REDIRECT to router internal TCP/<home-channel-c-ingress-port>
+  -> ASUS sing-box channel-c-naive-in
+  -> sing-box route rule:
+       destination matches STEALTH_DOMAINS or VPN_STATIC_NETS rule-set
+  -> sing-box reality-out
+  -> VPS host TCP/443
+  -> Caddy L4
+  -> Xray Reality inbound
+  -> target site
+```
+
+Expected website-facing exit: VPS datacenter IP. The LTE carrier sees the home
+endpoint, not the VPS.
+
+### Non-Managed Destination from C1
+
+```text
+iPhone LTE
+  -> Naive/HTTPS-H2-CONNECT-like to home public RU IP TCP/<home-channel-c-public-port>
+  -> ASUS sing-box channel-c-naive-in
+  -> sing-box direct-out
+  -> home ISP WAN
+  -> target site
+```
+
+Expected website-facing exit: домашний российский WAN IP.
+
+## Scenario D: Router-Originated Traffic
 
 ```text
 Router process
@@ -165,7 +204,7 @@ router-originated traffic can loop sing-box outbound connections.
 
 | Observer | Managed mobile traffic | Non-managed mobile traffic | Home LAN managed traffic | Home LAN non-managed traffic |
 |---|---|---|---|---|
-| LTE carrier | iPhone -> home RU IP TCP/<home-reality-port> | iPhone -> home RU IP TCP/<home-reality-port> | n/a | n/a |
+| LTE carrier | iPhone -> home RU IP TCP/<home-reality-port> or TCP/<home-channel-c-public-port> | iPhone -> home RU IP TCP/<home-reality-port> or TCP/<home-channel-c-public-port> | n/a | n/a |
 | Home ISP | home router -> VPS TCP/443 | home router -> target site directly | home router -> VPS TCP/443 | home router -> target site directly |
 | VPS host | connection from home router | does not see this flow | connection from home router | does not see this flow |
 | Target website | VPS datacenter IP | approved regional egress IP | VPS datacenter IP | approved regional egress IP |
@@ -195,7 +234,8 @@ what the LTE carrier saw as the first hop.
 
 - One router-side `sing-box` process handles both LAN and mobile ingress.
 - LAN managed TCP enters `redirect-in` on `:<lan-redirect-port>`.
-- Mobile clients enter `reality-in` on TCP/<home-reality-port>.
+- Mobile clients enter `reality-in` on TCP/<home-reality-port>; C1 clients enter
+  `channel-c-naive-in` through TCP/<home-channel-c-public-port>.
 - Managed destinations route to `reality-out`.
 - Non-managed destinations from mobile route to `direct-out`.
 - `STEALTH_DOMAINS` is the active domain set.

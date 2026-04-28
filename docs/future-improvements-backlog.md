@@ -24,9 +24,9 @@
 - Channel B является production для selected device-client profiles:
   `VLESS+XHTTP+TLS` home-first ingress на роутере, затем local relay в sing-box
   managed split без изменений router REDIRECT/DNS/TUN ownership.
-- Channel C остается planned compatibility направлением: NaiveProxy / HTTPS
-  forward-proxy подход без изменений router REDIRECT/DNS/TUN до отдельного live
-  proof.
+- Channel C остается planned C1 compatibility направлением: Naive /
+  HTTPS-H2-CONNECT-like home-first ingress на роутере без изменений Channel A
+  REDIRECT/DNS/TUN до отдельного live proof.
 
 Дополнительно уже реализован безопасный observability-слой вокруг runtime-конфигурации:
 
@@ -333,7 +333,7 @@
 - Channel B считается production для selected device-client profiles:
   home-first XHTTP/TLS ingress на роутере -> local sing-box relay -> тот же
   managed split и Reality/Vision upstream.
-- Channel C остается planned compatibility lane до отдельного live compatibility
+- Channel C остается planned C1 home-first lane до отдельного live compatibility
   pass.
 - B/C не дают automatic failover и не должны менять Channel A
   REDIRECT/DNS/TUN ownership.
@@ -349,13 +349,14 @@ Channel B maintenance target:
 
 Channel C target:
 
-- `Device client -> Naive/HTTPS hostname :443 -> Caddy forward_proxy /
-  compatible backend -> Internet`
+- `Device client -> home Naive/HTTPS-H2-CONNECT-like ingress -> router
+  sing-box channel-c-naive-in -> managed split -> Reality/Vision -> VPS ->
+  Internet`
 - оставить NaiveProxy экспериментом, пока не выбран надежный клиентский стек
 - не считать Shadowrocket/Hiddify compatibility достаточной без end-to-end
   проверки обычного app traffic, а не только CONNECT/API checker
-- готовность: выбран поддерживаемый клиент/протокол, import стабилен,
-  authenticated egress работает для обычных приложений
+- готовность: выбран поддерживаемый iPhone client/protocol, import стабилен,
+  authenticated C1 egress работает для обычных приложений через home-first path
 
 Желаемый результат:
 
