@@ -62,6 +62,7 @@ channel_c_home_tls_cert_path: "{{ vault_channel_c_home_tls_cert_path | default('
 channel_c_home_tls_key_path: "{{ vault_channel_c_home_tls_key_path | default('/opt/etc/sing-box/channel-c-home-privkey.pem') }}"
 channel_c_home_tls_cert_pem: "{{ vault_channel_c_home_tls_cert_pem | default('') }}"
 channel_c_home_tls_key_pem: "{{ vault_channel_c_home_tls_key_pem | default('') }}"
+channel_c_sfi_native_profiles_enabled: "{{ vault_channel_c_sfi_native_profiles_enabled | default(false) }}"
 channel_c_shadowrocket_enabled: "{{ vault_channel_c_shadowrocket_enabled | default(channel_c_home_enabled) }}"
 channel_c_shadowrocket_public_port: "{{ vault_channel_c_shadowrocket_public_port | default(4443, true) }}"
 channel_c_shadowrocket_ingress_port: "{{ vault_channel_c_shadowrocket_ingress_port | default((channel_c_home_ingress_port | int) + 1, true) }}"

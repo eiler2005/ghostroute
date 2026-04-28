@@ -168,9 +168,12 @@ cd ansible
 ansible-playbook playbooks/22-channel-c-router.yml
 ```
 
-C1 uses sing-box `naive` inbound/outbound support, so the router binary must be
-`>= 1.13`. The playbook fails fast when C1 is enabled and `sing-box` is older
-than the Naive-capable line.
+C1 router-side Naive uses sing-box `naive` inbound support, so the router binary
+must be `>= 1.13`. The playbook fails fast when C1 is enabled and `sing-box` is
+older than the Naive-capable line. The tested iPhone SFI app used sing-box
+`1.11.4` and rejected outbound `type: naive`; SFI native profile generation is
+therefore disabled by default until the selected iPhone client supports Naive
+outbound.
 
 Shadowrocket compatibility is intentionally separate from C1-sing-box Naive. The
 live C1-Shadowrocket proof uses sing-box HTTP inbound over TLS on a separate
