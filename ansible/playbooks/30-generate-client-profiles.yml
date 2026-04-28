@@ -418,6 +418,54 @@
       tags:
         - channel_b_clients_only
 
+    - name: Render Channel B local operator checklist
+      ansible.builtin.copy:
+        dest: "{{ channel_b_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # Channel B Local Import Checklist
+
+          Channel B is a manual home-first lane. Import these profiles only for
+          explicit device tests; they are not automatic production failover.
+
+          ## Layer 0 Endpoint Policy
+
+          If the endpoint client supports rule-based routing, keep the local
+          device policy aligned with the layered architecture:
+
+          ```text
+          local/private/captive/trusted domestic -> DIRECT
+          foreign/non-local/unknown/selected     -> MANAGED/PROXY
+          FINAL                                  -> MANAGED/PROXY
+          ```
+
+          Shadowrocket on iPhone/iPad/MacBook is one example of this Layer 0
+          policy. The Shadowrocket config is a routing layer, not just a VPN
+          toggle.
+
+          ## Shadowrocket Channel B
+
+          - Import the `*-channel-b-home` QR/text URI for the selected device.
+          - Keep `UDP Relay` disabled by default.
+          - Enable `UDP Relay` only for explicit UDP behavior tests.
+          - Re-check `FINAL -> MANAGED/PROXY` after importing or editing config
+            files.
+
+          ## Expected First Hop
+
+          Channel B managed traffic should use this shape:
+
+          ```text
+          endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router relay
+                   -> managed split -> Reality/Vision -> VPS
+          ```
+
+          Generic IP checkers report the final website-facing exit, not the
+          first hop seen by the endpoint's current network.
+      when: channel_b_xhttp_enabled | default(false) | bool
+      tags:
+        - channel_b_clients_only
+
     - name: Render Channel B QR index
       ansible.builtin.copy:
         dest: "{{ channel_b_out_dir }}/qr-index.html"
@@ -451,6 +499,7 @@
               <h1>Channel B XHTTP Client Artifacts</h1>
               <p>Manual fallback profiles only. Do not import as the primary Channel A profile.</p>
               {% endif %}
+              <p><a href="README.md">Read the local Layer 0 / Shadowrocket import checklist before importing.</a></p>
               <section class="grid">
           {% for client in channel_b_profile_clients %}
                 <article>

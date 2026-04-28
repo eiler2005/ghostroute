@@ -236,10 +236,11 @@ values are present:
 ```
 
 The intended Channel B output includes home-first VLESS URI text files and QR
-PNG files under `ansible/out/clients-channel-b/`. In direct-XHTTP mode (when
-home relay is disabled) the generator also emits compatibility URI variants and
-raw Xray JSON artifacts. iOS and Android app import remain manual compatibility
-checks before considering broader readiness.
+PNG files under `ansible/out/clients-channel-b/`, plus a local `README.md`
+operator checklist for Layer 0 and Shadowrocket import settings. In direct-XHTTP
+mode (when home relay is disabled) the generator also emits compatibility URI
+variants and raw Xray JSON artifacts. iOS and Android app import remain manual
+compatibility checks before considering broader readiness.
 
 For Shadowrocket Channel B profiles, keep `UDP Relay` disabled by default.
 Channel B's first hop is XHTTP/TLS over TCP; enabling UDP relay can change
