@@ -335,12 +335,13 @@ Channel B and Channel C are device-client lanes with different client surfaces:
   `:<home-channel-b-port>`. A local Xray process terminates that first hop and
   forwards traffic into local sing-box SOCKS, so the second hop reuses the same
   existing Reality/Vision upstream to VPS as Channel A.
-- Channel C is the home-first Naive/compatibility lane. C1-sing-box selected
-  devices connect to the home endpoint with Naive/HTTPS-H2-CONNECT-like traffic;
-  router-side sing-box terminates `channel-c-naive-in`. C1-Shadowrocket
-  devices use HTTPS CONNECT/TLS and terminate at
-  `channel-c-shadowrocket-http-in`. Both apply the same managed split as the
-  other home-first lanes.
+- Channel C is the home-first Naive/compatibility lane. C1-sing-box is the
+  router-side native Naive design, but the tested iPhone SFI app used sing-box
+  `1.11.4` and rejected outbound `type: naive`; generated SFI native profiles
+  are disabled by default until the selected iPhone client supports Naive
+  outbound. C1-Shadowrocket devices use HTTPS CONNECT/TLS and terminate at
+  `channel-c-shadowrocket-http-in`. Both router-side paths apply the same
+  managed split as the other home-first lanes.
 
 Channel B isolation boundaries are strict: it has its own ingress port and
 local Xray relay process, but it does not mutate Channel A REDIRECT ownership,

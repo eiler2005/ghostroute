@@ -601,7 +601,9 @@
             }
           }
       loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
+      when:
+        - channel_c_home_enabled | default(false) | bool
+        - channel_c_sfi_native_profiles_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -637,11 +639,13 @@
 
           Channel C has two selected-client home-first variants:
 
-          - C1-sing-box: native sing-box Naive, primary import artifact
-            `c1-SFI/*-sfi-sing-box.json`.
-            SFI accepted the JSON file as the working profile format. QR and
-            standalone Naive URI artifacts are intentionally not generated for
-            this lane because they did not import reliably in SFI.
+          - C1-sing-box: native sing-box Naive, experimental client artifact
+            `c1-SFI/*-sfi-sing-box.json` when
+            `channel_c_sfi_native_profiles_enabled=true`.
+            The tested iPhone SFI packet-tunnel build rejected this profile
+            with `unknown outbound type: naive`, so these profiles are disabled
+            by default until the selected iPhone client build supports sing-box
+            Naive outbound.
           - C1-Shadowrocket: HTTPS CONNECT compatibility, primary QR
             `1-SR/*-c1-shadowrocket-https.png`.
             Do not use `*-shadowrocket-conf.png`; that older full-config QR did
@@ -661,10 +665,13 @@
           ```
 
           C1-Shadowrocket is not native Naive. It is a compatibility path.
-          C1-sing-box is the native Naive proof target. In the imported JSON,
-          the outbound must contain `"type": "naive"` with TLS enabled. If it
-          becomes `"type": "http"` or Shadowrocket-style HTTPS CONNECT, that is
-          the compatibility lane, not native Naive.
+          C1-sing-box is the native Naive proof target, but it is blocked on
+          iPhone until the chosen SFI/sing-box build supports outbound
+          `"type": "naive"`. In the imported JSON, the outbound must contain
+          `"type": "naive"` with TLS enabled. If SFI reports `unknown outbound
+          type: naive`, the client build is not usable for native Naive. If the
+          profile becomes `"type": "http"` or Shadowrocket-style HTTPS CONNECT,
+          that is the compatibility lane, not native Naive.
 
           Requirements before import:
 
@@ -672,6 +679,9 @@
           - iOS Private Relay / Limit IP Address Tracking is disabled during proof tests.
           - The selected client is listed in `vault_channel_c_home_clients`.
           - C1-sing-box proof logs show `channel-c-naive-in -> reality-out`.
+          - If testing SFI native, set
+            `vault_channel_c_sfi_native_profiles_enabled=true` only for a client
+            build known to support `naive` outbound.
           - SFI dashboard counters may stay at zero until traffic is generated
             through the enabled profile.
           - C1-Shadowrocket proof logs show `channel-c-shadowrocket-http-in -> reality-out`.
@@ -708,6 +718,7 @@
               <h1>Channel C1 Home-First Clients</h1>
               <p><a href="README.md">Read the local C1 import checklist before importing.</a></p>
               <section class="grid">
+          {% if channel_c_sfi_native_profiles_enabled | default(false) | bool %}
           {% for client in channel_c_home_clients | default([]) %}
                 <article>
                   <h2>{{ client.name }} C1-sing-box</h2>
@@ -716,6 +727,12 @@
                   </div>
                 </article>
           {% endfor %}
+          {% else %}
+                <article>
+                  <h2>C1-sing-box</h2>
+                  <p>SFI native Naive profiles are disabled until the selected iPhone client supports outbound type naive.</p>
+                </article>
+          {% endif %}
           {% for client in channel_c_shadowrocket_profile_clients if channel_c_shadowrocket_enabled | default(false) | bool %}
                 <article>
                   <h2>{{ client.name }} C1-Shadowrocket</h2>

@@ -23,7 +23,7 @@ only as removed-design debugging records.
 
 ## C1-sing-box Naive
 
-C1-sing-box is the stealth-primary Channel C design:
+C1-sing-box is the intended stealth-primary Channel C design:
 
 ```text
 iPhone SFI / sing-box client
@@ -36,8 +36,24 @@ iPhone SFI / sing-box client
 
 This is the closest current implementation to a real NaiveProxy-style lane in
 this repository. The router uses sing-box `type: naive` inbound with a real
-Let's Encrypt certificate and per-client username/password. The SFI/sing-box
-client profile uses sing-box `type: naive` outbound.
+Let's Encrypt certificate and per-client username/password. A compatible
+SFI/sing-box client profile must use sing-box `type: naive` outbound.
+
+Live iPhone finding from 2026-04-28:
+
+- The generated SFI JSON imported into the tested iPhone app.
+- The imported profile contained outbound `"type": "naive"`, which is the
+  correct native Naive shape.
+- The app failed before making traffic with
+  `unknown outbound type: naive`.
+- The tested iPhone app reported sing-box `1.11.4`.
+- Official sing-box docs mark Naive outbound as `Since sing-box 1.13.0`.
+
+That means the tested SFI packet-tunnel build does not support Naive outbound,
+even though the router-side C1 Naive ingress is deployed. C1-sing-box therefore
+remains server-ready and client-blocked on that iPhone build. Generated SFI
+native profiles are disabled by default and should only be enabled for a
+client build known to support sing-box Naive outbound.
 
 This is not the original klzgrad NaiveProxy daemon behind Caddy
 `forward_proxy`, and it is not Chromium itself. It is sing-box's implementation
@@ -101,7 +117,9 @@ behave as a compatible Naive client for the current sing-box inbound.
 
 ## Production Interpretation
 
-- C1-sing-box on `:443` remains the stealth-primary Channel C design.
+- C1-sing-box on `:443` remains the intended stealth-primary Channel C design,
+  but it is not considered iPhone-proven until a client accepts outbound
+  `"type": "naive"` and produces `channel-c-naive-in -> reality-out` logs.
 - C1-Shadowrocket on `:4443` is a Shadowrocket compatibility lane, not a Naive lane.
 - C1-Shadowrocket is a persisted compatibility lane with separate profile and
   verification artifacts.
