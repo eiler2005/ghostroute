@@ -104,8 +104,7 @@ assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'Render C1-S
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" '"type": "naive"'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'channel_c_home_public_host'
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'channel_c_shadowrocket_public_port'
-assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'method=connect,tls=true'
-assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'bypass-system = false'
+assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'c1-shadowrocket-https'
 assert_not_contains "ansible/playbooks/30-generate-client-profiles.yml" 'channel_c_naive|channel_c_https_proxy_url|shadowrocket-positional|shadowrocket-add|fields-host-port-user-pass|Channel C.*direct-VPS|direct-VPS.*Channel C'
 
 assert_contains "ansible/playbooks/99-verify.yml" 'Channel B home ingress listener is running when enabled'
