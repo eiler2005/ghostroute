@@ -12,7 +12,7 @@ singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 home_reality_enabled: true
 home_reality_listen: "0.0.0.0"
 home_reality_ingress_port: "{{ vault_home_reality_ingress_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_HOME_REALITY_PORT type=properties file=../../.env', errors='ignore'), true) | default(home_reality_ingress_port_secret | default('419' ~ '53'), true) }}"
-home_reality_connlimit_above: 300
+home_reality_connlimit_above: 500
 home_reality_mss: 1360
 # Backward-compatible alias for older docs/scripts; new code should use
 # home_reality_ingress_port.
@@ -36,7 +36,7 @@ channel_b_home_relay_enabled: "{{ vault_channel_b_home_relay_enabled | default(c
 channel_b_home_listen: "0.0.0.0"
 channel_b_home_ingress_port: "{{ vault_channel_b_home_ingress_port | default((home_reality_ingress_port | int) + 1, true) }}"
 channel_b_home_clients: "{{ vault_channel_b_home_clients | default(channel_b_xhttp_clients | default([]), true) }}"
-channel_b_home_connlimit_above: 300
+channel_b_home_connlimit_above: 500
 channel_b_home_mss: 1360
 channel_b_home_xhttp_host: "{{ vault_channel_b_home_xhttp_host | default(home_reality_public_host, true) }}"
 channel_b_home_xhttp_path: "{{ vault_channel_b_home_xhttp_path | default(channel_b_xhttp_path, true) }}"

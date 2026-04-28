@@ -18,6 +18,8 @@ STATIC_JSON="${SINGBOX_STATIC_NETS_JSON:-${RULE_DIR}/stealth-static.json}"
 MANUAL_DNSMASQ="${MANUAL_DNSMASQ:-/jffs/configs/dnsmasq-stealth.conf.add}"
 AUTO_DNSMASQ="${AUTO_DNSMASQ:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"
 STATIC_NETS="${STATIC_NETS:-/jffs/configs/router_configuration.static_nets}"
+STEALTH_IPSET_NAME="${STEALTH_IPSET_NAME:-STEALTH_DOMAINS}"
+STEALTH_IPSET_SNAPSHOT="${STEALTH_IPSET_SNAPSHOT:-}"
 SINGBOX_BIN="${SINGBOX_BIN:-/opt/bin/sing-box}"
 SINGBOX_INIT="${SINGBOX_INIT:-/opt/etc/init.d/S99singbox}"
 
@@ -66,6 +68,25 @@ extract_static_cidrs() {
   ' "$@" 2>/dev/null | sort -u
 }
 
+extract_stealth_ipset_cidrs() {
+  {
+    ipset_bin="$(which ipset 2>/dev/null || true)"
+    if [ -z "$ipset_bin" ] && [ -x /usr/sbin/ipset ]; then
+      ipset_bin=/usr/sbin/ipset
+    fi
+    if [ -n "$ipset_bin" ]; then
+      "$ipset_bin" save "$STEALTH_IPSET_NAME" 2>/dev/null || true
+    fi
+    if [ -n "$STEALTH_IPSET_SNAPSHOT" ] && [ -f "$STEALTH_IPSET_SNAPSHOT" ]; then
+      cat "$STEALTH_IPSET_SNAPSHOT"
+    fi
+  } | awk -v set_name="$STEALTH_IPSET_NAME" '
+    $1 == "add" && $2 == set_name && $3 ~ /^[0-9]+(\.[0-9]+){3}$/ {
+      print $3 "/32"
+    }
+  ' | sort -u
+}
+
 write_source_rule_set() {
   input_file="$1"
   output_file="$2"
@@ -105,7 +126,10 @@ install_if_changed() {
 }
 
 extract_stealth_domains "$MANUAL_DNSMASQ" "$AUTO_DNSMASQ" > "$DOMAINS_TXT"
-extract_static_cidrs "$STATIC_NETS" > "$STATIC_TXT"
+{
+  extract_static_cidrs "$STATIC_NETS"
+  extract_stealth_ipset_cidrs
+} | sort -u > "$STATIC_TXT"
 
 write_source_rule_set "$DOMAINS_TXT" "$DOMAINS_NEW" "domain_suffix"
 write_source_rule_set "$STATIC_TXT" "$STATIC_NEW" "ip_cidr"

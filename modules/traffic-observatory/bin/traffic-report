@@ -47,6 +47,8 @@ MOBILE_LOG="$TMPDIR/mobile-reality.log"
 MOBILE_TOTALS="$TMPDIR/mobile-reality-totals.txt"
 MOBILE_CLIENTS="$TMPDIR/mobile-reality-clients.txt"
 MOBILE_DESTS="$TMPDIR/mobile-reality-dests.txt"
+CHANNEL_B_RELAY_LOG="$TMPDIR/channel-b-relay.log"
+CHANNEL_B_RELAY_TOTALS="$TMPDIR/channel-b-relay-totals.txt"
 CHANNEL_B_HOME_STATE="$TMPDIR/channel-b-home-state.txt"
 MOBILE_ALIAS_MAP="$TMPDIR/mobile-alias-map.txt"
 CHANNEL_B_HOME_ENABLED="0"
@@ -54,6 +56,7 @@ CHANNEL_B_HOME_PORT="0"
 HOME_REALITY_PORT="0"
 BHOME_IN_BYTES="0"
 BHOME_OUT_BYTES="0"
+BHOME_PACKETS="0"
 MOBILE_BYTES_HISTORY="$TMPDIR/mobile-reality-counters.tsv"
 MOBILE_BYTES_CURRENT="$TMPDIR/mobile-reality-counters-current.tsv"
 MOBILE_BYTES_BASE="$TMPDIR/mobile-reality-counters-base.tsv"
@@ -177,15 +180,29 @@ STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
 mkdir -p "$STATE_DIR" "$STATE_DIR/tailscale"
 
-RUNTIME_ENV="/jffs/scripts/ghostroute-runtime-env"
+RUNTIME_ENV=""
 CHANNEL_B_HOME_ENABLED="0"
 CHANNEL_B_HOME_PORT=""
 HOME_REALITY_PORT=""
+BHOME_PACKETS="0"
 
-if [ -f "$RUNTIME_ENV" ]; then
+for candidate in /jffs/scripts/ghostroute-runtime.env /jffs/scripts/ghostroute-runtime-env; do
+  if [ -f "$candidate" ]; then
+    RUNTIME_ENV="$candidate"
+    break
+  fi
+done
+
+if [ -n "$RUNTIME_ENV" ]; then
   CHANNEL_B_HOME_ENABLED="$(awk -F= '/^GHOSTROUTE_CHANNEL_B_HOME_ENABLED=/{print $2; exit}' "$RUNTIME_ENV")"
   CHANNEL_B_HOME_PORT="$(awk -F= '/^GHOSTROUTE_CHANNEL_B_HOME_PORT=/{print $2; exit}' "$RUNTIME_ENV")"
   HOME_REALITY_PORT="$(awk -F= '/^GHOSTROUTE_HOME_REALITY_PORT=/{print $2; exit}' "$RUNTIME_ENV")"
+fi
+
+if [ -f /jffs/scripts/stealth-route-init.sh ]; then
+  CHANNEL_B_HOME_ENABLED="${CHANNEL_B_HOME_ENABLED:-$(awk -F= '/^CHANNEL_B_HOME_ENABLED=/{gsub(/["'\''"]/, "", $2); print $2; exit}' /jffs/scripts/stealth-route-init.sh)}"
+  CHANNEL_B_HOME_PORT="${CHANNEL_B_HOME_PORT:-$(awk -F= '/^CHANNEL_B_HOME_PORT=/{gsub(/["'\''"]/, "", $2); print $2; exit}' /jffs/scripts/stealth-route-init.sh)}"
+  HOME_REALITY_PORT="${HOME_REALITY_PORT:-$(awk -F= '/^HOME_REALITY_PORT=/{gsub(/["'\''"]/, "", $2); print $2; exit}' /jffs/scripts/stealth-route-init.sh)}"
 fi
 
 case "$CHANNEL_B_HOME_ENABLED" in
@@ -195,21 +212,29 @@ esac
 
 BHOME_IN_BYTES="0"
 BHOME_OUT_BYTES="0"
+BHOME_PACKETS="0"
 if [ "$CHANNEL_B_HOME_ENABLED" = "1" ] && [ -n "$CHANNEL_B_HOME_PORT" ]; then
   case "$CHANNEL_B_HOME_PORT" in
     ''|*[!0-9]*)
       ;;
     *)
-      BHOME_RULE="$(iptables-save -t filter -c 2>/dev/null | awk -v port="$CHANNEL_B_HOME_PORT" '$1 ~ /^\[[0-9]+:[0-9]+\]$/ && $0 ~ /-A INPUT/ && $0 ~ /mobile-reality-channel-b-ingress/ && $0 ~ "--dport " port && $0 ~ /-j ACCEPT/ { print; exit }' || true)"
-      if [ -z "$BHOME_RULE" ]; then
-        BHOME_RULE="$(iptables-save -t filter -c 2>/dev/null | awk -v port="$CHANNEL_B_HOME_PORT" '$1 ~ /^\[[0-9]+:[0-9]+\]$/ && $0 ~ /-A INPUT/ && $0 ~ /-p tcp/ && $0 ~ "--dport " port && $0 ~ /-j ACCEPT/ { print; exit }' || true)"
-      fi
-      if [ -n "$BHOME_RULE" ]; then
-        BHOME_COUNTERS="${BHOME_RULE%%] *}"
-        BHOME_COUNTERS="${BHOME_COUNTERS#\[}"
-        BHOME_IN_BYTES="${BHOME_COUNTERS%%:*}"
-        BHOME_OUT_BYTES="${BHOME_COUNTERS#*:}"
-      fi
+      BHOME_COUNTERS="$(iptables-save -t filter -c 2>/dev/null | awk -v port="$CHANNEL_B_HOME_PORT" '
+        $1 ~ /^\[[0-9]+:[0-9]+\]$/ &&
+        $0 ~ /-A INPUT/ &&
+        $0 ~ /-p tcp/ &&
+        $0 ~ "--dport " port &&
+        $0 ~ /-j ACCEPT/ {
+          counters = $1
+          gsub(/\[/, "", counters)
+          gsub(/\]/, "", counters)
+          split(counters, parts, ":")
+          packets += parts[1]
+          bytes += parts[2]
+        }
+        END { printf "%d|%d\n", packets, bytes }
+      ' || true)"
+      BHOME_PACKETS="${BHOME_COUNTERS%%|*}"
+      BHOME_IN_BYTES="${BHOME_COUNTERS#*|}"
       ;;
   esac
 fi
@@ -224,12 +249,17 @@ case "$BHOME_OUT_BYTES" in
     BHOME_OUT_BYTES="0"
     ;;
 esac
+case "$BHOME_PACKETS" in
+  ''|*[!0-9]*)
+    BHOME_PACKETS="0"
+    ;;
+esac
 
 printf "STATE_DIR=%s\n" "$STATE_DIR"
 printf "WAN_IP=%s\n" "$(nvram get wan0_ipaddr 2>/dev/null || true)"
 printf "TODAY=%s\n" "$(date +%Y-%m-%d)"
-printf "BHOME|%s|%s|%s|%s|%s\n" \
-  "$CHANNEL_B_HOME_ENABLED" "$CHANNEL_B_HOME_PORT" "$HOME_REALITY_PORT" "$BHOME_IN_BYTES" "$BHOME_OUT_BYTES"
+printf "BHOME|%s|%s|%s|%s|%s|%s\n" \
+  "$CHANNEL_B_HOME_ENABLED" "$CHANNEL_B_HOME_PORT" "$HOME_REALITY_PORT" "$BHOME_IN_BYTES" "$BHOME_OUT_BYTES" "$BHOME_PACKETS"
 
 for iface in wan0 br0 eth6 eth7; do
   if [ -d "/sys/class/net/$iface" ]; then
@@ -252,18 +282,21 @@ CHANNEL_B_HOME_PORT_RUNTIME="$(awk -F'|' '$1 == "BHOME" { print $3; exit }' "$ST
 HOME_REALITY_PORT_RUNTIME="$(awk -F'|' '$1 == "BHOME" { print $4; exit }' "$STATE_FILE")"
 BHOME_IN_BYTES_RUNTIME="$(awk -F'|' '$1 == "BHOME" { print $5; exit }' "$STATE_FILE")"
 BHOME_OUT_BYTES_RUNTIME="$(awk -F'|' '$1 == "BHOME" { print $6; exit }' "$STATE_FILE")"
+BHOME_PACKETS_RUNTIME="$(awk -F'|' '$1 == "BHOME" { print $7; exit }' "$STATE_FILE")"
 
 [ -n "$CHANNEL_B_HOME_ENABLED_RUNTIME" ] && CHANNEL_B_HOME_ENABLED="$CHANNEL_B_HOME_ENABLED_RUNTIME"
 [ -n "$CHANNEL_B_HOME_PORT_RUNTIME" ] && CHANNEL_B_HOME_PORT="$CHANNEL_B_HOME_PORT_RUNTIME"
 [ -n "$HOME_REALITY_PORT_RUNTIME" ] && HOME_REALITY_PORT="$HOME_REALITY_PORT_RUNTIME"
 [ -n "$BHOME_IN_BYTES_RUNTIME" ] && BHOME_IN_BYTES="$BHOME_IN_BYTES_RUNTIME"
 [ -n "$BHOME_OUT_BYTES_RUNTIME" ] && BHOME_OUT_BYTES="$BHOME_OUT_BYTES_RUNTIME"
+[ -n "$BHOME_PACKETS_RUNTIME" ] && BHOME_PACKETS="$BHOME_PACKETS_RUNTIME"
 
 CHANNEL_B_HOME_ENABLED="$(clean_int "$CHANNEL_B_HOME_ENABLED")"
 CHANNEL_B_HOME_PORT="$(clean_int "$CHANNEL_B_HOME_PORT")"
 HOME_REALITY_PORT="$(clean_int "$HOME_REALITY_PORT")"
 BHOME_IN_BYTES="$(clean_int "$BHOME_IN_BYTES")"
 BHOME_OUT_BYTES="$(clean_int "$BHOME_OUT_BYTES")"
+BHOME_PACKETS="$(clean_int "$BHOME_PACKETS")"
 STEALTH_IPSET_ACTIVE="$(router_ssh 'ipset list STEALTH_DOMAINS 2>/dev/null' 2>/dev/null | awk -F': ' '/Number of entries/ { print $2; exit }' || true)"
 STEALTH_IPSET_ACTIVE="${STEALTH_IPSET_ACTIVE:-n/a}"
 STEALTH_RULES_CONFIG="$(
@@ -292,6 +325,7 @@ router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/l
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/mobile-reality-counters.tsv\" ] && cat \"\$STATE_DIR/mobile-reality-counters.tsv\" || true" > "$MOBILE_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/mobile-reality-counters-snapshot ] && /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null || true' > "$MOBILE_BYTES_CURRENT"
 router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$MOBILE_LOG"
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_B_RELAY_LOG"
 
 iface_current() {
   local iface="$1"
@@ -515,6 +549,47 @@ else
   printf '0|0|0|0|0|0\n' > "$MOBILE_TOTALS"
   : > "$MOBILE_CLIENTS"
   : > "$MOBILE_DESTS"
+fi
+
+if [ -s "$CHANNEL_B_RELAY_LOG" ]; then
+  awk '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    NR == FNR {
+      if ($0 ~ /inbound\/socks\[channel-b-relay-socks\]: inbound connection to /) {
+        id = conn_id($0)
+        if (id != "") channel_b[id] = 1
+      }
+      next
+    }
+    {
+      id = conn_id($0)
+      if (id == "" || !(id in channel_b) || (id in outbound_by_id)) next
+
+      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
+        outbound_by_id[id] = "reality"
+      } else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) {
+        outbound_by_id[id] = "direct"
+      }
+    }
+    END {
+      for (id in channel_b) {
+        total++
+        if (outbound_by_id[id] == "reality") reality++
+        else if (outbound_by_id[id] == "direct") direct++
+        else unresolved++
+      }
+      printf "%d|%d|%d|%d\n", total + 0, reality + 0, direct + 0, unresolved + 0
+    }
+  ' "$CHANNEL_B_RELAY_LOG" "$CHANNEL_B_RELAY_LOG" > "$CHANNEL_B_RELAY_TOTALS"
+else
+  printf '0|0|0|0\n' > "$CHANNEL_B_RELAY_TOTALS"
 fi
 
 if [ -n "$MOBILE_BYTES_START" ] && [ -s "$MOBILE_BYTES_CURRENT" ]; then
@@ -818,6 +893,19 @@ else
   MOBILE_BYTE_SOURCES=0
 fi
 
+if [ -s "$CHANNEL_B_RELAY_TOTALS" ]; then
+  IFS='|' read -r CHANNEL_B_RELAY_CONN CHANNEL_B_RELAY_REALITY CHANNEL_B_RELAY_DIRECT CHANNEL_B_RELAY_UNRESOLVED < "$CHANNEL_B_RELAY_TOTALS"
+else
+  CHANNEL_B_RELAY_CONN=0
+  CHANNEL_B_RELAY_REALITY=0
+  CHANNEL_B_RELAY_DIRECT=0
+  CHANNEL_B_RELAY_UNRESOLVED=0
+fi
+CHANNEL_B_RELAY_CONN="$(clean_int "$CHANNEL_B_RELAY_CONN")"
+CHANNEL_B_RELAY_REALITY="$(clean_int "$CHANNEL_B_RELAY_REALITY")"
+CHANNEL_B_RELAY_DIRECT="$(clean_int "$CHANNEL_B_RELAY_DIRECT")"
+CHANNEL_B_RELAY_UNRESOLVED="$(clean_int "$CHANNEL_B_RELAY_UNRESOLVED")"
+
 MOBILE_CHANNEL_A_CONN=0
 MOBILE_CHANNEL_A_REALITY=0
 MOBILE_CHANNEL_A_DIRECT=0
@@ -950,8 +1038,9 @@ echo "=== 1. EXIT SUMMARY ==="
 echo "WAN total:               $(human_gib "$WAN_TOTAL")  (physical router/ISP traffic; RX $(human_gib "$WAN_RX") / TX $(human_gib "$WAN_TX"))"
 echo "LAN/Wi-Fi observed:      $(human_bytes "$DEVICE_TOTAL_BYTES")  (reference: $(human_pct "$DEVICE_TOTAL_BYTES" "$WAN_TOTAL") of WAN)"
 echo "Home Reality ingress:    $(human_bytes "$MOBILE_BYTE_TOTAL")  (reference: $(human_pct "$MOBILE_BYTE_TOTAL" "$WAN_TOTAL") of WAN; client -> home RU IP ${HOME_REALITY_PORT_LABEL})"
-echo "Home Reality split:      A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") + B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") + C/VPS-only $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")  (estimated, profile-derived)"
-echo "Channel B ingress:       $(human_bytes "$BHOME_IN_BYTES") in / $(human_bytes "$BHOME_OUT_BYTES") out on ${CHANNEL_B_ACTIVE_NOTE}"
+echo "Home Reality profile split: A $(human_bytes "$MOBILE_CHANNEL_A_BYTE_TOTAL") + B $(human_bytes "$MOBILE_CHANNEL_B_BYTE_TOTAL") + C/VPS-only $(human_bytes "$MOBILE_CHANNEL_C_BYTE_TOTAL")  (estimated, Home Reality profile-derived)"
+echo "Channel B ingress:       $(human_bytes "$BHOME_IN_BYTES") observed on ${CHANNEL_B_ACTIVE_NOTE} (${BHOME_PACKETS} accepted packets; router INPUT counter)"
+echo "Channel B relay split:   VPS ${CHANNEL_B_RELAY_REALITY}/${CHANNEL_B_RELAY_CONN} conn + direct ${CHANNEL_B_RELAY_DIRECT}/${CHANNEL_B_RELAY_CONN} + unresolved ${CHANNEL_B_RELAY_UNRESOLVED}/${CHANNEL_B_RELAY_CONN}  (sing-box channel-b-relay-socks log)"
 echo "WAN remainder/unattributed: $(human_bytes "$WAN_REMAINDER")  (reference: $(human_pct "$WAN_REMAINDER" "$WAN_TOTAL") of WAN; second WAN legs + router/background/counter gaps)"
 echo "Client observed total:   $(human_bytes "$CLIENT_OBSERVED_TOTAL")  (reference: $(human_pct "$CLIENT_OBSERVED_TOTAL" "$WAN_TOTAL") of WAN; LAN/Wi-Fi exact + Home Reality ingress exact)"
 echo "Via VPS:         $(human_bytes "$TOTAL_VPS_EST")  (reference: $(human_pct "$TOTAL_VPS_EST" "$CLIENT_OBSERVED_TOTAL") of observed / $(human_pct "$TOTAL_VPS_EST" "$WAN_TOTAL") of WAN; LAN exact + ingress estimated)"
@@ -986,7 +1075,11 @@ echo "Static CIDR routes:      ${STATIC_NETS_CONFIG} rules in configs/static-net
 echo "LAN/Wi-Fi via VPS:       $(human_bytes "$DEVICE_REALITY_BYTES")"
 echo "Home Reality via VPS:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} ingress connections)"
 echo "Channel A via VPS:       $(human_bytes "$MOBILE_CHANNEL_A_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_A_REALITY}/${MOBILE_CHANNEL_A_CONN} connections)"
-echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} connections)"
+if [ "$CHANNEL_B_RELAY_CONN" -gt 0 ]; then
+  echo "Channel B via VPS:       observed ${CHANNEL_B_RELAY_REALITY}/${CHANNEL_B_RELAY_CONN} relay connections (byte estimate n/a for local SOCKS relay)"
+else
+  echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} Home Reality profile connections)"
+fi
 echo "Channel C via VPS:       not observed on router (VPS-only planned compatibility lane)"
 echo
 

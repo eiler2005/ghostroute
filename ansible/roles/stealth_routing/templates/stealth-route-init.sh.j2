@@ -12,11 +12,11 @@ TABLE={{ stealth_route_table }}
 IFACE={{ singbox_tun_name }}
 REDIRECT_PORT={{ singbox_redirect_port }}
 HOME_REALITY_PORT={{ home_reality_ingress_port }}
-HOME_REALITY_CONNLIMIT_ABOVE={{ home_reality_connlimit_above | default(300) }}
+HOME_REALITY_CONNLIMIT_ABOVE={{ home_reality_connlimit_above | default(500) }}
 HOME_REALITY_MSS={{ home_reality_mss | default(1360) }}
 CHANNEL_B_HOME_ENABLED={{ channel_b_home_relay_enabled | default(false) | ternary('1', '0') }}
 CHANNEL_B_HOME_PORT={{ channel_b_home_ingress_port | default(0) }}
-CHANNEL_B_HOME_CONNLIMIT_ABOVE={{ channel_b_home_connlimit_above | default(300) }}
+CHANNEL_B_HOME_CONNLIMIT_ABOVE={{ channel_b_home_connlimit_above | default(500) }}
 CHANNEL_B_HOME_MSS={{ channel_b_home_mss | default(1360) }}
 ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
 VPS_IP={{ vps_ssh_host }}
@@ -88,6 +88,7 @@ iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst 
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 300 -j DROP 2>/dev/null || true
+iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above 500 -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" --syn -m connlimit --connlimit-above "$HOME_REALITY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -j ACCEPT 2>/dev/null || true
 iptables -D INPUT -p tcp --dport "$HOME_REALITY_PORT" -m comment --comment "mobile-reality-ingress" -j ACCEPT 2>/dev/null || true
@@ -116,6 +117,7 @@ if [ "$CHANNEL_B_HOME_ENABLED" = "1" ]; then
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" --syn -m connlimit --connlimit-above 300 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" --syn -m connlimit --connlimit-above 500 -j DROP 2>/dev/null || true
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" --syn -m connlimit --connlimit-above "$CHANNEL_B_HOME_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" -j ACCEPT 2>/dev/null || true
   iptables -D INPUT -p tcp --dport "$CHANNEL_B_HOME_PORT" -m comment --comment "mobile-reality-channel-b-ingress" -j ACCEPT 2>/dev/null || true

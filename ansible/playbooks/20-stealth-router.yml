@@ -31,6 +31,11 @@
       tags:
         - health_monitor
   post_tasks:
+    - name: Refresh sing-box rule-sets after catalog deploy
+      ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+      changed_when: false
+      when: stealth_channel_a_lan_enabled | bool
+
     - name: Restart sing-box after all router service restarts
       ansible.builtin.raw: |
         {{ singbox_init_path }} restart

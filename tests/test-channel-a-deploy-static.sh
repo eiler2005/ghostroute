@@ -41,5 +41,8 @@ assert_contains "ansible/roles/stealth_routing/tasks/main.yml" 'Install Channel 
 assert_contains "ansible/roles/stealth_routing/tasks/main.yml" 'Install DNS catalog intelligence scripts'
 assert_contains "ansible/roles/stealth_routing/tasks/main.yml" 'Ensure Channel A persistence and catalog cron entries'
 assert_contains "ansible/roles/stealth_routing/tasks/main.yml" 'Refresh blocked-domain cache opportunistically'
+assert_contains "ansible/playbooks/20-stealth-router.yml" 'Refresh sing-box rule-sets after catalog deploy'
+assert_contains "ansible/playbooks/20-stealth-router.yml" 'update-singbox-rule-sets.sh --no-restart'
+assert_contains "configs/dnsmasq-stealth.conf.add" 'ipset=/googleapis.com/STEALTH_DOMAINS'
 
 echo "channel-a deploy static tests passed"
