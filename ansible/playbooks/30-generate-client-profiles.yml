@@ -557,30 +557,6 @@
       tags:
         - channel_b_clients_only
 
-    - name: Render Channel C1 home Naive URI for each selected client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.txt"
-        mode: "0600"
-        content: |
-          naive+https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-home
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render C1-sing-box HTTPS probe URL for each selected client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-https-probe.txt"
-        mode: "0600"
-        content: |
-          https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-https
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
     - name: Render Channel C1 SFI sing-box full config for each selected client
       ansible.builtin.copy:
         dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.json"
@@ -642,26 +618,6 @@
       tags:
         - channel_c_clients_only
 
-    - name: Render Channel C1 Naive URI QR PNG for each selected client
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.png" -r "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.txt"
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C1 SFI config QR PNG for each selected client
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.png" -r "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.json"
-      loop: "{{ channel_c_home_clients | default([]) }}"
-      when: channel_c_home_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
     - name: Render C1-Shadowrocket URL QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -681,7 +637,11 @@
 
           Channel C has two selected-client home-first variants:
 
-          - C1-sing-box: native sing-box Naive, primary QR `c1-SFI/*-sfi-sing-box.png`.
+          - C1-sing-box: native sing-box Naive, primary import artifact
+            `c1-SFI/*-sfi-sing-box.json`.
+            SFI accepted the JSON file as the working profile format. QR and
+            standalone Naive URI artifacts are intentionally not generated for
+            this lane because they did not import reliably in SFI.
           - C1-Shadowrocket: HTTPS CONNECT compatibility, primary QR
             `1-SR/*-c1-shadowrocket-https.png`.
             Do not use `*-shadowrocket-conf.png`; that older full-config QR did
@@ -690,7 +650,7 @@
 
           ```text
           C1-sing-box:
-          endpoint -> Naive/TLS :{{ channel_c_home_public_port }}
+          endpoint SFI/sing-box JSON -> Naive/TLS :{{ channel_c_home_public_port }}
                    -> router `channel-c-naive-in`
                    -> managed split -> reality-out -> VPS -> Internet
 
@@ -701,7 +661,10 @@
           ```
 
           C1-Shadowrocket is not native Naive. It is a compatibility path.
-          C1-sing-box is the native Naive proof target.
+          C1-sing-box is the native Naive proof target. In the imported JSON,
+          the outbound must contain `"type": "naive"` with TLS enabled. If it
+          becomes `"type": "http"` or Shadowrocket-style HTTPS CONNECT, that is
+          the compatibility lane, not native Naive.
 
           Requirements before import:
 
@@ -709,6 +672,8 @@
           - iOS Private Relay / Limit IP Address Tracking is disabled during proof tests.
           - The selected client is listed in `vault_channel_c_home_clients`.
           - C1-sing-box proof logs show `channel-c-naive-in -> reality-out`.
+          - SFI dashboard counters may stay at zero until traffic is generated
+            through the enabled profile.
           - C1-Shadowrocket proof logs show `channel-c-shadowrocket-http-in -> reality-out`.
       when: channel_c_home_enabled | default(false) | bool
       tags:
@@ -746,13 +711,9 @@
           {% for client in channel_c_home_clients | default([]) %}
                 <article>
                   <h2>{{ client.name }} C1-sing-box</h2>
-                  <img src="c1-SFI/{{ client.name }}-sfi-sing-box.png" alt="{{ client.name }} Channel C1 SFI QR">
                   <div class="links">
                     <a href="c1-SFI/{{ client.name }}-sfi-sing-box.json">SFI JSON</a>
-                    <a href="c1-SFI/{{ client.name }}-naive-uri.txt">naive URI</a>
-                    <a href="c1-SFI/{{ client.name }}-https-probe.txt">HTTPS probe URL</a>
                   </div>
-                  <p><img src="c1-SFI/{{ client.name }}-naive-uri.png" alt="{{ client.name }} Naive URI QR"></p>
                 </article>
           {% endfor %}
           {% for client in channel_c_shadowrocket_profile_clients if channel_c_shadowrocket_enabled | default(false) | bool %}
