@@ -156,4 +156,114 @@ EOF
 "$MONITOR_DIR/run-probes"
 tail -1 "$RAW_FILE" | grep -F '"probe":"performance_rtt"' | grep -F '"status":"CRIT"' | grep -F 'hard_crit_ms=3000' >/dev/null
 
+STATUS_STATE="$TMPDIR/status-state.env"
+STATUS_TRAFFIC="$TMPDIR/status-traffic.txt"
+STATUS_HEALTH="$TMPDIR/status.json"
+cat > "$STATUS_STATE" <<'EOF'
+VPN_DOMAINS_EXISTS=0
+VPN_STATIC_NETS_EXISTS=1
+STEALTH_DOMAINS_EXISTS=1
+STEALTH_DOMAINS_CURRENT=42
+STEALTH_DOMAINS_MAX=65536
+WGS1_ENABLE=0
+WGC1_ENABLE=0
+WGC1_NVRAM_PRESERVED=1
+CHAIN_RC_VPN_ROUTE=0
+RULE_MARK_0X1000=0
+CHANNEL_B_REDIRECT_LISTENER=1
+HOME_REALITY_LISTENER=1
+HOME_REALITY_IPV4_ONLY=1
+HOME_REALITY_INPUT_ACCEPT=1
+HOME_REALITY_CONNLIMIT_DROP=1
+HOME_REALITY_MSS_CLAMP=1
+ROUTER_TCP_PERF_TUNING=1
+HOME_REALITY_DNS_GUARD_RULE=1
+HOME_REALITY_SPLIT_RULE=1
+HOME_REALITY_DIRECT_RULE=1
+HOME_REALITY_ALL_RELAY_RULE=0
+CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=1
+CHANNEL_B_DNSCRYPT_PROXY=1
+CHANNEL_B_SINGBOX_KEEPALIVE=1
+CHANNEL_B_REDIRECT_STEALTH=1
+CHANNEL_B_REDIRECT_STATIC=1
+CHANNEL_B_DROP_QUIC_STEALTH=1
+CHANNEL_B_DROP_QUIC_STATIC=1
+CHANNEL_B_REJECT_QUIC_STEALTH=0
+CHANNEL_B_REJECT_QUIC_STATIC=0
+RULE_MARK_0X2000=0
+ROUTE_TABLE_200_SINGBOX=0
+HOOK_STEALTH_PREROUTING_BR0=0
+HOOK_STEALTH_OUTPUT=0
+HOOK_PREROUTING_BR0=0
+HOOK_PREROUTING_WGS1=0
+HOOK_OUTPUT=0
+HOOK_STEALTH_PREROUTING_WGS1=0
+DNS_REDIRECT_UDP=0
+DNS_REDIRECT_TCP=0
+WGS1_IFACE_EXISTS=0
+CRON_SINGBOX_WATCHDOG=1
+CRON_MOBILE_REALITY_COUNTERS=1
+IPV6_SERVICE=disabled
+IPV6_DISABLE_ALL=1
+IPV6_DISABLE_DEFAULT=1
+IPV6_DISABLE_BR0=1
+IPV6_DISABLE_WAN0=1
+IPV6_DISABLE_WGC1=missing
+IPV6_DISABLE_WGS1=missing
+IPV6_ADDR_BR0=0
+IPV6_ADDR_WAN0=0
+IPV6_ADDR_WGC1=0
+IPV6_ADDR_WGS1=0
+IPV6_ROUTE_MAIN=0
+IPV6_ROUTE_WGC1=0
+EOF
+cat > "$STATUS_TRAFFIC" <<'EOF'
+Channel B ingress:       12.3 MiB observed on Channel B ingress enabled on home:45678 (99 accepted packets; router INPUT counter)
+Channel B relay split:   VPS 7/10 conn + direct 3/10 + unresolved 0/10  (sing-box channel-b-relay-socks log)
+Home Reality profile split: A 1.0 MiB + B 12.3 MiB + C1 0 B  (estimated, Home Reality profile-derived)
+EOF
+cat > "$STATUS_HEALTH" <<'EOF'
+{"overall":"OK","checks":{"channel_a_reality":{"status":"OK","message":"ok"}}}
+EOF
+STATUS_OUT="$TMPDIR/status.out"
+GHOSTROUTE_STATUS_STATE_FILE="$STATUS_STATE" \
+  GHOSTROUTE_STATUS_TRAFFIC_FILE="$STATUS_TRAFFIC" \
+  GHOSTROUTE_STATUS_HEALTH_STATUS_FILE="$STATUS_HEALTH" \
+  GHOSTROUTE_STATUS_MIRROR_COUNT=42 \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/status" > "$STATUS_OUT"
+assert_contains "$STATUS_OUT" "Overall: OK (drift=0)"
+assert_contains "$STATUS_OUT" "Rule-set mirror: 42 /32"
+assert_contains "$STATUS_OUT" "home:<channel-b-port>"
+
+LEAK_RAW="$TMPDIR/leak-ok-skip.jsonl"
+cat > "$LEAK_RAW" <<'EOF'
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_a_reality","status":"OK","message":"Active SOCKS exit-IP probe is unavailable, but recent reality-out traffic is visible.","evidence":"active_check=unavailable curl_rc=127 recent_reality_out=4 expected=203.0.113.1"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"dns_ipv6_leaks","status":"OK","message":"IPv6 policy and DNS leak sample are clean.","evidence":"plain_dns_sample=skip"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"rule_set_sync","status":"OK","message":"dnsmasq STEALTH catalog and sing-box domain_suffix rule-set are in sync.","evidence":"domains=42"}
+EOF
+LEAK_OUT="$TMPDIR/leak-ok-skip.out"
+GHOSTROUTE_LEAK_RAW_FILE="$LEAK_RAW" \
+  GHOSTROUTE_LEAK_SKIP_REMOTE=1 \
+  GHOSTROUTE_LEAK_IPSET_COUNT=42 \
+  GHOSTROUTE_LEAK_MIRROR_COUNT=42 \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/leak-check" > "$LEAK_OUT"
+assert_contains "$LEAK_OUT" "Overall: SKIP"
+assert_contains "$LEAK_OUT" "Reality exit: SKIP"
+assert_contains "$LEAK_OUT" "Static IP mirror: OK"
+
+LEAK_CRIT_RAW="$TMPDIR/leak-crit.jsonl"
+cat > "$LEAK_CRIT_RAW" <<'EOF'
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_a_reality","status":"OK","message":"Reality SOCKS path is reachable.","evidence":"exit_ip=203.0.113.1 expected=203.0.113.1"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"dns_ipv6_leaks","status":"CRIT","message":"Potential DNS or IPv6 leak signal was detected.","evidence":"plain_dns_packets=2"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"rule_set_sync","status":"OK","message":"dnsmasq STEALTH catalog and sing-box domain_suffix rule-set are in sync.","evidence":"domains=42"}
+EOF
+LEAK_CRIT_OUT="$TMPDIR/leak-crit.out"
+GHOSTROUTE_LEAK_RAW_FILE="$LEAK_CRIT_RAW" \
+  GHOSTROUTE_LEAK_SKIP_REMOTE=1 \
+  GHOSTROUTE_LEAK_IPSET_COUNT=42 \
+  GHOSTROUTE_LEAK_MIRROR_COUNT=42 \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/leak-check" > "$LEAK_CRIT_OUT"
+assert_contains "$LEAK_CRIT_OUT" "Overall: CRIT"
+assert_contains "$LEAK_CRIT_OUT" "DNS/IPv6 policy: CRIT"
+
 echo "health-monitor fixture tests passed"
