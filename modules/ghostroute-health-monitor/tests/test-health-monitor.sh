@@ -124,8 +124,117 @@ touch -t 200001010000 "$old_raw" "$old_alert"
 [ ! -e "$old_alert" ] || { echo "Old alert md file was not removed by retention" >&2; exit 1; }
 
 unset HEALTH_MONITOR_DNSMASQ_FILE HEALTH_MONITOR_DNSMASQ_AUTO_FILE HEALTH_MONITOR_RULESET_FILE
-export HEALTH_MONITOR_PROBE_FILTER=performance_rtt
+cat > "$FIXTURE/dnsmasq.conf" <<'EOF'
+ipset=/openai.com/STEALTH_DOMAINS
+ipset=/github.com/STEALTH_DOMAINS
+ipset=/googleapis.com/STEALTH_DOMAINS
+EOF
+export HEALTH_MONITOR_DNSMASQ_FILE="$FIXTURE/dnsmasq.conf"
+export HEALTH_MONITOR_DNSMASQ_AUTO_FILE="$FIXTURE/missing-auto.conf"
 export SINGBOX_LOG_PATH="$TMPDIR/sing-box.log"
+export HEALTH_MONITOR_SPLIT_SINCE_TS="${TODAY} 00:00:00"
+
+cat > "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 10:00:00 INFO [100 0ms] inbound/socks[dnscrypt-socks-in]: inbound connection from 127.0.0.1:50000
++0300 ${TODAY} 10:00:00 INFO [100 0ms] inbound/socks[dnscrypt-socks-in]: inbound connection to vtb.ru:443
++0300 ${TODAY} 10:00:00 INFO [100 10ms] outbound/vless[reality-out]: outbound connection to vtb.ru:443
++0300 ${TODAY} 10:01:00 INFO [101 0ms] inbound/vless[reality-in]: inbound connection from 198.51.100.1:50001
++0300 ${TODAY} 10:01:00 INFO [101 0ms] inbound/vless[reality-in]: [iphone-1] inbound connection to mc.yandex.ru:443
++0300 ${TODAY} 10:01:00 INFO [101 10ms] outbound/direct[direct-out]: outbound connection to mc.yandex.ru:443
++0300 ${TODAY} 10:02:00 INFO [102 0ms] inbound/vless[reality-in]: inbound connection from 198.51.100.1:50002
++0300 ${TODAY} 10:02:00 INFO [102 0ms] inbound/vless[reality-in]: [iphone-1] inbound connection to openai.com:443
++0300 ${TODAY} 10:02:00 INFO [102 10ms] outbound/vless[reality-out]: outbound connection to openai.com:443
+EOF
+export HEALTH_MONITOR_PROBE_FILTER=mobile_routing_leaks
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"mobile_routing_leaks"' | grep -F '"status":"OK"' | grep -F 'total=2' >/dev/null
+if tail -1 "$RAW_FILE" | grep -F 'dnscrypt-socks-in' >/dev/null 2>&1; then
+  echo "mobile_routing_leaks should not report router-local dnscrypt-socks-in evidence" >&2
+  exit 1
+fi
+
+cat >> "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 10:03:00 INFO [103 0ms] inbound/vless[reality-in]: inbound connection from 198.51.100.1:50003
++0300 ${TODAY} 10:03:00 INFO [103 0ms] inbound/vless[reality-in]: [iphone-1] inbound connection to openai.com:443
++0300 ${TODAY} 10:03:00 INFO [103 10ms] outbound/direct[direct-out]: outbound connection to openai.com:443
+EOF
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"mobile_routing_leaks"' | grep -F '"status":"WARN"' | grep -F 'managed_direct=1' | grep -F 'sample_managed_direct=openai.com' >/dev/null
+
+cat > "$FIXTURE/sing-box-config.json" <<'EOF'
+{
+  "route": {
+    "rules": [
+      {
+        "inbound": "reality-in",
+        "domain_suffix": [
+          "app-analytics-services-att.com",
+          "firebaseinstallations.googleapis.com"
+        ],
+        "outbound": "direct-out"
+      }
+    ]
+  }
+}
+EOF
+export SINGBOX_CONFIG_PATH="$FIXTURE/sing-box-config.json"
+cat > "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 10:04:00 INFO [104 0ms] inbound/vless[reality-in]: inbound connection from 198.51.100.1:50004
++0300 ${TODAY} 10:04:00 INFO [104 0ms] inbound/vless[reality-in]: [iphone-1] inbound connection to firebaseinstallations.googleapis.com:443
++0300 ${TODAY} 10:04:00 INFO [104 10ms] outbound/direct[direct-out]: outbound connection to firebaseinstallations.googleapis.com:443
++0300 ${TODAY} 10:05:00 INFO [105 0ms] inbound/vless[reality-in]: inbound connection from 198.51.100.1:50005
++0300 ${TODAY} 10:05:00 INFO [105 0ms] inbound/vless[reality-in]: [iphone-1] inbound connection to app-analytics-services-att.com:443
++0300 ${TODAY} 10:05:00 INFO [105 10ms] outbound/direct[direct-out]: outbound connection to app-analytics-services-att.com:443
+EOF
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"mobile_routing_leaks"' | grep -F '"status":"OK"' | grep -F 'managed_direct=0' >/dev/null
+unset SINGBOX_CONFIG_PATH
+
+cat > "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 11:00:00 INFO [200 0ms] inbound/socks[dnscrypt-socks-in]: inbound connection from 127.0.0.1:50010
++0300 ${TODAY} 11:00:00 INFO [200 0ms] inbound/socks[dnscrypt-socks-in]: inbound connection to vtb.ru:443
++0300 ${TODAY} 11:00:00 INFO [200 10ms] outbound/vless[reality-out]: outbound connection to vtb.ru:443
++0300 ${TODAY} 11:01:00 INFO [201 0ms] inbound/socks[channel-b-relay-socks]: inbound connection from 127.0.0.1:50011
++0300 ${TODAY} 11:01:00 INFO [201 0ms] inbound/socks[channel-b-relay-socks]: inbound connection to yandex.ru:443
++0300 ${TODAY} 11:01:00 INFO [201 10ms] outbound/direct[direct-out]: outbound connection to yandex.ru:443
++0300 ${TODAY} 11:02:00 INFO [202 0ms] inbound/socks[channel-b-relay-socks]: inbound connection from 127.0.0.1:50012
++0300 ${TODAY} 11:02:00 INFO [202 0ms] inbound/socks[channel-b-relay-socks]: inbound connection to openai.com:443
++0300 ${TODAY} 11:02:00 INFO [202 10ms] outbound/vless[reality-out]: outbound connection to openai.com:443
+EOF
+export HEALTH_MONITOR_PROBE_FILTER=channel_b_routing_leaks
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"channel_b_routing_leaks"' | grep -F '"status":"OK"' | grep -F 'total=2' >/dev/null
+
+cat >> "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 11:03:00 INFO [203 0ms] inbound/socks[channel-b-relay-socks]: inbound connection from 127.0.0.1:50013
++0300 ${TODAY} 11:03:00 INFO [203 0ms] inbound/socks[channel-b-relay-socks]: inbound connection to vtb.ru:443
++0300 ${TODAY} 11:03:00 INFO [203 10ms] outbound/vless[reality-out]: outbound connection to vtb.ru:443
+EOF
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"channel_b_routing_leaks"' | grep -F '"status":"WARN"' | grep -F 'direct_via_vps=1' | grep -F 'sample_direct_via_vps=vtb.ru' >/dev/null
+
+cat > "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 12:01:00 INFO [301 0ms] inbound/naive[channel-c-naive-in]: inbound connection from 198.51.100.2:50021
++0300 ${TODAY} 12:01:00 INFO [301 0ms] inbound/naive[channel-c-naive-in]: inbound connection to yandex.ru:443
++0300 ${TODAY} 12:01:00 INFO [301 10ms] outbound/direct[direct-out]: outbound connection to yandex.ru:443
++0300 ${TODAY} 12:02:00 INFO [302 0ms] inbound/naive[channel-c-naive-in]: inbound connection from 198.51.100.2:50022
++0300 ${TODAY} 12:02:00 INFO [302 0ms] inbound/naive[channel-c-naive-in]: inbound connection to openai.com:443
++0300 ${TODAY} 12:02:00 INFO [302 10ms] outbound/vless[reality-out]: outbound connection to openai.com:443
+EOF
+export HEALTH_MONITOR_PROBE_FILTER=channel_c_routing_leaks
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"channel_c_routing_leaks"' | grep -F '"status":"OK"' | grep -F 'total=2' >/dev/null
+
+cat >> "$SINGBOX_LOG_PATH" <<EOF
++0300 ${TODAY} 12:03:00 INFO [303 0ms] inbound/naive[channel-c-naive-in]: inbound connection from 198.51.100.2:50023
++0300 ${TODAY} 12:03:00 INFO [303 0ms] inbound/naive[channel-c-naive-in]: inbound connection to vtb.ru:443
++0300 ${TODAY} 12:03:00 INFO [303 10ms] outbound/vless[reality-out]: outbound connection to vtb.ru:443
+EOF
+"$MONITOR_DIR/run-probes"
+tail -1 "$RAW_FILE" | grep -F '"probe":"channel_c_routing_leaks"' | grep -F '"status":"WARN"' | grep -F 'direct_via_vps=1' | grep -F 'sample_direct_via_vps=vtb.ru' >/dev/null
+
+unset HEALTH_MONITOR_DNSMASQ_FILE HEALTH_MONITOR_DNSMASQ_AUTO_FILE HEALTH_MONITOR_SPLIT_SINCE_TS
+export HEALTH_MONITOR_PROBE_FILTER=performance_rtt
 rm -rf "$HEALTH_MONITOR_LOG_DIR/state/baselines"
 cat > "$SINGBOX_LOG_PATH" <<'EOF'
 INFO [abc 100ms] outbound/vless[reality-out]: test
@@ -234,10 +343,14 @@ GHOSTROUTE_STATUS_STATE_FILE="$STATUS_STATE" \
 assert_contains "$STATUS_OUT" "Overall: OK (drift=0)"
 assert_contains "$STATUS_OUT" "Rule-set mirror: 42 /32"
 assert_contains "$STATUS_OUT" "home:<channel-b-port>"
+assert_contains "$STATUS_OUT" "Home Reality split (Channel A):"
 
 LEAK_RAW="$TMPDIR/leak-ok-skip.jsonl"
 cat > "$LEAK_RAW" <<'EOF'
 {"ts":"2026-04-28T10:00:00+0300","probe":"channel_a_reality","status":"OK","message":"Active SOCKS exit-IP probe is unavailable, but recent reality-out traffic is visible.","evidence":"active_check=unavailable curl_rc=127 recent_reality_out=4 expected=203.0.113.1"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"mobile_routing_leaks","status":"OK","message":"No obvious Home Reality split-routing leak was found in today's client connection IDs.","evidence":"total=2 reality=1 direct=1 unresolved=0 managed_direct=0 direct_via_vps=0"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_b_routing_leaks","status":"OK","message":"No obvious Channel B split-routing leak was found in today's relay connection IDs.","evidence":"total=2 reality=1 direct=1 unresolved=0 managed_direct=0 direct_via_vps=0"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_c_routing_leaks","status":"OK","message":"No obvious Channel C split-routing leak was found in today's Naive connection IDs.","evidence":"total=0 reality=0 direct=0 unresolved=0 managed_direct=0 direct_via_vps=0"}
 {"ts":"2026-04-28T10:00:00+0300","probe":"dns_ipv6_leaks","status":"OK","message":"IPv6 policy and DNS leak sample are clean.","evidence":"plain_dns_sample=skip"}
 {"ts":"2026-04-28T10:00:00+0300","probe":"rule_set_sync","status":"OK","message":"dnsmasq STEALTH catalog and sing-box domain_suffix rule-set are in sync.","evidence":"domains=42"}
 EOF
@@ -249,11 +362,17 @@ GHOSTROUTE_LEAK_RAW_FILE="$LEAK_RAW" \
   "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/leak-check" > "$LEAK_OUT"
 assert_contains "$LEAK_OUT" "Overall: SKIP"
 assert_contains "$LEAK_OUT" "Reality exit: SKIP"
+assert_contains "$LEAK_OUT" "Home Reality split (Channel A): OK"
+assert_contains "$LEAK_OUT" "Channel B split: OK"
+assert_contains "$LEAK_OUT" "Channel C split: OK"
 assert_contains "$LEAK_OUT" "Static IP mirror: OK"
 
 LEAK_CRIT_RAW="$TMPDIR/leak-crit.jsonl"
 cat > "$LEAK_CRIT_RAW" <<'EOF'
 {"ts":"2026-04-28T10:00:00+0300","probe":"channel_a_reality","status":"OK","message":"Reality SOCKS path is reachable.","evidence":"exit_ip=203.0.113.1 expected=203.0.113.1"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"mobile_routing_leaks","status":"OK","message":"No obvious Home Reality split-routing leak was found in today's client connection IDs.","evidence":"total=2 reality=1 direct=1 unresolved=0 managed_direct=0 direct_via_vps=0"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_b_routing_leaks","status":"OK","message":"No obvious Channel B split-routing leak was found in today's relay connection IDs.","evidence":"total=2 reality=1 direct=1 unresolved=0 managed_direct=0 direct_via_vps=0"}
+{"ts":"2026-04-28T10:00:00+0300","probe":"channel_c_routing_leaks","status":"OK","message":"No obvious Channel C split-routing leak was found in today's Naive connection IDs.","evidence":"total=0 reality=0 direct=0 unresolved=0 managed_direct=0 direct_via_vps=0"}
 {"ts":"2026-04-28T10:00:00+0300","probe":"dns_ipv6_leaks","status":"CRIT","message":"Potential DNS or IPv6 leak signal was detected.","evidence":"plain_dns_packets=2"}
 {"ts":"2026-04-28T10:00:00+0300","probe":"rule_set_sync","status":"OK","message":"dnsmasq STEALTH catalog and sing-box domain_suffix rule-set are in sync.","evidence":"domains=42"}
 EOF

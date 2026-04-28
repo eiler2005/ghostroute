@@ -8,7 +8,8 @@ digests and disk-based alert ledgers without changing production routing state.
 
 ## Features
 
-- Router probes for sing-box, Reality paths, DNS leaks, rule-set drift and stale
+- Router probes for sing-box, Reality paths, Channel A/Home Reality,
+  Channel B and Channel C split leaks, DNS leaks, rule-set drift and stale
   snapshots.
 - VPS observer probes for Caddy, Xray, 3x-ui, disk pressure and recent Reality
   evidence.
@@ -52,7 +53,7 @@ Channel A/Home Reality invariants, Channel B ingress/relay summary, rule-set
 mirror count and the last non-OK probe. By default it avoids the full traffic
 report so it stays quick; run `GHOSTROUTE_STATUS_WITH_TRAFFIC=1
 ./modules/ghostroute-health-monitor/bin/status` when you need the byte-level
-Home Reality split inline.
+Home Reality (Channel A) split inline.
 
 `leak-check` is the active egress/policy check: it runs the existing read-only
 router probes for Reality exit, DNS/IPv6 policy and rule-set sync, then

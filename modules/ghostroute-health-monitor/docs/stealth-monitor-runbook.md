@@ -20,7 +20,7 @@
 rule-set mirror и последний non-OK probe.
 
 По умолчанию `status` не запускает полный `traffic-report`, чтобы оставаться
-быстрым. Если нужен byte-level Home Reality split прямо в этом выводе:
+быстрым. Если нужен byte-level Home Reality / Channel A split прямо в этом выводе:
 
 ```bash
 GHOSTROUTE_STATUS_WITH_TRAFFIC=1 ./modules/ghostroute-health-monitor/bin/status
@@ -43,6 +43,17 @@ Fallback:
 ```text
 /jffs/addons/router_configuration/health-monitor
 ```
+
+Большой sing-box connection log отдельно ограничивается hourly cron:
+
+```text
+/jffs/scripts/rotate-singbox-log
+/opt/var/log/sing-box.log
+/opt/var/log/router_configuration/sing-box-archive/
+```
+
+Default policy: rotate active log above 64 MiB, keep last 200000 lines in the
+active file, gzip archive when available, delete archives older than 3 days.
 
 Быстрый порядок чтения:
 
@@ -189,10 +200,14 @@ tail -500 /opt/var/log/sing-box.log | grep 'inbound/vless\[reality-in\]'
 
 ### `mobile_routing_leaks` WARN
 
-Смысл: heuristic scan нашел возможный неправильный outbound:
+Смысл: connection-ID scan по Channel A / Home Reality
+`inbound/vless[reality-in]` нашел возможный неправильный outbound:
 
 - managed-looking destination ушел через `direct-out`;
-- RU/direct-looking destination ушел через `reality-out`.
+- RU/direct-looking destination, не покрытый STEALTH catalog, ушел через
+  `reality-out`.
+
+Router-local события `dnscrypt-socks-in` сюда не входят.
 
 Проверить:
 
@@ -209,6 +224,54 @@ tail -1000 /opt/var/log/sing-box.log | grep -E 'reality-in|reality-out|direct-ou
 
 Не меняй catalog только по одному heuristic alert. Сначала проверь
 `rule_set_sync` и traffic report.
+
+### `channel_b_routing_leaks` WARN
+
+Смысл: connection-ID scan по Channel B
+`inbound/socks[channel-b-relay-socks]` нашел возможный неправильный outbound:
+
+- managed-looking destination ушел через `direct-out`;
+- RU/direct-looking destination, не покрытый STEALTH catalog, ушел через
+  `reality-out`;
+- часть Channel B relay connection IDs осталась без outbound в текущем log window.
+
+Проверить:
+
+```sh
+/jffs/scripts/health-monitor/run-probes --probe channel_b_routing_leaks
+tail -1000 /opt/var/log/sing-box.log | grep -E 'channel-b-relay-socks|reality-out|direct-out'
+```
+
+С локальной машины полезно:
+
+```bash
+./modules/ghostroute-health-monitor/bin/status
+./modules/traffic-observatory/bin/traffic-report today
+```
+
+Если `traffic-report` пишет `OK: no RU/direct-looking Home Reality destination
+via VPS` и Channel B relay split без unresolved, сначала считай alert
+диагностическим сигналом, а не доказательством поломки.
+
+### `channel_c_routing_leaks` WARN
+
+Смысл: задел под Channel C / Naive
+`channel-c-naive-in`. Probe использует тот же connection-ID split scan:
+
+- managed-looking destination ушел через `direct-out`;
+- RU/direct-looking destination, не покрытый STEALTH catalog, ушел через
+  `reality-out`;
+- часть Channel C connection IDs осталась без outbound в текущем log window.
+
+Проверить:
+
+```sh
+/jffs/scripts/health-monitor/run-probes --probe channel_c_routing_leaks
+tail -1000 /opt/var/log/sing-box.log | grep -E 'channel-c-naive-in|reality-out|direct-out'
+```
+
+Если Channel C сейчас не используется, нормальный результат:
+`total=0 reality=0 direct=0 unresolved=0`.
 
 ### `rule_set_sync` CRIT
 

@@ -124,7 +124,9 @@ GhostRoute VPS daily       15 3 * * *  /opt/stealth/health-monitor/daily-digest
 | `singbox_health` | sing-box process/listeners unhealthy |
 | `home_reality_ingress` | Home Reality ingress `:<home-reality-port>` down/degraded |
 | `mobile_activity` | remote/mobile clients давно не видны в логах |
-| `mobile_routing_leaks` | heuristic split-routing leak по sing-box logs |
+| `mobile_routing_leaks` | Channel A / Home Reality `reality-in` connection-ID split-routing leak по sing-box logs |
+| `channel_b_routing_leaks` | Channel B `channel-b-relay-socks` connection-ID split-routing leak по sing-box logs |
+| `channel_c_routing_leaks` | Channel C `channel-c-naive-in` connection-ID split-routing leak по sing-box logs |
 | `rule_set_sync` | dnsmasq STEALTH catalog != sing-box `domain_suffix` rule-set |
 | `dns_ipv6_leaks` | IPv6 drift, missing `filter-AAAA`, plain DNS sample |
 | `wireguard_resurrection` | retired WireGuard вернулся в runtime |

@@ -115,6 +115,7 @@ require_local_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt"
 require_local_file "${PROJECT_ROOT}/modules/routing-core/router/firewall-start"
 require_local_file "${PROJECT_ROOT}/modules/routing-core/router/nat-start"
 require_local_file "${PROJECT_ROOT}/modules/routing-core/router/cron-save-ipset"
+require_local_file "${PROJECT_ROOT}/modules/routing-core/router/rotate-singbox-log"
 require_local_file "${PROJECT_ROOT}/modules/recovery-verification/router/emergency-enable-wgc1.sh"
 require_local_file "${PROJECT_ROOT}/modules/routing-core/router/update-singbox-rule-sets.sh"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-snapshot"
@@ -162,6 +163,7 @@ fi
 upload_file "${PROJECT_ROOT}/modules/routing-core/router/firewall-start" "${REMOTE_STAGE}/scripts/firewall-start"
 upload_file "${PROJECT_ROOT}/modules/routing-core/router/nat-start" "${REMOTE_STAGE}/scripts/nat-start"
 upload_file "${PROJECT_ROOT}/modules/routing-core/router/cron-save-ipset" "${REMOTE_STAGE}/scripts/cron-save-ipset"
+upload_file "${PROJECT_ROOT}/modules/routing-core/router/rotate-singbox-log" "${REMOTE_STAGE}/scripts/rotate-singbox-log"
 upload_file "${PROJECT_ROOT}/modules/recovery-verification/router/emergency-enable-wgc1.sh" "${REMOTE_STAGE}/scripts/emergency-enable-wgc1.sh"
 upload_file "${PROJECT_ROOT}/modules/routing-core/router/update-singbox-rule-sets.sh" "${REMOTE_STAGE}/scripts/update-singbox-rule-sets.sh"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-snapshot" "${REMOTE_STAGE}/scripts/cron-traffic-snapshot"
@@ -318,6 +320,10 @@ install_fully_managed_script \
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/cron-save-ipset" \
   /jffs/scripts/cron-save-ipset
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/rotate-singbox-log" \
+  /jffs/scripts/rotate-singbox-log
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/emergency-enable-wgc1.sh" \

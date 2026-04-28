@@ -1,0 +1,65 @@
+#!/bin/sh
+# Size-based sing-box log rotation for Merlin/Entware routers.
+
+set -u
+
+LOG="${SINGBOX_LOG_PATH:-/opt/var/log/sing-box.log}"
+MAX_BYTES="${SINGBOX_LOG_MAX_BYTES:-67108864}"
+KEEP_LINES="${SINGBOX_LOG_KEEP_LINES:-200000}"
+ARCHIVE_DIR="${SINGBOX_LOG_ARCHIVE_DIR:-/opt/var/log/router_configuration/sing-box-archive}"
+RETENTION_DAYS="${SINGBOX_LOG_RETENTION_DAYS:-3}"
+MIN_FREE_KB="${SINGBOX_LOG_MIN_FREE_KB:-262144}"
+LOCK_DIR="/tmp/rotate-singbox-log.lock"
+TMP_TAIL=""
+
+case "$MAX_BYTES" in ''|*[!0-9]*) MAX_BYTES=67108864 ;; esac
+case "$KEEP_LINES" in ''|*[!0-9]*) KEEP_LINES=200000 ;; esac
+case "$RETENTION_DAYS" in ''|*[!0-9]*) RETENTION_DAYS=3 ;; esac
+case "$MIN_FREE_KB" in ''|*[!0-9]*) MIN_FREE_KB=262144 ;; esac
+
+[ -f "$LOG" ] || exit 0
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  exit 0
+fi
+trap 'rm -rf "$LOCK_DIR" ${TMP_TAIL:+"$TMP_TAIL"}' EXIT INT TERM
+
+size="$(wc -c < "$LOG" 2>/dev/null | tr -d ' ')"
+case "$size" in ''|*[!0-9]*) exit 0 ;; esac
+[ "$size" -gt "$MAX_BYTES" ] || exit 0
+
+log_dir="$(dirname "$LOG")"
+TMP_TAIL="/tmp/sing-box-log-tail.$$"
+ts="$(date +%Y%m%d-%H%M%S)"
+
+mkdir -p "$ARCHIVE_DIR" 2>/dev/null || true
+available_kb="$(df -k "$log_dir" 2>/dev/null | awk 'NR == 2 { print $4; exit }')"
+case "$available_kb" in ''|*[!0-9]*) available_kb=0 ;; esac
+size_kb=$((size / 1024 + 1))
+
+if [ -d "$ARCHIVE_DIR" ] && [ "$available_kb" -gt $((size_kb + MIN_FREE_KB)) ]; then
+  archive="$ARCHIVE_DIR/sing-box-$ts.log"
+  if cp "$LOG" "$archive" 2>/dev/null; then
+    gzip_bin=""
+    for candidate in /bin/gzip /usr/bin/gzip /opt/bin/gzip; do
+      if [ -x "$candidate" ]; then
+        gzip_bin="$candidate"
+        break
+      fi
+    done
+    if [ -n "$gzip_bin" ]; then
+      "$gzip_bin" -f "$archive" >/dev/null 2>&1 || true
+    fi
+  else
+    rm -f "$archive" 2>/dev/null || true
+  fi
+fi
+
+if tail -n "$KEEP_LINES" "$LOG" > "$TMP_TAIL" 2>/dev/null; then
+  : > "$LOG"
+  cat "$TMP_TAIL" >> "$LOG" 2>/dev/null || true
+fi
+
+find "$ARCHIVE_DIR" -name 'sing-box-*.log*' -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
+
+new_size="$(wc -c < "$LOG" 2>/dev/null | tr -d ' ')"
+logger -t rotate-singbox-log "rotated $LOG old_bytes=$size new_bytes=${new_size:-unknown} keep_lines=$KEEP_LINES max_bytes=$MAX_BYTES"

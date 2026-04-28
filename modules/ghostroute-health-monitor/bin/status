@@ -363,6 +363,6 @@ printf 'Channel A/Home Reality: %s; %s\n' "$channel_a_state" "$channel_a_perf"
 printf 'Channel B: %s\n' "$channel_b_state"
 printf 'Channel B ingress: %s\n' "$(channel_b_ingress_line)"
 printf 'Channel B relay split: %s\n' "$(channel_b_relay_line)"
-printf 'Home Reality split: %s\n' "$(home_reality_split_line)"
+printf 'Home Reality split (Channel A): %s\n' "$(home_reality_split_line)"
 printf 'Last non-OK probe: %s\n' "$(last_non_ok)"
 printf 'Next: ./modules/ghostroute-health-monitor/bin/leak-check | ./modules/ghostroute-health-monitor/bin/router-health-report\n'

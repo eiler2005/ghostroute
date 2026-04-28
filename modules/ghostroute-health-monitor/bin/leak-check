@@ -30,7 +30,7 @@ collect_probe_events() {
 
   router_ssh 'sh -s' <<'REMOTE' >/dev/null
 set -eu
-for probe in channel_a_reality dns_ipv6_leaks rule_set_sync; do
+for probe in channel_a_reality mobile_routing_leaks channel_b_routing_leaks channel_c_routing_leaks dns_ipv6_leaks rule_set_sync; do
   /jffs/scripts/health-monitor/run-probes --probe "$probe" >/dev/null 2>&1 || true
 done
 REMOTE
@@ -92,7 +92,7 @@ latest_events() {
         puts [probe, "SKIP", "No recent probe event was found.", "raw_event=missing"].join("\t")
       end
     end
-  ' "$RAW_FILE" channel_a_reality dns_ipv6_leaks rule_set_sync
+  ' "$RAW_FILE" channel_a_reality mobile_routing_leaks channel_b_routing_leaks channel_c_routing_leaks dns_ipv6_leaks rule_set_sync
 }
 
 rank_status() {
@@ -131,6 +131,15 @@ while IFS=$'\t' read -r probe status message evidence; do
       ;;
     dns_ipv6_leaks)
       label="DNS/IPv6 policy"
+      ;;
+    mobile_routing_leaks)
+      label="Home Reality split (Channel A)"
+      ;;
+    channel_b_routing_leaks)
+      label="Channel B split"
+      ;;
+    channel_c_routing_leaks)
+      label="Channel C split"
       ;;
     rule_set_sync)
       label="Rule-set sync"
