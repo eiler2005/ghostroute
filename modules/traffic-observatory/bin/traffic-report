@@ -1065,8 +1065,19 @@ printf "%-14s  %-24s  %-17s  %-24s  %s\n" "Wi-Fi/LAN" "device -> router" "no red
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home ${HOME_REALITY_PORT_LABEL}" "reality-in" "VLESS+Reality -> VPS" "VPS exit IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "HR client" "LTE/Wi-Fi -> home ${HOME_REALITY_PORT_LABEL}" "reality-in" "Home WAN direct" "Home Russian IP"
 printf "%-14s  %-24s  %-17s  %-24s  %s\n" "B client" "LTE/Wi-Fi -> home ${CHANNEL_B_HOME_PORT_LABEL}" "reality-in via local relay" "VLESS+Reality -> VPS" "VPS exit IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C client" "LTE/Wi-Fi -> home :<channel-c-public-port>" "naive-in" "VLESS+Reality -> VPS" "VPS exit IP"
-printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C client" "LTE/Wi-Fi -> home :<channel-c-public-port>" "naive-in" "Home WAN direct" "Home Russian IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C1-SR" "LTE -> home :4443" "http-in" "VLESS+Reality -> VPS" "VPS exit IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C1-SR" "LTE -> home :4443" "http-in" "Home WAN direct" "Home Russian IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C1-native" "LTE -> home :443" "naive-in" "VLESS+Reality -> VPS" "VPS exit IP"
+printf "%-14s  %-24s  %-17s  %-24s  %s\n" "C1-native" "LTE -> home :443" "naive-in" "Home WAN direct" "Home Russian IP"
+echo
+
+echo "=== CHANNEL C STATUS ==="
+echo "Channel C is split into two variants and they must not be mixed."
+echo "C1-Shadowrocket / 1-SR: working iPhone path; Shadowrocket HTTPS CONNECT over TLS -> home DDNS/public RU IP :4443 -> router sing-box http inbound :41956 -> managed split -> reality-out/Vision -> VPS -> internet."
+echo "C1-Shadowrocket first hop: the mobile operator sees iPhone -> home Russian IP and TLS/HTTPS CONNECT traffic; the VPS is not the first hop."
+echo "C1-Shadowrocket profiles: ansible/out/clients-channel-c/1-SR/ with iphone-N-c1-shadowrocket-https.png and iphone-N-c1-shadowrocket-https.txt."
+echo "C1-sing-box / native Naive: intended stealth-primary path on :443 via channel-c-naive-in :41955 with real LE TLS and per-client username/password."
+echo "C1-sing-box status: router side is ready, but the tested iPhone SFI sing-box 1.11.4 failed with 'unknown outbound type: naive'; native SFI profile generation is disabled by default via channel_c_sfi_native_profiles_enabled=false until an iOS client supports naive outbound, target sing-box >= 1.13."
 echo
 
 echo "=== 3. MANAGED CATALOG ==="
@@ -1081,7 +1092,7 @@ if [ "$CHANNEL_B_RELAY_CONN" -gt 0 ]; then
 else
   echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} Home Reality profile connections)"
 fi
-echo "Channel C1 via VPS:      router-side Naive ingress planned; byte attribution is not yet separated from Home Reality counters"
+echo "Channel C1 via VPS:      C1-SR works now via Shadowrocket :4443/http-in; C1-native Naive :443 is server-ready but client-blocked on tested SFI 1.11.4"
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
@@ -1451,6 +1462,8 @@ echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; V
 echo "- Home Reality used from inside LAN usually means a QR/Home Reality profile was active while the device was on home Wi-Fi; this is tracked separately as LAN hairpin traffic."
 echo "- Unattributed external ingress sources are byte-counter sources that were not confidently tied to a VLESS client identity in the current log window; review sustained high volume before blocking anything."
 echo "- Home Reality direct-out can be Russian sites, Apple/CDN/API traffic, resolver-like IPs, or any destination not matched by STEALTH_DOMAINS/VPN_STATIC_NETS; it exits via home Russian IP."
+echo "- Channel C current working variant is C1-Shadowrocket / 1-SR on :4443. It is not native Naive; it is HTTPS CONNECT compatibility."
+echo "- Channel C native Naive on :443 is the intended stealth-primary design, but tested iPhone SFI 1.11.4 cannot run outbound type naive yet."
 echo "- Resolver-like direct-out is a review signal, not necessarily your mistake and not proof of LTE-side DNS leak."
 echo "- Routing mistakes are heuristics: WARN means review catalog/no-vpn rules, not automatic proof of breakage."
 if [ "$REPORT_REDACT_NAMES" = "1" ]; then

@@ -93,23 +93,30 @@ When the user asks for a router traffic report or router health/capacity report 
    per-destination VPS/direct byte splits are estimated from log-attributed
    connection counts until exact per-outbound byte attribution exists.
 
-10. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
+10. If the report contains "CHANNEL C STATUS", keep the two Channel C variants separate:
+   - C1-Shadowrocket / 1-SR on `:4443` is the working iPhone path today.
+   - It is not native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
+   - The mobile operator sees iPhone -> home Russian IP with TLS/HTTPS CONNECT traffic, not the VPS as first hop.
+   - C1-sing-box/native Naive on `:443` is the intended stealth-primary design, but current tested iPhone SFI/sing-box `1.11.4` fails with `unknown outbound type: naive`.
+   - Treat native Naive as router-ready/client-blocked until an iOS SFI/sing-box client supports Naive outbound, target sing-box `>= 1.13`.
 
-11. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
+11. If the report contains "TOP BY TAILSCALE PEERS", mention the busiest remote peers before the full peer table.
+
+12. If the report contains "LAN DEVICE BYTES", use it for exact per-device byte numbers.
     If the report contains only "LAN DEVICES", explain that these are active conntrack counts, not bytes.
 
-12. If the report is from ./modules/traffic-observatory/bin/traffic-daily-report, answer from its period sections:
+13. If the report is from ./modules/traffic-observatory/bin/traffic-daily-report, answer from its period sections:
     - Interface sample window / LAN byte sample window / Mobile byte sample window
     - INTERFACE TOTALS
     - REALITY SUMMARY
     - LAN DEVICE MIX
     - MOBILE HOME REALITY BYTES
 
-13. If the report window is week/month, explicitly warn when any sample window is narrower than the nominal period.
+14. If the report window is week/month, explicitly warn when any sample window is narrower than the nominal period.
 
-14. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
+15. Never expose private router IPs, client private IPs, MAC addresses, SSH keys, raw endpoints, or unredacted device names unless the user explicitly asks for trusted local inspection.
 
-15. If the user asks about future optimization of domains/catalog/routing coverage:
+16. If the user asks about future optimization of domains/catalog/routing coverage:
    - start from docs/future-improvements-backlog.md
    - verify what is already implemented vs still future
    - prefer review/plan first, not runtime changes

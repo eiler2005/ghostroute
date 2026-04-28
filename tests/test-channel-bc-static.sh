@@ -132,5 +132,11 @@ assert_contains "README-ru.md" 'Channel C'
 assert_contains "docs/architecture.md" 'Channel C1'
 assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel C1 Home-First Naive'
 assert_contains "modules/routing-core/docs/stealth-channel-implementation-guide.md" 'Channel C1'
+assert_contains "modules/traffic-observatory/bin/traffic-report" 'C1-Shadowrocket / 1-SR'
+assert_contains "modules/traffic-observatory/bin/traffic-report" 'C1-sing-box / native Naive'
+assert_contains "modules/traffic-observatory/bin/traffic-daily-report" 'C1-Shadowrocket / 1-SR'
+assert_contains "modules/shared/lib/router-health-common.sh" '## Channel C Status'
+assert_contains "modules/ghostroute-health-monitor/bin/status" 'C1-SR / Shadowrocket :4443 works now'
+assert_contains "docs/channel-c.md" 'channel_c_sfi_native_profiles_enabled: false'
 
 echo "channel-b/c static tests passed"

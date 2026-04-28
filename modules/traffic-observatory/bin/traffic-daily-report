@@ -295,6 +295,17 @@ puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Source', 'First hop', 'Router', '
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'REDIRECT', 'VLESS+Reality -> VPS', 'VPS exit IP')
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'Wi-Fi/LAN', 'device -> router', 'no redirect', 'Home WAN direct', 'Home Russian IP')
 puts format('%-14s  %-24s  %-17s  %-24s  %s', 'HR client', 'LTE/Wi-Fi -> home :<home-reality-port>', 'reality-in', 'split not byte-attributed', 'VPS or home RU IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'C1-SR', 'LTE -> home :4443', 'http-in', 'split not byte-attributed', 'VPS or home RU IP')
+puts format('%-14s  %-24s  %-17s  %-24s  %s', 'C1-native', 'LTE -> home :443', 'naive-in', 'server-ready/client-blocked', 'n/a until client works')
+puts
+
+puts '=== CHANNEL C STATUS ==='
+puts 'Channel C is split into two variants and they must not be mixed.'
+puts 'C1-Shadowrocket / 1-SR: working iPhone path; Shadowrocket HTTPS CONNECT over TLS -> home DDNS/public RU IP :4443 -> router sing-box http inbound :41956 -> managed split -> reality-out/Vision -> VPS -> internet.'
+puts 'C1-Shadowrocket first hop: the mobile operator sees iPhone -> home Russian IP and TLS/HTTPS CONNECT traffic; the VPS is not the first hop.'
+puts 'C1-Shadowrocket profiles: ansible/out/clients-channel-c/1-SR/ with iphone-N-c1-shadowrocket-https.png and iphone-N-c1-shadowrocket-https.txt.'
+puts 'C1-sing-box / native Naive: intended stealth-primary path on :443 via channel-c-naive-in :41955 with real LE TLS and per-client username/password.'
+puts "C1-sing-box status: router side is ready, but the tested iPhone SFI sing-box 1.11.4 failed with 'unknown outbound type: naive'; native SFI profile generation is disabled by default via channel_c_sfi_native_profiles_enabled=false until an iOS client supports naive outbound, target sing-box >= 1.13."
 puts
 
 puts '=== 3. LAN/WI-FI DEVICES ==='
@@ -337,6 +348,8 @@ puts '=== NOTES ==='
 puts '- Period reports are built from router-side snapshots in interface-counters.tsv, lan-device-counters.tsv and mobile-reality-counters.tsv.'
 puts '- LAN Reality bytes are managed REDIRECT flows counted before nat rewrites them to sing-box :<lan-redirect-port>.'
 puts '- Home Reality ingress bytes are encrypted TCP/<home-reality-port> counters. They measure clients entering through :<home-reality-port> before sing-box splits traffic to reality-out or direct-out; the client can be on LTE or Wi-Fi.'
+puts '- Channel C current working variant is C1-Shadowrocket / 1-SR on :4443. It is not native Naive; it is HTTPS CONNECT compatibility.'
+puts '- Channel C native Naive on :443 is the intended stealth-primary design, but tested iPhone SFI 1.11.4 cannot run outbound type naive yet.'
 puts '- If a period has only one sample for a key, its delta is 0 until another snapshot exists.'
 if redact_names == '1'
   puts '- LAN/mobile source labels are redacted by default. Use REPORT_REDACT_NAMES=0 for trusted local inspection.'

@@ -344,6 +344,7 @@ assert_contains "$STATUS_OUT" "Overall: OK (drift=0)"
 assert_contains "$STATUS_OUT" "Rule-set mirror: 42 /32"
 assert_contains "$STATUS_OUT" "home:<channel-b-port>"
 assert_contains "$STATUS_OUT" "Home Reality split (Channel A):"
+assert_contains "$STATUS_OUT" "Channel C: C1-SR / Shadowrocket :4443 works now"
 
 LEAK_RAW="$TMPDIR/leak-ok-skip.jsonl"
 cat > "$LEAK_RAW" <<'EOF'
@@ -365,6 +366,7 @@ assert_contains "$LEAK_OUT" "Reality exit: SKIP"
 assert_contains "$LEAK_OUT" "Home Reality split (Channel A): OK"
 assert_contains "$LEAK_OUT" "Channel B split: OK"
 assert_contains "$LEAK_OUT" "Channel C split: OK"
+assert_contains "$LEAK_OUT" "Channel C note: INFO"
 assert_contains "$LEAK_OUT" "Static IP mirror: OK"
 
 LEAK_CRIT_RAW="$TMPDIR/leak-crit.jsonl"
