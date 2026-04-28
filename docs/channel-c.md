@@ -5,6 +5,9 @@ GhostRoute through the home public endpoint before any VPS hop.
 
 ## Current Shape
 
+Channel C is currently split into two variants. This is important: do not mix
+their client profile formats, ports or proof signals.
+
 ```text
 iPhone LTE
   -> home DDNS / home public IP
@@ -21,17 +24,32 @@ Old direct-to-VPS Channel C designs are removed from active code. Historical
 Squid/stunnel/tinyproxy/Caddy forward-proxy notes may remain in `docs/archive/`
 only as removed-design debugging records.
 
+Short status:
+
+- `C1-Shadowrocket / 1-SR` on `:4443` works now on the real iPhone. It is not
+  native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
+- `C1-sing-box / native Naive` on `:443` is the intended stealth-primary design.
+  The router side is ready, but the tested iPhone SFI build uses sing-box
+  `1.11.4` and fails on outbound `"type": "naive"`.
+- Native SFI profile generation is off by default with
+  `channel_c_sfi_native_profiles_enabled: false`. Re-enable only when an iOS
+  sing-box/SFI client supports Naive outbound, target sing-box `>= 1.13`.
+
 ## C1-sing-box Naive
 
 C1-sing-box is the intended stealth-primary Channel C design:
 
 ```text
-iPhone SFI / sing-box client
-  -> Naive over public TLS :443
+iPhone LTE
+  -> SFI / sing-box client with outbound type: naive
+  -> Naive over TLS/H2-like :443
+  -> home DDNS / public RU IP
   -> WAN REDIRECT to router internal :41955
-  -> sing-box naive inbound `channel-c-naive-in`
+  -> router sing-box naive inbound `channel-c-naive-in`
   -> managed split
-  -> reality-out -> VPS -> internet
+  -> reality-out / Vision
+  -> VPS
+  -> internet
 ```
 
 This is the closest current implementation to a real NaiveProxy-style lane in
@@ -65,17 +83,29 @@ candidate when the iPhone client is SFI/sing-box.
 C1-Shadowrocket is a separate compatibility path for Shadowrocket:
 
 ```text
-iPhone Shadowrocket
-  -> HTTPS CONNECT over public TLS :4443
+iPhone LTE
+  -> Shadowrocket HTTPS CONNECT over TLS
+  -> home DDNS / public RU IP :4443
   -> WAN REDIRECT to router internal :41956
-  -> sing-box http inbound `channel-c-shadowrocket-http-in`
+  -> router sing-box http inbound `channel-c-shadowrocket-http-in`
   -> managed split
-  -> reality-out -> VPS -> internet
+  -> reality-out / Vision
+  -> VPS
+  -> internet
 ```
 
 C1-Shadowrocket is not Naive. It is authenticated HTTPS CONNECT over TLS. It
 proved that the home-first Channel C architecture works for Shadowrocket, but
 it does not provide Naive padding or Naive client behavior.
+
+The mobile operator sees:
+
+```text
+iPhone -> home Russian IP
+TLS/HTTPS CONNECT traffic
+```
+
+The mobile operator does not see the VPS as the first hop.
 
 Live finding from 2026-04-28:
 
@@ -90,6 +120,19 @@ Live finding from 2026-04-28:
 
 C1-Shadowrocket is persisted through the Channel C router playbook, firewall
 hook, generated profiles and verify checks.
+
+Profile artifacts live in:
+
+```text
+ansible/out/clients-channel-c/1-SR/
+```
+
+Working file format:
+
+```text
+iphone-1-c1-shadowrocket-https.png
+iphone-1-c1-shadowrocket-https.txt
+```
 
 ## What Shadowrocket Would Need To Be Native Naive
 

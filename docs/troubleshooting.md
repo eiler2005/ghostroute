@@ -137,10 +137,12 @@ Expected:
 
 Channel B is production для selected device-client profiles, но не является
 automatic failover для Channel A и не участвует в health-check Channel A.
-Channel C has C1-sing-box Naive for SFI/sing-box and a live-proven C1-Shadowrocket
-Shadowrocket compatibility path using HTTPS CONNECT/TLS. C1-Shadowrocket is not Naive and
-must not be treated as proof that Shadowrocket speaks native Naive. B/C не
-должны менять router REDIRECT/DNS/TUN и не дают automatic failover.
+Channel C has a live-proven C1-Shadowrocket compatibility path using HTTPS
+CONNECT/TLS and a C1-sing-box native Naive design that is server-ready but
+blocked by the tested SFI `1.11.4` client (`unknown outbound type: naive`).
+C1-Shadowrocket is not Naive and must not be treated as proof that
+Shadowrocket speaks native Naive. B/C не должны менять router REDIRECT/DNS/TUN
+и не дают automatic failover.
 
 Для Channel B direct-mode проверок access logs пишутся в Caddy stdout/journal.
 Для Channel C1 основной runtime signal находится на роутере в sing-box log и
@@ -158,7 +160,8 @@ Expected:
 
 - Channel B requests show logger `channel_b_xhttp`, host matching the XHTTP
   hostname, and either the configured random path or `404` for wrong paths.
-- C1-sing-box requests enter `channel-c-naive-in`.
+- C1-sing-box requests enter `channel-c-naive-in`; with SFI `1.11.4` this is
+  not expected because that client cannot decode outbound `type: naive`.
 - C1-Shadowrocket compatibility requests enter
   `channel-c-shadowrocket-http-in`.
 - Managed Channel C destinations continue to `reality-out`.
@@ -167,7 +170,8 @@ Expected:
   `https, <home-host>, <public-port>, username=<user>, password=<pass>, method=connect, tls=true, tfo=false`.
 - If Shadowrocket hits `channel-c-naive-in` and the log says `not CONNECT
   request`, Shadowrocket imported the profile but did not speak the expected
-  native Naive protocol. Use C1-Shadowrocket or SFI/sing-box for C1-sing-box proof.
+  native Naive protocol. Use C1-Shadowrocket for current iPhone proof; re-test
+  C1-sing-box only with an iOS sing-box/SFI build that supports Naive outbound.
 - No Caddy restart loop: `sudo systemctl is-active caddy` returns `active`.
 
 ## VPS Emergency Clients Drift

@@ -57,7 +57,7 @@ flowchart LR
 |---|---|---|---|---|
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
-| C | C1-sing-box Naive plus C1-Shadowrocket compatibility | Endpoint -> home router Naive or HTTPS CONNECT ingress | Home-first selected-client lane; C1-sing-box is stealth-primary, C1-Shadowrocket is Shadowrocket compatibility | No |
+| C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 ## Why This Exists
@@ -85,8 +85,10 @@ The layered model separates the main traffic responsibilities:
   rule-list policy; it is a routing layer, not just a VPN toggle.
 - Layer 1 is the managed channel layer. Channel A, Channel B and Channel C are
   home-first: the first network sees endpoint -> home endpoint, not endpoint ->
-  VPS. Channel C has C1-sing-box Naive for SFI/sing-box and C1-Shadowrocket HTTPS CONNECT
-  compatibility for Shadowrocket.
+  VPS. See [docs/channels.md](/docs/channels.md) for the compact A/B/C handoff
+  model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
+  Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
+  client with Naive outbound support.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
@@ -123,10 +125,11 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Channel B selected-client production home-first lane: selected devices connect
   to the home router first via XHTTP/TLS, then the router relays into local
   sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
-- Channel C home-first lane: C1-sing-box uses sing-box Naive on the home endpoint
-  for SFI/sing-box clients; C1-Shadowrocket uses authenticated HTTPS CONNECT/TLS for
-  Shadowrocket compatibility. Both apply the same managed split and
-  Reality/Vision upstream.
+- Channel C home-first lane: C1-Shadowrocket uses authenticated HTTPS
+  CONNECT/TLS for Shadowrocket compatibility and is live-proven. C1-sing-box
+  uses sing-box Naive on the home endpoint as the native design, but current
+  SFI `1.11.4` rejects outbound `type: naive`. Both router-side paths apply the
+  same managed split and Reality/Vision upstream.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -182,6 +185,7 @@ performance and recovery procedures are documented as separate operational
 surfaces with clear read-only diagnostics and explicit manual recovery steps.
 See the full module map in
 [docs/operational-modules.md](/docs/operational-modules.md).
+For a compact channel handoff, see [docs/channels.md](/docs/channels.md).
 
 ---
 
@@ -349,7 +353,8 @@ router DNS, TUN state or automatic failover. Treat generated
 `ansible/out/clients-channel-b/` artifacts as selected-client production
 credentials and generated `ansible/out/clients-channel-c/` artifacts as
 selected-client Channel C artifacts. Shadowrocket compatibility is not proof of
-native Naive; see [docs/channel-c.md](/docs/channel-c.md).
+native Naive; see [docs/channels.md](/docs/channels.md) and
+[docs/channel-c.md](/docs/channel-c.md).
 
 ---
 

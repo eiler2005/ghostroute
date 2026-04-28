@@ -2,6 +2,11 @@
 
 ## Context
 
+Superseded for Channel C by
+[ADR 0008](0008-channel-c-live-compatibility-and-native-naive-blocker.md).
+This record remains the historical promotion point for Channel B and the
+pre-live Channel C target shape.
+
 ADR 0006 fixed the channel names while Channel B and Channel C were still
 future/manual lanes. Channel B has since become a working home-first path for
 selected device-client profiles. Channel C is still a compatibility lane that
