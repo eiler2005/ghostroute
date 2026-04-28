@@ -10,6 +10,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "${PROJECT_ROOT}/tests/test-module-entrypoints.sh"
 "${PROJECT_ROOT}/tests/test-channel-a-deploy-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-bc-static.sh"
+"${PROJECT_ROOT}/tests/test-managed-domain-policy-static.sh"
 "${PROJECT_ROOT}/tests/test-managed-split-parity-static.sh"
 "${PROJECT_ROOT}/modules/recovery-verification/tests/test-audit-fixes.sh"
 

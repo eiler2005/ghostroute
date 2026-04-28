@@ -41,6 +41,9 @@ These tests validate:
 - A/B/C managed-split parity: all home-first mobile channels must apply the
   same post-router `STEALTH_DOMAINS` / `VPN_STATIC_NETS` policy as Wi-Fi/LAN.
   `api.ipify.org` is only the pinned canary for that broader invariant.
+- Managed domain policy sources: manual catalog, private/local catalog hook,
+  auto-discovered domains, static CIDRs, Russian-TLD skip rules, and
+  `domains-no-vpn.txt` exclusions.
 
 They do not connect to the router.
 
@@ -89,6 +92,11 @@ Expected health semantics:
   same way. This checker does not replace the general rule: all managed
   catalog domains/static CIDRs must follow the shared managed split after the
   traffic reaches the router.
+- Manual `STEALTH_DOMAINS`, auto-discovered `STEALTH_DOMAINS`, live
+  `STEALTH_DOMAINS` IP snapshots, and `VPN_STATIC_NETS` static CIDRs are all
+  mirrored into the mobile sing-box source rule-sets.
+- Russian TLDs and `domains-no-vpn.txt` entries are not auto-added to managed
+  domains.
 - legacy `fwmark 0x2000`, table `200`, and `singbox0` are absent.
 - `br0 -> RC_VPN_ROUTE` is disabled.
 - `OUTPUT -> RC_VPN_ROUTE` is disabled.

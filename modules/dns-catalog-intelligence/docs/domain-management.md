@@ -7,6 +7,10 @@
 | Файл | ipset | Для кого | Egress |
 |---|---|---|---|
 | `configs/dnsmasq-stealth.conf.add` | `STEALTH_DOMAINS` | домашняя LAN/Wi-Fi и mobile Home Reality split | managed -> Reality; non-managed -> direct |
+| `configs/private/dnsmasq-stealth.local.conf.add` | `STEALTH_DOMAINS` | локальные/private overrides, добавляются при deploy | managed -> Reality |
+| `/jffs/configs/dnsmasq-autodiscovered.conf.add` | `STEALTH_DOMAINS` | auto-discovery после DNS-наблюдения и проверок | managed -> Reality |
+| `configs/static-networks.txt` | `VPN_STATIC_NETS` | direct-IP/static CIDR services, например Telegram/Apple/Meta/imo | managed -> Reality |
+| `configs/domains-no-vpn.txt` | no ipset | запрет auto-add для чувствительных direct-доменов | direct/home WAN |
 
 Advisory-only идеи по сужению каталога лежат в
 [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md). Этот
@@ -15,6 +19,9 @@ Advisory-only идеи по сужению каталога лежат в
 
 `VPN_DOMAINS` удалён из нормальной схемы. `VPN_STATIC_NETS` остаётся, потому что
 Channel A использует этот исторически названный ipset для direct-IP/static CIDR.
+Несмотря на имя, `VPN_STATIC_NETS` является частью managed split: Wi-Fi/LAN и
+mobile Channels A/B/C должны отправлять эти CIDR в Reality outbound так же, как
+домены из `STEALTH_DOMAINS`.
 
 Remote mobile QR/VLESS-клиенты не зависят от ipset на первом hop: они идут на
 домашний ASUS `:<home-reality-port>` и попадают в router-side Reality inbound. После этого
@@ -84,6 +91,11 @@ STEALTH_DOMAINS / VPN_STATIC_NETS -> Reality outbound -> VPS
 direct exceptions                 -> home WAN direct
 everything else                   -> home WAN direct
 ```
+
+Ручные домены вроде Telegram (`telegram.org`, `t.me`) и direct-IP сети Telegram
+из `configs/static-networks.txt` проверяются отдельно: доменные правила попадают
+в `stealth-domains.json`, а CIDR — в `stealth-static.json`. Российские TLD и
+домены из `domains-no-vpn.txt` не должны попадать в auto-managed каталог.
 
 ## Проверить домен
 
