@@ -250,6 +250,18 @@
       ansible.builtin.raw: "nslookup {{ stealth_test_domain }} 127.0.0.1 >/dev/null 2>&1 || true"
       changed_when: false
 
+    - name: Managed checker domain is pinned in dnsmasq catalog
+      ansible.builtin.shell: "grep -q '^ipset=/{{ managed_split_checker_domain }}/{{ stealth_ipset_name }}$' {{ stealth_dnsmasq_conf_path }}"
+      changed_when: false
+
+    - name: Resolve managed checker host to populate LAN ipset path
+      ansible.builtin.raw: "nslookup {{ managed_split_checker_host }} 127.0.0.1 >/dev/null 2>&1 || true"
+      changed_when: false
+
+    - name: Managed checker domain is mirrored into sing-box domain rule-set
+      ansible.builtin.shell: "grep -q '\"{{ managed_split_checker_domain }}\"' /opt/etc/sing-box/rule-sets/stealth-domains.json"
+      changed_when: false
+
     - name: STEALTH_DOMAINS ipset has at least one populated entry
       ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
       changed_when: false

@@ -67,10 +67,17 @@ The same repo catalogs feed mobile Home Reality split routing. During deploy,
 `modules/routing-core/router/update-singbox-rule-sets.sh` regenerates sing-box source rule-sets from:
 
 - `configs/dnsmasq-stealth.conf.add` -> `stealth-domains.json`
+- `/jffs/configs/dnsmasq-autodiscovered.conf.add` -> `stealth-domains.json`
 - `configs/static-networks.txt` -> `stealth-static.json`
+- live/snapshotted `STEALTH_DOMAINS` IPv4 entries -> `stealth-static.json`
 
 Do not edit `/opt/etc/sing-box/rule-sets/*.json` manually; they are generated
 artifacts and will be overwritten.
+
+`api.ipify.org` is intentionally covered by `ipset=/ipify.org/STEALTH_DOMAINS`.
+It is the managed-split parity checker: LAN/Wi-Fi, Channel A mobile, Channel B,
+and both Channel C variants should all classify it as managed and show VPS
+egress.
 
 ## Проверить домен
 

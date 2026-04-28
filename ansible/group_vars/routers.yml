@@ -79,6 +79,8 @@ dnscrypt_init_path: /opt/etc/init.d/S09dnscrypt-proxy2
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
 stealth_test_domain: ifconfig.me
+managed_split_checker_domain: ipify.org
+managed_split_checker_host: api.ipify.org
 stealth_test_upstream: 1.1.1.1
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_channel_a_lan_enabled: true
