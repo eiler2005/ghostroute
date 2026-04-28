@@ -4,6 +4,10 @@ This document is the short handoff view of the current channel model. All
 managed channels are home-first: the endpoint's first visible remote endpoint is
 the home public IP/DDNS, not the VPS.
 
+DNS policy is documented separately in [dns-policy.md](/docs/dns-policy.md).
+The primary DNS goal is no DNS leak to the mobile operator; BrowserLeaks
+resolver geography is a secondary fingerprint-consistency signal.
+
 ## Channel A - Production Router Data Plane
 
 Channel A is the primary production path owned by the router.
@@ -22,6 +26,12 @@ What the first network sees:
 ```text
 LAN clients: ordinary home LAN traffic to the router
 remote clients: endpoint -> home public IP/DDNS on the home Reality port
+```
+
+DNS proof target:
+
+```text
+remote mobile DNS must not use the LTE carrier resolver
 ```
 
 What target sites see for managed traffic:
@@ -68,6 +78,12 @@ TLS / HTTP-like XHTTP traffic
 
 It does not see the VPS as the first hop.
 
+DNS proof target:
+
+```text
+selected-client DNS follows the active Channel B tunnel, not LTE carrier DNS
+```
+
 Main role:
 
 - Production selected-client profile lane.
@@ -108,6 +124,12 @@ TLS / HTTPS CONNECT traffic
 
 C1-Shadowrocket is not native Naive. It is the compatibility path that actually
 worked on the real iPhone through Shadowrocket.
+
+DNS proof target:
+
+```text
+Shadowrocket DNS follows the active proxy/profile, not LTE carrier DNS
+```
 
 Generated artifacts:
 
