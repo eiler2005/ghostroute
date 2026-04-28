@@ -642,35 +642,6 @@
       tags:
         - channel_c_clients_only
 
-    - name: Render C1-Shadowrocket HTTPS CONNECT config for each selected client
-      ansible.builtin.copy:
-        dest: "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket.conf"
-        mode: "0600"
-        content: |
-          [General]
-          bypass-system = false
-          ipv6 = false
-          dns-server = 1.1.1.1, 8.8.8.8
-          fallback-dns-server = 1.1.1.1, 8.8.4.4
-
-          [Proxy]
-          {{ item.name }}-c1-shadowrocket = https,{{ channel_c_home_public_host }},{{ channel_c_shadowrocket_public_port }},username={{ item.username }},password={{ item.password }},method=connect,tls=true,tfo=false
-
-          [Proxy Group]
-          PROXY = select, {{ item.name }}-c1-shadowrocket
-
-          [Rule]
-          IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
-          IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
-          IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-          IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
-          FINAL,PROXY
-      loop: "{{ channel_c_shadowrocket_profile_clients }}"
-      when: channel_c_shadowrocket_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
     - name: Render Channel C1 Naive URI QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -687,16 +658,6 @@
         qrencode -t PNG -o "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.png" -r "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.json"
       loop: "{{ channel_c_home_clients | default([]) }}"
       when: channel_c_home_enabled | default(false) | bool
-      no_log: true
-      tags:
-        - channel_c_clients_only
-
-    - name: Render Channel C1 Shadowrocket config QR PNG for each selected client
-      ansible.builtin.shell: |
-        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket-conf.png" -r "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket.conf"
-      loop: "{{ channel_c_shadowrocket_profile_clients }}"
-      when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
       tags:
         - channel_c_clients_only
@@ -723,6 +684,9 @@
           - C1-sing-box: native sing-box Naive, primary QR `c1-SFI/*-sfi-sing-box.png`.
           - C1-Shadowrocket: HTTPS CONNECT compatibility, primary QR
             `1-SR/*-c1-shadowrocket-https.png`.
+            Do not use `*-shadowrocket-conf.png`; that older full-config QR did
+            not import reliably in Shadowrocket. The working proof was the
+            short HTTPS CONNECT URL QR on port `{{ channel_c_shadowrocket_public_port }}`.
 
           ```text
           C1-sing-box:
@@ -797,9 +761,7 @@
                   <img src="1-SR/{{ client.name }}-c1-shadowrocket-https.png" alt="{{ client.name }} C1-Shadowrocket QR">
                   <div class="links">
                     <a href="1-SR/{{ client.name }}-c1-shadowrocket-https.txt">Shadowrocket URL</a>
-                    <a href="1-SR/{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
                   </div>
-                  <p><img src="1-SR/{{ client.name }}-shadowrocket-conf.png" alt="{{ client.name }} Shadowrocket config QR"></p>
                 </article>
           {% endfor %}
               </section>
