@@ -127,6 +127,7 @@ For the full end-to-end workflow and observer table, see
 | `./modules/ghostroute-health-monitor/bin/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./modules/ghostroute-health-monitor/bin/router-health-report --save` | local report snapshot + local journal + router-side copy |
 | `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
+| `./modules/traffic-observatory/bin/traffic-report channel-c` | lightweight live Channel C check: listeners, WAN redirects, INPUT allow and recent Channel C log tail |
 | `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
 | `./modules/dns-catalog-intelligence/bin/catalog-review-report` | advisory review of domains/static networks |
 | `./modules/dns-catalog-intelligence/bin/dns-forensics-report` | hourly DNS-interest snapshots |
@@ -139,6 +140,13 @@ Use `traffic-report` as the main entrypoint:
 ./modules/traffic-observatory/bin/traffic-report week
 ./modules/traffic-observatory/bin/traffic-report month
 ./modules/traffic-observatory/bin/traffic-report 2026-04-25
+```
+
+Use the lightweight Channel C check when the question is only “does the current
+C1 path work?”:
+
+```bash
+./modules/traffic-observatory/bin/traffic-report channel-c
 ```
 
 Use `router-health-report` when you need one compact state document for humans
@@ -272,7 +280,9 @@ DNS forensics show interest, not bytes.
 - current conntrack snapshot
 
 `traffic-report [period]` is the main human-facing report. Supported periods are
-`today`, `yesterday`, `week`, `month`, and a specific `YYYY-MM-DD`.
+`today`, `yesterday`, `week`, `month`, and a specific `YYYY-MM-DD`. Use
+`traffic-report channel-c` for a short live Channel C check that tails only the
+latest sing-box log lines instead of building the full daily analytics report.
 
 Canonical sections:
 

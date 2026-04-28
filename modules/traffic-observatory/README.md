@@ -35,6 +35,7 @@ counters and snapshot files on the router.
 
 - `./modules/traffic-observatory/bin/traffic-report`
 - `./modules/traffic-observatory/bin/traffic-report today`
+- `./modules/traffic-observatory/bin/traffic-report channel-c`
 - `./modules/traffic-observatory/bin/traffic-report yesterday`
 - `./modules/traffic-observatory/bin/traffic-report week`
 - `./modules/traffic-observatory/bin/traffic-daily-report`
