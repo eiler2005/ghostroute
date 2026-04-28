@@ -8,6 +8,30 @@
 
 ## 30 секунд: куда смотреть
 
+С локальной машины сначала смотри компактный ops-срез:
+
+```bash
+./modules/ghostroute-health-monitor/bin/status
+./modules/ghostroute-health-monitor/bin/leak-check
+```
+
+`status` подходит для ежедневной проверки: общий статус, drift count, емкость
+`STEALTH_DOMAINS`, Channel A/Home Reality инварианты, Channel B ingress/relay,
+rule-set mirror и последний non-OK probe.
+
+По умолчанию `status` не запускает полный `traffic-report`, чтобы оставаться
+быстрым. Если нужен byte-level Home Reality split прямо в этом выводе:
+
+```bash
+GHOSTROUTE_STATUS_WITH_TRAFFIC=1 ./modules/ghostroute-health-monitor/bin/status
+```
+
+`leak-check` запускай после жалобы на LTE/YouTube/Telegram, после изменений
+каталога или после правок router/VPS transport. Команда проверяет Reality exit,
+DNS/IPv6 policy и rule-set sync. Если router curl не умеет сделать активный
+SOCKS exit-IP probe, результат будет `SKIP` с fallback evidence по recent
+`reality-out`, а не ложный `CRIT`.
+
 На роутере primary path:
 
 ```text
@@ -58,6 +82,8 @@ grep '"probe":"rule_set_sync"' "$BASE/raw/$(date +%F).jsonl" | tail -10
 Можно без отдельного OK:
 
 ```sh
+./modules/ghostroute-health-monitor/bin/status
+./modules/ghostroute-health-monitor/bin/leak-check
 cat /opt/var/log/router_configuration/health-monitor/status.json
 cat /opt/var/log/router_configuration/health-monitor/summary-latest.md
 cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md
@@ -68,6 +94,11 @@ iptables -S INPUT
 iptables -t nat -S PREROUTING
 tail -200 /opt/var/log/sing-box.log
 ```
+
+`status` и `leak-check` не рестартят сервисы, не меняют `iptables`/`ipset`, не
+запускают Ansible и не трогают secrets. `leak-check` может дописать свежие probe
+events в health-monitor storage, потому что это monitoring-owned evidence, а не
+production routing state.
 
 Нельзя без явного operator OK:
 

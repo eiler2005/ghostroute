@@ -1,0 +1,188 @@
+#!/bin/bash
+# Active read-only leak/egress check for GhostRoute.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+RAW_FILE="${GHOSTROUTE_LEAK_RAW_FILE:-$TMPDIR/health-raw.jsonl}"
+
+sanitize_line() {
+  sed -E \
+    -e 's/[0-9]{1,3}(\.[0-9]{1,3}){3}/<ip>/g' \
+    -e 's/socks=[^ ]+/socks=<router-socks>/g' \
+    -e 's/server=<ip>/server=<ip>/g' \
+    -e 's/port=[0-9]+/port=<port>/g'
+}
+
+collect_probe_events() {
+  if [ -n "${GHOSTROUTE_LEAK_RAW_FILE:-}" ]; then
+    return 0
+  fi
+  if [ "${GHOSTROUTE_LEAK_SKIP_REMOTE:-0}" = "1" ]; then
+    : > "$RAW_FILE"
+    return 0
+  fi
+
+  router_ssh 'sh -s' <<'REMOTE' >/dev/null
+set -eu
+for probe in channel_a_reality dns_ipv6_leaks rule_set_sync; do
+  /jffs/scripts/health-monitor/run-probes --probe "$probe" >/dev/null 2>&1 || true
+done
+REMOTE
+
+  router_ssh 'sh -s' <<'REMOTE' > "$RAW_FILE" 2>/dev/null || true
+base="/opt/var/log/router_configuration/health-monitor"
+[ -f "$base/raw/$(date +%F).jsonl" ] || base="/jffs/addons/router_configuration/health-monitor"
+cat "$base/raw/$(date +%F).jsonl" 2>/dev/null || true
+REMOTE
+}
+
+collect_mirror_counts() {
+  if [ -n "${GHOSTROUTE_LEAK_IPSET_COUNT:-}" ] || [ -n "${GHOSTROUTE_LEAK_MIRROR_COUNT:-}" ]; then
+    printf '%s\t%s\n' "${GHOSTROUTE_LEAK_IPSET_COUNT:-unknown}" "${GHOSTROUTE_LEAK_MIRROR_COUNT:-unknown}"
+    return 0
+  fi
+  if [ "${GHOSTROUTE_LEAK_SKIP_REMOTE:-0}" = "1" ]; then
+    printf 'unknown\tunknown\n'
+    return 0
+  fi
+
+  router_ssh 'sh -s' 2>/dev/null <<'REMOTE' || printf 'unknown\tunknown\n'
+ipset_count="$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Number of entries:/ { print $4; exit }')"
+rules="/opt/etc/sing-box/rule-sets/stealth-static.json"
+mirror_count="unknown"
+if [ -r "$rules" ]; then
+  mirror_count="$(grep -Eo '"[0-9]+(\.[0-9]+){3}/32"' "$rules" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+printf '%s\t%s\n' "${ipset_count:-unknown}" "${mirror_count:-unknown}"
+REMOTE
+}
+
+latest_events() {
+  ruby -rjson -e '
+    probes = ARGV[1..-1]
+    events = {}
+    if File.exist?(ARGV[0])
+      File.foreach(ARGV[0]) do |line|
+        begin
+          event = JSON.parse(line)
+        rescue JSON::ParserError
+          next
+        end
+        probe = event["probe"].to_s
+        events[probe] = event if probes.include?(probe)
+      end
+    end
+    probes.each do |probe|
+      event = events[probe]
+      if event
+        fields = [
+          probe,
+          (event["status"] || "UNKNOWN").to_s,
+          (event["message"] || "").to_s,
+          (event["evidence"] || "").to_s
+        ]
+        puts fields.map { |field| field.gsub(/\s+/, " ").strip }.join("\t")
+      else
+        puts [probe, "SKIP", "No recent probe event was found.", "raw_event=missing"].join("\t")
+      end
+    end
+  ' "$RAW_FILE" channel_a_reality dns_ipv6_leaks rule_set_sync
+}
+
+rank_status() {
+  case "$1" in
+    CRIT) printf '4' ;;
+    WARN) printf '3' ;;
+    SKIP|UNKNOWN) printf '2' ;;
+    OK) printf '1' ;;
+    *) printf '2' ;;
+  esac
+}
+
+overall_from_rank() {
+  case "$1" in
+    4) printf 'CRIT' ;;
+    3) printf 'WARN' ;;
+    2) printf 'SKIP' ;;
+    *) printf 'OK' ;;
+  esac
+}
+
+collect_probe_events
+
+max_rank=1
+lines=()
+while IFS=$'\t' read -r probe status message evidence; do
+  display_status="$status"
+  label="$probe"
+  case "$probe" in
+    channel_a_reality)
+      label="Reality exit"
+      if [ "$status" = "OK" ] && printf '%s\n' "$evidence" | grep -F 'active_check=unavailable' >/dev/null 2>&1; then
+        display_status="SKIP"
+        message="Active SOCKS exit-IP probe unavailable; recent reality-out traffic is fallback evidence."
+      fi
+      ;;
+    dns_ipv6_leaks)
+      label="DNS/IPv6 policy"
+      ;;
+    rule_set_sync)
+      label="Rule-set sync"
+      ;;
+  esac
+
+  rank="$(rank_status "$display_status")"
+  [ "$rank" -le "$max_rank" ] || max_rank="$rank"
+  clean_evidence="$(printf '%s\n' "${evidence:-n/a}" | sanitize_line)"
+  lines+=("${label}: ${display_status} - ${message:-n/a} (${clean_evidence:-n/a})")
+done < <(latest_events)
+
+IFS=$'\t' read -r ipset_count mirror_count < <(collect_mirror_counts)
+mirror_status="SKIP"
+mirror_message="Rule-set mirror count unavailable."
+case "${ipset_count:-unknown}:${mirror_count:-unknown}" in
+  *unknown*|*:|'')
+    mirror_status="SKIP"
+    mirror_message="Rule-set mirror count unavailable."
+    ;;
+  *)
+    if [ "${ipset_count:-0}" -gt 0 ] 2>/dev/null && [ "${mirror_count:-0}" -gt 0 ] 2>/dev/null; then
+      mirror_status="OK"
+      mirror_message="Static raw-IP mirror has entries for mobile/ingress split routing."
+    else
+      mirror_status="CRIT"
+      mirror_message="Static raw-IP mirror or STEALTH ipset is empty."
+    fi
+    ;;
+esac
+
+rank="$(rank_status "$mirror_status")"
+[ "$rank" -le "$max_rank" ] || max_rank="$rank"
+lines+=("Static IP mirror: ${mirror_status} - ${mirror_message} (STEALTH=${ipset_count:-unknown}, mirror=${mirror_count:-unknown})")
+
+overall="$(overall_from_rank "$max_rank")"
+next_command="./modules/ghostroute-health-monitor/bin/status"
+case "$overall" in
+  OK)
+    next_command="./modules/ghostroute-health-monitor/bin/status"
+    ;;
+  SKIP|WARN)
+    next_command="./modules/ghostroute-health-monitor/bin/router-health-report"
+    ;;
+  *)
+    next_command="./verify.sh --verbose"
+    ;;
+esac
+
+printf 'GhostRoute Leak Check\n'
+printf 'Overall: %s\n' "$overall"
+for line in "${lines[@]}"; do
+  printf '%s\n' "$line"
+done
+printf 'Next: %s\n' "$next_command"

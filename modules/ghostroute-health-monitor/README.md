@@ -12,6 +12,7 @@ digests and disk-based alert ledgers without changing production routing state.
   snapshots.
 - VPS observer probes for Caddy, Xray, 3x-ui, disk pressure and recent Reality
   evidence.
+- Compact daily status and active leak-check commands for operator triage.
 - Local-only alert ledgers and merged control-machine reports.
 - Rolling baseline learning for RTT and retransmit degradation.
 
@@ -42,7 +43,23 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/router-health-report --save`
 - `./modules/ghostroute-health-monitor/bin/ghostroute-health-report`
 - `./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save`
+- `./modules/ghostroute-health-monitor/bin/status`
+- `./modules/ghostroute-health-monitor/bin/leak-check`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
+
+`status` is the compact daily view: overall drift count, STEALTH capacity,
+Channel A/Home Reality invariants, Channel B ingress/relay summary, rule-set
+mirror count and the last non-OK probe. By default it avoids the full traffic
+report so it stays quick; run `GHOSTROUTE_STATUS_WITH_TRAFFIC=1
+./modules/ghostroute-health-monitor/bin/status` when you need the byte-level
+Home Reality split inline.
+
+`leak-check` is the active egress/policy check: it runs the existing read-only
+router probes for Reality exit, DNS/IPv6 policy and rule-set sync, then
+validates that the static raw-IP mirror exists. Both commands sanitize IP/port
+evidence and never mutate routing, services, catalogs or secrets. `leak-check`
+may append health probe evidence to the router health-monitor log directory,
+which is the module-owned monitoring state.
 
 ## Runtime Storage & Artifacts
 

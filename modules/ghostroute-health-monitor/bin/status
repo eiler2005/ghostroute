@@ -1,0 +1,368 @@
+#!/bin/bash
+# Compact read-only GhostRoute daily status.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+STATE_FILE="${GHOSTROUTE_STATUS_STATE_FILE:-$TMPDIR/router-health-state.env}"
+TRAFFIC_OUTPUT="${GHOSTROUTE_STATUS_TRAFFIC_FILE:-$TMPDIR/traffic-report.txt}"
+TRAFFIC_SUMMARY="$TMPDIR/traffic-summary.env"
+RUNTIME_SUMMARY="$TMPDIR/runtime-summary.env"
+HEALTH_STATUS_FILE="${GHOSTROUTE_STATUS_HEALTH_STATUS_FILE:-$TMPDIR/status.json}"
+
+sanitize_line() {
+  sed -E \
+    -e 's/[0-9]{1,3}(\.[0-9]{1,3}){3}/<ip>/g' \
+    -e 's/home:[0-9]+/home:<channel-b-port>/g' \
+    -e 's/:home-port/:<home-reality-port>/g'
+}
+
+kv() {
+  router_kv_get "$STATE_FILE" "$1"
+}
+
+bool_label() {
+  [ "${1:-0}" = "1" ] && printf 'OK' || printf 'DRIFT'
+}
+
+human_bytes() {
+  awk -v bytes="${1:-0}" '
+    BEGIN {
+      if (bytes >= 1024 * 1024 * 1024) printf "%.2f GiB", bytes / 1024 / 1024 / 1024;
+      else if (bytes >= 1024 * 1024) printf "%.1f MiB", bytes / 1024 / 1024;
+      else if (bytes >= 1024) printf "%.1f KiB", bytes / 1024;
+      else printf "%d B", bytes;
+    }'
+}
+
+collect_state() {
+  if [ -n "${GHOSTROUTE_STATUS_STATE_FILE:-}" ]; then
+    return 0
+  fi
+
+  router_collect_health_state "$STATE_FILE"
+}
+
+collect_traffic() {
+  if [ -n "${GHOSTROUTE_STATUS_TRAFFIC_FILE:-}" ]; then
+    return 0
+  fi
+
+  if [ "${GHOSTROUTE_STATUS_WITH_TRAFFIC:-0}" = "1" ] && [ -x "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" ]; then
+    "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" today > "$TRAFFIC_OUTPUT" 2>/dev/null || true
+    return 0
+  fi
+
+  router_ssh 'sh -s' <<'REMOTE' > "$RUNTIME_SUMMARY" 2>/dev/null || true
+runtime_env=""
+for candidate in /jffs/scripts/ghostroute-runtime.env /jffs/scripts/ghostroute-runtime-env; do
+  [ -f "$candidate" ] && runtime_env="$candidate" && break
+done
+
+channel_b_enabled="0"
+channel_b_port=""
+if [ -n "$runtime_env" ]; then
+  channel_b_enabled="$(awk -F= '/^GHOSTROUTE_CHANNEL_B_HOME_ENABLED=/{print $2; exit}' "$runtime_env")"
+  channel_b_port="$(awk -F= '/^GHOSTROUTE_CHANNEL_B_HOME_PORT=/{print $2; exit}' "$runtime_env")"
+fi
+if [ -f /jffs/scripts/stealth-route-init.sh ]; then
+  channel_b_enabled="${channel_b_enabled:-$(awk -F= '/^CHANNEL_B_HOME_ENABLED=/{gsub(/["'\''"]/, "", $2); print $2; exit}' /jffs/scripts/stealth-route-init.sh)}"
+  channel_b_port="${channel_b_port:-$(awk -F= '/^CHANNEL_B_HOME_PORT=/{gsub(/["'\''"]/, "", $2); print $2; exit}' /jffs/scripts/stealth-route-init.sh)}"
+fi
+
+case "$channel_b_enabled" in 1) ;; *) channel_b_enabled="0" ;; esac
+packets="0"
+bytes="0"
+if [ "$channel_b_enabled" = "1" ] && [ -n "$channel_b_port" ]; then
+  counters="$(iptables-save -t filter -c 2>/dev/null | awk -v port="$channel_b_port" '
+    $1 ~ /^\[[0-9]+:[0-9]+\]$/ &&
+    $0 ~ /-A INPUT/ &&
+    $0 ~ /-p tcp/ &&
+    $0 ~ "--dport " port &&
+    $0 ~ /-j ACCEPT/ {
+      counters = $1
+      gsub(/\[/, "", counters)
+      gsub(/\]/, "", counters)
+      split(counters, parts, ":")
+      packets += parts[1]
+      bytes += parts[2]
+    }
+    END { printf "%d %d\n", packets, bytes }
+  ' || true)"
+  packets="${counters%% *}"
+  bytes="${counters##* }"
+fi
+
+log="/opt/var/log/sing-box.log"
+today="$(date +%Y-%m-%d)"
+relay_tmp="/tmp/ghostroute-status-relay.$$"
+grep " $today " "$log" 2>/dev/null | grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" > "$relay_tmp" || true
+relay_counts="$(awk '
+  function conn_id(line,   body, parts) {
+    if (match(line, /\[[0-9]+ [^]]+\]/)) {
+      body = substr(line, RSTART + 1, RLENGTH - 2)
+      split(body, parts, " ")
+      return parts[1]
+    }
+    return ""
+  }
+  NR == FNR {
+    if ($0 ~ /inbound\/socks\[channel-b-relay-socks\]: inbound connection to /) {
+      id = conn_id($0)
+      if (id != "") channel_b[id] = 1
+    }
+    next
+  }
+  {
+    id = conn_id($0)
+    if (id == "" || !(id in channel_b) || (id in outbound_by_id)) next
+    if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) outbound_by_id[id] = "reality"
+    else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) outbound_by_id[id] = "direct"
+  }
+  END {
+    for (id in channel_b) {
+      total++
+      if (outbound_by_id[id] == "reality") reality++
+      else if (outbound_by_id[id] == "direct") direct++
+      else unresolved++
+    }
+    printf "%d %d %d %d\n", total + 0, reality + 0, direct + 0, unresolved + 0
+  }
+' "$relay_tmp" "$relay_tmp" 2>/dev/null || printf '0 0 0 0')"
+rm -f "$relay_tmp"
+
+printf 'CHANNEL_B_HOME_ENABLED=%s\n' "$channel_b_enabled"
+printf 'CHANNEL_B_INGRESS_BYTES=%s\n' "${bytes:-0}"
+printf 'CHANNEL_B_INGRESS_PACKETS=%s\n' "${packets:-0}"
+printf 'CHANNEL_B_RELAY_CONN=%s\n' "$(printf '%s\n' "$relay_counts" | awk '{print $1}')"
+printf 'CHANNEL_B_RELAY_REALITY=%s\n' "$(printf '%s\n' "$relay_counts" | awk '{print $2}')"
+printf 'CHANNEL_B_RELAY_DIRECT=%s\n' "$(printf '%s\n' "$relay_counts" | awk '{print $3}')"
+printf 'CHANNEL_B_RELAY_UNRESOLVED=%s\n' "$(printf '%s\n' "$relay_counts" | awk '{print $4}')"
+REMOTE
+}
+
+collect_health_status() {
+  if [ -n "${GHOSTROUTE_STATUS_HEALTH_STATUS_FILE:-}" ]; then
+    return 0
+  fi
+
+  router_ssh 'sh -s' <<'REMOTE' > "$HEALTH_STATUS_FILE" 2>/dev/null || true
+base="/opt/var/log/router_configuration/health-monitor"
+[ -f "$base/status.json" ] || base="/jffs/addons/router_configuration/health-monitor"
+cat "$base/status.json" 2>/dev/null || true
+REMOTE
+}
+
+collect_rule_mirror_count() {
+  if [ -n "${GHOSTROUTE_STATUS_MIRROR_COUNT:-}" ]; then
+    printf '%s\n' "$GHOSTROUTE_STATUS_MIRROR_COUNT"
+    return 0
+  fi
+
+  router_ssh 'sh -s' <<'REMOTE' 2>/dev/null || printf 'unknown\n'
+rules="/opt/etc/sing-box/rule-sets/stealth-static.json"
+if [ -r "$rules" ]; then
+  grep -Eo '"[0-9]+(\.[0-9]+){3}/32"' "$rules" 2>/dev/null | wc -l | tr -d ' '
+else
+  printf 'unknown\n'
+fi
+REMOTE
+}
+
+count_drift() {
+  local drift=0
+  local ipv6_level
+
+  expect_zero=(
+    VPN_DOMAINS_EXISTS
+    WGS1_ENABLE
+    WGC1_ENABLE
+    CHAIN_RC_VPN_ROUTE
+    RULE_MARK_0X1000
+    HOME_REALITY_ALL_RELAY_RULE
+    CHANNEL_B_REJECT_QUIC_STEALTH
+    CHANNEL_B_REJECT_QUIC_STATIC
+    RULE_MARK_0X2000
+    ROUTE_TABLE_200_SINGBOX
+    HOOK_STEALTH_PREROUTING_BR0
+    HOOK_STEALTH_OUTPUT
+    HOOK_PREROUTING_BR0
+    HOOK_PREROUTING_WGS1
+    HOOK_OUTPUT
+    HOOK_STEALTH_PREROUTING_WGS1
+    DNS_REDIRECT_UDP
+    DNS_REDIRECT_TCP
+    WGS1_IFACE_EXISTS
+  )
+
+  expect_one=(
+    VPN_STATIC_NETS_EXISTS
+    STEALTH_DOMAINS_EXISTS
+    WGC1_NVRAM_PRESERVED
+    CHANNEL_B_REDIRECT_LISTENER
+    HOME_REALITY_LISTENER
+    HOME_REALITY_IPV4_ONLY
+    HOME_REALITY_INPUT_ACCEPT
+    HOME_REALITY_CONNLIMIT_DROP
+    HOME_REALITY_MSS_CLAMP
+    ROUTER_TCP_PERF_TUNING
+    HOME_REALITY_DNS_GUARD_RULE
+    HOME_REALITY_SPLIT_RULE
+    HOME_REALITY_DIRECT_RULE
+    CHANNEL_B_DNSCRYPT_SOCKS_LISTENER
+    CHANNEL_B_DNSCRYPT_PROXY
+    CHANNEL_B_SINGBOX_KEEPALIVE
+    CHANNEL_B_REDIRECT_STEALTH
+    CHANNEL_B_REDIRECT_STATIC
+    CHANNEL_B_DROP_QUIC_STEALTH
+    CHANNEL_B_DROP_QUIC_STATIC
+    CRON_SINGBOX_WATCHDOG
+    CRON_MOBILE_REALITY_COUNTERS
+  )
+
+  for key in "${expect_zero[@]}"; do
+    [ "$(kv "$key")" = "0" ] || drift=$((drift + 1))
+  done
+  for key in "${expect_one[@]}"; do
+    [ "$(kv "$key")" = "1" ] || drift=$((drift + 1))
+  done
+
+  ipv6_level="$(router_ipv6_policy_level "$STATE_FILE" 2>/dev/null || printf 'Unknown')"
+  case "$ipv6_level" in
+    OK) ;;
+    *) drift=$((drift + 1)) ;;
+  esac
+
+  printf '%s\n' "$drift"
+}
+
+last_non_ok() {
+  if [ ! -s "$HEALTH_STATUS_FILE" ]; then
+    printf 'none found'
+    return 0
+  fi
+
+  ruby -rjson -e '
+    begin
+      data = JSON.parse(File.read(ARGV[0]))
+      checks = data["checks"] || data["probes"] || {}
+      items = checks.map do |name, check|
+        status = (check["status"] || check["state"] || "UNKNOWN").to_s
+        msg = (check["message"] || check["risk"] || "").to_s
+        [name, status, msg]
+      end
+      bad = items.reverse.find { |(_, status, _)| status != "OK" }
+      if bad
+        puts "#{bad[0]} #{bad[1]} #{bad[2]}".strip
+      else
+        puts "none"
+      end
+    rescue
+      puts "unreadable status.json"
+    end
+  ' "$HEALTH_STATUS_FILE" | sanitize_line
+}
+
+traffic_value() {
+  local pattern="$1"
+  if [ ! -s "$TRAFFIC_OUTPUT" ]; then
+    printf 'n/a'
+    return 0
+  fi
+  awk -v pattern="$pattern" 'index($0, pattern) == 1 { sub(/^[^:]+:[[:space:]]*/, ""); print; exit }' "$TRAFFIC_OUTPUT" | sanitize_line
+}
+
+runtime_kv() {
+  router_kv_get "$RUNTIME_SUMMARY" "$1"
+}
+
+channel_b_ingress_line() {
+  if [ -s "$TRAFFIC_OUTPUT" ]; then
+    traffic_value 'Channel B ingress:'
+    return 0
+  fi
+
+  if [ ! -s "$RUNTIME_SUMMARY" ]; then
+    printf 'n/a'
+    return 0
+  fi
+
+  local enabled bytes packets note
+  enabled="$(runtime_kv CHANNEL_B_HOME_ENABLED)"
+  bytes="$(runtime_kv CHANNEL_B_INGRESS_BYTES)"
+  packets="$(runtime_kv CHANNEL_B_INGRESS_PACKETS)"
+  if [ "$enabled" = "1" ]; then
+    note="enabled on home:<channel-b-port>"
+  else
+    note="disabled"
+  fi
+  printf '%s observed on Channel B ingress %s (%s accepted packets; router INPUT counter)' "$(human_bytes "${bytes:-0}")" "$note" "${packets:-0}"
+}
+
+channel_b_relay_line() {
+  if [ -s "$TRAFFIC_OUTPUT" ]; then
+    traffic_value 'Channel B relay split:'
+    return 0
+  fi
+
+  if [ ! -s "$RUNTIME_SUMMARY" ]; then
+    printf 'n/a'
+    return 0
+  fi
+
+  local total reality direct unresolved
+  total="$(runtime_kv CHANNEL_B_RELAY_CONN)"
+  reality="$(runtime_kv CHANNEL_B_RELAY_REALITY)"
+  direct="$(runtime_kv CHANNEL_B_RELAY_DIRECT)"
+  unresolved="$(runtime_kv CHANNEL_B_RELAY_UNRESOLVED)"
+  printf 'VPS %s/%s conn + direct %s/%s + unresolved %s/%s (sing-box channel-b-relay-socks log)' \
+    "${reality:-0}" "${total:-0}" "${direct:-0}" "${total:-0}" "${unresolved:-0}" "${total:-0}"
+}
+
+home_reality_split_line() {
+  if [ -s "$TRAFFIC_OUTPUT" ]; then
+    traffic_value 'Home Reality profile split:'
+  else
+    printf 'n/a in compact mode (run GHOSTROUTE_STATUS_WITH_TRAFFIC=1 ./modules/ghostroute-health-monitor/bin/status for byte split)'
+  fi
+}
+
+collect_state
+collect_traffic
+collect_health_status
+
+if [ -s "$TRAFFIC_OUTPUT" ]; then
+  router_extract_traffic_summary "$TRAFFIC_OUTPUT" "$TRAFFIC_SUMMARY" 2>/dev/null || true
+fi
+
+drift_count="$(count_drift)"
+overall="OK"
+[ "$drift_count" = "0" ] || overall="WARN"
+
+stealth_current="$(kv STEALTH_DOMAINS_CURRENT)"
+stealth_max="$(kv STEALTH_DOMAINS_MAX)"
+stealth_current="${stealth_current:-0}"
+stealth_max="${stealth_max:-0}"
+headroom="$(awk -v cur="$stealth_current" -v max="$stealth_max" 'BEGIN { if (max <= 0) print "n/a"; else print max - cur }')"
+usage_pct="$(awk -v cur="$stealth_current" -v max="$stealth_max" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f%%", cur * 100 / max }')"
+mirror_count="$(collect_rule_mirror_count)"
+
+channel_a_state="listener $(bool_label "$(kv HOME_REALITY_LISTENER)") / split $(bool_label "$(kv HOME_REALITY_SPLIT_RULE)") / DNS guard $(bool_label "$(kv HOME_REALITY_DNS_GUARD_RULE)")"
+channel_a_perf="MSS $(bool_label "$(kv HOME_REALITY_MSS_CLAMP)") / connlimit $(bool_label "$(kv HOME_REALITY_CONNLIMIT_DROP)") / TCP $(bool_label "$(kv ROUTER_TCP_PERF_TUNING)")"
+channel_b_state="redirect $(bool_label "$(kv CHANNEL_B_REDIRECT_STEALTH)") / static $(bool_label "$(kv CHANNEL_B_REDIRECT_STATIC)") / DNS SOCKS $(bool_label "$(kv CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)")"
+
+printf 'GhostRoute Status\n'
+printf 'Overall: %s (drift=%s)\n' "$overall" "$drift_count"
+printf 'Catalog: STEALTH %s/%s (%s, headroom %s); Rule-set mirror: %s /32\n' "$stealth_current" "$stealth_max" "$usage_pct" "$headroom" "$mirror_count"
+printf 'Channel A/Home Reality: %s; %s\n' "$channel_a_state" "$channel_a_perf"
+printf 'Channel B: %s\n' "$channel_b_state"
+printf 'Channel B ingress: %s\n' "$(channel_b_ingress_line)"
+printf 'Channel B relay split: %s\n' "$(channel_b_relay_line)"
+printf 'Home Reality split: %s\n' "$(home_reality_split_line)"
+printf 'Last non-OK probe: %s\n' "$(last_non_ok)"
+printf 'Next: ./modules/ghostroute-health-monitor/bin/leak-check | ./modules/ghostroute-health-monitor/bin/router-health-report\n'
