@@ -13,6 +13,8 @@
     emergency_out_dir: "{{ playbook_dir }}/../out/clients-emergency"
     channel_b_out_dir: "{{ playbook_dir }}/../out/clients-channel-b"
     channel_c_out_dir: "{{ playbook_dir }}/../out/clients-channel-c"
+    channel_c_sfi_out_dir: "{{ channel_c_out_dir }}/c1-SFI"
+    channel_c_shadowrocket_out_dir: "{{ channel_c_out_dir }}/1-SR"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
     channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
@@ -44,6 +46,8 @@
       loop:
         - "{{ channel_b_out_dir }}"
         - "{{ channel_c_out_dir }}"
+        - "{{ channel_c_sfi_out_dir }}"
+        - "{{ channel_c_shadowrocket_out_dir }}"
       tags:
         - channel_b_clients_only
         - channel_c_clients_only
@@ -555,7 +559,7 @@
 
     - name: Render Channel C1 home Naive URI for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}.txt"
+        dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.txt"
         mode: "0600"
         content: |
           naive+https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-home
@@ -567,7 +571,7 @@
 
     - name: Render C1-sing-box HTTPS probe URL for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-https.txt"
+        dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-https-probe.txt"
         mode: "0600"
         content: |
           https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_home_public_port }}#{{ item.name }}-channel-c-https
@@ -579,7 +583,7 @@
 
     - name: Render Channel C1 SFI sing-box full config for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.json"
+        dest: "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.json"
         mode: "0600"
         content: |
           {
@@ -628,7 +632,7 @@
 
     - name: Render C1-Shadowrocket HTTPS CONNECT URL for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
+        dest: "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
         mode: "0600"
         content: |
           https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_c_home_public_host }}:{{ channel_c_shadowrocket_public_port }}#{{ item.name }}-c1-shadowrocket
@@ -640,7 +644,7 @@
 
     - name: Render C1-Shadowrocket HTTPS CONNECT config for each selected client
       ansible.builtin.copy:
-        dest: "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
+        dest: "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket.conf"
         mode: "0600"
         content: |
           [General]
@@ -670,7 +674,7 @@
     - name: Render Channel C1 Naive URI QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}.png" -r "{{ channel_c_out_dir }}/{{ item.name }}.txt"
+        qrencode -t PNG -o "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.png" -r "{{ channel_c_sfi_out_dir }}/{{ item.name }}-naive-uri.txt"
       loop: "{{ channel_c_home_clients | default([]) }}"
       when: channel_c_home_enabled | default(false) | bool
       no_log: true
@@ -680,7 +684,7 @@
     - name: Render Channel C1 SFI config QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-sfi-sing-box.json"
+        qrencode -t PNG -o "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.png" -r "{{ channel_c_sfi_out_dir }}/{{ item.name }}-sfi-sing-box.json"
       loop: "{{ channel_c_home_clients | default([]) }}"
       when: channel_c_home_enabled | default(false) | bool
       no_log: true
@@ -690,7 +694,7 @@
     - name: Render Channel C1 Shadowrocket config QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket-conf.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-shadowrocket.conf"
+        qrencode -t PNG -o "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket-conf.png" -r "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-shadowrocket.conf"
       loop: "{{ channel_c_shadowrocket_profile_clients }}"
       when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
@@ -700,7 +704,7 @@
     - name: Render C1-Shadowrocket URL QR PNG for each selected client
       ansible.builtin.shell: |
         PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-        qrencode -t PNG -o "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.png" -r "{{ channel_c_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
+        qrencode -t PNG -o "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-c1-shadowrocket-https.png" -r "{{ channel_c_shadowrocket_out_dir }}/{{ item.name }}-c1-shadowrocket-https.txt"
       loop: "{{ channel_c_shadowrocket_profile_clients }}"
       when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
@@ -716,9 +720,9 @@
 
           Channel C has two selected-client home-first variants:
 
-          - C1-sing-box: native sing-box Naive, primary QR `*-sfi-sing-box.png`.
+          - C1-sing-box: native sing-box Naive, primary QR `c1-SFI/*-sfi-sing-box.png`.
           - C1-Shadowrocket: HTTPS CONNECT compatibility, primary QR
-            `*-c1-shadowrocket-https.png`.
+            `1-SR/*-c1-shadowrocket-https.png`.
 
           ```text
           C1-sing-box:
@@ -778,24 +782,24 @@
           {% for client in channel_c_home_clients | default([]) %}
                 <article>
                   <h2>{{ client.name }} C1-sing-box</h2>
-                  <img src="{{ client.name }}-sfi-sing-box.png" alt="{{ client.name }} Channel C1 SFI QR">
+                  <img src="c1-SFI/{{ client.name }}-sfi-sing-box.png" alt="{{ client.name }} Channel C1 SFI QR">
                   <div class="links">
-                    <a href="{{ client.name }}-sfi-sing-box.json">SFI JSON</a>
-                    <a href="{{ client.name }}.txt">naive URI</a>
-                    <a href="{{ client.name }}-https.txt">HTTPS URL</a>
+                    <a href="c1-SFI/{{ client.name }}-sfi-sing-box.json">SFI JSON</a>
+                    <a href="c1-SFI/{{ client.name }}-naive-uri.txt">naive URI</a>
+                    <a href="c1-SFI/{{ client.name }}-https-probe.txt">HTTPS probe URL</a>
                   </div>
-                  <p><img src="{{ client.name }}.png" alt="{{ client.name }} Naive URI QR"></p>
+                  <p><img src="c1-SFI/{{ client.name }}-naive-uri.png" alt="{{ client.name }} Naive URI QR"></p>
                 </article>
           {% endfor %}
           {% for client in channel_c_shadowrocket_profile_clients if channel_c_shadowrocket_enabled | default(false) | bool %}
                 <article>
                   <h2>{{ client.name }} C1-Shadowrocket</h2>
-                  <img src="{{ client.name }}-c1-shadowrocket-https.png" alt="{{ client.name }} C1-Shadowrocket QR">
+                  <img src="1-SR/{{ client.name }}-c1-shadowrocket-https.png" alt="{{ client.name }} C1-Shadowrocket QR">
                   <div class="links">
-                    <a href="{{ client.name }}-c1-shadowrocket-https.txt">Shadowrocket URL</a>
-                    <a href="{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
+                    <a href="1-SR/{{ client.name }}-c1-shadowrocket-https.txt">Shadowrocket URL</a>
+                    <a href="1-SR/{{ client.name }}-shadowrocket.conf">Shadowrocket config</a>
                   </div>
-                  <p><img src="{{ client.name }}-shadowrocket-conf.png" alt="{{ client.name }} Shadowrocket config QR"></p>
+                  <p><img src="1-SR/{{ client.name }}-shadowrocket-conf.png" alt="{{ client.name }} Shadowrocket config QR"></p>
                 </article>
           {% endfor %}
               </section>
