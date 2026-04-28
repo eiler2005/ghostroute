@@ -2,61 +2,124 @@
 
 ## Коротко
 
-Текущая production-архитектура — Channel A Reality-first, без активного legacy
-WireGuard. Channel B реализован как manual home-first lane, Channel C как
-manual lane:
+Текущая architecture model — layered routing setup: endpoint/client routing,
+managed channels, home router и VPS egress. Channel A остается основным
+Reality-first channel без активного legacy WireGuard. Channel B реализован как
+manual home-first lane, Channel C как manual compatibility lane.
 
-- Channel A — прозрачная домашняя магистраль: роутер сам перехватывает managed
-  LAN/Wi-Fi traffic и отправляет его через Reality/Vision на VPS.
+- Layer 0 — optional endpoint/client-side routing: device/client config может
+  выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
+- Channel A — home-first managed channel: endpoint или LAN traffic попадает на
+  home router, а managed traffic уходит через Reality/Vision на VPS.
 - Channel B — protocol-diverse fallback candidate в home-first форме:
   selected device подключается к отдельному домашнему XHTTP/TLS ingress, а
   роутер relays трафик дальше через local sing-box SOCKS c managed split: managed
   домены идут через Reality на VPS, non-managed домены уходят прямо в home WAN.
-- Channel C — вручную запускаемый совместимый с Naive/HTTPS-forward-proxy поток:
-  selected device подключается к dedicated hostname на VPS на `:443`, не меняя
+- Channel C — manual fallback/compatibility lane: selected device использует
+  Naive/Hysteria2/Trojan-compatible path к home or VPS endpoint, не меняя
   Channel A.
 
 ```text
-LAN/Wi-Fi clients
-  -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
-  -> br0 TCP nat REDIRECT :<lan-redirect-port>
-  -> ASUS sing-box redirect inbound
-  -> Channel A VLESS+Reality+Vision outbound
-  -> VPS Caddy :443
-  -> Xray Reality inbound
-  -> Internet
+Layer 0 endpoint/client routing
+  -> optional rules on the endpoint:
+       local/private/captive/trusted domestic -> DIRECT
+       foreign/non-local/unknown/selected     -> MANAGED/PROXY
+       FINAL                                  -> MANAGED/PROXY
 
-Remote mobile QR clients
-  -> home public IP :<home-reality-port>
-  -> ASUS sing-box Reality inbound
-  -> managed split:
-       STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
-       other destinations              -> direct-out via home WAN
+Layer 1 managed channels
+  Channel A -> endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+  Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+  Channel C -> endpoint -> Naive/Hysteria2/Trojan fallback -> home or VPS endpoint
 
-Channel B manual live-tested protocol-diverse clients
-  -> VLESS+XHTTP+TLS profile to home public IP :<home-channel-b-port>
-  -> router local Xray Channel B ingress
-  -> local sing-box SOCKS inbound
-  -> managed split (same rule-sets as Channel A)
-  -> Channel A Reality outbound to VPS
-  -> Caddy :443 -> Xray Reality inbound
-  -> Internet
+Layer 2 home router
+  LAN/Wi-Fi clients
+    -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
+    -> br0 TCP nat REDIRECT :<lan-redirect-port>
+    -> ASUS sing-box redirect inbound
+    -> Channel A VLESS+Reality+Vision outbound
+    -> VPS Caddy :443
+    -> Xray Reality inbound
+    -> Internet
 
-Channel C manual camouflage clients
-  -> NaiveProxy or HTTPS forward-proxy-compatible profile
-  -> separate public VPS hostname on :443
-  -> Caddy forward_proxy / compatible backend
-  -> Internet
+  Remote QR clients
+    -> home public IP :<home-reality-port>
+    -> ASUS sing-box Reality inbound
+    -> managed split:
+         STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
+         other destinations              -> direct-out via home WAN
+
+  Channel B manual live-tested protocol-diverse clients
+    -> VLESS+XHTTP+TLS profile to home public IP :<home-channel-b-port>
+    -> router local Xray Channel B ingress
+    -> local sing-box SOCKS inbound
+    -> managed split (same rule-sets as Channel A)
+    -> Channel A Reality outbound to VPS
+    -> Caddy :443 -> Xray Reality inbound
+    -> Internet
+
+Layer 3 VPS
+  -> remote egress for selected managed traffic
+  -> sites see VPS IP for managed traffic
 ```
+
+## Layered Architecture
+
+### Layer 0 — Endpoint / Client-Side Routing
+
+Layer 0 is optional and lives on the endpoint device. Any client app or system
+VPN profile that supports rule-based routing can decide whether a request goes
+`DIRECT` or into a GhostRoute managed channel.
+
+The production policy is country-neutral in the public docs:
+
+```text
+local/private/captive/trusted domestic -> DIRECT
+foreign/non-local/unknown/selected     -> MANAGED/PROXY
+FINAL                                  -> MANAGED/PROXY
+```
+
+Shadowrocket on iPhone/iPad/MacBook is the primary current example: its config
+can use domain, IP, GEOIP and rule lists as the first routing layer. This is an
+example implementation of Layer 0, not an Apple-only architecture constraint.
+Country suffixes, GEOIP datasets and trusted service lists belong to deployment
+profiles, not this general architecture document.
+
+### Layer 1 — Managed Channels
+
+Layer 1 is the set of managed paths selected by Layer 0 or by explicit local
+choice:
+
+```text
+Channel A: endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel C: endpoint -> Naive/Hysteria2/Trojan fallback -> home or VPS endpoint
+```
+
+Channel A/B are home-first for managed traffic: the first network sees
+endpoint -> home endpoint, not endpoint -> VPS. The VPS provider sees the home
+router as the source for Channel A/B managed traffic.
+
+### Layer 2 — Home Router
+
+The home router terminates home-based channels and applies managed routing and
+DNS policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, home
+Reality ingress, Channel B home ingress relay, and the Reality/Vision outbound
+to VPS. Router policy may further split managed and non-managed destinations.
+
+### Layer 3 — VPS
+
+The VPS is remote egress for selected managed traffic. Sites and checkers see
+the VPS IP for managed traffic; non-managed traffic selected as `DIRECT` or
+home-WAN direct does not use the VPS egress.
 
 ## Channel A / Channel B (текущая схема)
 
 ### Channel A
 
-Непосредственно для Channel A применяем единственную production-схему:
+Для Channel A применяем home-first production-схему:
 
 ```text
-Мобильный QR-клиент
+Endpoint QR-клиент
   -> home public IP :<home-reality-port>
   -> ASUS sing-box Reality inbound
   -> managed split:
@@ -70,7 +133,7 @@ Channel C manual camouflage clients
 В текущей схеме Channel B работает как отдельная manual home-first lane:
 
 ```text
-Mobile client
+Endpoint client
   -> VLESS + XHTTP + TLS to home ingress :<home-channel-b-port>
   -> router local Xray ingress `channel-b-home-in`
   -> local sing-box SOCKS (inbound `channel-b-relay-socks`)
@@ -82,7 +145,7 @@ Mobile client
 
 Как это понимать в проде:
 
-- Оба канала дают первичный hop в home-network для мобильного клиента, чтобы оператор видел домашний IP.
+- Оба канала дают первичный hop в home-network для managed endpoint traffic.
 - У A managed split делается прямо на home Reality inbound.
 - У B managed split делается после локального relay в sing-box.
 - Власть над инкапсуляцией и правилами изолирована: `20-stealth-router.yml` для A и
@@ -132,9 +195,9 @@ direct-XHTTP варианта Channel B. `12` остается отдельны�
 |---|---|---|---|
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
-| Mobile QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
+| Endpoint QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
 | Channel B manual live-tested profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | manual home-first egress |
-| Channel C manual profile | selected device only | dedicated Naive/HTTPS compatibility hostname on VPS `:443` | manual experimental device-client egress |
+| Channel C manual profile | selected device only | Naive/Hysteria2/Trojan-compatible home or VPS endpoint | manual experimental device-client egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -179,7 +242,7 @@ client TCP connection
   -> VPS exit
 ```
 
-### Mobile Home QR
+### Endpoint Home QR
 
 ```text
 client app
@@ -191,9 +254,9 @@ client app
        sing-box direct-out -> home WAN exit
 ```
 
-The mobile carrier sees domestic home ingress traffic. Websites still see the
-VPS exit IP for managed traffic; non-managed destinations see the home WAN
-IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md)
+The first network sees endpoint -> home endpoint traffic for Channel A/B managed
+sessions. Websites still see the VPS exit IP for managed traffic; non-managed
+destinations see the home WAN IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md)
 for the full workflow and observer table.
 
 ### Router-Originated Traffic
@@ -219,11 +282,11 @@ client app
   -> Internet
 ```
 
-This keeps the first hop domestic for the mobile operator while keeping a
-different first-hop fingerprint from Channel A.
+This keeps Channel B home-first while giving it a different first-hop
+fingerprint from Channel A.
 
-Channel C remains direct device-to-VPS on its dedicated public `:443` hostname
-with NaiveProxy / HTTPS forward-proxy-compatible profiles.
+Channel C remains a manual compatibility lane using NaiveProxy, Hysteria2,
+Trojan or HTTPS forward-proxy-compatible profiles to a home or VPS endpoint.
 
 ## Boot Hooks
 
