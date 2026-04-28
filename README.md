@@ -7,29 +7,36 @@
 [![Routing](https://img.shields.io/badge/Routing-VLESS%2BReality-5B5FC7)]()
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
 
-**[Русская версия / Russian version ->](README-ru.md)**
+**[Localized version ->](README-ru.md)**
 
 ---
 
 ## Overview
 
-GhostRoute lets an ASUS Merlin router decide which domains and IP networks should leave through a stealth Reality channel, while ordinary home devices stay configuration-free.
+GhostRoute is a layered routing setup for endpoint clients, a home ASUS Merlin
+router and a remote VPS egress. Home devices can stay configuration-free, while
+managed endpoint clients may also apply their own first-hop routing policy
+before traffic reaches the home router.
 
-The channel model separates the main traffic responsibilities:
+The layered model separates the main traffic responsibilities:
 
-- Channel A is the router-managed home lane:
-  `sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality+Vision -> VPS/Xray`.
-- Remote mobile QR/VLESS clients connect to the home ASUS first:
-  `iPhone/Mac -> home public IP :<home-reality-port> -> sing-box home Reality inbound`.
-  The router then applies the same managed split: `STEALTH_DOMAINS`/`VPN_STATIC_NETS`
-  leave through VPS Reality, while non-managed destinations leave through the home WAN.
-- Channel B is a non-production, manual live-tested home-first lane:
-  device client -> `VLESS+XHTTP+TLS` to the home router -> dedicated router
-  Xray ingress -> local sing-box SOCKS -> managed split: `Reality/Vision` for
-  managed destinations, direct home WAN for non-managed destinations.
-- Channel C is a manual compatibility lane:
-  device client -> dedicated VPS `:443` hostname -> forward-proxy/naive-compatible
-  backend (managed separately from Channel A).
+- Layer 0 is endpoint/client-side routing. A client app or system VPN profile
+  can decide `DIRECT` vs `MANAGED/PROXY` before traffic enters GhostRoute. For
+  example, Shadowrocket on an iPhone/iPad/MacBook can use domain, IP, GEOIP and
+  rule-list policy; it is a routing layer, not just a VPN toggle.
+- Layer 1 is the managed channel layer. Channel A and Channel B are home-first:
+  the first network sees endpoint -> home endpoint, not endpoint -> VPS. Channel
+  C remains a manual compatibility lane.
+- Layer 2 is the home router. It terminates home-based channels and applies the
+  managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
+- Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
+
+Production endpoint policy is intentionally country-neutral in this repository:
+local/private/captive and trusted domestic destinations go `DIRECT`; non-local,
+foreign, unknown or selected destinations go `MANAGED/PROXY`; `FINAL` points to
+`MANAGED/PROXY` in country-aware deployment profiles. The concrete country
+suffixes, GEOIP lists and service lists belong to private deployment profiles,
+not the general architecture.
 
 Only Channel A is part of the production automatic router data plane. Channel B
 is an optional manual add-on with its own ingress/relay surface and must stay
@@ -50,13 +57,16 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 - Domain-based routing with `dnsmasq` + `ipset`.
 - Single active domain catalog for home LAN (`STEALTH_DOMAINS`).
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
+- Optional Layer 0 endpoint/client-side routing for devices that support
+  rule-based client profiles such as Shadowrocket-style configs.
 - Channel A VLESS+Reality+Vision egress through a VPS host behind shared Caddy L4 on TCP/443.
 - Channel B manual live-tested home-first lane: selected device-client tests
   connect to the home router first via XHTTP/TLS, then the router relays into
   local sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
 - Channel C manual compatibility lane: NaiveProxy/HTTPS-proxy style profile path
   on a dedicated public VPS hostname under `:443`.
-- Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote mobile clients, so LTE carriers see the home Russian IP instead of the VPS IP.
+- Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
+  so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
 - Automatic domain discovery that writes `STEALTH_DOMAINS` only.
 - Local QR/VLESS profile generation from Ansible Vault.
@@ -120,24 +130,36 @@ See the full module map in
                 deploy.sh / Ansible / reports / vault
                               |
                               v
-Home Wi-Fi/LAN ---- DNS ----> ASUS Merlin router <---- Reality QR ---- iPhone/Mac
- devices          lookup      dnsmasq + ipset          :<home-reality-port>
+Layer 0 endpoint/client routing
+  local/private/captive/trusted domestic -> DIRECT
+  foreign/non-local/unknown/selected     -> MANAGED/PROXY
+  FINAL                                  -> MANAGED/PROXY
+                  |
+                  v
+Layer 1 managed channels
+  Channel A -> endpoint -> home endpoint :<home-reality-port>
+            -> ASUS sing-box Reality inbound
+  Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint :<home-channel-b-port>
+            -> router local Xray XHTTP/TLS ingress
+  Channel C -> endpoint -> Naive/Hysteria2/Trojan fallback
+            -> home or VPS endpoint
+                  |
+                  v
+Layer 2 home router
+  Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
                               +-- managed match
                               |     STEALTH_DOMAINS / VPN_STATIC_NETS
                               |     -> sing-box REDIRECT / reality-in
                               |     -> VLESS+Reality outbound
-                              |     -> VPS Caddy L4 -> Xray -> Internet
+                              |     -> Layer 3 VPS Caddy L4 -> Xray -> Internet
                               |
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
 
-Manual device-client lanes:
-  Channel B -> Device client -> home public IP :<home-channel-b-port>
-            -> router local Xray XHTTP/TLS ingress
-            -> local sing-box SOCKS -> Reality/Vision -> VPS -> Internet
-  Channel C -> Device client -> Naive/HTTPS hostname :443
-            -> dedicated Channel C VPS route -> forward-proxy/naive-compatible backend
+Layer 3 VPS
+  remote egress for selected managed traffic
+  sites see VPS IP for managed traffic
 
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
@@ -187,10 +209,27 @@ Home Wi-Fi / LAN devices
 
 Home devices do not need VPN apps. The router sees DNS answers, fills `STEALTH_DOMAINS`, redirects matching TCP traffic into sing-box, and sends it through Reality. UDP/443 for managed destinations is silently dropped so apps fall back from QUIC to TCP.
 
-### 2. Remote Mobile QR / VLESS Clients
+### 2. Endpoint / Client-Side Routing
 
 ```text
-Remote iPhone/MacBook outside home
+Endpoint device
+  -> optional client-side rules
+       local/private/captive/trusted domestic -> DIRECT
+       foreign/non-local/unknown/selected     -> MANAGED/PROXY
+       FINAL                                  -> MANAGED/PROXY
+  -> selected managed channel
+```
+
+Layer 0 can exist on any endpoint that supports rule-based routing. Shadowrocket
+on iPhone/iPad/MacBook is the primary example today: a config file can choose
+`DIRECT` or `PROXY/MANAGED` by domain, IP, GEOIP or rule list before traffic
+reaches Channel A/B/C. Devices without Layer 0 policy can still rely on the
+router-managed split at Layer 2.
+
+### 3. Remote QR / VLESS Clients
+
+```text
+Endpoint outside home
       |
       v
 Client app imports generated QR profile
@@ -208,22 +247,23 @@ ASUS Router / Merlin
 |     +-- Internet
 +-- non-managed destination
       +-- sing-box direct outbound
-      +-- home ISP WAN
+      +-- home WAN
       +-- Internet
 ```
 
-Mobile carriers see the phone connecting to the home Russian IP. Managed
-websites/checkers see the VPS exit IP. Non-managed websites see the home
-Russian WAN IP.
+For Channel A/B managed traffic, the first network sees the endpoint connecting
+to the home endpoint, not directly to the VPS. The home ISP sees the home router
+connecting to the VPS tunnel. Managed websites/checkers see the VPS exit IP;
+non-managed websites see the home WAN IP.
 
 Detailed workflow, ports, components and observer model:
 [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
 
-### 3. Cold Fallback
+### 4. Cold Fallback
 
 WireGuard is not active in steady state. The preserved `wgc1_*` NVRAM can be used only with `modules/recovery-verification/router/emergency-enable-wgc1.sh` during a catastrophic Reality outage.
 
-### 4. Channel B/C Manual Profiles
+### 5. Channel B/C Manual Profiles
 
 Channel B and Channel C are manual device-client lanes with different design
 goals:
@@ -377,7 +417,7 @@ Traffic and observability:
 ```
 
 The traffic report answers how much went through the VPS, how much
-stayed on the home Russian WAN, which devices and Home Reality ingress clients
+stayed on the home WAN, which devices and Home Reality ingress clients
 were active, and whether likely routing mistakes appeared. See
 [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
 
@@ -450,7 +490,7 @@ See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-pro
 
 ## Detailed Documentation
 
-- [README-ru.md](README-ru.md) - main Russian documentation
+- [README-ru.md](README-ru.md) - localized documentation
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
 - [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap

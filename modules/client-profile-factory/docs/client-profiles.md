@@ -4,10 +4,10 @@ VLESS/Reality client profiles are generated locally from `ansible-vault`.
 
 ## Where These Clients Fit
 
-QR/VLESS clients are the third traffic path in the project:
+QR/VLESS clients are one endpoint-managed path in the layered routing model:
 
 ```text
-iPhone/MacBook outside home
+Endpoint outside home
   -> QR/VLESS profile in a client app
   -> home ASUS public IP / :<home-reality-port>
   -> sing-box home Reality inbound
@@ -16,23 +16,43 @@ iPhone/MacBook outside home
        other destinations              -> sing-box direct-out -> home WAN
 ```
 
-They connect to the ASUS router first. This is deliberate: a mobile carrier sees
-the remote device connecting to the home Russian IP, not directly to VPS.
+They connect to the ASUS router first. This is deliberate: the first network sees
+the remote device connecting to the home endpoint, not directly to VPS.
 The final website/checker sees VPS only when its domain/IP is managed. A
-non-managed destination sees the home Russian WAN IP.
+non-managed destination sees the home WAN IP.
 
 This is the expected split:
 
 | Observer | Sees |
 |---|---|
-| LTE/mobile carrier | Remote device -> home Russian IP `:<home-reality-port>` |
+| First network | Remote device -> home endpoint `:<home-reality-port>` |
 | Home ISP | ASUS router -> VPS Reality endpoint |
 | Website/checker for managed domains | VPS exit IP / datacenter ASN |
-| Website for non-managed domains | Home Russian WAN IP |
+| Website for non-managed domains | Home WAN IP |
 
 Do not use generic checker results alone to judge the LTE-facing path. A checker
 reports the final website-facing exit IP, not the first hop that the mobile
-carrier observes.
+network observes.
+
+## Endpoint / Client-Side Routing Layer
+
+Generated profiles are only one part of the endpoint behavior. Some endpoint
+clients can also load a config file that acts as Layer 0 routing policy before
+traffic reaches Channel A/B/C.
+
+Generic production policy:
+
+```text
+local/private/captive/trusted domestic -> DIRECT
+foreign/non-local/unknown/selected     -> MANAGED/PROXY
+FINAL                                  -> MANAGED/PROXY
+```
+
+Shadowrocket on iPhone/iPad/MacBook is the main current example. A
+Shadowrocket config can use domain, IP, GEOIP and rule lists to choose
+`DIRECT` or `PROXY/MANAGED`; that config is an endpoint routing layer, not just
+a VPN on/off switch. Other endpoint clients may implement the same idea with
+different UI labels or rule syntax.
 
 ## Mobile App Configuration (Critical) — OneXray
 
@@ -201,9 +221,9 @@ Reality/VPS, non-managed destinations go direct via home WAN.
 It is not a production fallback today and does not enable automatic failover.
 
 ```text
-iPhone/Mac/PC -> home public IP :<home-channel-b-port> -> router XHTTP+TLS ingress
-               -> local router Xray relay (to local sing-box SOCKS)
-               -> managed split -> sing-box Reality outbound -> VPS Caddy L4 -> Xray Reality -> Internet
+Endpoint client -> home public IP :<home-channel-b-port> -> router XHTTP+TLS ingress
+                -> local router Xray relay (to local sing-box SOCKS)
+                -> managed split -> sing-box Reality outbound -> VPS Caddy L4 -> Xray Reality -> Internet
 ```
 
 Generated artifacts can be viewed with the same factory command when the vault
@@ -220,6 +240,11 @@ PNG files under `ansible/out/clients-channel-b/`. In direct-XHTTP mode (when
 home relay is disabled) the generator also emits compatibility URI variants and
 raw Xray JSON artifacts. iOS and Android app import remain manual compatibility
 checks before considering broader readiness.
+
+For Shadowrocket Channel B profiles, keep `UDP Relay` disabled by default.
+Channel B's first hop is XHTTP/TLS over TCP; enabling UDP relay can change
+QUIC/DNS behavior and make first-hop fingerprint diagnostics harder to read.
+Enable it only when explicitly testing UDP behavior.
 
 ## Channel C NaiveProxy Future Experiment
 
