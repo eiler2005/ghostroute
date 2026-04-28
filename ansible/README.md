@@ -60,7 +60,7 @@ Playbook ownership is intentionally narrow:
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
-| `12-channel-c-vps.yml` | VPS | Channel C Caddy/backend compatibility path. | Refresh the manual Naive/HTTPS lane without touching Reality/Channel A. |
+| `12-channel-c-vps.yml` | VPS | Channel C Caddy/backend compatibility path. | Refresh the planned Naive/HTTPS lane without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |

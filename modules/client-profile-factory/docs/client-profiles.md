@@ -214,11 +214,12 @@ does not apply for that period.
 
 ## Channel B XHTTP Selected-Client Production Profiles
 
-Channel B is a manual home-first lane. The device profile is VLESS+XHTTP+TLS to
-the home router, and the router relays upstream via local sing-box SOCKS using
-the same managed split as Home Reality: managed destinations go through
-Reality/VPS, non-managed destinations go direct via home WAN.
-It is not a production fallback today and does not enable automatic failover.
+Channel B is a selected-client production home-first lane. The device profile is
+VLESS+XHTTP+TLS to the home router, and the router relays upstream via local
+sing-box SOCKS using the same managed split as Home Reality: managed
+destinations go through Reality/VPS, non-managed destinations go direct via
+home WAN. It is production for explicitly selected clients, but it is not
+automatic failover for Channel A.
 
 ```text
 Endpoint client -> home public IP :<home-channel-b-port> -> router XHTTP+TLS ingress
@@ -292,9 +293,10 @@ HTTPS forward-proxy compatibility artifacts:
 - `<client>.json`: naiveproxy CLI JSON using the plain HTTPS proxy URL.
 - `<client>-sing-box-outbound.json`: sing-box `type: naive` outbound JSON.
 
-Keep Channel B/C profiles disabled/off. Treat them as experimental artifacts
-until a future implementation pass chooses supported clients, confirms import
-behavior and proves live egress. These profiles never change router behavior.
+Keep Channel C profiles disabled/off until its compatibility proof is complete.
+Treat Channel B profiles as selected-client production credentials and Channel C
+profiles as planned compatibility artifacts. These profiles never change router
+behavior by themselves.
 
 ## Clean Local Artifacts
 

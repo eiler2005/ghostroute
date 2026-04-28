@@ -1,4 +1,4 @@
-- name: Deploy Channel B XHTTP manual lane on VPS
+- name: Deploy Channel B XHTTP selected-client lane on VPS
   hosts: vps_stealth
   become: true
   vars_files:

@@ -226,7 +226,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS and manual Channel B/C artifacts from Vault
+  Client Profiles     -> QR/VLESS, selected-client B and planned C artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```
@@ -584,6 +584,32 @@ Expected live evidence: Channel A router invariants are green, Channel B
 selected-client traffic reaches the home ingress and uses the managed split, and
 Channel C remains outside production checks until its own compatibility proof is
 complete.
+
+Sanitized live sample from the home network:
+
+```text
+router-health-report:
+  Result: OK
+  Drift items: 0
+  STEALTH catalog usage: 882/65536 (1.3%)
+  Channel A REDIRECT listener: OK
+  Home Reality listener: OK
+  Home Reality managed split: OK
+
+ansible-playbook playbooks/99-verify.yml -e verify_openclaw_checks_enabled=false:
+  stealth-vps: ok=11 failed=0
+  router-home: ok=41 failed=0
+  Channel B home relay config: OK
+  sing-box Channel B relay SOCKS inbound: OK
+
+traffic-report today:
+  Client observed total: 9.35 GiB
+  Via VPS: 8.78 GiB (93.9% observed)
+  Via home RU direct: 581.5 MiB (6.1% observed)
+  Home Reality connections: 36817
+  Home Reality unresolved: 0
+  Channel B ingress: 0 B observed in this sample window
+```
 
 ---
 

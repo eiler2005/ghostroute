@@ -2,8 +2,9 @@
 # Router channel traffic report.
 #
 # This report intentionally does not inspect wgs1/wgc1. Channel A is the
-# router-managed default lane. Channel B is a manual home-first add-on with
-# separate ingress, represented with best-effort telemetry in this report.
+# router-managed default lane. Channel B is a selected-client production
+# home-first lane with separate ingress, represented with best-effort telemetry
+# in this report.
 
 set -euo pipefail
 
@@ -986,7 +987,7 @@ echo "LAN/Wi-Fi via VPS:       $(human_bytes "$DEVICE_REALITY_BYTES")"
 echo "Home Reality via VPS:    $(human_bytes "$MOBILE_EST_REALITY_BYTES")  (estimated from ${MOBILE_REALITY}/${MOBILE_TOTAL} ingress connections)"
 echo "Channel A via VPS:       $(human_bytes "$MOBILE_CHANNEL_A_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_A_REALITY}/${MOBILE_CHANNEL_A_CONN} connections)"
 echo "Channel B via VPS:       $(human_bytes "$MOBILE_CHANNEL_B_BYTE_VPS")  (estimated from ${MOBILE_CHANNEL_B_REALITY}/${MOBILE_CHANNEL_B_CONN} connections)"
-echo "Channel C via VPS:       not observed on router (VPS-only manual lane)"
+echo "Channel C via VPS:       not observed on router (VPS-only planned compatibility lane)"
 echo
 
 echo "=== 4. LAN/WI-FI DEVICES ==="
