@@ -8,7 +8,8 @@ Reality-first router data plane без активного legacy WireGuard. Chan
 реализован как production home-first lane для selected device-client profiles.
 Channel C — home-first selected-client lane with C1-sing-box Naive as the
 stealth-primary design and C1-Shadowrocket HTTPS CONNECT as a proven
-compatibility path that still needs Ansible persistence.
+compatibility path. C1-Shadowrocket is live-proven and persisted. C1-sing-box is
+router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
@@ -20,8 +21,9 @@ compatibility path that still needs Ansible persistence.
   домены идут через Reality на VPS, non-managed домены уходят прямо в home WAN.
 - Channel C — C1 home-first selected-client lane: selected device подключается
   к домашнему ingress, а router-side sing-box применяет тот же managed split,
-  что и для других home-first каналов. C1-sing-box uses sing-box Naive; C1-Shadowrocket
-  uses HTTPS CONNECT for Shadowrocket compatibility and is not Naive.
+  что и для других home-first каналов. C1-Shadowrocket uses HTTPS CONNECT for
+  Shadowrocket compatibility and is not Naive. C1-sing-box uses sing-box Naive
+  on the router, but requires an iOS client with outbound `"type": "naive"`.
 
 ```text
 Layer 0 endpoint/client routing
@@ -113,8 +115,8 @@ Channel C is split into C1-sing-box Naive and C1-Shadowrocket compatibility:
 ```text
 Channel A: endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel C1: endpoint -> Native Naive -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 Channel C1-Shadowrocket: endpoint -> HTTPS CONNECT/TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel C1-sing-box: endpoint -> Native Naive -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
 ```
 
 Channel A/B/C are home-first for managed traffic: the first network sees
@@ -137,6 +139,9 @@ home-WAN direct does not use the VPS egress.
 
 ## Channel A / Channel B / Channel C (текущая схема)
 
+For the compact handoff version of A/B/C, see
+[docs/channels.md](/docs/channels.md).
+
 ### Channel A
 
 Для Channel A применяем home-first production-схему:
@@ -150,6 +155,16 @@ Endpoint QR-клиент
        other destinations                 -> direct home WAN
   -> Интернет
 ```
+
+Что видит сеть перед home endpoint:
+
+```text
+LAN clients: обычный домашний LAN/Wi-Fi трафик к роутеру
+remote clients: endpoint -> home public IP/DDNS на home Reality port
+```
+
+Статус: основной production router data plane. Channel A владеет router
+REDIRECT/DNS/catalog behavior и не должен зависеть от B/C.
 
 ### Channel B
 
@@ -167,6 +182,16 @@ Endpoint client
   -> Интернет
 ```
 
+Что видит мобильный оператор:
+
+```text
+endpoint -> home public IP/DDNS
+TLS / HTTP-like XHTTP traffic
+```
+
+Статус: production selected-client lane. Он изолирован от Channel A ownership,
+но использует тот же managed split и `reality-out` после локального relay.
+
 Как это понимать в проде:
 
 - A/B/C дают первичный hop в home-network для managed endpoint traffic.
@@ -181,19 +206,6 @@ Endpoint client
 ### Channel C
 
 Channel C has two current shapes.
-
-C1-sing-box works as a home-first Naive lane:
-
-```text
-Endpoint client
-  -> Naive / HTTPS-H2-CONNECT-like to home public IP :<home-channel-c-public-port>
-  -> optional WAN REDIRECT to router internal :<home-channel-c-ingress-port>
-  -> ASUS sing-box Naive inbound `channel-c-naive-in`
-  -> managed split по `stealth-domains` / `stealth-static`
-       - managed     -> reality-out -> VPS Caddy :443 -> Xray Reality
-       - non-managed -> direct-out -> home WAN
-  -> Интернет
-```
 
 C1-Shadowrocket is the Shadowrocket compatibility lane proven live on 2026-04-28:
 
@@ -213,6 +225,24 @@ profiles but the router-side sing-box Naive inbound rejected the live attempts
 with `not CONNECT request`. The compatibility path proved that Shadowrocket can
 work through the home-first architecture when the router exposes authenticated
 HTTPS CONNECT over TLS.
+
+C1-sing-box is the intended native Naive lane:
+
+```text
+Endpoint SFI/sing-box client with outbound "type": "naive"
+  -> Naive / HTTPS-H2-CONNECT-like to home public IP :<home-channel-c-public-port>
+  -> optional WAN REDIRECT to router internal :<home-channel-c-ingress-port>
+  -> ASUS sing-box Naive inbound `channel-c-naive-in`
+  -> managed split по `stealth-domains` / `stealth-static`
+       - managed     -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - non-managed -> direct-out -> home WAN
+  -> Интернет
+```
+
+C1-sing-box is server-ready on the router, but the tested iPhone SFI app used
+sing-box `1.11.4` and failed with `unknown outbound type: naive`. Native SFI
+profile generation is disabled by default until an iOS client with Naive
+outbound support is selected.
 
 C1-Shadowrocket is persisted by `22-channel-c-router.yml`, the router firewall
 hook, client generation and verify checks.
@@ -242,7 +272,7 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | VPS host | Caddy :443 plus Xray Reality backend on localhost |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
-| Channel C | home-first selected-client lane: C1-sing-box Naive for SFI/sing-box, C1-Shadowrocket HTTPS CONNECT compatibility for Shadowrocket |
+| Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
