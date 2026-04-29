@@ -91,7 +91,7 @@
 
 Текущая архитектура **уже минимальная целевая.** Добавлять не нужно — нужно зафиксировать и отполировать:
 
-![GhostRoute architecture](assets/diagrams/ghostroute-architecture.svg)
+![GhostRoute architecture](assets/diagrams/ghostroute-architecture.png)
 
 Так выглядит архитектура **сейчас**, и она правильная. Добавить только визуализацию — не менять структуру.
 
