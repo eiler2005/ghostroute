@@ -49,8 +49,10 @@ Layer 2 is the shared router managed split.
 
 - Managed domains and static CIDRs go to `reality-out`.
 - Non-managed destinations go to `direct-out` through the home WAN.
-- DNS ports from remote selected-client inbounds are forced through
-  `reality-out` to avoid endpoint/LTE-side DNS leakage.
+- Plain DNS port `53` from remote selected-client inbounds is sent to
+  router-local dnsmasq. dnsmasq then applies the same policy-based DNS split as
+  Wi-Fi/LAN: managed/foreign names use VPS DNS, while RU/direct/default names
+  use the home/RF/default resolver.
 - A small explicit direct exception set exists for known local/trusted
   destinations such as selected banking and telemetry domains.
 
@@ -88,6 +90,108 @@ Manual, automatic and static policy sources must stay distinct:
 
 Direct/skip policy must not auto-promote into the managed route.
 
+## Curated Foreign Policy
+
+GhostRoute intentionally uses a curated managed catalog, not a blanket
+foreign-TLD rule.
+
+```text
+known managed foreign service -> VPS traffic + VPS DNS
+known RU/direct service       -> home/RF traffic + home/RF DNS
+unknown/default destination   -> home/RF path until classified
+```
+
+This is the trade-off that keeps Russian/direct sites from seeing the VPS
+resolver while still giving selected foreign services a consistent VPS profile.
+Do not add broad rules such as `.com`, `.net`, `.org`, `.io` or `.ai` to the
+managed catalog by default. They make unknown foreign traffic easier, but they
+also push too much unrelated traffic and DNS through the VPS.
+
+Subdomains are already covered by a base-domain rule. For example:
+
+```text
+ipset=/claude.ai/STEALTH_DOMAINS
+```
+
+covers `claude.ai`, `api.claude.ai`, `random.claude.ai` and deeper names under
+that same base domain. It does not cover sibling/base domains such as
+`claudeusercontent.com`, `anthropic-cdn.net` or `browserleaks.net`. When a
+managed service breaks, inspect DNS/logs, identify the new base domains, add
+only those domains to `configs/dnsmasq-stealth.conf.add`, redeploy, and verify.
+
+## Two Runtime Selection Points
+
+GhostRoute has one policy intent but two runtime selection points.
+
+The LAN/Wi-Fi selection point is `dnsmasq + ipset + iptables`:
+
+```text
+Wi-Fi/LAN device
+  -> router DNS / dnsmasq
+  -> dnsmasq resolves a managed domain
+  -> dnsmasq adds the resolved IPv4 address to STEALTH_DOMAINS
+  -> iptables REDIRECT sends matching TCP to sing-box redirect-in
+  -> reality-out -> VPS
+```
+
+This is necessary because ordinary LAN clients are not inside sing-box when the
+decision starts. The router first needs DNS-populated ipsets and packet rules to
+catch the selected destination IPs.
+
+The mobile/selected-client selection point is sing-box itself:
+
+```text
+iPhone / selected endpoint
+  -> Channel A/B/C ingress on the router
+  -> sing-box sniffs TLS SNI / HTTP Host where available
+  -> matches stealth-domains.json / stealth-static.json
+  -> reality-out -> VPS
+```
+
+This is necessary because selected-client traffic is already inside sing-box
+after ingress. Routing it by domain rule-set is more reliable than waiting for a
+LAN DNS lookup to populate `STEALTH_DOMAINS`.
+
+The duplication is therefore intentional runtime representation, not duplicated
+manual policy. Operators edit the managed catalogs once; deployment and
+`update-singbox-rule-sets.sh` create the forms required by each datapath:
+
+```text
+configs/dnsmasq-stealth.conf.add
+  -> dnsmasq/ipset runtime for Wi-Fi/LAN
+  -> sing-box source rule-set runtime for mobile Channels A/B/C
+  -> dnsmasq managed-VPS-DNS include for foreign managed names only
+```
+
+DNS selection is intentionally separate from traffic selection:
+
+```text
+managed foreign domain
+  -> DNS via router vps-dns-in -> hijack-dns/vps-dns-server
+  -> reality-out -> VPS Unbound
+  -> traffic via reality-out -> VPS
+
+RU/direct/default domain
+  -> DNS via home/RF/default resolver
+  -> traffic via direct-out/home WAN unless separately classified as managed
+```
+
+RU TLDs and entries in `configs/domains-no-vpn.txt` must not be written into
+the VPS DNS include. This prevents Russian sites from seeing the VPS resolver
+when their web traffic is intended to stay on the home/RF path.
+
+The VPS resolver is not public. The current VPS Reality endpoint is served by
+the existing `3x-ui`/Xray Docker container behind Caddy. Because
+`127.0.0.1` inside that container is container-local, the managed DNS target is
+the configured `vps_unbound_reality_target_host:15353`, not container-local
+loopback. UFW allows `15353` only from the Xray Docker bridge, and public
+`53/tcp,udp` stays denied from the internet.
+
+In policy-split mode, router sing-box uses `hijack-dns` plus an internal TCP
+DNS server with `detour: reality-out` for the managed DNS forwarder. This is a
+transport choice, not a classification change: managed domains still use the
+VPS DNS path, and RU/direct/default domains still use home/RF/default upstreams.
+
 ## Runtime Implementation Map
 
 The routing principles above are implemented in these places:
@@ -103,6 +207,8 @@ The routing principles above are implemented in these places:
 - `modules/routing-core/router/update-singbox-rule-sets.sh`
   - mirrors dnsmasq/ipset/static policy into sing-box rule-set files for mobile
     Channels A/B/C
+  - generates `/jffs/configs/dnsmasq-vps-managed.conf.add` for policy-based DNS
+    consistency
 - `configs/dnsmasq-stealth.conf.add`
   - manual managed domain catalog
 - `configs/static-networks.txt`
@@ -143,9 +249,12 @@ fingerprint-consistency signal, not the main security property.
 
 Expected behavior:
 
-- DNS from selected mobile clients follows the active tunnel/channel.
-- DNS ports `53` and `853` from A/B/C mobile inbounds are routed to
-  `reality-out`.
+- Plain DNS `53` from selected mobile clients follows the active channel to the
+  router, then goes to router-local dnsmasq.
+- dnsmasq sends only managed/foreign domains to VPS Unbound over Reality.
+- RU/direct/default DNS stays on the home/RF/default resolver path.
+- DoH/DoT created inside an app is not fully blocked in v1 and remains a proof
+  checklist item.
 - IPv6 remains disabled or filtered until there is a separate dual-stack routing
   design.
 - UDP/443 to managed destinations is dropped on LAN/Wi-Fi to force TCP fallback

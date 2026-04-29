@@ -4,6 +4,15 @@ caddy_caddyfile: caddy/Caddyfile
 caddy_image_tag: caddy-l4:local
 xui_image: "ghcr.io/mhsanaei/3x-ui:latest"
 xray_reality_listen_port: "{{ vault_xray_reality_listen_port | default(xray_reality_listen_port_secret | default(8443)) }}"
+vps_unbound_enabled: "{{ vault_vps_unbound_enabled | default(true) }}"
+vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1') }}"
+vps_unbound_listen_port: "{{ vault_vps_unbound_listen_port | default(15353) }}"
+vps_unbound_docker_bridge_host: "{{ vault_vps_unbound_docker_bridge_host | default('172.22.0.1') }}"
+vps_unbound_docker_bridge_cidr: "{{ vault_vps_unbound_docker_bridge_cidr | default('172.22.0.0/16') }}"
+vps_unbound_reality_listen_host: "{{ vault_vps_unbound_reality_listen_host | default(vps_ssh_host, true) }}"
+vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | default(vps_unbound_reality_listen_host, true) }}"
+vps_unbound_xray_allow_port: "{{ vault_vps_unbound_xray_allow_port | default(vps_unbound_listen_port, true) }}"
+vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.conf
 
 # Actual VPS currently has host-level Caddy already bound on :80/:443 for an
 # existing site. Real hostnames, upstream ports and certificate paths are kept

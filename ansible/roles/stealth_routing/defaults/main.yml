@@ -5,6 +5,11 @@ stealth_ipset_name: STEALTH_DOMAINS
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
+router_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-vps-managed.conf.add
+router_vps_dns_forward_host: 127.0.0.1
+router_vps_dns_forward_port: 15353
+router_dns_egress_mode: policy_split
+router_dns_capture_lan_plain_53: true
 static_networks_path: /jffs/configs/router_configuration.static_nets
 no_vpn_ip_ports_path: /jffs/configs/router_configuration.no_vpn_ip_ports
 domains_no_vpn_path: /jffs/configs/domains-no-vpn.txt

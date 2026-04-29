@@ -47,16 +47,45 @@ RF-consistent profile.
 
 ## Current Default Strategy
 
-The current default is privacy-first:
+The current default is policy-based DNS consistency, not "all DNS through VPS":
 
 ```text
-Endpoint DNS -> active tunnel/channel -> router/sing-box policy -> encrypted or
-tunneled resolver path
+managed/foreign domains -> DNS through VPS Unbound -> traffic through VPS
+RU/direct/default domains -> DNS through home/RF/default resolver -> traffic direct/home WAN
 ```
 
-This is intentionally different from a purely local ISP resolver profile. A
-local/home ISP resolver may look more country-consistent, but it also gives the
-home ISP or its DNS provider more domain-interest visibility.
+This keeps Russian/direct sites from seeing the VPS resolver while making
+managed foreign services see a consistent VPS/Hetzner profile for both web
+egress and DNS egress.
+
+Implementation:
+
+```text
+Wi-Fi/LAN client
+  -> router dnsmasq
+  -> managed domain? dnsmasq server=/domain/127.0.0.1#<vps-dns-forward-port>
+  -> router sing-box vps-dns-in
+  -> hijack-dns / vps-dns-server
+  -> reality-out
+  -> VPS Unbound :15353
+
+Wi-Fi/LAN client
+  -> router dnsmasq
+  -> RU/direct/default domain?
+  -> normal home/RF/default resolver
+```
+
+Mobile Channels A/B/C use the same DNS selection after reaching the router:
+
+```text
+iPhone LTE -> Channel A/B/C ingress -> sing-box
+plain DNS :53 -> router-local dnsmasq
+dnsmasq managed domain -> VPS Unbound
+dnsmasq RU/direct/default -> home/RF/default resolver
+```
+
+DoH/DoT generated inside an app is not force-blocked in v1. It remains a
+residual risk and should be checked during BrowserLeaks/app proof testing.
 
 ## Channel A
 
@@ -72,23 +101,14 @@ IPv6: no direct IPv6 leak
 managed sites: use expected managed egress
 ```
 
-Acceptable default:
+Expected default:
 
 ```text
-Public IP: home/RF or selected egress
-DNS: encrypted/global resolver through tunnel
+managed Public IP: VPS
+managed DNS: VPS/Hetzner resolver path
+direct/RU Public IP: home/RF
+direct/RU DNS: home/RF/default resolver path
 ```
-
-Optional future mode:
-
-```text
-RF-consistent DNS:
-iPhone -> home router DNS -> selected RF/home resolver
-```
-
-Trade-off: RF-consistent DNS may reduce BrowserLeaks mismatch, but it can
-increase DNS visibility to the home ISP/resolver. Do not switch to this mode
-without an explicit reason.
 
 ## Channel B
 
@@ -106,6 +126,9 @@ managed traffic: through tunnel/managed split
 If the test goal is a VPS-like profile, DNS resolvers near the VPS or global
 DoH/DoT resolvers are acceptable as long as they are reached through the active
 channel and do not bypass to the mobile carrier.
+
+With the policy-split resolver, explicitly managed domains should no longer use
+random Google/Cloudflare pools by default. They should use the VPS Unbound path.
 
 ## Channel C
 
@@ -141,8 +164,9 @@ Interpretation:
 
 ```text
 DNS = LTE carrier        -> bad leak
-DNS = Google/Cloudflare  -> not automatically bad; check whether it went through the tunnel
-DNS = home/RF resolver   -> country-consistent but possibly less private
+DNS = VPS/Hetzner        -> expected for managed foreign domains
+DNS = home/RF resolver   -> expected for RU/direct/default domains
+DNS = Google/Cloudflare  -> possible app-level DoH/DoT or stale client cache; investigate
 many DNS servers shown   -> noisy resolver anycast/load-balancing, not a leak by itself
 ```
 
@@ -171,17 +195,73 @@ Relevant expected signals:
 
 ```text
 IPv6 policy OK
-Home Reality DNS guard :53/:853 OK
-dnscrypt-proxy uses sing-box SOCKS OK
+Mobile plain DNS :53 goes to router-local dnsmasq OK
+Managed DNS include has browserleaks.com/.net/.org -> 127.0.0.1#<vps-forward-port> OK
+VPS Unbound :15353 is restricted to the Xray Docker bridge OK
 DNS/IPv6 leak probe OK
 ```
 
+On the current VPS, Reality is served by the existing `3x-ui`/`xray` Docker
+container. Because `127.0.0.1` inside that container is container-local,
+managed DNS is delivered to the configured `vps_unbound_reality_target_host`.
+In the current deployment that target is the VPS public IP on private port
+`15353`, with UFW allowing it only from the Xray Docker bridge. Public
+`53/tcp,udp` remains closed, and `15353` is not allowed from the internet.
+
+Router `sing-box` handles the managed DNS transport with `hijack-dns` and an
+internal TCP DNS server that detours through `reality-out`. That keeps dnsmasq's
+domain selection intact: RU/direct/default names still go to the
+home/RF/default resolver, while managed names cross Reality to VPS Unbound.
+
+## BrowserLeaks Mixed DNS Troubleshooting
+
+If BrowserLeaks for a managed domain shows public IP = VPS but DNS includes
+home/RF, Google/Cloudflare or many resolver pools, check in this order:
+
+```text
+1. Is the tested site in configs/dnsmasq-stealth.conf.add?
+2. Is it absent from configs/domains-no-vpn.txt?
+3. Is it not a RU/SU/RF TLD? RU-like domains are intentionally kept out of VPS DNS.
+4. Does /jffs/configs/dnsmasq-vps-managed.conf.add contain server=/domain/127.0.0.1#<port>?
+5. Did dnsmasq restart after the include changed?
+6. Did Safari/iOS cache old DNS? Toggle airplane mode or restart the profile.
+7. Is the app/browser using its own DoH/DoT? v1 does not block every app-level encrypted DNS path.
+```
+
+Expected live proofs:
+
+```text
+browserleaks.com DNS test -> Public IP VPS, DNS VPS/Hetzner
+vtb.ru / championat.com / .ru control -> Public IP home/RF, DNS not VPS
+```
+
+BrowserLeaks is a good example of why proof services need all their base zones
+in the managed catalog. The page is `browserleaks.com`, but the DNS leak test
+creates random probe names under `browserleaks.net` and `browserleaks.org`.
+`ipset=/browserleaks.com/STEALTH_DOMAINS` already covers every subdomain of
+`browserleaks.com`; it does not cover sibling base domains such as
+`browserleaks.net` or `browserleaks.org`.
+
+The same rule applies to real services such as Claude, OpenAI, YouTube or
+Telegram. Subdomains under a managed base domain are already covered, but new
+sibling/base domains must be added deliberately. The intended operating model is
+semi-manual catalog curation:
+
+```text
+unknown/default -> home/RF DNS and traffic
+known managed foreign -> VPS DNS and traffic
+known RU/direct -> home/RF DNS and traffic
+```
+
+Avoid broad `.com`/`.net`/`.org` style DNS-to-VPS rules unless the whole policy
+is consciously changed to a foreign-default mode.
+
 ## What Not To Change By Default
 
-- Do not switch Channel A DNS to the home ISP resolver only to make BrowserLeaks
-  look more Russian.
-- Do not weaken encrypted/tunneled DNS just to reduce the number of resolver IPs
-  in BrowserLeaks.
+- Do not switch all DNS to VPS; that leaks VPS resolver identity to Russian and
+  direct/default sites.
+- Do not switch all DNS to the home ISP resolver; that breaks the VPS/Hetzner
+  consistency proof for managed foreign services.
 - Do not enable IPv6 until there is a separate dual-stack routing design.
 - Do not treat Google/Cloudflare resolver geography as proof of mobile-carrier
   DNS leakage.

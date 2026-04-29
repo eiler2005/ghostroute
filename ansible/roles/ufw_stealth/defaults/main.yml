@@ -1,3 +1,6 @@
 ---
 ufw_stealth_public_port: "443"
 ufw_stealth_ssh_port: "22"
+vps_unbound_enabled: true
+vps_unbound_listen_port: 15353
+vps_unbound_docker_bridge_cidr: 172.22.0.0/16

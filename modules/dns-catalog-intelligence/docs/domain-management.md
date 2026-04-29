@@ -48,11 +48,15 @@ server=/example.com/1.1.1.1@wgc1
 server=/example.com/9.9.9.9@wgc1
 ```
 
-DNS upstream общий:
+DNS upstream теперь policy-based:
 
 ```text
-server=127.0.0.1#<dnscrypt-port>
+managed foreign domains -> /jffs/configs/dnsmasq-vps-managed.conf.add -> 127.0.0.1#<vps-dns-forward-port>
+RU/direct/default domains -> dnsmasq default home/RF resolver
 ```
+
+`dnsmasq-vps-managed.conf.add` генерируется из managed catalog автоматически.
+RU TLD и `configs/domains-no-vpn.txt` туда не попадают.
 
 ## Deploy
 
@@ -68,6 +72,7 @@ include in the aggregate dnsmasq config:
 
 ```text
 conf-file=/jffs/configs/dnsmasq-stealth.conf.add
+conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add
 ```
 
 The same repo catalogs feed mobile Home Reality split routing. During deploy,

@@ -141,6 +141,103 @@ Found many DNS servers
 Такой результат означает mixed fingerprint, но не доказывает, что мобильный
 оператор увидел DNS-запросы. Текущий default — privacy-first: DNS должен идти
 через активный канал/tunnel и не должен уходить напрямую к LTE resolver.
+После policy-based DNS split для managed-доменов ожидается более строгая
+картина: managed foreign sites вроде `browserleaks.com` должны показывать VPS
+IP и VPS/Hetzner DNS, а RU/direct/default sites должны оставаться на home/RF
+DNS.
+
+Если `browserleaks.com` показывает VPS IP, но DNS home/RF или Google/Cloudflare:
+
+```sh
+ssh admin@192.168.50.1 '
+  grep "^server=/browserleaks.com/" /jffs/configs/dnsmasq-vps-managed.conf.add
+  grep "^conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add$" /jffs/configs/dnsmasq.conf.add
+  netstat -nlp 2>/dev/null | grep ":<vps-dns-forward-port> "
+  tail -200 /opt/var/log/sing-box.log | grep vps-dns-in
+'
+```
+
+Если include есть, но результат старый, очистите клиентский cache: airplane
+mode on/off, restart VPN profile, restart Safari/tab. Если только один browser
+упрямо показывает другой DNS, проверьте app-level DoH/DoT: v1 не ломает
+встроенный encrypted DNS внутри приложений.
+
+Если `browserleaks.com` вообще не резолвится через managed DNS, проверьте VPS:
+Reality сейчас работает в Docker-контейнере `xray`, а 3x-ui блокирует
+`geoip:private` по умолчанию. Поэтому Unbound должен слушать configured
+`vps_unbound_reality_target_host:15353`, а UFW должен разрешать этот порт
+только от Docker bridge. На роутере `vps-dns-in` должен быть связан с
+sing-box action `hijack-dns`, а DNS server `vps-dns-server` должен иметь
+`detour: reality-out`.
+
+Для RU/direct контроля:
+
+```text
+vtb.ru / championat.com / .ru control:
+  DNS не должен быть VPS/Hetzner
+  traffic должен идти direct/home WAN, если домен не классифицирован как managed
+```
+
+## ChatGPT / Codex Stream Disconnects On Home Wi-Fi
+
+Symptom:
+
+```text
+stream disconnected before completion:
+error sending request for url (https://chatgpt.com/backend-api/codex/responses)
+```
+
+First check whether the Mac is really using clean Wi-Fi through the router. If
+another VPN or DNS profile is active, the route may bypass GhostRoute entirely:
+
+```bash
+scutil --dns | sed -n '1,80p'
+networksetup -getdnsservers Wi-Fi
+CHATGPT_IP="$(dig +short @192.168.50.1 chatgpt.com A | head -1)"
+route -n get "$CHATGPT_IP"
+curl -4 https://ifconfig.me
+```
+
+Expected for clean Wi-Fi:
+
+```text
+Wi-Fi DNS: 192.168.50.1 or DHCP-provided router DNS
+route to ChatGPT Cloudflare IP: interface en0, gateway 192.168.50.1
+no utun/VPN route for chatgpt.com destination IPs
+```
+
+If DNS is pinned to a VPN/private resolver such as `10.x.x.x`, restore router
+DNS for Wi-Fi:
+
+```bash
+sudo networksetup -setdnsservers Wi-Fi 192.168.50.1
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+```
+
+Router-side expected state:
+
+```sh
+grep -E "chatgpt.com|openai.com|oaistatic.com|oaiusercontent.com" \
+  /jffs/configs/dnsmasq-stealth.conf.add \
+  /jffs/configs/dnsmasq-vps-managed.conf.add
+
+CHATGPT_IPS="$(nslookup chatgpt.com 127.0.0.1 | awk '/^Address [0-9]+:/ {print $3}')"
+for ip in $CHATGPT_IPS; do ipset test STEALTH_DOMAINS "$ip"; done
+tail -200 /opt/var/log/sing-box.log | grep -iE "chatgpt|openai"
+```
+
+Expected router logs for Wi-Fi traffic:
+
+```text
+inbound/redirect[redirect-in]: inbound connection to <chatgpt-ip>:443
+outbound/vless[reality-out]: outbound connection to <chatgpt-ip>:443
+```
+
+`chatgpt.com`, `openai.com`, `oaistatic.com` and `oaiusercontent.com` are
+managed catalog domains. Their subdomains are covered automatically. If OpenAI
+introduces a new sibling/base domain, add that base domain to
+`configs/dnsmasq-stealth.conf.add`, redeploy the router and re-run verify.
 
 Для proof-тестов на iPhone:
 

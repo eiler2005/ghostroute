@@ -58,3 +58,18 @@
     {% endif %}
     grep -q '^no-resolv$' $CONF || echo 'no-resolv' >> $CONF
     service restart_dnsmasq
+  when: router_dns_egress_mode | default('policy_split') == 'dnscrypt_pool'
+
+- name: Keep default dnsmasq upstream in policy-split DNS mode
+  ansible.builtin.raw: |
+    CONF=/jffs/configs/dnsmasq.conf.add
+    touch $CONF
+    sed -i '\|^server=127.0.0.1#5353$|d' $CONF
+    sed -i '\|^server=127.0.0.1#{{ dnscrypt_port }}$|d' $CONF
+    sed -i '\|^no-resolv$|d' $CONF
+    sed -i '\|^address=/{{ system_caddy_site_host }}/|d' $CONF
+    {% if system_caddy_site_enabled | default(false) | bool %}
+    echo 'address=/{{ system_caddy_site_host }}/{{ vps_ssh_host }}' >> $CONF
+    {% endif %}
+    service restart_dnsmasq
+  when: router_dns_egress_mode | default('policy_split') == 'policy_split'

@@ -1,0 +1,5 @@
+---
+galaxy_info:
+  role_name: vps_unbound
+  description: Loopback-only Unbound resolver for GhostRoute managed-domain DNS.
+

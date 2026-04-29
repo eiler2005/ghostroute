@@ -74,7 +74,7 @@ assert_contains "$ROUTING_TEMPLATE" 'iptables -I FORWARD 1 -i br0 -p udp --dport
 assert_contains_fixed "$SINGBOX_TEMPLATE" '{ "inbound": "redirect-in", "outbound": "reality-out" }'
 
 # Selected-client home-first paths: every remote ingress must apply the same
-# post-ingress policy: sniff target, send tunneled DNS through Reality, keep
+# post-ingress policy: sniff target, send plain DNS to router dnsmasq, keep
 # local direct exceptions direct, send managed destinations to Reality/VPS, then
 # fall back to home WAN direct.
 for inbound in \
@@ -86,7 +86,9 @@ for inbound in \
   if [ "$inbound" != "reality-in" ] || rg -n -F -- '"inbound": "reality-in", "action": "sniff"' "${PROJECT_ROOT}/${SINGBOX_TEMPLATE}" >/dev/null; then
     assert_contains_fixed "$SINGBOX_TEMPLATE" "\"inbound\": \"${inbound}\", \"action\": \"sniff\""
   fi
-  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"port\":[53,853],\"outbound\":\"reality-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"port\":53,\"action\":\"route-options\",\"override_address\":\"127.0.0.1\",\"override_port\":53"
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"port\":53,\"outbound\":\"direct-out\""
+  assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"port\":853,\"outbound\":\"reality-out\""
   assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"domain_suffix\":[\"vtb.ru\",\"app-analytics-services-att.com\",\"app-measurement.com\",\"firebaseinstallations.googleapis.com\"],\"outbound\":\"direct-out\""
   assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"rule_set\":[\"stealth-domains\",\"stealth-static\"],\"outbound\":\"reality-out\""
   assert_compact_contains "$SINGBOX_TEMPLATE" "\"inbound\":\"${inbound}\",\"outbound\":\"direct-out\""
@@ -97,6 +99,7 @@ done
 # CIDRs, and live/snapshotted STEALTH_DOMAINS IPs.
 assert_contains_fixed "$RULESET_SCRIPT" 'MANUAL_DNSMASQ="${MANUAL_DNSMASQ:-/jffs/configs/dnsmasq-stealth.conf.add}"'
 assert_contains_fixed "$RULESET_SCRIPT" 'AUTO_DNSMASQ="${AUTO_DNSMASQ:-/jffs/configs/dnsmasq-autodiscovered.conf.add}"'
+assert_contains_fixed "$RULESET_SCRIPT" 'DNSMASQ_VPS_DNS_CONF="${DNSMASQ_VPS_DNS_CONF:-/jffs/configs/dnsmasq-vps-managed.conf.add}"'
 assert_contains_fixed "$RULESET_SCRIPT" 'STEALTH_IPSET_SNAPSHOT="${STEALTH_IPSET_SNAPSHOT:-}"'
 assert_contains_fixed "ansible/playbooks/99-verify.yml" "Managed checker domain is mirrored into sing-box domain rule-set"
 
@@ -105,6 +108,11 @@ trap 'rm -rf "$TMPDIR"' EXIT
 mkdir -p "$TMPDIR/rules"
 cat > "$TMPDIR/manual.conf" <<'EOF_MANUAL'
 ipset=/ipify.org/STEALTH_DOMAINS
+ipset=/browserleaks.com/STEALTH_DOMAINS
+ipset=/browserleaks.net/STEALTH_DOMAINS
+ipset=/browserleaks.org/STEALTH_DOMAINS
+ipset=/4pda.ru/STEALTH_DOMAINS
+ipset=/championat.com/STEALTH_DOMAINS
 ipset=/unmanaged.example/OTHER_SET
 EOF_MANUAL
 cat > "$TMPDIR/auto.conf" <<'EOF_AUTO'
@@ -120,13 +128,24 @@ EOF_IPSET
 
 MANUAL_DNSMASQ="$TMPDIR/manual.conf" \
 AUTO_DNSMASQ="$TMPDIR/auto.conf" \
+DOMAINS_NO_VPN="${PROJECT_ROOT}/configs/domains-no-vpn.txt" \
 STATIC_NETS="$TMPDIR/static.txt" \
 STEALTH_IPSET_SNAPSHOT="$TMPDIR/stealth.ipset" \
 SINGBOX_RULE_DIR="$TMPDIR/rules" \
+DNSMASQ_VPS_DNS_CONF="$TMPDIR/managed-vps-dns.conf" \
   "${PROJECT_ROOT}/${RULESET_SCRIPT}" --no-restart >/dev/null
 
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"ipify.org"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"auto-managed.example"'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.com/127.0.0.1#15353'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.net/127.0.0.1#15353'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.org/127.0.0.1#15353'
+if rg -n -F -- 'server=/4pda.ru/' "$TMPDIR/managed-vps-dns.conf" >/dev/null ||
+   rg -n -F -- 'server=/championat.com/' "$TMPDIR/managed-vps-dns.conf" >/dev/null; then
+  echo "RU/direct domains must not be sent to VPS DNS" >&2
+  sed -n '1,160p' "$TMPDIR/managed-vps-dns.conf" >&2
+  exit 1
+fi
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-static.json" '"203.0.113.0/24"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-static.json" '"198.51.100.10/32"'
 

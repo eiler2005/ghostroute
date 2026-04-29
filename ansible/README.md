@@ -11,7 +11,7 @@ router/VPS runtime paths.
 ## Purpose
 
 - Deploy the VPS Reality entrypoint: Caddy layer4, Xray/3x-ui Reality inbound,
-  firewall policy and the VPS health observer.
+  policy-based VPS Unbound resolver, firewall policy and the VPS health observer.
 - Deploy the router stealth layer: sing-box client, dnscrypt-proxy,
   dnsmasq/ipset integration, blocklists, IPv6 policy and router health monitor.
 - Generate local QR/VLESS client artifacts from Vault data.
@@ -50,7 +50,7 @@ described in the root README and `docs/architecture.md`.
 |---|---|---|
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
-| VPS / Reality edge | Caddy layer4 on public `:443`, the Xray/3x-ui Reality backend, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge for Channel A without exposing internal services directly. |
+| VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, restricted Unbound managed-DNS resolver on `:15353`, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge and managed-DNS egress without exposing internal services directly. |
 | Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
 Playbook ownership is intentionally narrow:
@@ -58,7 +58,7 @@ Playbook ownership is intentionally narrow:
 | Playbook | Target | Owns | Reason |
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
-| `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, UFW and VPS health monitor. | Refresh the public Reality edge and observer. |
+| `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, VPS Unbound, UFW and VPS health monitor. | Refresh the public Reality edge, managed-DNS resolver and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
@@ -98,7 +98,7 @@ scripts/                         # Ansible-local helper scripts
 | Playbook | Target | Mode | Purpose |
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Mutating | Installs base packages and prepares the VPS stack directory. |
-| `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, UFW policy and VPS health observer. |
+| `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, VPS Unbound, UFW policy and VPS health observer. |
 | `11-channel-b-vps.yml` | VPS | Mutating | Deploys the optional direct-mode Channel B XHTTP backend and checks the existing Caddy route. |
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
@@ -112,6 +112,7 @@ scripts/                         # Ansible-local helper scripts
 |---|---|
 | `caddy_l4` | VPS public TLS/Reality demux through Caddy layer4. |
 | `xray_reality` | VPS Xray/3x-ui Reality inbound state. |
+| `vps_unbound` | VPS managed-domain resolver for policy-based DNS consistency. |
 | `ufw_stealth` | VPS firewall exposure policy. |
 | `vps_health_monitor` | VPS-side GhostRoute health observer. |
 | `ipv6_kill` | Router IPv6 policy. |

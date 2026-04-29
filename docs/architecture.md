@@ -81,6 +81,7 @@ Layer 2 home router
 
 Layer 3 VPS
   -> remote egress for selected managed traffic
+  -> policy-split DNS egress for managed foreign names
   -> sites see VPS IP for managed traffic
 ```
 
@@ -136,6 +137,13 @@ non-managed destinations.
 The VPS is remote egress for selected managed traffic. Sites and checkers see
 the VPS IP for managed traffic; non-managed traffic selected as `DIRECT` or
 home-WAN direct does not use the VPS egress.
+
+The VPS also hosts the managed-domain DNS resolver used by policy-split DNS.
+This is intentionally not a public resolver. The current Reality backend runs
+inside the existing `3x-ui`/Xray Docker container behind Caddy, so managed DNS
+is transported through `reality-out` to the configured
+`vps_unbound_reality_target_host:15353`. UFW allows that private DNS port only
+from the Xray Docker bridge, while public `53/tcp,udp` stays denied.
 
 ## Channel A / Channel B / Channel C (текущая схема)
 
@@ -266,15 +274,33 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | Component | Role |
 |---|---|
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
-| `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off |
-| `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`, proxied through sing-box SOCKS |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, managed split, Reality outbound to VPS |
-| VPS host | Caddy :443 plus Xray Reality backend on localhost |
+| `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the local `vps-dns-in` forwarder |
+| `dnscrypt-proxy` | default upstream DNS on `127.0.0.1:<dnscrypt-port>` for RU/direct/default names |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in`, managed split, Reality outbound to VPS |
+| VPS host | Caddy :443, existing 3x-ui/Xray Docker container, private Unbound managed-DNS resolver |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
+
+## Port And Listener Map
+
+| Scope | Listener | Owner | Purpose |
+|---|---|---|---|
+| Router LAN | `:<lan-redirect-port>` | sing-box `redirect-in` | Transparent Wi-Fi/LAN managed TCP capture |
+| Router WAN | `:<home-reality-port>` | sing-box `reality-in` | Channel A home Reality for remote clients |
+| Router WAN | `:<home-channel-b-port>` | local Xray `channel-b-home-in` | Channel B selected-client XHTTP/TLS first hop |
+| Router local | `127.0.0.1:<router-socks-port>` | sing-box `channel-b-relay-socks` | Channel B relay into shared managed split |
+| Router WAN | `:<home-channel-c-public-port>` | DNAT/REDIRECT to C1 native | C1-sing-box public Naive endpoint, usually public `443` when enabled |
+| Router internal | `:<home-channel-c-ingress-port>` | sing-box `channel-c-naive-in` | C1 native Naive inbound |
+| Router WAN | `:4443` | DNAT/REDIRECT to C1-SR | C1-Shadowrocket compatibility public endpoint |
+| Router internal | `:<channel-c-shadowrocket-ingress-port>` | sing-box `channel-c-shadowrocket-http-in` | C1-SR HTTPS CONNECT inbound |
+| Router local | `127.0.0.1:<vps-dns-forward-port>` | sing-box `vps-dns-in` | Managed DNS forwarder from dnsmasq |
+| VPS public | `:443` | system Caddy layer4 | Reality/Vision entrypoint |
+| VPS local | `127.0.0.1:<xray-local-port>` | 3x-ui/Xray Docker publish | Reality backend behind Caddy |
+| VPS restricted | `:15353` | Unbound | Managed DNS resolver, UFW allowed only from Xray Docker bridge |
+| VPS local | `127.0.0.1:<xui-admin-port>` | 3x-ui | Admin UI, localhost-only |
 
 ## Ansible Deployment Boundaries
 
@@ -374,8 +400,9 @@ Reality should use an explicit proxy or client profile.
 
 Channel B is production for selected device-client profiles and is documented
 separately from normal Home Reality and emergency Reality profiles. Channel C is
-C1 home-first Naive and remains planned until its import, connection and real
-app egress proof is complete.
+C1 home-first with two explicit variants: C1-Shadowrocket compatibility is
+live-proven, while C1-sing-box native Naive is server-ready and waits for an
+iOS client with outbound `type: naive` support.
 
 Current Channel B shape is home-first:
 
@@ -392,7 +419,18 @@ client app
 This keeps Channel B home-first while giving it a different first-hop
 fingerprint from Channel A.
 
-Current Channel C shape is home-first:
+Current Channel C1-Shadowrocket shape is home-first compatibility:
+
+```text
+client app
+  -> HTTPS CONNECT/TLS to home public IP :4443
+  -> router sing-box HTTP inbound channel-c-shadowrocket-http-in
+  -> managed split (same rule-sets as Channel A)
+  -> sing-box Reality outbound -> VPS Caddy/Xray Reality
+  -> Internet
+```
+
+Current Channel C1-sing-box target shape is native Naive:
 
 ```text
 client app

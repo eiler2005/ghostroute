@@ -119,6 +119,53 @@
         fail_msg: "home_clients must stay router-side only; VPS inbound must contain router plus emergency_clients."
       no_log: true
 
+    - name: VPS Unbound resolver listens only on private hosts when enabled
+      ansible.builtin.shell: |
+        ss -tulnp | grep -Eq '127[.]0[.]0[.]1:{{ vps_unbound_listen_port }}\b' &&
+        ss -tulnp | grep -Eq '{{ (vps_unbound_docker_bridge_host | default("127.0.0.1")) | regex_escape }}:{{ vps_unbound_listen_port }}\b' &&
+        ss -tulnp | grep -Eq '{{ (vps_unbound_reality_listen_host | default(vps_ssh_host)) | regex_escape }}:{{ vps_unbound_listen_port }}\b' &&
+        ! ss -tulnp | grep -Eq '(^|[[:space:]])(0[.]0[.]0[.]0|\[::\]|:::):({{ vps_unbound_listen_port }}|53)\b'
+      changed_when: false
+      when: vps_unbound_enabled | default(true) | bool
+
+    - name: VPS Unbound resolves managed DNS on loopback when enabled
+      ansible.builtin.shell: "dig +short @{{ vps_unbound_listen_host }} -p {{ vps_unbound_listen_port }} browserleaks.com A | grep -Eq '^[0-9]+(\\.[0-9]+){3}$'"
+      changed_when: false
+      when: vps_unbound_enabled | default(true) | bool
+
+    - name: VPS firewall does not allow public DNS
+      ansible.builtin.shell: |
+        ! ufw status | grep -E '^53(/(tcp|udp))?[[:space:]]+ALLOW'
+      changed_when: false
+      when: vps_unbound_enabled | default(true) | bool
+
+    - name: Xray permits only the private VPS Unbound endpoint before private-IP block
+      ansible.builtin.shell: |
+        docker exec xray python3 - <<'PY'
+        import json
+        cfg = json.load(open("/app/bin/config.json", "r", encoding="utf-8"))
+        rules = cfg.get("routing", {}).get("rules", [])
+        allow = {
+            "outboundTag": "direct",
+            "port": "{{ vps_unbound_xray_allow_port | default(vps_unbound_listen_port | default(15353)) }}",
+            "ip": ["{{ vps_unbound_reality_target_host | default(vps_unbound_docker_bridge_host | default('172.22.0.1')) }}/32"],
+        }
+        allow_idx = private_idx = None
+        for idx, rule in enumerate(rules):
+            if (
+                rule.get("outboundTag") == allow["outboundTag"]
+                and rule.get("port") == allow["port"]
+                and rule.get("ip") == allow["ip"]
+            ):
+                allow_idx = idx
+            if rule.get("outboundTag") == "blocked" and "geoip:private" in rule.get("ip", []):
+                private_idx = idx
+                break
+        raise SystemExit(0 if allow_idx is not None and private_idx is not None and allow_idx < private_idx else 1)
+        PY
+      changed_when: false
+      when: vps_unbound_enabled | default(true) | bool
+
 - name: Verify stealth channel — router side
   hosts: routers
   gather_facts: false
@@ -158,13 +205,15 @@
         GHOSTROUTE_CHANNEL_B_HOME_PORT="${GHOSTROUTE_CHANNEL_B_HOME_PORT:-{{ channel_b_home_ingress_port | default('') }}}"
         GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT:-{{ channel_c_home_public_port | default('') }}}"
         GHOSTROUTE_CHANNEL_C_HOME_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PORT:-$(port_by_tag channel-c-naive-in)}"
-        GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-$(awk -F'#' '/^server=127[.]0[.]0[.]1#/ { gsub(/[^0-9].*/, "", $2); print $2; exit }' /jffs/configs/dnsmasq.conf.add 2>/dev/null)}"
+        GHOSTROUTE_VPS_DNS_FORWARD_PORT="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(port_by_tag vps-dns-in)}"
+        GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-{{ dnscrypt_port }}}"
         printf 'GHOSTROUTE_REDIRECT_PORT=%s\n' "$GHOSTROUTE_REDIRECT_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_SOCKS_PORT"
         printf 'GHOSTROUTE_HOME_REALITY_PORT=%s\n' "$GHOSTROUTE_HOME_REALITY_PORT"
         printf 'GHOSTROUTE_CHANNEL_B_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_B_HOME_PORT"
         printf 'GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT"
         printf 'GHOSTROUTE_CHANNEL_C_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PORT"
+        printf 'GHOSTROUTE_VPS_DNS_FORWARD_PORT=%s\n' "$GHOSTROUTE_VPS_DNS_FORWARD_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_PORT"
       register: router_runtime_ports
       changed_when: false
@@ -178,6 +227,7 @@
         channel_b_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_B_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_B_HOME_PORT=', '') }}"
         channel_c_home_public_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=', '') }}"
         channel_c_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PORT=', '') }}"
+        router_vps_dns_forward_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_VPS_DNS_FORWARD_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_VPS_DNS_FORWARD_PORT=', '') }}"
         dnscrypt_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_PORT=', '') }}"
       no_log: true
 
@@ -224,6 +274,13 @@
       ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*match-set {{ stealth_static_source_ipset }} dst -j REDIRECT --to-ports {{ singbox_redirect_port }}'"
       changed_when: false
 
+    - name: LAN plain DNS is captured by router dnsmasq in policy-split mode
+      ansible.builtin.shell: |
+        iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p udp .*--dport 53 .*REDIRECT --to-ports 53' &&
+        iptables -t nat -S PREROUTING | grep -q -- '-i br0 -p tcp .*--dport 53 .*REDIRECT --to-ports 53'
+      changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'policy_split'
+
     - name: WireGuard wgs1 interface is absent after decommission
       ansible.builtin.shell: "! ip link show wgs1 >/dev/null 2>&1"
       changed_when: false
@@ -261,6 +318,22 @@
     - name: Managed checker domain is mirrored into sing-box domain rule-set
       ansible.builtin.shell: "grep -q '\"{{ managed_split_checker_domain }}\"' /opt/etc/sing-box/rule-sets/stealth-domains.json"
       changed_when: false
+
+    - name: Managed DNS include sends BrowserLeaks DNS to VPS forwarder
+      ansible.builtin.shell: |
+        grep -q '^conf-file={{ router_vps_dnsmasq_conf_path }}$' /jffs/configs/dnsmasq.conf.add &&
+        ! grep -q '^tcp-upstream$' /jffs/configs/dnsmasq.conf.add &&
+        grep -q '^server=/browserleaks.com/{{ router_vps_dns_forward_host | default("127.0.0.1") }}#{{ router_vps_dns_forward_port }}$' {{ router_vps_dnsmasq_conf_path }}
+      changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'policy_split'
+
+    - name: RU and direct domains are absent from managed VPS DNS include
+      ansible.builtin.shell: |
+        ! grep -Eq '^server=/([^/]+[.])?(ru|su|рф)/' {{ router_vps_dnsmasq_conf_path }} &&
+        ! grep -q '^server=/vtb.ru/' {{ router_vps_dnsmasq_conf_path }} &&
+        ! grep -q '^server=/championat.com/' {{ router_vps_dnsmasq_conf_path }}
+      changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'policy_split'
 
     - name: STEALTH_DOMAINS ipset has at least one populated entry
       ansible.builtin.shell: "ipset list {{ stealth_ipset_name }} | awk '/Number of entries:/ {print $4}' | grep -Eq '^[1-9][0-9]*$'"
@@ -300,6 +373,16 @@
     - name: sing-box SOCKS listener for dnscrypt-proxy is running
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ singbox_dnscrypt_socks_port }} '"
       changed_when: false
+
+    - name: sing-box VPS DNS forwarder is local-only in policy-split mode
+      ansible.builtin.shell: |
+        netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ router_vps_dns_forward_port }} ' &&
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})" &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-in"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-server","server":"{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default("127.0.0.1")) }}","server_port":{{ vps_unbound_listen_port | default(15353) }},"detour":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"vps-dns-in","action":"hijack-dns"'
+      changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'policy_split'
 
     - name: Router-side Reality ingress is listening for remote mobile clients
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ home_reality_ingress_port }}'"
@@ -488,10 +571,12 @@
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
-    - name: Router-side Reality ingress sends tunneled DNS through Reality outbound
+    - name: Router-side Reality ingress sends plain DNS to router-local dnsmasq
       ansible.builtin.shell: |
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
-        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","port":[53,853],"outbound":"reality-out"'
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","port":53,"outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","port":853,"outbound":"reality-out"'
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
@@ -525,11 +610,13 @@
         printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }}' &&
         {
           printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_b_home_upstream_socks_port }},"sniff":true' ||
-          printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","action":"sniff"'
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","action":"sniff"'
         } &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","outbound":"direct-out"' &&
-        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":[53,853],"outbound":"reality-out"'
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":53,"outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-b-relay-socks","port":853,"outbound":"reality-out"'
       changed_when: false
       when: channel_b_home_relay_enabled | default(false) | bool
 
@@ -544,7 +631,9 @@
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","action":"sniff"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","outbound":"direct-out"' &&
-        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":[53,853],"outbound":"reality-out"'
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":53,"outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-naive-in","port":853,"outbound":"reality-out"'
       changed_when: false
       when: channel_c_home_enabled | default(false) | bool
 
@@ -559,7 +648,9 @@
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","action":"sniff"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","outbound":"direct-out"' &&
-        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":[53,853],"outbound":"reality-out"'
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":53,"outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":853,"outbound":"reality-out"'
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
 
@@ -570,6 +661,15 @@
     - name: dnsmasq upstream points to dnscrypt-proxy
       ansible.builtin.shell: "grep -q '^server=127.0.0.1#{{ dnscrypt_port }}$' /jffs/configs/dnsmasq.conf.add"
       changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'dnscrypt_pool'
+
+    - name: dnsmasq default DNS stays on home resolver in policy-split mode
+      ansible.builtin.shell: |
+        ! grep -q '^server=127.0.0.1#{{ dnscrypt_port }}$' /jffs/configs/dnsmasq.conf.add &&
+        ! grep -q '^no-resolv$' /jffs/configs/dnsmasq.conf.add &&
+        grep -q '^conf-file={{ router_vps_dnsmasq_conf_path }}$' /jffs/configs/dnsmasq.conf.add
+      changed_when: false
+      when: router_dns_egress_mode | default('policy_split') == 'policy_split'
 
     - name: OpenClaw private DNS override is absent in SSH-only mode
       when: verify_openclaw_checks_enabled | default(true) | bool

@@ -74,6 +74,12 @@
       - singbox_dnscrypt_socks_port | int > 0
       - dnscrypt_port | int > 0
       - home_reality_ingress_port | int > 0
+      - router_vps_dns_forward_port | int > 0
+      - router_vps_dns_forward_port | int <= 65535
+      - router_vps_dns_forward_port | string != singbox_redirect_port | string
+      - router_vps_dns_forward_port | string != singbox_dnscrypt_socks_port | string
+      - router_vps_dns_forward_port | string != dnscrypt_port | string
+      - router_vps_dns_forward_port | string != home_reality_ingress_port | string
     fail_msg: "Channel A router ports must resolve before rendering sing-box config."
 
 - name: Validate Channel C1 home Naive settings

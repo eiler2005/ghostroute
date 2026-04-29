@@ -46,7 +46,7 @@ assert_contains "ansible/roles/singbox_client/tasks/main.yml" 'RotateSingBoxLog'
 assert_contains "modules/routing-core/router/services-start" 'RotateSingBoxLog'
 assert_contains "deploy.sh" 'rotate-singbox-log'
 assert_contains "ansible/playbooks/20-stealth-router.yml" 'Refresh sing-box rule-sets after catalog deploy'
-assert_contains "ansible/playbooks/20-stealth-router.yml" 'update-singbox-rule-sets.sh --no-restart'
+assert_contains "ansible/playbooks/20-stealth-router.yml" 'update-singbox-rule-sets.sh --restart-if-changed'
 assert_contains "configs/dnsmasq-stealth.conf.add" 'ipset=/googleapis.com/STEALTH_DOMAINS'
 
 TMPDIR="$(mktemp -d)"

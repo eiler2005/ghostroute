@@ -1,0 +1,34 @@
+---
+- name: Install Unbound and DNS test tools
+  ansible.builtin.apt:
+    name:
+      - unbound
+      - dnsutils
+    state: present
+    update_cache: true
+  when: vps_unbound_enabled | bool
+
+- name: Render GhostRoute Unbound loopback resolver
+  ansible.builtin.template:
+    src: ghostroute-unbound.conf.j2
+    dest: "{{ vps_unbound_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart unbound
+  when: vps_unbound_enabled | bool
+
+- name: Enable Unbound loopback resolver
+  ansible.builtin.service:
+    name: unbound
+    enabled: true
+    state: started
+  when: vps_unbound_enabled | bool
+
+- name: Remove GhostRoute Unbound config when disabled
+  ansible.builtin.file:
+    path: "{{ vps_unbound_config_path }}"
+    state: absent
+  notify: restart unbound
+  when: not (vps_unbound_enabled | bool)
+

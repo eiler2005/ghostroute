@@ -1,0 +1,25 @@
+server:
+  interface: {{ vps_unbound_listen_host }}
+{% if vps_unbound_docker_bridge_host | default('') | length > 0 %}
+  interface: {{ vps_unbound_docker_bridge_host }}
+{% endif %}
+{% if vps_unbound_reality_listen_host | default('') | length > 0 %}
+  interface: {{ vps_unbound_reality_listen_host }}
+{% endif %}
+  port: {{ vps_unbound_listen_port }}
+  access-control: 127.0.0.0/8 allow
+{% if vps_unbound_docker_bridge_cidr | default('') | length > 0 %}
+  access-control: {{ vps_unbound_docker_bridge_cidr }} allow
+{% endif %}
+  access-control: 0.0.0.0/0 allow
+  do-ip4: yes
+  do-ip6: no
+  do-udp: yes
+  do-tcp: yes
+  hide-identity: yes
+  hide-version: yes
+  qname-minimisation: yes
+  prefetch: yes
+  harden-glue: yes
+  harden-dnssec-stripped: yes
+  unwanted-reply-threshold: 10000
