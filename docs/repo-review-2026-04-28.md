@@ -91,30 +91,7 @@
 
 Текущая архитектура **уже минимальная целевая.** Добавлять не нужно — нужно зафиксировать и отполировать:
 
-```mermaid
-flowchart LR
-    subgraph Home["Home (RU IP)"]
-        Mobile["iPhone/Mac<br/>(QR profile)"]
-        LAN["Home Wi-Fi devices"]
-        Router["ASUS Merlin<br/>+ sing-box<br/>+ dnsmasq/ipset"]
-    end
-
-    subgraph VPS["VPS (DE)"]
-        Caddy["Caddy L4 :443<br/>SNI router"]
-        Xray["Xray Reality<br/>:8443"]
-    end
-
-    Internet["Internet"]
-    LTE["LTE carrier<br/>(sees RU home IP)"]
-
-    Mobile -->|"VLESS+Reality<br/>:home-port"| LTE
-    LTE --> Router
-    LAN -->|"DNS + TCP"| Router
-    Router -->|"managed:<br/>STEALTH_DOMAINS"| Caddy
-    Router -->|"non-managed:<br/>direct WAN"| Internet
-    Caddy -->|"SNI=icloud.com"| Xray
-    Xray --> Internet
-```
+![GhostRoute architecture](assets/diagrams/ghostroute-architecture.svg)
 
 Так выглядит архитектура **сейчас**, и она правильная. Добавить только визуализацию — не менять структуру.
 

@@ -21,35 +21,7 @@ egress. The repo is intentionally module-native: routing, health, traffic,
 catalog, client profiles, secrets and recovery all have separate ownership and
 tests.
 
-```mermaid
-flowchart LR
-    subgraph Endpoint["Endpoint devices"]
-        Mobile["Remote phone/laptop<br/>Channel A or B profile"]
-        LAN["Home Wi-Fi/LAN<br/>no VPN app"]
-    end
-
-    subgraph Home["Home edge"]
-        Router["ASUS Merlin router<br/>dnsmasq + ipset + sing-box"]
-        ChannelB["Channel B XHTTP/TLS ingress<br/>selected clients"]
-        ChannelC["Channel C<br/>C1 Naive + C1-Shadowrocket compatibility"]
-    end
-
-    subgraph VPS["VPS edge"]
-        Caddy["Caddy :443<br/>SNI/L4 routing"]
-        Xray["Xray Reality/Vision<br/>managed egress"]
-    end
-
-    Internet["Internet"]
-
-    LAN -->|"DNS/IP classification"| Router
-    Mobile -->|"Channel A home Reality"| Router
-    Mobile -->|"Channel B production profile"| ChannelB
-    Mobile -. "Channel C selected-client profile" .-> ChannelC
-    ChannelB -->|"local relay"| Router
-    ChannelC -->|"sing-box C ingress"| Router
-    Router -->|"managed destinations"| Caddy --> Xray --> Internet
-    Router -->|"non-managed destinations"| Internet
-```
+![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.svg)
 
 ## Channel Status
 
