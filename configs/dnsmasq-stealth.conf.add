@@ -88,6 +88,7 @@ ipset=/cdninstagram.com/STEALTH_DOMAINS
 ipset=/fbcdn.net/STEALTH_DOMAINS
 ipset=/fbsbx.com/STEALTH_DOMAINS
 ipset=/facebook.com/STEALTH_DOMAINS
+ipset=/facebook.net/STEALTH_DOMAINS
 ipset=/fb.com/STEALTH_DOMAINS
 ipset=/messenger.com/STEALTH_DOMAINS
 # LiveTV (sports streaming)
@@ -133,5 +134,135 @@ ipset=/wl.co/STEALTH_DOMAINS
 ipset=/openai.com/STEALTH_DOMAINS
 ipset=/oaistatic.com/STEALTH_DOMAINS
 ipset=/oaiusercontent.com/STEALTH_DOMAINS
+
+# Imported selected-client managed domains. Source shape was a Shadowrocket
+# PROXY rule list; these entries are router-managed so LAN/Wi-Fi and Channels
+# A/B/C share the same VPS egress policy after reaching the home router.
+# Domain-keyword rules are translated to concrete domain families where the
+# router catalog can match them reliably.
+
+# Client apps / social / media
+ipset=/4pda.to/STEALTH_DOMAINS
+ipset=/4pda.ru/STEALTH_DOMAINS
+ipset=/canva.com/STEALTH_DOMAINS
+ipset=/canva.dev/STEALTH_DOMAINS
+ipset=/discord.com/STEALTH_DOMAINS
+ipset=/discord.gg/STEALTH_DOMAINS
+ipset=/discord.media/STEALTH_DOMAINS
+ipset=/discordapp.com/STEALTH_DOMAINS
+ipset=/discordapp.net/STEALTH_DOMAINS
+ipset=/flibusta.is/STEALTH_DOMAINS
+ipset=/flibusta.net/STEALTH_DOMAINS
+ipset=/flibusta.site/STEALTH_DOMAINS
+ipset=/hdrezka.ag/STEALTH_DOMAINS
+ipset=/ig.me/STEALTH_DOMAINS
+ipset=/ign.com/STEALTH_DOMAINS
+ipset=/instagram.net/STEALTH_DOMAINS
+ipset=/kahoot.com/STEALTH_DOMAINS
+ipset=/kahoot.it/STEALTH_DOMAINS
+ipset=/kinozal.tv/STEALTH_DOMAINS
+ipset=/medium.com/STEALTH_DOMAINS
+ipset=/meta.com/STEALTH_DOMAINS
+ipset=/notion.com/STEALTH_DOMAINS
+ipset=/notion.site/STEALTH_DOMAINS
+ipset=/notion.so/STEALTH_DOMAINS
+ipset=/notionusercontent.com/STEALTH_DOMAINS
+ipset=/patreon.com/STEALTH_DOMAINS
+ipset=/quora.com/STEALTH_DOMAINS
+ipset=/rezka.ag/STEALTH_DOMAINS
+ipset=/rutor.info/STEALTH_DOMAINS
+ipset=/rutor.is/STEALTH_DOMAINS
+ipset=/rutracker.org/STEALTH_DOMAINS
+ipset=/skladchik.com/STEALTH_DOMAINS
+ipset=/skladchina.biz/STEALTH_DOMAINS
+ipset=/strava.com/STEALTH_DOMAINS
+ipset=/threads.net/STEALTH_DOMAINS
+ipset=/tronlink.org/STEALTH_DOMAINS
+ipset=/twitch.tv/STEALTH_DOMAINS
+ipset=/ttvnw.net/STEALTH_DOMAINS
+
+# YouTube / Google adjacent domains not already covered above
+ipset=/googleusercontent.com/STEALTH_DOMAINS
+ipset=/gstatic.com/STEALTH_DOMAINS
+
+# Shopping, SaaS, developer and productivity services
+ipset=/aol.com/STEALTH_DOMAINS
+ipset=/api2.support-kp.com/STEALTH_DOMAINS
+ipset=/bintray.com/STEALTH_DOMAINS
+ipset=/cloudflare.com/STEALTH_DOMAINS
+ipset=/cub.red/STEALTH_DOMAINS
+ipset=/datacamp.com/STEALTH_DOMAINS
+ipset=/digitalocean.com/STEALTH_DOMAINS
+ipset=/dyson.com/STEALTH_DOMAINS
+ipset=/hackernoon.com/STEALTH_DOMAINS
+ipset=/harvestapp.com/STEALTH_DOMAINS
+ipset=/hostinger.com/STEALTH_DOMAINS
+ipset=/iherb.com/STEALTH_DOMAINS
+ipset=/ikea.com/STEALTH_DOMAINS
+ipset=/intel.com/STEALTH_DOMAINS
+ipset=/jetbrains.com/STEALTH_DOMAINS
+ipset=/mixcloud.com/STEALTH_DOMAINS
+ipset=/netpeaksoftware.com/STEALTH_DOMAINS
+ipset=/premierleague.com/STEALTH_DOMAINS
+ipset=/proton.me/STEALTH_DOMAINS
+ipset=/realguide.com/STEALTH_DOMAINS
+ipset=/redis.io/STEALTH_DOMAINS
+ipset=/redislabs.com/STEALTH_DOMAINS
+ipset=/scdn.co/STEALTH_DOMAINS
+ipset=/semrush.com/STEALTH_DOMAINS
+ipset=/setapp.com/STEALTH_DOMAINS
+ipset=/spotifycdn.com/STEALTH_DOMAINS
+ipset=/splunkcloud.com/STEALTH_DOMAINS
+ipset=/tableau.com/STEALTH_DOMAINS
+ipset=/tableausoftware.com/STEALTH_DOMAINS
+ipset=/tableauusercontent.com/STEALTH_DOMAINS
+ipset=/user.auth.xboxlive.com/STEALTH_DOMAINS
+ipset=/x-minus.pro/STEALTH_DOMAINS
+ipset=/xsts.auth.xboxlive.com/STEALTH_DOMAINS
+
+# AI services
+ipset=/apple-relay.apple.com/STEALTH_DOMAINS
+ipset=/composer.opera-api.com/STEALTH_DOMAINS
+ipset=/copilot.microsoft.com/STEALTH_DOMAINS
+ipset=/deepl.com/STEALTH_DOMAINS
+ipset=/elevenlabs.io/STEALTH_DOMAINS
+ipset=/grok.com/STEALTH_DOMAINS
+ipset=/manus.im/STEALTH_DOMAINS
+ipset=/searchgpt.com/STEALTH_DOMAINS
+ipset=/sora.com/STEALTH_DOMAINS
+ipset=/x.ai/STEALTH_DOMAINS
+
+# Games
+ipset=/anzu-us.com/STEALTH_DOMAINS
+ipset=/clashofclans.com/STEALTH_DOMAINS
+ipset=/game-assets.clashofclans.com/STEALTH_DOMAINS
+ipset=/game.boombeachgame.com/STEALTH_DOMAINS
+ipset=/game.clashofclans.com/STEALTH_DOMAINS
+ipset=/gameloft.com/STEALTH_DOMAINS
+ipset=/supercell.com/STEALTH_DOMAINS
+
+# Checkers / geo / network tests
+ipset=/browserleaks.com/STEALTH_DOMAINS
+ipset=/ifconfig.me/STEALTH_DOMAINS
+ipset=/ipinfo.io/STEALTH_DOMAINS
+ipset=/maxmind.com/STEALTH_DOMAINS
+ipset=/speedtest.net/STEALTH_DOMAINS
+
+# News / public-interest media
+ipset=/euronews.com/STEALTH_DOMAINS
+ipset=/grani.ru/STEALTH_DOMAINS
+ipset=/gulagu.net/STEALTH_DOMAINS
+ipset=/holod.media/STEALTH_DOMAINS
+ipset=/meduza.io/STEALTH_DOMAINS
+ipset=/navalny.com/STEALTH_DOMAINS
+ipset=/novaya.no/STEALTH_DOMAINS
+ipset=/novayagazeta.eu/STEALTH_DOMAINS
+ipset=/novayagazeta.ru/STEALTH_DOMAINS
+ipset=/ntc.party/STEALTH_DOMAINS
+ipset=/proekt.media/STEALTH_DOMAINS
+ipset=/thebell.io/STEALTH_DOMAINS
+
+# RU domains intentionally forced to managed route by manual policy.
+ipset=/seasonvar.ru/STEALTH_DOMAINS
 
 # Load auto-discovered domains (written by domain-auto-add.sh every 4h)

@@ -4,6 +4,10 @@
 
 GhostRoute больше не использует active Legacy WireGuard. Текущая модель:
 
+Короткий принципиальный контракт по A/B/C вынесен в
+[docs/routing-policy-principles.md](/docs/routing-policy-principles.md). Этот
+файл ниже описывает текущую реализацию того же контракта.
+
 ```text
 LAN/Wi-Fi TCP             -> STEALTH_DOMAINS/VPN_STATIC_NETS
                            -> sing-box REDIRECT :<lan-redirect-port> -> VLESS+Reality -> VPS
