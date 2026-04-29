@@ -376,13 +376,18 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
-  dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
+  policy DNS split via dnsmasq + sing-box vps-dns-in
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
+  existing 3x-ui/Xray Docker container behind Caddy
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
+  Unbound managed-DNS resolver on restricted :15353 listeners:
+    - 127.0.0.1 for host checks
+    - Docker bridge / configured Reality target for Xray-routed DNS
+    - UFW allows :15353 only from the Xray Docker bridge
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   stealth stack under /opt/stealth
 
@@ -546,6 +551,12 @@ Expected invariants:
 - Remote QR/VLESS clients connect to the home public IP on `:<home-reality-port>`, not directly to VPS.
 - Router-side `sing-box` accepts `reality-in` on `0.0.0.0:<home-reality-port>`.
 - Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
+- Plain DNS from Wi-Fi/LAN and mobile Channels A/B/C reaches router dnsmasq.
+- Managed/foreign DNS goes through `dnsmasq -> vps-dns-in -> hijack-dns ->
+  vps-dns-server -> reality-out -> VPS Unbound`; RU/direct/default DNS stays on
+  the home/RF/default resolver path.
+- VPS Unbound `:15353` is not public: UFW allows it only from the Xray Docker
+  bridge, while public `53/tcp,udp` is denied.
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` and active `wgc1` are absent.
 

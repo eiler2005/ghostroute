@@ -1,0 +1,7 @@
+---
+- name: restart unbound
+  ansible.builtin.service:
+    name: unbound
+    state: restarted
+  when: vps_unbound_enabled | bool
+

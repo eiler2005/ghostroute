@@ -4,6 +4,41 @@
     port: "443"
     proto: tcp
 
+- name: Remove accidental public DNS allow on VPS
+  community.general.ufw:
+    rule: allow
+    port: "53"
+    proto: "{{ item }}"
+    delete: true
+  loop:
+    - tcp
+    - udp
+  when: vps_unbound_enabled | default(true) | bool
+
+- name: Deny public DNS on VPS
+  community.general.ufw:
+    rule: deny
+    port: "53"
+    proto: "{{ item }}"
+  loop:
+    - tcp
+    - udp
+  when: vps_unbound_enabled | default(true) | bool
+
+- name: Allow Xray Docker bridge to reach VPS Unbound policy resolver
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ vps_unbound_docker_bridge_cidr }}"
+    port: "{{ vps_unbound_listen_port | string }}"
+    proto: "{{ item }}"
+    comment: "GhostRoute Xray bridge to Unbound"
+  loop:
+    - tcp
+    - udp
+  when:
+    - vps_unbound_enabled | default(true) | bool
+    - vps_unbound_docker_bridge_cidr | default('') | length > 0
+
 - name: Ensure SSH allow rule still present (safety check)
   ansible.builtin.shell: "ufw status | grep -E '22(/tcp)?\\s+ALLOW'"
   register: ssh_rule

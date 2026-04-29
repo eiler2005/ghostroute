@@ -271,3 +271,109 @@
   ansible.builtin.command:
     argv: [docker, restart, xray]
   when: xray_reality_sni_sync is changed or xray_reality_clients_sync is changed
+
+- name: Persist Xray template route for private VPS Unbound endpoint
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker exec -i \
+      -e UNBOUND_TARGET={{ vps_unbound_reality_target_host | quote }} \
+      -e UNBOUND_PORT={{ vps_unbound_xray_allow_port | string | quote }} \
+      xray python3 - <<'PY'
+    import json
+    import os
+    import sqlite3
+
+    config_path = "/app/bin/config.json"
+    db_path = "/etc/x-ui/x-ui.db"
+    target = os.environ["UNBOUND_TARGET"]
+    port = os.environ["UNBOUND_PORT"]
+    if not target:
+        print("ok")
+        raise SystemExit(0)
+
+    desired = {
+        "type": "field",
+        "ip": [f"{target}/32"],
+        "port": port,
+        "outboundTag": "direct",
+    }
+
+    with open(config_path, "r", encoding="utf-8") as fh:
+        cfg = json.load(fh)
+
+    # 3x-ui persists a template and then injects DB-managed inbounds into the
+    # runtime config. Keep only the API inbound in the template to avoid
+    # duplicating managed Reality inbounds after restart.
+    cfg["inbounds"] = [
+        inbound for inbound in cfg.get("inbounds", [])
+        if inbound.get("tag") == "api"
+    ]
+
+    routing = cfg.setdefault("routing", {})
+    rules = routing.setdefault("rules", [])
+    rules = [
+        rule for rule in rules
+        if not (
+            rule.get("outboundTag") == "direct"
+            and rule.get("port") == port
+            and f"{target}/32" in rule.get("ip", [])
+        )
+    ]
+
+    insert_at = len(rules)
+    for idx, rule in enumerate(rules):
+        if rule.get("outboundTag") == "blocked" and "geoip:private" in rule.get("ip", []):
+            insert_at = idx
+            break
+
+    rules.insert(insert_at, desired)
+    cfg["routing"]["rules"] = rules
+
+    updated = json.dumps(cfg, sort_keys=True, separators=(",", ":"))
+    con = sqlite3.connect(db_path)
+    row = con.execute("select value from settings where key = ?", ("xrayTemplateConfig",)).fetchone()
+    current = row[0] if row else ""
+    if current:
+        try:
+            current = json.dumps(json.loads(current), sort_keys=True, separators=(",", ":"))
+        except Exception:
+            pass
+
+    if current == updated:
+        print("ok")
+        raise SystemExit(0)
+
+    pretty = json.dumps(cfg, indent=2)
+    if row:
+        con.execute("update settings set value = ? where key = ?", (pretty, "xrayTemplateConfig"))
+    else:
+        con.execute("insert into settings (key, value) values (?, ?)", ("xrayTemplateConfig", pretty))
+    con.commit()
+    print("changed")
+    PY
+  args:
+    executable: /bin/bash
+  register: xray_private_unbound_route
+  changed_when: xray_private_unbound_route.stdout | trim == "changed"
+  when:
+    - vps_unbound_enabled | default(true) | bool
+    - vps_unbound_reality_target_host | default('') | length > 0
+
+- name: Validate Xray config after private Unbound allow route
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - xray
+      - /app/bin/xray-linux-amd64
+      - run
+      - -test
+      - -c
+      - /app/bin/config.json
+  changed_when: false
+  when: xray_private_unbound_route is changed
+
+- name: Restart xray container after private Unbound template route
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xray_private_unbound_route is changed

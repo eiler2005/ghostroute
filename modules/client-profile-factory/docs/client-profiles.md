@@ -311,9 +311,11 @@ ssh admin@192.168.50.1 \
 ```
 
 This audit does not prove an LTE DNS leak. It only catches DNS traffic that
-already entered the Home Reality tunnel and then tried to exit via `direct-out`.
-The router `sing-box` config sends tunneled mobile DNS ports `53/853` through
-`reality-out` as a server-side guard.
+already entered the Home Reality tunnel and then tried to exit unexpectedly.
+The router `sing-box` config sends tunneled mobile plain DNS `53` to
+router-local dnsmasq. dnsmasq then sends managed/foreign names to VPS Unbound
+and leaves RU/direct/default names on the home resolver path. DoH/DoT generated
+inside an app remains a separate client-side proof item.
 
 ## Emergency Direct-VPS Profiles
 
@@ -370,12 +372,11 @@ Enable it only when explicitly testing UDP behavior.
 
 ## Channel C1 Home-First Naive
 
-Channel C is C1: a planned selected-client home-first Naive /
-HTTPS-H2-CONNECT-like lane. The device connects to the home router first; after
-router ingress, sing-box applies the same managed split used by Home Reality and
-Channel B. It does not provide automatic failover and should remain outside
-production checks until SFI/sing-box import, connection and real app egress are
-proven.
+Channel C is C1 home-first with two explicit selected-client variants:
+C1-Shadowrocket HTTPS CONNECT compatibility and C1-sing-box native Naive. The
+device connects to the home router first; after router ingress, sing-box applies
+the same managed split used by Home Reality and Channel B. It does not provide
+automatic failover.
 
 ```text
 client app -> home public IP :<home-channel-c-public-port>
@@ -395,8 +396,9 @@ Generated artifacts can be viewed with:
 
 The intended Channel C output is home-first only:
 
-- `<client>-sfi-sing-box.json` and QR PNG: primary SFI/sing-box proof profile
-  with a `naive` outbound to `channel_c_home_public_host`.
+- `<client>-sfi-sing-box.json` and QR PNG: intended SFI/sing-box native Naive
+  profile with a `naive` outbound to `channel_c_home_public_host`; currently
+  blocked on tested iPhone SFI `1.11.4`, which rejects outbound `type: naive`.
 - `<client>.txt` and QR PNG: `naive+https://...` URI for clients with native
   NaiveProxy-style import support.
 - `<client>-https.txt`: plain `https://...` compatibility URL.
@@ -404,11 +406,12 @@ The intended Channel C output is home-first only:
   compatibility config with `method=connect`, TLS enabled and `FINAL,PROXY`.
 - `README.md`: local import checklist and acceptance notes.
 
-Keep Channel C profiles disabled/off until its C1 compatibility proof is
-complete. Treat Channel B profiles as selected-client production credentials and
-Channel C profiles as planned C1 credentials. These profiles never change router
-behavior by themselves; the router C1 ingress is deployed separately with
-`ansible-playbook playbooks/22-channel-c-router.yml`.
+Treat Channel B profiles as selected-client production credentials and Channel C
+profiles as explicit selected-client C1 credentials. C1-Shadowrocket is
+live-proven on iPhone; C1-sing-box remains a native Naive target until an iOS
+client with outbound `type: naive` support is selected. These profiles never
+change router behavior by themselves; the router C1 ingress is deployed
+separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 
 ## Clean Local Artifacts
 

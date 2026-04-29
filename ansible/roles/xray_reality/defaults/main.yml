@@ -10,6 +10,8 @@ xray_reality_listen_port: 8443
 reality_dest: gateway.icloud.com:443
 reality_server_names:
   - gateway.icloud.com
+vps_unbound_reality_target_host: ""
+vps_unbound_xray_allow_port: 15353
 reality_short_ids: []
 reality_server_public_key: ""
 clients: []

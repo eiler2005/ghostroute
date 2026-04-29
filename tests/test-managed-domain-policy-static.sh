@@ -91,7 +91,14 @@ assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/canva.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/notion.so/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/rutracker.org/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.net/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.org/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/meduza.io/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/account.apple.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/idmsa.apple.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/icloud.com.cn/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/apzones.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/doh.dns.apple.com/STEALTH_DOMAINS"
 
 # Static direct-IP catalog: this is still managed traffic. It covers services
 # that can connect by IP before a DNS-populated ipset entry exists.
@@ -153,6 +160,7 @@ AUTO_DNSMASQ="$TMPDIR/auto.conf" \
 STATIC_NETS="$TMPDIR/static.txt" \
 STEALTH_IPSET_SNAPSHOT="$TMPDIR/stealth.ipset" \
 SINGBOX_RULE_DIR="$TMPDIR/rules" \
+DNSMASQ_VPS_DNS_CONF="$TMPDIR/managed-vps-dns.conf" \
   "${PROJECT_ROOT}/${RULESET_SCRIPT}" --no-restart >/dev/null
 
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"telegram.org"'

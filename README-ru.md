@@ -23,7 +23,8 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
   GEOIP и rule-list policy; это routing layer, а не просто VPN toggle.
 - Layer 1 — managed channels. Channel A, Channel B и Channel C работают home-first:
   первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
-  остается planned C1 compatibility lane до live proof.
+  теперь разделен на C1-Shadowrocket HTTPS CONNECT compatibility и C1-sing-box
+  native Naive target.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
 - Layer 3 — VPS. Он служит удаленным egress для выбранного managed traffic.
@@ -37,8 +38,9 @@ profiles, а не к общей архитектуре.
 
 Только Channel A входит в automatic router data plane. Channel B — production
 lane для selected device-client profiles с отдельным ingress/relay и без
-захвата Channel A REDIRECT. Channel C означает только planned C1 home-first
-Naive ingress на роутере, а не VPS-only backend.
+захвата Channel A REDIRECT. Channel C означает только C1 home-first на роутере:
+C1-Shadowrocket compatibility live-proven и C1-sing-box native Naive
+server-ready/client-blocked, а не VPS-only backend.
 Автоматический failover через B/C не включается.
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
@@ -62,9 +64,10 @@ Caddy/VPS или Reality/Vision data plane.
   подключаются к домашнему ingress через XHTTP/TLS, затем роутер relays трафик
   в локальный sing-box SOCKS и переиспользует Reality/Vision upstream на VPS
   `:443`.
-- Channel C planned C1 lane: Naive / HTTPS-H2-CONNECT-like клиенты сначала
-  подключаются к домашнему endpoint, затем router-side sing-box применяет тот
-  же managed split и Reality/Vision upstream.
+- Channel C C1 lane: C1-Shadowrocket использует HTTPS CONNECT/TLS как
+  live-proven iPhone compatibility path; C1-sing-box использует router-side
+  native Naive, но пока ожидает iOS client support for outbound `type: naive`.
+  Оба варианта применяют тот же managed split и Reality/Vision upstream.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных
   клиентов: первая сеть видит home endpoint, а не VPS endpoint.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
@@ -272,17 +275,21 @@ Channel B работает как production lane для selected clients: вы�
 Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, где
 managed домены продолжают идти через существующий Reality/Vision upstream на VPS,
 а non-managed — сразу в home WAN.
-Channel C остаётся planned C1 compatibility lane: selected clients подключаются
-к домашнему Naive/HTTPS-H2-CONNECT-like ingress, затем `channel-c-naive-in` в
-router-side sing-box применяет общий managed split.
+Channel C теперь разделен на два C1-варианта. C1-Shadowrocket подключается к
+домашнему HTTPS CONNECT/TLS ingress на `:4443` и попадает в
+`channel-c-shadowrocket-http-in`; это compatibility, не native Naive.
+C1-sing-box подключается к домашнему Naive ingress и попадает в
+`channel-c-naive-in`; серверная часть готова, но протестированный iPhone SFI
+`1.11.4` не поддержал outbound `type: naive`. Оба варианта используют общий
+managed split.
 
 Границы изоляции Channel B жесткие: отдельный ingress-port и локальный relay на
 роутере без захвата Channel A REDIRECT, router DNS, TUN state и automatic
 failover. Artifacts в
 `ansible/out/clients-channel-b/`
 считаются selected-client production credentials. Artifacts в
-`ansible/out/clients-channel-c/` остаются planned C1 home-first artifacts до
-отдельного live compatibility proof.
+`ansible/out/clients-channel-c/` считаются explicit C1 selected-client
+artifacts: C1-Shadowrocket live-proven, C1-sing-box native target.
 
 ---
 
@@ -297,13 +304,18 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay к sing-box SOCKS на 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
-  dnscrypt-proxy on 127.0.0.1:<dnscrypt-port>
+  policy DNS split via dnsmasq + sing-box vps-dns-in
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
   VPS Ubuntu host
   shared system Caddy with layer4 plugin on :443
+  existing 3x-ui/Xray Docker container behind Caddy
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
+  Unbound managed-DNS resolver on restricted :15353 listeners:
+    - 127.0.0.1 for host checks
+    - Docker bridge / configured Reality target for Xray-routed DNS
+    - UFW allows :15353 only from the Xray Docker bridge
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   stealth stack under /opt/stealth
 

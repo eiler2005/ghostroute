@@ -20,6 +20,10 @@ Remote QR mobile clients  -> home IP :<home-reality-port>
                                 STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound -> VPS
                                 other destinations -> direct-out -> home WAN
 
+DNS managed names         -> dnsmasq -> vps-dns-in -> hijack-dns
+                           -> vps-dns-server -> Reality outbound -> VPS Unbound
+DNS RU/direct/default     -> dnsmasq -> home/RF/default resolver
+
 router OUTPUT             -> main routing unless explicitly proxied
 ```
 
@@ -88,14 +92,77 @@ Skip/direct источники не должны auto-добавляться в 
 
 `VPN_DOMAINS` больше не должен существовать в steady state.
 
-## DNS
+## Две точки отбора трафика
 
-Supported-схема:
+Политическое намерение одно: managed-домены и static CIDR должны уйти в VPS.
+Но runtime-точек отбора две, потому что Wi-Fi/LAN и mobile ingress попадают в
+роутер по-разному.
+
+Wi-Fi/LAN отбирается через `dnsmasq + ipset + iptables`:
 
 ```text
-dnsmasq -> dnscrypt-proxy 127.0.0.1:<dnscrypt-port>
-dnscrypt-proxy -> sing-box SOCKS 127.0.0.1:<router-socks-port>
+Wi-Fi/LAN device
+  -> router DNS / dnsmasq
+  -> dnsmasq резолвит managed-домен
+  -> кладёт IP в STEALTH_DOMAINS
+  -> iptables REDIRECT отправляет TCP в sing-box redirect-in
+  -> reality-out -> VPS
 ```
+
+Это нужно потому, что обычный LAN-трафик изначально ещё не внутри sing-box.
+Сначала роутер ловит его по IP через dnsmasq-populated ipset.
+
+Mobile/selected-client трафик отбирается уже внутри sing-box:
+
+```text
+iPhone LTE / selected endpoint
+  -> Channel A/B/C ingress on router
+  -> sing-box sniff: TLS SNI / HTTP Host
+  -> match stealth-domains.json / stealth-static.json
+  -> reality-out -> VPS
+```
+
+Это не ручное дублирование политики. Оператор ведёт один managed catalog, а
+deploy/`update-singbox-rule-sets.sh` делают два runtime-представления:
+
+```text
+configs/dnsmasq-stealth.conf.add
+  -> STEALTH_DOMAINS для Wi-Fi/LAN
+  -> stealth-domains.json для mobile Channels A/B/C
+```
+
+## DNS
+
+Supported-схема теперь policy-based, а не "весь DNS через VPS":
+
+```text
+managed/foreign domain
+  -> dnsmasq server=/domain/127.0.0.1#<vps-dns-forward-port>
+  -> sing-box vps-dns-in
+  -> hijack-dns
+  -> sing-box DNS server vps-dns-server
+  -> detour reality-out
+  -> VPS Unbound :15353
+
+RU/direct/default domain
+  -> dnsmasq default upstream
+  -> home/RF/default resolver
+```
+
+For managed DNS transport, sing-box uses `hijack-dns` on `vps-dns-in` and an
+internal TCP DNS server with `detour: reality-out`. This does not send
+RU/default domains to the VPS; it only transports managed DNS across Reality.
+
+Reality on the VPS is currently handled by the existing `3x-ui`/Xray Docker
+container behind Caddy. The managed DNS target is therefore the configured
+`vps_unbound_reality_target_host:15353`, not container-local `127.0.0.1`.
+UFW allows `15353` only from the Xray Docker bridge, while public DNS
+`53/tcp,udp` stays denied.
+
+Wi-Fi/LAN plain DNS is captured back to router dnsmasq. Mobile Channel A/B/C
+plain DNS `:53`, once it reaches sing-box ingress, is rewritten to the same
+router-local dnsmasq path. From that point the split is identical for Wi-Fi and
+mobile channels.
 
 IPv6 выключен, поэтому dnsmasq фильтрует AAAA:
 

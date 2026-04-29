@@ -118,8 +118,12 @@
   ansible.builtin.raw: |
     CONF=/jffs/configs/dnsmasq.conf.add
     touch $CONF
+    touch {{ router_vps_dnsmasq_conf_path }}
     grep -q '^conf-file={{ stealth_dnsmasq_conf_path }}$' $CONF || \
       echo 'conf-file={{ stealth_dnsmasq_conf_path }}' >> $CONF
+    grep -q '^conf-file={{ router_vps_dnsmasq_conf_path }}$' $CONF || \
+      echo 'conf-file={{ router_vps_dnsmasq_conf_path }}' >> $CONF
+    sed -i '\|^tcp-upstream$|d' $CONF
     service restart_dnsmasq
 
 - name: Ensure Channel A persistence and catalog cron entries

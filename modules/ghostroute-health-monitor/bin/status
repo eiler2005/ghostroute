@@ -212,6 +212,11 @@ count_drift() {
     HOME_REALITY_MSS_CLAMP
     ROUTER_TCP_PERF_TUNING
     HOME_REALITY_DNS_GUARD_RULE
+    MANAGED_VPS_DNS_INCLUDE
+    VPS_DNS_FORWARD_LISTENER
+    VPS_DNS_FORWARD_RULE
+    LAN_DNS_CAPTURE_UDP
+    LAN_DNS_CAPTURE_TCP
     HOME_REALITY_SPLIT_RULE
     HOME_REALITY_DIRECT_RULE
     CHANNEL_B_DNSCRYPT_SOCKS_LISTENER
@@ -352,7 +357,7 @@ headroom="$(awk -v cur="$stealth_current" -v max="$stealth_max" 'BEGIN { if (max
 usage_pct="$(awk -v cur="$stealth_current" -v max="$stealth_max" 'BEGIN { if (max <= 0) print "n/a"; else printf "%.1f%%", cur * 100 / max }')"
 mirror_count="$(collect_rule_mirror_count)"
 
-channel_a_state="listener $(bool_label "$(kv HOME_REALITY_LISTENER)") / split $(bool_label "$(kv HOME_REALITY_SPLIT_RULE)") / DNS guard $(bool_label "$(kv HOME_REALITY_DNS_GUARD_RULE)")"
+channel_a_state="listener $(bool_label "$(kv HOME_REALITY_LISTENER)") / split $(bool_label "$(kv HOME_REALITY_SPLIT_RULE)") / DNS->dnsmasq $(bool_label "$(kv HOME_REALITY_DNS_GUARD_RULE)")"
 channel_a_perf="MSS $(bool_label "$(kv HOME_REALITY_MSS_CLAMP)") / connlimit $(bool_label "$(kv HOME_REALITY_CONNLIMIT_DROP)") / TCP $(bool_label "$(kv ROUTER_TCP_PERF_TUNING)")"
 channel_b_state="redirect $(bool_label "$(kv CHANNEL_B_REDIRECT_STEALTH)") / static $(bool_label "$(kv CHANNEL_B_REDIRECT_STATIC)") / DNS SOCKS $(bool_label "$(kv CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)")"
 

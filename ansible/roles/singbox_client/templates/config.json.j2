@@ -4,7 +4,19 @@
     "level": "info",
     "output": "{{ singbox_log_path }}",
     "timestamp": true
-  },
+  }{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
+  "dns": {
+    "servers": [
+      {
+        "type": "tcp",
+        "tag": "vps-dns-server",
+        "server": "{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default('127.0.0.1')) }}",
+        "server_port": {{ vps_unbound_listen_port | default(15353) }},
+        "detour": "reality-out"
+      }
+    ],
+    "final": "vps-dns-server"
+  }{% endif %},
   "inbounds": [
     {
       "type": "redirect",
@@ -19,7 +31,16 @@
       "listen": "127.0.0.1",
       "listen_port": {{ singbox_dnscrypt_socks_port }}{% if not modern_sniff %},
       "sniff": false{% endif %}
-    }{% if home_reality_enabled | default(false) | bool %},
+    }{% if (router_dns_egress_mode | default('policy_split') == 'policy_split') or (home_reality_enabled | default(false) | bool) %},{% endif %}
+{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %}
+    {
+      "type": "direct",
+      "tag": "vps-dns-in",
+      "listen": "{{ router_vps_dns_forward_host | default('127.0.0.1') }}",
+      "listen_port": {{ router_vps_dns_forward_port | default(15353) }}
+    }{% if home_reality_enabled | default(false) | bool %},{% endif %}
+{% endif %}
+{% if home_reality_enabled | default(false) | bool %}
     {
       "type": "vless",
       "tag": "reality-in",
@@ -150,14 +171,29 @@
     ],
     "rules": [
     { "inbound": "redirect-in", "outbound": "reality-out" },
-      { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if home_reality_enabled | default(false) | bool %},
+      { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
+      { "inbound": "vps-dns-in", "action": "hijack-dns" }{% endif %}{% if home_reality_enabled | default(false) | bool %},
 {% if modern_sniff %}
       { "inbound": "reality-in", "action": "sniff" },
       { "inbound": "channel-b-relay-socks", "action": "sniff" },
 {% endif %}
+{% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "reality-in",
-        "port": [53, 853],
+        "port": 53,
+        "action": "route-options",
+        "override_address": "127.0.0.1",
+        "override_port": 53
+      },
+      {
+        "inbound": "reality-in",
+        "port": 53,
+        "outbound": "direct-out"
+      },
+{% endif %}
+      {
+        "inbound": "reality-in",
+        "port": 853,
         "outbound": "reality-out"
       },
       {
@@ -172,9 +208,23 @@
       },
       { "inbound": "reality-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
       { "inbound": "reality-in", "outbound": "direct-out" },
+{% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "channel-b-relay-socks",
-        "port": [53, 853],
+        "port": 53,
+        "action": "route-options",
+        "override_address": "127.0.0.1",
+        "override_port": 53
+      },
+      {
+        "inbound": "channel-b-relay-socks",
+        "port": 53,
+        "outbound": "direct-out"
+      },
+{% endif %}
+      {
+        "inbound": "channel-b-relay-socks",
+        "port": 853,
         "outbound": "reality-out"
       },
       {
@@ -193,9 +243,23 @@
 {% if modern_sniff %}
       { "inbound": "channel-c-naive-in", "action": "sniff" },
 {% endif %}
+{% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "channel-c-naive-in",
-        "port": [53, 853],
+        "port": 53,
+        "action": "route-options",
+        "override_address": "127.0.0.1",
+        "override_port": 53
+      },
+      {
+        "inbound": "channel-c-naive-in",
+        "port": 53,
+        "outbound": "direct-out"
+      },
+{% endif %}
+      {
+        "inbound": "channel-c-naive-in",
+        "port": 853,
         "outbound": "reality-out"
       },
       {
@@ -214,9 +278,23 @@
 {% if modern_sniff %}
       { "inbound": "channel-c-shadowrocket-http-in", "action": "sniff" },
 {% endif %}
+{% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "channel-c-shadowrocket-http-in",
-        "port": [53, 853],
+        "port": 53,
+        "action": "route-options",
+        "override_address": "127.0.0.1",
+        "override_port": 53
+      },
+      {
+        "inbound": "channel-c-shadowrocket-http-in",
+        "port": 53,
+        "outbound": "direct-out"
+      },
+{% endif %}
+      {
+        "inbound": "channel-c-shadowrocket-http-in",
+        "port": 853,
         "outbound": "reality-out"
       },
       {

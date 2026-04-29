@@ -32,7 +32,7 @@
         - health_monitor
   post_tasks:
     - name: Refresh sing-box rule-sets after catalog deploy
-      ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+      ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --restart-if-changed
       changed_when: false
       when: stealth_channel_a_lan_enabled | bool
 

@@ -281,8 +281,9 @@ Watch the `DROP` packet counter during LTE tests. It should stay near zero.
 Mobile DNS hardening is handled separately from raw throughput:
 
 - iOS client apps should use Fake-IP / override-system-DNS style settings.
-- Router-side `reality-in` DNS ports `53/853` are forced through
-  `reality-out` if DNS already entered the tunnel.
+- Router-side `reality-in` plain DNS `53` is sent to router-local dnsmasq.
+  dnsmasq applies policy-based DNS: managed/foreign names use VPS Unbound, while
+  RU/direct/default names use the home resolver path.
 
 DNS latency can still affect page-load feel if the mobile app does not cache or
 fake DNS efficiently. This is usually visible as slow initial page start rather

@@ -29,6 +29,7 @@ CHANNEL_C_SHADOWROCKET_PORT={{ channel_c_shadowrocket_ingress_port | default(0) 
 CHANNEL_C_SHADOWROCKET_CONNLIMIT_ABOVE={{ channel_c_shadowrocket_connlimit_above | default(500) }}
 CHANNEL_C_SHADOWROCKET_MSS={{ channel_c_shadowrocket_mss | default(1360) }}
 ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
+ROUTER_DNS_CAPTURE_LAN_PLAIN_53={{ router_dns_capture_lan_plain_53 | default(true) | ternary('1', '0') }}
 VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
 WAN_GW={{ wan_gw }}
@@ -81,6 +82,16 @@ iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j R
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
+
+# Keep plain LAN DNS under router policy control. dnsmasq then sends only
+# managed/foreign domains to the VPS DNS forwarder and leaves RU/default names
+# on the home/RF resolver path.
+iptables -t nat -D PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
+iptables -t nat -D PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
+if [ "$ROUTER_DNS_CAPTURE_LAN_PLAIN_53" = "1" ]; then
+  iptables -t nat -A PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -A PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53
+fi
 
 # 4. filter: force QUIC/HTTP3 fallback to TCP for Channel A.
 # VLESS+Reality TCP is the stable path. Silently dropping UDP/443 avoids the

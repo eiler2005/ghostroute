@@ -24,6 +24,7 @@ router_health_load_env() {
   GHOSTROUTE_HOME_REALITY_PORT="${GHOSTROUTE_HOME_REALITY_PORT:-${HOME_REALITY_PORT:-}}"
   GHOSTROUTE_DNSCRYPT_SOCKS_PORT="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-${SINGBOX_DNSCRYPT_SOCKS_PORT:-}}"
   GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-${DNSCRYPT_PORT:-}}"
+  GHOSTROUTE_VPS_DNS_FORWARD_PORT="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-${VPS_DNS_FORWARD_PORT:-15353}}"
   GHOSTROUTE_HOME_REALITY_MSS="${GHOSTROUTE_HOME_REALITY_MSS:-${HOME_REALITY_MSS:-1360}}"
   GHOSTROUTE_HOME_REALITY_CONNLIMIT="${GHOSTROUTE_HOME_REALITY_CONNLIMIT:-${HOME_REALITY_CONNLIMIT_ABOVE:-500}}"
 
@@ -375,7 +376,7 @@ router_collect_health_state() {
   local outfile="$1"
   router_health_load_env || return 1
 
-  router_ssh "GHOSTROUTE_REDIRECT_PORT='${GHOSTROUTE_REDIRECT_PORT}' GHOSTROUTE_HOME_REALITY_PORT='${GHOSTROUTE_HOME_REALITY_PORT}' GHOSTROUTE_DNSCRYPT_SOCKS_PORT='${GHOSTROUTE_DNSCRYPT_SOCKS_PORT}' GHOSTROUTE_DNSCRYPT_PORT='${GHOSTROUTE_DNSCRYPT_PORT}' GHOSTROUTE_HOME_REALITY_MSS='${GHOSTROUTE_HOME_REALITY_MSS}' GHOSTROUTE_HOME_REALITY_CONNLIMIT='${GHOSTROUTE_HOME_REALITY_CONNLIMIT}' sh -s" <<'REMOTE' > "$outfile"
+  router_ssh "GHOSTROUTE_REDIRECT_PORT='${GHOSTROUTE_REDIRECT_PORT}' GHOSTROUTE_HOME_REALITY_PORT='${GHOSTROUTE_HOME_REALITY_PORT}' GHOSTROUTE_DNSCRYPT_SOCKS_PORT='${GHOSTROUTE_DNSCRYPT_SOCKS_PORT}' GHOSTROUTE_DNSCRYPT_PORT='${GHOSTROUTE_DNSCRYPT_PORT}' GHOSTROUTE_VPS_DNS_FORWARD_PORT='${GHOSTROUTE_VPS_DNS_FORWARD_PORT}' GHOSTROUTE_HOME_REALITY_MSS='${GHOSTROUTE_HOME_REALITY_MSS}' GHOSTROUTE_HOME_REALITY_CONNLIMIT='${GHOSTROUTE_HOME_REALITY_CONNLIMIT}' sh -s" <<'REMOTE' > "$outfile"
 set -eu
 
 latest_file() {
@@ -450,12 +451,15 @@ auto_count=$(grep -c '^ipset=.*/STEALTH_DOMAINS' /jffs/configs/dnsmasq-autodisco
 
 cron_list=$(cru l 2>/dev/null || true)
 dnscrypt_config=$(cat /opt/etc/dnscrypt-proxy.toml 2>/dev/null || true)
+dnsmasq_config=$(cat /jffs/configs/dnsmasq.conf.add 2>/dev/null || true)
+managed_vps_dns_config=$(cat /jffs/configs/dnsmasq-vps-managed.conf.add 2>/dev/null || true)
 singbox_config=$(cat /opt/etc/sing-box/config.json 2>/dev/null || true)
 singbox_config_compact=$(printf '%s\n' "$singbox_config" | awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }')
 redirect_port="${GHOSTROUTE_REDIRECT_PORT:-$(singbox_port_by_tag redirect-in)}"
 home_reality_port="${GHOSTROUTE_HOME_REALITY_PORT:-$(singbox_port_by_tag reality-in)}"
 dnscrypt_socks_port="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(singbox_port_by_tag dnscrypt-socks-in)}"
-dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-$(awk -F'#' '/^server=127[.]0[.]0[.]1#/ { gsub(/[^0-9].*/, "", $2); print $2; exit }' /jffs/configs/dnsmasq.conf.add 2>/dev/null)}"
+vps_dns_forward_port="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(singbox_port_by_tag vps-dns-in)}"
+dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-}"
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
@@ -575,12 +579,18 @@ printf 'HOME_REALITY_INPUT_ACCEPT=%s\n' "$(bool_grep "$filter_input" "--dport $h
 printf 'HOME_REALITY_CONNLIMIT_DROP=%s\n' "$(printf '%s\n' "$filter_input" | awk -v port="$home_reality_port" -v limit="$GHOSTROUTE_HOME_REALITY_CONNLIMIT" '$0 ~ "--dport " port { if ($0 ~ /connlimit/ && $0 ~ "--connlimit-above " limit && $0 ~ /-j DROP/) drop = NR; if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR } END { print (drop > 0 && first_accept > 0 && drop < first_accept) ? 1 : 0 }')"
 printf 'HOME_REALITY_MSS_CLAMP=%s\n' "$( { printf '%s\n' "$prerouting_mangle" | awk -v port="$home_reality_port" -v mss="$GHOSTROUTE_HOME_REALITY_MSS" '$0 ~ "--dport " port && /TCPMSS/ && $0 ~ "--set-mss " mss { found = 1 } END { exit(found ? 0 : 1) }'; } && { printf '%s\n' "$output_mangle" | awk -v port="$home_reality_port" -v mss="$GHOSTROUTE_HOME_REALITY_MSS" '$0 ~ "--sport " port && /TCPMSS/ && $0 ~ "--set-mss " mss { found = 1 } END { exit(found ? 0 : 1) }'; } && printf '1\n' || printf '0\n' )"
 printf 'ROUTER_TCP_PERF_TUNING=%s\n' "$( [ "$(cat /proc/sys/net/core/rmem_max 2>/dev/null)" = "16777216" ] && [ "$(cat /proc/sys/net/core/wmem_max 2>/dev/null)" = "16777216" ] && [ "$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)" = "4096 262144 16777216" ] && [ "$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_wmem 2>/dev/null)" = "4096 65536 16777216" ] && [ "$(cat /proc/sys/net/ipv4/tcp_mtu_probing 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null)" = "0" ] && [ "$(cat /proc/sys/net/ipv4/tcp_window_scaling 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_sack 2>/dev/null)" = "1" ] && [ "$(cat /proc/sys/net/ipv4/tcp_timestamps 2>/dev/null)" = "1" ] && printf '1\n' || printf '0\n' )"
-printf 'HOME_REALITY_DNS_GUARD_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","port":[53,853],"outbound":"reality-out"')"
+printf 'HOME_REALITY_DNS_GUARD_RULE=%s\n' "$( { bool_grep "$singbox_config_compact" '"inbound":"reality-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' | grep -q 1; } && { bool_grep "$singbox_config_compact" '"inbound":"reality-in","port":53,"outbound":"direct-out"' | grep -q 1; } && printf '1\n' || printf '0\n' )"
+printf 'HOME_REALITY_DOT_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","port":853,"outbound":"reality-out"')"
 printf 'HOME_REALITY_SPLIT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"')"
 printf 'HOME_REALITY_DIRECT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"direct-out"')"
 printf 'HOME_REALITY_ALL_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"reality-out"')"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$dnscrypt_socks_port")"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" "socks5://127.0.0.1:$dnscrypt_socks_port")"
+printf 'VPS_DNS_FORWARD_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$vps_dns_forward_port")"
+printf 'VPS_DNS_FORWARD_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"vps-dns-in","outbound":"reality-out"')"
+printf 'MANAGED_VPS_DNS_INCLUDE=%s\n' "$( { bool_grep "$dnsmasq_config" 'conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add' | grep -q 1; } && { bool_grep "$managed_vps_dns_config" 'server=/browserleaks.com/127.0.0.1#' | grep -q 1; } && printf '1\n' || printf '0\n' )"
+printf 'LAN_DNS_CAPTURE_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
+printf 'LAN_DNS_CAPTURE_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53')"
 printf 'CHANNEL_B_SINGBOX_KEEPALIVE=%s\n' "$(bool_grep "$singbox_config" 'tcp_keep_alive_interval')"
 printf 'CHANNEL_B_REDIRECT_STEALTH=%s\n' "$(bool_grep "$nat_prerouting" "-A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports $redirect_port")"
 printf 'CHANNEL_B_REDIRECT_STATIC=%s\n' "$(bool_grep "$nat_prerouting" "-A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports $redirect_port")"
@@ -896,7 +906,12 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] || drift_lines+=("missing connlimit DROP before home Reality ACCEPT")
   [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] || drift_lines+=("missing LTE-safe MSS clamp for home Reality")
   [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] || drift_lines+=("router TCP high-BDP performance tuning is missing")
-  [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing DNS guard rule for ports 53/853")
+  [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing plain DNS -> router dnsmasq rule")
+  [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] || drift_lines+=("managed VPS DNS include is missing browserleaks.com")
+  [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_LISTENER)" = "1" ] || drift_lines+=("vps-dns-in listener missing on router loopback")
+  [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_RULE)" = "1" ] || drift_lines+=("vps-dns-in is not routed to reality-out")
+  [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_UDP)" = "1" ] || drift_lines+=("LAN UDP/53 is not captured by router dnsmasq")
+  [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_TCP)" = "1" ] || drift_lines+=("LAN TCP/53 is not captured by router dnsmasq")
   [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] || drift_lines+=("home Reality ingress does not use STEALTH/VPN_STATIC split rule")
   [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing direct fallback rule")
   [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || drift_lines+=("home Reality ingress still relays all traffic to VPS")
@@ -977,7 +992,10 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Home Reality connlimit before ACCEPT | $( [ "$(router_kv_get "$state_file" HOME_REALITY_CONNLIMIT_DROP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality LTE MSS clamp | $( [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Router TCP high-BDP tuning | $( [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Home Reality DNS guard :53/:853 | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Home Reality DNS -> dnsmasq | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Managed VPS DNS include | $( [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| vps-dns-in listener/rule | $( [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_LISTENER)" = "1" ] && [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| LAN DNS capture :53 | $( [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_UDP)" = "1" ] && [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality managed split | $( [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality direct fallback | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |

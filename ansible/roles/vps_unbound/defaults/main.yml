@@ -1,0 +1,8 @@
+---
+vps_unbound_enabled: true
+vps_unbound_listen_host: 127.0.0.1
+vps_unbound_listen_port: 15353
+vps_unbound_docker_bridge_host: 172.22.0.1
+vps_unbound_docker_bridge_cidr: 172.22.0.0/16
+vps_unbound_reality_listen_host: ""
+vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.conf

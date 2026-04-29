@@ -7,8 +7,9 @@ GhostRoute: какие клиенты куда подключаются, как�
 
 ## Executive Summary
 
-В steady state активны два production-сценария и один planned selected-client
-C1 сценарий:
+В steady state активны Wi-Fi/LAN transparent routing, Channel A remote Home
+Reality, Channel B selected-client production и Channel C1 selected-client
+compatibility/native paths:
 
 1. Домашние Wi-Fi/LAN устройства используют transparent routing на роутере.
    Только managed-направления из `STEALTH_DOMAINS` и `VPN_STATIC_NETS` уходят
@@ -19,9 +20,13 @@ C1 сценарий:
    managed-направления идут через VPS, non-managed-направления идут через
    домашний WAN.
 
-3. Channel C1 selected clients подключаются к домашнему ASUS через
-   Naive/HTTPS-H2-CONNECT-like ingress на TCP/<home-channel-c-public-port>.
-   После входа в sing-box `channel-c-naive-in` применяется тот же split policy.
+3. Channel B selected clients подключаются к отдельному домашнему XHTTP/TLS
+   ingress. Роутер relays этот трафик в sing-box, после чего применяется тот
+   же split policy.
+
+4. Channel C1 selected clients используют два явных варианта: C1-Shadowrocket
+   HTTPS CONNECT/TLS на `:4443` как live-proven compatibility path и
+   C1-sing-box native Naive как server-ready path, ожидающий iOS client support.
 
 Ключевой результат: для LTE-оператора первый hop мобильного клиента выглядит
 как domestic `iPhone -> home RU IP`. Для сайтов страна/IP зависят от того,
@@ -37,9 +42,10 @@ C1 сценарий:
 | Router DNS | `dnsmasq` | Наполняет `STEALTH_DOMAINS`, фильтрует AAAA while IPv6 is off |
 | Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS, при необходимости через локальный sing-box SOCKS |
 | Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow/redirect home mobile ingress ports |
-| Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `channel-c-naive-in`, `reality-out`, `direct-out` |
+| Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `channel-b-relay-socks`, `channel-c-naive-in`, `channel-c-shadowrocket-http-in`, `vps-dns-in`, `reality-out`, `direct-out` |
 | VPS ingress | VPS host + Caddy L4 TCP/443 | Принимает router-side Reality connection |
-| VPS proxy | Xray Reality inbound | Финальный Reality ingress перед выходом в интернет |
+| VPS proxy | Existing `3x-ui`/Xray Docker container | Финальный Reality ingress перед выходом в интернет |
+| VPS DNS | Unbound on restricted `:15353` listeners | Managed-domain DNS resolver; UFW allows it only from the Xray Docker bridge |
 | Cold fallback | Preserved `wgc1_*` NVRAM | Не активен; включается только emergency script вручную |
 
 ## Scenario A: Home Wi-Fi / LAN
@@ -155,7 +161,38 @@ Expected website-facing exit: домашний российский WAN IP.
 This is the important post-cleanup nuance: Home Reality ingress is not an
 all-traffic relay to VPS. It is a home ingress plus split routing policy.
 
-## Scenario C: Channel C1 Home-First Naive
+## Scenario C: Channel B Selected-Client XHTTP/TLS
+
+```text
+selected endpoint
+  -> VLESS+XHTTP+TLS to home public RU IP TCP/<home-channel-b-port>
+  -> router local Xray channel-b-home-in
+  -> local relay to sing-box channel-b-relay-socks
+  -> sing-box route rule:
+       managed catalog/static match -> reality-out -> VPS
+       no managed match             -> direct-out -> home WAN
+```
+
+Channel B changes the first-hop protocol surface for selected clients, but it
+does not own a separate policy catalog. After the local relay, it uses the same
+managed split as Channel A, Wi-Fi/LAN and Channel C.
+
+## Scenario D: Channel C1-Shadowrocket Compatibility
+
+```text
+iPhone LTE / Shadowrocket
+  -> HTTPS CONNECT/TLS to home public RU IP TCP/4443
+  -> optional WAN REDIRECT to router internal TCP/<channel-c-shadowrocket-ingress-port>
+  -> ASUS sing-box channel-c-shadowrocket-http-in
+  -> sing-box route rule:
+       managed catalog/static match -> reality-out -> VPS
+       no managed match             -> direct-out -> home WAN
+```
+
+C1-Shadowrocket is not native Naive. It is the live-proven iPhone compatibility
+path that preserves the home-first model and the shared managed split.
+
+## Scenario E: Channel C1 Native Naive
 
 ### Managed Destination from C1
 
@@ -189,7 +226,31 @@ iPhone LTE
 
 Expected website-facing exit: домашний российский WAN IP.
 
-## Scenario D: Router-Originated Traffic
+## Scenario F: Policy-Based DNS
+
+```text
+Wi-Fi/LAN or mobile plain DNS
+  -> router dnsmasq
+  -> managed foreign name:
+       server=/domain/127.0.0.1#<vps-dns-forward-port>
+       -> sing-box vps-dns-in
+       -> hijack-dns
+       -> vps-dns-server over reality-out
+       -> VPS Unbound :15353
+  -> RU/direct/default name:
+       dnsmasq default upstream
+       -> home/RF/default resolver
+```
+
+This DNS path is policy-based, not "all DNS through VPS". Managed foreign
+services get consistent VPS web egress plus VPS DNS egress, while Russian or
+direct/default services do not get resolved through the VPS resolver.
+
+Because the VPS Reality backend is the existing `3x-ui`/Xray Docker container,
+the DNS target is `vps_unbound_reality_target_host:15353`. UFW allows that port
+only from the Xray Docker bridge, and public DNS `53/tcp,udp` remains closed.
+
+## Scenario G: Router-Originated Traffic
 
 ```text
 Router process
@@ -204,7 +265,7 @@ router-originated traffic can loop sing-box outbound connections.
 
 | Observer | Managed mobile traffic | Non-managed mobile traffic | Home LAN managed traffic | Home LAN non-managed traffic |
 |---|---|---|---|---|
-| LTE carrier | iPhone -> home RU IP TCP/<home-reality-port> or TCP/<home-channel-c-public-port> | iPhone -> home RU IP TCP/<home-reality-port> or TCP/<home-channel-c-public-port> | n/a | n/a |
+| LTE carrier | iPhone -> home RU IP on Channel A/B/C home port | iPhone -> home RU IP on Channel A/B/C home port | n/a | n/a |
 | Home ISP | home router -> VPS TCP/443 | home router -> target site directly | home router -> VPS TCP/443 | home router -> target site directly |
 | VPS host | connection from home router | does not see this flow | connection from home router | does not see this flow |
 | Target website | VPS datacenter IP | approved regional egress IP | VPS datacenter IP | approved regional egress IP |
@@ -234,10 +295,17 @@ what the LTE carrier saw as the first hop.
 
 - One router-side `sing-box` process handles both LAN and mobile ingress.
 - LAN managed TCP enters `redirect-in` on `:<lan-redirect-port>`.
-- Mobile clients enter `reality-in` on TCP/<home-reality-port>; C1 clients enter
-  `channel-c-naive-in` through TCP/<home-channel-c-public-port>.
+- Mobile Channel A clients enter `reality-in` on TCP/<home-reality-port>.
+- Channel B clients enter the local relay and then `channel-b-relay-socks`.
+- C1-Shadowrocket clients enter `channel-c-shadowrocket-http-in` through
+  TCP/4443.
+- C1 native clients enter `channel-c-naive-in` through
+  TCP/<home-channel-c-public-port>.
 - Managed destinations route to `reality-out`.
 - Non-managed destinations from mobile route to `direct-out`.
+- Managed foreign DNS reaches `vps-dns-in`, is hijacked to `vps-dns-server`,
+  and crosses Reality to VPS Unbound `:15353`.
+- RU/direct/default DNS stays on the home/RF/default resolver path.
 - `STEALTH_DOMAINS` is the active domain set.
 - `VPN_STATIC_NETS` remains as the historical static CIDR set name.
 - `VPN_DOMAINS` is absent.

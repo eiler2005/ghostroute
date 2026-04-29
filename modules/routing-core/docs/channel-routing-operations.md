@@ -11,10 +11,13 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Channel A WireGuard | n/a | inactive in steady state | cold fallback only |
 
-DNS is shared:
+DNS is policy-split through router dnsmasq:
 
 ```text
-dnsmasq -> dnscrypt-proxy 127.0.0.1:<dnscrypt-port>
+managed/foreign names -> dnsmasq -> vps-dns-in -> hijack-dns
+                      -> vps-dns-server -> reality-out -> VPS Unbound
+
+RU/direct/default names -> dnsmasq -> home/RF/default resolver
 ```
 
 Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
@@ -131,16 +134,23 @@ exist unless `modules/recovery-verification/router/emergency-enable-wgc1.sh --en
 ### DNS
 
 ```sh
-grep '^server=127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq.conf.add
+grep '^conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add$' /jffs/configs/dnsmasq.conf.add
+grep '^server=/browserleaks.com/127.0.0.1#<vps-dns-forward-port>$' /jffs/configs/dnsmasq-vps-managed.conf.add
 grep '@wgc1' /jffs/configs/dnsmasq.conf.add
-netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
+netstat -nlp 2>/dev/null | grep ':<vps-dns-forward-port> '
 ```
 
 Expected:
 
-- `server=127.0.0.1#<dnscrypt-port>` exists.
+- managed VPS DNS include exists and contains managed foreign domains.
+- RU/direct/default domains are absent from the managed VPS DNS include.
 - active `@wgc1` entries do not exist.
-- `dnscrypt-proxy` listens on `127.0.0.1:<dnscrypt-port>`.
+- `vps-dns-in` listens on `127.0.0.1:<vps-dns-forward-port>`.
+- On VPS, Unbound listens on loopback and the configured private/Reality target
+  addresses for `:15353`; UFW allows `:15353` only from the Xray Docker bridge,
+  and public `:53` is closed.
+- `vps-dns-in` uses sing-box `hijack-dns`; `vps-dns-server` uses TCP with
+  `detour: reality-out`.
 
 ### ipsets
 
@@ -330,7 +340,7 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 |---|---|
 | LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 DROP, sing-box log |
 | Emergency WGC1 fallback unexpectedly active | `wgs1`, `RC_VPN_ROUTE`, `0x1000`, table `wgc1`, emergency script state |
-| DNS looks wrong | `server=127.0.0.1#<dnscrypt-port>`, dnscrypt listener, no active `@wgc1` |
+| DNS looks wrong | managed VPS DNS include, `vps-dns-in` listener, no active `@wgc1`, app-level DoH/DoT |
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |
 | Reality tunnel down | `sing-box` status/log, VPS Caddy/Xray, `99-verify.yml` |
 

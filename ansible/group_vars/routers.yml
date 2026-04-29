@@ -75,6 +75,15 @@ dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"
 dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy
 dnscrypt_config_path: /opt/etc/dnscrypt-proxy.toml
 dnscrypt_init_path: /opt/etc/init.d/S09dnscrypt-proxy2
+router_dns_egress_mode: "{{ vault_router_dns_egress_mode | default('policy_split') }}"
+router_vps_dns_forward_host: "127.0.0.1"
+router_vps_dns_forward_port: "{{ vault_router_vps_dns_forward_port | default(vault_vps_unbound_listen_port | default(15353), true) }}"
+router_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-vps-managed.conf.add
+router_dns_capture_lan_plain_53: "{{ vault_router_dns_capture_lan_plain_53 | default(true) }}"
+router_mobile_dns_plain_53_to_dnsmasq: "{{ vault_router_mobile_dns_plain_53_to_dnsmasq | default(true) }}"
+vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1') }}"
+vps_unbound_listen_port: "{{ vault_vps_unbound_listen_port | default(15353) }}"
+vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | default(vps_ssh_host, true) }}"
 
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
