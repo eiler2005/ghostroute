@@ -6,12 +6,23 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 . "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 
 SAVE_MODE=0
-if [ "${1:-}" = "--save" ]; then
-  SAVE_MODE=1
-elif [ -n "${1:-}" ]; then
-  echo "Usage: ./modules/ghostroute-health-monitor/bin/router-health-report [--save]" >&2
-  exit 1
-fi
+JSON_MODE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --save)
+      SAVE_MODE=1
+      shift
+      ;;
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/ghostroute-health-monitor/bin/router-health-report [--json] [--save]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 router_health_load_env
 
@@ -24,11 +35,134 @@ TRAFFIC_OUTPUT="$TMPDIR/traffic-report.txt"
 TRAFFIC_SUMMARY="$TMPDIR/traffic-summary.env"
 MARKDOWN_OUTPUT="$TMPDIR/router-health-latest.md"
 
-router_collect_health_state "$STATE_FILE"
-router_collect_capacity_history "${PROJECT_ROOT}/docs/vpn-domain-journal.md" "$HISTORY_FILE" "$(date +%F)"
-"${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" > "$TRAFFIC_OUTPUT"
-router_extract_traffic_summary "$TRAFFIC_OUTPUT" "$TRAFFIC_SUMMARY"
+if [ -n "${ROUTER_HEALTH_STATE_FILE:-}" ]; then
+  cp "$ROUTER_HEALTH_STATE_FILE" "$STATE_FILE"
+else
+  router_collect_health_state "$STATE_FILE"
+fi
+
+if [ -n "${ROUTER_HEALTH_HISTORY_FILE:-}" ]; then
+  cp "$ROUTER_HEALTH_HISTORY_FILE" "$HISTORY_FILE"
+else
+  router_collect_capacity_history "${PROJECT_ROOT}/docs/vpn-domain-journal.md" "$HISTORY_FILE" "$(date +%F)"
+fi
+
+if [ -n "${ROUTER_HEALTH_TRAFFIC_SUMMARY_FILE:-}" ]; then
+  cp "$ROUTER_HEALTH_TRAFFIC_SUMMARY_FILE" "$TRAFFIC_SUMMARY"
+else
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" > "$TRAFFIC_OUTPUT"
+  router_extract_traffic_summary "$TRAFFIC_OUTPUT" "$TRAFFIC_SUMMARY"
+fi
 router_render_health_markdown "$STATE_FILE" "$HISTORY_FILE" "$TRAFFIC_SUMMARY" > "$MARKDOWN_OUTPUT"
+
+if [ "$JSON_MODE" = "1" ]; then
+  ruby -rjson -rtime - "$STATE_FILE" "$HISTORY_FILE" "$TRAFFIC_SUMMARY" <<'RUBY'
+state_file, history_file, traffic_file = ARGV
+
+def kv(path)
+  result = {}
+  return result unless File.file?(path)
+  File.foreach(path, chomp: true) do |line|
+    next if line.strip.empty? || !line.include?('=')
+    key, value = line.split('=', 2)
+    result[key] = value.to_s
+  end
+  result
+end
+
+def status_from_bool(value)
+  value.to_s == '1' ? 'OK' : 'CRIT'
+end
+
+def check(probe, label, value, evidence)
+  status = status_from_bool(value)
+  {
+    probe: probe,
+    status: status,
+    severity: status == 'OK' ? 'info' : 'critical',
+    message: status == 'OK' ? "#{label} is present." : "#{label} is missing or unhealthy.",
+    evidence_json: evidence,
+    confidence: 'exact'
+  }
+end
+
+state = kv(state_file)
+history = kv(history_file)
+traffic = kv(traffic_file)
+
+checks = [
+  check('sing_box_redirect_listener', 'sing-box LAN redirect listener', state['CHANNEL_B_REDIRECT_LISTENER'], { key: 'CHANNEL_B_REDIRECT_LISTENER' }),
+  check('home_reality_listener', 'Home Reality listener', state['HOME_REALITY_LISTENER'], { key: 'HOME_REALITY_LISTENER' }),
+  check('home_reality_input_accept', 'Home Reality INPUT allow rule', state['HOME_REALITY_INPUT_ACCEPT'], { key: 'HOME_REALITY_INPUT_ACCEPT' }),
+  check('dnscrypt_proxy', 'dnscrypt-proxy SOCKS path', state['CHANNEL_B_DNSCRYPT_PROXY'], { key: 'CHANNEL_B_DNSCRYPT_PROXY' }),
+  check('rule_set_redirect_stealth', 'STEALTH_DOMAINS redirect rule', state['CHANNEL_B_REDIRECT_STEALTH'], { key: 'CHANNEL_B_REDIRECT_STEALTH' }),
+  check('rule_set_redirect_static', 'VPN_STATIC_NETS redirect rule', state['CHANNEL_B_REDIRECT_STATIC'], { key: 'CHANNEL_B_REDIRECT_STATIC' }),
+  check('quic_drop_stealth', 'STEALTH_DOMAINS QUIC fallback rule', state['CHANNEL_B_DROP_QUIC_STEALTH'], { key: 'CHANNEL_B_DROP_QUIC_STEALTH' }),
+  check('traffic_snapshot_cron', 'traffic snapshot cron', state['CRON_TRAFFIC_SNAPSHOT'], { key: 'CRON_TRAFFIC_SNAPSHOT' }),
+  check('domain_auto_add_cron', 'domain auto-add cron', state['CRON_DOMAIN_AUTO_ADD'], { key: 'CRON_DOMAIN_AUTO_ADD' })
+]
+
+ipv6_clean = %w[
+  IPV6_ADDR_BR0 IPV6_ADDR_WAN0 IPV6_ADDR_WGC1 IPV6_ADDR_WGS1
+  IPV6_ROUTE_MAIN IPV6_ROUTE_WGC1
+].all? { |key| state[key].to_s != '1' }
+checks << {
+  probe: 'ipv6_policy',
+  status: ipv6_clean ? 'OK' : 'WARN',
+  severity: ipv6_clean ? 'info' : 'warning',
+  message: ipv6_clean ? 'IPv6 runtime signals are disabled.' : 'IPv6 runtime signals were detected.',
+  evidence_json: state.select { |key, _| key.start_with?('IPV6_') },
+  confidence: 'exact'
+}
+
+overall = checks.any? { |row| row[:status] == 'CRIT' } ? 'CRIT' : (checks.any? { |row| row[:status] == 'WARN' } ? 'WARN' : 'OK')
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: {
+    command: 'router-health-report',
+    confidence: 'exact'
+  },
+  confidence: 'exact',
+  overall: overall,
+  router: {
+    product: state['ROUTER_PRODUCT'],
+    build: state['ROUTER_BUILDNO'],
+    extend: state['ROUTER_EXTENDNO'],
+    uptime: state['ROUTER_UPTIME']
+  },
+  services: {
+    router: overall,
+    vps: 'UNKNOWN',
+    reality: status_from_bool(state['HOME_REALITY_LISTENER']),
+    dns: status_from_bool(state['CHANNEL_B_DNSCRYPT_PROXY']),
+    ipv6: ipv6_clean ? 'OK' : 'WARN',
+    rule_set_sync: 'UNKNOWN'
+  },
+  capacity: {
+    stealth_domains_current: state.fetch('STEALTH_DOMAINS_CURRENT', '0').to_i,
+    stealth_domains_max: state.fetch('STEALTH_DOMAINS_MAX', '0').to_i,
+    stealth_domains_memory_bytes: state.fetch('STEALTH_DOMAINS_MEM', '0').to_i,
+    vpn_static_nets_current: state.fetch('VPN_STATIC_NETS_CURRENT', '0').to_i,
+    manual_rule_count: state.fetch('MANUAL_RULE_COUNT', '0').to_i,
+    auto_rule_count: state.fetch('AUTO_RULE_COUNT', '0').to_i
+  },
+  freshness: {
+    blocked_file_epoch: state.fetch('BLOCKED_FILE_EPOCH', '0').to_i,
+    persist_file_epoch: state.fetch('PERSIST_FILE_EPOCH', '0').to_i,
+    interface_counters_epoch: state.fetch('INTERFACE_COUNTERS_EPOCH', '0').to_i,
+    tailscale_epoch: state.fetch('LATEST_TAILSCALE_EPOCH', '0').to_i,
+    daily_epoch: state.fetch('LATEST_DAILY_EPOCH', '0').to_i
+  },
+  growth_trends: history,
+  traffic_summary: traffic,
+  checks: checks,
+  raw_keys: state.keys.sort
+})
+RUBY
+  exit 0
+fi
 
 cat "$MARKDOWN_OUTPUT"
 

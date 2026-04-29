@@ -1,0 +1,99 @@
+---
+- name: Deploy GhostRoute Console read-only MVP
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../../../ansible/secrets/stealth.yml
+  vars:
+    console_root: /opt/ghostroute-console
+    console_uid: "10000"
+    console_gid: "10000"
+  tasks:
+    - name: Create Console runtime directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+      loop:
+        - { path: "{{ console_root }}", mode: "0755" }
+        - { path: "{{ console_root }}/repo", mode: "0755" }
+        - { path: "{{ console_root }}/data", mode: "0750", owner: "{{ console_uid }}", group: "{{ console_gid }}" }
+        - { path: "{{ console_root }}/ssh", mode: "0750", owner: "root", group: "root" }
+
+    - name: Sync repo sources without secrets or generated artifacts
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -az
+          - --delete
+          - --rsync-path=sudo rsync
+          - --exclude=.git/
+          - --exclude=ansible/secrets/
+          - --exclude=ansible/out/
+          - --exclude=modules/ghostroute-console/data/
+          - --exclude=modules/ghostroute-console/app/node_modules/
+          - --exclude=modules/ghostroute-console/app/.next/
+          - --exclude=ghostroute-console-handoff/
+          - --exclude=*.db
+          - --exclude=*.db-shm
+          - --exclude=*.db-wal
+          - "{{ playbook_dir }}/../../../"
+          - "{{ ansible_user }}@{{ ansible_host }}:{{ console_root }}/repo/"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Sync factual Console data snapshot
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -az
+          - --delete
+          - --rsync-path=sudo rsync
+          - "{{ playbook_dir }}/../data/"
+          - "{{ ansible_user }}@{{ ansible_host }}:{{ console_root }}/data/"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
+    - name: Ensure Console data ownership after sync
+      ansible.builtin.file:
+        path: "{{ console_root }}/data"
+        state: directory
+        recurse: true
+        owner: "{{ console_uid }}"
+        group: "{{ console_gid }}"
+
+    - name: Remove legacy Console container before compose project migration
+      ansible.builtin.shell: |
+        set -eu
+        if docker inspect ghostroute-console >/dev/null 2>&1; then
+          project="$(docker inspect ghostroute-console --format '{% raw %}{{ index .Config.Labels "com.docker.compose.project" }}{% endraw %}' 2>/dev/null || true)"
+          if [ "$project" != "ghostroute-console" ]; then
+            docker rm -f ghostroute-console
+          fi
+        fi
+      changed_when: false
+
+    - name: Build and start Console container
+      ansible.builtin.command:
+        cmd: docker compose -f modules/ghostroute-console/vps/docker-compose.yml up -d --build
+        chdir: "{{ console_root }}/repo"
+      changed_when: true
+
+    - name: Remove empty legacy generic network if present
+      ansible.builtin.shell: docker network rm vps_default >/dev/null 2>&1 || true
+      changed_when: false
+
+    - name: Check local Console health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+        return_content: true
+        status_code: 200
+      register: console_health
+
+    - name: Show Console local status
+      ansible.builtin.debug:
+        msg: "{{ console_health.json }}"

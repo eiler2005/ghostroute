@@ -7,6 +7,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "${PROJECT_ROOT}/modules/dns-catalog-intelligence/tests/test-dns-forensics.sh"
 "${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-health-monitor.sh"
 "${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh"
+"${PROJECT_ROOT}/modules/ghostroute-console/tests/test-json-contracts.sh"
+npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" test
+npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" run build
+npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" run test:e2e
 "${PROJECT_ROOT}/tests/test-module-entrypoints.sh"
 "${PROJECT_ROOT}/tests/test-channel-a-deploy-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-bc-static.sh"

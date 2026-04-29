@@ -75,6 +75,12 @@
 
 ## Приоритетные направления
 
+Console-specific post-MVP work now has a separate roadmap:
+[ghostroute-console-post-mvp-roadmap.md](ghostroute-console-post-mvp-roadmap.md).
+Treat that document as Priority 1 for Console follow-up work. The broader
+items below remain Priority 2 candidates unless a separate plan promotes one
+of them.
+
 ### 1. Ужесточить auto-discovery доменов
 
 Проблема:
@@ -549,4 +555,5 @@ home WAN.
 - [modules/traffic-observatory/docs/llm-traffic-runbook.md](/modules/traffic-observatory/docs/llm-traffic-runbook.md)
 - [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
 - [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md)
+- [ghostroute-console-post-mvp-roadmap.md](ghostroute-console-post-mvp-roadmap.md)
 - [modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md](/modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md)

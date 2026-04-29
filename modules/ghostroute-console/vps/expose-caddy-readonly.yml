@@ -1,0 +1,105 @@
+---
+- name: Expose GhostRoute Console through existing Caddy
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../../../ansible/secrets/stealth.yml
+  vars:
+    console_root: /opt/ghostroute-console
+    console_public_host: "{{ ghostroute_console_public_host | default('console.' ~ vps_ssh_host ~ '.sslip.io') }}"
+    console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
+    console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
+    console_basic_auth_password: "{{ lookup('ansible.builtin.ini', 'password type=properties file=' ~ console_basic_auth_file) }}"
+  tasks:
+    - name: Ensure Console auth directory exists
+      ansible.builtin.file:
+        path: "{{ console_root }}/auth"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Store Console Basic Auth note on VPS
+      ansible.builtin.copy:
+        dest: "{{ console_root }}/auth/basic-auth.txt"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          url=https://{{ console_public_host }}
+          username={{ console_basic_auth_user }}
+          password={{ console_basic_auth_password }}
+      no_log: true
+
+    - name: Hash Console Basic Auth password
+      ansible.builtin.command:
+        argv:
+          - caddy
+          - hash-password
+          - --plaintext
+          - "{{ console_basic_auth_password }}"
+      register: console_basic_auth_hash
+      changed_when: false
+      no_log: true
+
+    - name: Add GhostRoute Console Caddy route
+      ansible.builtin.blockinfile:
+        path: /etc/caddy/Caddyfile
+        marker: "# {mark} GHOSTROUTE CONSOLE READONLY"
+        insertafter: EOF
+        backup: true
+        block: |
+          https://{{ console_public_host }} {
+              encode zstd gzip
+
+              log ghostroute_console {
+                  output stdout
+                  format json
+              }
+
+              basic_auth {
+                  {{ console_basic_auth_user }} {{ console_basic_auth_hash.stdout }}
+              }
+
+              header {
+                  X-Robots-Tag "noindex, nofollow"
+                  Referrer-Policy "no-referrer"
+              }
+
+              reverse_proxy 127.0.0.1:3000
+          }
+
+    - name: Validate Caddy config
+      ansible.builtin.command: caddy validate --config /etc/caddy/Caddyfile
+      changed_when: false
+
+    - name: Reload Caddy
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+
+    - name: Check Console public route requires auth
+      ansible.builtin.uri:
+        url: "https://{{ console_public_host }}/api/health"
+        status_code: 401
+        validate_certs: true
+
+    - name: Check Console public route with auth
+      ansible.builtin.uri:
+        url: "https://{{ console_public_host }}/api/health"
+        url_username: "{{ console_basic_auth_user }}"
+        url_password: "{{ console_basic_auth_password }}"
+        force_basic_auth: true
+        status_code: 200
+        validate_certs: true
+        return_content: true
+      register: console_public_health
+      no_log: true
+
+    - name: Show Console public URL
+      ansible.builtin.debug:
+        msg:
+          url: "https://{{ console_public_host }}"
+          username: "{{ console_basic_auth_user }}"
+          health_ok: "{{ console_public_health.json.ok | default(false) }}"
+          snapshots: "{{ console_public_health.json.snapshots | default('n/a') }}"

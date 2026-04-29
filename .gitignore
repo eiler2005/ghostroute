@@ -26,6 +26,10 @@ docs/catalog-review-latest.md
 docs/private/
 configs/private/
 reports/
+!modules/ghostroute-console/app/src/app/reports/
+!modules/ghostroute-console/app/src/app/reports/**
+!modules/ghostroute-console/app/src/app/api/reports/
+!modules/ghostroute-console/app/src/app/api/reports/**
 
 # Локальные secrets / overrides с персональными IP, ключами и bypass-правилами
 /secrets/
@@ -54,6 +58,14 @@ ansible/*.retry
 # macOS
 .DS_Store
 __pycache__/
+
+# Node/Next module-local artifacts
+node_modules/
+.next/
+modules/ghostroute-console/app/node_modules/
+modules/ghostroute-console/app/.next/
+modules/ghostroute-console/app/test-results/
+modules/ghostroute-console/data/
 
 # Редакторы
 *.swp
