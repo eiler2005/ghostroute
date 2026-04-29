@@ -8,6 +8,11 @@ DNS policy is documented separately in [dns-policy.md](/docs/dns-policy.md).
 The primary DNS goal is no DNS leak to the mobile operator; BrowserLeaks
 resolver geography is a secondary fingerprint-consistency signal.
 
+The shared routing principles for all channels are documented in
+[routing-policy-principles.md](/docs/routing-policy-principles.md). In short:
+the endpoint selects the first-hop channel, then the router owns the
+managed-vs-direct decision.
+
 ## Channel A - Production Router Data Plane
 
 Channel A is the primary production path owned by the router.

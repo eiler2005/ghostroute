@@ -32,6 +32,15 @@ assert_file_contains_fixed() {
   fi
 }
 
+assert_not_contains_fixed() {
+  local path="$1"
+  local needle="$2"
+  if rg -n -F -- "$needle" "${PROJECT_ROOT}/${path}" >/dev/null; then
+    echo "Expected ${path} not to contain text: ${needle}" >&2
+    exit 1
+  fi
+}
+
 assert_file_not_contains_fixed() {
   local path="$1"
   local needle="$2"
@@ -77,6 +86,12 @@ assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/t.me/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/whatsapp.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imo.im/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/openai.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/discord.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/canva.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/notion.so/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/rutracker.org/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/meduza.io/STEALTH_DOMAINS"
 
 # Static direct-IP catalog: this is still managed traffic. It covers services
 # that can connect by IP before a DNS-populated ipset entry exists.
@@ -90,6 +105,7 @@ assert_contains_regex "$STATIC_CATALOG" '^5[.]150[.]156[.]0/22'
 # skipped by code; sensitive non-RU services can be listed explicitly.
 assert_contains_fixed "$NO_VPN_CATALOG" "championat.com"
 assert_contains_fixed "$NO_VPN_CATALOG" "vtb.ru"
+assert_not_contains_fixed "$NO_VPN_CATALOG" "meduza.io"
 assert_contains_fixed "$AUTO_ADD_SCRIPT" 'RU_TLDS="\.ru$|\.su$|\.xn--p1ai$|\.xn--80adxhks$|\.xn--d1acj3b$|\.xn--p1acf$|\.tatar$|\.moscow$"'
 assert_contains_fixed "$AUTO_ADD_SCRIPT" 'is_domain_covered_by_lists "$domain" "$NO_VPN_DOMAINS"'
 assert_contains_fixed "$AUTO_ADD_SCRIPT" 'update-singbox-rule-sets.sh --restart-if-changed'

@@ -162,6 +162,9 @@ core, not just a set of firewall scripts:
   uses, keeps manual and auto-discovered rules separated, and feeds
   `STEALTH_DOMAINS` / `VPN_STATIC_NETS` without requiring VPN apps on home
   devices.
+- **Routing Policy Principles** — the compact contract for endpoint policy,
+  channel ingress, router managed split and VPS/home egress decisions. See
+  [docs/routing-policy-principles.md](/docs/routing-policy-principles.md).
 - **DNS Policy** — channel proof guidance for DNS leak vs resolver fingerprint:
   the primary goal is no DNS leakage to the mobile operator; resolver geography
   shown by BrowserLeaks is a secondary consistency signal. See
@@ -673,6 +676,7 @@ directories. See [SECURITY.md](/SECURITY.md) and
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
 - [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
 - [docs/adr/](/docs/adr/) - concise architecture decision records
+- [docs/routing-policy-principles.md](/docs/routing-policy-principles.md) - compact routing policy contract across Channels A/B/C
 - [docs/architecture.md](/docs/architecture.md) - current routing architecture
 - [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
