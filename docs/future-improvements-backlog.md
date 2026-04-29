@@ -482,6 +482,28 @@ Channel A RF-like profile
 - Не открывать DNS endpoint наружу.
 - Не менять DNS runtime без rollback и external proof.
 
+### 11. Semi-auto backup VPS egress для managed domains
+
+Отдельный future-roadmap зафиксирован в
+[managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).
+
+Идея: если primary Hetzner/VPS как foreign managed egress недоступен, роутер
+может полуавтоматически переключить только managed destinations на резервный
+`VLESS + Reality/Vision` VPS у другого провайдера/ASN. Router-managed split
+остается владельцем policy: `STEALTH_DOMAINS` / `VPN_STATIC_NETS` по-прежнему
+решают, что идет через foreign egress, а direct/RU/default трафик остается на
+home WAN.
+
+Ключевые ограничения:
+
+- switch должен быть latched: после перехода на backup возврат на primary
+  только вручную;
+- Channel B/C не становятся automatic fallback для Channel A;
+- legacy WireGuard не возвращается в steady-state runtime;
+- backup VPS не должен открывать public DNS resolver;
+- в emergency mode приоритет — чтобы managed internet работал, а не идеальная
+  BrowserLeaks/resolver fingerprint чистота.
+
 ## Что не делать по умолчанию
 
 Без отдельного решения не стоит:
@@ -508,4 +530,5 @@ Channel A RF-like profile
 - [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md)
 - [modules/traffic-observatory/docs/llm-traffic-runbook.md](/modules/traffic-observatory/docs/llm-traffic-runbook.md)
 - [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
+- [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md)
 - [modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md](/modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md)
