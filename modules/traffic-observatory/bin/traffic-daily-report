@@ -8,7 +8,24 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 . "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
 router_health_load_env
 
-PERIOD_ARG="${1:-today}"
+PERIOD_ARG="today"
+JSON_MODE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|current|current-day|yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+      PERIOD_ARG="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-daily-report [--json] [today|yesterday|week|month|YYYY-MM-DD]" >&2
+      exit 1
+      ;;
+  esac
+done
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
 
@@ -22,32 +39,46 @@ DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
 
 # Add a fresh endpoint sample before reading the history. This keeps "today",
 # "week" and "month" reports useful without waiting for the next 6-hour cron.
+if [ "${TRAFFIC_REPORT_SKIP_REFRESH:-0}" != "1" ]; then
 router_ssh 'sh -s' <<'REMOTE' >/dev/null 2>&1 || true
 [ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1
 REMOTE
+fi
 
+if [ -n "${TRAFFIC_INTERFACE_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_INTERFACE_COUNTERS_FILE" "$INTERFACE_COUNTERS"
+else
 router_ssh 'sh -s' <<'REMOTE' > "$INTERFACE_COUNTERS"
 STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
 [ -f "$STATE_DIR/interface-counters.tsv" ] && cat "$STATE_DIR/interface-counters.tsv" || true
 REMOTE
+fi
 
+if [ -n "${TRAFFIC_LAN_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_LAN_COUNTERS_FILE" "$LAN_COUNTERS"
+else
 router_ssh 'sh -s' <<'REMOTE' > "$LAN_COUNTERS"
 STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
 [ -f "$STATE_DIR/lan-device-counters.tsv" ] && cat "$STATE_DIR/lan-device-counters.tsv" || true
 REMOTE
+fi
 
+if [ -n "${TRAFFIC_MOBILE_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_MOBILE_COUNTERS_FILE" "$MOBILE_COUNTERS"
+else
 router_ssh 'sh -s' <<'REMOTE' > "$MOBILE_COUNTERS"
 STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
 [ -f "$STATE_DIR/mobile-reality-counters.tsv" ] && cat "$STATE_DIR/mobile-reality-counters.tsv" || true
 REMOTE
+fi
 
 device_labels_build_map "$DEVICE_METADATA_MAP" "$DEVICE_METADATA_FILE"
 
-ruby -rdate -rtime - "$PERIOD_ARG" "$REPORT_REDACT_NAMES" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" "$DEVICE_METADATA_MAP" <<'RUBY'
-period_arg, redact_names, interface_path, lan_path, mobile_path, metadata_map_path = ARGV
+ruby -rdate -rtime -rjson - "$PERIOD_ARG" "$REPORT_REDACT_NAMES" "$JSON_MODE" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" "$DEVICE_METADATA_MAP" <<'RUBY'
+period_arg, redact_names, json_mode, interface_path, lan_path, mobile_path, metadata_map_path = ARGV
 
 def human_bytes(bytes)
   bytes = bytes.to_i
@@ -265,6 +296,66 @@ mobile_upload = mobile_sources.sum { |row| row[:upload] }
 mobile_download = mobile_sources.sum { |row| row[:download] }
 client_observed_total = lan_total + mobile_total
 wan_remainder = [wan[:total] - client_observed_total, 0].max
+
+if json_mode == '1'
+  puts JSON.pretty_generate({
+    schema_version: 1,
+    generated_at: Time.now.utc.iso8601,
+    source: {
+      command: 'traffic-daily-report',
+      period: period_label,
+      confidence: 'mixed'
+    },
+    confidence: 'mixed',
+    window: {
+      nominal_from: start_time.utc.iso8601,
+      nominal_to: end_time.utc.iso8601,
+      interface_samples: window_for(interface_rows),
+      lan_wifi_samples: window_for(lan_rows),
+      home_reality_samples: window_for(mobile_rows)
+    },
+    totals: {
+      wan_bytes: wan[:total],
+      lan_wifi_bytes: lan_total,
+      home_reality_ingress_bytes: mobile_total,
+      client_observed_bytes: client_observed_total,
+      via_vps_bytes: lan_reality,
+      direct_bytes: lan_wan,
+      unknown_bytes: lan_other + wan_remainder,
+      confidence: 'exact'
+    },
+    devices: lan_devices.sort_by { |row| [-row[:total], row[:label]] }.map do |row|
+      {
+        id: row[:key],
+        label: row[:label],
+        ip: row[:key],
+        total_bytes: row[:total],
+        via_vps_bytes: row[:reality],
+        direct_bytes: row[:wan],
+        unknown_bytes: row[:other],
+        confidence: 'exact',
+        evidence: ['lan-device-counters.tsv']
+      }
+    end,
+    home_reality_sources: mobile_sources.sort_by { |row| [-row[:total], row[:label]] }.map do |row|
+      {
+        label: row[:label],
+        total_bytes: row[:total],
+        upload_bytes: row[:upload],
+        download_bytes: row[:download],
+        confidence: 'exact',
+        evidence: ['mobile-reality-counters.tsv']
+      }
+    end,
+    destinations: [],
+    routing_mistakes: [],
+    notes: [
+      'Period reports are built from router-side counter snapshots.',
+      'Destination-level evidence is available only in current-day traffic-report JSON.'
+    ]
+  })
+  exit
+end
 
 puts '=== GHOSTROUTE USAGE REPORT ==='
 puts format('%-26s %s', 'Period:', period_label)

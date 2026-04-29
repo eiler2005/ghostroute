@@ -6,6 +6,20 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 . "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 
+JSON_MODE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/ghostroute-health-monitor/bin/leak-check [--json]" >&2
+      exit 1
+      ;;
+  esac
+done
+
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -118,6 +132,7 @@ collect_probe_events
 
 max_rank=1
 lines=()
+json_rows=()
 while IFS=$'\t' read -r probe status message evidence; do
   display_status="$status"
   label="$probe"
@@ -150,6 +165,7 @@ while IFS=$'\t' read -r probe status message evidence; do
   [ "$rank" -le "$max_rank" ] || max_rank="$rank"
   clean_evidence="$(printf '%s\n' "${evidence:-n/a}" | sanitize_line)"
   lines+=("${label}: ${display_status} - ${message:-n/a} (${clean_evidence:-n/a})")
+  json_rows+=("${probe}"$'\t'"${label}"$'\t'"${display_status}"$'\t'"${message:-n/a}"$'\t'"${clean_evidence:-n/a}")
 done < <(latest_events)
 
 IFS=$'\t' read -r ipset_count mirror_count < <(collect_mirror_counts)
@@ -174,7 +190,9 @@ esac
 rank="$(rank_status "$mirror_status")"
 [ "$rank" -le "$max_rank" ] || max_rank="$rank"
 lines+=("Static IP mirror: ${mirror_status} - ${mirror_message} (STEALTH=${ipset_count:-unknown}, mirror=${mirror_count:-unknown})")
+json_rows+=("static_ip_mirror"$'\t'"Static IP mirror"$'\t'"${mirror_status}"$'\t'"${mirror_message}"$'\t'"STEALTH=${ipset_count:-unknown}, mirror=${mirror_count:-unknown}")
 lines+=("Channel C note: INFO - C1-SR / Shadowrocket :4443 works now as HTTPS CONNECT compatibility; C1-sing-box native Naive :443 is server-ready but client-blocked on tested iPhone SFI 1.11.4. (profiles=ansible/out/clients-channel-c/1-SR)")
+json_rows+=("channel_c_note"$'\t'"Channel C note"$'\t'"INFO"$'\t'"C1-SR / Shadowrocket :4443 works now as HTTPS CONNECT compatibility; C1-sing-box native Naive :443 is server-ready but client-blocked on tested iPhone SFI 1.11.4."$'\t'"profiles=ansible/out/clients-channel-c/1-SR")
 
 overall="$(overall_from_rank "$max_rank")"
 next_command="./modules/ghostroute-health-monitor/bin/status"
@@ -189,6 +207,48 @@ case "$overall" in
     next_command="./verify.sh --verbose"
     ;;
 esac
+
+if [ "$JSON_MODE" = "1" ]; then
+  JSON_ROWS_FILE="$TMPDIR/leak-check-rows.tsv"
+  printf '%s\n' "${json_rows[@]}" > "$JSON_ROWS_FILE"
+  ruby -rjson -rtime - "$overall" "$next_command" "$JSON_ROWS_FILE" <<'RUBY'
+overall, next_command, rows_file = ARGV
+rows = File.readlines(rows_file, chomp: true).reject(&:empty?).map do |line|
+  probe, label, status, message, evidence = line.split("\t", 5)
+  severity = case status
+             when 'CRIT' then 'critical'
+             when 'WARN' then 'warning'
+             when 'OK' then 'info'
+             else 'notice'
+             end
+  {
+    probe: probe,
+    label: label,
+    status: status,
+    severity: severity,
+    message: message,
+    evidence: evidence,
+    confidence: 'exact'
+  }
+end
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: {
+    command: 'leak-check',
+    confidence: 'exact'
+  },
+  confidence: 'exact',
+  overall: overall,
+  leaks: rows.select { |row| %w[CRIT WARN].include?(row[:status]) },
+  checks: rows,
+  evidence: rows.map { |row| { probe: row[:probe], evidence: row[:evidence] } },
+  next_command: next_command
+})
+RUBY
+  exit 0
+fi
 
 printf 'GhostRoute Leak Check\n'
 printf 'Overall: %s\n' "$overall"

@@ -15,7 +15,24 @@ router_health_load_env
 
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
 DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
-PERIOD_ARG="${1:-today}"
+PERIOD_ARG="today"
+JSON_MODE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|current|current-day|check|quick|channels|channel-check|--check|channel-a|channel-a-check|a|channel-b|channel-b-check|b|channel-c|channel-c-check|c|quick-channel-c|--channel-c|yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+      PERIOD_ARG="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-report [--json] [today|yesterday|week|month|YYYY-MM-DD|check|channel-a|channel-b|channel-c]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 channels_quick_report() {
   local filter="${1:-all}"
@@ -236,7 +253,11 @@ case "$PERIOD_ARG" in
     ;;
   ""|today|current|current-day) ;;
   yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-    exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
+    if [ "$JSON_MODE" = "1" ]; then
+      exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" --json "$PERIOD_ARG"
+    else
+      exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
+    fi
     ;;
   *)
     echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|check|channel-a|channel-b|channel-c]" >&2
@@ -1636,11 +1657,13 @@ File.open(lan_user_apps_path, 'w') do |file|
 end
 RUBY
 
-echo "=== GHOSTROUTE USAGE REPORT ==="
-echo "Period:                  today"
-echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
-echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
-echo "Home Reality byte window: ${MOBILE_WINDOW_LINE}"
+if [ "$JSON_MODE" != "1" ]; then
+  echo "=== GHOSTROUTE USAGE REPORT ==="
+  echo "Period:                  today"
+  echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
+  echo "Per-device byte window:  ${DEVICE_WINDOW_LINE}"
+  echo "Home Reality byte window: ${MOBILE_WINDOW_LINE}"
+fi
 
 CHANNEL_B_HOME_PORT_LABEL="<home-channel-b-port>"
 if [ "${CHANNEL_B_HOME_PORT:-0}" -gt 0 ]; then
@@ -1655,6 +1678,262 @@ if [ "$CHANNEL_B_HOME_ENABLED" = "1" ]; then
   CHANNEL_B_ACTIVE_NOTE="Channel B ingress enabled on home${CHANNEL_B_HOME_PORT_LABEL}"
 else
   CHANNEL_B_ACTIVE_NOTE="Channel B ingress currently disabled; counters read from 0"
+fi
+
+if [ "$JSON_MODE" = "1" ]; then
+  TRAFFIC_PERIOD="today" \
+  TRAFFIC_ROUTER_WINDOW="$ROUTER_WINDOW_LINE" \
+  TRAFFIC_DEVICE_WINDOW="$DEVICE_WINDOW_LINE" \
+  TRAFFIC_HOME_REALITY_WINDOW="$MOBILE_WINDOW_LINE" \
+  TRAFFIC_WAN_BYTES="$WAN_TOTAL" \
+  TRAFFIC_LAN_BYTES="$DEVICE_TOTAL_BYTES" \
+  TRAFFIC_HOME_REALITY_BYTES="$MOBILE_BYTE_TOTAL" \
+  TRAFFIC_CLIENT_OBSERVED_BYTES="$CLIENT_OBSERVED_TOTAL" \
+  TRAFFIC_VIA_VPS_BYTES="$TOTAL_VPS_EST" \
+  TRAFFIC_DIRECT_BYTES="$TOTAL_HOME_DIRECT_EST" \
+  TRAFFIC_UNKNOWN_BYTES="$TOTAL_OTHER_EST" \
+  TRAFFIC_DEVICE_COUNT="$DEVICE_COUNT" \
+  TRAFFIC_MOBILE_CONN="$MOBILE_TOTAL" \
+  TRAFFIC_MOBILE_REALITY="$MOBILE_REALITY" \
+  TRAFFIC_MOBILE_DIRECT="$MOBILE_DIRECT" \
+  TRAFFIC_MOBILE_UNRESOLVED="$MOBILE_UNRESOLVED" \
+  TRAFFIC_CHANNEL_B_CONN="$CHANNEL_B_RELAY_CONN" \
+  TRAFFIC_CHANNEL_B_REALITY="$CHANNEL_B_RELAY_REALITY" \
+  TRAFFIC_CHANNEL_B_DIRECT="$CHANNEL_B_RELAY_DIRECT" \
+  TRAFFIC_CHANNEL_B_UNRESOLVED="$CHANNEL_B_RELAY_UNRESOLVED" \
+  TRAFFIC_CHANNEL_C_CONN="$CHANNEL_C_CONN" \
+  TRAFFIC_CHANNEL_C_REALITY="$CHANNEL_C_REALITY" \
+  TRAFFIC_CHANNEL_C_DIRECT="$CHANNEL_C_DIRECT" \
+  TRAFFIC_CHANNEL_C_UNRESOLVED="$CHANNEL_C_UNRESOLVED" \
+  ruby -rjson -rtime - \
+    "$LAN_USER_APPS" \
+    "$USER_CHANNEL_TOTALS" \
+    "$USER_CHANNEL_APPS" \
+    "$MOBILE_DESTS" \
+    "$CHANNEL_B_RELAY_DESTS" \
+    "$CHANNEL_C_DESTS" \
+    "$ROUTING_WARN_RU_VPS" \
+    "$ROUTING_WARN_MANAGED_DIRECT" \
+    "$ROUTING_WARN_CATALOG_RU" <<'RUBY'
+lan_user_apps_path, user_channel_totals_path, user_channel_apps_path, mobile_dests_path,
+  channel_b_dests_path, channel_c_dests_path, warn_ru_vps_path, warn_managed_direct_path,
+  warn_catalog_ru_path = ARGV
+
+def int_env(key)
+  ENV.fetch(key, '0').to_i
+end
+
+def read_rows(path)
+  return [] unless File.file?(path)
+  File.readlines(path, chomp: true).reject { |line| line.strip.empty? }
+end
+
+def route_from_split(vps, direct, unresolved)
+  return 'Unknown' if unresolved.to_i > 0 && vps.to_i == 0 && direct.to_i == 0
+  return 'VPS' if vps.to_i > 0 && direct.to_i == 0
+  return 'Direct' if direct.to_i > 0 && vps.to_i == 0
+  return 'Mixed' if vps.to_i > 0 && direct.to_i > 0
+  'Unknown'
+end
+
+def family(dest)
+  d = dest.to_s.downcase
+  return 'Telegram' if d.match?(/telegram|t\.me|149\.154\./)
+  return 'Google/YouTube' if d.match?(/youtube|googlevideo|ytimg|google/)
+  return 'AI services' if d.match?(/openai|chatgpt|anthropic|claude/)
+  return 'Banking/RU' if d.match?(/sber|tinkoff|tbank|vtb|alfa/)
+  return 'DNS/Resolver' if d.match?(/\A(1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9)\z/)
+  return 'Apple/iCloud' if d.match?(/apple|icloud|mzstatic|aaplimg/)
+  'Other'
+end
+
+devices = read_rows(lan_user_apps_path).map do |line|
+  label, total, vps, direct, other, families = line.split('|', -1)
+  {
+    id: label,
+    label: label,
+    total_bytes: total.to_i,
+    via_vps_bytes: vps.to_i,
+    direct_bytes: direct.to_i,
+    unknown_bytes: other.to_i,
+    top_dns_families: families.to_s,
+    confidence: 'exact',
+    evidence: ['lan-device-counters.tsv', 'dns-forensics hourly snapshot']
+  }
+end
+
+home_reality_clients = read_rows(user_channel_totals_path).map do |line|
+  channel, display, profile, bytes_total, bytes_vps, bytes_direct, _unused, conn, vps, direct, unresolved, note = line.split('|', -1)
+  confidence = channel == 'A/Home Reality' ? 'estimated' : 'dns-interest'
+  {
+    channel: channel,
+    label: display,
+    profile: profile,
+    total_bytes: bytes_total.to_i,
+    via_vps_bytes: bytes_vps.to_i,
+    direct_bytes: bytes_direct.to_i,
+    connections: conn.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    unresolved_connections: unresolved.to_i,
+    route: route_from_split(vps, direct, unresolved),
+    confidence: confidence,
+    evidence: [note.to_s]
+  }
+end
+
+app_rows = read_rows(user_channel_apps_path).map do |line|
+  channel, display, profile, app_family, bytes_total, bytes_vps, bytes_direct, conn, vps, direct, unresolved = line.split('|', -1)
+  {
+    channel: channel,
+    client: display,
+    profile: profile,
+    destination: app_family,
+    total_bytes: bytes_total.to_i,
+    via_vps_bytes: bytes_vps.to_i,
+    direct_bytes: bytes_direct.to_i,
+    connections: conn.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    unresolved_connections: unresolved.to_i,
+    route: route_from_split(vps, direct, unresolved),
+    confidence: channel == 'A/Home Reality' ? 'estimated' : 'dns-interest',
+    evidence: ['sing-box log connection attribution']
+  }
+end
+
+mobile_destinations = read_rows(mobile_dests_path).map do |line|
+  dest, total, vps, direct = line.split('|', -1)
+  {
+    channel: 'A/Home Reality',
+    destination: dest,
+    family: family(dest),
+    connections: total.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    route: route_from_split(vps, direct, 0),
+    confidence: 'estimated',
+    evidence: ['sing-box reality-in log']
+  }
+end
+
+relay_destinations = read_rows(channel_b_dests_path).map do |line|
+  dest, total, vps, direct, unresolved = line.split('|', -1)
+  {
+    channel: 'B/XHTTP relay',
+    destination: dest,
+    family: family(dest),
+    connections: total.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    unresolved_connections: unresolved.to_i,
+    route: route_from_split(vps, direct, unresolved),
+    confidence: 'dns-interest',
+    evidence: ['sing-box channel-b-relay-socks log']
+  }
+end
+
+channel_c_destinations = read_rows(channel_c_dests_path).map do |line|
+  dest, total, vps, direct, unresolved = line.split('|', -1)
+  {
+    channel: 'C1',
+    destination: dest,
+    family: family(dest),
+    connections: total.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    unresolved_connections: unresolved.to_i,
+    route: route_from_split(vps, direct, unresolved),
+    confidence: 'dns-interest',
+    evidence: ['sing-box channel-c log']
+  }
+end
+
+warnings = []
+read_rows(warn_ru_vps_path).each do |line|
+  dest, total, vps, direct = line.split('|', -1)
+  warnings << {
+    kind: 'ru_direct_candidate_via_vps',
+    severity: 'WARN',
+    destination: dest,
+    connections: total.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    confidence: 'estimated'
+  }
+end
+read_rows(warn_managed_direct_path).each do |line|
+  dest, total, vps, direct = line.split('|', -1)
+  warnings << {
+    kind: 'managed_candidate_direct',
+    severity: 'WARN',
+    destination: dest,
+    connections: total.to_i,
+    vps_connections: vps.to_i,
+    direct_connections: direct.to_i,
+    confidence: 'estimated'
+  }
+end
+read_rows(warn_catalog_ru_path).each do |domain|
+  warnings << {
+    kind: 'ru_looking_domain_in_managed_catalog',
+    severity: 'REVIEW',
+    destination: domain,
+    confidence: 'dns-interest'
+  }
+end
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: {
+    command: 'traffic-report',
+    period: ENV.fetch('TRAFFIC_PERIOD', 'today'),
+    confidence: 'mixed'
+  },
+  confidence: 'mixed',
+  window: {
+    router: ENV.fetch('TRAFFIC_ROUTER_WINDOW', ''),
+    per_device: ENV.fetch('TRAFFIC_DEVICE_WINDOW', ''),
+    home_reality: ENV.fetch('TRAFFIC_HOME_REALITY_WINDOW', '')
+  },
+  totals: {
+    wan_bytes: int_env('TRAFFIC_WAN_BYTES'),
+    lan_wifi_bytes: int_env('TRAFFIC_LAN_BYTES'),
+    home_reality_ingress_bytes: int_env('TRAFFIC_HOME_REALITY_BYTES'),
+    client_observed_bytes: int_env('TRAFFIC_CLIENT_OBSERVED_BYTES'),
+    via_vps_bytes: int_env('TRAFFIC_VIA_VPS_BYTES'),
+    direct_bytes: int_env('TRAFFIC_DIRECT_BYTES'),
+    unknown_bytes: int_env('TRAFFIC_UNKNOWN_BYTES'),
+    confidence: 'mixed'
+  },
+  connection_summary: {
+    home_reality_total: int_env('TRAFFIC_MOBILE_CONN'),
+    home_reality_vps: int_env('TRAFFIC_MOBILE_REALITY'),
+    home_reality_direct: int_env('TRAFFIC_MOBILE_DIRECT'),
+    home_reality_unresolved: int_env('TRAFFIC_MOBILE_UNRESOLVED'),
+    channel_b_total: int_env('TRAFFIC_CHANNEL_B_CONN'),
+    channel_b_vps: int_env('TRAFFIC_CHANNEL_B_REALITY'),
+    channel_b_direct: int_env('TRAFFIC_CHANNEL_B_DIRECT'),
+    channel_b_unresolved: int_env('TRAFFIC_CHANNEL_B_UNRESOLVED'),
+    channel_c_total: int_env('TRAFFIC_CHANNEL_C_CONN'),
+    channel_c_vps: int_env('TRAFFIC_CHANNEL_C_REALITY'),
+    channel_c_direct: int_env('TRAFFIC_CHANNEL_C_DIRECT'),
+    channel_c_unresolved: int_env('TRAFFIC_CHANNEL_C_UNRESOLVED')
+  },
+  devices: devices,
+  home_reality_clients: home_reality_clients,
+  app_flows: app_rows,
+  destinations: (mobile_destinations + relay_destinations + channel_c_destinations),
+  routing_mistakes: warnings,
+  notes: [
+    'LAN/Wi-Fi bytes are exact mangle byte counters.',
+    'Home Reality per-destination bytes are estimated from connection share.',
+    'Channel B/C destination byte attribution is not available yet.'
+  ]
+})
+RUBY
+  exit 0
 fi
 echo
 

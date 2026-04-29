@@ -21,6 +21,7 @@ local runbooks or historical planning notes.
 - [dns-policy.md](/docs/dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
 - [channel-c.md](/docs/channel-c.md) - detailed Channel C C1 native Naive and Shadowrocket compatibility status.
 - [managed-egress-failover-roadmap.md](/docs/managed-egress-failover-roadmap.md) - future semi-auto backup VPS egress roadmap.
+- [ghostroute-console-post-mvp-roadmap.md](/docs/ghostroute-console-post-mvp-roadmap.md) - Console post-MVP priorities and broader backlog split.
 - [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and security workflow.
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and verification control plane.
 - [getting-started.md](/docs/getting-started.md) - first deploy and local setup workflow.

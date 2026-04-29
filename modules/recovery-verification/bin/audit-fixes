@@ -154,6 +154,7 @@ check_module_native_contract() {
   require_executable "modules/dns-catalog-intelligence/bin/catalog-review-report"
   require_executable "modules/dns-catalog-intelligence/bin/dns-forensics-report"
   require_executable "modules/dns-catalog-intelligence/bin/domain-report"
+  require_executable "modules/ghostroute-console/bin/ghostroute-console"
   require_executable "modules/client-profile-factory/bin/client-profiles"
   require_executable "modules/secrets-management/bin/secret-scan"
   require_executable "modules/recovery-verification/bin/verify.sh"

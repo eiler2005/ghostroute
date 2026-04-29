@@ -1,0 +1,49 @@
+---
+- name: Configure GhostRoute read-only SSH collector user
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../../../ansible/secrets/stealth.yml
+  vars:
+    console_root: /opt/ghostroute-console
+    readonly_user: ghostroute_readonly
+  tasks:
+    - name: Ensure read-only collector user exists
+      ansible.builtin.user:
+        name: "{{ readonly_user }}"
+        shell: /bin/sh
+        create_home: true
+        system: true
+
+    - name: Install read-only forced command
+      ansible.builtin.copy:
+        src: ghostroute-readonly-shell
+        dest: /usr/local/bin/ghostroute-readonly-shell
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure SSH directory exists
+      ansible.builtin.file:
+        path: "/home/{{ readonly_user }}/.ssh"
+        state: directory
+        owner: "{{ readonly_user }}"
+        group: "{{ readonly_user }}"
+        mode: "0700"
+
+    - name: Install collector public key if provided
+      ansible.builtin.copy:
+        content: 'command="/usr/local/bin/ghostroute-readonly-shell",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding {{ ghostroute_console_readonly_public_key }}'
+        dest: "/home/{{ readonly_user }}/.ssh/authorized_keys"
+        owner: "{{ readonly_user }}"
+        group: "{{ readonly_user }}"
+        mode: "0600"
+      when: ghostroute_console_readonly_public_key is defined
+
+    - name: Show read-only SSH status
+      ansible.builtin.debug:
+        msg:
+          user: "{{ readonly_user }}"
+          forced_command: /usr/local/bin/ghostroute-readonly-shell
+          repo_root: "{{ console_root }}/repo"
+          note: "Only --json report commands are accepted."

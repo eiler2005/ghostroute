@@ -22,23 +22,28 @@ DNS_FORENSICS_DEVICE_METADATA_FILE="${DNS_FORENSICS_DEVICE_METADATA_FILE:-$(devi
 
 WINDOW_PREFIX=""
 FILTER_IP=""
+JSON_MODE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
     --ip)
       FILTER_IP="${2:-}"
-      [ -n "$FILTER_IP" ] || { echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2; exit 1; }
+      [ -n "$FILTER_IP" ] || { echo "Usage: $0 [--json] [window-prefix] [--ip <client-ip>]" >&2; exit 1; }
       shift 2
       ;;
     -*)
-      echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2
+      echo "Usage: $0 [--json] [window-prefix] [--ip <client-ip>]" >&2
       exit 1
       ;;
     *)
       if [ -z "$WINDOW_PREFIX" ]; then
         WINDOW_PREFIX="$1"
       else
-        echo "Usage: $0 [window-prefix] [--ip <client-ip>]" >&2
+        echo "Usage: $0 [--json] [window-prefix] [--ip <client-ip>]" >&2
         exit 1
       fi
       shift
@@ -115,8 +120,8 @@ fi
 
 device_labels_build_map "$DEVICE_METADATA_MAP" "$DNS_FORENSICS_DEVICE_METADATA_FILE"
 
-ruby - "$SNAPSHOT_FILE" "$DEVICE_METADATA_MAP" "$FILTER_IP" "$SNAPSHOT_SOURCE" <<'RUBY'
-snapshot_file, metadata_map_file, filter_ip, snapshot_source = ARGV
+ruby -rjson -rtime - "$SNAPSHOT_FILE" "$DEVICE_METADATA_MAP" "$FILTER_IP" "$SNAPSHOT_SOURCE" "$JSON_MODE" <<'RUBY'
+snapshot_file, metadata_map_file, filter_ip, snapshot_source, json_mode = ARGV
 
 meta = {}
 clients = []
@@ -187,6 +192,56 @@ display_host = lambda do |client|
     host = client["host"].to_s
     (host.empty? || host == "?") ? client["ip"] : host
   end
+end
+
+if json_mode == "1"
+  selected_ips = clients.map { |client| client["ip"] }
+  queries = clients.flat_map do |client|
+    ip = client["ip"]
+    top_domains[ip].map do |row|
+      {
+        client_ip: ip,
+        client_label: display_host.call(client),
+        domain: row["domain"],
+        count: row["count"],
+        query_type: "unknown",
+        route_decision: "dns-interest",
+        catalog_status: "unknown",
+        status: "observed",
+        confidence: "dns-interest"
+      }
+    end
+  end
+
+  puts JSON.pretty_generate({
+    schema_version: 1,
+    generated_at: Time.now.utc.iso8601,
+    source: {
+      command: "dns-forensics-report",
+      snapshot: snapshot_source,
+      confidence: "dns-interest"
+    },
+    confidence: "dns-interest",
+    window: meta,
+    filter: {
+      client_ip: filter_ip.to_s.empty? ? nil : filter_ip
+    },
+    clients: clients.map do |client|
+      client.merge(
+        "label" => display_host.call(client),
+        "confidence" => "dns-interest"
+      )
+    end,
+    queries: queries,
+    top_domains: selected_ips.flat_map { |ip| top_domains[ip].map { |row| row.merge("client_ip" => ip) } },
+    top_families: selected_ips.flat_map { |ip| top_families[ip].map { |row| row.merge("client_ip" => ip) } },
+    new_domains: [],
+    notes: [
+      "This is an hourly DNS-interest snapshot, not a byte counter.",
+      "Correlate with traffic-report JSON for byte attribution."
+    ]
+  })
+  exit
 end
 
 puts "=== WINDOW ==="

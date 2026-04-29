@@ -1,0 +1,37 @@
+#!/bin/bash
+set -euo pipefail
+
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_DIR="${MODULE_DIR}/app"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./modules/ghostroute-console/bin/ghostroute-console <dev|build|test|collect-once|doctor>
+EOF
+}
+
+command="${1:-}"
+[ -n "$command" ] || { usage; exit 1; }
+shift || true
+
+case "$command" in
+  dev)
+    npm --prefix "$APP_DIR" run dev -- "$@"
+    ;;
+  build)
+    npm --prefix "$APP_DIR" run build
+    ;;
+  test)
+    npm --prefix "$APP_DIR" test
+    ;;
+  collect-once)
+    node "$APP_DIR/scripts/collect-once.mjs" "$@"
+    ;;
+  doctor)
+    node "$APP_DIR/scripts/doctor.mjs" "$@"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

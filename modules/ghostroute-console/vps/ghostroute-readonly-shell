@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+repo_root="${GHOSTROUTE_READONLY_REPO_ROOT:-/opt/ghostroute-console/repo}"
+original="${SSH_ORIGINAL_COMMAND:-}"
+
+case "$original" in
+  *";"*|*"&&"*|*"|"*|*">"*|*"<"*|*"`"*|*"$("*)
+    echo "rejected: shell metacharacters are not allowed" >&2
+    exit 126
+    ;;
+esac
+
+set -- $original
+command="${1:-}"
+
+case "$command" in
+  modules/traffic-observatory/bin/traffic-report|\
+  modules/ghostroute-health-monitor/bin/router-health-report|\
+  modules/ghostroute-health-monitor/bin/leak-check|\
+  modules/dns-catalog-intelligence/bin/domain-report|\
+  modules/dns-catalog-intelligence/bin/dns-forensics-report|\
+  "$repo_root"/modules/traffic-observatory/bin/traffic-report|\
+  "$repo_root"/modules/ghostroute-health-monitor/bin/router-health-report|\
+  "$repo_root"/modules/ghostroute-health-monitor/bin/leak-check|\
+  "$repo_root"/modules/dns-catalog-intelligence/bin/domain-report|\
+  "$repo_root"/modules/dns-catalog-intelligence/bin/dns-forensics-report)
+    ;;
+  *)
+    echo "rejected: command is not whitelisted" >&2
+    exit 126
+    ;;
+esac
+
+case " $* " in
+  *" --json "*|*" --json")
+    ;;
+  *)
+    echo "rejected: --json is required" >&2
+    exit 126
+    ;;
+esac
+
+cd "$repo_root"
+exec "$@"

@@ -23,15 +23,17 @@ SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
 
 MODE="summary"
 LOG_LINES=200
+JSON_MODE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --json) JSON_MODE=1; shift ;;
     --log)   MODE="log"; [ "${2:-}" -eq "${2:-}" ] 2>/dev/null && { LOG_LINES="${2:-200}"; shift; }; shift ;;
     --reset)      MODE="reset"; shift ;;
     --cleanup)    MODE="cleanup"; shift ;;
     --all)        MODE="all"; shift ;;
     --candidates) MODE="candidates"; shift ;;
-    *) echo "Usage: $0 [--log [N]] [--reset] [--cleanup] [--all] [--candidates]" >&2; exit 1 ;;
+    *) echo "Usage: $0 [--json] [--log [N]] [--reset] [--cleanup] [--all] [--candidates]" >&2; exit 1 ;;
   esac
 done
 
@@ -44,10 +46,124 @@ SSH_OPTS=(
   -o StrictHostKeyChecking=accept-new
 )
 
-if [ -z "$ROUTER" ]; then
+LOCAL_AUTO_FILE="${DOMAIN_REPORT_AUTO_FILE:-}"
+LOCAL_ACTIVITY_FILE="${DOMAIN_REPORT_ACTIVITY_LOG_FILE:-}"
+LOCAL_BLOCKED_FILE="${DOMAIN_REPORT_BLOCKED_LIST_FILE:-}"
+NEEDS_ROUTER=1
+if [ "$JSON_MODE" = "1" ] && [ -n "${LOCAL_AUTO_FILE}${LOCAL_ACTIVITY_FILE}${LOCAL_BLOCKED_FILE}" ]; then
+  NEEDS_ROUTER=0
+fi
+
+if [ -z "$ROUTER" ] && [ "$NEEDS_ROUTER" = "1" ]; then
   ROUTER=$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }') || true
 fi
-[ -z "$ROUTER" ] && { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
+if [ -z "$ROUTER" ] && [ "$NEEDS_ROUTER" = "1" ]; then
+  echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2
+  exit 1
+fi
+
+if [ "$JSON_MODE" = "1" ]; then
+  case "$MODE" in
+    reset|cleanup)
+      echo "--json is read-only and is not supported with --${MODE}" >&2
+      exit 1
+      ;;
+  esac
+
+  TMPDIR="$(mktemp -d)"
+  trap 'rm -rf "$TMPDIR"' EXIT
+  AUTO_OUT="$TMPDIR/auto.txt"
+  ACTIVITY_OUT="$TMPDIR/activity.txt"
+  CANDIDATES_OUT="$TMPDIR/candidates.txt"
+  BLOCKED_META_OUT="$TMPDIR/blocked-meta.txt"
+  : > "$AUTO_OUT"
+  : > "$ACTIVITY_OUT"
+  : > "$CANDIDATES_OUT"
+  : > "$BLOCKED_META_OUT"
+
+  if [ -n "$LOCAL_AUTO_FILE" ]; then
+    [ -f "$LOCAL_AUTO_FILE" ] && grep "^ipset=" "$LOCAL_AUTO_FILE" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u > "$AUTO_OUT" || true
+  elif [ -n "$ROUTER" ]; then
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
+       [ -f "$AUTO" ] && grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u || true' > "$AUTO_OUT"
+  fi
+
+  if [ -n "$LOCAL_ACTIVITY_FILE" ]; then
+    [ -f "$LOCAL_ACTIVITY_FILE" ] && tail -n "$LOG_LINES" "$LOCAL_ACTIVITY_FILE" > "$ACTIVITY_OUT" || true
+    [ -f "$LOCAL_ACTIVITY_FILE" ] && grep "^│  ?" "$LOCAL_ACTIVITY_FILE" | sed "s/^│  ? //" | awk "{print \$1}" | sort | uniq -c | sort -rn | head -50 > "$CANDIDATES_OUT" || true
+  elif [ -n "$ROUTER" ]; then
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" LOG_LINES="$LOG_LINES" \
+      '[ -f /opt/var/log/domain-activity.log ] && tail -n "$LOG_LINES" /opt/var/log/domain-activity.log || true' > "$ACTIVITY_OUT"
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'ACTIVITY=/opt/var/log/domain-activity.log
+       [ -f "$ACTIVITY" ] && grep "^│  ?" "$ACTIVITY" | sed "s/^│  ? //" | awk "{print \$1}" | sort | uniq -c | sort -rn | head -50 || true' > "$CANDIDATES_OUT"
+  fi
+
+  if [ -n "$LOCAL_BLOCKED_FILE" ] && [ -f "$LOCAL_BLOCKED_FILE" ]; then
+    printf 'count=%s\n' "$(wc -l < "$LOCAL_BLOCKED_FILE" | tr -d ' ')" > "$BLOCKED_META_OUT"
+  elif [ -n "$ROUTER" ]; then
+    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+      'BL=/opt/tmp/blocked-domains.lst
+       [ -f "$BL" ] && printf "count=%s\n" "$(wc -l < "$BL")" || printf "count=0\n"' > "$BLOCKED_META_OUT"
+  fi
+
+  ruby -rjson -rtime - "$MODE" "$LOG_LINES" "$AUTO_OUT" "$ACTIVITY_OUT" "$CANDIDATES_OUT" "$BLOCKED_META_OUT" <<'RUBY'
+mode, log_lines, auto_path, activity_path, candidates_path, blocked_meta_path = ARGV
+
+def lines(path)
+  return [] unless File.file?(path)
+  File.readlines(path, chomp: true).reject { |line| line.strip.empty? }
+end
+
+blocked = {}
+lines(blocked_meta_path).each do |line|
+  key, value = line.split('=', 2)
+  blocked[key] = value
+end
+
+candidate_rows = lines(candidates_path).map do |line|
+  count, domain = line.strip.split(/\s+/, 2)
+  {
+    domain: domain,
+    hit_count: count.to_i,
+    status: 'candidate',
+    confidence: 'dns-interest'
+  }
+end
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: {
+    command: 'domain-report',
+    mode: mode,
+    confidence: 'dns-interest'
+  },
+  confidence: 'dns-interest',
+  managed: [],
+  auto: lines(auto_path).map do |domain|
+    {
+      domain: domain,
+      kind: 'domain',
+      source: 'dnsmasq-autodiscovered',
+      status: 'auto',
+      confidence: 'dns-interest'
+    }
+  end,
+  candidates: candidate_rows,
+  blocked: {
+    count: blocked.fetch('count', '0').to_i
+  },
+  activity_tail: lines(activity_path).last(log_lines.to_i),
+  notes: [
+    'Domain report JSON is read-only.',
+    'Catalog edits remain git-tracked and outside Console MVP.'
+  ]
+})
+RUBY
+  exit 0
+fi
 
 case "$MODE" in
 
