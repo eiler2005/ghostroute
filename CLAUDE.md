@@ -1,6 +1,8 @@
 # Claude Code Instructions and rules for working in this project
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+Adapted from `forrestchang/andrej-karpathy-skills`:
+https://github.com/forrestchang/andrej-karpathy-skills
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
