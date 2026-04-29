@@ -39,6 +39,8 @@ iPhone по LTE, MacBook по Wi-Fi, ноутбук в другой сети и 
 | Сколько пользовательского трафика видит GhostRoute accounting? | `EXIT SUMMARY -> Client observed total` |
 | Сколько ушло через VPS? | `EXIT SUMMARY -> Via VPS` |
 | Сколько осталось в российском direct-интернете? | `EXIT SUMMARY -> Via home RU direct` |
+| Кто из пользователей шёл через A/B/C и в какие приложения? | `USERS / APPS BY CHANNEL` |
+| Сколько у конкретного LAN-пользователя было GiB и какие app families видны? | `USERS / APPS BY CHANNEL -> LAN/Wi-Fi users` |
 | Какие домашние Wi-Fi/LAN устройства больше всего используют VPS? | `LAN/WI-FI DEVICES` |
 | Какие Home Reality ingress профили активны? | `HOME REALITY INGRESS CLIENTS` |
 | Какие сайты/приложения популярны через ingress? | `SITES / DESTINATIONS` |
@@ -307,6 +309,12 @@ Canonical sections:
   `:443`.
 - `MANAGED CATALOG` — active `STEALTH_DOMAINS`/static route coverage and how
   much traffic used the managed path.
+- `USERS / APPS BY CHANNEL` — compact user-facing rollup that links local
+  labels/profiles to channels and app families. LAN/Wi-Fi rows use exact
+  device bytes plus DNS-interest app families; Channel A rows use estimated
+  per-user/per-app bytes from Home Reality ingress connection share; Channel
+  B/C rows show user/profile and app connection attribution until byte
+  attribution exists for those lanes.
 - `LAN/WI-FI DEVICES` — per-device bytes via VPS vs home Russian direct.
 - `HOME REALITY INGRESS CLIENTS` — Channel A/Home Reality client/profile
   connection split plus ingress bytes. The client can be on LTE or Wi-Fi; the
