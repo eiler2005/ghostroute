@@ -191,6 +191,18 @@
 - продолжить улучшение day/week/month summaries
 - лучше показывать `Top by Reality`, `Top by direct WAN`, `Top by Tailscale peers`
 - сохранить разделение на public-safe output и local-only aliases
+- привести router-side log naming к channel-aware схеме, не ломая текущие
+  отчёты и runbooks:
+  - текущий `/opt/var/log/sing-box.log` считать shared sing-box data-plane log,
+    а не Channel A log, потому что он содержит A/Home Reality, B relay, C1 и
+    `reality-out` / `direct-out` split evidence
+  - текущий `/opt/var/log/xray-channel-b-home.log` считать Channel B ingress
+    attribution log
+  - future target для новых путей: `/opt/var/log/router_configuration/channels/`
+    с именами вроде `shared-singbox-data-plane.log` и
+    `channel-b-ingress-xray.log`
+  - `traffic-report`, health/runbooks и rotation должны сначала читать новый
+    путь, затем fallback на старые файлы, пока миграция не будет доказана live
 
 Статус:
 
@@ -211,10 +223,16 @@
   - USB-backed health snapshots на роутере
   - fixture/smoke тесты фиксируют текстовый контракт observability-слоя
 - в backlog остаются только дальнейшие улучшения формы, интерпретации и, при желании, более компактные executive-style summaries; per-profile byte split by final outbound would require sing-box metrics/exporter support and is not implemented in the current log-only model
+- log naming cleanup остаётся future-only: это router-side Ansible/runtime
+  change, требующий deploy на роутер, restart затронутых services, smoke-check
+  `traffic-report today`, `traffic-report check`, rotation и явный rollback.
 
 Желаемый результат:
 
 - отчёты читаются как готовый operational summary, без повторных пояснений
+- имена log sources отражают фактическую роль: shared data-plane, Channel B
+  ingress attribution, Channel C ingress evidence, а не исторические имена
+  конкретных демонов
 
 ### 5. Явная политика по IPv6
 

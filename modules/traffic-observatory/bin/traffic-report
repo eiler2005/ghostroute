@@ -265,6 +265,7 @@ MOBILE_CLIENTS="$TMPDIR/mobile-reality-clients.txt"
 MOBILE_DESTS="$TMPDIR/mobile-reality-dests.txt"
 CHANNEL_COMBINED_LOG="$TMPDIR/channel-combined.log"
 CHANNEL_B_RELAY_LOG="$TMPDIR/channel-b-relay.log"
+CHANNEL_B_HOME_LOG="$TMPDIR/channel-b-home.log"
 CHANNEL_B_RELAY_TOTALS="$TMPDIR/channel-b-relay-totals.txt"
 CHANNEL_B_RELAY_DESTS="$TMPDIR/channel-b-relay-dests.txt"
 CHANNEL_B_HOME_STATE="$TMPDIR/channel-b-home-state.txt"
@@ -295,6 +296,10 @@ CURRENT_TAILSCALE="$TMPDIR/current-tailscale.json"
 BASE_TAILSCALE="$TMPDIR/base-tailscale.json"
 TAILSCALE_PARSED="$TMPDIR/tailscale.txt"
 TAILSCALE_TOP_SUMMARY="$TMPDIR/tailscale-top-summary.txt"
+DNS_FORENSICS_TODAY="$TMPDIR/dns-forensics-today.tsv"
+USER_CHANNEL_TOTALS="$TMPDIR/user-channel-totals.tsv"
+USER_CHANNEL_APPS="$TMPDIR/user-channel-apps.tsv"
+LAN_USER_APPS="$TMPDIR/lan-user-apps.tsv"
 
 human_gib() {
   awk -v bytes="${1:-0}" 'BEGIN { printf "%.2f GiB", bytes / 1024 / 1024 / 1024; }'
@@ -550,6 +555,8 @@ router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$L
 grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$MOBILE_LOG" || true
 grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_B_RELAY_LOG" || true
 grep -E "inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_C_LOG" || true
+router_ssh 'TODAY="$(date +%Y/%m/%d)"; LOG="/opt/var/log/xray-channel-b-home.log"; [ -f "$LOG" ] && grep "^$TODAY " "$LOG" || true' > "$CHANNEL_B_HOME_LOG"
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; DIR="/opt/var/log/router_configuration/dns-forensics"; [ -d "$DIR" ] || DIR="/jffs/addons/router_configuration/dns-forensics"; cat "$DIR"/${TODAY}T*.tsv 2>/dev/null || true' > "$DNS_FORENSICS_TODAY"
 
 iface_current() {
   local iface="$1"
@@ -1383,6 +1390,252 @@ TOTAL_OTHER_EST=$(( DEVICE_OTHER_BYTES + MOBILE_EST_UNRESOLVED_BYTES ))
 CLIENT_OBSERVED_TOTAL=$(( DEVICE_TOTAL_BYTES + MOBILE_BYTE_TOTAL ))
 WAN_REMAINDER=$(( WAN_TOTAL > CLIENT_OBSERVED_TOTAL ? WAN_TOTAL - CLIENT_OBSERVED_TOTAL : 0 ))
 
+ruby - "$REPORT_REDACT_NAMES" "$DEVICE_METADATA_FILE" "$MOBILE_ALIAS_MAP" \
+  "$LAN_BYTES_PARSED" "$DNS_FORENSICS_TODAY" "$CHANNEL_COMBINED_LOG" "$CHANNEL_B_HOME_LOG" \
+  "$USER_CHANNEL_TOTALS" "$USER_CHANNEL_APPS" "$LAN_USER_APPS" \
+  "$MOBILE_BYTE_TOTAL" "$MOBILE_TOTAL" \
+  "$CHANNEL_B_RELAY_REALITY" "$CHANNEL_B_RELAY_DIRECT" "$CHANNEL_B_RELAY_UNRESOLVED" "$CHANNEL_B_RELAY_CONN" <<'RUBY'
+redact_names, metadata_path, mobile_alias_path, lan_bytes_path, dns_path, combined_log_path, channel_b_home_log_path,
+  user_totals_path, user_apps_path, lan_user_apps_path, mobile_byte_total_arg, mobile_conn_total_arg,
+  channel_b_relay_vps_arg, channel_b_relay_direct_arg, channel_b_relay_unresolved_arg, channel_b_relay_conn_arg = ARGV
+
+mobile_byte_total = mobile_byte_total_arg.to_i
+mobile_conn_total = mobile_conn_total_arg.to_i
+channel_b_relay_vps = channel_b_relay_vps_arg.to_i
+channel_b_relay_direct = channel_b_relay_direct_arg.to_i
+channel_b_relay_unresolved = channel_b_relay_unresolved_arg.to_i
+channel_b_relay_conn = channel_b_relay_conn_arg.to_i
+
+def clean_dest(value)
+  value.to_s.strip.sub(/\Atcp:/, '').sub(/:[0-9]+\z/, '').downcase
+end
+
+def app_family(dest)
+  d = dest.to_s.downcase
+  return 'Telegram' if d.match?(/(^149\.154\.|telegram|t\.me)/)
+  return 'Google/YouTube' if d.match?(/(youtube|googlevideo|ytimg|ggpht|youtubei|googleapis|googleusercontent|google\.com|gstatic|gmail|imap\.gmail|googlemail)/)
+  return 'Meta/Instagram' if d.match?(/(instagram|cdninstagram|facebook|fbcdn|edge-mqtt|meta\.)/)
+  return 'WhatsApp' if d.match?(/(whatsapp|whatsapp\.net)/)
+  return 'Apple/iCloud' if d.match?(/(apple|icloud|itunes|mzstatic|aaplimg|apple-dns|ls-apple|gs-loc|mask\.icloud|me\.com)/)
+  return 'Yandex/Dzen' if d.match?(/(yandex|yastatic|kinopoisk|dzen)/)
+  return 'Banking/RU' if d.match?(/(alfa|alfabank|sber|tinkoff|tbank|vtb|groupib)/)
+  return 'Retail/RU' if d.match?(/(ozon|wildberries|lamoda|x5\.ru|market\.yandex|vs\.market\.yandex)/)
+  return 'Mail/VK/RU social' if d.match?(/(mail\.ru|vk\.com|vk\.ru|ok\.ru)/)
+  return 'Dev/Productivity' if d.match?(/(github|miro|wisprflow|hetzner|segment\.io|microsoft|office|teams|slack|notion|dropbox)/)
+  return 'AI services' if d.match?(/(openai|chatgpt|anthropic|claude|perplexity)/)
+  return 'AWS/CDN' if d.match?(/(amazonaws|cloudfront|cloudflare|cdn|akamai|fastly|s3\.)/)
+  return 'DNS/Resolver' if d.match?(/\A(1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9|dns\.google)\z/)
+  return 'Other/IP' if d.match?(/\A[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\z/)
+  'Other'
+end
+
+def estimate_bytes(total_bytes, part, total)
+  total = total.to_i
+  return 0 if total <= 0 || total_bytes.to_i <= 0
+  (total_bytes.to_f * part.to_i / total).round
+end
+
+def conn_id(line)
+  match = line.match(/\[([0-9]+) [^\]]+\]/)
+  match && match[1]
+end
+
+metadata_label = {}
+profile_label = {}
+if File.file?(metadata_path)
+  File.foreach(metadata_path, chomp: true) do |line|
+    next if line.strip.empty? || line.lstrip.start_with?('#')
+
+    key, alias_name, type, notes = line.split('|', 4).map { |part| part.to_s.strip }
+    next if key.empty?
+
+    label = alias_name.empty? ? type : alias_name
+    label = "#{label} (#{type})" if !alias_name.empty? && !type.empty? && alias_name != type
+    metadata_label[key] = label unless label.empty?
+
+    next unless notes.to_s.match(/Home Reality QR:\s*(iphone-[0-9]+)/)
+
+    profile = Regexp.last_match(1)
+    next if label.empty?
+
+    profile_label[profile] = label
+    if profile.match(/iphone-([0-9]+)/)
+      idx = Regexp.last_match(1)
+      profile_label["iphone-b-#{idx}"] = label
+      profile_label["c1_iphone_#{idx}"] = label
+    end
+  end
+end
+
+mobile_alias = {}
+if redact_names == '1' && File.file?(mobile_alias_path)
+  File.foreach(mobile_alias_path, chomp: true) do |line|
+    raw, label = line.split('|', 2).map { |part| part.to_s.strip }
+    mobile_alias[raw] = label unless raw.empty? || label.empty?
+  end
+end
+
+display_profile = lambda do |profile|
+  raw = profile.to_s.sub(/-xhttp@.*\z/, '')
+  if redact_names == '1'
+    return mobile_alias[raw] if mobile_alias[raw]
+    if raw.match(/\Aiphone-b-([0-9]+)\z/) && mobile_alias["iphone-#{Regexp.last_match(1)}"]
+      return "#{mobile_alias["iphone-#{Regexp.last_match(1)}"]} / B"
+    end
+    if raw.match(/\Ac1_iphone_([0-9]+)\z/) && mobile_alias["iphone-#{Regexp.last_match(1)}"]
+      return "#{mobile_alias["iphone-#{Regexp.last_match(1)}"]} / C1"
+    end
+  end
+  profile_label[raw] || metadata_label[raw] || raw
+end
+
+records = {}
+if File.file?(combined_log_path)
+  File.foreach(combined_log_path, chomp: true) do |line|
+    id = conn_id(line)
+    next unless id
+
+    record = (records[id] ||= {})
+    case line
+    when /inbound\/vless\[reality-in\]: \[([^\]]+)\] inbound connection to (.+)\z/
+      record[:channel] = 'A/Home Reality'
+      record[:profile] = Regexp.last_match(1)
+      record[:dest] = clean_dest(Regexp.last_match(2))
+    when /inbound\/socks\[channel-b-relay-socks\]: inbound connection to (.+)\z/
+      record[:channel] = 'B/XHTTP relay'
+      record[:profile] = 'channel-b'
+      record[:dest] = clean_dest(Regexp.last_match(1))
+    when /inbound\/http\[channel-c-shadowrocket-http-in\]: (?:\[([^\]]+)\] )?inbound connection to (.+)\z/
+      record[:channel] = 'C1/Shadowrocket'
+      record[:profile] = Regexp.last_match(1) || 'channel-c'
+      record[:dest] = clean_dest(Regexp.last_match(2))
+    when /inbound\/naive\[channel-c-naive-in\]: (?:\[([^\]]+)\] )?inbound connection to (.+)\z/
+      record[:channel] = 'C1/native Naive'
+      record[:profile] = Regexp.last_match(1) || 'channel-c-native'
+      record[:dest] = clean_dest(Regexp.last_match(2))
+    when /outbound\/vless\[reality-out\]: outbound connection to /
+      record[:outbound] = 'VPS'
+    when /outbound\/direct\[direct-out\]: outbound connection to /
+      record[:outbound] = 'Direct'
+    end
+  end
+end
+
+connection_rows = []
+records.each_value do |record|
+  next unless record[:channel] && record[:dest]
+  next if record[:channel] == 'B/XHTTP relay'
+
+  connection_rows << record.merge(outbound: record[:outbound] || 'Unresolved', count: 1)
+end
+
+channel_b_accepts = Hash.new(0)
+if File.file?(channel_b_home_log_path)
+  File.foreach(channel_b_home_log_path, chomp: true) do |line|
+    next unless line.match(/accepted tcp:([^\s]+) \[channel-b-home-in -> channel-b-upstream-socks\] email: ([^\s]+)/)
+
+    dest = clean_dest(Regexp.last_match(1))
+    profile = Regexp.last_match(2).sub(/-xhttp@.*\z/, '')
+    channel_b_accepts[[profile, dest]] += 1
+  end
+end
+
+channel_b_profile_totals = Hash.new(0)
+channel_b_accepts.each { |(profile, _dest), count| channel_b_profile_totals[profile] += count }
+
+totals = Hash.new { |hash, key| hash[key] = Hash.new(0) }
+apps = Hash.new { |hash, key| hash[key] = Hash.new(0) }
+
+connection_rows.each do |row|
+  profile = row[:profile]
+  display = display_profile.call(profile)
+  key = [row[:channel], display, profile]
+  family = app_family(row[:dest])
+  count = row[:count].to_i
+  outbound = row[:outbound]
+
+  totals[key]['conn'] += count
+  totals[key][outbound] += count
+  apps[key + [family]]['conn'] += count
+  apps[key + [family]][outbound] += count
+end
+
+channel_b_profile_totals.each do |profile, count|
+  display = display_profile.call(profile)
+  key = ['B/XHTTP relay', display, profile]
+  totals[key]['conn'] += count
+end
+
+if channel_b_profile_totals.length == 1
+  key = ['B/XHTTP relay', display_profile.call(channel_b_profile_totals.keys.first), channel_b_profile_totals.keys.first]
+  totals[key]['VPS'] = channel_b_relay_vps
+  totals[key]['Direct'] = channel_b_relay_direct
+  totals[key]['Unresolved'] = channel_b_relay_unresolved
+end
+
+channel_b_accepts.each do |(profile, dest), count|
+  display = display_profile.call(profile)
+  key = ['B/XHTTP relay', display, profile, app_family(dest)]
+  apps[key]['conn'] += count
+end
+
+File.open(user_totals_path, 'w') do |file|
+  totals.sort_by { |key, values| [key[0], -values['conn'], key[1]] }.each do |key, values|
+    channel, display, profile = key
+    conn = values['conn']
+    vps_conn = values['VPS']
+    direct_conn = values['Direct']
+    unresolved_conn = values['Unresolved']
+    bytes_total = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, conn, mobile_conn_total) : 0
+    bytes_vps = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, vps_conn, mobile_conn_total) : 0
+    bytes_direct = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, direct_conn, mobile_conn_total) : 0
+    note = case channel
+           when 'A/Home Reality' then 'estimated bytes from Home Reality ingress connection share'
+           when 'B/XHTTP relay' then 'bytes n/a; profile/apps from Xray, path split from sing-box relay'
+           else 'bytes n/a; connection split from sing-box'
+           end
+    file.puts [channel, display, profile, bytes_total, bytes_vps, bytes_direct, 0, conn, vps_conn, direct_conn, unresolved_conn, note].join('|')
+  end
+end
+
+File.open(user_apps_path, 'w') do |file|
+  apps.sort_by { |key, values| [key[0], key[1], -values['conn'], key[3]] }.each do |key, values|
+    channel, display, profile, family = key
+    conn = values['conn']
+    vps_conn = values['VPS']
+    direct_conn = values['Direct']
+    unresolved_conn = values['Unresolved']
+    bytes_total = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, conn, mobile_conn_total) : 0
+    bytes_vps = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, vps_conn, mobile_conn_total) : 0
+    bytes_direct = channel == 'A/Home Reality' ? estimate_bytes(mobile_byte_total, direct_conn, mobile_conn_total) : 0
+    file.puts [channel, display, profile, family, bytes_total, bytes_vps, bytes_direct, conn, vps_conn, direct_conn, unresolved_conn].join('|')
+  end
+end
+
+dns_families = Hash.new { |hash, key| hash[key] = Hash.new(0) }
+if File.file?(dns_path)
+  File.foreach(dns_path, chomp: true) do |line|
+    parts = line.split('|', -1)
+    next unless parts[0] == 'TOPFAMILY'
+
+    dns_families[parts[1]][parts[4]] += parts[3].to_i
+  end
+end
+
+File.open(lan_user_apps_path, 'w') do |file|
+  if File.file?(lan_bytes_path)
+    File.foreach(lan_bytes_path, chomp: true) do |line|
+      ip, label, reality, wan, other, _upload, _download, total = line.split('|', -1)
+      next if ip.to_s.empty?
+
+      families = dns_families[ip].sort_by { |_family, count| -count }.first(5)
+      family_text = families.empty? ? 'n/a' : families.map { |family, count| "#{family}:#{count}" }.join(', ')
+      file.puts [label, total.to_i, reality.to_i, wan.to_i, other.to_i, family_text].join('|')
+    end
+  end
+end
+RUBY
+
 echo "=== GHOSTROUTE USAGE REPORT ==="
 echo "Period:                  today"
 echo "Router-wide window:      ${ROUTER_WINDOW_LINE}"
@@ -1469,7 +1722,72 @@ else
 fi
 echo
 
-echo "=== 4. LAN/WI-FI DEVICES ==="
+echo "=== 4. USERS / APPS BY CHANNEL ==="
+echo "LAN/Wi-Fi users: exact bytes per device; app families are DNS-interest counts, not per-app bytes."
+if [ -s "$LAN_USER_APPS" ]; then
+  printf "%-42s %12s %12s %12s  %s\n" "User/device" "Total" "VPS" "Direct" "Top app/DNS families today"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 8 && ($2 + 0) > 0 {
+      printf "%-42s %12s %12s %12s  %s\n", $1, human_bytes($2), human_bytes($3), human_bytes($4), $6
+    }' "$LAN_USER_APPS"
+else
+  echo "No LAN/Wi-Fi byte baseline yet."
+fi
+echo
+
+echo "A/B/C users: Channel A has estimated bytes from Home Reality ingress; Channel B/C currently have connection/app attribution only."
+if [ -s "$USER_CHANNEL_TOTALS" ]; then
+  printf "%-28s %-18s %-16s %12s %12s %12s %8s %-18s  %s\n" "User" "Channel" "Profile" "Traffic" "VPS est." "Direct est." "Conn" "Path conn" "Accounting"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x <= 0) return "n/a"
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    NR <= 12 {
+      path = sprintf("V %d / D %d / U %d", $9 + 0, $10 + 0, $11 + 0)
+      printf "%-28s %-18s %-16s %12s %12s %12s %8d %-18s  %s\n", $2, $1, $3, human_bytes($4), human_bytes($5), human_bytes($6), $8 + 0, path, $12
+    }' "$USER_CHANNEL_TOTALS"
+else
+  echo "No A/B/C user connection data for today."
+fi
+echo
+
+echo "Top app families by A/B/C user:"
+if [ -s "$USER_CHANNEL_APPS" ]; then
+  printf "%-28s %-18s %-20s %12s %8s  %s\n" "User" "Channel" "App/family" "Traffic" "Conn" "Path split"
+  awk -F'|' '
+    function human_bytes(x) {
+      x += 0
+      if (x <= 0) return "n/a"
+      if (x >= 1024 * 1024 * 1024) return sprintf("%.2f GiB", x / 1024 / 1024 / 1024)
+      if (x >= 1024 * 1024) return sprintf("%.1f MiB", x / 1024 / 1024)
+      if (x >= 1024) return sprintf("%.1f KiB", x / 1024)
+      return sprintf("%d B", x)
+    }
+    {
+      key = $1 "|" $2 "|" $3
+      if (++seen[key] <= 5) {
+        path = ($1 == "B/XHTTP relay") ? "n/a (relay split above)" : sprintf("V %d / D %d / U %d", $9 + 0, $10 + 0, $11 + 0)
+        printf "%-28s %-18s %-20s %12s %8d  %s\n", $2, $1, $4, human_bytes($5), $8 + 0, path
+      }
+    }' "$USER_CHANNEL_APPS"
+else
+  echo "No A/B/C app-family connection data for today."
+fi
+echo
+
+echo "=== 5. LAN/WI-FI DEVICES ==="
 printf "%-42s %12s %12s %9s\n" "Device" "VPS" "RU direct" "VPS share"
 if [ -s "$DEVICE_TOP_REALITY" ]; then
   awk -F'|' -v top_wan="$DEVICE_TOP_WAN" '
@@ -1501,7 +1819,7 @@ else
 fi
 echo
 
-echo "=== 5. HOME REALITY INGRESS CLIENTS (CHANNEL A) ==="
+echo "=== 6. HOME REALITY INGRESS CLIENTS (CHANNEL A) ==="
 echo "Scope: Channel A/Home Reality reality-in only. Channel B/C are summarized separately below."
 echo "Ingress byte sources:    ${MOBILE_BYTE_SOURCES}"
 echo "Ingress byte total:      $(human_bytes "$MOBILE_BYTE_TOTAL")  (upload $(human_bytes "$MOBILE_BYTE_UPLOAD") / download $(human_bytes "$MOBILE_BYTE_DOWNLOAD"))"
@@ -1615,7 +1933,7 @@ if [ -s "$MOBILE_BYTES_UNKNOWN_EXTERNAL" ]; then
 fi
 echo
 
-echo "=== 6. SITES / DESTINATIONS ==="
+echo "=== 7. SITES / DESTINATIONS ==="
 echo "Scope: Channel A/Home Reality includes estimated bytes. Channel B/C include destination connection split; byte attribution is not available yet for those lanes."
 if [ -s "$MOBILE_DESTS" ] && [ "${MOBILE_TOTAL:-0}" -gt 0 ] && [ "${MOBILE_BYTE_TOTAL:-0}" -gt 0 ]; then
   echo "Top Home Reality / Channel A ingress destinations overall (estimated bytes from ingress traffic):"
@@ -1789,7 +2107,7 @@ else
 fi
 echo
 
-echo "=== 7. ROUTING MISTAKES / CHECKS ==="
+echo "=== 8. ROUTING MISTAKES / CHECKS ==="
 mistakes=0
 if [ -s "$ROUTING_WARN_RU_VPS" ]; then
   mistakes=$((mistakes + 1))
@@ -1866,6 +2184,8 @@ echo
 echo "=== NOTES ==="
 echo "- Site sees VPS for VLESS+Reality -> VPS paths; site sees home Russian IP for Home WAN direct paths."
 echo "- LAN/Wi-Fi VPS/direct bytes are exact mangle byte counters."
+echo "- USERS / APPS BY CHANNEL is the primary rollup for user names, A/B/C channels and app families."
+echo "- LAN app families are DNS-interest counts, not per-app byte totals; Channel A app bytes are estimated from ingress connection share."
 echo "- LAN/Wi-Fi RU direct means device -> home router -> home ISP/WAN -> destination. It often includes Russian services, but can also include foreign sites outside STEALTH_DOMAINS, Apple/CDN/API/background traffic, and resolver-like infrastructure."
 echo "- Home Reality ingress bytes are exact TCP/<home-reality-port> counters; VPS/direct bytes for this ingress are estimated from connection split until per-outbound byte attribution is added."
 echo "- SITES / DESTINATIONS gives estimated bytes for Channel A/Home Reality and connection-level destination split for Channel B/C. B/C per-destination byte attribution is not implemented yet."
