@@ -1,5 +1,18 @@
 import type { ConsoleFilters, ConsoleModel, SnapshotRecord } from "./types";
-import { hourlyTraffic, latestCollectorErrors, latestCollectorRun, latestSnapshots, normalizedRows } from "./store";
+import {
+  auditLog,
+  catalogReviews,
+  hourlyTraffic,
+  latestCollectorErrors,
+  latestCollectorRun,
+  latestEvents,
+  latestRouteDecisions,
+  latestSnapshots,
+  normalizedRows,
+  notificationSettings,
+  notifications,
+  opsRuns,
+} from "./store";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 
@@ -31,6 +44,7 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
   const search = filters.search?.toLowerCase().trim();
   return rows.filter((row) => {
     if (filters.route && filters.route !== "all" && row.route !== filters.route) return false;
+    if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel) return false;
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
     if (filters.client && filters.client !== "all" && row.client !== filters.client && row.label !== filters.client) return false;
     if (!search) return true;
@@ -65,12 +79,14 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     id: row.device_id,
     label: row.label,
     ip: row.ip,
+    channel: row.channel,
     route: row.route,
     confidence: row.confidence,
     total_bytes: row.total_bytes,
     via_vps_bytes: row.via_vps_bytes,
     direct_bytes: row.direct_bytes,
     raw: row.raw,
+    collected_at: row.collected_at,
   }));
 
   const devices = normalizedDevices.length
@@ -91,6 +107,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
 
   const normalizedFlows = normalizedRows("normalized_flows").map((row: any) => ({
     client: row.client,
+    channel: row.channel,
     destination: row.destination,
     route: row.route,
     confidence: row.confidence,
@@ -98,6 +115,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     connections: row.connections,
     protocol: row.protocol,
     raw: row.raw,
+    collected_at: row.collected_at,
   }));
 
   const flows = filterRows(
@@ -120,6 +138,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     count: row.count,
     confidence: row.confidence,
     raw: row.raw,
+    collected_at: row.collected_at,
   }));
   const dnsQueries = filterRows(normalizedDns.length ? normalizedDns : dns.queries || [], filters);
 
@@ -129,6 +148,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     source: row.source,
     confidence: row.confidence,
     raw: row.raw,
+    collected_at: row.collected_at,
   }));
 
   const catalog = normalizedCatalog.length
@@ -194,6 +214,19 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
         ]
       : [];
 
+  const derivedNotifications = [...staleAlert, ...normalizedAlerts, ...leakAlerts, ...routingAlerts, ...collectorAlerts].map((row: any, idx) => ({
+    id: `derived-${idx}`,
+    type: row.source || "alert",
+    severity: row.severity || "warning",
+    title: row.title || row.evidence || "alert",
+    status: "open",
+    channel: row.channel || "",
+    target: row.destination || row.title || "",
+    created_at: row.collectedAt || newest || new Date().toISOString(),
+    updated_at: row.collectedAt || newest || new Date().toISOString(),
+    evidence: row,
+  }));
+
   const statusCards = [
     {
       label: "Router",
@@ -235,6 +268,13 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     collectorErrors,
     collectorRun,
     hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
+    events: latestEvents() as Array<Record<string, any>>,
+    routeDecisions: latestRouteDecisions() as Array<Record<string, any>>,
+    catalogReviews: catalogReviews() as Array<Record<string, any>>,
+    notifications: [...(notifications() as Array<Record<string, any>>), ...derivedNotifications],
+    notificationSettings: notificationSettings() as Record<string, any>,
+    auditLog: auditLog() as Array<Record<string, any>>,
+    opsRuns: opsRuns() as Array<Record<string, any>>,
     snapshots,
     statusCards,
     totals: {
@@ -256,9 +296,13 @@ export function filterOptions(model: ConsoleModel) {
   const routeValues = Array.from(
     new Set(model.flows.map((row) => row.route).filter((route) => routes.has(route)))
   ).sort();
+  const channels = Array.from(
+    new Set([...model.flows, ...model.devices].map((row) => row.channel).filter(Boolean))
+  ).sort();
   return {
     clients,
     routes: routeValues,
+    channels,
     confidences: ["exact", "estimated", "dns-interest", "unknown", "mixed"],
   };
 }

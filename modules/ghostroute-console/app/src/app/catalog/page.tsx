@@ -1,5 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, RawEvidence } from "@/components/Widgets";
+import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
 import { buildConsoleModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -21,7 +22,7 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
               <h2>Catalog</h2>
               <p>Read-only catalog view. Edits and deploys are outside MVP.</p>
             </div>
-            <button className="muted-button disabled-action" disabled>Apply disabled</button>
+            <button className="muted-button disabled-action" disabled>Runtime deploy disabled</button>
           </div>
           {model.catalog.length === 0 ? (
             <EmptyState title="Нет фактического catalog snapshot" />
@@ -67,6 +68,14 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
               ))}
             </div>
           )}
+          <CatalogReviewPanel candidates={preview} />
+          <h3 style={{ marginTop: 16 }}>Audit / reviews</h3>
+          <div className="detail-list">
+            {model.catalogReviews.slice(0, 8).map((row) => (
+              <div className="detail-row" key={row.id}><span>{row.domain}</span><strong>{row.decision}</strong></div>
+            ))}
+            {model.catalogReviews.length === 0 ? <div className="subtle">No review actions yet.</div> : null}
+          </div>
           <RawEvidence value={{ counts, candidates: preview, catalog: model.catalog.slice(0, 25) }} />
         </aside>
       </div>

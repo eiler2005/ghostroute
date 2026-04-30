@@ -83,6 +83,14 @@ export function ConsoleShell({
                 </option>
               ))}
             </select>
+            <select name="channel" defaultValue={filters.channel || "all"}>
+              <option value="all">Все каналы</option>
+              {options.channels.map((channel) => (
+                <option value={channel} key={channel}>
+                  {channel}
+                </option>
+              ))}
+            </select>
             <select name="confidence" defaultValue={filters.confidence || "all"}>
               <option value="all">Любая уверенность</option>
               {options.confidences.map((confidence) => (

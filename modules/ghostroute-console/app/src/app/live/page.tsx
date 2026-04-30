@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { bytes, EmptyState, RouteBadge, StatusBadge } from "@/components/Widgets";
+import { LiveStreamPanel } from "@/components/LiveStreamPanel";
+import { bytes, ChannelBadge, EmptyState, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildConsoleModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -14,12 +15,24 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   return (
     <ConsoleShell active="/live" model={model} filters={filters}>
       <div className="grid cards">
-        <section className="card"><h3>Mode</h3><StatusBadge value="POLLING" /><p>Snapshot based, not WebSocket live</p></section>
+        <section className="card"><h3>Mode</h3><StatusBadge value="SSE" /><p>stream with polling fallback</p></section>
         <section className="card"><h3>Freshness</h3><strong>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</strong><p>{model.freshnessStatus}</p></section>
         <section className="card"><h3>Flows</h3><strong>{model.flows.length}</strong><p>observed rows</p></section>
         <section className="card"><h3>Clients</h3><strong>{model.devices.length}</strong><p>observed devices</p></section>
         <section className="card"><h3>DNS</h3><strong>{model.dnsQueries.length}</strong><p>DNS-interest rows</p></section>
         <section className="card"><h3>Alerts</h3><strong>{model.alerts.length}</strong><p>open signals</p></section>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <LiveStreamPanel
+          initial={{
+            generated_at: model.generatedAt,
+            freshness_status: model.freshnessStatus,
+            events: model.events.slice(0, 40).map(({ evidence, raw, ...row }) => row),
+            route_decisions: model.routeDecisions.slice(0, 20).map(({ evidence, raw, ...row }) => row),
+            alerts: model.alerts.slice(0, 20).map(({ raw, ...row }) => row),
+          }}
+        />
       </div>
 
       <div className="grid two" style={{ marginTop: 14 }}>
@@ -33,12 +46,13 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
           ) : (
             <table className="table">
               <thead>
-                <tr><th>Client</th><th>Destination</th><th>Route</th><th>Traffic</th><th>Confidence</th></tr>
+                <tr><th>Client</th><th>Channel</th><th>Destination</th><th>Route</th><th>Traffic</th><th>Confidence</th></tr>
               </thead>
               <tbody>
                 {activeFlows.map((row, idx) => (
                   <tr key={idx}>
                     <td>{row.client || row.channel}</td>
+                    <td><ChannelBadge value={row.channel} /></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.destination || row.family}</Link></td>
                     <td><RouteBadge value={row.route || "Unknown"} /></td>
                     <td>{bytes(row.bytes || row.total_bytes || row.via_vps_bytes || row.direct_bytes || 0)}</td>
@@ -70,9 +84,16 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
       <div className="grid three" style={{ marginTop: 14 }}>
         <section className="card">
           <h2>Topology</h2>
-          <div className="detail-list">
-            <div className="detail-row"><span>Clients</span><strong>{model.devices.length}</strong></div>
-            <div className="detail-row"><span>Router</span><strong>dnsmasq + ipset + sing-box</strong></div>
+          <div className="live-topology">
+            <span>Clients</span>
+            <i />
+            <span>Router</span>
+            <i className="active" />
+            <span>VPS</span>
+            <i />
+            <span>Internet</span>
+          </div>
+          <div className="detail-list" style={{ marginTop: 12 }}>
             <div className="detail-row"><span>VPS</span><strong>{bytes(model.totals.viaVpsBytes)}</strong></div>
             <div className="detail-row"><span>Direct</span><strong>{bytes(model.totals.directBytes)}</strong></div>
           </div>

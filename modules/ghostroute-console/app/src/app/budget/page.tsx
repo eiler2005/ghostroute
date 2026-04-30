@@ -20,6 +20,22 @@ function tone(value: number) {
   return "ok";
 }
 
+function resetDay() {
+  const value = Number(process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY || 1);
+  return Number.isFinite(value) && value >= 1 && value <= 31 ? value : 1;
+}
+
+function dailyHistory(rows: Array<Record<string, any>>) {
+  const byDay = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    const day = String(row.hour_key || "").slice(0, 10) || "unknown";
+    const current = byDay.get(day) || { VPS: 0, Direct: 0, Mixed: 0, Unknown: 0 };
+    current[row.route || "Unknown"] = (current[row.route || "Unknown"] || 0) + Number(row.bytes || 0);
+    byDay.set(day, current);
+  }
+  return Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b)).slice(-31);
+}
+
 export default async function BudgetPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildConsoleModel(filters);
@@ -31,13 +47,17 @@ export default async function BudgetPage({ searchParams }: { searchParams?: Sear
   const ltePct = pct(directUsed, lteQuota);
   const top = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0))[0];
   const forecastVps = model.freshnessMinutes === null ? vpsUsed : Math.round(vpsUsed * 1.08);
+  const history = dailyHistory(model.hourlyTraffic);
+  const avgDailyVps = history.length ? Math.round(history.reduce((sum, [, row]) => sum + (row.VPS || 0), 0) / history.length) : 0;
+  const daysLeft = Math.max(1, 31 - new Date().getUTCDate());
+  const trendForecast = vpsUsed + avgDailyVps * daysLeft;
 
   return (
     <ConsoleShell active="/budget" model={model} filters={filters}>
       <div className="grid cards" style={{ marginBottom: 14 }}>
         <MetricCard label="VPS traffic" value={bytes(vpsUsed)} detail={vpsQuota ? `${vpsPct}% of ${bytes(vpsQuota)}` : "quota env not set"} />
         <MetricCard label="LTE / direct reserve" value={bytes(directUsed)} detail={lteQuota ? `${ltePct}% of ${bytes(lteQuota)}` : "quota env not set"} />
-        <MetricCard label="Forecast" value={bytes(forecastVps)} detail="current snapshot trend" />
+        <MetricCard label="Forecast" value={bytes(Math.max(forecastVps, trendForecast))} detail={`reset day ${resetDay()}`} />
         <MetricCard label="Largest consumer" value={top?.label || "n/a"} detail={top ? bytes(top.total_bytes || 0) : "no factual devices"} />
         <MetricCard label="Freshness" value={model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`} detail={model.freshnessStatus} />
         <MetricCard label="Alerts" value={String(model.alerts.length)} detail="read-only signals" />
@@ -79,11 +99,28 @@ export default async function BudgetPage({ searchParams }: { searchParams?: Sear
             <div className="detail-row"><span>LTE/direct quota</span><strong>{lteQuota ? bytes(lteQuota) : "not set"}</strong></div>
             {lteQuota ? <ProgressBar value={ltePct} tone={tone(ltePct)} /> : null}
             <div className="detail-row"><span>Forecast VPS</span><strong>{bytes(forecastVps)}</strong></div>
-            <div className="detail-row"><span>Provider billing API</span><strong>disabled</strong></div>
+            <div className="detail-row"><span>Trend forecast</span><strong>{bytes(trendForecast)}</strong></div>
+            <div className="detail-row"><span>Reset day</span><strong>{resetDay()}</strong></div>
+            <div className="detail-row"><span>Provider billing API</span><strong>{process.env.GHOSTROUTE_PROVIDER_BILLING_ENABLED === "1" ? "enabled" : "disabled"}</strong></div>
             <div className="detail-row"><span>Notification actions</span><strong>post-MVP</strong></div>
           </div>
         </aside>
       </div>
+      <section className="card" style={{ marginTop: 14 }}>
+        <h2>Daily history</h2>
+        <div className="detail-list">
+          {history.length === 0 ? (
+            <div className="subtle">No hourly aggregates yet.</div>
+          ) : (
+            history.map(([day, row]) => (
+              <div className="detail-row" key={day}>
+                <span>{day}</span>
+                <strong>VPS {bytes(row.VPS || 0)} / Direct {bytes(row.Direct || 0)} / LTE reserve {bytes(row.Mixed || 0)}</strong>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </ConsoleShell>
   );
 }
