@@ -21,6 +21,12 @@ export function RouteBadge({ value }: { value?: string }) {
   return <span className={`badge route-badge route-${route.toLowerCase()}`}>{route}</span>;
 }
 
+export function ChannelBadge({ value }: { value?: string }) {
+  const channel = String(value || "Unknown");
+  const slug = channel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+  return <span className={`badge channel-badge channel-${slug}`}>{channel}</span>;
+}
+
 export function EmptyState({ title }: { title: string }) {
   return (
     <div className="empty">

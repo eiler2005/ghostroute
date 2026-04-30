@@ -28,6 +28,11 @@ export function redactedMarkdown(title: string, input: unknown) {
 export function llmSafePayload(model: any) {
   const withoutRaw = (rows: Array<Record<string, any>>, limit: number) =>
     rows.slice(0, limit).map(({ raw, raw_json, evidence_json, ...row }) => row);
+  const channelSummary = [...(model.flows || []), ...(model.devices || [])].reduce((acc: Record<string, number>, row: any) => {
+    const channel = row.channel || "Unknown";
+    acc[channel] = (acc[channel] || 0) + 1;
+    return acc;
+  }, {});
   return {
     schema_version: 1,
     generated_at: new Date().toISOString(),
@@ -43,6 +48,8 @@ export function llmSafePayload(model: any) {
     },
     flows: withoutRaw(model.flows || [], 40),
     clients: withoutRaw(model.devices || [], 30),
+    channels: channelSummary,
+    route_decisions: withoutRaw(model.routeDecisions || [], 40),
     catalog: withoutRaw(model.catalog || [], 80),
     alerts: withoutRaw(model.alerts || [], 30),
     freshness: {

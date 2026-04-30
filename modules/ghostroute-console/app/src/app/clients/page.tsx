@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   bytes,
+  ChannelBadge,
   ConfidenceBadge,
   ConfidenceHelp,
   EmptyState,
@@ -56,6 +57,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   <th className="col-traffic">Total</th>
                   <th className="col-traffic">VPS</th>
                   <th className="col-traffic">Direct</th>
+                  <th>Channel</th>
                   <th className="col-route">Route</th>
                   <th className="col-confidence">Confidence</th>
                 </tr>
@@ -70,6 +72,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                     <td>{bytes(row.total_bytes || 0)}</td>
                     <td>{bytes(row.via_vps_bytes || 0)}</td>
                     <td>{bytes(row.direct_bytes || 0)}</td>
+                    <td><ChannelBadge value={row.channel} /></td>
                     <td><RouteBadge value={routeFromBytes(row)} /></td>
                     <td><ConfidenceBadge value={row.confidence} /></td>
                   </tr>
@@ -89,6 +92,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <>
               <div className="detail-list">
                 <div className="detail-row"><span>Total</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
+                <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
               </div>

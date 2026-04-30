@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(search.get("limit") || 50), 250);
   const model = buildConsoleModel({
     route: search.get("route") || "all",
+    channel: search.get("channel") || "all",
     confidence: search.get("confidence") || "all",
     client: search.get("client") || "all",
     search: search.get("search") || "",

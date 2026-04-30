@@ -49,6 +49,9 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   normalizeSnapshot(db, 1, "traffic", traffic.generated_at, traffic);
   assert.equal(db.prepare("select count(*) as count from normalized_devices").get().count, 1);
   assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 1);
+  assert.equal(db.prepare("select channel from normalized_flows limit 1").get().channel, "Home Wi-Fi/LAN");
+  assert.equal(db.prepare("select count(*) as count from events where event_type = 'flow.observed'").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from route_decisions").get().count, 1);
 
   normalizeSnapshot(db, 2, "domains", "2026-04-29T00:00:00Z", {
     source: { command: "domain-report" },
@@ -61,13 +64,13 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   db.close();
 });
 
-test("schema includes collector reliability tables", () => {
+test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
-  assert.ok(db.prepare("select version from schema_migrations where version = 2").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 3").get());
   db.close();
 });

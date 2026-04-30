@@ -16,8 +16,15 @@ normal UI строится только на реальных snapshots/SQLite, 
 
 ## Priority 1: Console Post-MVP
 
+Status: the first implementation slice exists in `modules/ghostroute-console/`.
+Route explanation, channel badges, SSE live stream, catalog review/dry-run,
+notification settings, budget history, ops actions and audit tables are present.
+Remaining work is hardening, richer source evidence, real delivery integrations
+and any router/runtime mutation beyond prepared/audited local actions.
+
 1. **True Live Mode**
-   - WebSocket/tail live stream поверх factual snapshots и collector events.
+   - Server-Sent Events live stream поверх factual snapshots и collector events.
+   - Future: true tail/WebSocket transport if needed.
    - Live topology, active flows, fresh/stale indicators.
    - Без seed/mock данных в production UI.
 
@@ -30,8 +37,8 @@ normal UI строится только на реальных snapshots/SQLite, 
 3. **Catalog Actions, но безопасно**
    - Review/apply candidates, git diff preview, dry-run, backup, rollback,
      audit log.
-   - По умолчанию read-only; apply/write actions только после явного
-     подтверждения оператора.
+   - По умолчанию runtime-safe; current apply prepares a local patch and audit
+     record, not a router deploy.
 
 4. **Notifications**
    - Telegram/e-mail alerts для stale snapshots, leaks, quota warnings,

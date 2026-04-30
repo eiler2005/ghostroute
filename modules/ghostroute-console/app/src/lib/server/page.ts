@@ -11,6 +11,7 @@ export async function filtersFromSearchParams(searchParams: SearchParams): Promi
   return {
     period: scalar(params.period) || "today",
     route: scalar(params.route) || "all",
+    channel: scalar(params.channel) || "all",
     client: scalar(params.client) || "all",
     confidence: scalar(params.confidence) || "all",
     search: scalar(params.search) || "",

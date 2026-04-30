@@ -1,4 +1,4 @@
-const MIGRATION_VERSION = 2;
+const MIGRATION_VERSION = 3;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -18,6 +18,45 @@ function text(value, fallback = "") {
 function number(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function addColumnIfMissing(db, table, column, definition) {
+  const columns = db.prepare(`pragma table_info(${table})`).all();
+  if (!columns.some((row) => row.name === column)) {
+    db.exec(`alter table ${table} add column ${column} ${definition}`);
+  }
+}
+
+function inferChannel(row) {
+  const raw = JSON.stringify(row || {}).toLowerCase();
+  const client = text(row.client || row.label || row.profile || row.channel || row.source || "");
+  const source = `${raw} ${client.toLowerCase()}`;
+  if (/\b\/\s*c1\b|\bc1_|channel-c|shadowrocket|naive/.test(source)) return "Channel C";
+  if (/\b\/\s*b\b|iphone-b|channel-b|xhttp|xray|selected-client/.test(source)) return "Channel B";
+  if (source.includes("channel-c") || source.includes("shadowrocket") || source.includes("naive")) return "Channel C";
+  if (source.includes("channel-b") || source.includes("xhttp") || source.includes("xray") || source.includes("selected-client")) return "Channel B";
+  if (source.includes("home_reality") || source.includes("home-reality") || source.includes("reality-in") || source.includes("reality qr")) return "Channel A";
+  if (source.includes("br0") || source.includes("lan") || source.includes("wi-fi") || source.includes("wifi") || source.includes("192.168.")) return "Home Wi-Fi/LAN";
+  if (/^lan-host-|^unknown device|^iphone|^ipad|^macbook|^apple tv/i.test(client)) return "Home Wi-Fi/LAN";
+  return text(row.channel || "Unknown");
+}
+
+function routeFromTraffic(row) {
+  if (number(row.via_vps_bytes || row.reality_bytes || row.vps_connections) > 0) return "VPS";
+  if (number(row.direct_bytes || row.wan_bytes || row.direct_connections) > 0) return "Direct";
+  return text(row.route || "Unknown");
+}
+
+function outboundFor(row) {
+  const raw = JSON.stringify(row || {});
+  if (routeFromTraffic(row) === "Direct") return "direct-out";
+  if (/reality-out|stealth-vps|vps/i.test(raw) || routeFromTraffic(row) === "VPS") return "reality-out";
+  if (/direct-out|direct|wan/i.test(raw)) return "direct-out";
+  return text(row.outbound || row.raw_outbound || "");
+}
+
+function visibleIp(row) {
+  return text(row.egress_ip || row.exit_ip || row.visible_ip || row.public_ip || row.ip || "");
 }
 
 export function ensureConsoleSchema(db) {
@@ -56,14 +95,15 @@ export function ensureConsoleSchema(db) {
     );
     create index if not exists idx_collector_errors_collected on collector_errors(collected_at desc);
 
-    create table if not exists normalized_devices (
+      create table if not exists normalized_devices (
       snapshot_id integer not null,
       snapshot_type text not null,
       collected_at text not null,
-      device_id text not null,
-      label text not null,
-      ip text not null default '',
-      route text not null default 'Unknown',
+        device_id text not null,
+        label text not null,
+        ip text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
       confidence text not null default 'unknown',
       total_bytes integer not null default 0,
       via_vps_bytes integer not null default 0,
@@ -72,12 +112,13 @@ export function ensureConsoleSchema(db) {
     );
     create index if not exists idx_normalized_devices_snapshot on normalized_devices(snapshot_id);
 
-    create table if not exists normalized_flows (
+      create table if not exists normalized_flows (
       snapshot_id integer not null,
       snapshot_type text not null,
-      collected_at text not null,
-      client text not null default '',
-      destination text not null default '',
+        collected_at text not null,
+        client text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
       route text not null default 'Unknown',
       confidence text not null default 'unknown',
       bytes integer not null default 0,
@@ -144,15 +185,93 @@ export function ensureConsoleSchema(db) {
       primary key (hour_key, route)
     );
 
-    create table if not exists retention_runs (
+      create table if not exists retention_runs (
       id integer primary key autoincrement,
       ran_at text not null,
       raw_deleted integer not null default 0,
       snapshot_rows_deleted integer not null default 0,
       backups_deleted integer not null default 0,
-      backup_path text not null default ''
-    );
+        backup_path text not null default ''
+      );
+      create table if not exists events (
+        id integer primary key autoincrement,
+        snapshot_id integer,
+        event_type text not null,
+        occurred_at text not null,
+        client text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        summary text not null default '',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_events_occurred on events(occurred_at desc);
+      create table if not exists route_decisions (
+        id integer primary key autoincrement,
+        snapshot_id integer,
+        occurred_at text not null,
+        client text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
+        route text not null default 'Unknown',
+        outbound text not null default '',
+        matched_rule text not null default '',
+        visible_ip text not null default '',
+        confidence text not null default 'unknown',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_route_decisions_occurred on route_decisions(occurred_at desc);
+      create table if not exists audit_log (
+        id integer primary key autoincrement,
+        actor text not null default 'local-console',
+        action text not null,
+        target text not null default '',
+        status text not null default 'recorded',
+        summary text not null default '',
+        rollback_ref text not null default '',
+        created_at text not null,
+        evidence_json text not null default '{}'
+      );
+      create table if not exists notifications (
+        id integer primary key autoincrement,
+        type text not null,
+        severity text not null default 'info',
+        title text not null,
+        status text not null default 'open',
+        channel text not null default '',
+        target text not null default '',
+        created_at text not null,
+        updated_at text not null,
+        snoozed_until text not null default '',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists notification_settings (
+        key text primary key,
+        value_json text not null,
+        updated_at text not null
+      );
+      create table if not exists catalog_reviews (
+        id integer primary key autoincrement,
+        domain text not null,
+        decision text not null,
+        reason text not null default '',
+        status text not null default 'reviewed',
+        created_at text not null,
+        updated_at text not null
+      );
+      create table if not exists ops_runs (
+        id integer primary key autoincrement,
+        action text not null,
+        status text not null,
+        started_at text not null,
+        finished_at text not null default '',
+        summary text not null default '',
+        evidence_json text not null default '{}'
+      );
   `);
+  addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
+  addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
 
   db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
     MIGRATION_VERSION,
@@ -191,6 +310,8 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
     "normalized_health",
     "normalized_catalog",
     "normalized_alerts",
+    "events",
+    "route_decisions",
   ]) {
     db.prepare(`delete from ${table} where snapshot_id = ?`).run(snapshotId);
   }
@@ -207,8 +328,8 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
 
 function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   const deviceInsert = db.prepare(`
-    insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, channel, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of [...(payload.devices || []), ...(payload.home_reality_clients || [])]) {
     deviceInsert.run(
@@ -218,6 +339,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       text(row.id || row.ip || row.profile || row.label, "unknown-device"),
       text(row.label || row.profile || row.ip || row.id, "Unknown device"),
       text(row.ip || ""),
+      inferChannel(row),
       text(row.route || "Unknown"),
       confidence(row.confidence, "estimated"),
       number(row.total_bytes),
@@ -228,23 +350,49 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   }
 
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, destination, route, confidence, bytes, connections, protocol, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of [...(payload.app_flows || []), ...(payload.destinations || [])]) {
+    const route = text(row.route || routeFromTraffic(row));
+    const channel = inferChannel(row);
+    const client = text(row.client || row.label || row.channel || "");
+    const destination = text(row.destination || row.domain || row.app || row.family || "");
+    const rowConfidence = confidence(row.confidence, "estimated");
     flowInsert.run(
       snapshotId,
       type,
       collectedAt,
-      text(row.client || row.label || row.channel || ""),
-      text(row.destination || row.domain || row.app || row.family || ""),
-      text(row.route || routeFromTraffic(row)),
-      confidence(row.confidence, "estimated"),
+      client,
+      channel,
+      destination,
+      route,
+      rowConfidence,
       number(row.bytes || row.total_bytes),
       number(row.connections || row.total_connections),
       text(row.protocol || ""),
       json(row)
     );
+    insertEvent(db, snapshotId, "flow.observed", collectedAt, {
+      client,
+      channel,
+      destination,
+      route,
+      confidence: rowConfidence,
+      summary: `${client || "client"} -> ${destination || "destination"} via ${route}`,
+      raw: row,
+    });
+    insertRouteDecision(db, snapshotId, collectedAt, {
+      client,
+      channel,
+      destination,
+      route,
+      outbound: outboundFor(row),
+      matched_rule: text(row.rule || row.rule_name || row.catalog_rule || ""),
+      visible_ip: visibleIp(row),
+      confidence: rowConfidence,
+      raw: row,
+    });
   }
 
   for (const row of payload.routing_mistakes || []) {
@@ -342,23 +490,29 @@ function normalizeDns(db, snapshotId, collectedAt, payload) {
     values (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.queries || []) {
+    const client = text(row.client || row.ip || "");
+    const domain = text(row.domain || row.qname || row.query || "");
+    const rowConfidence = confidence(row.confidence, "dns-interest");
     insert.run(
       snapshotId,
       collectedAt,
-      text(row.client || row.ip || ""),
-      text(row.domain || row.qname || row.query || ""),
+      client,
+      domain,
       text(row.qtype || row.type || ""),
       number(row.count || row.queries || 1),
-      confidence(row.confidence, "dns-interest"),
+      rowConfidence,
       json(row)
     );
+    insertEvent(db, snapshotId, "dns.query", collectedAt, {
+      client,
+      channel: inferChannel(row),
+      destination: domain,
+      route: "Unknown",
+      confidence: rowConfidence,
+      summary: `${client || "client"} queried ${domain || "domain"}`,
+      raw: row,
+    });
   }
-}
-
-function routeFromTraffic(row) {
-  if (number(row.via_vps_bytes || row.reality_bytes || row.vps_connections) > 0) return "VPS";
-  if (number(row.direct_bytes || row.wan_bytes || row.direct_connections) > 0) return "Direct";
-  return "Unknown";
 }
 
 function insertAlert(db, snapshotId, type, collectedAt, row) {
@@ -375,5 +529,42 @@ function insertAlert(db, snapshotId, type, collectedAt, row) {
     row.confidence,
     row.evidence,
     json(row.raw)
+  );
+}
+
+function insertEvent(db, snapshotId, eventType, occurredAt, row) {
+  db.prepare(`
+    insert into events(snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    snapshotId,
+    eventType,
+    occurredAt,
+    row.client || "",
+    row.channel || "Unknown",
+    row.destination || "",
+    row.route || "Unknown",
+    row.confidence || "unknown",
+    row.summary || "",
+    json(row.raw || row)
+  );
+}
+
+function insertRouteDecision(db, snapshotId, occurredAt, row) {
+  db.prepare(`
+    insert into route_decisions(snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    snapshotId,
+    occurredAt,
+    row.client || "",
+    row.channel || "Unknown",
+    row.destination || "",
+    row.route || "Unknown",
+    row.outbound || "",
+    row.matched_rule || "",
+    row.visible_ip || "",
+    row.confidence || "unknown",
+    json(row.raw || row)
   );
 }

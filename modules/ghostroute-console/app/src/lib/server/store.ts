@@ -11,6 +11,13 @@ function ensureDirs() {
   fs.mkdirSync(snapshotsDir(), { recursive: true });
 }
 
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string) {
+  const columns = db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((row) => row.name === column)) {
+    db.exec(`alter table ${table} add column ${column} ${definition}`);
+  }
+}
+
 export function getDb() {
   ensureDirs();
   if (!db) {
@@ -67,6 +74,7 @@ export function getDb() {
         snapshot_type text not null,
         collected_at text not null,
         client text not null default '',
+        channel text not null default 'Unknown',
         destination text not null default '',
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
@@ -136,9 +144,87 @@ export function getDb() {
         backups_deleted integer not null default 0,
         backup_path text not null default ''
       );
+      create table if not exists events (
+        id integer primary key autoincrement,
+        snapshot_id integer,
+        event_type text not null,
+        occurred_at text not null,
+        client text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        summary text not null default '',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_events_occurred on events(occurred_at desc);
+      create table if not exists route_decisions (
+        id integer primary key autoincrement,
+        snapshot_id integer,
+        occurred_at text not null,
+        client text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
+        route text not null default 'Unknown',
+        outbound text not null default '',
+        matched_rule text not null default '',
+        visible_ip text not null default '',
+        confidence text not null default 'unknown',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_route_decisions_occurred on route_decisions(occurred_at desc);
+      create table if not exists audit_log (
+        id integer primary key autoincrement,
+        actor text not null default 'local-console',
+        action text not null,
+        target text not null default '',
+        status text not null default 'recorded',
+        summary text not null default '',
+        rollback_ref text not null default '',
+        created_at text not null,
+        evidence_json text not null default '{}'
+      );
+      create table if not exists notifications (
+        id integer primary key autoincrement,
+        type text not null,
+        severity text not null default 'info',
+        title text not null,
+        status text not null default 'open',
+        channel text not null default '',
+        target text not null default '',
+        created_at text not null,
+        updated_at text not null,
+        snoozed_until text not null default '',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists notification_settings (
+        key text primary key,
+        value_json text not null,
+        updated_at text not null
+      );
+      create table if not exists catalog_reviews (
+        id integer primary key autoincrement,
+        domain text not null,
+        decision text not null,
+        reason text not null default '',
+        status text not null default 'reviewed',
+        created_at text not null,
+        updated_at text not null
+      );
+      create table if not exists ops_runs (
+        id integer primary key autoincrement,
+        action text not null,
+        status text not null,
+        started_at text not null,
+        finished_at text not null default '',
+        summary text not null default '',
+        evidence_json text not null default '{}'
+      );
     `);
+    addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
+    addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-      2,
+      3,
       new Date().toISOString()
     );
   }
@@ -268,6 +354,175 @@ export function normalizedRows(table: string) {
   } catch {
     return [];
   }
+}
+
+function parseEvidence(row: any) {
+  try {
+    return row.evidence_json ? JSON.parse(row.evidence_json) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function latestEvents(limit = 120) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, evidence_json
+         from events
+         order by occurred_at desc, id desc
+         limit ?`
+      )
+      .all(limit)
+      .map((row: any) => ({ ...row, evidence: parseEvidence(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function latestRouteDecisions(limit = 120) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, confidence, evidence_json
+         from route_decisions
+         order by occurred_at desc, id desc
+         limit ?`
+      )
+      .all(limit)
+      .map((row: any) => ({ ...row, evidence: parseEvidence(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function catalogReviews(limit = 100) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, domain, decision, reason, status, created_at, updated_at
+         from catalog_reviews
+         order by updated_at desc, id desc
+         limit ?`
+      )
+      .all(limit);
+  } catch {
+    return [];
+  }
+}
+
+export function notifications(limit = 100) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, type, severity, title, status, channel, target, created_at, updated_at, snoozed_until, evidence_json
+         from notifications
+         order by updated_at desc, id desc
+         limit ?`
+      )
+      .all(limit)
+      .map((row: any) => ({ ...row, evidence: parseEvidence(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function notificationSettings() {
+  try {
+    const rows = getDb().prepare("select key, value_json from notification_settings").all() as Array<any>;
+    return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value_json)]));
+  } catch {
+    return {};
+  }
+}
+
+export function auditLog(limit = 100) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, actor, action, target, status, summary, rollback_ref, created_at, evidence_json
+         from audit_log
+         order by created_at desc, id desc
+         limit ?`
+      )
+      .all(limit)
+      .map((row: any) => ({ ...row, evidence: parseEvidence(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function opsRuns(limit = 50) {
+  try {
+    return getDb()
+      .prepare(
+        `select id, action, status, started_at, finished_at, summary, evidence_json
+         from ops_runs
+         order by started_at desc, id desc
+         limit ?`
+      )
+      .all(limit)
+      .map((row: any) => ({ ...row, evidence: parseEvidence(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function recordAudit(action: string, target: string, status: string, summary: string, evidence: unknown = {}, rollbackRef = "") {
+  return getDb()
+    .prepare(
+      `insert into audit_log(actor, action, target, status, summary, rollback_ref, created_at, evidence_json)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      "local-console",
+      action,
+      target,
+      status,
+      summary,
+      rollbackRef,
+      new Date().toISOString(),
+      JSON.stringify(evidence || {})
+    );
+}
+
+export function upsertCatalogReview(domain: string, decision: string, reason: string) {
+  const now = new Date().toISOString();
+  const existing = getDb().prepare("select id from catalog_reviews where domain = ?").get(domain) as { id: number } | undefined;
+  if (existing) {
+    getDb()
+      .prepare("update catalog_reviews set decision = ?, reason = ?, status = 'reviewed', updated_at = ? where id = ?")
+      .run(decision, reason, now, existing.id);
+    return existing.id;
+  }
+  const result = getDb()
+    .prepare("insert into catalog_reviews(domain, decision, reason, status, created_at, updated_at) values (?, ?, ?, 'reviewed', ?, ?)")
+    .run(domain, decision, reason, now, now);
+  return Number(result.lastInsertRowid);
+}
+
+export function setNotificationSetting(key: string, value: unknown) {
+  getDb()
+    .prepare(
+      `insert into notification_settings(key, value_json, updated_at) values (?, ?, ?)
+       on conflict(key) do update set value_json = excluded.value_json, updated_at = excluded.updated_at`
+    )
+    .run(key, JSON.stringify(value || {}), new Date().toISOString());
+}
+
+export function updateNotification(id: number, status: string, snoozedUntil = "") {
+  getDb()
+    .prepare("update notifications set status = ?, snoozed_until = ?, updated_at = ? where id = ?")
+    .run(status, snoozedUntil, new Date().toISOString(), id);
+}
+
+export function recordOpsRun(action: string, status: string, summary: string, evidence: unknown = {}) {
+  const now = new Date().toISOString();
+  const result = getDb()
+    .prepare("insert into ops_runs(action, status, started_at, finished_at, summary, evidence_json) values (?, ?, ?, ?, ?, ?)")
+    .run(action, status, now, now, summary, JSON.stringify(evidence || {}));
+  recordAudit(`ops.${action}`, action, status, summary, evidence);
+  return Number(result.lastInsertRowid);
 }
 
 export function latestCollectorErrors(limit = 5) {

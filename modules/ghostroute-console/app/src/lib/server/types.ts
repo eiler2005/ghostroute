@@ -13,6 +13,7 @@ export type SnapshotRecord = {
 export type ConsoleFilters = {
   period?: string;
   route?: string;
+  channel?: string;
   client?: string;
   confidence?: string;
   search?: string;
@@ -25,6 +26,13 @@ export type ConsoleModel = {
   collectorErrors: Array<Record<string, any>>;
   collectorRun?: Record<string, any> | null;
   hourlyTraffic: Array<Record<string, any>>;
+  events: Array<Record<string, any>>;
+  routeDecisions: Array<Record<string, any>>;
+  catalogReviews: Array<Record<string, any>>;
+  notifications: Array<Record<string, any>>;
+  notificationSettings: Record<string, any>;
+  auditLog: Array<Record<string, any>>;
+  opsRuns: Array<Record<string, any>>;
   snapshots: Record<string, SnapshotRecord | undefined>;
   statusCards: Array<{ label: string; status: string; detail: string }>;
   totals: {

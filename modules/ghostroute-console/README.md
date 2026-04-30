@@ -1,11 +1,16 @@
 # GhostRoute Console
 
-Read-only web console for the existing GhostRoute operational modules.
+Factual web console for the existing GhostRoute operational modules.
 
 This module lives inside `router_configuration` on purpose: Console is a
 consumer of module-owned reports, not a second source of truth. It reads JSON
 snapshots from Traffic Observatory, Health Monitor and DNS/Catalog Intelligence,
 stores them locally, and renders a factual dashboard.
+
+The current post-MVP slice adds route explanation, channel attribution,
+append-only live events, controlled catalog review actions, notifications
+settings, budget history and audited ops actions. It still does not mutate
+router runtime or deploy catalog changes implicitly.
 
 ## Public Commands
 
@@ -16,9 +21,13 @@ stores them locally, and renders a factual dashboard.
 ./modules/ghostroute-console/bin/ghostroute-console doctor
 ```
 
-## MVP Boundaries
+## Safety Boundaries
 
-- Read-only only: no router deploy, no service restart, no catalog edit.
+- Runtime-safe by default: no router deploy, no hidden service restart, no
+  direct catalog deploy.
+- Controlled actions require explicit confirmation and write audit records.
+- Catalog apply prepares a local patch/rollback reference; router deploy remains
+  a separate operator action.
 - No seed data in production UI. Empty snapshots render as empty states.
 - JSON reports are the machine contract; Markdown remains for humans and LLMs.
 - Runtime access is protected by the existing Caddy stack with Basic Auth for
@@ -41,3 +50,16 @@ VPS runtime uses:
 
 The collector writes raw JSON snapshots under `snapshots/` and an embedded
 SQLite database at `ghostroute.db`.
+
+## Post-MVP Interfaces
+
+- `/traffic` and `/traffic/[id]` explain route decisions with channel, route,
+  DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
+- `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
+  updates with polling fallback in the UI.
+- `/api/actions/catalog/*` implements review, dry-run, apply preparation and
+  rollback recording.
+- `/api/notifications/*` stores notification settings and supports ack/snooze
+  actions without storing delivery secrets.
+- `/api/actions/ops` records controlled ops actions such as collect/report
+  refresh and collector restart requests.
