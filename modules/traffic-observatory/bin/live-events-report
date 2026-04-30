@@ -100,6 +100,13 @@ def split_host_port(value)
   [host, port]
 end
 
+def clean_client(value)
+  client = value.to_s.strip
+  return '' if client =~ /\A\d+ms\z/i
+  return '' if client == '-'
+  client
+end
+
 events = []
 flows = {}
 
@@ -113,7 +120,7 @@ File.readlines(singbox_path, chomp: true).each_with_index do |line, idx|
   channel = 'Unknown'
   if line =~ /inbound\/vless\[reality-in\]: .*inbound connection to ([^[:space:]]+)/
     inbound = 'reality-in'
-    channel = 'Channel A'
+    channel = 'A/Home Reality'
   elsif line =~ /inbound\/socks\[channel-b-relay-socks\]: .*inbound connection to ([^[:space:]]+)/
     inbound = 'channel-b-relay-socks'
     channel = 'Channel B'
@@ -127,7 +134,7 @@ File.readlines(singbox_path, chomp: true).each_with_index do |line, idx|
 
   if inbound && id
     destination, port = split_host_port(Regexp.last_match(1))
-    client = line[/\[#{Regexp.escape(id)}\s+([^\]]+)\]/, 1].to_s
+    client = clean_client(line[/\[#{Regexp.escape(id)}\s+([^\]]+)\]/, 1])
     flows[id] ||= {}
     flows[id].merge!(
       event_id: eid,
@@ -243,17 +250,22 @@ end
 events.sort_by! { |event| [event[:ts].to_s, event[:event_id].to_s] }
 if since.to_s != ''
   seen_since = false
-  events = events.each_with_object([]) do |event, out|
+  filtered = events.each_with_object([]) do |event, out|
     if seen_since
       out << event
     elsif event[:event_id] == since
       seen_since = true
     end
   end
+  events = filtered if seen_since
 end
 events = events.last(limit)
 
 route_events = events.select { |event| event[:event_type] == 'route.decision' || event[:event_type] == 'flow.start' }.map do |event|
+  route = event[:route_decision] || event[:route] || 'Unknown'
+  vps_egress_ip = route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_IP', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_IP', '')) : ''
+  vps_egress_asn = route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_ASN', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_ASN', '')) : ''
+  vps_egress_country = route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_COUNTRY', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_COUNTRY', '')) : ''
   {
     event_id: event[:event_id],
     ts: event[:ts],
@@ -270,10 +282,10 @@ route_events = events.select { |event| event[:event_type] == 'route.decision' ||
     matched_rule: event[:matched_rule].to_s,
     rule_set: event[:rule_set].to_s,
     sing_box_outbound: event[:sing_box_outbound].to_s,
-    route_decision: event[:route_decision] || event[:route] || 'Unknown',
-    egress_ip: '',
-    egress_asn: '',
-    egress_country: '',
+    route_decision: route,
+    egress_ip: vps_egress_ip,
+    egress_asn: vps_egress_asn,
+    egress_country: vps_egress_country,
     confidence: event[:confidence] || 'unknown',
     raw_refs: event[:raw_refs] || []
   }

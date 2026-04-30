@@ -24,9 +24,16 @@ budget history, ops actions and audit tables are present. Remaining work is
 hardening, real notification delivery/provider integrations and any
 router/runtime mutation beyond prepared/audited local actions.
 
+Latest implementation note: the Console now treats Clients as a known-device
+inventory with historical last-seen state, enables scheduled read-only
+collection in the VPS deployment, and uses explicitly configured egress identity
+instead of guessing site-visible IP/ASN/country.
+
 1. **True Live Mode**
    - Server-Sent Events live stream поверх factual snapshots, SQLite events and
      read-only real log-tail ingestion через `live-events-report --json`.
+   - Current deployment cadence: 15-second log-tail polling, full snapshots
+     every 30 minutes during the day and every 3 hours overnight Moscow time.
    - Future: long-lived tail/WebSocket transport if cursor polling becomes too
      slow or too lossy.
    - Live topology, active flows, fresh/stale indicators.

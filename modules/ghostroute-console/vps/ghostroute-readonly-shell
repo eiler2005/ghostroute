@@ -3,9 +3,19 @@ set -eu
 
 repo_root="${GHOSTROUTE_READONLY_REPO_ROOT:-/opt/ghostroute-console/repo}"
 original="${SSH_ORIGINAL_COMMAND:-}"
+backtick="$(printf '\140')"
+command_sub='$('
+
+if [ -r /opt/ghostroute-console/router.env ]; then
+  GHOSTROUTE_ROUTER_ENV_FILE=/opt/ghostroute-console/router.env
+  export GHOSTROUTE_ROUTER_ENV_FILE
+  set -a
+  . /opt/ghostroute-console/router.env
+  set +a
+fi
 
 case "$original" in
-  *";"*|*"&&"*|*"|"*|*">"*|*"<"*|*"`"*|*"$("*)
+  *";"*|*"&&"*|*"|"*|*">"*|*"<"*|*"$backtick"*|*"$command_sub"*)
     echo "rejected: shell metacharacters are not allowed" >&2
     exit 126
     ;;

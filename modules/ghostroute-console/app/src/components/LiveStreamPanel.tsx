@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RouteBadge } from "@/components/Widgets";
+import { ChannelBadge, RouteBadge, shortDateTime } from "@/components/Widgets";
 
 type LivePayload = {
   generated_at: string;
@@ -39,9 +39,10 @@ export function LiveStreamPanel({ initial }: { initial: LivePayload }) {
       <div className="live-feed">
         {[...(payload.events || []), ...(payload.route_decisions || [])].slice(0, 18).map((row, idx) => (
           <div className="live-feed-row" key={`${row.event_type || "decision"}-${row.event_id || row.id || idx}`}>
-            <span>{row.occurred_at || payload.generated_at}</span>
+            <span>{shortDateTime(row.occurred_at || payload.generated_at)}</span>
             <strong>{row.event_type || "route.decision"}</strong>
-            <small>{row.client || row.client_ip || "client"} → {row.destination || row.dns_qname || row.summary || "destination"}</small>
+            <small>{row.origin || row.client || row.client_ip || "System"} → {row.destination || row.dns_qname || row.summary || "destination"}</small>
+            <ChannelBadge value={row.channel} />
             <RouteBadge value={row.route || "Unknown"} />
           </div>
         ))}

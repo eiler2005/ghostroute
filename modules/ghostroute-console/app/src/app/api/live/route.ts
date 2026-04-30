@@ -1,21 +1,29 @@
-import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { NextRequest, NextResponse } from "next/server";
+import { buildPagedEvidenceContext, listClientInventory, listLiveEvents, listTrafficRows } from "@/lib/server/selectors";
 
 function compact({ raw, evidence, evidence_json, ...row }: Record<string, any>) {
   return row;
 }
 
-export async function GET() {
-  const model = buildConsoleModel();
+export async function GET(request: NextRequest) {
+  const search = request.nextUrl.searchParams;
+  const flows = listTrafficRows({ page: 1, pageSize: 8 }).rows;
+  const model = buildPagedEvidenceContext({}, flows);
+  const events = listLiveEvents({
+    page: Math.max(1, Number(search.get("page") || 1)),
+    pageSize: Math.min(Number(search.get("pageSize") || 25), 100),
+  });
+  const clients = listClientInventory({ page: 1, pageSize: 6 });
   return NextResponse.json({
     generated_at: model.generatedAt,
     freshness_minutes: model.freshnessMinutes,
     freshness_status: model.freshnessStatus,
-    flows: model.flows.slice(0, 8).map(compact),
-    clients: model.devices.slice(0, 6).map(compact),
+    flows: flows.map(compact),
+    clients: clients.rows.map(compact),
     dns: model.dnsQueries.slice(0, 6).map(compact),
-    events: model.events.slice(0, 8).map(compact),
-    route_decisions: model.routeDecisions.slice(0, 8).map(compact),
+    events: events.rows.map(compact),
+    route_decisions: [],
+    pagination: { total: events.total, page: events.page, pageSize: events.pageSize, totalPages: events.totalPages },
     alerts: model.alerts.slice(0, 5).map(compact),
   });
 }

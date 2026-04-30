@@ -1,17 +1,17 @@
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, listLiveEvents } from "@/lib/server/selectors";
 
 export const dynamic = "force-dynamic";
 
 function eventPayload() {
-  const model = buildConsoleModel();
-  const compact = ({ raw, evidence, evidence_json, ...row }: Record<string, any>) => row;
+  const model = buildPagedEvidenceContext({}, []);
+  const events = listLiveEvents({ page: 1, pageSize: 25 });
   return {
     generated_at: new Date().toISOString(),
     freshness_minutes: model.freshnessMinutes,
     freshness_status: model.freshnessStatus,
-    events: model.events.slice(0, 8).map(compact),
-    route_decisions: model.routeDecisions.slice(0, 8).map(compact),
-    alerts: model.alerts.slice(0, 5).map(compact),
+    events: events.rows,
+    route_decisions: [],
+    alerts: model.alerts.slice(0, 5),
   };
 }
 

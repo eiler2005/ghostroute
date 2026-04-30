@@ -31,11 +31,12 @@ function inferChannel(row) {
   const raw = JSON.stringify(row || {}).toLowerCase();
   const client = text(row.client || row.label || row.profile || row.channel || row.source || "");
   const source = `${raw} ${client.toLowerCase()}`;
+  if (source.includes('mobile-client-')) return 'A/Home Reality';
   if (/\b\/\s*c1\b|\bc1_|channel-c|shadowrocket|naive/.test(source)) return "Channel C";
   if (/\b\/\s*b\b|iphone-b|channel-b|xhttp|xray|selected-client/.test(source)) return "Channel B";
   if (source.includes("channel-c") || source.includes("shadowrocket") || source.includes("naive")) return "Channel C";
   if (source.includes("channel-b") || source.includes("xhttp") || source.includes("xray") || source.includes("selected-client")) return "Channel B";
-  if (source.includes("home_reality") || source.includes("home-reality") || source.includes("reality-in") || source.includes("reality qr")) return "Channel A";
+  if (source.includes("home_reality") || source.includes("home-reality") || source.includes("reality-in") || source.includes("reality qr")) return "A/Home Reality";
   if (source.includes("br0") || source.includes("lan") || source.includes("wi-fi") || source.includes("wifi") || source.includes("192.168.")) return "Home Wi-Fi/LAN";
   if (/^lan-host-|^unknown device|^iphone|^ipad|^macbook|^apple tv/i.test(client)) return "Home Wi-Fi/LAN";
   return text(row.channel || "Unknown");

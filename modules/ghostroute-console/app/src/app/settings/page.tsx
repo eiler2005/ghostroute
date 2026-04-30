@@ -1,5 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { SettingsActions } from "@/components/SettingsActions";
+import { TrafficTermsHelp } from "@/components/Widgets";
 import { buildConsoleModel } from "@/lib/server/selectors";
 import { dataDir } from "@/lib/server/paths";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
@@ -22,6 +23,13 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Se
         </div>
       </section>
       <SettingsActions />
+      <section className="card terms-card" style={{ marginTop: 14 }}>
+        <div>
+          <h2>Что означают термины</h2>
+          <p>Короткая справка по входам, выходам, правилам и confidence labels.</p>
+        </div>
+        <TrafficTermsHelp />
+      </section>
     </ConsoleShell>
   );
 }

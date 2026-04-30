@@ -6,13 +6,20 @@ import {
   ConfidenceBadge,
   ConfidenceHelp,
   EmptyState,
+  Pagination,
   RawEvidence,
   RouteBadge,
   routeFromBytes,
+  shortDateTime,
   SplitBars,
+  StatusBadge,
 } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+
+function scalar(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function clientTokens(client?: Record<string, any>) {
   return [client?.label, client?.id, client?.ip, client?.profile, client?.client].filter(Boolean).map(String);
@@ -27,58 +34,79 @@ function belongsToClient(row: Record<string, any>, tokens: string[]) {
 }
 
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
-  const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
-  const evidenceModel = buildConsoleModel({ ...filters, client: "all" });
+  const params = searchParams ? await searchParams : {};
+  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
+  const clientsPage = listClientInventory({ page, pageSize, filters });
   const selected =
-    evidenceModel.devices.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client)) ||
-    model.devices[0];
+    clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client)) ||
+    clientsPage.rows[0];
+  const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.label || selected.id } }).rows : [];
+  const model = buildPagedEvidenceContext(filters, trafficRows);
+  model.devices = clientsPage.rows;
   const selectedName = selected?.label || selected?.id || "";
   const tokens = clientTokens(selected);
-  const selectedFlows = selected ? evidenceModel.flows.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
-  const selectedDns = selected ? evidenceModel.dnsQueries.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
-  const selectedAlerts = selected ? evidenceModel.alerts.filter((row) => belongsToClient(row, tokens)).slice(0, 5) : [];
+  const selectedFlows = selected ? trafficRows.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const selectedDns = selected ? model.dnsQueries.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const selectedAlerts = selected ? model.alerts.filter((row) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
+  const filterParams = {
+    period: filters.period,
+    route: filters.route !== "all" ? filters.route : undefined,
+    channel: filters.channel !== "all" ? filters.channel : undefined,
+    confidence: filters.confidence !== "all" ? filters.confidence : undefined,
+    client: filters.client !== "all" ? filters.client : undefined,
+    search: filters.search,
+  };
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
       <div className="grid two">
         <section className="card">
           <div className="toolbar">
             <h2>Устройства</h2>
-            <span className="subtle">{model.devices.length} observed clients</span>
+            <span className="subtle">{clientsPage.total} known clients</span>
           </div>
-          {model.devices.length === 0 ? (
+          {clientsPage.rows.length === 0 ? (
             <EmptyState title="Нет фактической инвентаризации" />
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="col-client">Device</th>
-                  <th className="col-traffic">Total</th>
-                  <th className="col-traffic">VPS</th>
-                  <th className="col-traffic">Direct</th>
-                  <th>Channel</th>
-                  <th className="col-route">Route</th>
-                  <th className="col-confidence">Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.devices.map((row) => (
-                  <tr
-                    key={row.id || row.label}
-                    className={(row.label || row.id) === selectedName ? "selected" : ""}
-                  >
-                    <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
-                    <td>{bytes(row.total_bytes || 0)}</td>
-                    <td>{bytes(row.via_vps_bytes || 0)}</td>
-                    <td>{bytes(row.direct_bytes || 0)}</td>
-                    <td><ChannelBadge value={row.channel} /></td>
-                    <td><RouteBadge value={routeFromBytes(row)} /></td>
-                    <td><ConfidenceBadge value={row.confidence} /></td>
+            <>
+              <table className="table clients-table">
+                <thead>
+                  <tr>
+                    <th className="col-client">Device</th>
+                    <th>Last seen</th>
+                    <th>Status</th>
+                    <th>Channel</th>
+                    <th className="col-route">Route</th>
+                    <th className="col-traffic">Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {clientsPage.rows.map((row) => (
+                    <tr
+                      key={row.id || row.label}
+                      className={(row.label || row.id) === selectedName ? "selected" : ""}
+                    >
+                      <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
+                      <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
+                      <td><StatusBadge value={row.status || "Inactive"} /></td>
+                      <td><ChannelBadge value={row.channel} /></td>
+                      <td><RouteBadge value={routeFromBytes(row)} /></td>
+                      <td>{bytes(row.total_bytes || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination
+                basePath="/clients"
+                page={clientsPage.page}
+                pageSize={clientsPage.pageSize}
+                total={clientsPage.total}
+                totalPages={clientsPage.totalPages}
+                extraParams={filterParams}
+              />
+            </>
           )}
         </section>
         <aside className="card side-panel">
@@ -93,6 +121,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               <div className="detail-list">
                 <div className="detail-row"><span>Total</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
+                <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>
+                <div className="detail-row"><span>Last seen</span><strong>{shortDateTime(selected.last_seen || selected.collected_at)}</strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
               </div>
@@ -104,7 +134,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-list">
                   {selectedFlows.map((row, idx) => (
                     <div className="detail-row" key={idx}>
-                      <span>{row.destination || row.family || "n/a"}</span>
+                      <span>{row.destination || row.dns_qname || "n/a"}</span>
                       <strong><RouteBadge value={row.route || routeFromBytes(row)} /></strong>
                     </div>
                   ))}

@@ -14,6 +14,11 @@ router_health_load_env() {
   PROJECT_ROOT="$(router_health_project_root)"
   [ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
   [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+  if [ -n "${GHOSTROUTE_ROUTER_ENV_FILE:-}" ] && [ -r "${GHOSTROUTE_ROUTER_ENV_FILE}" ]; then
+    set -a
+    . "${GHOSTROUTE_ROUTER_ENV_FILE}"
+    set +a
+  fi
 
   ROUTER_USER="${ROUTER_USER:-admin}"
   ROUTER_PORT="${ROUTER_PORT:-22}"
@@ -38,8 +43,10 @@ router_health_load_env() {
     -p "$ROUTER_PORT"
     -o ConnectTimeout="$CONNECT_TIMEOUT"
     -o IdentitiesOnly=yes
+    -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
     -o PubkeyAcceptedAlgorithms=+ssh-rsa
     -o StrictHostKeyChecking=accept-new
+    -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
   )
 
   ROUTER_HEALTH_INIT_DONE=1

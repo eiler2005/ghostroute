@@ -564,7 +564,7 @@ awk -F'/' '
       print domain
     }
   }
-' "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" 2>/dev/null | sort -u > "$ROUTING_WARN_CATALOG_RU"
+' "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" 2>/dev/null | sort -u > "$ROUTING_WARN_CATALOG_RU" || true
 
 router_ssh '/opt/bin/tailscale status --json 2>/dev/null || printf "{}\n"' > "$CURRENT_TAILSCALE"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); SNAP=\$(ls \"\$STATE_DIR/tailscale\"/${TODAY}T*.json 2>/dev/null | sort | head -1); [ -n \"\$SNAP\" ] && cat \"\$SNAP\" || printf '{}\n'" > "$BASE_TAILSCALE"
@@ -1795,9 +1795,9 @@ def route_event(row, source_ref)
     rule_set: matched_rule == 'STEALTH_DOMAINS' ? 'STEALTH_DOMAINS' : 'direct/default',
     sing_box_outbound: outbound,
     route_decision: route,
-    egress_ip: '',
-    egress_asn: '',
-    egress_country: '',
+    egress_ip: route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_IP', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_IP', '')) : '',
+    egress_asn: route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_ASN', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_ASN', '')) : '',
+    egress_country: route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_COUNTRY', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_COUNTRY', '')) : '',
     confidence: row[:confidence].to_s.empty? ? 'estimated' : row[:confidence],
     raw_refs: [{ source: source_ref }]
   }

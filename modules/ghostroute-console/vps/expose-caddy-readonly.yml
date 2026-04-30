@@ -50,8 +50,6 @@
         backup: true
         block: |
           https://{{ console_public_host }} {
-              encode zstd gzip
-
               log ghostroute_console {
                   output stdout
                   format json
@@ -66,7 +64,13 @@
                   Referrer-Policy "no-referrer"
               }
 
-              reverse_proxy 127.0.0.1:3000
+              reverse_proxy 127.0.0.1:3000 {
+                  flush_interval -1
+                  header_up Connection close
+                  transport http {
+                      keepalive off
+                  }
+              }
           }
 
     - name: Validate Caddy config

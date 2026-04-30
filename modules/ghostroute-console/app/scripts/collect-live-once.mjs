@@ -13,6 +13,31 @@ const snapshotDir = path.join(dataDir, "snapshots");
 fs.mkdirSync(snapshotDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
+const lockFile = path.join(dataDir, "live-collector.lock");
+let lockFd = null;
+try {
+  const stat = fs.statSync(lockFile);
+  const maxAgeMs = Math.max(10000, Number(process.env.GHOSTROUTE_LIVE_TIMEOUT_SECONDS || 30) * 1000 * 2);
+  if (Date.now() - stat.mtimeMs > maxAgeMs) fs.unlinkSync(lockFile);
+} catch {
+  // No existing lock.
+}
+try {
+  lockFd = fs.openSync(lockFile, "wx");
+  fs.writeFileSync(lockFd, `${process.pid} ${new Date().toISOString()}\n`);
+} catch {
+  console.log("live collector skipped: another collect-live-once run is active");
+  process.exit(0);
+}
+process.on("exit", () => {
+  try {
+    if (lockFd !== null) fs.closeSync(lockFd);
+    fs.unlinkSync(lockFile);
+  } catch {
+    // Best-effort lock cleanup.
+  }
+});
+
 const db = new Database(path.join(dataDir, "ghostroute.db"));
 db.pragma("journal_mode = WAL");
 ensureConsoleSchema(db);
@@ -37,7 +62,18 @@ function runReadOnlyCommand(args) {
     const remoteRoot = process.env.GHOSTROUTE_READONLY_REMOTE_ROOT || "/opt/router_configuration";
     if (!host) throw new Error("GHOSTROUTE_READONLY_SSH_HOST is required in ssh collector mode");
     const remoteCommand = [path.posix.join(remoteRoot, command), ...args].join(" ");
-    return execFileSync("ssh", ["-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", `${user}@${host}`, remoteCommand], {
+    return execFileSync("ssh", [
+      "-i",
+      key,
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "UserKnownHostsFile=/tmp/ghostroute-known-hosts",
+      `${user}@${host}`,
+      remoteCommand,
+    ], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,

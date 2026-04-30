@@ -7,9 +7,18 @@ export function bytes(value: number) {
   return `${value} B`;
 }
 
+export function shortDateTime(value?: string | number | Date) {
+  if (!value) return "n/a";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 export function StatusBadge({ value }: { value?: string }) {
   const status = String(value || "UNKNOWN").toLowerCase();
-  return <span className={`badge status-${status}`}>{value || "UNKNOWN"}</span>;
+  const slug = status.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+  return <span className={`badge status-${slug}`}>{value || "UNKNOWN"}</span>;
 }
 
 export function ConfidenceBadge({ value }: { value?: string }) {
@@ -52,6 +61,46 @@ export function ProgressBar({ value, tone = "ok" }: { value: number; tone?: "ok"
     <div className={`progress progress-${tone}`}>
       <span style={{ width: `${pct}%` }} />
       <strong>{pct}%</strong>
+    </div>
+  );
+}
+
+export function Pagination({
+  basePath,
+  page,
+  pageParam = "page",
+  pageSize,
+  total,
+  totalPages,
+  extraParams = {},
+}: {
+  basePath: string;
+  page: number;
+  pageParam?: string;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  extraParams?: Record<string, string | number | undefined>;
+}) {
+  const makeHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+    params.set(pageParam, String(nextPage));
+    params.set("pageSize", String(pageSize));
+    for (const [key, value] of Object.entries(extraParams)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    return `${basePath}?${params.toString()}`;
+  };
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+  return (
+    <div className="pagination">
+      <span>Showing {start}-{end} of {total}</span>
+      <div>
+        {page > 1 ? <a className="muted-button" href={makeHref(page - 1)}>Prev</a> : <span className="muted-button disabled-action">Prev</span>}
+        <strong>{page} / {totalPages}</strong>
+        {page < totalPages ? <a className="muted-button" href={makeHref(page + 1)}>Next</a> : <span className="muted-button disabled-action">Next</span>}
+      </div>
     </div>
   );
 }
@@ -102,7 +151,7 @@ export function TrafficTermsHelp() {
         <h3>Route</h3>
         <p><strong>VPS</strong> - traffic went through `reality-out` / VPS egress.</p>
         <p><strong>Direct</strong> - traffic went through home/direct WAN.</p>
-        <p><strong>Mixed</strong> - counters show both VPS and Direct, or evidence is aggregate.</p>
+        <p><strong>Mixed</strong> - aggregate counters show both VPS and Direct.</p>
       </div>
       <div>
         <h3>Confidence</h3>
@@ -111,10 +160,22 @@ export function TrafficTermsHelp() {
         <p><strong>dns-interest</strong> - DNS was observed, but route was not proven.</p>
       </div>
       <div>
+        <h3>Rows</h3>
+        <p><strong>Traffic row</strong> - client traffic with observed bytes/counters.</p>
+        <p><strong>Evidence event</strong> - technical log event, not always traffic.</p>
+        <p><strong>not observed</strong> - source did not contain that field.</p>
+      </div>
+      <div>
+        <h3>IP / Rules</h3>
+        <p><strong>egress IP</strong> - public IP that the destination site sees.</p>
+        <p><strong>reality-out</strong> - sing-box outbound through the VPS Reality tunnel.</p>
+        <p><strong>candidate</strong> - catalog hint, not necessarily an applied route rule.</p>
+      </div>
+      <div>
         <h3>Channel</h3>
         <p><strong>Home Wi-Fi/LAN</strong> - local device on router LAN.</p>
         <p><strong>Channel A/B/C</strong> - mobile/client lane used to enter GhostRoute.</p>
-        <p><strong>not observed</strong> - source logs did not contain that field.</p>
+        <p><strong>ingress / egress</strong> - where traffic entered GhostRoute and where it exited.</p>
       </div>
     </div>
   );
