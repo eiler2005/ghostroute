@@ -16,15 +16,19 @@ normal UI строится только на реальных snapshots/SQLite, 
 
 ## Priority 1: Console Post-MVP
 
-Status: the first implementation slice exists in `modules/ghostroute-console/`.
-Route explanation, channel badges, SSE live stream, catalog review/dry-run,
-notification settings, budget history, ops actions and audit tables are present.
-Remaining work is hardening, richer source evidence, real delivery integrations
-and any router/runtime mutation beyond prepared/audited local actions.
+Status: implementation slices exist in `modules/ghostroute-console/` and are
+summarized in [ghostroute-console-architecture.md](ghostroute-console-architecture.md).
+Route explanation, channel badges, SQLite v4 evidence rows, real log-tail event
+ingestion, SSE live stream, catalog review/dry-run, notification settings,
+budget history, ops actions and audit tables are present. Remaining work is
+hardening, real notification delivery/provider integrations and any
+router/runtime mutation beyond prepared/audited local actions.
 
 1. **True Live Mode**
-   - Server-Sent Events live stream поверх factual snapshots и collector events.
-   - Future: true tail/WebSocket transport if needed.
+   - Server-Sent Events live stream поверх factual snapshots, SQLite events and
+     read-only real log-tail ingestion через `live-events-report --json`.
+   - Future: long-lived tail/WebSocket transport if cursor polling becomes too
+     slow or too lossy.
    - Live topology, active flows, fresh/stale indicators.
    - Без seed/mock данных в production UI.
 
@@ -55,9 +59,12 @@ and any router/runtime mutation beyond prepared/audited local actions.
      следующий слой, если Console перестанет быть только read-only.
 
 7. **Data Quality**
-   - Улучшить correlation:
-     `flow -> DNS query -> catalog entry -> route decision`.
-   - Device identity, historical regressions, confidence explanations.
+   - Current source evidence includes client IP, destination IP/port, DNS qname
+     and answer, SNI, sing-box outbound, matched rule, egress identity fields
+     and source log refs where available.
+   - Remaining work: better correlation
+     `flow -> DNS query -> catalog entry -> route decision`, device identity,
+     historical regressions and richer confidence explanations.
 
 8. **Collector Control**
    - Manual `collect-once`, collector status, job log, last error,

@@ -1,0 +1,4 @@
+Apr 29 10:21:14 dnsmasq[123]: query[A] telegram.org from 192.168.1.24
+Apr 29 10:21:14 dnsmasq[123]: reply telegram.org is 203.0.113.20
+Apr 29 10:22:01 dnsmasq[123]: query[A] banking.example.com from 192.168.1.77
+Apr 29 10:22:01 dnsmasq[123]: reply banking.example.com is 198.51.100.34

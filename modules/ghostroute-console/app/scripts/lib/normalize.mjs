@@ -1,4 +1,4 @@
-const MIGRATION_VERSION = 3;
+const MIGRATION_VERSION = 4;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -57,6 +57,15 @@ function outboundFor(row) {
 
 function visibleIp(row) {
   return text(row.egress_ip || row.exit_ip || row.visible_ip || row.public_ip || row.ip || "");
+}
+
+function destinationIp(row) {
+  const candidate = text(row.destination_ip || row.ip || "");
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(candidate) ? candidate : "";
+}
+
+function eventTimestamp(row, collectedAt) {
+  return text(row.ts || row.timestamp || row.occurred_at || collectedAt);
 }
 
 export function ensureConsoleSchema(db) {
@@ -124,6 +133,21 @@ export function ensureConsoleSchema(db) {
       bytes integer not null default 0,
       connections integer not null default 0,
       protocol text not null default '',
+      client_ip text not null default '',
+      destination_ip text not null default '',
+      destination_port text not null default '',
+      dns_qname text not null default '',
+      dns_answer_ip text not null default '',
+      sni text not null default '',
+      outbound text not null default '',
+      matched_rule text not null default '',
+      rule_set text not null default '',
+      egress_ip text not null default '',
+      egress_asn text not null default '',
+      egress_country text not null default '',
+      event_ts text not null default '',
+      ts_confidence text not null default '',
+      source_log text not null default '',
       raw_json text not null
     );
     create index if not exists idx_normalized_flows_snapshot on normalized_flows(snapshot_id);
@@ -135,6 +159,9 @@ export function ensureConsoleSchema(db) {
       domain text not null default '',
       qtype text not null default '',
       count integer not null default 0,
+      answer_ip text not null default '',
+      event_ts text not null default '',
+      ts_confidence text not null default '',
       confidence text not null default 'dns-interest',
       raw_json text not null
     );
@@ -204,6 +231,20 @@ export function ensureConsoleSchema(db) {
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         summary text not null default '',
+        event_id text not null default '',
+        client_ip text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        outbound text not null default '',
+        matched_rule text not null default '',
+        rule_set text not null default '',
+        egress_ip text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        source_log text not null default '',
         evidence_json text not null default '{}'
       );
       create index if not exists idx_events_occurred on events(occurred_at desc);
@@ -218,10 +259,26 @@ export function ensureConsoleSchema(db) {
         outbound text not null default '',
         matched_rule text not null default '',
         visible_ip text not null default '',
+        event_id text not null default '',
+        client_ip text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        rule_set text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        source_log text not null default '',
         confidence text not null default 'unknown',
         evidence_json text not null default '{}'
       );
       create index if not exists idx_route_decisions_occurred on route_decisions(occurred_at desc);
+      create table if not exists live_cursors (
+        source text primary key,
+        cursor text not null default '',
+        updated_at text not null
+      );
       create table if not exists audit_log (
         id integer primary key autoincrement,
         actor text not null default 'local-console',
@@ -272,6 +329,65 @@ export function ensureConsoleSchema(db) {
   `);
   addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
+  for (const [table, columns] of Object.entries({
+    normalized_flows: {
+      client_ip: "text not null default ''",
+      destination_ip: "text not null default ''",
+      destination_port: "text not null default ''",
+      dns_qname: "text not null default ''",
+      dns_answer_ip: "text not null default ''",
+      sni: "text not null default ''",
+      outbound: "text not null default ''",
+      matched_rule: "text not null default ''",
+      rule_set: "text not null default ''",
+      egress_ip: "text not null default ''",
+      egress_asn: "text not null default ''",
+      egress_country: "text not null default ''",
+      event_ts: "text not null default ''",
+      ts_confidence: "text not null default ''",
+      source_log: "text not null default ''",
+    },
+    normalized_dns: {
+      answer_ip: "text not null default ''",
+      event_ts: "text not null default ''",
+      ts_confidence: "text not null default ''",
+    },
+    events: {
+      event_id: "text not null default ''",
+      client_ip: "text not null default ''",
+      destination_ip: "text not null default ''",
+      destination_port: "text not null default ''",
+      dns_qname: "text not null default ''",
+      dns_answer_ip: "text not null default ''",
+      sni: "text not null default ''",
+      outbound: "text not null default ''",
+      matched_rule: "text not null default ''",
+      rule_set: "text not null default ''",
+      egress_ip: "text not null default ''",
+      egress_asn: "text not null default ''",
+      egress_country: "text not null default ''",
+      source_log: "text not null default ''",
+    },
+    route_decisions: {
+      event_id: "text not null default ''",
+      client_ip: "text not null default ''",
+      destination_ip: "text not null default ''",
+      destination_port: "text not null default ''",
+      dns_qname: "text not null default ''",
+      dns_answer_ip: "text not null default ''",
+      sni: "text not null default ''",
+      rule_set: "text not null default ''",
+      egress_asn: "text not null default ''",
+      egress_country: "text not null default ''",
+      source_log: "text not null default ''",
+    },
+  })) {
+      for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
+  }
+  db.exec(`
+    create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
+    create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
+  `);
 
   db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
     MIGRATION_VERSION,
@@ -324,6 +440,7 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   if (type === "leaks") normalizeLeaks(db, snapshotId, type, collectedAt, payload);
   if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);
   if (type === "dns") normalizeDns(db, snapshotId, collectedAt, payload);
+  if (type === "live") normalizeLive(db, snapshotId, type, collectedAt, payload);
 }
 
 function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
@@ -350,15 +467,17 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   }
 
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  for (const row of [...(payload.app_flows || []), ...(payload.destinations || [])]) {
+  for (const row of [...(payload.app_flows || []), ...(payload.destinations || []), ...(payload.route_events || [])]) {
     const route = text(row.route || routeFromTraffic(row));
     const channel = inferChannel(row);
     const client = text(row.client || row.label || row.channel || "");
     const destination = text(row.destination || row.domain || row.app || row.family || "");
     const rowConfidence = confidence(row.confidence, "estimated");
+    const eventTs = eventTimestamp(row, collectedAt);
+    const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
     flowInsert.run(
       snapshotId,
       type,
@@ -371,25 +490,65 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       number(row.bytes || row.total_bytes),
       number(row.connections || row.total_connections),
       text(row.protocol || ""),
+      text(row.client_ip || row.ip || ""),
+      destinationIp(row),
+      text(row.destination_port || row.port || ""),
+      text(row.dns_qname || row.qname || row.domain || ""),
+      text(row.dns_answer_ip || row.answer_ip || ""),
+      text(row.sni || ""),
+      text(row.sing_box_outbound || row.outbound || outboundFor(row)),
+      text(row.matched_rule || row.rule || row.rule_name || row.catalog_rule || ""),
+      text(row.rule_set || ""),
+      visibleIp(row),
+      text(row.egress_asn || row.asn || ""),
+      text(row.egress_country || row.country || ""),
+      eventTs,
+      text(row.ts_confidence || ""),
+      text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
       json(row)
     );
-    insertEvent(db, snapshotId, "flow.observed", collectedAt, {
+    insertEvent(db, snapshotId, "flow.observed", eventTs, {
+      event_id: text(row.event_id || ""),
       client,
       channel,
       destination,
       route,
       confidence: rowConfidence,
+      client_ip: text(row.client_ip || row.ip || ""),
+      destination_ip: destinationIp(row),
+      destination_port: text(row.destination_port || row.port || ""),
+      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
+      sni: text(row.sni || ""),
+      outbound: text(row.sing_box_outbound || row.outbound || outboundFor(row)),
+      matched_rule: text(row.matched_rule || row.rule || row.rule_name || row.catalog_rule || ""),
+      rule_set: text(row.rule_set || ""),
+      egress_ip: visibleIp(row),
+      egress_asn: text(row.egress_asn || row.asn || ""),
+      egress_country: text(row.egress_country || row.country || ""),
+      source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
       summary: `${client || "client"} -> ${destination || "destination"} via ${route}`,
       raw: row,
     });
-    insertRouteDecision(db, snapshotId, collectedAt, {
+    insertRouteDecision(db, snapshotId, eventTs, {
+      event_id: text(row.event_id || ""),
       client,
       channel,
       destination,
       route,
-      outbound: outboundFor(row),
-      matched_rule: text(row.rule || row.rule_name || row.catalog_rule || ""),
+      outbound: text(row.sing_box_outbound || row.outbound || outboundFor(row)),
+      matched_rule: text(row.matched_rule || row.rule || row.rule_name || row.catalog_rule || ""),
       visible_ip: visibleIp(row),
+      client_ip: text(row.client_ip || row.ip || ""),
+      destination_ip: destinationIp(row),
+      destination_port: text(row.destination_port || row.port || ""),
+      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
+      sni: text(row.sni || ""),
+      rule_set: text(row.rule_set || ""),
+      egress_asn: text(row.egress_asn || row.asn || ""),
+      egress_country: text(row.egress_country || row.country || ""),
+      source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
       confidence: rowConfidence,
       raw: row,
     });
@@ -486,32 +645,104 @@ function normalizeDomains(db, snapshotId, type, collectedAt, payload) {
 
 function normalizeDns(db, snapshotId, collectedAt, payload) {
   const insert = db.prepare(`
-    insert into normalized_dns(snapshot_id, collected_at, client, domain, qtype, count, confidence, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_dns(snapshot_id, collected_at, client, domain, qtype, count, answer_ip, event_ts, ts_confidence, confidence, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.queries || []) {
-    const client = text(row.client || row.ip || "");
+    const client = text(row.client || row.client_ip || row.ip || "");
     const domain = text(row.domain || row.qname || row.query || "");
     const rowConfidence = confidence(row.confidence, "dns-interest");
+    const eventTs = eventTimestamp(row, collectedAt);
     insert.run(
       snapshotId,
       collectedAt,
       client,
       domain,
-      text(row.qtype || row.type || ""),
+      text(row.qtype || row.query_type || row.type || ""),
       number(row.count || row.queries || 1),
+      text(row.answer_ip || row.dns_answer_ip || ""),
+      eventTs,
+      text(row.ts_confidence || ""),
       rowConfidence,
       json(row)
     );
-    insertEvent(db, snapshotId, "dns.query", collectedAt, {
+    insertEvent(db, snapshotId, "dns.query", eventTs, {
+      event_id: text(row.event_id || ""),
       client,
       channel: inferChannel(row),
       destination: domain,
       route: "Unknown",
       confidence: rowConfidence,
+      client_ip: text(row.client_ip || row.ip || ""),
+      dns_qname: domain,
+      dns_answer_ip: text(row.answer_ip || row.dns_answer_ip || ""),
+      source_log: text(row.raw_refs?.[0]?.source_log || row.raw_refs?.[0]?.source || ""),
       summary: `${client || "client"} queried ${domain || "domain"}`,
       raw: row,
     });
+  }
+}
+
+function normalizeLive(db, snapshotId, type, collectedAt, payload) {
+  const events = Array.isArray(payload.events) ? payload.events : [];
+  for (const row of events) {
+    const route = text(row.route || row.route_decision || "Unknown");
+    const destination = text(row.destination || row.dns_qname || row.domain || "");
+    const occurredAt = eventTimestamp(row, collectedAt);
+    const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
+    insertEvent(db, snapshotId, text(row.event_type || "live.event"), occurredAt, {
+      event_id: text(row.event_id || ""),
+      client: text(row.client || row.client_ip || ""),
+      client_ip: text(row.client_ip || ""),
+      channel: inferChannel(row),
+      destination,
+      destination_ip: destinationIp(row),
+      destination_port: text(row.destination_port || ""),
+      route,
+      confidence: confidence(row.confidence, "unknown"),
+      dns_qname: text(row.dns_qname || ""),
+      dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
+      sni: text(row.sni || ""),
+      outbound: text(row.sing_box_outbound || row.outbound || ""),
+      matched_rule: text(row.matched_rule || ""),
+      rule_set: text(row.rule_set || ""),
+      egress_ip: text(row.egress_ip || ""),
+      egress_asn: text(row.egress_asn || ""),
+      egress_country: text(row.egress_country || ""),
+      source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
+      summary: text(row.summary || destination || row.event_type || "live event"),
+      raw: row,
+    });
+    if (row.event_type === "route.decision" || row.route_decision || row.sing_box_outbound) {
+      insertRouteDecision(db, snapshotId, occurredAt, {
+        event_id: text(row.event_id || ""),
+        client: text(row.client || row.client_ip || ""),
+        client_ip: text(row.client_ip || ""),
+        channel: inferChannel(row),
+        destination,
+        destination_ip: destinationIp(row),
+        destination_port: text(row.destination_port || ""),
+        route,
+        outbound: text(row.sing_box_outbound || row.outbound || ""),
+        matched_rule: text(row.matched_rule || ""),
+        visible_ip: text(row.egress_ip || ""),
+        dns_qname: text(row.dns_qname || ""),
+        dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
+        sni: text(row.sni || ""),
+        rule_set: text(row.rule_set || ""),
+        egress_asn: text(row.egress_asn || ""),
+        egress_country: text(row.egress_country || ""),
+        source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
+        confidence: confidence(row.confidence, "unknown"),
+        raw: row,
+      });
+    }
+  }
+  if (payload.cursor?.next) {
+    db.prepare(
+      `insert into live_cursors(source, cursor, updated_at) values (?, ?, ?)
+       on conflict(source) do update set cursor = excluded.cursor, updated_at = excluded.updated_at`
+    ).run("live-events-report", payload.cursor.next, new Date().toISOString());
   }
 }
 
@@ -534,8 +765,8 @@ function insertAlert(db, snapshotId, type, collectedAt, row) {
 
 function insertEvent(db, snapshotId, eventType, occurredAt, row) {
   db.prepare(`
-    insert into events(snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or ignore into events(snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, source_log, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     snapshotId,
     eventType,
@@ -546,14 +777,28 @@ function insertEvent(db, snapshotId, eventType, occurredAt, row) {
     row.route || "Unknown",
     row.confidence || "unknown",
     row.summary || "",
+    row.event_id || "",
+    row.client_ip || "",
+    row.destination_ip || "",
+    row.destination_port || "",
+    row.dns_qname || "",
+    row.dns_answer_ip || "",
+    row.sni || "",
+    row.outbound || "",
+    row.matched_rule || "",
+    row.rule_set || "",
+    row.egress_ip || "",
+    row.egress_asn || "",
+    row.egress_country || "",
+    row.source_log || "",
     json(row.raw || row)
   );
 }
 
 function insertRouteDecision(db, snapshotId, occurredAt, row) {
   db.prepare(`
-    insert into route_decisions(snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, confidence, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or ignore into route_decisions(snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, rule_set, egress_asn, egress_country, source_log, confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     snapshotId,
     occurredAt,
@@ -564,6 +809,17 @@ function insertRouteDecision(db, snapshotId, occurredAt, row) {
     row.outbound || "",
     row.matched_rule || "",
     row.visible_ip || "",
+    row.event_id || "",
+    row.client_ip || "",
+    row.destination_ip || "",
+    row.destination_port || "",
+    row.dns_qname || "",
+    row.dns_answer_ip || "",
+    row.sni || "",
+    row.rule_set || "",
+    row.egress_asn || "",
+    row.egress_country || "",
+    row.source_log || "",
     row.confidence || "unknown",
     json(row.raw || row)
   );

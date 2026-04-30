@@ -32,16 +32,16 @@ export function LiveStreamPanel({ initial }: { initial: LivePayload }) {
       <div className="toolbar">
         <div>
           <h2>Live event stream</h2>
-          <p>DNS, flows, route decisions and alerts from append-only Console events.</p>
+          <p>DNS, flows, route decisions and alerts from real log tail events, with snapshot fallback.</p>
         </div>
         <span className={`badge status-${payload.freshness_status === "fresh" ? "ok" : "warn"}`}>{mode}</span>
       </div>
       <div className="live-feed">
         {[...(payload.events || []), ...(payload.route_decisions || [])].slice(0, 18).map((row, idx) => (
-          <div className="live-feed-row" key={`${row.event_type || "decision"}-${row.id || idx}`}>
+          <div className="live-feed-row" key={`${row.event_type || "decision"}-${row.event_id || row.id || idx}`}>
             <span>{row.occurred_at || payload.generated_at}</span>
             <strong>{row.event_type || "route.decision"}</strong>
-            <small>{row.client || "client"} → {row.destination || row.summary || "destination"}</small>
+            <small>{row.client || row.client_ip || "client"} → {row.destination || row.dns_qname || row.summary || "destination"}</small>
             <RouteBadge value={row.route || "Unknown"} />
           </div>
         ))}

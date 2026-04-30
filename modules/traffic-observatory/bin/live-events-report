@@ -1,0 +1,302 @@
+#!/bin/bash
+# Read-only live event report for GhostRoute Console.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+JSON_MODE=0
+SINCE=""
+LIMIT=300
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    --since)
+      SINCE="${2:-}"
+      shift 2
+      ;;
+    --limit)
+      LIMIT="${2:-300}"
+      shift 2
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/live-events-report --json [--since <event-id>] [--limit N]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+[ "$JSON_MODE" = "1" ] || { echo "--json is required" >&2; exit 1; }
+case "$LIMIT" in
+  ''|*[!0-9]*)
+    LIMIT=300
+    ;;
+esac
+[ "$LIMIT" -gt 1000 ] && LIMIT=1000
+[ "$LIMIT" -lt 1 ] && LIMIT=1
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+SINGBOX_LOG="$TMPDIR/sing-box.log"
+DNSMASQ_LOG="$TMPDIR/dnsmasq.log"
+DOMAIN_LOG="$TMPDIR/domain-activity.log"
+
+if [ -n "${GHOSTROUTE_LIVE_SINGBOX_LOG_FILE:-}" ]; then
+  [ -f "$GHOSTROUTE_LIVE_SINGBOX_LOG_FILE" ] && tail -n "$LIMIT" "$GHOSTROUTE_LIVE_SINGBOX_LOG_FILE" > "$SINGBOX_LOG" || : > "$SINGBOX_LOG"
+else
+  router_ssh "LOG=/opt/var/log/sing-box.log; [ -f \"\$LOG\" ] && tail -n '$LIMIT' \"\$LOG\" || true" > "$SINGBOX_LOG" || : > "$SINGBOX_LOG"
+fi
+
+if [ -n "${GHOSTROUTE_LIVE_DNSMASQ_LOG_FILE:-}" ]; then
+  [ -f "$GHOSTROUTE_LIVE_DNSMASQ_LOG_FILE" ] && tail -n "$LIMIT" "$GHOSTROUTE_LIVE_DNSMASQ_LOG_FILE" > "$DNSMASQ_LOG" || : > "$DNSMASQ_LOG"
+else
+  router_ssh "LOG=/opt/var/log/dnsmasq.log; [ -f \"\$LOG\" ] && tail -n '$LIMIT' \"\$LOG\" || true" > "$DNSMASQ_LOG" || : > "$DNSMASQ_LOG"
+fi
+
+if [ -n "${GHOSTROUTE_LIVE_DOMAIN_ACTIVITY_LOG_FILE:-}" ]; then
+  [ -f "$GHOSTROUTE_LIVE_DOMAIN_ACTIVITY_LOG_FILE" ] && tail -n "$LIMIT" "$GHOSTROUTE_LIVE_DOMAIN_ACTIVITY_LOG_FILE" > "$DOMAIN_LOG" || : > "$DOMAIN_LOG"
+else
+  router_ssh "LOG=/opt/var/log/domain-activity.log; [ -f \"\$LOG\" ] && tail -n '$LIMIT' \"\$LOG\" || true" > "$DOMAIN_LOG" || : > "$DOMAIN_LOG"
+fi
+
+ruby -rjson -rtime -rdigest - "$SINCE" "$LIMIT" "$SINGBOX_LOG" "$DNSMASQ_LOG" "$DOMAIN_LOG" <<'RUBY'
+since, limit, singbox_path, dnsmasq_path, domain_path = ARGV
+limit = limit.to_i
+
+def parse_time(line)
+  if line =~ /(\d{4}[-\/]\d{2}[-\/]\d{2})[ T](\d{2}:\d{2}:\d{2})/
+    return Time.parse("#{$1.tr('/', '-')}T#{$2}").utc.iso8601
+  end
+  if line =~ /\A([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})/
+    return Time.parse("#{Time.now.year} #{$1} #{$2} #{$3}").utc.iso8601
+  end
+  Time.now.utc.iso8601
+rescue ArgumentError
+  Time.now.utc.iso8601
+end
+
+def event_id(source, line_no, line)
+  Digest::SHA1.hexdigest("#{source}|#{line_no}|#{line}")[0, 20]
+end
+
+def conn_id(line)
+  return Regexp.last_match(1) if line =~ /\[([0-9]+)\s+[^\]]+\]/
+  nil
+end
+
+def split_host_port(value)
+  host = value.to_s.strip
+  port = ''
+  if host =~ /\A(.+):(\d+)\z/
+    host = Regexp.last_match(1)
+    port = Regexp.last_match(2)
+  end
+  [host, port]
+end
+
+events = []
+flows = {}
+
+File.readlines(singbox_path, chomp: true).each_with_index do |line, idx|
+  id = conn_id(line)
+  ts = parse_time(line)
+  eid = event_id('sing-box.log', idx + 1, line)
+  raw_ref = { source_log: 'sing-box.log', line_no: idx + 1, event_id: eid }
+
+  inbound = nil
+  channel = 'Unknown'
+  if line =~ /inbound\/vless\[reality-in\]: .*inbound connection to ([^[:space:]]+)/
+    inbound = 'reality-in'
+    channel = 'Channel A'
+  elsif line =~ /inbound\/socks\[channel-b-relay-socks\]: .*inbound connection to ([^[:space:]]+)/
+    inbound = 'channel-b-relay-socks'
+    channel = 'Channel B'
+  elsif line =~ /inbound\/http\[channel-c-shadowrocket-http-in\]: .*inbound connection to ([^[:space:]]+)/
+    inbound = 'channel-c-shadowrocket-http-in'
+    channel = 'Channel C'
+  elsif line =~ /inbound\/naive\[channel-c-naive-in\]: .*inbound connection to ([^[:space:]]+)/
+    inbound = 'channel-c-naive-in'
+    channel = 'Channel C'
+  end
+
+  if inbound && id
+    destination, port = split_host_port(Regexp.last_match(1))
+    client = line[/\[#{Regexp.escape(id)}\s+([^\]]+)\]/, 1].to_s
+    flows[id] ||= {}
+    flows[id].merge!(
+      event_id: eid,
+      ts: ts,
+      client: client,
+      client_ip: client[/(\d{1,3}(?:\.\d{1,3}){3})/, 1].to_s,
+      channel: channel,
+      destination: destination,
+      destination_port: port,
+      protocol: port == '443' ? 'TCP / TLS' : 'TCP',
+      inbound: inbound,
+      confidence: 'exact',
+      raw_refs: [raw_ref]
+    )
+    events << flows[id].merge(event_type: 'flow.start', summary: "#{client} -> #{destination}")
+    next
+  end
+
+  outbound = nil
+  route = nil
+  if line =~ /outbound\/vless\[reality-out\]: outbound connection to ([^[:space:]]+)/
+    outbound = 'reality-out'
+    route = 'VPS'
+  elsif line =~ /outbound\/direct\[direct-out\]: outbound connection to ([^[:space:]]+)/
+    outbound = 'direct-out'
+    route = 'Direct'
+  end
+  if outbound && id
+    destination, port = split_host_port(Regexp.last_match(1))
+    flows[id] ||= { raw_refs: [] }
+    flows[id][:raw_refs] ||= []
+    flows[id][:raw_refs] << raw_ref
+    flows[id].merge!(
+      event_id: eid,
+      ts: ts,
+      destination: flows[id][:destination].to_s.empty? ? destination : flows[id][:destination],
+      destination_port: flows[id][:destination_port].to_s.empty? ? port : flows[id][:destination_port],
+      route_decision: route,
+      route: route,
+      sing_box_outbound: outbound,
+      matched_rule: route == 'VPS' ? 'STEALTH_DOMAINS' : 'no managed match',
+      rule_set: route == 'VPS' ? 'STEALTH_DOMAINS' : 'direct/default',
+      confidence: flows[id][:confidence] || 'exact'
+    )
+    events << flows[id].merge(event_type: 'route.decision', summary: "#{flows[id][:destination] || destination} via #{outbound}")
+  end
+end
+
+last_dns_by_domain = {}
+File.readlines(dnsmasq_path, chomp: true).each_with_index do |line, idx|
+  ts = parse_time(line)
+  eid = event_id('dnsmasq.log', idx + 1, line)
+  raw_ref = { source_log: 'dnsmasq.log', line_no: idx + 1, event_id: eid }
+  if line =~ /query\[([^\]]+)\]\s+([^[:space:]]+)\s+from\s+([^[:space:]]+)/
+    qtype = Regexp.last_match(1)
+    domain = Regexp.last_match(2)
+    client_ip = Regexp.last_match(3)
+    event = {
+      event_id: eid,
+      event_type: 'dns.query',
+      ts: ts,
+      client: client_ip,
+      client_ip: client_ip,
+      channel: client_ip.start_with?('192.168.') ? 'Home Wi-Fi/LAN' : 'Unknown',
+      destination: domain,
+      dns_qname: domain,
+      query_type: qtype,
+      route_decision: 'dns-interest',
+      confidence: 'dns-interest',
+      summary: "#{client_ip} queried #{domain}",
+      raw_refs: [raw_ref]
+    }
+    last_dns_by_domain[domain] = event
+    events << event
+  elsif line =~ /reply\s+([^[:space:]]+)\s+(?:is|to)\s+([^[:space:]]+)/
+    domain = Regexp.last_match(1)
+    answer = Regexp.last_match(2)
+    base = last_dns_by_domain[domain] || {}
+    event = base.merge(
+      event_id: eid,
+      event_type: 'dns.answer',
+      ts: ts,
+      destination: domain,
+      dns_qname: domain,
+      dns_answer_ip: answer,
+      confidence: 'dns-interest',
+      summary: "#{domain} answered #{answer}",
+      raw_refs: Array(base[:raw_refs]) + [raw_ref]
+    )
+    last_dns_by_domain[domain] = event
+    events << event
+  end
+end
+
+File.readlines(domain_path, chomp: true).each_with_index do |line, idx|
+  next unless line.include?('auto-added') || line.start_with?('│  ?')
+  ts = parse_time(line)
+  eid = event_id('domain-activity.log', idx + 1, line)
+  domain = line[/([A-Za-z0-9_.-]+\.[A-Za-z0-9_.-]+)/, 1].to_s
+  next if domain.empty?
+  events << {
+    event_id: eid,
+    event_type: line.include?('auto-added') ? 'catalog.auto_added' : 'catalog.candidate',
+    ts: ts,
+    destination: domain,
+    route_decision: 'dns-interest',
+    confidence: 'dns-interest',
+    summary: line.strip,
+    raw_refs: [{ source_log: 'domain-activity.log', line_no: idx + 1, event_id: eid }]
+  }
+end
+
+events.sort_by! { |event| [event[:ts].to_s, event[:event_id].to_s] }
+if since.to_s != ''
+  seen_since = false
+  events = events.each_with_object([]) do |event, out|
+    if seen_since
+      out << event
+    elsif event[:event_id] == since
+      seen_since = true
+    end
+  end
+end
+events = events.last(limit)
+
+route_events = events.select { |event| event[:event_type] == 'route.decision' || event[:event_type] == 'flow.start' }.map do |event|
+  {
+    event_id: event[:event_id],
+    ts: event[:ts],
+    client: event[:client].to_s,
+    client_ip: event[:client_ip].to_s,
+    channel: event[:channel] || 'Unknown',
+    destination: event[:destination].to_s,
+    destination_ip: event[:destination].to_s =~ /\A\d{1,3}(?:\.\d{1,3}){3}\z/ ? event[:destination].to_s : '',
+    destination_port: event[:destination_port].to_s,
+    protocol: event[:protocol].to_s.empty? ? 'TCP' : event[:protocol],
+    sni: event[:destination].to_s =~ /[A-Za-z]/ ? event[:destination].to_s : '',
+    dns_qname: event[:destination].to_s =~ /[A-Za-z]/ ? event[:destination].to_s : '',
+    dns_answer_ip: '',
+    matched_rule: event[:matched_rule].to_s,
+    rule_set: event[:rule_set].to_s,
+    sing_box_outbound: event[:sing_box_outbound].to_s,
+    route_decision: event[:route_decision] || event[:route] || 'Unknown',
+    egress_ip: '',
+    egress_asn: '',
+    egress_country: '',
+    confidence: event[:confidence] || 'unknown',
+    raw_refs: event[:raw_refs] || []
+  }
+end
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: {
+    command: 'live-events-report',
+    confidence: 'mixed',
+    logs: ['sing-box.log', 'dnsmasq.log', 'domain-activity.log']
+  },
+  confidence: 'mixed',
+  cursor: {
+    since: since.to_s.empty? ? nil : since,
+    next: events.last && events.last[:event_id]
+  },
+  events: events,
+  route_events: route_events,
+  notes: [
+    'Read-only tail parser over router logs.',
+    'Exact confidence means the event was present in a source log line; missing fields stay empty.'
+  ]
+})
+RUBY

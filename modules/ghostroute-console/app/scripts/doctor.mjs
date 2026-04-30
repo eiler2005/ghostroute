@@ -15,6 +15,9 @@ console.log(`snapshots_dir=${snapshotDir}`);
 console.log(`db=${dbFile}`);
 console.log(`collector_mode=${process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
 console.log(`collect_interval_seconds=${process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || "300"}`);
+console.log(`live_mode=${process.env.GHOSTROUTE_LIVE_MODE || "disabled"}`);
+console.log(`live_collector_mode=${process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
+console.log(`live_poll_seconds=${process.env.GHOSTROUTE_LIVE_POLL_SECONDS || "2"}`);
 
 if (!fs.existsSync(snapshotDir)) {
   console.log("snapshots=0");
@@ -51,6 +54,9 @@ if (fs.existsSync(dbFile)) {
     "collector_runs",
     "hourly_traffic",
     "retention_runs",
+    "events",
+    "route_decisions",
+    "live_cursors",
   ]) {
     const exists = db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table);
     if (!exists) continue;
@@ -70,6 +76,7 @@ for (const [label, command] of [
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check"],
   ["domains", "modules/dns-catalog-intelligence/bin/domain-report"],
   ["dns", "modules/dns-catalog-intelligence/bin/dns-forensics-report"],
+  ["live", "modules/traffic-observatory/bin/live-events-report"],
 ]) {
   const full = path.join(process.env.GHOSTROUTE_CONSOLE_REPO_ROOT || path.resolve(moduleDir, "../.."), command);
   console.log(`command_${label}=${fs.existsSync(full) ? "present" : "missing"}`);

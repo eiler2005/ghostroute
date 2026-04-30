@@ -5,7 +5,12 @@ Factual web console for the existing GhostRoute operational modules.
 This module lives inside `router_configuration` on purpose: Console is a
 consumer of module-owned reports, not a second source of truth. It reads JSON
 snapshots from Traffic Observatory, Health Monitor and DNS/Catalog Intelligence,
-stores them locally, and renders a factual dashboard.
+stores them locally, and renders a factual dashboard. The live slice also reads
+real router log tails through a restricted `live-events-report --json` command
+and appends the resulting DNS/flow/route events to SQLite.
+
+Architecture details live in
+[`docs/ghostroute-console-architecture.md`](/docs/ghostroute-console-architecture.md).
 
 The current post-MVP slice adds route explanation, channel attribution,
 append-only live events, controlled catalog review actions, notifications
@@ -19,6 +24,7 @@ router runtime or deploy catalog changes implicitly.
 ./modules/ghostroute-console/bin/ghostroute-console build
 ./modules/ghostroute-console/bin/ghostroute-console collect-once
 ./modules/ghostroute-console/bin/ghostroute-console doctor
+./modules/traffic-observatory/bin/live-events-report --json --limit 200
 ```
 
 ## Safety Boundaries
@@ -51,12 +57,17 @@ VPS runtime uses:
 The collector writes raw JSON snapshots under `snapshots/` and an embedded
 SQLite database at `ghostroute.db`.
 
+Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
+`GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains
+`disabled`, `/api/live/stream` still serves the stored append-only events from
+snapshots.
+
 ## Post-MVP Interfaces
 
 - `/traffic` and `/traffic/[id]` explain route decisions with channel, route,
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
 - `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
-  updates with polling fallback in the UI.
+  updates from append-only real log events, with polling fallback in the UI.
 - `/api/actions/catalog/*` implements review, dry-run, apply preparation and
   rollback recording.
 - `/api/notifications/*` stores notification settings and supports ack/snooze

@@ -126,9 +126,14 @@ candidate_rows = lines(candidates_path).map do |line|
   count, domain = line.strip.split(/\s+/, 2)
   {
     domain: domain,
+    kind: 'domain',
+    rule_set: 'STEALTH_DOMAINS',
+    source_file: 'domain-activity.log',
+    match_type: 'candidate',
     hit_count: count.to_i,
     status: 'candidate',
-    confidence: 'dns-interest'
+    confidence: 'dns-interest',
+    raw_refs: [{ source: 'domain-activity.log' }]
   }
 end
 
@@ -147,8 +152,12 @@ puts JSON.pretty_generate({
       domain: domain,
       kind: 'domain',
       source: 'dnsmasq-autodiscovered',
+      source_file: 'dnsmasq-autodiscovered.conf.add',
+      rule_set: 'STEALTH_DOMAINS',
+      match_type: 'ipset-domain',
       status: 'auto',
-      confidence: 'dns-interest'
+      confidence: 'dns-interest',
+      raw_refs: [{ source: 'dnsmasq-autodiscovered.conf.add', rule_set: 'STEALTH_DOMAINS' }]
     }
   end,
   candidates: candidate_rows,

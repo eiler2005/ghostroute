@@ -16,11 +16,13 @@ command="${1:-}"
 
 case "$command" in
   modules/traffic-observatory/bin/traffic-report|\
+  modules/traffic-observatory/bin/live-events-report|\
   modules/ghostroute-health-monitor/bin/router-health-report|\
   modules/ghostroute-health-monitor/bin/leak-check|\
   modules/dns-catalog-intelligence/bin/domain-report|\
   modules/dns-catalog-intelligence/bin/dns-forensics-report|\
   "$repo_root"/modules/traffic-observatory/bin/traffic-report|\
+  "$repo_root"/modules/traffic-observatory/bin/live-events-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/router-health-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/leak-check|\
   "$repo_root"/modules/dns-catalog-intelligence/bin/domain-report|\

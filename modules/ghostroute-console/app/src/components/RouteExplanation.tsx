@@ -94,12 +94,21 @@ export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: E
           <div className="evidence-grid evidence-grid-rich">
             <EvidenceCard title="От кого запрос" value={evidence.client} detail={`IP: ${evidence.clientIp}`} />
             <EvidenceCard title="Канал входа" value={<ChannelBadge value={evidence.channel} />} detail="access/client lane" />
-            <EvidenceCard title="Запрос DNS" value={evidence.dnsMatches[0]?.domain || evidence.destination} detail={`${evidence.dnsMatches[0]?.qtype || "A"} · ${evidence.dnsMatches[0]?.count || 1} seen`} />
-            <EvidenceCard title="Совпавшее правило" value={evidence.matchedRule} detail={evidence.catalogMatches[0]?.domain || "derived rule evidence"} />
-            <EvidenceCard title="Соединение (sing-box)" value={evidence.protocol} detail={`${evidence.connections} connections · SNI ${evidence.sni}`} />
+            <EvidenceCard
+              title="Запрос DNS"
+              value={evidence.dnsMatches[0]?.domain || evidence.flow.dns_qname || evidence.destination}
+              detail={`${evidence.dnsMatches[0]?.qtype || "A"} · answer ${evidence.dnsMatches[0]?.answer_ip || evidence.flow.dns_answer_ip || "not observed"}`}
+            />
+            <EvidenceCard title="Совпавшее правило" value={evidence.matchedRule} detail={evidence.flow.rule_set || evidence.catalogMatches[0]?.domain || "derived rule evidence"} />
+            <EvidenceCard
+              title="Соединение (sing-box)"
+              value={evidence.destinationIp !== "not observed" ? `${evidence.destinationIp}:${evidence.destinationPort}` : evidence.protocol}
+              detail={`${evidence.connections} connections · SNI ${evidence.sni} · ${evidence.outbound}`}
+            />
             <EvidenceCard title="Принятое решение" value={<RouteBadge value={evidence.route} />} detail={evidence.operatorView.decision} />
             <EvidenceCard title="Передано" value={bytes(evidence.bytes)} detail="snapshot/event counters" />
             <EvidenceCard title="Выходной IP (виден сайту)" value={evidence.visibleIp} detail={evidence.siteView.countryAs} />
+            <EvidenceCard title="Время события" value={evidence.eventTimeLabel} detail={evidence.flow.ts_confidence || evidence.sourceKind} />
             <EvidenceCard title="Уверенность" value={evidence.confidence} detail={evidence.confidenceReason} tone="evidence-confidence" />
           </div>
         </section>

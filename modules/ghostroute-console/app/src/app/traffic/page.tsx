@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { EmptyState, bytes, ChannelBadge, ConfidenceBadge, RouteBadge } from "@/components/Widgets";
+import { EmptyState, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, TrafficTermsHelp } from "@/components/Widgets";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidence, buildRouteEvidences } from "@/lib/server/evidence";
 import { buildConsoleModel } from "@/lib/server/selectors";
@@ -14,11 +14,11 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const model = buildConsoleModel(filters);
+  const evidences = buildRouteEvidences(model);
   const selectedIndex = Math.min(
     Math.max(Number.parseInt(scalar(params.flow) || "0", 10) || 0, 0),
-    Math.max(model.flows.length - 1, 0)
+    Math.max(evidences.length - 1, 0)
   );
-  const evidences = buildRouteEvidences(model);
   const evidence = buildRouteEvidence(model, selectedIndex);
 
   return (
@@ -34,13 +34,14 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
             <div className="toolbar">
               <div>
                 <h2>Flow table</h2>
-                <p>Factual rows with access channel, route decision and confidence.</p>
+                <p>Best evidence first: exact live route events, then DNS observations, then aggregate counter rows.</p>
               </div>
-              <span className="subtle">{model.flows.length} rows</span>
+              <span className="subtle">{evidences.length} evidence rows</span>
             </div>
             <table className="table">
               <thead>
                 <tr>
+                  <th className="col-time">Time</th>
                   <th className="col-client">Client</th>
                   <th>Channel</th>
                   <th className="col-destination">Destination</th>
@@ -53,6 +54,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
               <tbody>
                 {evidences.slice(0, 100).map((row, idx) => (
                   <tr key={row.id} className={idx === selectedIndex ? "selected" : ""}>
+                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.eventTimeLabel}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
                     <td><ChannelBadge value={row.channel} /></td>
                     <td><Link href={`/traffic/${idx}`}>{row.destination}</Link></td>
@@ -64,6 +66,13 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 ))}
               </tbody>
             </table>
+          </section>
+          <section className="card terms-card">
+            <div>
+              <h2>Что означают термины</h2>
+              <p>Короткая легенда для route, confidence и channel labels в таблице и деталях маршрута.</p>
+            </div>
+            <TrafficTermsHelp />
           </section>
         </>
       )}
