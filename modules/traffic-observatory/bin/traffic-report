@@ -1705,7 +1705,7 @@ if [ "$JSON_MODE" = "1" ]; then
   TRAFFIC_CHANNEL_C_REALITY="$CHANNEL_C_REALITY" \
   TRAFFIC_CHANNEL_C_DIRECT="$CHANNEL_C_DIRECT" \
   TRAFFIC_CHANNEL_C_UNRESOLVED="$CHANNEL_C_UNRESOLVED" \
-  ruby -rjson -rtime - \
+  ruby -rjson -rtime -rdigest - \
     "$LAN_USER_APPS" \
     "$USER_CHANNEL_TOTALS" \
     "$USER_CHANNEL_APPS" \
@@ -1745,6 +1745,62 @@ def family(dest)
   return 'DNS/Resolver' if d.match?(/\A(1\.1\.1\.1|8\.8\.8\.8|9\.9\.9\.9)\z/)
   return 'Apple/iCloud' if d.match?(/apple|icloud|mzstatic|aaplimg/)
   'Other'
+end
+
+def split_host_port(value)
+  host = value.to_s
+  port = ''
+  if host.match?(/\A.+:\d+\z/)
+    host, port = host.rpartition(':').values_at(0, 2)
+  end
+  [host, port]
+end
+
+def route_event(row, source_ref)
+  destination, port = split_host_port(row[:destination] || row[:family] || row[:app_family])
+  route = row[:route].to_s.empty? ? route_from_split(row[:vps_connections], row[:direct_connections], row[:unresolved_connections]) : row[:route]
+  outbound =
+    if route == 'VPS'
+      'reality-out'
+    elsif route == 'Direct'
+      'direct-out'
+    elsif route == 'Mixed'
+      'mixed-out'
+    else
+      ''
+    end
+  matched_rule =
+    if route == 'VPS'
+      'STEALTH_DOMAINS'
+    elsif route == 'Direct'
+      'no managed match'
+    else
+      'unresolved'
+    end
+  {
+    event_id: Digest::SHA1.hexdigest([source_ref, row[:channel], row[:client], destination, route, row[:connections]].join('|'))[0, 20],
+    ts: Time.now.utc.iso8601,
+    ts_confidence: 'snapshot',
+    client: row[:client].to_s,
+    client_ip: row[:client_ip].to_s,
+    channel: row[:channel].to_s,
+    destination: destination.to_s,
+    destination_ip: destination.to_s.match?(/\A\d{1,3}(\.\d{1,3}){3}\z/) ? destination.to_s : '',
+    destination_port: port.to_s,
+    protocol: port == '443' ? 'TCP / TLS' : (port.empty? ? '' : 'TCP'),
+    sni: destination.to_s.match?(/[[:alpha:]]/) ? destination.to_s : '',
+    dns_qname: destination.to_s.match?(/[[:alpha:]]/) ? destination.to_s : '',
+    dns_answer_ip: '',
+    matched_rule: matched_rule,
+    rule_set: matched_rule == 'STEALTH_DOMAINS' ? 'STEALTH_DOMAINS' : 'direct/default',
+    sing_box_outbound: outbound,
+    route_decision: route,
+    egress_ip: '',
+    egress_asn: '',
+    egress_country: '',
+    confidence: row[:confidence].to_s.empty? ? 'estimated' : row[:confidence],
+    raw_refs: [{ source: source_ref }]
+  }
 end
 
 devices = read_rows(lan_user_apps_path).map do |line|
@@ -1787,6 +1843,7 @@ app_rows = read_rows(user_channel_apps_path).map do |line|
   {
     channel: channel,
     client: display,
+    client_ip: '',
     profile: profile,
     destination: app_family,
     total_bytes: bytes_total.to_i,
@@ -1806,6 +1863,8 @@ mobile_destinations = read_rows(mobile_dests_path).map do |line|
   dest, total, vps, direct = line.split('|', -1)
   {
     channel: 'A/Home Reality',
+    client: 'A/Home Reality',
+    client_ip: '',
     destination: dest,
     family: family(dest),
     connections: total.to_i,
@@ -1821,6 +1880,8 @@ relay_destinations = read_rows(channel_b_dests_path).map do |line|
   dest, total, vps, direct, unresolved = line.split('|', -1)
   {
     channel: 'B/XHTTP relay',
+    client: 'B/XHTTP relay',
+    client_ip: '',
     destination: dest,
     family: family(dest),
     connections: total.to_i,
@@ -1837,6 +1898,8 @@ channel_c_destinations = read_rows(channel_c_dests_path).map do |line|
   dest, total, vps, direct, unresolved = line.split('|', -1)
   {
     channel: 'C1',
+    client: 'C1',
+    client_ip: '',
     destination: dest,
     family: family(dest),
     connections: total.to_i,
@@ -1883,6 +1946,11 @@ read_rows(warn_catalog_ru_path).each do |domain|
   }
 end
 
+destination_rows = mobile_destinations + relay_destinations + channel_c_destinations
+route_events = []
+app_rows.each { |row| route_events << route_event(row, 'traffic-report app_flows') }
+destination_rows.each { |row| route_events << route_event(row, 'traffic-report destinations') }
+
 puts JSON.pretty_generate({
   schema_version: 1,
   generated_at: Time.now.utc.iso8601,
@@ -1924,7 +1992,8 @@ puts JSON.pretty_generate({
   devices: devices,
   home_reality_clients: home_reality_clients,
   app_flows: app_rows,
-  destinations: (mobile_destinations + relay_destinations + channel_c_destinations),
+  destinations: destination_rows,
+  route_events: route_events,
   routing_mistakes: warnings,
   notes: [
     'LAN/Wi-Fi bytes are exact mangle byte counters.',

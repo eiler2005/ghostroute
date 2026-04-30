@@ -132,6 +132,13 @@ puts JSON.pretty_generate({
     extend: state['ROUTER_EXTENDNO'],
     uptime: state['ROUTER_UPTIME']
   },
+  egress_identity: {
+    ip: ENV.fetch('GHOSTROUTE_VPS_EGRESS_IP', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_IP', '')),
+    asn: ENV.fetch('GHOSTROUTE_VPS_EGRESS_ASN', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_ASN', '')),
+    country: ENV.fetch('GHOSTROUTE_VPS_EGRESS_COUNTRY', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_COUNTRY', '')),
+    source: ENV.key?('GHOSTROUTE_VPS_EGRESS_IP') || ENV.key?('GHOSTROUTE_CONSOLE_EGRESS_IP') ? 'env' : 'not observed',
+    confidence: ENV.key?('GHOSTROUTE_VPS_EGRESS_IP') || ENV.key?('GHOSTROUTE_CONSOLE_EGRESS_IP') ? 'exact' : 'unknown'
+  },
   services: {
     router: overall,
     vps: 'UNKNOWN',

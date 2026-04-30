@@ -1,4 +1,4 @@
-export type SnapshotType = "traffic" | "health" | "leaks" | "domains" | "dns";
+export type SnapshotType = "traffic" | "health" | "leaks" | "domains" | "dns" | "live";
 export type Confidence = "exact" | "estimated" | "dns-interest" | "unknown" | "mixed";
 
 export type SnapshotRecord = {

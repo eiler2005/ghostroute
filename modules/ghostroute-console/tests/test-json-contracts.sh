@@ -126,4 +126,21 @@ assert_json_valid "$DNS_OUT"
 assert_common_contract "$DNS_OUT"
 assert_json_key "$DNS_OUT" queries
 
+LIVE_OUT="$TMPDIR/live.json"
+GHOSTROUTE_LIVE_SINGBOX_LOG_FILE="${PROJECT_ROOT}/modules/traffic-observatory/fixtures/live-events/sing-box-sample.log" \
+  GHOSTROUTE_LIVE_DNSMASQ_LOG_FILE="${PROJECT_ROOT}/modules/traffic-observatory/fixtures/live-events/dnsmasq-sample.log" \
+  GHOSTROUTE_LIVE_DOMAIN_ACTIVITY_LOG_FILE="${PROJECT_ROOT}/modules/traffic-observatory/fixtures/live-events/domain-activity-sample.log" \
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/live-events-report" --json --limit 50 > "$LIVE_OUT"
+assert_json_valid "$LIVE_OUT"
+assert_common_contract "$LIVE_OUT"
+assert_json_key "$LIVE_OUT" events
+assert_json_key "$LIVE_OUT" route_events
+ruby -rjson -e '
+  j=JSON.parse(File.read(ARGV[0]))
+  event=j.fetch("route_events").find { |row| row["destination"] == "telegram.org" && row["sing_box_outbound"] == "reality-out" }
+  abort("missing exact telegram route event") unless event
+  abort("missing client ip") unless event["client_ip"] == "192.168.1.24"
+  abort("missing destination port") unless event["destination_port"] == "443"
+' "$LIVE_OUT"
+
 echo "ghostroute-console JSON contract tests passed"

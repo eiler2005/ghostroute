@@ -81,6 +81,21 @@ export function getDb() {
         bytes integer not null default 0,
         connections integer not null default 0,
         protocol text not null default '',
+        client_ip text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        outbound text not null default '',
+        matched_rule text not null default '',
+        rule_set text not null default '',
+        egress_ip text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        event_ts text not null default '',
+        ts_confidence text not null default '',
+        source_log text not null default '',
         raw_json text not null
       );
       create index if not exists idx_normalized_flows_snapshot on normalized_flows(snapshot_id);
@@ -91,6 +106,9 @@ export function getDb() {
         domain text not null default '',
         qtype text not null default '',
         count integer not null default 0,
+        answer_ip text not null default '',
+        event_ts text not null default '',
+        ts_confidence text not null default '',
         confidence text not null default 'dns-interest',
         raw_json text not null
       );
@@ -155,6 +173,20 @@ export function getDb() {
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         summary text not null default '',
+        event_id text not null default '',
+        client_ip text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        outbound text not null default '',
+        matched_rule text not null default '',
+        rule_set text not null default '',
+        egress_ip text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        source_log text not null default '',
         evidence_json text not null default '{}'
       );
       create index if not exists idx_events_occurred on events(occurred_at desc);
@@ -169,10 +201,26 @@ export function getDb() {
         outbound text not null default '',
         matched_rule text not null default '',
         visible_ip text not null default '',
+        event_id text not null default '',
+        client_ip text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        rule_set text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        source_log text not null default '',
         confidence text not null default 'unknown',
         evidence_json text not null default '{}'
       );
       create index if not exists idx_route_decisions_occurred on route_decisions(occurred_at desc);
+      create table if not exists live_cursors (
+        source text primary key,
+        cursor text not null default '',
+        updated_at text not null
+      );
       create table if not exists audit_log (
         id integer primary key autoincrement,
         actor text not null default 'local-console',
@@ -223,8 +271,67 @@ export function getDb() {
     `);
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
+    for (const [table, columns] of Object.entries({
+      normalized_flows: {
+        client_ip: "text not null default ''",
+        destination_ip: "text not null default ''",
+        destination_port: "text not null default ''",
+        dns_qname: "text not null default ''",
+        dns_answer_ip: "text not null default ''",
+        sni: "text not null default ''",
+        outbound: "text not null default ''",
+        matched_rule: "text not null default ''",
+        rule_set: "text not null default ''",
+        egress_ip: "text not null default ''",
+        egress_asn: "text not null default ''",
+        egress_country: "text not null default ''",
+        event_ts: "text not null default ''",
+        ts_confidence: "text not null default ''",
+        source_log: "text not null default ''",
+      },
+      normalized_dns: {
+        answer_ip: "text not null default ''",
+        event_ts: "text not null default ''",
+        ts_confidence: "text not null default ''",
+      },
+      events: {
+        event_id: "text not null default ''",
+        client_ip: "text not null default ''",
+        destination_ip: "text not null default ''",
+        destination_port: "text not null default ''",
+        dns_qname: "text not null default ''",
+        dns_answer_ip: "text not null default ''",
+        sni: "text not null default ''",
+        outbound: "text not null default ''",
+        matched_rule: "text not null default ''",
+        rule_set: "text not null default ''",
+        egress_ip: "text not null default ''",
+        egress_asn: "text not null default ''",
+        egress_country: "text not null default ''",
+        source_log: "text not null default ''",
+      },
+      route_decisions: {
+        event_id: "text not null default ''",
+        client_ip: "text not null default ''",
+        destination_ip: "text not null default ''",
+        destination_port: "text not null default ''",
+        dns_qname: "text not null default ''",
+        dns_answer_ip: "text not null default ''",
+        sni: "text not null default ''",
+        rule_set: "text not null default ''",
+        egress_asn: "text not null default ''",
+        egress_country: "text not null default ''",
+        source_log: "text not null default ''",
+      },
+    })) {
+      for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
+    }
+    db.exec(`
+      create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
+      create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
+    `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-      3,
+      4,
       new Date().toISOString()
     );
   }
@@ -273,6 +380,7 @@ function inferType(payload: any, fileName: string): SnapshotType | null {
   if (command.includes("leak")) return "leaks";
   if (command.includes("domain-report")) return "domains";
   if (command.includes("dns-forensics")) return "dns";
+  if (command.includes("live-events")) return "live";
   return null;
 }
 
@@ -368,7 +476,9 @@ export function latestEvents(limit = 120) {
   try {
     return getDb()
       .prepare(
-        `select id, snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, evidence_json
+        `select id, snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary,
+                event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni,
+                outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, source_log, evidence_json
          from events
          order by occurred_at desc, id desc
          limit ?`
@@ -384,7 +494,9 @@ export function latestRouteDecisions(limit = 120) {
   try {
     return getDb()
       .prepare(
-        `select id, snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, confidence, evidence_json
+        `select id, snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip,
+                event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni,
+                rule_set, egress_asn, egress_country, source_log, confidence, evidence_json
          from route_decisions
          order by occurred_at desc, id desc
          limit ?`

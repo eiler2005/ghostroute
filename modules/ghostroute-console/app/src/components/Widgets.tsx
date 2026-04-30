@@ -89,7 +89,33 @@ export function ConfidenceHelp() {
       <div><strong>exact</strong><span>Counter, check or explicit report evidence.</span></div>
       <div><strong>estimated</strong><span>Derived from mixed counters or log summaries.</span></div>
       <div><strong>dns-interest</strong><span>DNS observation, not proof of routed traffic.</span></div>
+      <div><strong>mixed</strong><span>Several sources disagree or the row combines VPS and Direct counters.</span></div>
       <div><strong>unknown</strong><span>Source did not provide enough evidence.</span></div>
+    </div>
+  );
+}
+
+export function TrafficTermsHelp() {
+  return (
+    <div className="terms-grid">
+      <div>
+        <h3>Route</h3>
+        <p><strong>VPS</strong> - traffic went through `reality-out` / VPS egress.</p>
+        <p><strong>Direct</strong> - traffic went through home/direct WAN.</p>
+        <p><strong>Mixed</strong> - counters show both VPS and Direct, or evidence is aggregate.</p>
+      </div>
+      <div>
+        <h3>Confidence</h3>
+        <p><strong>exact</strong> - explicit log/report event: rule, outbound, IP or timestamp.</p>
+        <p><strong>estimated</strong> - derived from counters or incomplete summaries.</p>
+        <p><strong>dns-interest</strong> - DNS was observed, but route was not proven.</p>
+      </div>
+      <div>
+        <h3>Channel</h3>
+        <p><strong>Home Wi-Fi/LAN</strong> - local device on router LAN.</p>
+        <p><strong>Channel A/B/C</strong> - mobile/client lane used to enter GhostRoute.</p>
+        <p><strong>not observed</strong> - source logs did not contain that field.</p>
+      </div>
     </div>
   );
 }

@@ -44,14 +44,70 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
         confidence: "exact",
       },
     ],
-    app_flows: [{ client: "lan-host-01", destination: "telegram.org", route: "VPS", bytes: 70, confidence: "exact" }],
+    app_flows: [{
+      client: "lan-host-01",
+      client_ip: "192.168.1.24",
+      destination: "telegram.org",
+      destination_port: "443",
+      route: "VPS",
+      bytes: 70,
+      protocol: "TCP / TLS",
+      sni: "telegram.org",
+      sing_box_outbound: "reality-out",
+      matched_rule: "STEALTH_DOMAINS",
+      rule_set: "STEALTH_DOMAINS",
+      egress_ip: "203.0.113.67",
+      egress_asn: "AS209529",
+      confidence: "exact"
+    }],
   };
   normalizeSnapshot(db, 1, "traffic", traffic.generated_at, traffic);
   assert.equal(db.prepare("select count(*) as count from normalized_devices").get().count, 1);
   assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 1);
   assert.equal(db.prepare("select channel from normalized_flows limit 1").get().channel, "Home Wi-Fi/LAN");
+  const flow = db.prepare("select client_ip, sni, outbound, matched_rule, egress_ip, egress_asn from normalized_flows limit 1").get();
+  assert.equal(flow.client_ip, "192.168.1.24");
+  assert.equal(flow.sni, "telegram.org");
+  assert.equal(flow.outbound, "reality-out");
+  assert.equal(flow.matched_rule, "STEALTH_DOMAINS");
+  assert.equal(flow.egress_ip, "203.0.113.67");
+  assert.equal(flow.egress_asn, "AS209529");
   assert.equal(db.prepare("select count(*) as count from events where event_type = 'flow.observed'").get().count, 1);
   assert.equal(db.prepare("select count(*) as count from route_decisions").get().count, 1);
+
+  normalizeSnapshot(db, 3, "live", "2026-04-29T00:00:01Z", {
+    source: { command: "live-events-report" },
+    cursor: { next: "event-1" },
+    events: [{
+      event_id: "event-1",
+      event_type: "route.decision",
+      ts: "2026-04-29T00:00:01Z",
+      client: "192.168.1.24",
+      client_ip: "192.168.1.24",
+      channel: "Home Wi-Fi/LAN",
+      destination: "telegram.org",
+      destination_port: "443",
+      route_decision: "VPS",
+      sing_box_outbound: "reality-out",
+      matched_rule: "STEALTH_DOMAINS",
+      confidence: "exact",
+      raw_refs: [{ source_log: "sing-box.log" }],
+    }],
+  });
+  assert.equal(db.prepare("select cursor from live_cursors where source = 'live-events-report'").get().cursor, "event-1");
+  normalizeSnapshot(db, 4, "live", "2026-04-29T00:00:02Z", {
+    source: { command: "live-events-report" },
+    cursor: { next: "event-1" },
+    events: [{
+      event_id: "event-1",
+      event_type: "route.decision",
+      ts: "2026-04-29T00:00:01Z",
+      destination: "telegram.org",
+      route_decision: "VPS",
+      confidence: "exact",
+    }],
+  });
+  assert.equal(db.prepare("select count(*) as count from events where event_id = 'event-1'").get().count, 1);
 
   normalizeSnapshot(db, 2, "domains", "2026-04-29T00:00:00Z", {
     source: { command: "domain-report" },
@@ -68,9 +124,10 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
-  assert.ok(db.prepare("select version from schema_migrations where version = 3").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 4").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   db.close();
 });

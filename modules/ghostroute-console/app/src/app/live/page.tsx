@@ -15,7 +15,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   return (
     <ConsoleShell active="/live" model={model} filters={filters}>
       <div className="grid cards">
-        <section className="card"><h3>Mode</h3><StatusBadge value="SSE" /><p>stream with polling fallback</p></section>
+        <section className="card"><h3>Mode</h3><StatusBadge value="SSE" /><p>real log tail with polling fallback</p></section>
         <section className="card"><h3>Freshness</h3><strong>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</strong><p>{model.freshnessStatus}</p></section>
         <section className="card"><h3>Flows</h3><strong>{model.flows.length}</strong><p>observed rows</p></section>
         <section className="card"><h3>Clients</h3><strong>{model.devices.length}</strong><p>observed devices</p></section>
@@ -38,8 +38,8 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
       <div className="grid two" style={{ marginTop: 14 }}>
         <section className="card">
           <div className="toolbar">
-            <h2>Live activity (polling)</h2>
-            <span className="subtle">latest factual flow rows</span>
+            <h2>Live activity</h2>
+            <span className="subtle">latest factual flow and tail rows</span>
           </div>
           {activeFlows.length === 0 ? (
             <EmptyState title="Нет activity snapshot" />

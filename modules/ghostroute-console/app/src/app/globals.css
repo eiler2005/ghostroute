@@ -47,8 +47,9 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .table td { overflow-wrap: anywhere; }
 .table tr.selected td { background: rgba(92, 168, 255, .08); box-shadow: inset 3px 0 0 #5ca8ff; }
 .table tr:hover td { background: rgba(141, 182, 255, .05); }
-.col-client { width: 24%; }
-.col-destination { width: 30%; }
+.col-time { width: 132px; color: #c5d2e4; }
+.col-client { width: 22%; }
+.col-destination { width: 28%; }
 .col-route { width: 96px; }
 .col-traffic { width: 112px; }
 .col-conn { width: 72px; }
@@ -101,6 +102,12 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .confidence-help { margin-top: 10px; display: grid; gap: 8px; }
 .confidence-help div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; color: #a9bad0; font-size: 13px; }
 .confidence-help strong { color: #f2f6fb; }
+.terms-card { margin-top: 14px; }
+.terms-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.terms-grid > div { min-width: 0; border: 1px solid #243954; border-radius: 8px; background: rgba(8, 18, 33, .5); padding: 12px; }
+.terms-grid h3 { margin-bottom: 8px; }
+.terms-grid p { color: #a9bad0; font-size: 13px; line-height: 1.35; }
+.terms-grid strong { color: #f2f6fb; }
 .page-note { margin-bottom: 14px; padding: 10px 12px; border: 1px solid #243954; border-radius: 8px; background: rgba(92,168,255,.07); color: #c9d7e8; }
 .route-vps { color: #58d68d; }
 .route-direct { color: #f5b942; }
@@ -171,4 +178,5 @@ p { margin: 6px 0 0; color: #a9bad0; }
   .live-feed-row { grid-template-columns: 1fr; }
   .live-topology { grid-template-columns: 1fr; }
   .live-topology i { height: 12px; width: 3px; justify-self: center; }
+  .terms-grid { grid-template-columns: 1fr; }
 }

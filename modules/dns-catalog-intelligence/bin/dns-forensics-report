@@ -201,14 +201,32 @@ if json_mode == "1"
     top_domains[ip].map do |row|
       {
         client_ip: ip,
+        client: display_host.call(client),
         client_label: display_host.call(client),
         domain: row["domain"],
+        qname: row["domain"],
         count: row["count"],
         query_type: "unknown",
+        qtype: "unknown",
+        answer_ip: "",
+        dns_answer_ip: "",
+        ts: meta["snapshot_created"].to_s,
+        ts_confidence: "window",
+        window_from: meta["window_from"].to_s,
+        window_to: meta["window_to"].to_s,
         route_decision: "dns-interest",
         catalog_status: "unknown",
         status: "observed",
-        confidence: "dns-interest"
+        confidence: "dns-interest",
+        raw_refs: [
+          {
+            source: "dns-forensics snapshot",
+            snapshot: snapshot_source,
+            window_key: meta["window_key"].to_s,
+            client_ip: ip,
+            rank: row["rank"]
+          }
+        ]
       }
     end
   end
