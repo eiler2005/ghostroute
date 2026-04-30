@@ -66,7 +66,7 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 
 ## Safety Rules
 
-- Never run `git push` without explicit user permission.
+- Never run `git commit` or `git push` without explicit user permission.
 - Never run `./deploy.sh` without explicit user permission.
 - Never deploy to, copy files to, or mutate the router/VPS with `ssh`, `scp`,
   `rsync`, router scripts, or mutating Ansible playbooks without explicit user
@@ -85,16 +85,24 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 
 ## Secrets and Privacy
 
+- No sensitive information belongs in git, public docs, commit messages, issue
+  text, chat transcripts, or other shareable history. This includes credentials,
+  tokens, passwords, usernames, hostnames, public IPs, private IPs, ports, local
+  device names, traffic evidence, provider details, and any value that could
+  identify or access the real deployment.
 - Never commit or paste real endpoints, listener ports, private IP details,
   SSH users, local-only aliases, bypass rules, UUIDs, Reality keys, short IDs,
   admin paths, QR payloads, VLESS URIs, Vault values, or generated client
   profiles.
-- Keep real secrets in Ansible Vault or gitignored local files only.
+- Keep real secrets and deployment-specific values in Ansible Vault, the
+  appropriate secrets store, or gitignored local files only.
 - Generated artifacts under `ansible/out/`, local `reports/`, private docs, and
   domain journals are local/operator data and must stay out of public tracked
   docs unless explicitly sanitized.
-- Use placeholders such as `<router_lan_ip>`, `<home-reality-port>`,
-  `<lan-redirect-port>`, and `example.invalid` in tracked examples.
+- When documentation needs a concrete value to explain a concept, use fake or
+  obfuscated examples such as `<router_lan_ip>`, `<home-reality-port>`,
+  `<lan-redirect-port>`, `example.invalid`, `198.51.100.10`, or clearly masked
+  values like `user-***` and `uuid-...`.
 - Run `./modules/secrets-management/bin/secret-scan` before any commit or push
   recommendation.
 
