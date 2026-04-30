@@ -1,10 +1,24 @@
-import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { NextRequest, NextResponse } from "next/server";
+import { listClientInventory } from "@/lib/server/selectors";
 
-export async function GET() {
-  const clients = buildConsoleModel().devices;
+export async function GET(request: NextRequest) {
+  const search = request.nextUrl.searchParams;
+  const result = listClientInventory({
+    page: Math.max(1, Number(search.get("page") || 1)),
+    pageSize: Math.min(Number(search.get("pageSize") || 25), 100),
+    filters: {
+      route: search.get("route") || "all",
+      channel: search.get("channel") || "all",
+      confidence: search.get("confidence") || "all",
+      client: search.get("client") || "all",
+      search: search.get("search") || "",
+    },
+  });
   return NextResponse.json({
-    total: clients.length,
-    clients: clients.map(({ raw, ...row }) => row),
+    total: result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+    totalPages: result.totalPages,
+    clients: result.rows.map(({ raw, ...row }) => row),
   });
 }

@@ -14,6 +14,8 @@ Treat these as secrets or sensitive operational data:
   ingress, local SOCKS/DNS, Xray localhost and admin ports.
 - Real VPS IP/hostname and SSH username when they identify the production host.
 - Router LAN IP, SSH user and SSH key path.
+- Router remote SSH host/port/user and private key used by the GhostRoute
+  Console read-only collector.
 - Existing shared Caddy site hostnames, local upstream ports and certificate paths.
 - Personal bypass rules such as one-off IP:port exceptions.
 
@@ -21,6 +23,7 @@ Treat these as secrets or sensitive operational data:
 
 ```text
 secrets/router.env                  # local router deploy env; gitignored
+secrets/router-remote-ssh/          # local fallback remote-router key; gitignored
 secrets/no-vpn-ip-ports.local.txt   # personal bypass IP:port rules; gitignored
 secrets/device-metadata.local.tsv   # local device aliases; gitignored
 configs/private/dnsmasq-stealth.local.conf.add

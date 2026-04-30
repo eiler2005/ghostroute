@@ -39,12 +39,24 @@ rows. A route explanation can include:
 If a source does not prove a field, Console should show `not observed` or an
 estimated confidence note rather than fabricating a value.
 
-Route detail pages and the Traffic Explorer use best-evidence ordering. Exact
-live route decisions from source logs are shown before DNS-only observations and
-aggregate counter rows. This keeps the UI useful while preserving evidence
-honesty: an aggregate `Other`/`Mixed` row remains available, but it should not
-hide a more precise `sing-box` route event with timestamp, destination IP/port,
-outbound and rule evidence.
+VPS egress identity is an explicit source, not an inference from the public
+Console URL. Operators configure it through `GHOSTROUTE_VPS_EGRESS_IP`,
+`GHOSTROUTE_VPS_EGRESS_ASN` and `GHOSTROUTE_VPS_EGRESS_COUNTRY`; the health
+report can then expose it as factual evidence. If those values are missing,
+Console shows a compact setup hint instead of synthetic IP/ASN/country data.
+
+Route detail pages use best-evidence enrichment, but the Traffic Explorer table
+is an operator traffic view by default. It shows traffic rows with meaningful
+client labels and observed traffic bytes/counters. Technical zero-byte live
+events, unknown-client `sing-box` rows, latency-like pseudo-clients and
+router/self/service destinations are classified as diagnostics and hidden from
+the default table. They remain available behind `?diagnostics=1` and in raw
+evidence/live views.
+
+Exact live route decisions can enrich a traffic row when they correlate by
+destination/DNS/client evidence. They must not replace the traffic row as the
+primary UI object when they only prove `rule/outbound/time/destination IP` and
+do not prove client traffic or bytes.
 
 Traffic UI must also explain operator-facing terms in-product:
 
@@ -53,6 +65,8 @@ Traffic UI must also explain operator-facing terms in-product:
   access/client lane.
 - `exact`, `estimated`, `dns-interest`, `mixed` and `unknown` describe source
   confidence, not product success/failure.
+- `Traffic row` means client traffic; `Evidence event` means a technical log
+  event that may have no bytes or client attribution.
 - `not observed` means the current JSON/log source did not contain that field.
 
 ## Storage Flow
@@ -69,6 +83,11 @@ events and route decisions:
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.
+
+Clients are shown as a known-device inventory, not only a latest-snapshot
+active list. Console keeps historical device rows, preserves the last known
+channel when a newer source is weaker, and displays status as `Online`,
+`Recently seen` or `Inactive` with a short last-seen timestamp.
 
 ## Live Tail
 
@@ -88,6 +107,12 @@ Runtime switches:
   `live-events-report`.
 - `GHOSTROUTE_LIVE_COLLECTOR_MODE=disabled` keeps the UI read-only over stored
   events and avoids noisy SSH failures.
+- `GHOSTROUTE_LIVE_POLL_SECONDS=15` is the default production poll interval.
+
+Full snapshot collection is scheduled to avoid router load: every 30 minutes
+from 07:00 to 23:59 Moscow time, and every 3 hours from 00:00 to 06:59. The UI
+uses matching freshness thresholds: stale after 75 minutes during the day and
+210 minutes overnight.
 
 ## Deployment And Access
 
@@ -99,6 +124,20 @@ at `/opt/ghostroute-console/repo`.
 The restricted SSH surface is `ghostroute_readonly` with forced-command
 whitelisting. Whitelisted commands must require `--json` and must remain
 read-only.
+
+The deployed container SSHes to the VPS host over localhost using a generated
+key under `/opt/ghostroute-console/ssh/`. The forced command executes only
+whitelisted JSON report commands from the synced repo checkout. The
+`ghostroute_readonly` account is additionally constrained by sshd hardening: no
+password or keyboard-interactive auth, no TTY, no forwarding and no tunnel.
+
+Router access for read-only report collection is a separate runtime secret. The
+preferred source is Ansible Vault (`ghostroute_router_remote_host`,
+`ghostroute_router_remote_port`, `ghostroute_router_remote_user`,
+`ghostroute_router_remote_private_key`). Deploys may fall back to the
+gitignored local operator key under `secrets/router-remote-ssh/`, but the key is
+never tracked and is installed only as `/opt/ghostroute-console/router-ssh/*`
+with root ownership and `ghostroute_readonly` read-only group access.
 
 ## Safety Boundaries
 

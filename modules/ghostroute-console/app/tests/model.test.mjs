@@ -60,9 +60,21 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
       egress_asn: "AS209529",
       confidence: "exact"
     }],
+    home_reality_clients: [{
+      label: "mobile-client-04 (Mamulia)",
+      profile: "mobile-client-04",
+      total_bytes: 40,
+      via_vps_bytes: 30,
+      direct_bytes: 10,
+      confidence: "estimated",
+    }],
   };
   normalizeSnapshot(db, 1, "traffic", traffic.generated_at, traffic);
-  assert.equal(db.prepare("select count(*) as count from normalized_devices").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from normalized_devices").get().count, 2);
+  assert.equal(
+    db.prepare("select channel from normalized_devices where label = 'mobile-client-04 (Mamulia)'").get().channel,
+    "A/Home Reality"
+  );
   assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 1);
   assert.equal(db.prepare("select channel from normalized_flows limit 1").get().channel, "Home Wi-Fi/LAN");
   const flow = db.prepare("select client_ip, sni, outbound, matched_rule, egress_ip, egress_asn from normalized_flows limit 1").get();

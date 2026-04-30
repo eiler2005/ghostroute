@@ -23,6 +23,9 @@ export type ConsoleModel = {
   generatedAt: string;
   freshnessMinutes: number | null;
   freshnessStatus: "fresh" | "stale" | "empty";
+  freshnessLabel?: string;
+  nextExpectedCollection?: string;
+  staleThresholdMinutes?: number;
   collectorErrors: Array<Record<string, any>>;
   collectorRun?: Record<string, any> | null;
   hourlyTraffic: Array<Record<string, any>>;

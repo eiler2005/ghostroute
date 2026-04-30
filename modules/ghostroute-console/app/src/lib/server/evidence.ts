@@ -40,11 +40,12 @@ export function inferAccessChannel(row: Record<string, any>, device?: Record<str
   if (explicit && explicit !== "Unknown") return explicit;
   const raw = lower(JSON.stringify({ row, device }));
   const client = lower(row.client || row.label || device?.label || device?.id || "");
+  if (client.includes("mobile-client-")) return "A/Home Reality";
   if (/\b\/\s*c1\b|\bc1_|channel-c|shadowrocket|naive/.test(`${raw} ${client}`)) return "Channel C";
   if (/\b\/\s*b\b|iphone-b|channel-b|xhttp|xray|selected-client/.test(`${raw} ${client}`)) return "Channel B";
   if (raw.includes("channel-c") || raw.includes("shadowrocket") || raw.includes("naive")) return "Channel C";
   if (raw.includes("channel-b") || raw.includes("xhttp") || raw.includes("selected-client") || raw.includes("xray")) return "Channel B";
-  if (raw.includes("home_reality") || raw.includes("home-reality") || raw.includes("reality-in")) return "Channel A";
+  if (raw.includes("home_reality") || raw.includes("home-reality") || raw.includes("reality-in")) return "A/Home Reality";
   if (raw.includes("br0") || raw.includes("lan") || raw.includes("wi-fi") || raw.includes("wifi") || raw.includes("192.168.")) return "Home Wi-Fi/LAN";
   if (/^(lan-host|iphone|ipad|macbook|apple tv|unknown device)/.test(client)) return "Home Wi-Fi/LAN";
   return "Unknown";
@@ -138,6 +139,71 @@ function evidenceKey(row: Record<string, any>) {
   ].join("|");
 }
 
+function isLatencyLikeClient(value: unknown) {
+  return /^[0-9]+ms$/i.test(text(value, ""));
+}
+
+function isUnknownClient(value: unknown) {
+  const client = lower(value).trim();
+  return !client || client === "unknown" || client === "client" || client === "not observed";
+}
+
+function isIpLiteral(value: unknown) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(text(value, ""));
+}
+
+function isPrivateOrLocalIp(value: unknown) {
+  const ip = text(value, "");
+  if (!isIpLiteral(ip)) return false;
+  const parts = ip.split(".").map((part) => Number(part));
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    a === 0 ||
+    a >= 224
+  );
+}
+
+function isSystemDestination(value: unknown, model: ConsoleModel) {
+  const destination = text(value, "");
+  if (!destination) return true;
+  if (isPrivateOrLocalIp(destination)) return true;
+  const egress = model.snapshots.health?.payload?.egress_identity || {};
+  const configured = [
+    egress.ip,
+    process.env.GHOSTROUTE_CONSOLE_EGRESS_IP,
+    process.env.GHOSTROUTE_VPS_EGRESS_IP,
+    process.env.GHOSTROUTE_CONSOLE_PUBLIC_HOST,
+  ].filter(Boolean).map((item) => text(item).replace(/^console\./, "").replace(/\.sslip\.io$/, ""));
+  if (configured.some((item) => item === destination)) return true;
+  const raw = lower(destination);
+  return raw.includes("router.local") || raw.includes("localhost") || raw.includes("sslip.io");
+}
+
+function trafficBytes(row: Record<string, any>) {
+  return number(row.bytes || row.total_bytes || row.via_vps_bytes || row.reality_bytes || row.direct_bytes || row.wan_bytes);
+}
+
+function classifyEvidenceRow(row: Record<string, any>, model: ConsoleModel) {
+  const client = text(row.client || row.label, "");
+  const destination = text(row.destination || row.destination_ip || row.dns_qname || row.family || row.domain || row.app, "");
+  const bytes = trafficBytes(row);
+  const source = text(row._source, "flow");
+  const route = text(row.route || row.route_decision, "");
+  const confidence = text(row.confidence, "");
+  if (isSystemDestination(destination, model)) return "system-noise";
+  if (isLatencyLikeClient(client)) return "system-noise";
+  if (source !== "flow") return route === "dns-interest" || confidence === "dns-interest" ? "dns-interest" : "route-event";
+  if (isUnknownClient(client) && bytes <= 0) return "system-noise";
+  if (bytes > 0 && !isLatencyLikeClient(client) && !isUnknownClient(client)) return "traffic";
+  if (confidence === "dns-interest" || route === "dns-interest") return "dns-interest";
+  return "route-event";
+}
+
 function decisionToFlow(row: Record<string, any>) {
   const evidence = row.evidence || {};
   return {
@@ -195,13 +261,14 @@ function buildEvidenceInputs(model: ConsoleModel) {
       .filter((row) => ["dns.query", "dns.answer", "flow.observed", "route.decision"].includes(text(row.event_type, "")))
       .map(eventToFlow),
     ...model.flows.map(flowToEvidenceInput),
-  ];
+  ].map((row) => ({ ...row, rowType: classifyEvidenceRow(row, model) }));
   const seen = new Set<string>();
   return rows
     .filter((row) => text(row.destination || row.destination_ip || row.dns_qname, "") !== "")
     .sort((a, b) => {
-      const scoreA = sourceRank(a) + confidenceRank(text(a.confidence)) * 10 + routeRank(text(a.route || routeFromBytes(a)));
-      const scoreB = sourceRank(b) + confidenceRank(text(b.confidence)) * 10 + routeRank(text(b.route || routeFromBytes(b)));
+      const typeRank = (row: Record<string, any>) => row.rowType === "traffic" ? 1000 : row.rowType === "dns-interest" ? 200 : row.rowType === "route-event" ? 100 : 0;
+      const scoreA = typeRank(a) + sourceRank(a) + confidenceRank(text(a.confidence)) * 10 + routeRank(text(a.route || routeFromBytes(a)));
+      const scoreB = typeRank(b) + sourceRank(b) + confidenceRank(text(b.confidence)) * 10 + routeRank(text(b.route || routeFromBytes(b)));
       if (scoreA !== scoreB) return scoreB - scoreA;
       return timestampMs(b) - timestampMs(a);
     })
@@ -216,9 +283,9 @@ function buildEvidenceInputs(model: ConsoleModel) {
 function egressIdentity(model: ConsoleModel) {
   const identity = model.snapshots.health?.payload?.egress_identity || {};
   return {
-    ip: text(identity.ip, ""),
-    asn: text(identity.asn, ""),
-    country: text(identity.country, ""),
+    ip: text(identity.ip || process.env.GHOSTROUTE_VPS_EGRESS_IP || process.env.GHOSTROUTE_CONSOLE_EGRESS_IP, ""),
+    asn: text(identity.asn || process.env.GHOSTROUTE_VPS_EGRESS_ASN || process.env.GHOSTROUTE_CONSOLE_EGRESS_ASN, ""),
+    country: text(identity.country || process.env.GHOSTROUTE_VPS_EGRESS_COUNTRY || process.env.GHOSTROUTE_CONSOLE_EGRESS_COUNTRY, ""),
     confidence: text(identity.confidence, "unknown"),
   };
 }
@@ -234,12 +301,39 @@ function formatEventTime(value: unknown) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  });
+  }).replace(",", "");
 }
 
-export function buildRouteEvidence(model: ConsoleModel, index: number) {
-  const inputs = buildEvidenceInputs(model);
-  const flow = inputs[Math.max(0, Math.min(index, Math.max(inputs.length - 1, 0)))] || null;
+function isCategoryAggregate(value: string) {
+  return value.includes("/") || /^[A-Z][A-Za-z ]+$/.test(value);
+}
+
+function displaySni(flow: Record<string, any>, decision: Record<string, any> | undefined, destination: string) {
+  const sni = text(flow.sni || decision?.sni || flow.raw?.sni, "");
+  if (sni) return sni;
+  if (destination.includes(".") && !isIpLiteral(destination) && !isCategoryAggregate(destination)) return destination;
+  return "category aggregate";
+}
+
+function displayClientIp(value: string, channel: string) {
+  if (value && value !== "not observed") return value;
+  if (channel === "Channel A" || channel.includes("Reality")) return "profile only; IP not exposed";
+  return "not observed by source";
+}
+
+function ruleEvidence(route: string, flow: Record<string, any>, catalog?: Record<string, any>) {
+  const exact = text(flow.matched_rule || flow.raw?.matched_rule || flow.rule_name || flow.catalog_rule, "");
+  if (exact) {
+    return { label: exact, detail: text(flow.rule_set || flow.raw?.rule_set || "matched route rule"), kind: "matched rule" };
+  }
+  if (catalog?.type === "candidates") {
+    return { label: "no exact matched rule", detail: `catalog candidate: ${text(catalog.domain, "catalog")} (hint, not applied rule)`, kind: "catalog hint" };
+  }
+  const fallback = ruleFor(route, catalog, flow);
+  return { label: fallback, detail: fallback === "STEALTH_DOMAINS" ? "derived from route counters" : "derived rule evidence", kind: "derived rule" };
+}
+
+function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, any>, index: number) {
   if (!flow) return null;
   const route = text(flow.route || routeFromBytes(flow), "Unknown");
   const rawDestination = text(flow.destination || flow.destination_ip || flow.dns_qname || flow.family || flow.domain || flow.app, "unknown destination");
@@ -255,12 +349,15 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
       ? flow
       : model.routeDecisions.find((row) => suffixMatch(destination, row.destination) && (!client || clientMatches(row, client)));
   const outbound = text(decision?.outbound || flow.outbound || flow.raw?.sing_box_outbound || outboundFor(route, flow), "unknown");
-  const matchedRule = text(decision?.matched_rule || flow.matched_rule || flow.raw?.matched_rule || ruleFor(route, catalogMatches[0], flow), "unknown");
+  const rule = ruleEvidence(route, { ...flow, matched_rule: decision?.matched_rule || flow.matched_rule }, catalogMatches[0]);
+  const matchedRule = rule.label;
   const healthEgress = egressIdentity(model);
   const visibleIp = text(
     decision?.visible_ip || flow.visible_ip || flow.egress_ip || flow.raw?.egress_ip || (route === "VPS" ? healthEgress.ip : "") || visibleIpFor(route, flow),
     "not observed"
   );
+  const egressMissing = route === "VPS" && visibleIp === "not observed";
+  const egressHint = egressMissing ? "not configured" : visibleIp;
   const protocol = protocolFor(flow);
   const bytes = number(flow.bytes || flow.total_bytes || flow.via_vps_bytes || flow.direct_bytes);
   const confidence = text(flow.confidence || decision?.confidence, "unknown");
@@ -270,6 +367,9 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
     .filter((row) => suffixMatch(destination, row.destination || row.summary || "") || clientMatches(row, client))
     .slice(0, 8);
   const eventTime = text(flow.event_ts || flow.occurred_at || flow.raw?.ts || flow.collected_at || decision?.occurred_at, "");
+  const clientIpValue = text(flow.client_ip || decision?.client_ip || device?.ip || flow.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed");
+  const clientIpLabel = displayClientIp(clientIpValue, channel);
+  const sni = displaySni(flow, decision, destination);
   const timeline = [
     { at: formatEventTime(dns?.event_ts || dns?.raw?.ts || dns?.collected_at || eventTime), label: "DNS запрос", detail: `${text(dns?.domain || flow.dns_qname || destination)}${dns?.answer_ip || flow.dns_answer_ip ? ` -> ${dns?.answer_ip || flow.dns_answer_ip}` : ""}` },
     { at: formatEventTime(eventTime), label: "IP/rule evidence", detail: `${matchedRule}${flow.rule_set ? ` / ${flow.rule_set}` : ""}` },
@@ -286,18 +386,18 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
     { label: "dnsmasq + ipset", detail: dns ? `${dns.domain || destination} -> ${dns.qtype || "A"}` : "DNS evidence не найден" },
     { label: "sing-box", detail: `Правило: ${matchedRule}` },
     { label: direct ? "Direct" : mixed ? "mixed-out" : "reality-out", detail: direct ? "Локальный/home WAN выход" : mixed ? "Смешанный выход" : "Reality/VPS outbound" },
-    ...(direct ? [] : [{ label: "VPS", detail: `Видимый IP: ${visibleIp}` }]),
+    ...(direct ? [] : [{ label: "VPS", detail: `Видимый IP: ${egressHint}` }]),
     { label: "Internet", detail: "Доставка до сайта" },
   ];
 
   return {
-    id: String(index),
+    id: text(flow.id || flow.event_id || `${flow._source || "flow"}:${index}`),
     flow,
     eventTime,
     eventTimeLabel: formatEventTime(eventTime),
     sourceKind: text(flow._source, "flow"),
     client,
-    clientIp: text(flow.client_ip || decision?.client_ip || device?.ip || flow.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed"),
+    clientIp: clientIpLabel,
     channel,
     destination,
     destinationIp: text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "not observed"),
@@ -305,9 +405,12 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
     route,
     outbound,
     matchedRule,
+    matchedRuleKind: rule.kind,
+    matchedRuleDetail: rule.detail,
     visibleIp,
+    visibleIpLabel: egressHint,
     protocol,
-    sni: text(flow.sni || decision?.sni || flow.raw?.sni || (destination.includes(".") ? destination : ""), "not observed"),
+    sni,
     bytes,
     connections: number(flow.connections || flow.total_connections),
     confidence,
@@ -319,20 +422,20 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
     timeline,
     siteView: {
       destination,
-      visitorIp: visibleIp,
+      visitorIp: egressHint,
       countryAs: text(
         [
           flow.egress_country || decision?.egress_country || (visibleIp === healthEgress.ip ? healthEgress.country : ""),
           flow.egress_asn || decision?.egress_asn || flow.raw?.asn || (visibleIp === healthEgress.ip ? healthEgress.asn : ""),
         ].filter(Boolean).join(" / "),
-        "not observed"
+        egressMissing ? "not configured" : "not observed"
       ),
       protocol,
-      sni: text(flow.sni || decision?.sni || flow.raw?.sni || destination, "not observed"),
+      sni,
     },
     operatorView: {
       input: `${channel} / ${client}`,
-      clientIp: text(flow.client_ip || decision?.client_ip || device?.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed"),
+      clientIp: clientIpLabel,
       output: outbound,
       route: route === "VPS" ? "Через VPS" : route === "Direct" ? "Direct/Home WAN" : route,
       rule: matchedRule,
@@ -341,10 +444,10 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
     },
     ipLogic:
       route === "VPS"
-        ? "Внешние сайты видят VPS egress IP, потому что route decision выбрал reality-out. Домашний/мобильный оператор видит вход к домашнему маршруту или VPS tunnel, но не финальный managed destination."
+        ? "Внешние сайты видят egress IP - публичный IP выхода. reality-out означает выход sing-box через Reality/VPS. Оператор видит ingress: домашний LAN или мобильный профиль, но не финальный managed destination."
         : route === "Direct"
-          ? "Сайт видит home/direct IP, потому что destination не попал в managed rule-set или был явно разрешён как direct."
-          : "Route decision смешанный или неполный: Console показывает только уровень уверенности, который подтверждён source evidence.",
+          ? "Сайт видит home/direct egress IP, потому что destination не попал в managed rule-set или был явно разрешён как Direct."
+          : "Route decision смешанный или неполный: Console показывает только уровень уверенности, который подтверждён source evidence. candidate означает подсказку каталога, а не обязательно применённое правило.",
     rawRefs: {
       flow,
       dns: dnsMatches,
@@ -355,6 +458,37 @@ export function buildRouteEvidence(model: ConsoleModel, index: number) {
   };
 }
 
-export function buildRouteEvidences(model: ConsoleModel) {
-  return buildEvidenceInputs(model).map((_, index) => buildRouteEvidence(model, index)).filter(Boolean) as NonNullable<ReturnType<typeof buildRouteEvidence>>[];
+export function buildRouteEvidenceSet(model: ConsoleModel, options: { includeDiagnostics?: boolean; limit?: number; fallbackToDiagnostics?: boolean } = {}) {
+  const inputs = buildEvidenceInputs(model);
+  const trafficInputs = inputs.filter((row) => row.rowType === "traffic");
+  const diagnosticInputs = inputs.filter((row) => row.rowType !== "traffic");
+  const includeDiagnostics = Boolean(options.includeDiagnostics);
+  const sourceInputs =
+    includeDiagnostics
+      ? inputs
+      : trafficInputs.length || !options.fallbackToDiagnostics
+        ? trafficInputs
+        : diagnosticInputs;
+  const limit = Math.max(1, options.limit || 100);
+  const visibleInputs = sourceInputs.slice(0, limit);
+  const evidences = visibleInputs
+    .map((row, index) => buildRouteEvidenceFromInput(model, row, index))
+    .filter(Boolean) as NonNullable<ReturnType<typeof buildRouteEvidenceFromInput>>[];
+  return {
+    evidences,
+    totalCount: sourceInputs.length,
+    hiddenCount: diagnosticInputs.length,
+    trafficCount: trafficInputs.length,
+    diagnosticCount: diagnosticInputs.length,
+    diagnosticsEnabled: includeDiagnostics,
+  };
+}
+
+export function buildRouteEvidence(model: ConsoleModel, index: number) {
+  const set = buildRouteEvidenceSet(model, { includeDiagnostics: false, limit: Math.max(index + 1, 100), fallbackToDiagnostics: true });
+  return set.evidences[Math.max(0, Math.min(index, Math.max(set.evidences.length - 1, 0)))] || null;
+}
+
+export function buildRouteEvidences(model: ConsoleModel, options: { includeDiagnostics?: boolean; limit?: number; fallbackToDiagnostics?: boolean } = {}) {
+  return buildRouteEvidenceSet(model, options).evidences;
 }

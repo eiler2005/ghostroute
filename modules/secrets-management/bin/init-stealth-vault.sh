@@ -128,6 +128,15 @@ cat > "$tmp_file" <<EOF
 vps_ssh_host: "${vps_host}"
 vps_ssh_user: "${vps_user}"
 
+# GhostRoute Console read-only collector -> home router emergency SSH.
+ghostroute_router_remote_host: "<router_wan_ip_or_dns_name>"
+ghostroute_router_remote_port: 22022
+ghostroute_router_remote_user: "admin"
+ghostroute_router_remote_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  <router_readonly_or_emergency_private_key>
+  -----END OPENSSH PRIVATE KEY-----
+
 # Existing shared Caddy/OpenClaw site values. Replace placeholders before deploy.
 system_caddy_site_host: "openclaw.home.arpa"
 system_caddy_site_upstream: "127.0.0.1:<existing_local_port>"

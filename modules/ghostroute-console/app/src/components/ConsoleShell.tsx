@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { shortDateTime } from "@/components/Widgets";
 import { filterOptions } from "@/lib/server/selectors";
 import type { ConsoleFilters, ConsoleModel } from "@/lib/server/types";
 
@@ -33,6 +34,11 @@ export function ConsoleShell({
       : model.freshnessMinutes === 0
         ? "fresh now"
         : `${model.freshnessMinutes}m ago`;
+  const freshnessTitle = [
+    model.freshnessLabel ? `last ${shortDateTime(model.freshnessLabel)}` : "",
+    model.nextExpectedCollection ? `next ${shortDateTime(model.nextExpectedCollection)}` : "",
+    model.staleThresholdMinutes ? `stale>${model.staleThresholdMinutes}m` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -68,7 +74,7 @@ export function ConsoleShell({
           <form className="filters">
             <span className={`freshness freshness-${model.freshnessStatus}`}>
               {model.freshnessStatus}
-              <small>{freshnessLabel}</small>
+              <small title={freshnessTitle}>{freshnessLabel}</small>
             </span>
             <select name="period" defaultValue={filters.period || "today"}>
               <option value="today">Сегодня</option>

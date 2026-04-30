@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { RouteExplanation } from "@/components/RouteExplanation";
-import { buildRouteEvidence, buildRouteEvidences } from "@/lib/server/evidence";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildRouteEvidenceSet } from "@/lib/server/evidence";
+import { buildPagedEvidenceContext, getTrafficRowById, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function RouteDetailPage({
@@ -13,15 +13,20 @@ export default async function RouteDetailPage({
   searchParams?: SearchParams;
 }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
   const { id } = await params;
-  const index = Number.parseInt(id, 10);
-  if (!Number.isFinite(index)) notFound();
-  const evidence = buildRouteEvidence(model, index);
+  const decodedId = decodeURIComponent(id);
+  const index = Number.parseInt(decodedId, 10);
+  const fallbackPage = Number.isFinite(index) ? listTrafficRows({ page: 1, pageSize: Math.max(index + 1, 25), filters }) : null;
+  const row = getTrafficRowById(decodedId, filters) || fallbackPage?.rows[index];
+  if (!row) notFound();
+  const neighbors = listTrafficRows({ page: 1, pageSize: 24, filters }).rows.filter((item) => item.id !== row.id);
+  const model = buildPagedEvidenceContext(filters, [row, ...neighbors]);
+  const evidenceSet = buildRouteEvidenceSet(model, { limit: 25, fallbackToDiagnostics: true });
+  const evidence = evidenceSet.evidences.find((item) => item.id === row.id) || evidenceSet.evidences[0];
   if (!evidence) notFound();
   return (
     <ConsoleShell active="/traffic" model={model} filters={filters}>
-      <RouteExplanation evidence={evidence} all={buildRouteEvidences(model)} />
+      <RouteExplanation evidence={evidence} all={evidenceSet.evidences} />
     </ConsoleShell>
   );
 }

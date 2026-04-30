@@ -13,9 +13,10 @@ Architecture details live in
 [`docs/ghostroute-console-architecture.md`](/docs/ghostroute-console-architecture.md).
 
 The current post-MVP slice adds route explanation, channel attribution,
-append-only live events, controlled catalog review actions, notifications
-settings, budget history and audited ops actions. It still does not mutate
-router runtime or deploy catalog changes implicitly.
+known-device history, scheduled read-only collection, append-only live events,
+controlled catalog review actions, notifications settings, budget history and
+audited ops actions. It still does not mutate router runtime or deploy catalog
+changes implicitly.
 
 ## Public Commands
 
@@ -62,10 +63,35 @@ Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
 `disabled`, `/api/live/stream` still serves the stored append-only events from
 snapshots.
 
+The VPS deployment defaults to read-only SSH collection through the generated
+`ghostroute_readonly` forced-command key:
+
+- full snapshots every 30 minutes during 07:00-23:59 Moscow time;
+- full snapshots every 3 hours during 00:00-06:59 Moscow time;
+- live log-tail polling every 15 seconds.
+
+Freshness uses the same cadence: stale after 75 minutes during the day and
+after 210 minutes overnight.
+
+Router access for this collector is runtime-secret only. Clean deploys should
+store `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
+`ghostroute_router_remote_user` and `ghostroute_router_remote_private_key` in
+`ansible/secrets/stealth.yml` (Ansible Vault). Operator workstations may use the
+gitignored fallback key under `secrets/router-remote-ssh/`, but the key is never
+tracked and is copied only to `/opt/ghostroute-console/router-ssh/` on the VPS.
+
+VPS egress identity is configured explicitly with
+`GHOSTROUTE_VPS_EGRESS_IP`, `GHOSTROUTE_VPS_EGRESS_ASN` and
+`GHOSTROUTE_VPS_EGRESS_COUNTRY`. Console does not infer egress IP/ASN/country
+from the public Console URL.
+
 ## Post-MVP Interfaces
 
 - `/traffic` and `/traffic/[id]` explain route decisions with channel, route,
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
+- `/clients` shows all known devices with `Online`, `Recently seen` or
+  `Inactive` state and last-seen timestamps, so devices do not disappear just
+  because they are absent from today's latest snapshot.
 - `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
   updates from append-only real log events, with polling fallback in the UI.
 - `/api/actions/catalog/*` implements review, dry-run, apply preparation and

@@ -29,6 +29,18 @@ test("route explanation exposes gated evidence", async ({ page }) => {
   await expect(page.locator(".codebox").first()).toBeVisible();
 });
 
+test("traffic explorer hides technical evidence noise by default", async ({ page }) => {
+  await page.goto("/traffic");
+  await expect(page.getByText("Showing traffic rows only")).toBeVisible();
+  await expect(page.getByText("system/no-byte evidence hidden")).toBeVisible();
+  const firstRow = page.locator(".route-table-card tbody tr").first();
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).not.toContainText("Unknown");
+  await expect(firstRow).not.toContainText("0 B");
+  await page.goto("/traffic?diagnostics=1");
+  await expect(page.getByText("Diagnostics visible")).toBeVisible();
+});
+
 test("mobile keeps controls and content reachable", async ({ page, isMobile }) => {
   test.skip(!isMobile, "mobile-only overflow smoke");
   await page.goto("/clients");

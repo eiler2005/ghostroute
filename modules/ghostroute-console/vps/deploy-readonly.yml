@@ -8,6 +8,13 @@
     console_root: /opt/ghostroute-console
     console_uid: "10000"
     console_gid: "10000"
+    console_readonly_user: ghostroute_readonly
+    console_router_remote_key_src: "{{ playbook_dir }}/../../../secrets/router-remote-ssh/ghostroute-router-remote-22022_rsa"
+    console_router_remote_key_content: "{{ ghostroute_router_remote_private_key | default('', true) }}"
+    console_router_remote_host: "{{ ghostroute_router_remote_host | default('', true) }}"
+    console_router_remote_port: "{{ ghostroute_router_remote_port | default('22022', true) }}"
+    console_router_remote_user: "{{ ghostroute_router_remote_user | default('admin', true) }}"
+    console_reset_db: "{{ ghostroute_console_reset_db | default(false) }}"
   tasks:
     - name: Create Console runtime directories
       ansible.builtin.file:
@@ -20,7 +27,154 @@
         - { path: "{{ console_root }}", mode: "0755" }
         - { path: "{{ console_root }}/repo", mode: "0755" }
         - { path: "{{ console_root }}/data", mode: "0750", owner: "{{ console_uid }}", group: "{{ console_gid }}" }
-        - { path: "{{ console_root }}/ssh", mode: "0750", owner: "root", group: "root" }
+        - { path: "{{ console_root }}/ssh", mode: "0550", owner: "root", group: "{{ console_gid }}" }
+
+    - name: Ensure Console readonly command user exists
+      ansible.builtin.user:
+        name: "{{ console_readonly_user }}"
+        shell: /bin/sh
+        create_home: true
+
+    - name: Create router credential directory for Console readonly user
+      ansible.builtin.file:
+        path: "{{ console_root }}/router-ssh"
+        state: directory
+        mode: "0550"
+        owner: root
+        group: "{{ console_readonly_user }}"
+
+    - name: Check local router remote key for read-only reports
+      ansible.builtin.stat:
+        path: "{{ console_router_remote_key_src }}"
+      delegate_to: localhost
+      become: false
+      register: console_router_remote_key
+
+    - name: Install router remote key for read-only reports
+      ansible.builtin.copy:
+        src: "{{ console_router_remote_key_src }}"
+        dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
+        owner: root
+        group: "{{ console_readonly_user }}"
+        mode: "0440"
+      no_log: true
+      when:
+        - console_router_remote_key.stat.exists
+        - console_router_remote_host | length > 0
+        - console_router_remote_key_content | length == 0
+
+    - name: Install Vault router remote key for read-only reports
+      ansible.builtin.copy:
+        content: "{{ console_router_remote_key_content }}"
+        dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
+        owner: root
+        group: "{{ console_readonly_user }}"
+        mode: "0440"
+      no_log: true
+      when:
+        - console_router_remote_key_content | length > 0
+        - console_router_remote_host | length > 0
+
+    - name: Configure router remote env for read-only reports
+      ansible.builtin.copy:
+        dest: "{{ console_root }}/router.env"
+        owner: root
+        group: "{{ console_readonly_user }}"
+        mode: "0440"
+        content: |
+          ROUTER={{ console_router_remote_host }}
+          ROUTER_PORT={{ console_router_remote_port }}
+          ROUTER_USER={{ console_router_remote_user }}
+          CONNECT_TIMEOUT=8
+          SSH_IDENTITY_FILE={{ console_root }}/router-ssh/router_remote_22022_rsa
+          SSH_HOST_KEY_ALGORITHMS=+ssh-rsa
+          SSH_KNOWN_HOSTS_FILE=/tmp/ghostroute-router-known-hosts
+          GHOSTROUTE_ROUTER_ENV_FILE={{ console_root }}/router.env
+      no_log: true
+      when:
+        - (console_router_remote_key.stat.exists or console_router_remote_key_content | length > 0)
+        - console_router_remote_host | length > 0
+
+    - name: Allow Console readonly user through SSH AllowUsers hardening
+      ansible.builtin.shell: |
+        set -eu
+        hardening="/etc/ssh/sshd_config.d/99-maxtg-hardening.conf"
+        if [ -f "$hardening" ] && grep -q '^AllowUsers ' "$hardening"; then
+          if ! grep -Eq '^AllowUsers .*{{ console_readonly_user }}([[:space:]]|$)' "$hardening"; then
+            sed -i '/^AllowUsers / s/$/ {{ console_readonly_user }}/' "$hardening"
+          fi
+        else
+          printf '\nAllowUsers deploy {{ console_readonly_user }}\n' > /etc/ssh/sshd_config.d/98-ghostroute-console-readonly.conf
+        fi
+        sshd -t
+        systemctl reload ssh
+      changed_when: false
+
+    - name: Harden Console readonly SSH login
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/100-ghostroute-console-readonly.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Match User {{ console_readonly_user }}
+              PasswordAuthentication no
+              KbdInteractiveAuthentication no
+              X11Forwarding no
+              AllowTcpForwarding no
+              PermitTTY no
+              PermitTunnel no
+      register: console_readonly_sshd_hardening
+
+    - name: Validate and reload SSH after Console readonly hardening
+      ansible.builtin.shell: |
+        set -eu
+        sshd -t
+        systemctl reload ssh
+      changed_when: console_readonly_sshd_hardening.changed
+
+    - name: Install Console readonly forced command shell
+      ansible.builtin.copy:
+        src: ghostroute-readonly-shell
+        dest: /usr/local/bin/ghostroute-readonly-shell
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Generate Console readonly SSH keypair on VPS
+      ansible.builtin.command:
+        argv:
+          - ssh-keygen
+          - -t
+          - ed25519
+          - -N
+          - ""
+          - -f
+          - "{{ console_root }}/ssh/id_ed25519"
+        creates: "{{ console_root }}/ssh/id_ed25519"
+
+    - name: Allow Console container user to read readonly SSH private key
+      ansible.builtin.file:
+        path: "{{ console_root }}/ssh/id_ed25519"
+        owner: root
+        group: "{{ console_gid }}"
+        mode: "0440"
+
+    - name: Read Console readonly public key
+      ansible.builtin.slurp:
+        src: "{{ console_root }}/ssh/id_ed25519.pub"
+      register: console_readonly_public_key
+
+    - name: Authorize Console readonly key with forced command
+      ansible.posix.authorized_key:
+        user: "{{ console_readonly_user }}"
+        key: "{{ console_readonly_public_key.content | b64decode }}"
+        key_options: 'command="/usr/local/bin/ghostroute-readonly-shell",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding'
+        manage_dir: true
+
+    - name: Stop Console before syncing updated sources
+      ansible.builtin.shell: docker stop ghostroute-console >/dev/null 2>&1 || true
+      changed_when: false
 
     - name: Sync repo sources without secrets or generated artifacts
       ansible.builtin.command:
@@ -45,13 +199,18 @@
       become: false
       changed_when: true
 
-    - name: Sync factual Console data snapshot
+    - name: Seed factual Console data snapshot without secrets
       ansible.builtin.command:
         argv:
           - rsync
           - -az
-          - --delete
           - --rsync-path=sudo rsync
+          - --exclude=console-basic-auth.txt
+          - --exclude=backups/
+          - --exclude=*.lock
+          - --exclude=*.db
+          - --exclude=*.db-shm
+          - --exclude=*.db-wal
           - "{{ playbook_dir }}/../data/"
           - "{{ ansible_user }}@{{ ansible_host }}:{{ console_root }}/data/"
       delegate_to: localhost
@@ -66,6 +225,49 @@
         owner: "{{ console_uid }}"
         group: "{{ console_gid }}"
 
+    - name: Remove orphan SQLite shared-memory files before restart
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ console_root }}/data/ghostroute.db-shm"
+        - "{{ console_root }}/data/ghostroute.db-wal"
+
+    - name: Quarantine Console SQLite database when explicitly requested
+      ansible.builtin.shell: |
+        set -eu
+        stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+        mkdir -p "{{ console_root }}/data/backups"
+        for file in "{{ console_root }}/data/ghostroute.db" "{{ console_root }}/data/ghostroute.db-shm" "{{ console_root }}/data/ghostroute.db-wal"; do
+          if [ -e "$file" ]; then
+            mv "$file" "{{ console_root }}/data/backups/$(basename "$file").quarantine-$stamp"
+          fi
+        done
+      when: console_reset_db | bool
+
+    - name: Configure Console collector runtime env
+      ansible.builtin.copy:
+        dest: "{{ console_root }}/repo/modules/ghostroute-console/vps/.env"
+        owner: root
+        group: root
+        mode: "0640"
+        content: |
+          GHOSTROUTE_COLLECTOR_MODE=ssh
+          GHOSTROUTE_LIVE_MODE=poll
+          GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh
+          GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS=1800
+          GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS=10800
+          GHOSTROUTE_COLLECT_TIMEOUT_SECONDS=180
+          GHOSTROUTE_LIVE_POLL_SECONDS=15
+          GHOSTROUTE_LIVE_LIMIT=200
+          GHOSTROUTE_READONLY_SSH_HOST=127.0.0.1
+          GHOSTROUTE_READONLY_SSH_USER={{ console_readonly_user }}
+          GHOSTROUTE_READONLY_SSH_KEY_PATH=/ssh/id_ed25519
+          GHOSTROUTE_READONLY_REMOTE_ROOT={{ console_root }}/repo
+          GHOSTROUTE_VPS_EGRESS_IP={{ ghostroute_console_egress_ip | default(vps_ssh_host, true) }}
+          GHOSTROUTE_VPS_EGRESS_ASN={{ ghostroute_console_egress_asn | default('', true) }}
+          GHOSTROUTE_VPS_EGRESS_COUNTRY={{ ghostroute_console_egress_country | default('', true) }}
+
     - name: Remove legacy Console container before compose project migration
       ansible.builtin.shell: |
         set -eu
@@ -76,6 +278,14 @@
           fi
         fi
       changed_when: false
+
+    - name: Remove stale Console collector locks before restart
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ console_root }}/data/collector.lock"
+        - "{{ console_root }}/data/live-collector.lock"
 
     - name: Build and start Console container
       ansible.builtin.command:

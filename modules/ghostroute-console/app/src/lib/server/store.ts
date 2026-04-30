@@ -329,6 +329,11 @@ export function getDb() {
     db.exec(`
       create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
       create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
+      create index if not exists idx_normalized_flows_fast on normalized_flows(snapshot_id, collected_at desc, event_ts desc, client, route, channel, confidence);
+      create index if not exists idx_normalized_flows_destination on normalized_flows(snapshot_id, destination, destination_ip, dns_qname);
+      create index if not exists idx_normalized_devices_fast on normalized_devices(collected_at desc, label, device_id, channel, route);
+      create index if not exists idx_events_fast on events(occurred_at desc, event_type, client, channel, route);
+      create index if not exists idx_route_decisions_fast on route_decisions(occurred_at desc, client, channel, route);
     `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       4,
@@ -418,12 +423,10 @@ export function latestSnapshotsFromDisk(): SnapshotRecord[] {
 }
 
 export function latestSnapshots() {
+  const fromDb = latestSnapshotsFromDb();
+  if (fromDb.length > 0) return fromDb;
   const merged = new Map<SnapshotType, SnapshotRecord>();
   for (const row of latestSnapshotsFromDisk()) merged.set(row.type, row);
-  for (const row of latestSnapshotsFromDb()) {
-    const current = merged.get(row.type);
-    if (!current || row.collectedAt >= current.collectedAt) merged.set(row.type, row);
-  }
   return Array.from(merged.values());
 }
 
@@ -431,6 +434,10 @@ function latestSnapshotIdsByType() {
   return latestSnapshots()
     .filter((row) => row.id > 0)
     .map((row) => row.id);
+}
+
+export function latestSnapshotIds() {
+  return latestSnapshotIdsByType();
 }
 
 function parseRaw(row: any) {
@@ -458,6 +465,23 @@ export function normalizedRows(table: string) {
     return getDb()
       .prepare(`select * from ${table} where snapshot_id in (${placeholders}) order by collected_at desc`)
       .all(...ids)
+      .map((row: any) => ({ ...row, raw: parseRaw(row) }));
+  } catch {
+    return [];
+  }
+}
+
+export function knownDeviceRows(limit = 1000) {
+  try {
+    return getDb()
+      .prepare(
+        `select snapshot_id, snapshot_type, collected_at, device_id, label, ip, channel, route,
+                confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json
+           from normalized_devices
+          order by collected_at desc
+          limit ?`
+      )
+      .all(limit)
       .map((row: any) => ({ ...row, raw: parseRaw(row) }));
   } catch {
     return [];
