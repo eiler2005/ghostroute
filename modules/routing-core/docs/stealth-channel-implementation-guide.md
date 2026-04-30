@@ -368,6 +368,7 @@ Expected:
 - Generic non-Reality fallback on `:443` exists, but OpenClaw is not exposed there.
 - Old OpenClaw SNI does not return the OpenClaw certificate.
 - `gateway.icloud.com` SNI returns the real Apple certificate through Reality fallback.
+- 3x-ui Reality `dest` and `serverNames` match the Vault Reality cover values.
 - 3x-ui admin is only reachable through localhost-bound admin port.
 
 ### Router
@@ -390,6 +391,7 @@ Expected:
 - `STEALTH_DOMAINS` exists and can be populated.
 - `br0` TCP to `STEALTH_DOMAINS` and `VPN_STATIC_NETS` redirects to `:<lan-redirect-port>`.
 - `br0` UDP/443 to those sets is silently dropped to force TCP fallback.
+- Home Reality `server_name` and handshake target match the router Reality cover values.
 - mobile Home Reality has a managed split rule and direct fallback rule.
 - mobile Home Reality has no catch-all `reality-in -> reality-out` rule.
 - legacy `0x1000`, `0x2000`, `RC_VPN_ROUTE`, table `200`, and `singbox0` are absent.

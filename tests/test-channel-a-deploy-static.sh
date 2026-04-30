@@ -48,6 +48,9 @@ assert_contains "deploy.sh" 'rotate-singbox-log'
 assert_contains "ansible/playbooks/20-stealth-router.yml" 'Refresh sing-box rule-sets after catalog deploy'
 assert_contains "ansible/playbooks/20-stealth-router.yml" 'update-singbox-rule-sets.sh --restart-if-changed'
 assert_contains "configs/dnsmasq-stealth.conf.add" 'ipset=/googleapis.com/STEALTH_DOMAINS'
+assert_contains "ansible/scripts/validate-sni-candidate.sh" '2\\[0-9\\]\\[0-9\\]\\|3\\[0-9\\]\\[0-9\\]\\|400\\|401\\|403'
+assert_contains "ansible/playbooks/99-verify.yml" 'VPS Reality cover SNI matches Vault'
+assert_contains "ansible/playbooks/99-verify.yml" 'Router-side Reality ingress cover SNI matches router config'
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
