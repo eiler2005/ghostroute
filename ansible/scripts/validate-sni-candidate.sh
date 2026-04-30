@@ -27,7 +27,7 @@ if curl -sI --max-time 10 "https://$HOST/" \
     fail "TLS cert verify failed (verify_result=$VERIFY)"
   fi
 
-  if [[ "$CODE" =~ ^(2|3|400|401|403)$ ]]; then
+  if [[ "$CODE" =~ ^(2[0-9][0-9]|3[0-9][0-9]|400|401|403)$ ]]; then
     pass "HTTP response acceptable ($CODE)"
   else
     fail "HTTP response unacceptable ($CODE)"

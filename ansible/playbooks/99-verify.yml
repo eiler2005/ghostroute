@@ -111,6 +111,39 @@
       changed_when: false
       no_log: true
 
+    - name: VPS Reality cover SNI matches Vault
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i \
+          -e REALITY_DEST={{ reality_dest | quote }} \
+          -e REALITY_SERVER_NAMES={{ reality_server_names | to_json | quote }} \
+          xray python3 - <<'PY'
+        import json
+        import os
+        import sqlite3
+
+        expected_dest = os.environ["REALITY_DEST"]
+        expected_server_names = json.loads(os.environ["REALITY_SERVER_NAMES"])
+        con = sqlite3.connect("/etc/x-ui/x-ui.db")
+        cols = {row[1] for row in con.execute("pragma table_info(inbounds)")}
+        stream_col = "stream_settings" if "stream_settings" in cols else "streamSettings"
+        row = con.execute(
+            f"select {stream_col} from inbounds where remark = ?",
+            ("stealth-reality",),
+        ).fetchone()
+        if not row:
+            raise SystemExit("stealth-reality inbound not found")
+        reality = json.loads(row[0] or "{}").get("realitySettings", {})
+        if reality.get("dest") != expected_dest:
+            raise SystemExit("VPS Reality dest drift")
+        if reality.get("serverNames") != expected_server_names:
+            raise SystemExit("VPS Reality serverNames drift")
+        PY
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
     - name: Router-side home clients do not overlap VPS-side identities
       ansible.builtin.assert:
         that:
@@ -589,6 +622,15 @@
           printf '%s' "$cfg" | grep -Fq '"listen_port":{{ home_reality_ingress_port }},"sniff":true' ||
           printf '%s' "$cfg" | grep -Fq '"inbound":"reality-in","action":"sniff"'
         }
+      changed_when: false
+      when: home_reality_enabled | default(false) | bool
+
+    - name: Router-side Reality ingress cover SNI matches router config
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"tag":"reality-in"' &&
+        printf '%s' "$cfg" | grep -Fq '"server_name":"{{ home_reality_server_names[0] }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"handshake":{"server":"{{ home_reality_dest_host }}","server_port":{{ home_reality_dest_port }}}'
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 
