@@ -15,6 +15,7 @@
     console_tls_key_file: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ console_public_host }}/{{ console_public_host }}.key"
     console_nginx_root: "{{ console_root }}/nginx"
     console_buffer_proxy_port: "{{ ghostroute_console_buffer_proxy_port | default(3001) }}"
+    console_public_listener: "{{ ghostroute_console_public_listener | default('caddy') }}"
     console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
     console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
     console_basic_auth_password: "{{ lookup('ansible.builtin.ini', 'password type=properties file=' ~ console_basic_auth_file) }}"
@@ -77,6 +78,17 @@
       changed_when: false
       no_log: true
 
+    - name: Hash Console Basic Auth password for Caddy
+      ansible.builtin.command:
+        argv:
+          - caddy
+          - hash-password
+          - --plaintext
+          - "{{ console_basic_auth_password }}"
+      register: console_caddy_basic_auth_hash
+      changed_when: false
+      no_log: true
+
     - name: Store Console nginx Basic Auth file
       ansible.builtin.copy:
         dest: "{{ console_root }}/auth/nginx.htpasswd"
@@ -103,6 +115,25 @@
           https://{{ console_public_host }} {
               respond 404
           }
+
+    - name: Expose GhostRoute Console dedicated listener through Caddy
+      ansible.builtin.blockinfile:
+        path: /etc/caddy/Caddyfile
+        marker: "# {mark} GHOSTROUTE CONSOLE DEDICATED LISTENER"
+        insertafter: EOF
+        backup: true
+        block: |
+          https://{{ console_public_host }}:{{ console_public_port }} {
+              basicauth {
+                  {{ console_basic_auth_user }} {{ console_caddy_basic_auth_hash.stdout }}
+              }
+              header X-Robots-Tag "noindex, nofollow"
+              header Referrer-Policy "no-referrer"
+              encode gzip
+              reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }}
+          }
+      no_log: true
+      when: console_public_listener == 'caddy'
 
     - name: Remove existing GhostRoute Console L4 bridge
       ansible.builtin.replace:
@@ -212,6 +243,7 @@
                   }
               }
           }
+      when: console_public_listener == 'nginx'
 
     - name: Install GhostRoute Console nginx systemd unit
       ansible.builtin.copy:
@@ -236,10 +268,20 @@
 
           [Install]
           WantedBy=multi-user.target
+      when: console_public_listener == 'nginx'
 
     - name: Validate Caddy config
       ansible.builtin.command: caddy validate --config /etc/caddy/Caddyfile
       changed_when: false
+
+    - name: Stop legacy GhostRoute Console nginx listener when Caddy owns the public port
+      ansible.builtin.systemd:
+        name: ghostroute-console-nginx
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      failed_when: false
+      when: console_public_listener == 'caddy'
 
     - name: Reload Caddy
       ansible.builtin.systemd:
@@ -256,6 +298,7 @@
     - name: Validate GhostRoute Console nginx config
       ansible.builtin.command: /usr/sbin/nginx -t -c {{ console_nginx_root }}/nginx.conf
       changed_when: false
+      when: console_public_listener == 'nginx'
 
     - name: Restart GhostRoute Console nginx listener
       ansible.builtin.systemd:
@@ -263,6 +306,7 @@
         state: restarted
         enabled: true
         daemon_reload: true
+      when: console_public_listener == 'nginx'
 
     - name: Check Console public route requires auth
       ansible.builtin.uri:
