@@ -37,9 +37,11 @@ changes implicitly.
   a separate operator action.
 - No seed data in production UI. Empty snapshots render as empty states.
 - JSON reports are the machine contract; Markdown remains for humans and LLMs.
-- Runtime access is protected by the existing Caddy stack with Basic Auth for
-  the current read-only deployment. Tailnet-only access through `tailscale
-  serve` remains a valid hardening option, but it is not required for the MVP.
+- Runtime access is protected by Basic Auth. The public read-only deployment
+  uses a dedicated HTTPS listener on a non-443 port, backed by nginx and a tiny
+  local buffering proxy, so Console does not share the Reality/layer4 `:443`
+  listener. Tailnet-only access through `tailscale serve` remains a valid
+  hardening option, but it is not required for the MVP.
 
 ## Data Directory
 
@@ -57,6 +59,8 @@ VPS runtime uses:
 
 The collector writes raw JSON snapshots under `snapshots/` and an embedded
 SQLite database at `ghostroute.db`.
+The dedicated public listener uses `/opt/ghostroute-console/nginx/nginx.conf`
+and `/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS.
 
 Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
 `GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains

@@ -19,7 +19,7 @@ test("filters are visible and stable", async ({ page }) => {
 });
 
 test("route explanation exposes gated evidence", async ({ page }) => {
-  await page.goto("/traffic");
+  await page.goto("/traffic?flow=0");
   await expect(page.getByText("Почему маршрут именно такой?")).toBeVisible();
   await expect(page.getByText("Что видит сайт")).toBeVisible();
   await expect(page.getByText("Что видит оператор")).toBeVisible();
