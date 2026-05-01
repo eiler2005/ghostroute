@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ghostroute-secret-scan
+        name: GhostRoute secret scan
+        entry: ./modules/secrets-management/bin/secret-scan
+        language: system
+        pass_filenames: false
+      - id: ghostroute-shell-syntax
+        name: GhostRoute shell syntax
+        entry: ./tests/check-shell-syntax.sh
+        language: system
+        pass_filenames: true

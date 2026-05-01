@@ -95,7 +95,45 @@ clients:
 
 ---
 
-## 4. Deploy VPS
+## 4. Локальные проверки
+
+Перед обычным push запускай быстрый набор:
+
+```bash
+./tests/run-fast.sh
+```
+
+Для изменений Console/UI добавь маленький Playwright smoke:
+
+```bash
+./tests/run-smoke.sh
+```
+
+Полный локальный compatibility-набор:
+
+```bash
+./tests/run-all.sh
+```
+
+Перед крупным UI merge можно прогнать полный e2e:
+
+```bash
+./tests/run-all.sh --full
+```
+
+Опциональный pre-commit hook:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+Hook запускает repo secret scan и shell syntax check. Он не устанавливается
+автоматически.
+
+---
+
+## 5. Deploy VPS
 
 ```bash
 cd ansible
@@ -113,7 +151,7 @@ ansible-playbook playbooks/10-stealth-vps.yml
 
 ---
 
-## 5. Deploy Router Base Layer
+## 6. Deploy Router Base Layer
 
 ```bash
 cd ..
@@ -133,7 +171,7 @@ ROUTER=192.168.50.1 ./deploy.sh
 
 ---
 
-## 6. Deploy Router Stealth Layer
+## 7. Deploy Router Stealth Layer
 
 ```bash
 cd ansible
@@ -151,7 +189,7 @@ ansible-playbook playbooks/20-stealth-router.yml
 
 ---
 
-## 7. Generate QR Profiles
+## 8. Generate QR Profiles
 
 ```bash
 ansible-playbook playbooks/30-generate-client-profiles.yml
@@ -171,7 +209,7 @@ ansible/out/clients-home/qr-index.html
 
 ---
 
-## 8. Verify
+## 9. Verify
 
 ```bash
 ansible-playbook playbooks/99-verify.yml
@@ -201,11 +239,12 @@ ip route show table wgc1
 grep '@wgc1' /jffs/configs/dnsmasq.conf.add
 ```
 
-`grep '@wgc1'` должен быть пустым для active dnsmasq config.
+`grep '@wgc1'` должен быть пустым для active dnsmasq config; такие upstreams
+относятся только к legacy/cold-fallback состоянию.
 
 ---
 
-## 9. First Functional Checks
+## 10. First Functional Checks
 
 Warm ipsets:
 
@@ -232,7 +271,7 @@ ip route get <resolved-ip> mark 0x1000
 
 ---
 
-## 10. What To Read Next
+## 11. What To Read Next
 
 - [architecture.md](architecture.md)
 - [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md)

@@ -6,6 +6,9 @@
 
 **[English version ->](README.md)**
 
+Политика документации: English README — developer-facing ground truth; русская
+версия — operator-facing summary.
+
 ---
 
 ## Обзор
