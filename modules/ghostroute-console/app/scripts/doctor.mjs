@@ -15,6 +15,8 @@ console.log(`snapshots_dir=${snapshotDir}`);
 console.log(`db=${dbFile}`);
 console.log(`collector_mode=${process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
 console.log(`collect_interval_seconds=${process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || "300"}`);
+console.log(`light_collector_mode=${process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
+console.log(`light_collect_interval_seconds=${process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || "300"}`);
 console.log(`live_mode=${process.env.GHOSTROUTE_LIVE_MODE || "disabled"}`);
 console.log(`live_collector_mode=${process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
 console.log(`live_poll_seconds=${process.env.GHOSTROUTE_LIVE_POLL_SECONDS || "2"}`);
@@ -71,6 +73,7 @@ if (fs.existsSync(dbFile)) {
 }
 
 for (const [label, command] of [
+  ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary"],
   ["traffic", "modules/traffic-observatory/bin/traffic-report"],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report"],
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check"],

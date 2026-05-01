@@ -423,6 +423,10 @@ Channel A (`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,
 Traffic и observability:
 
 ```bash
+# Легкий источник для Dashboard: current-day counter summary без destination
+# analytics и проверок ошибок маршрутизации.
+./modules/traffic-observatory/bin/traffic-summary --json today
+
 # Главный usage-отчёт: exits, устройства, Home Reality ingress clients,
 # популярные назначения и проверки ошибок маршрутизации.
 ./modules/traffic-observatory/bin/traffic-report today
@@ -437,10 +441,11 @@ Traffic и observability:
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ```
 
-Traffic report показывает, сколько ушло через VPS, сколько осталось
-на home WAN, какие устройства и Home Reality ingress clients
-были активны, какие сайты/приложения популярны и не появились ли ошибки
-маршрутизации. Подробно: [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
+Легкий summary — основной источник частых traffic-карточек Console Dashboard.
+Полный traffic report показывает, сколько ушло через VPS, сколько осталось на
+home WAN, какие устройства и Home Reality ingress clients были активны, какие
+сайты/приложения популярны и не появились ли ошибки маршрутизации. Подробно:
+[modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
 
 Модуль мониторинга работоспособности:
 

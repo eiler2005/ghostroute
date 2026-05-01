@@ -436,7 +436,7 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
 
 export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   resetNormalizedForSnapshot(db, snapshotId);
-  if (type === "traffic") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
+  if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
   if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);
   if (type === "leaks") normalizeLeaks(db, snapshotId, type, collectedAt, payload);
   if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);

@@ -6,7 +6,7 @@ APP_DIR="${MODULE_DIR}/app"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./modules/ghostroute-console/bin/ghostroute-console <dev|build|test|collect-once|doctor>
+Usage: ./modules/ghostroute-console/bin/ghostroute-console <dev|build|test|collect-once|collect-light|doctor>
 EOF
 }
 
@@ -26,6 +26,9 @@ case "$command" in
     ;;
   collect-once)
     node "$APP_DIR/scripts/collect-once.mjs" "$@"
+    ;;
+  collect-light)
+    node "$APP_DIR/scripts/collect-light-once.mjs" "$@"
     ;;
   doctor)
     node "$APP_DIR/scripts/doctor.mjs" "$@"

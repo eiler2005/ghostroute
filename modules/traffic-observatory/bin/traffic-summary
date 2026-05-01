@@ -1,0 +1,268 @@
+#!/bin/bash
+# Lightweight counter-only traffic summary for Console dashboards.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+. "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
+router_health_load_env
+
+JSON_MODE=0
+PERIOD_ARG="today"
+HOURS="2"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|current|current-day)
+      PERIOD_ARG="today"
+      shift
+      ;;
+    recent)
+      PERIOD_ARG="recent"
+      shift
+      ;;
+    --hours)
+      HOURS="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-summary --json [today|recent --hours N]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+[ "$JSON_MODE" = "1" ] || {
+  echo "Usage: ./modules/traffic-observatory/bin/traffic-summary --json [today|recent --hours N]" >&2
+  exit 1
+}
+case "$HOURS" in
+  ''|*[!0-9]*)
+    echo "--hours must be a positive integer" >&2
+    exit 1
+    ;;
+esac
+[ "$HOURS" -gt 0 ] || {
+  echo "--hours must be a positive integer" >&2
+  exit 1
+}
+
+REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
+DEVICE_METADATA_FILE="${DEVICE_METADATA_FILE:-$(device_labels_default_metadata_file)}"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+INTERFACE_COUNTERS="$TMPDIR/interface-counters.tsv"
+LAN_COUNTERS="$TMPDIR/lan-device-counters.tsv"
+MOBILE_COUNTERS="$TMPDIR/mobile-reality-counters.tsv"
+DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.tsv"
+NOW_FILE="$TMPDIR/now.txt"
+TRAFFIC_COUNTERS_LIB="${PROJECT_ROOT}/modules/traffic-observatory/lib/traffic_counters.rb"
+
+if [ -n "${TRAFFIC_INTERFACE_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_INTERFACE_COUNTERS_FILE" "$INTERFACE_COUNTERS"
+else
+  router_ssh 'sh -s' > "$INTERFACE_COUNTERS" <<'REMOTE'
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/interface-counters.tsv" ] && cat "$STATE_DIR/interface-counters.tsv" || true
+REMOTE
+fi
+
+if [ -n "${TRAFFIC_LAN_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_LAN_COUNTERS_FILE" "$LAN_COUNTERS"
+else
+  router_ssh 'sh -s' > "$LAN_COUNTERS" <<'REMOTE'
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/lan-device-counters.tsv" ] && cat "$STATE_DIR/lan-device-counters.tsv" || true
+REMOTE
+fi
+
+if [ -n "${TRAFFIC_MOBILE_COUNTERS_FILE:-}" ]; then
+  cp "$TRAFFIC_MOBILE_COUNTERS_FILE" "$MOBILE_COUNTERS"
+else
+  router_ssh 'sh -s' > "$MOBILE_COUNTERS" <<'REMOTE'
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+[ -f "$STATE_DIR/mobile-reality-counters.tsv" ] && cat "$STATE_DIR/mobile-reality-counters.tsv" || true
+REMOTE
+fi
+
+if [ -n "${TRAFFIC_SUMMARY_NOW:-}" ]; then
+  printf '%s\n' "$TRAFFIC_SUMMARY_NOW" > "$NOW_FILE"
+else
+  router_ssh "date '+%Y-%m-%dT%H:%M:%S%z'" > "$NOW_FILE"
+fi
+NOW_VALUE="$(head -n 1 "$NOW_FILE")"
+
+if [ -n "${TRAFFIC_CURRENT_COUNTERS_FILE:-}" ]; then
+  awk -F'|' -v ts="$NOW_VALUE" 'NF >= 3 { print ts "|" $1 "|" $2 "|" $3 }' "$TRAFFIC_CURRENT_COUNTERS_FILE" >> "$INTERFACE_COUNTERS"
+else
+  router_ssh 'sh -s' <<'REMOTE' | awk -F'|' -v ts="$NOW_VALUE" 'NF >= 3 { print ts "|" $1 "|" $2 "|" $3 }' >> "$INTERFACE_COUNTERS"
+for iface in wan0 br0 eth6 eth7; do
+  [ -d "/sys/class/net/$iface" ] || continue
+  rx="$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null || echo 0)"
+  tx="$(cat "/sys/class/net/$iface/statistics/tx_bytes" 2>/dev/null || echo 0)"
+  printf '%s|%s|%s\n' "$iface" "$rx" "$tx"
+done
+REMOTE
+fi
+
+if [ -n "${TRAFFIC_LAN_CURRENT_FILE:-}" ]; then
+  awk -F'|' -v ts="$NOW_VALUE" 'NF >= 8 { print ts "|" $0 }' "$TRAFFIC_LAN_CURRENT_FILE" >> "$LAN_COUNTERS"
+else
+  router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' |
+    awk -F'|' -v ts="$NOW_VALUE" 'NF >= 8 { print ts "|" $0 }' >> "$LAN_COUNTERS"
+fi
+
+if [ -n "${TRAFFIC_MOBILE_CURRENT_FILE:-}" ]; then
+  awk -F'|' -v ts="$NOW_VALUE" 'NF >= 4 { print ts "|" $0 }' "$TRAFFIC_MOBILE_CURRENT_FILE" >> "$MOBILE_COUNTERS"
+else
+  router_ssh 'sh -s' <<'REMOTE' | awk -F'|' -v ts="$NOW_VALUE" 'NF >= 4 { print ts "|" $0 }' >> "$MOBILE_COUNTERS"
+TMP_RULES="/tmp/traffic-summary-mobile.$$"
+iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || exit 0
+awk '
+  BEGIN { OFS = "|" }
+  {
+    if (NF < 1 || $0 !~ / -A RC_MOBILE_REALITY_/) next
+    bytes = $1
+    sub(/^\[[0-9]+:/, "", bytes)
+    sub(/\].*$/, "", bytes)
+    chain = ""
+    ip = ""
+    for (i = 1; i <= NF; i++) {
+      if ($i == "-A" && (i + 1) <= NF && $(i + 1) ~ /^RC_MOBILE_REALITY_/) chain = $(i + 1)
+      if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+        ip = $(i + 1)
+        sub(/\/32$/, "", ip)
+      }
+    }
+    if (ip == "") next
+    ips[ip] = 1
+    if (chain == "RC_MOBILE_REALITY_IN") upload[ip] = bytes
+    if (chain == "RC_MOBILE_REALITY_OUT") download[ip] = bytes
+  }
+  END {
+    for (ip in ips) {
+      up = upload[ip]; if (up == "") up = "0"
+      down = download[ip]; if (down == "") down = "0"
+      print ip, "remote:" ip, up, down
+    }
+  }
+' "$TMP_RULES"
+rm -f "$TMP_RULES"
+REMOTE
+fi
+
+device_labels_build_map "$DEVICE_METADATA_MAP" "$DEVICE_METADATA_FILE"
+
+ruby -rjson - "$TRAFFIC_COUNTERS_LIB" "$PERIOD_ARG" "$HOURS" "$REPORT_REDACT_NAMES" "$NOW_VALUE" "$INTERFACE_COUNTERS" "$LAN_COUNTERS" "$MOBILE_COUNTERS" "$DEVICE_METADATA_MAP" <<'RUBY'
+traffic_counters_lib, period_arg, hours_arg, redact_names, now_value, interface_path, lan_path, mobile_path, metadata_path = ARGV
+require traffic_counters_lib
+
+now = parse_time(ENV['TRAFFIC_SUMMARY_NOW'] || now_value) || Time.now
+case period_arg
+when 'recent'
+  period = 'recent'
+  start_time = now - hours_arg.to_i * 3600
+else
+  period = 'today'
+  start_time = Time.new(now.year, now.month, now.day, 0, 0, 0, now.utc_offset)
+end
+end_time = now
+
+metadata = load_device_metadata_map(metadata_path)
+interface_rows = rows_in_period(interface_path, start_time, end_time, include_end: true)
+lan_rows = rows_in_period(lan_path, start_time, end_time, include_end: true)
+mobile_rows = rows_in_period(mobile_path, start_time, end_time, include_end: true)
+
+interfaces = counter_delta(interface_rows, 1, [2, 3], single_row_as_current: true)
+lan_raw = counter_delta(lan_rows, 1, [3, 4, 5, 6, 7, 8], single_row_as_current: true)
+mobile_raw = counter_delta(mobile_rows, 1, [3, 4], single_row_as_current: true)
+
+lan_devices = lan_raw.map do |ip, data|
+  last = data[:last]
+  host = last[2]
+  host = ip if host.nil? || host.empty? || host == '?'
+  label = metadata.fetch(ip, host)
+  reality_up, reality_down, wan_up, wan_down, other_up, other_down = data[:values]
+  reality = reality_up + reality_down
+  wan = wan_up + wan_down
+  other = other_up + other_down
+  total = reality + wan + other
+  { id: ip, label: label, ip: ip, total_bytes: total, via_vps_bytes: reality, direct_bytes: wan, unknown_bytes: other, confidence: 'exact', evidence: ['lan-device-counters.tsv'] }
+end
+
+mobile_sources = mobile_raw.map do |ip, data|
+  last = data[:last]
+  label = last[2]
+  label = "remote:#{ip}" if label.nil? || label.empty?
+  up, down = data[:values]
+  total = up + down
+  { id: ip, label: label, ip: ip, total_bytes: total, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: total, confidence: 'mixed', evidence: ['mobile-reality-counters.tsv'] }
+end.reject { |row| row[:total_bytes].to_i <= 0 || row[:label].to_s.start_with?('remote:#') || row[:label].to_s.start_with?('remote:*') }
+
+if redact_names == '1'
+  lan_devices.sort_by { |row| row[:ip] }.each_with_index { |row, idx| row[:label] = format('lan-host-%02d', idx + 1) }
+  mobile_sources.sort_by { |row| row[:label] }.each_with_index { |row, idx| row[:label] = format('mobile-source-%02d', idx + 1) }
+end
+
+iface = lambda do |name|
+  values = interfaces.fetch(name, { values: [0, 0] })[:values]
+  { rx: values[0].to_i, tx: values[1].to_i, total: values[0].to_i + values[1].to_i }
+end
+wan = iface.call('wan0')
+lan_total = lan_devices.sum { |row| row[:total_bytes] }
+lan_vps = lan_devices.sum { |row| row[:via_vps_bytes] }
+lan_direct = lan_devices.sum { |row| row[:direct_bytes] }
+lan_unknown = lan_devices.sum { |row| row[:unknown_bytes] }
+mobile_total = mobile_sources.sum { |row| row[:total_bytes] }
+observed = lan_total + mobile_total
+
+source = {
+  command: 'traffic-summary',
+  period: period,
+  confidence: 'mixed'
+}
+source[:hours] = hours_arg.to_i if period == 'recent'
+
+puts JSON.pretty_generate({
+  schema_version: 1,
+  generated_at: Time.now.utc.iso8601,
+  source: source,
+  confidence: 'mixed',
+  window: {
+    from: start_time.iso8601,
+    to: end_time.iso8601,
+    summary: "#{start_time.strftime('%Y-%m-%dT%H:%M:%S%z')} -> #{end_time.strftime('%Y-%m-%dT%H:%M:%S%z')}",
+    interface_samples: window_for(interface_rows),
+    lan_wifi_samples: window_for(lan_rows),
+    home_reality_samples: window_for(mobile_rows)
+  },
+  totals: {
+    wan_bytes: wan[:total],
+    lan_wifi_bytes: lan_total,
+    home_reality_ingress_bytes: mobile_total,
+    client_observed_bytes: observed,
+    via_vps_bytes: lan_vps,
+    direct_bytes: lan_direct,
+    unknown_bytes: lan_unknown + mobile_total,
+    confidence: 'mixed'
+  },
+  devices: lan_devices.sort_by { |row| [-row[:total_bytes], row[:label]] }.first(25),
+  home_reality_clients: mobile_sources.sort_by { |row| [-row[:total_bytes], row[:label]] }.first(25),
+  source_limits: {
+    bounded_counter_sources: ['interface-counters.tsv', 'lan-device-counters.tsv', 'mobile-reality-counters.tsv'],
+    log_tail_lines: 0,
+    destination_attribution: false,
+    routing_mistake_checks: false
+  },
+  evidence: ['counter snapshots only; use traffic-report today for destination attribution and routing checks']
+})
+RUBY

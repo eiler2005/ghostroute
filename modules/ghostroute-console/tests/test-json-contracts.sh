@@ -56,6 +56,36 @@ TRAFFIC_REPORT_SKIP_REFRESH=1 \
 assert_json_valid "$TRAFFIC_OUT"
 assert_common_contract "$TRAFFIC_OUT"
 
+cat > "$TMPDIR/current-interface.tsv" <<'EOF'
+wan0|1100|2200
+br0|210|420
+EOF
+cat > "$TMPDIR/current-lan.tsv" <<'EOF'
+192.168.50.10|phone|110|220|55|45|5|5
+EOF
+cat > "$TMPDIR/current-mobile.tsv" <<'EOF'
+iphone-1|iPhone|110|220
+EOF
+TRAFFIC_SUMMARY_OUT="$TMPDIR/traffic-summary.json"
+TRAFFIC_SUMMARY_NOW="2026-04-29T01:00:00+0300" \
+  TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
+  TRAFFIC_CURRENT_COUNTERS_FILE="$TMPDIR/current-interface.tsv" \
+  TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
+  TRAFFIC_LAN_CURRENT_FILE="$TMPDIR/current-lan.tsv" \
+  TRAFFIC_MOBILE_COUNTERS_FILE="$TMPDIR/mobile.tsv" \
+  TRAFFIC_MOBILE_CURRENT_FILE="$TMPDIR/current-mobile.tsv" \
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-summary" --json today > "$TRAFFIC_SUMMARY_OUT"
+assert_json_valid "$TRAFFIC_SUMMARY_OUT"
+assert_common_contract "$TRAFFIC_SUMMARY_OUT"
+assert_json_key "$TRAFFIC_SUMMARY_OUT" totals
+assert_json_key "$TRAFFIC_SUMMARY_OUT" source_limits
+ruby -rjson -e '
+  j=JSON.parse(File.read(ARGV[0]))
+  abort("bad summary command") unless j.dig("source", "command") == "traffic-summary"
+  abort("bad summary period") unless j.dig("source", "period") == "today"
+  abort("bad observed bytes") unless j.dig("totals", "client_observed_bytes").to_i > 0
+' "$TRAFFIC_SUMMARY_OUT"
+
 cat > "$TMPDIR/history.env" <<'EOF'
 HISTORY_LATEST_DATE=2026-04-28
 HISTORY_LATEST_STEALTH_DOMAINS=7000

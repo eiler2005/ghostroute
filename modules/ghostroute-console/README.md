@@ -24,7 +24,9 @@ changes implicitly.
 ./modules/ghostroute-console/bin/ghostroute-console dev
 ./modules/ghostroute-console/bin/ghostroute-console build
 ./modules/ghostroute-console/bin/ghostroute-console collect-once
+./modules/ghostroute-console/bin/ghostroute-console collect-light
 ./modules/ghostroute-console/bin/ghostroute-console doctor
+./modules/traffic-observatory/bin/traffic-summary --json today
 ./modules/traffic-observatory/bin/live-events-report --json --limit 200
 ```
 
@@ -70,12 +72,18 @@ snapshots.
 The VPS deployment defaults to read-only SSH collection through the generated
 `ghostroute_readonly` forced-command key:
 
+- lightweight current-day traffic summaries every 5 minutes for Dashboard KPI
+  cards;
 - full snapshots every 30 minutes during 07:00-23:59 Moscow time;
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
 - live log-tail polling every 15 seconds.
 
 Freshness uses the same cadence: stale after 75 minutes during the day and
 after 210 minutes overnight.
+
+The public Console URL uses the configured dedicated HTTPS port, not bare
+`:443`; bare `:443` remains reserved for the existing Reality/layer4 surface
+and may intentionally return 404 for the Console hostname.
 
 Router access for this collector is runtime-secret only. Clean deploys should
 store `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,

@@ -46,6 +46,7 @@ db.pragma("journal_mode = WAL");
 ensureConsoleSchema(db);
 
 const commands = [
+  ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
   ["traffic", "modules/traffic-observatory/bin/traffic-report", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"]],
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"]],
@@ -132,7 +133,7 @@ function backupSqlite(dbFile) {
 
 function applyRetention() {
   const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
-  const hourlyDays = days("GHOSTROUTE_HOURLY_RETENTION_DAYS", 90);
+  const hourlyDays = days("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30);
   const backupDays = days("GHOSTROUTE_BACKUP_RETENTION_DAYS", 14);
   const backupPath = backupSqlite(path.join(dataDir, "ghostroute.db"));
   const rawDeleted = pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
