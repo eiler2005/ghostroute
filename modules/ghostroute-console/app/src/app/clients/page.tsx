@@ -22,7 +22,7 @@ function scalar(value: string | string[] | undefined) {
 }
 
 function clientTokens(client?: Record<string, any>) {
-  return [client?.label, client?.id, client?.ip, client?.profile, client?.client].filter(Boolean).map(String);
+  return [client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || [])].filter(Boolean).map(String);
 }
 
 function belongsToClient(row: Record<string, any>, tokens: string[]) {
@@ -39,11 +39,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
   const clientsPage = listClientInventory({ page, pageSize, filters });
-  const isLowSignal = (row: Record<string, any>) =>
-    (row.role === "Unattributed mobile ingress source" && Number(row.total_bytes || 0) < 50 * 1024 * 1024) ||
+  const isUnattributed = (row: Record<string, any>) =>
+    row.role === "Unattributed mobile ingress source" ||
     (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
-  const primaryRows = clientsPage.rows.filter((row) => !isLowSignal(row));
-  const lowSignalRows = clientsPage.rows.filter((row) => isLowSignal(row));
+  const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
+  const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
   const selected =
     clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client)) ||
     primaryRows[0] ||
@@ -69,7 +69,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
       <div className="grid two">
-        <section className="card">
+        <section className="card clients-card">
           <div className="toolbar">
             <h2>Устройства</h2>
             <span className="subtle">{clientsPage.total} known clients</span>
@@ -107,9 +107,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   ))}
                 </tbody>
               </table>
-              {lowSignalRows.length > 0 ? (
+              {unattributedRows.length > 0 ? (
                 <>
-                  <h3 style={{ marginTop: 16 }}>Low-signal / unattributed sources</h3>
+                  <h3 style={{ marginTop: 16 }}>Unattributed ingress / low-signal sources</h3>
                   <table className="table clients-table">
                     <thead>
                       <tr>
@@ -123,7 +123,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                       </tr>
                     </thead>
                     <tbody>
-                      {lowSignalRows.map((row) => (
+                      {unattributedRows.map((row) => (
                         <tr key={row.id || row.label} className={(row.label || row.id) === selectedName ? "selected" : ""}>
                           <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
                           <td>{row.role || "Unknown device"}</td>
@@ -161,6 +161,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               <div className="detail-list">
                 <div className="detail-row"><span>Total</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
                 <div className="detail-row"><span>Device role</span><strong>{selected.role || "Unknown device"}</strong></div>
+                {selected.aliases?.length > 1 ? (
+                  <div className="detail-row"><span>Observed labels</span><strong>{selected.aliases.slice(0, 4).join(", ")}</strong></div>
+                ) : null}
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>
                 <div className="detail-row"><span>Last seen</span><strong>{shortDateTime(selected.last_seen || selected.collected_at)}</strong></div>

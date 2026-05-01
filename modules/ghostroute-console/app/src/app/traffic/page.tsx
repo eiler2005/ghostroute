@@ -67,14 +67,14 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 <>Showing traffic rows only · {trafficPage.hiddenCount} system/no-byte evidence hidden · <Link href="/traffic?diagnostics=1">Show diagnostics</Link></>
               )}
             </div>
-            <table className="table">
+            <table className="table traffic-table">
               <thead>
                 <tr>
                   <th className="col-time">Time</th>
                   <th className="col-client">Client</th>
-                  <th>Channel</th>
+                  <th className="col-channel">Channel</th>
                   <th className="col-destination">Destination</th>
-                  <th>Class</th>
+                  <th className="col-class">Class</th>
                   <th className="col-route">Route</th>
                   <th className="col-traffic">Traffic</th>
                   <th className="col-conn">Conn</th>
@@ -86,9 +86,9 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   <tr key={row.id} className={idx === selectedIndex ? "selected" : ""}>
                     <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.eventTimeLabel}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
-                    <td><ChannelBadge value={row.channel} /></td>
+                    <td className="col-channel"><ChannelBadge value={row.channel} /></td>
                     <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{row.flow?.destinationLabel || row.destination}</Link></td>
-                    <td>{row.flow?.trafficClassLabel || "Client"}</td>
+                    <td className="col-class">{row.flow?.trafficClassLabel || "Client"}</td>
                     <td><RouteBadge value={row.route} /></td>
                     <td>{bytes(row.bytes)}</td>
                     <td>{row.connections}</td>

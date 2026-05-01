@@ -42,7 +42,14 @@ attribution later.
 ## Device Roles
 
 The Clients page shows a role next to each source. Known labels can become
-`iPhone`, `iPad`, `MacBook`, `Home LAN device`, `Home Reality profile`, Channel
-B/C profile or `Unattributed mobile ingress source`. The Console does not invent
-real device names; it only uses labels, profiles and safe inference from
-observed metadata.
+`iPhone`, `iPad`, `MacBook`, `Windows laptop`, `Windows PC`, `Home LAN device`,
+`Home Reality profile`, Channel B/C profile or `Unattributed mobile ingress
+source`. The Console does not invent real device names; it only uses labels,
+profiles and safe inference from observed metadata.
+
+Client totals sort by the latest factual snapshot for the selected period.
+Historical rows may enrich the display label and role, but they must not make an
+old total look current. If one canonical source such as `lan-host-08` has been
+seen under several labels, the detail panel can show observed labels and the
+channel badge can show combined access paths such as A/Home Reality plus Channel
+B/C.
