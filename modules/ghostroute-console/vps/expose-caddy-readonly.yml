@@ -129,6 +129,7 @@
               }
               header X-Robots-Tag "noindex, nofollow"
               header Referrer-Policy "no-referrer"
+              header -Alt-Svc
               encode gzip
               reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }}
           }
