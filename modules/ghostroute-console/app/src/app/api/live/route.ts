@@ -11,7 +11,15 @@ export async function GET(request: NextRequest) {
   const model = buildPagedEvidenceContext({}, flows);
   const events = listLiveEvents({
     page: Math.max(1, Number(search.get("page") || 1)),
-    pageSize: Math.min(Number(search.get("pageSize") || 25), 100),
+    pageSize: Math.min(Number(search.get("pageSize") || 50), 50),
+    filters: {
+      route: search.get("route") || "all",
+      channel: search.get("channel") || "all",
+      confidence: search.get("confidence") || "all",
+      trafficClass: search.get("trafficClass") || "client",
+      client: search.get("client") || "all",
+      search: search.get("search") || "",
+    },
   });
   const clients = listClientInventory({ page: 1, pageSize: 6 });
   return NextResponse.json({

@@ -13,7 +13,7 @@ const collectorMode = process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled";
 const lightCollectorMode = process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE || collectorMode;
 const liveMode = process.env.GHOSTROUTE_LIVE_MODE || "disabled";
 const liveCollectorMode = process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || collectorMode;
-const liveIntervalSeconds = Math.max(2, Number(process.env.GHOSTROUTE_LIVE_POLL_SECONDS || 15));
+const liveIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIVE_POLL_SECONDS || 600));
 
 let shuttingDown = false;
 let collecting = false;

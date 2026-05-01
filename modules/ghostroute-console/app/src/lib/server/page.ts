@@ -14,6 +14,7 @@ export async function filtersFromSearchParams(searchParams: SearchParams): Promi
     channel: scalar(params.channel) || "all",
     client: scalar(params.client) || "all",
     confidence: scalar(params.confidence) || "all",
+    trafficClass: scalar(params.trafficClass) || "client",
     search: scalar(params.search) || "",
   };
 }

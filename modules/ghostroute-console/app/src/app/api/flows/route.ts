@@ -10,11 +10,12 @@ export async function GET(request: NextRequest) {
     pageSize,
     diagnostics: search.get("diagnostics") === "1",
     filters: {
-    route: search.get("route") || "all",
-    channel: search.get("channel") || "all",
-    confidence: search.get("confidence") || "all",
-    client: search.get("client") || "all",
-    search: search.get("search") || "",
+      route: search.get("route") || "all",
+      channel: search.get("channel") || "all",
+      confidence: search.get("confidence") || "all",
+      trafficClass: search.get("trafficClass") || "client",
+      client: search.get("client") || "all",
+      search: search.get("search") || "",
     },
   });
   return NextResponse.json({
@@ -22,6 +23,9 @@ export async function GET(request: NextRequest) {
     page: result.page,
     pageSize: result.pageSize,
     totalPages: result.totalPages,
-    flows: result.rows.map(({ raw, ...row }) => row),
+    flows: result.rows.map((row: any) => {
+      const { raw, ...rest } = row;
+      return rest;
+    }),
   });
 }

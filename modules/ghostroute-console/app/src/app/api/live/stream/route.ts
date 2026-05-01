@@ -10,6 +10,7 @@ function eventPayload() {
     freshness_minutes: model.freshnessMinutes,
     freshness_status: model.freshnessStatus,
     events: events.rows,
+    total_events: events.total,
     route_decisions: [],
     alerts: model.alerts.slice(0, 5),
   };
@@ -27,7 +28,7 @@ export async function GET() {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(eventPayload())}\n\n`));
       };
       send();
-      timer = setInterval(send, 5000);
+      timer = setInterval(send, Number(process.env.GHOSTROUTE_LIVE_UI_REFRESH_MS || 600000));
     },
     cancel() {
       closed = true;

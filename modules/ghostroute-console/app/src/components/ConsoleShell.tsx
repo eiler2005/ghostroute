@@ -105,6 +105,13 @@ export function ConsoleShell({
                 </option>
               ))}
             </select>
+            <select name="trafficClass" defaultValue={filters.trafficClass || "client"}>
+              {options.trafficClasses.map((item) => (
+                <option value={item.value} key={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
             <input name="search" defaultValue={filters.search || ""} placeholder="Поиск..." />
             <button type="submit">Фильтр</button>
           </form>

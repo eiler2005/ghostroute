@@ -16,6 +16,13 @@ import {
   notifications,
   opsRuns,
 } from "./store";
+import {
+  deviceRole,
+  displayDestination,
+  trafficClassFor,
+  trafficClassLabel,
+  trafficClasses,
+} from "../traffic-classification.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 
@@ -119,10 +126,21 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
     if (filters.route && filters.route !== "all" && row.route !== filters.route) return false;
     if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel) return false;
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
+    if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) return false;
     if (filters.client && filters.client !== "all" && row.client !== filters.client && row.label !== filters.client) return false;
     if (!search) return true;
     return JSON.stringify(row).toLowerCase().includes(search);
   });
+}
+
+function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
+  const trafficClass = trafficClassFor(row);
+  return {
+    ...row,
+    destinationLabel: displayDestination(row),
+    trafficClass,
+    trafficClassLabel: trafficClassLabel(trafficClass),
+  };
 }
 
 function routeFromCounters(row: Record<string, any>) {
@@ -169,6 +187,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
         id: row.device_id || row.id || row.label || key,
         label: row.label || row.client || row.id || row.device_id || "Unknown",
         ip: row.ip || row.client_ip || "",
+        role: row.role || deviceRole(row),
         channel: preservedChannel(row),
         route: row.route || routeFromCounters(row),
         confidence: row.confidence || "unknown",
@@ -195,6 +214,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       current.confidence = row.confidence || current.confidence;
       current.label = row.label || row.client || current.label;
       current.ip = row.ip || row.client_ip || current.ip;
+      current.role = row.role || deviceRole(row);
       current.raw = row.raw || row;
     }
     const channel = preservedChannel(row);
@@ -263,7 +283,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
   ];
   const devices = mergeKnownDevices(latestDevices);
 
-  const normalizedFlows = normalizedRows("normalized_flows").map((row: any) => ({
+  const normalizedFlows = normalizedRows("normalized_flows").map((row: any) => decorateTrafficRow({
     client: row.client,
     client_ip: row.client_ip,
     channel: row.channel,
@@ -295,8 +315,8 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     normalizedFlows.length
       ? normalizedFlows
       : [
-      ...(traffic.app_flows || []),
-      ...(traffic.destinations || []).map((row: any) => ({
+      ...(traffic.app_flows || []).map((row: any) => decorateTrafficRow(row)),
+      ...(traffic.destinations || []).map((row: any) => decorateTrafficRow({
         ...row,
         client: row.client || row.channel,
       })),
@@ -584,7 +604,7 @@ function flowSelect() {
 }
 
 function mapFlowRow(row: any) {
-  return {
+  return decorateTrafficRow({
     id: row.id,
     rowid: row.rowid,
     client: row.client,
@@ -612,7 +632,7 @@ function mapFlowRow(row: any) {
     source_log: row.source_log,
     collected_at: row.collected_at,
     raw: rawJson(row),
-  };
+  });
 }
 
 export function listTrafficRows(args: PageArgs = {}) {
@@ -628,18 +648,21 @@ export function listTrafficRows(args: PageArgs = {}) {
     where.push(notSystemDestinationSql());
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
-  const total = Number((getDb().prepare(`select count(*) as count from normalized_flows where ${whereSql}`).get(...params) as any)?.count || 0);
   const offset = (page - 1) * pageSize;
-  const rows = getDb()
+  const allRows = getDb()
     .prepare(
       `select ${flowSelect()}
          from normalized_flows
         where ${whereSql}
         order by coalesce(nullif(event_ts, ''), collected_at) desc, bytes desc, rowid desc
-        limit ? offset ?`
+        limit 5000`
     )
-    .all(...params, pageSize, offset)
-    .map(mapFlowRow);
+    .all(...params)
+    .map(mapFlowRow)
+    .filter((row) => !args.filters?.trafficClass || args.filters.trafficClass === "all" || row.trafficClass === args.filters.trafficClass)
+    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+  const total = allRows.length;
+  const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
     total,
@@ -648,7 +671,7 @@ export function listTrafficRows(args: PageArgs = {}) {
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
     hiddenCount: args.diagnostics
       ? 0
-      : Number((getDb().prepare(`select count(*) as count from normalized_flows where ${latest.sql}`).get(...latest.params) as any)?.count || 0) - total,
+      : Math.max(0, Number((getDb().prepare(`select count(*) as count from normalized_flows where ${latest.sql}`).get(...latest.params) as any)?.count || 0) - total),
   };
 }
 
@@ -825,7 +848,7 @@ function originForLive(row: Record<string, any>) {
 
 function mapLiveRow(row: any) {
   const eventType = row.event_type || "route.decision";
-  return {
+  return decorateTrafficRow({
     id: `${row.kind}:${row.id}`,
     source_kind: row.kind,
     event_type: eventType,
@@ -839,12 +862,12 @@ function mapLiveRow(row: any) {
     confidence: row.confidence || "unknown",
     summary: row.summary || "",
     source_log: row.source_log || "",
-  };
+  });
 }
 
 export function listLiveEvents(args: PageArgs = {}) {
   const page = clampPage(args.page);
-  const pageSize = clampPageSize(args.pageSize, 25, 100);
+  const pageSize = clampPageSize(args.pageSize, 50, 50);
   const offset = (page - 1) * pageSize;
   const union = `
     select 'event' as kind, id, event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
@@ -852,11 +875,14 @@ export function listLiveEvents(args: PageArgs = {}) {
     union all
     select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, '' as summary, source_log
       from route_decisions`;
-  const total = Number((getDb().prepare(`select count(*) as count from (${union})`).get() as any)?.count || 0);
-  const rows = getDb()
-    .prepare(`select * from (${union}) order by occurred_at desc, id desc limit ? offset ?`)
-    .all(pageSize, offset)
-    .map(mapLiveRow);
+  const filter = { ...(args.filters || {}), trafficClass: args.filters?.trafficClass || "client" };
+  const candidates = getDb()
+    .prepare(`select * from (${union}) order by occurred_at desc, id desc limit 500`)
+    .all()
+    .map(mapLiveRow)
+    .filter((row) => filterRows([row], filter).length > 0);
+  const total = candidates.length;
+  const rows = candidates.slice(offset, offset + pageSize);
   return {
     rows,
     total,
@@ -879,5 +905,6 @@ export function filterOptions(model: ConsoleModel) {
     routes: routeValues,
     channels,
     confidences: ["exact", "estimated", "dns-interest", "unknown", "mixed"],
+    trafficClasses: trafficClasses.map((value) => ({ value, label: trafficClassLabel(value) })),
   };
 }

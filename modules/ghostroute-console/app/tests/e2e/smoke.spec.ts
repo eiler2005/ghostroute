@@ -15,6 +15,7 @@ test("filters are visible and stable", async ({ page }) => {
   await expect(page.locator("select[name='period']")).toBeVisible();
   await expect(page.locator("select[name='route']")).toBeVisible();
   await expect(page.locator("select[name='confidence']")).toBeVisible();
+  await expect(page.locator("select[name='trafficClass']")).toBeVisible();
   await expect(page.locator("input[name='search']")).toBeVisible();
 });
 
@@ -31,6 +32,7 @@ test("route explanation exposes gated evidence", async ({ page }) => {
 
 test("traffic explorer hides technical evidence noise by default", async ({ page }) => {
   await page.goto("/traffic");
+  await expect(page.getByText("Client traffic by volume")).toBeVisible();
   await expect(page.getByText("Showing traffic rows only")).toBeVisible();
   await expect(page.getByText("system/no-byte evidence hidden")).toBeVisible();
   const firstRow = page.locator(".route-table-card tbody tr").first();
@@ -39,6 +41,17 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
   await expect(firstRow).not.toContainText("0 B");
   await page.goto("/traffic?diagnostics=1");
   await expect(page.getByText("Diagnostics visible")).toBeVisible();
+});
+
+test("traffic classes and live cadence are explicit", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("Service/background traffic")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs attribution" })).toBeVisible();
+  await page.goto("/traffic?trafficClass=unclassified");
+  await expect(page.getByText("Needs attribution traffic by volume")).toBeVisible();
+  await page.goto("/live");
+  await expect(page.getByText("Автообновление около 10 минут")).toBeVisible();
+  await expect(page.getByText("Service/background live events")).toBeVisible();
 });
 
 test("mobile keeps controls and content reachable", async ({ page, isMobile }) => {

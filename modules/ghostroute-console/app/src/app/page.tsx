@@ -11,11 +11,24 @@ function share(value: number, total: number) {
 export default async function Dashboard({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildConsoleModel(filters);
+  const allTrafficModel = buildConsoleModel({ ...filters, trafficClass: "all" });
   const total = model.totals.observedBytes || 1;
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
+  const trafficWindowText = trafficWindow || "сегодня, окно не указано";
   const topClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
-  const topDestinations = [...model.flows].sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0)).slice(0, 8);
-  const latestDecisions = model.flows.slice(0, 8);
+  const topDestinations = [...allTrafficModel.flows]
+    .filter((row) => row.trafficClass === "client" && Number(row.bytes || row.total_bytes || 0) > 0)
+    .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
+    .slice(0, 8);
+  const serviceTraffic = [...allTrafficModel.flows]
+    .filter((row) => row.trafficClass === "service_background" && Number(row.bytes || row.total_bytes || 0) > 0)
+    .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
+    .slice(0, 5);
+  const needsAttribution = [...allTrafficModel.flows]
+    .filter((row) => row.trafficClass === "unclassified" && Number(row.bytes || row.total_bytes || 0) > 0)
+    .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
+    .slice(0, 5);
+  const latestDecisions = topDestinations.slice(0, 8);
 
   return (
     <ConsoleShell active="/" model={model} filters={filters}>
@@ -30,9 +43,9 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
       </div>
 
       <div className="grid three" style={{ marginTop: 14 }}>
-        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`${trafficWindow || "Период не указан"} · LAN/Wi-Fi + Home Reality`} />
-        <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${trafficWindow || "Период не указан"} · ${share(model.totals.viaVpsBytes, total)}% observed`} />
-        <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${trafficWindow || "Период не указан"} · ${share(model.totals.directBytes, total)}% observed`} />
+        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Данные за ${trafficWindowText} · обновление около 5 минут`} />
+        <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed · current-day KPI`} />
+        <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
       </div>
 
       <div className="grid two" style={{ marginTop: 14 }}>
@@ -96,7 +109,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         <section className="card">
           <div className="toolbar">
             <h2>Top destinations</h2>
-            <Link className="muted-button" href="/traffic">Open traffic</Link>
+            <Link className="muted-button" href="/traffic?trafficClass=client">Open traffic</Link>
           </div>
           {topDestinations.length === 0 ? (
             <EmptyState title="Нет destination snapshots" />
@@ -104,7 +117,46 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <div className="detail-list">
               {topDestinations.map((row, idx) => (
                 <div className="detail-row" key={idx}>
-                  <span>{row.destination || row.family || "n/a"}</span>
+                  <span>{row.destinationLabel || row.destination || row.family || "n/a"}</span>
+                  <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="grid two" style={{ marginTop: 14 }}>
+        <section className="card">
+          <div className="toolbar">
+            <h2>Service/background traffic</h2>
+            <Link className="muted-button" href="/traffic?trafficClass=service_background">Open service</Link>
+          </div>
+          {serviceTraffic.length === 0 ? (
+            <EmptyState title="Нет service/background traffic rows" />
+          ) : (
+            <div className="detail-list">
+              {serviceTraffic.map((row, idx) => (
+                <div className="detail-row" key={idx}>
+                  <span>{row.destinationLabel || row.destination || "n/a"}</span>
+                  <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="card">
+          <div className="toolbar">
+            <h2>Needs attribution</h2>
+            <Link className="muted-button" href="/traffic?trafficClass=unclassified">Open unknown</Link>
+          </div>
+          {needsAttribution.length === 0 ? (
+            <EmptyState title="Нет unclassified traffic rows" />
+          ) : (
+            <div className="detail-list">
+              {needsAttribution.map((row, idx) => (
+                <div className="detail-row" key={idx}>
+                  <span>{row.destinationLabel || row.destination || "n/a"}</span>
                   <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
                 </div>
               ))}
@@ -115,11 +167,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
 
       <section className="card" style={{ marginTop: 14 }}>
         <div className="toolbar">
-          <h2>Latest route decisions</h2>
-          <span className="subtle">read-only factual flow rows</span>
+          <h2>Client traffic snapshot rows</h2>
+          <span className="subtle">detailed traffic snapshot, sorted by volume</span>
         </div>
         {latestDecisions.length === 0 ? (
-          <EmptyState title="Нет route decisions" />
+          <EmptyState title="Нет client traffic rows" />
         ) : (
           <table className="table">
             <thead>
@@ -129,7 +181,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
               {latestDecisions.map((row, idx) => (
                 <tr key={idx}>
                   <td>{row.client || row.channel || "n/a"}</td>
-                  <td><Link href={`/traffic?flow=${idx}`}>{row.destination || row.family || "n/a"}</Link></td>
+                  <td><Link href={`/traffic?flow=${idx}`}>{row.destinationLabel || row.destination || row.family || "n/a"}</Link></td>
                   <td><RouteBadge value={row.route} /></td>
                   <td>{bytes(row.bytes || row.total_bytes || 0)}</td>
                   <td><ConfidenceBadge value={row.confidence} /></td>

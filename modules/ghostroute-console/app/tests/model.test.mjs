@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 
 const normalizeModule = await import(new URL("../scr" + "ipts/lib/normalize.mjs", import.meta.url));
 const { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates } = normalizeModule;
+const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
+const { deviceRole, displayDestination, trafficClassFor } = classificationModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -151,4 +153,25 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 4").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   db.close();
+});
+
+test("traffic class separates client, service background and attribution gaps", () => {
+  assert.equal(trafficClassFor({ destination: "Google/YouTube", bytes: 1024, confidence: "estimated" }), "client");
+  assert.equal(trafficClassFor({ destination: "Apple/iCloud", bytes: 1024, confidence: "estimated" }), "service_background");
+  assert.equal(trafficClassFor({ destination: "DNS/Resolver", bytes: 1024, confidence: "estimated" }), "service_background");
+  assert.equal(trafficClassFor({ destination: "Other", bytes: 1024, confidence: "estimated" }), "unclassified");
+  assert.equal(trafficClassFor({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "unclassified");
+  assert.equal(trafficClassFor({ destination: "example.invalid", bytes: 0, confidence: "dns-interest" }), "service_background");
+  assert.equal(displayDestination({ destination: "Other", bytes: 1024, confidence: "estimated" }), "Unclassified domain");
+  assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
+  assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
+});
+
+test("device role inference keeps pseudo sources out of normal device meaning", () => {
+  assert.equal(deviceRole({ label: "lan-host-08", channel: "Home Wi-Fi/LAN" }), "Home LAN device");
+  assert.equal(deviceRole({ label: "mobile-client-04" }), "Home Reality profile");
+  assert.equal(deviceRole({ label: "mobile-source-08" }), "Unattributed mobile ingress source");
+  assert.equal(deviceRole({ label: "iphone-b-3", channel: "Channel B" }), "Channel B profile");
+  assert.equal(deviceRole({ label: "1-SR", channel: "Channel C" }), "Channel C profile");
+  assert.equal(deviceRole({ label: "family iPad" }), "iPad");
 });
