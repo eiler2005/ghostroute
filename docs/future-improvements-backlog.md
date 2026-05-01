@@ -81,6 +81,25 @@ Treat that document as Priority 1 for Console follow-up work. The broader
 items below remain Priority 2 candidates unless a separate plan promotes one
 of them.
 
+### Deferred Repo Cleanup From 2026-05-01 Review
+
+Phase 0 from the 2026-05-01 repo review is resolved: GhostRoute Console no
+longer uses the shared Reality/layer4 `:443` listener for public operator UI.
+Phase 1/4 were intentionally narrowed to fast CI, minimal Console smoke and
+documentation cleanup.
+
+The following Phase 2/3 items are deliberately deferred. They are valid
+backlog, but each needs a separate safe plan and behavior-preserving tests
+before implementation:
+
+- Console hygiene: replace broad `Record<string, any>` server surfaces with
+  typed contracts, split SQLite opening/schema/migrations out of the current
+  store module, and add stricter validation on POST action bodies.
+- Traffic/automation refactor: split the large
+  `modules/traffic-observatory/bin/traffic-report` script into smaller owned
+  pieces without changing report output, then review brittle grep-style static
+  tests and replace the riskiest ones with contract checks.
+
 ### 1. Ужесточить auto-discovery доменов
 
 Проблема:
