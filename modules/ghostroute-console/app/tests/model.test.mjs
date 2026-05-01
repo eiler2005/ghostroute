@@ -174,4 +174,7 @@ test("device role inference keeps pseudo sources out of normal device meaning", 
   assert.equal(deviceRole({ label: "iphone-b-3", channel: "Channel B" }), "Channel B profile");
   assert.equal(deviceRole({ label: "1-SR", channel: "Channel C" }), "Channel C profile");
   assert.equal(deviceRole({ label: "family iPad" }), "iPad");
+  assert.equal(deviceRole({ label: "lan-host-12 (Windows laptop)" }), "Windows laptop");
+  assert.equal(deviceRole({ label: "lan-host-09 (Windows PC)" }), "Windows PC");
+  assert.equal(deviceRole({ label: "lan-host-07 (Unknown mobile/private MAC)" }), "Private MAC mobile device");
 });

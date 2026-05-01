@@ -197,18 +197,16 @@
                   add_header Referrer-Policy "no-referrer" always;
 
                   location / {
-                      proxy_pass http://127.0.0.1:3000;
-                      proxy_http_version 1.1;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
                       proxy_set_header Host $host;
                       proxy_set_header X-Forwarded-Host $host;
                       proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header Accept-Encoding "";
                       proxy_set_header Connection close;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                      proxy_buffering on;
-                      proxy_buffer_size 16k;
-                      proxy_buffers 32 64k;
-                      proxy_busy_buffers_size 128k;
+                      proxy_buffering off;
                       proxy_read_timeout 60s;
                       proxy_send_timeout 60s;
                   }

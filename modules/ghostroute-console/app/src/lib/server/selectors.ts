@@ -124,7 +124,7 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
   const search = filters.search?.toLowerCase().trim();
   return rows.filter((row) => {
     if (filters.route && filters.route !== "all" && row.route !== filters.route) return false;
-    if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel) return false;
+    if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel && !(row.channels || []).includes(filters.channel)) return false;
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
     if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) return false;
     if (filters.client && filters.client !== "all" && row.client !== filters.client && row.label !== filters.client) return false;
@@ -152,6 +152,12 @@ function routeFromCounters(row: Record<string, any>) {
   return row.route || "Unknown";
 }
 
+function deviceRoute(row: Record<string, any>) {
+  const route = String(row.route || "");
+  if (route && route !== "Unknown") return route;
+  return routeFromCounters(row);
+}
+
 function statusFromLastSeen(value?: string) {
   const minutes = minutesSince(value);
   if (minutes === null) return "Inactive";
@@ -161,18 +167,72 @@ function statusFromLastSeen(value?: string) {
 }
 
 function keyForDevice(row: Record<string, any>) {
-  const label = String(row.label || row.client || "");
-  const mobile = label.toLowerCase().match(/mobile-client-\d+/);
-  if (mobile) return mobile[0];
+  const text = [row.device_id, row.id, row.label, row.client, row.profile].filter(Boolean).join(" ").toLowerCase();
+  const canonical = text.match(/\b(mobile-client-\d+|mobile-source-\d+|lan-host-\d+)\b/);
+  if (canonical) return canonical[1];
   return String(row.device_id || row.id || row.label || row.ip || "unknown-device").toLowerCase();
 }
 
+function deviceLabel(row: Record<string, any>) {
+  return String(row.label || row.client || row.id || row.device_id || "Unknown").trim();
+}
+
+function labelScore(value?: string) {
+  const label = String(value || "").toLowerCase();
+  let score = label ? 1 : 0;
+  if (/\b(iphone|ipad|macbook|mac book|windows|laptop|pc|private mac|apple tv)\b/.test(label)) score += 70;
+  if (/\([^)]{2,}\)/.test(label)) score += 30;
+  if (/^(lan-host|mobile-client|mobile-source)-\d+$/.test(label)) score -= 20;
+  if (label.includes("unknown")) score -= 10;
+  return score;
+}
+
+function roleScore(value?: string) {
+  const role = String(value || "").toLowerCase();
+  if (!role || role === "unknown device") return 0;
+  if (role.includes("channel b") || role.includes("channel c")) return 90;
+  if (/\b(iphone|ipad|macbook|windows|private mac|apple tv)\b/.test(role)) return 80;
+  if (role.includes("home reality")) return 55;
+  if (role.includes("home lan")) return 35;
+  if (role.includes("unattributed")) return 25;
+  return 20;
+}
+
+function addAlias(current: Record<string, any>, label?: string) {
+  const value = String(label || "").trim();
+  if (!value || value === "Unknown") return;
+  const aliases = new Set([...(current.aliases || []), value]);
+  current.aliases = Array.from(aliases).slice(0, 8);
+}
+
 function preservedChannel(row: Record<string, any>) {
+  const label = String(row.label || row.client || row.id || row.device_id || "").toLowerCase();
+  if (/\/\s*b\d?\b|iphone-b|channel b/.test(label)) return "Channel B";
+  if (/\/\s*c\d?\b|shadowrocket|naive|channel c/.test(label)) return "Channel C";
   const channel = String(row.channel || "");
   if (channel && channel !== "Unknown") return channel;
-  const label = String(row.label || row.client || row.id || row.device_id || "").toLowerCase();
   if (label.includes("mobile-client-")) return "A/Home Reality";
   return "Unknown";
+}
+
+function channelLabel(channels?: Array<string>) {
+  const clean = Array.from(new Set((channels || []).filter((value) => value && value !== "Unknown")));
+  if (clean.length === 0) return "Unknown";
+  const rank = (value: string) => {
+    if (value.includes("A/Home")) return 0;
+    if (value.includes("Channel B")) return 1;
+    if (value.includes("Channel C")) return 2;
+    if (value.includes("Home Wi-Fi")) return 3;
+    return 4;
+  };
+  return clean.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)).join(" + ");
+}
+
+function addChannel(current: Record<string, any>, value?: string) {
+  if (!value || value === "Unknown") return;
+  const channels = new Set([...(current.channels || []), value]);
+  current.channels = Array.from(channels);
+  current.channel = channelLabel(current.channels);
 }
 
 function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = true) {
@@ -182,55 +242,78 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
     if (!key || key === "unknown-device") return;
     const current = byKey.get(key);
     const collected = row.collected_at || row.last_seen || "";
+    const label = deviceLabel(row);
+    const role = row.role || deviceRole(row);
+    const rowTotals = {
+      total_bytes: Number(row.total_bytes || 0),
+      via_vps_bytes: Number(row.via_vps_bytes || row.reality_bytes || 0),
+      direct_bytes: Number(row.direct_bytes || row.wan_bytes || 0),
+    };
     if (!current) {
       byKey.set(key, {
-        id: row.device_id || row.id || row.label || key,
-        label: row.label || row.client || row.id || row.device_id || "Unknown",
+        id: key,
+        label,
         ip: row.ip || row.client_ip || "",
-        role: row.role || deviceRole(row),
+        role,
         channel: preservedChannel(row),
-        route: row.route || routeFromCounters(row),
+        route: deviceRoute(row),
         confidence: row.confidence || "unknown",
-        total_bytes: Number(row.total_bytes || 0),
-        via_vps_bytes: Number(row.via_vps_bytes || row.reality_bytes || 0),
-        direct_bytes: Number(row.direct_bytes || row.wan_bytes || 0),
+        ...rowTotals,
         last_seen: collected,
         status: statusFromLastSeen(collected),
         from_history: fromHistory,
+        channels: preservedChannel(row) !== "Unknown" ? [preservedChannel(row)] : [],
+        aliases: label ? [label] : [],
         raw: row.raw || row,
       });
       return;
     }
+    addAlias(current, label);
     const currentTs = Date.parse(current.last_seen || "");
     const rowTs = Date.parse(collected || "");
     const newer = Number.isFinite(rowTs) && (!Number.isFinite(currentTs) || rowTs > currentTs);
-    current.total_bytes = Math.max(Number(current.total_bytes || 0), Number(row.total_bytes || 0));
-    current.via_vps_bytes = Math.max(Number(current.via_vps_bytes || 0), Number(row.via_vps_bytes || row.reality_bytes || 0));
-    current.direct_bytes = Math.max(Number(current.direct_bytes || 0), Number(row.direct_bytes || row.wan_bytes || 0));
+    const sameTime = Number.isFinite(rowTs) && Number.isFinite(currentTs) && rowTs === currentTs;
+    if (newer) {
+      current.total_bytes = rowTotals.total_bytes;
+      current.via_vps_bytes = rowTotals.via_vps_bytes;
+      current.direct_bytes = rowTotals.direct_bytes;
+    } else if (sameTime) {
+      current.total_bytes = Math.max(Number(current.total_bytes || 0), rowTotals.total_bytes);
+      current.via_vps_bytes = Math.max(Number(current.via_vps_bytes || 0), rowTotals.via_vps_bytes);
+      current.direct_bytes = Math.max(Number(current.direct_bytes || 0), rowTotals.direct_bytes);
+    }
+    if (labelScore(label) > labelScore(current.label)) {
+      current.label = label;
+      const labelRole = deviceRole({ ...row, label });
+      if (roleScore(labelRole) >= roleScore(current.role)) {
+        current.role = labelRole;
+      }
+    }
+    if (roleScore(role) > roleScore(current.role)) {
+      current.role = role;
+    }
     if (newer) {
       current.last_seen = collected;
       current.status = statusFromLastSeen(collected);
-      current.route = row.route || routeFromCounters(row);
+      current.route = deviceRoute(row);
       current.confidence = row.confidence || current.confidence;
-      current.label = row.label || row.client || current.label;
       current.ip = row.ip || row.client_ip || current.ip;
-      current.role = row.role || deviceRole(row);
       current.raw = row.raw || row;
     }
     const channel = preservedChannel(row);
-    if ((!current.channel || current.channel === "Unknown") && channel !== "Unknown") {
-      current.channel = channel;
-    }
+    addChannel(current, channel);
   };
   for (const row of latest) remember(row, false);
   if (includeHistory) {
     for (const row of knownDeviceRows()) remember(row, true);
   }
   return Array.from(byKey.values()).sort((a, b) => {
+    const trafficDelta = Number(b.total_bytes || 0) - Number(a.total_bytes || 0);
+    if (trafficDelta !== 0) return trafficDelta;
     const aSeen = Date.parse(a.last_seen || "");
     const bSeen = Date.parse(b.last_seen || "");
     if (Number.isFinite(aSeen) && Number.isFinite(bSeen) && aSeen !== bSeen) return bSeen - aSeen;
-    return Number(b.total_bytes || 0) - Number(a.total_bytes || 0);
+    return String(a.label || a.id || "").localeCompare(String(b.label || b.id || ""));
   });
 }
 
@@ -820,19 +903,26 @@ export function listClientInventory(args: PageArgs = {}) {
       const confidence = String(row.confidence || "");
       const label = String(row.label || row.id || "");
       if (total <= 0 && confidence === "dns-interest" && /\/\s*[bc]\d?$/i.test(label)) return false;
-      if (args.filters?.channel && args.filters.channel !== "all" && row.channel !== args.filters.channel) return false;
+      if (
+        args.filters?.channel &&
+        args.filters.channel !== "all" &&
+        row.channel !== args.filters.channel &&
+        !(row.channels || []).includes(args.filters.channel)
+      ) return false;
       if (args.filters?.route && args.filters.route !== "all" && routeFromCounters(row) !== args.filters.route) return false;
       if (args.filters?.confidence && args.filters.confidence !== "all" && row.confidence !== args.filters.confidence) return false;
       if (args.filters?.client && args.filters.client !== "all" && row.label !== args.filters.client && row.id !== args.filters.client) return false;
       return clientSearch(row, args.filters?.search);
     });
-  const offset = (page - 1) * pageSize;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const offset = (effectivePage - 1) * pageSize;
   return {
     rows: rows.slice(offset, offset + pageSize),
     total: rows.length,
-    page,
+    page: effectivePage,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(rows.length / pageSize)),
+    totalPages,
   };
 }
 

@@ -45,11 +45,14 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .table th, .table td { border-bottom: 1px solid #22354d; padding: 12px 10px; text-align: left; vertical-align: middle; }
 .table th { color: #a9bad0; font-weight: 700; font-size: 12px; }
 .table td { overflow-wrap: anywhere; }
+.table .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .table tr.selected td { background: rgba(92, 168, 255, .08); box-shadow: inset 3px 0 0 #5ca8ff; }
 .table tr:hover td { background: rgba(141, 182, 255, .05); }
 .col-time { width: 132px; color: #c5d2e4; }
 .col-client { width: 22%; }
 .col-destination { width: 28%; }
+.col-channel { width: 150px; }
+.col-class { width: 126px; }
 .col-route { width: 96px; }
 .col-traffic { width: 112px; }
 .col-conn { width: 72px; }
@@ -136,13 +139,16 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .route-rail-tight .card { padding: 14px; }
 .route-rail h3 { display: flex; gap: 8px; align-items: center; }
 .route-titlebar { align-items: flex-start; }
-.route-table-card { margin-top: 14px; }
+.route-table-card { margin-top: 14px; overflow-x: auto; }
+.traffic-table { min-width: 1180px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: #a9bad0; flex-wrap: wrap; }
 .pagination > div { display: flex; align-items: center; gap: 10px; }
 .pagination strong { color: #e6edf7; }
-.clients-table .col-client { width: 25%; }
-.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 170px; }
-.clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 132px; }
+.clients-card { overflow-x: auto; }
+.clients-table { min-width: 1040px; }
+.clients-table .col-client { width: 22%; }
+.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 190px; }
+.clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 136px; }
 .clients-table th:nth-child(4), .clients-table td:nth-child(4) { width: 128px; }
 .clients-table th:nth-child(5), .clients-table td:nth-child(5) { width: 170px; }
 .clients-table th:nth-child(6), .clients-table td:nth-child(6) { width: 104px; }
