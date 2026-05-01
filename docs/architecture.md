@@ -145,6 +145,21 @@ is transported through `reality-out` to the configured
 `vps_unbound_reality_target_host:15353`. UFW allows that private DNS port only
 from the Xray Docker bridge, while public `53/tcp,udp` stays denied.
 
+### Observability And Console
+
+GhostRoute Console is an observability/control-plane surface, not part of the
+router data plane. It reads module-owned JSON reports, stores snapshots and
+normalized evidence in SQLite, and renders route/traffic/client/live views over
+that factual data. Console must not become a second source of truth for routing
+state.
+
+The VPS deployment keeps the Console app on `127.0.0.1:3000`. Public operator
+access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a
+small local buffering proxy. This keeps larger Console pages away from the
+shared Reality/layer4 `:443` listener used by Channel A/B/C egress. Large
+operator views such as Traffic Explorer use paging and explicit detail/export
+requests instead of rendering full evidence sets in one response.
+
 ## Channel A / Channel B / Channel C (текущая схема)
 
 For the compact handoff version of A/B/C, see
