@@ -116,10 +116,17 @@ uses matching freshness thresholds: stale after 75 minutes during the day and
 
 ## Deployment And Access
 
-The deployed Console is a single Docker container behind the existing Caddy
-route and Basic Auth. The app listens on `127.0.0.1:3000` on the VPS. The data
-directory is `/opt/ghostroute-console/data`; repo sources are mounted read-only
-at `/opt/ghostroute-console/repo`.
+The deployed Console app runs as a single Docker container on
+`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 HTTPS
+listener with Basic Auth, served by nginx and a small local buffering proxy in
+front of the app. This keeps Console off the shared Reality/layer4 `:443`
+listener. The data directory is `/opt/ghostroute-console/data`; repo sources
+are mounted read-only at `/opt/ghostroute-console/repo`.
+
+The operator UI intentionally keeps first-page HTML small. Large evidence
+surfaces use paging and explicit exports instead of rendering full datasets in
+one response; `/traffic` defaults to a small page and accepts `pageSize` up to
+100 for operator browsing.
 
 The restricted SSH surface is `ghostroute_readonly` with forced-command
 whitelisting. Whitelisted commands must require `--json` and must remain

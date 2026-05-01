@@ -1,5 +1,5 @@
 ---
-- name: Expose GhostRoute Console through existing Caddy
+- name: Expose GhostRoute Console through dedicated public listener
   hosts: vps_stealth
   become: true
   vars_files:
@@ -7,17 +7,52 @@
   vars:
     console_root: /opt/ghostroute-console
     console_public_host: "{{ ghostroute_console_public_host | default('console.' ~ vps_ssh_host ~ '.sslip.io') }}"
+    console_public_port: "{{ ghostroute_console_public_port | default(2087) }}"
+    console_public_url: "https://{{ console_public_host }}:{{ console_public_port }}"
+    console_manage_ufw: "{{ ghostroute_console_manage_ufw | default(true) }}"
+    console_reality_backend_port: "{{ xray_reality_listen_port | default(vault_xray_reality_listen_port | default(8443)) }}"
+    console_tls_cert_file: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ console_public_host }}/{{ console_public_host }}.crt"
+    console_tls_key_file: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ console_public_host }}/{{ console_public_host }}.key"
+    console_nginx_root: "{{ console_root }}/nginx"
+    console_buffer_proxy_port: "{{ ghostroute_console_buffer_proxy_port | default(3001) }}"
     console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
     console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
     console_basic_auth_password: "{{ lookup('ansible.builtin.ini', 'password type=properties file=' ~ console_basic_auth_file) }}"
   tasks:
-    - name: Ensure Console auth directory exists
+    - name: Validate dedicated Console public listener
+      ansible.builtin.assert:
+        that:
+          - console_public_port | int > 0
+          - console_public_port | int < 65536
+          - console_public_port | string != '443'
+          - console_public_port | string != '3000'
+          - console_public_port | string != (console_reality_backend_port | string)
+        fail_msg: "Console public port must be a dedicated non-443 listener and must not collide with Console upstream or Reality backend."
+
+    - name: Ensure Console auth and nginx directories exist
       ansible.builtin.file:
-        path: "{{ console_root }}/auth"
+        path: "{{ item.path }}"
         state: directory
-        owner: root
-        group: root
-        mode: "0700"
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ console_root }}/auth", mode: "0750", group: "www-data" }
+        - { path: "{{ console_nginx_root }}", mode: "0755" }
+
+    - name: Check Console TLS certificate files from Caddy storage
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ console_tls_cert_file }}"
+        - "{{ console_tls_key_file }}"
+      register: console_tls_files
+
+    - name: Require existing Console TLS certificate files
+      ansible.builtin.assert:
+        that:
+          - console_tls_files.results | map(attribute='stat.exists') | min
+        fail_msg: "Console TLS certificate files were not found in Caddy storage; expose through Caddy once or provide certificate paths before enabling the nginx listener."
 
     - name: Store Console Basic Auth note on VPS
       ansible.builtin.copy:
@@ -26,52 +61,184 @@
         group: root
         mode: "0600"
         content: |
-          url=https://{{ console_public_host }}
+          url={{ console_public_url }}
           username={{ console_basic_auth_user }}
           password={{ console_basic_auth_password }}
       no_log: true
 
-    - name: Hash Console Basic Auth password
+    - name: Hash Console Basic Auth password for nginx
       ansible.builtin.command:
         argv:
-          - caddy
-          - hash-password
-          - --plaintext
+          - openssl
+          - passwd
+          - -apr1
           - "{{ console_basic_auth_password }}"
-      register: console_basic_auth_hash
+      register: console_nginx_basic_auth_hash
       changed_when: false
       no_log: true
 
-    - name: Add GhostRoute Console Caddy route
+    - name: Store Console nginx Basic Auth file
+      ansible.builtin.copy:
+        dest: "{{ console_root }}/auth/nginx.htpasswd"
+        owner: root
+        group: www-data
+        mode: "0640"
+        content: "{{ console_basic_auth_user }}:{{ console_nginx_basic_auth_hash.stdout }}\n"
+      no_log: true
+
+    - name: Remove legacy GhostRoute Console Caddy proxy route from shared Caddy
       ansible.builtin.blockinfile:
         path: /etc/caddy/Caddyfile
         marker: "# {mark} GHOSTROUTE CONSOLE READONLY"
+        backup: true
+        state: absent
+
+    - name: Keep GhostRoute Console certificate managed by Caddy
+      ansible.builtin.blockinfile:
+        path: /etc/caddy/Caddyfile
+        marker: "# {mark} GHOSTROUTE CONSOLE CERTIFICATE"
         insertafter: EOF
         backup: true
         block: |
           https://{{ console_public_host }} {
-              log ghostroute_console {
-                  output stdout
-                  format json
-              }
+              respond 404
+          }
 
-              basic_auth {
-                  {{ console_basic_auth_user }} {{ console_basic_auth_hash.stdout }}
-              }
+    - name: Remove existing GhostRoute Console L4 bridge
+      ansible.builtin.replace:
+        path: /etc/caddy/Caddyfile
+        regexp: "(?ms)^\\s*# BEGIN GHOSTROUTE CONSOLE L4 BRIDGE\\n.*?^\\s*# END GHOSTROUTE CONSOLE L4 BRIDGE[^\\n]*\\n"
+        replace: ""
 
-              header {
-                  X-Robots-Tag "noindex, nofollow"
-                  Referrer-Policy "no-referrer"
-              }
+    - name: Repair layer4 brace after legacy malformed Console bridge
+      ansible.builtin.replace:
+        path: /etc/caddy/Caddyfile
+        regexp: "(?m)(^\\s*route @reality \\{\\n^\\s*proxy 127\\.0\\.0\\.1:{{ console_reality_backend_port }}\\n^\\s*\\}\\n)(^\\s*tls\\n)"
+        replace: "\\1            }\n\\2"
 
-              reverse_proxy 127.0.0.1:3000 {
-                  flush_interval -1
-                  header_up Connection close
-                  transport http {
-                      keepalive off
+    - name: Allow inbound Console dedicated HTTPS port
+      community.general.ufw:
+        rule: allow
+        port: "{{ console_public_port | string }}"
+        proto: tcp
+        comment: "GhostRoute Console HTTPS"
+      when: console_manage_ufw | bool
+
+    - name: Install GhostRoute Console buffer proxy
+      ansible.builtin.copy:
+        src: buffer-proxy.py
+        dest: /usr/local/bin/ghostroute-console-buffer-proxy
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install GhostRoute Console buffer proxy systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ghostroute-console-buffer-proxy.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=GhostRoute Console buffering proxy
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/ghostroute-console-buffer-proxy
+          Environment=GHOSTROUTE_BUFFER_LISTEN_HOST=127.0.0.1
+          Environment=GHOSTROUTE_BUFFER_LISTEN_PORT={{ console_buffer_proxy_port }}
+          Environment=GHOSTROUTE_BUFFER_UPSTREAM_HOST=127.0.0.1
+          Environment=GHOSTROUTE_BUFFER_UPSTREAM_PORT=3000
+          Restart=always
+          RestartSec=2
+          NoNewPrivileges=true
+          PrivateTmp=true
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Install GhostRoute Console nginx config
+      ansible.builtin.copy:
+        dest: "{{ console_nginx_root }}/nginx.conf"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          user www-data;
+          worker_processes 1;
+          pid /run/ghostroute-console-nginx.pid;
+          error_log /var/log/ghostroute-console-nginx-error.log warn;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              access_log /var/log/ghostroute-console-nginx-access.log combined;
+              server_tokens off;
+              keepalive_timeout 0;
+
+              server {
+                  listen 0.0.0.0:{{ console_public_port }} ssl;
+                  listen [::]:{{ console_public_port }} ssl;
+                  server_name {{ console_public_host }};
+
+                  ssl_certificate {{ console_tls_cert_file }};
+                  ssl_certificate_key {{ console_tls_key_file }};
+                  ssl_protocols TLSv1.2 TLSv1.3;
+                  ssl_buffer_size 512;
+
+                  auth_basic "GhostRoute Console";
+                  auth_basic_user_file {{ console_root }}/auth/nginx.htpasswd;
+
+                  add_header X-Robots-Tag "noindex, nofollow" always;
+                  add_header Referrer-Policy "no-referrer" always;
+                  chunked_transfer_encoding off;
+
+                  location / {
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Forwarded-Host $host;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header Connection close;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_buffering on;
+                      proxy_buffer_size 16k;
+                      proxy_buffers 32 64k;
+                      proxy_busy_buffers_size 128k;
+                      proxy_read_timeout 60s;
+                      proxy_send_timeout 60s;
                   }
               }
           }
+
+    - name: Install GhostRoute Console nginx systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ghostroute-console-nginx.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=GhostRoute Console dedicated nginx listener
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=forking
+          PIDFile=/run/ghostroute-console-nginx.pid
+          ExecStartPre=/usr/sbin/nginx -t -c {{ console_nginx_root }}/nginx.conf
+          ExecStart=/usr/sbin/nginx -c {{ console_nginx_root }}/nginx.conf
+          ExecReload=/usr/sbin/nginx -s reload -c {{ console_nginx_root }}/nginx.conf
+          ExecStop=/usr/sbin/nginx -s quit -c {{ console_nginx_root }}/nginx.conf
+          PrivateTmp=true
+
+          [Install]
+          WantedBy=multi-user.target
 
     - name: Validate Caddy config
       ansible.builtin.command: caddy validate --config /etc/caddy/Caddyfile
@@ -82,15 +249,33 @@
         name: caddy
         state: reloaded
 
+    - name: Restart GhostRoute Console buffer proxy
+      ansible.builtin.systemd:
+        name: ghostroute-console-buffer-proxy
+        state: restarted
+        enabled: true
+        daemon_reload: true
+
+    - name: Validate GhostRoute Console nginx config
+      ansible.builtin.command: /usr/sbin/nginx -t -c {{ console_nginx_root }}/nginx.conf
+      changed_when: false
+
+    - name: Restart GhostRoute Console nginx listener
+      ansible.builtin.systemd:
+        name: ghostroute-console-nginx
+        state: restarted
+        enabled: true
+        daemon_reload: true
+
     - name: Check Console public route requires auth
       ansible.builtin.uri:
-        url: "https://{{ console_public_host }}/api/health"
+        url: "{{ console_public_url }}/api/health"
         status_code: 401
         validate_certs: true
 
     - name: Check Console public route with auth
       ansible.builtin.uri:
-        url: "https://{{ console_public_host }}/api/health"
+        url: "{{ console_public_url }}/api/health"
         url_username: "{{ console_basic_auth_user }}"
         url_password: "{{ console_basic_auth_password }}"
         force_basic_auth: true
@@ -100,10 +285,24 @@
       register: console_public_health
       no_log: true
 
+    - name: Check Console public large response with auth
+      ansible.builtin.uri:
+        url: "{{ console_public_url }}/api/reports/llm-safe"
+        url_username: "{{ console_basic_auth_user }}"
+        url_password: "{{ console_basic_auth_password }}"
+        force_basic_auth: true
+        status_code: 200
+        validate_certs: true
+        return_content: false
+        timeout: 30
+      register: console_public_large_response
+      no_log: true
+
     - name: Show Console public URL
       ansible.builtin.debug:
         msg:
-          url: "https://{{ console_public_host }}"
+          url: "{{ console_public_url }}"
           username: "{{ console_basic_auth_user }}"
           health_ok: "{{ console_public_health.json.ok | default(false) }}"
           snapshots: "{{ console_public_health.json.snapshots | default('n/a') }}"
+          large_response_status: "{{ console_public_large_response.status | default('n/a') }}"

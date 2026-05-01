@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, TrafficTermsHelp } from "@/components/Widgets";
+import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge } from "@/components/Widgets";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listTrafficRows } from "@/lib/server/selectors";
@@ -15,16 +15,17 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
+  const pageSize = Math.min(100, Math.max(5, Number.parseInt(scalar(params.pageSize) || "10", 10) || 10));
   const trafficPage = listTrafficRows({ page, pageSize, filters, diagnostics });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
   const evidences = evidenceSet.evidences;
+  const hasSelectedFlow = scalar(params.flow) !== undefined;
   const selectedIndex = Math.min(
     Math.max(Number.parseInt(scalar(params.flow) || "0", 10) || 0, 0),
     Math.max(evidences.length - 1, 0)
   );
-  const evidence = evidences[selectedIndex] || null;
+  const evidence = hasSelectedFlow ? evidences[selectedIndex] || null : null;
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -36,13 +37,13 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
 
   return (
     <ConsoleShell active="/traffic" model={model} filters={filters}>
-      {!evidence ? (
+      {evidences.length === 0 ? (
         <section className="card">
-          <EmptyState title="Нет выбранного flow" />
+          <EmptyState title="Нет traffic rows" />
         </section>
       ) : (
         <>
-          <RouteExplanation evidence={evidence} all={evidences} />
+          {evidence ? <RouteExplanation evidence={evidence} all={evidences} /> : null}
           <section className="card route-table-card">
             <div className="toolbar">
               <div>
@@ -94,13 +95,6 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
               totalPages={trafficPage.totalPages}
               extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
             />
-          </section>
-          <section className="card terms-card">
-            <div>
-              <h2>Что означают термины</h2>
-              <p>Короткая легенда для route, confidence и channel labels в таблице и деталях маршрута.</p>
-            </div>
-            <TrafficTermsHelp />
           </section>
         </>
       )}
