@@ -102,6 +102,13 @@ shell tail:
 4. `/api/live/stream` streams recent SQLite events over Server-Sent Events.
 5. The UI falls back to stored snapshot/events if live collection is disabled.
 
+Raw live JSON snapshots are retained only briefly (`GHOSTROUTE_LIVE_RAW_RETENTION_HOURS`,
+default 6h) because live polling can create thousands of files per day. The
+durable contract is the normalized SQLite event tables, while raw live payloads
+are short-term troubleshooting evidence. SQLite backups are daily by default
+and capped by retention/count settings so a small VPS disk is not filled by
+collector safety copies.
+
 Runtime switches:
 
 - `GHOSTROUTE_LIVE_MODE=poll` enables the live polling loop in the container.

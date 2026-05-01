@@ -45,6 +45,28 @@ ensureConsoleSchema(db);
 const command = "modules/traffic-observatory/bin/live-events-report";
 const limit = String(Math.max(1, Math.min(1000, Number(process.env.GHOSTROUTE_LIVE_LIMIT || 200))));
 
+function cutoffIsoHours(retentionHours) {
+  return new Date(Date.now() - retentionHours * 3600000).toISOString();
+}
+
+function pruneLiveSnapshots(retentionHours) {
+  const cutoffMs = Date.now() - retentionHours * 3600000;
+  let deleted = 0;
+  for (const name of fs.readdirSync(snapshotDir)) {
+    if (!name.startsWith("live-") || !name.endsWith(".json")) continue;
+    const file = path.join(snapshotDir, name);
+    const stat = fs.statSync(file);
+    if (stat.isFile() && stat.mtimeMs < cutoffMs) {
+      fs.unlinkSync(file);
+      deleted += 1;
+    }
+  }
+  const rows = db
+    .prepare("delete from snapshots where type = 'live' and collected_at < ?")
+    .run(cutoffIsoHours(retentionHours)).changes;
+  return { files: deleted, rows };
+}
+
 function cursor() {
   try {
     return db.prepare("select cursor from live_cursors where source = ?").get("live-events-report")?.cursor || "";
@@ -103,4 +125,8 @@ const result = db
   .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
   .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
 normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
-console.log(`stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}`);
+const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
+const pruned = pruneLiveSnapshots(liveRetentionHours);
+console.log(
+  `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`
+);

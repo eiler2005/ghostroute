@@ -78,6 +78,12 @@ The VPS deployment defaults to read-only SSH collection through the generated
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
 - live log-tail polling every 15 seconds.
 
+Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
+snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
+for 30 days, and SQLite safety backups are daily with at most 2 recent files.
+The live collector stores normalized events in SQLite; the per-poll raw JSON is
+only short-term troubleshooting material.
+
 Freshness uses the same cadence: stale after 75 minutes during the day and
 after 210 minutes overnight.
 
