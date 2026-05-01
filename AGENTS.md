@@ -56,6 +56,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   checks before or while editing, then run the safe ones before finishing. For
   bug fixes, prefer a reproducing test or fixture before the fix when practical;
   for refactors, preserve behavior and verify before/after expectations.
+- Prefer the narrowest check that proves the current change. Do not run broad
+  suites such as `./tests/run-all.sh`, full Ansible verification, live reports,
+  or long browser/e2e checks unless the user explicitly asks for them or the
+  change touches the shared contract they cover. When a broad check would be
+  useful but not strictly required, ask first and name the time/risk tradeoff.
 - For every significant change, update the relevant docs before recommending or
   making a git commit. If tests exist for the changed behavior, run them first;
   if there are no applicable tests, explicitly say that the change is docs-only
@@ -103,8 +108,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   obfuscated examples such as `<router_lan_ip>`, `<home-reality-port>`,
   `<lan-redirect-port>`, `example.invalid`, `198.51.100.10`, or clearly masked
   values like `user-***` and `uuid-...`.
-- Run `./modules/secrets-management/bin/secret-scan` before any commit or push
-  recommendation.
+- Run `./modules/secrets-management/bin/secret-scan` only when the user asks
+  for a commit/push, when recommending a commit/push, or when a change directly
+  touches secrets-sensitive paths or generated artifacts. For ordinary local
+  edit/test loops, ask before running it; it is safe but can be noisy and
+  expensive in agent context.
 
 ## Architecture Invariants
 
