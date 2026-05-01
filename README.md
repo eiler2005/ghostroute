@@ -10,6 +10,9 @@
 
 **[Localized version ->](README-ru.md)**
 
+Documentation policy: English docs are the developer-facing ground truth; the
+Russian README is an operator-facing summary.
+
 ---
 
 ## TL;DR

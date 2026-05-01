@@ -17,10 +17,38 @@ Legacy expectations such as `br0 -> RC_VPN_ROUTE`, `OUTPUT -> RC_VPN_ROUTE`, or 
 
 ## What Tests Cover
 
-### Fixture tests
+### Fast checks
+
+```bash
+./tests/run-fast.sh
+```
+
+This is the default local and CI gate. It runs shell syntax checks, the
+repo secret scan, fixture/static tests, Console JSON contracts, Console unit
+tests, and a production build. It does not run Playwright.
+
+### Console smoke
+
+```bash
+./tests/run-smoke.sh
+```
+
+This runs a small Playwright subset for the Console first screen and API smoke.
+Use it for UI-facing changes without paying for the full e2e suite.
+
+### Compatibility wrapper
 
 ```bash
 ./tests/run-all.sh
+./tests/run-all.sh --full
+```
+
+`run-all.sh` runs fast checks plus Console smoke by default. `--full` runs the
+full Playwright e2e suite after fast checks.
+
+### Fixture tests
+
+```bash
 ./modules/recovery-verification/tests/test-router-health.sh
 ./modules/dns-catalog-intelligence/tests/test-catalog-review.sh
 ./modules/dns-catalog-intelligence/tests/test-dns-forensics.sh
@@ -50,7 +78,7 @@ They do not connect to the router.
 ### Syntax checks
 
 ```bash
-bash -n verify.sh tests/run-all.sh tests/test-module-entrypoints.sh
+bash -n verify.sh tests/check-shell-syntax.sh tests/run-fast.sh tests/run-smoke.sh tests/run-all.sh tests/test-module-entrypoints.sh
 bash -n modules/recovery-verification/bin/verify.sh modules/ghostroute-health-monitor/bin/router-health-report modules/traffic-observatory/bin/traffic-report modules/traffic-observatory/bin/traffic-daily-report modules/shared/lib/router-health-common.sh modules/recovery-verification/tests/test-router-health.sh
 bash -n modules/dns-catalog-intelligence/bin/catalog-review-report modules/dns-catalog-intelligence/bin/dns-forensics-report modules/dns-catalog-intelligence/tests/test-catalog-review.sh modules/dns-catalog-intelligence/tests/test-dns-forensics.sh modules/secrets-management/bin/cleanup-vault-backups
 sh -n modules/routing-core/router/firewall-start modules/routing-core/router/nat-start modules/dns-catalog-intelligence/router/domain-auto-add.sh modules/ghostroute-health-monitor/router/lib.sh modules/ghostroute-health-monitor/router/run-probes modules/ghostroute-health-monitor/router/aggregate modules/ghostroute-health-monitor/router/daily-digest modules/ghostroute-health-monitor/router/run-once modules/ghostroute-health-monitor/vps/lib.sh modules/ghostroute-health-monitor/vps/run-probes modules/ghostroute-health-monitor/tests/test-health-monitor.sh

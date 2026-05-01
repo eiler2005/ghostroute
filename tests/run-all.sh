@@ -2,21 +2,19 @@
 set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-"${PROJECT_ROOT}/modules/recovery-verification/tests/test-router-health.sh"
-"${PROJECT_ROOT}/modules/dns-catalog-intelligence/tests/test-catalog-review.sh"
-"${PROJECT_ROOT}/modules/dns-catalog-intelligence/tests/test-dns-forensics.sh"
-"${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-health-monitor.sh"
-"${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh"
-"${PROJECT_ROOT}/modules/ghostroute-console/tests/test-json-contracts.sh"
-npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" test
-npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" run build
-npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" run test:e2e
-"${PROJECT_ROOT}/tests/test-module-entrypoints.sh"
-"${PROJECT_ROOT}/tests/test-channel-a-deploy-static.sh"
-"${PROJECT_ROOT}/tests/test-channel-bc-static.sh"
-"${PROJECT_ROOT}/tests/test-managed-domain-policy-static.sh"
-"${PROJECT_ROOT}/tests/test-dns-policy-split-static.sh"
-"${PROJECT_ROOT}/tests/test-managed-split-parity-static.sh"
-"${PROJECT_ROOT}/modules/recovery-verification/tests/test-audit-fixes.sh"
+"${PROJECT_ROOT}/tests/run-fast.sh"
 
-echo "all fixture tests passed"
+case "${1:-}" in
+  --full)
+    npm --prefix "${PROJECT_ROOT}/modules/ghostroute-console/app" run test:e2e
+    echo "all fixture and full e2e tests passed"
+    ;;
+  ""|--smoke)
+    "${PROJECT_ROOT}/tests/run-smoke.sh"
+    echo "all fixture and smoke tests passed"
+    ;;
+  *)
+    echo "usage: $0 [--smoke|--full]" >&2
+    exit 2
+    ;;
+esac

@@ -18,3 +18,6 @@ Archive areas:
   docs, not in this archive.
 - `roadmaps/` - dated improvement roadmaps kept for traceability after the main
   architecture docs were updated.
+- `repo-improvement-plan-2026-05-01.md` - archived post-Console audit snapshot;
+  Phase 0 is resolved, while Console hygiene and shell/Ansible refactors are
+  deferred backlog.
