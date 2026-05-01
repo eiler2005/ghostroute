@@ -123,9 +123,35 @@ function pruneFiles(dir, retentionDays, predicate = () => true) {
   return deleted;
 }
 
+function pruneFilesByCount(dir, maxFiles, predicate = () => true) {
+  if (!fs.existsSync(dir) || maxFiles <= 0) return 0;
+  const files = fs
+    .readdirSync(dir)
+    .map((name) => {
+      const file = path.join(dir, name);
+      const stat = fs.statSync(file);
+      return { name, file, stat };
+    })
+    .filter(({ name, stat }) => stat.isFile() && predicate(name))
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+  let deleted = 0;
+  for (const entry of files.slice(maxFiles)) {
+    fs.unlinkSync(entry.file);
+    deleted += 1;
+  }
+  return deleted;
+}
+
 function backupSqlite(dbFile) {
   if (!fs.existsSync(dbFile)) return "";
+  const mode = process.env.GHOSTROUTE_DB_BACKUP_MODE || "daily";
+  if (mode === "none" || mode === "disabled" || mode === "0") return "";
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  if (mode === "daily") {
+    const day = stamp.slice(0, 10);
+    const existing = fs.readdirSync(backupsDir).some((name) => name.startsWith(`ghostroute-${day}`) && name.endsWith(".db"));
+    if (existing) return "";
+  }
   const backupPath = path.join(backupsDir, `ghostroute-${stamp}.db`);
   fs.copyFileSync(dbFile, backupPath);
   return backupPath;
@@ -134,10 +160,12 @@ function backupSqlite(dbFile) {
 function applyRetention() {
   const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
   const hourlyDays = days("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30);
-  const backupDays = days("GHOSTROUTE_BACKUP_RETENTION_DAYS", 14);
+  const backupDays = days("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2);
+  const backupMaxFiles = Number(process.env.GHOSTROUTE_DB_BACKUP_MAX_FILES || 2);
   const backupPath = backupSqlite(path.join(dataDir, "ghostroute.db"));
   const rawDeleted = pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
-  const backupsDeleted = pruneFiles(backupsDir, backupDays, (name) => name.endsWith(".db"));
+  let backupsDeleted = pruneFiles(backupsDir, backupDays, (name) => name.endsWith(".db"));
+  backupsDeleted += pruneFilesByCount(backupsDir, backupMaxFiles, (name) => name.endsWith(".db"));
   const snapshotRows = db
     .prepare("delete from snapshots where collected_at < ?")
     .run(cutoffIso(rawDays)).changes;
