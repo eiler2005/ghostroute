@@ -12,6 +12,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildConsoleModel(filters);
   const total = model.totals.observedBytes || 1;
+  const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const topClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
   const topDestinations = [...model.flows].sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0)).slice(0, 8);
   const latestDecisions = model.flows.slice(0, 8);
@@ -29,9 +30,9 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
       </div>
 
       <div className="grid three" style={{ marginTop: 14 }}>
-        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail="LAN/Wi-Fi + Home Reality" />
-        <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed`} />
-        <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed`} />
+        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`${trafficWindow || "Период не указан"} · LAN/Wi-Fi + Home Reality`} />
+        <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${trafficWindow || "Период не указан"} · ${share(model.totals.viaVpsBytes, total)}% observed`} />
+        <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${trafficWindow || "Период не указан"} · ${share(model.totals.directBytes, total)}% observed`} />
       </div>
 
       <div className="grid two" style={{ marginTop: 14 }}>

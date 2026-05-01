@@ -87,6 +87,15 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(db.prepare("select count(*) as count from events where event_type = 'flow.observed'").get().count, 1);
   assert.equal(db.prepare("select count(*) as count from route_decisions").get().count, 1);
 
+  normalizeSnapshot(db, 2, "traffic_summary", "2026-04-29T00:05:00Z", {
+    generated_at: "2026-04-29T00:05:00Z",
+    source: { command: "traffic-summary", period: "today" },
+    confidence: "mixed",
+    totals: { client_observed_bytes: 40, via_vps_bytes: 30, direct_bytes: 10 },
+    devices: [{ id: "192.168.1.24", label: "phone", total_bytes: 40, via_vps_bytes: 30, direct_bytes: 10, confidence: "exact" }],
+  });
+  assert.equal(db.prepare("select count(*) as count from normalized_devices where snapshot_type = 'traffic_summary'").get().count, 1);
+
   normalizeSnapshot(db, 3, "live", "2026-04-29T00:00:01Z", {
     source: { command: "live-events-report" },
     cursor: { next: "event-1" },

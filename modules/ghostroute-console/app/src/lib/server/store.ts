@@ -380,6 +380,7 @@ export function latestSnapshotsFromDb(): SnapshotRecord[] {
 
 function inferType(payload: any, fileName: string): SnapshotType | null {
   const command = String(payload?.source?.command || fileName);
+  if (command.includes("traffic-summary")) return "traffic_summary";
   if (command.includes("traffic")) return "traffic";
   if (command.includes("router-health")) return "health";
   if (command.includes("leak")) return "leaks";

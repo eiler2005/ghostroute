@@ -1,4 +1,4 @@
-export type SnapshotType = "traffic" | "health" | "leaks" | "domains" | "dns" | "live";
+export type SnapshotType = "traffic" | "traffic_summary" | "health" | "leaks" | "domains" | "dns" | "live";
 export type Confidence = "exact" | "estimated" | "dns-interest" | "unknown" | "mixed";
 
 export type SnapshotRecord = {
@@ -43,6 +43,8 @@ export type ConsoleModel = {
     viaVpsBytes: number;
     directBytes: number;
     unknownBytes: number;
+    periodLabel: string;
+    windowLabel: string;
   };
   devices: Array<Record<string, any>>;
   flows: Array<Record<string, any>>;

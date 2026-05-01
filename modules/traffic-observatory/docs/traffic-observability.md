@@ -129,6 +129,7 @@ For the full end-to-end workflow and observer table, see
 | `./modules/ghostroute-health-monitor/bin/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./modules/ghostroute-health-monitor/bin/router-health-report --save` | local report snapshot + local journal + router-side copy |
 | `./modules/traffic-observatory/bin/traffic-report check` | lightweight live A/B/C channel check: listeners, redirects, INPUT allow, managed split and recent log tail |
+| `./modules/traffic-observatory/bin/traffic-summary --json today` | lightweight current-day counter summary for frequent Console Dashboard collection |
 | `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./modules/traffic-observatory/bin/traffic-report channel-a|channel-b|channel-c` | filtered variant of the lightweight live channel check |
 | `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
@@ -138,6 +139,7 @@ For the full end-to-end workflow and observer table, see
 Use `traffic-report` as the main entrypoint:
 
 ```bash
+./modules/traffic-observatory/bin/traffic-summary --json today
 ./modules/traffic-observatory/bin/traffic-report today
 ./modules/traffic-observatory/bin/traffic-report yesterday
 ./modules/traffic-observatory/bin/traffic-report week

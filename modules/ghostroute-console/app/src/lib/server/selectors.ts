@@ -58,6 +58,48 @@ function nextExpectedCollection(value?: string) {
   return new Date(ts + collectionIntervalMinutes(new Date(ts)) * 60000).toISOString();
 }
 
+const periodLabels: Record<string, string> = {
+  today: "Сегодня",
+  yesterday: "Вчера",
+  week: "Неделя",
+  month: "Месяц",
+};
+
+function trafficPeriodLabel(traffic: Record<string, any>) {
+  const period = String(traffic.source?.period || "today");
+  if (traffic.source?.command === "traffic-summary" && period === "today") return "";
+  return periodLabels[period] || period;
+}
+
+function formatMoscowBoundary(value: string) {
+  const ts = Date.parse(value);
+  if (Number.isNaN(ts)) return "";
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ts));
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}`;
+}
+
+function trafficWindowLabel(traffic: Record<string, any>) {
+  const windows = traffic.window || {};
+  const raw = [windows.summary, windows.lan_wifi_samples, windows.home_reality_samples, windows.interface_samples, windows.per_device, windows.home_reality, windows.router]
+    .map((value) => String(value || "").trim())
+    .find((value) => value && !value.startsWith("n/a"));
+  if (!raw) return "";
+  const [start, end] = raw.split(" -> ").map((value) => value.trim());
+  const startLabel = formatMoscowBoundary(start);
+  const endLabel = end === "current router state" ? "сейчас" : formatMoscowBoundary(end);
+  if (startLabel && endLabel) return `с ${startLabel} до ${endLabel}`;
+  if (startLabel) return `с ${startLabel}`;
+  return raw;
+}
+
 function normalizeStatus(value?: string) {
   const status = String(value || "UNKNOWN").toUpperCase();
   if (status === "OK") return "OK";
@@ -174,7 +216,9 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
 
 export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
   const snapshots = latestByType(latestSnapshots());
+  const trafficSummary = snapshots.traffic_summary?.payload || {};
   const traffic = snapshots.traffic?.payload || {};
+  const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
   const domains = snapshots.domains?.payload || {};
@@ -413,7 +457,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     },
   ];
 
-  const totals = traffic.totals || {};
+  const totals = dashboardTraffic.totals || {};
   return {
     generatedAt: new Date().toISOString(),
     freshnessMinutes: staleMinutes,
@@ -438,6 +482,8 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
       viaVpsBytes: totals.via_vps_bytes || 0,
       directBytes: totals.direct_bytes || 0,
       unknownBytes: totals.unknown_bytes || 0,
+      periodLabel: trafficPeriodLabel(dashboardTraffic),
+      windowLabel: trafficWindowLabel(dashboardTraffic),
     },
     devices: filterRows(devices.map((row: any) => ({ ...row, route: row.route || routeFromCounters(row) })), filters),
     flows,
@@ -616,7 +662,9 @@ export function getTrafficRowById(id: string, filters: ConsoleFilters = {}) {
 
 function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
   const snapshots = latestByType(latestSnapshots());
+  const trafficSummary = snapshots.traffic_summary?.payload || {};
   const traffic = snapshots.traffic?.payload || {};
+  const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
   const domains = snapshots.domains?.payload || {};
@@ -693,7 +741,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     { label: "Rule-set", status: normalizeStatus(health.services?.rule_set_sync), detail: "catalog mirror" },
     { label: "Leaks", status: normalizeStatus(leaks.overall), detail: `${leakAlerts.length} signals` },
   ];
-  const totals = traffic.totals || {};
+  const totals = dashboardTraffic.totals || {};
   const model: ConsoleModel = {
     generatedAt: new Date().toISOString(),
     freshnessMinutes: staleMinutes,
@@ -718,6 +766,8 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
       viaVpsBytes: totals.via_vps_bytes || 0,
       directBytes: totals.direct_bytes || 0,
       unknownBytes: totals.unknown_bytes || 0,
+      periodLabel: trafficPeriodLabel(dashboardTraffic),
+      windowLabel: trafficWindowLabel(dashboardTraffic),
     },
     devices,
     flows: [],

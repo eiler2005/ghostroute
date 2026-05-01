@@ -11,6 +11,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 . "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 . "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
+. "${PROJECT_ROOT}/modules/traffic-observatory/lib/traffic-report-dispatch.sh"
 router_health_load_env
 
 REPORT_REDACT_NAMES="${REPORT_REDACT_NAMES:-1}"
@@ -251,17 +252,16 @@ case "$PERIOD_ARG" in
     channels_quick_report channel-c
     exit 0
     ;;
-  ""|today|current|current-day) ;;
-  yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-    if [ "$JSON_MODE" = "1" ]; then
-      exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" --json "$PERIOD_ARG"
-    else
-      exec "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-daily-report" "$PERIOD_ARG"
-    fi
-    ;;
   *)
-    echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|check|channel-a|channel-b|channel-c]" >&2
-    exit 1
+    if traffic_report_exec_daily_period "$PROJECT_ROOT" "$JSON_MODE" "$PERIOD_ARG"; then
+      :
+    else
+      status="$?"
+      if [ "$status" != "1" ]; then
+        echo "Usage: ./modules/traffic-observatory/bin/traffic-report [today|yesterday|week|month|YYYY-MM-DD|check|channel-a|channel-b|channel-c]" >&2
+        exit 1
+      fi
+    fi
     ;;
 esac
 

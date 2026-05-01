@@ -9,7 +9,9 @@ second source of truth for router runtime state.
 
 Console reads machine-readable JSON from existing operational modules:
 
-- `traffic-report --json` and `traffic-daily-report --json` for usage,
+- `traffic-summary --json today` for frequent current-day Dashboard traffic
+  cards without destination analytics.
+- `traffic-report --json` and `traffic-daily-report --json` for detailed usage,
   devices, route events and destination summaries.
 - `router-health-report --json` and `leak-check --json` for health, leak and
   egress identity evidence.
@@ -109,10 +111,11 @@ Runtime switches:
   events and avoids noisy SSH failures.
 - `GHOSTROUTE_LIVE_POLL_SECONDS=15` is the default production poll interval.
 
-Full snapshot collection is scheduled to avoid router load: every 30 minutes
-from 07:00 to 23:59 Moscow time, and every 3 hours from 00:00 to 06:59. The UI
-uses matching freshness thresholds: stale after 75 minutes during the day and
-210 minutes overnight.
+Light traffic summary collection is intended for frequent Dashboard refreshes
+and defaults to every 5 minutes when enabled. Full snapshot collection is
+scheduled to avoid router load: every 30 minutes from 07:00 to 23:59 Moscow
+time, and every 3 hours from 00:00 to 06:59. The UI uses matching freshness
+thresholds: stale after 75 minutes during the day and 210 minutes overnight.
 
 ## Deployment And Access
 
