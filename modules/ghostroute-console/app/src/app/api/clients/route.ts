@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
       route: search.get("route") || "all",
       channel: search.get("channel") || "all",
       confidence: search.get("confidence") || "all",
+      trafficClass: search.get("trafficClass") || "client",
       client: search.get("client") || "all",
       search: search.get("search") || "",
     },
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
     page: result.page,
     pageSize: result.pageSize,
     totalPages: result.totalPages,
-    clients: result.rows.map(({ raw, ...row }) => row),
+    clients: result.rows.map((row: any) => {
+      const { raw, ...rest } = row;
+      return rest;
+    }),
   });
 }

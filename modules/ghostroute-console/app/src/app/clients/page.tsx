@@ -39,8 +39,14 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
   const clientsPage = listClientInventory({ page, pageSize, filters });
+  const isLowSignal = (row: Record<string, any>) =>
+    (row.role === "Unattributed mobile ingress source" && Number(row.total_bytes || 0) < 50 * 1024 * 1024) ||
+    (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
+  const primaryRows = clientsPage.rows.filter((row) => !isLowSignal(row));
+  const lowSignalRows = clientsPage.rows.filter((row) => isLowSignal(row));
   const selected =
     clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client)) ||
+    primaryRows[0] ||
     clientsPage.rows[0];
   const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.label || selected.id } }).rows : [];
   const model = buildPagedEvidenceContext(filters, trafficRows);
@@ -56,6 +62,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
+    trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
@@ -75,6 +82,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <thead>
                   <tr>
                     <th className="col-client">Device</th>
+                    <th>Role</th>
                     <th>Last seen</th>
                     <th>Status</th>
                     <th>Channel</th>
@@ -83,12 +91,13 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   </tr>
                 </thead>
                 <tbody>
-                  {clientsPage.rows.map((row) => (
+                  {primaryRows.map((row) => (
                     <tr
                       key={row.id || row.label}
                       className={(row.label || row.id) === selectedName ? "selected" : ""}
                     >
                       <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
+                      <td>{row.role || "Unknown device"}</td>
                       <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
                       <td><StatusBadge value={row.status || "Inactive"} /></td>
                       <td><ChannelBadge value={row.channel} /></td>
@@ -98,6 +107,37 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   ))}
                 </tbody>
               </table>
+              {lowSignalRows.length > 0 ? (
+                <>
+                  <h3 style={{ marginTop: 16 }}>Low-signal / unattributed sources</h3>
+                  <table className="table clients-table">
+                    <thead>
+                      <tr>
+                        <th className="col-client">Device</th>
+                        <th>Role</th>
+                        <th>Last seen</th>
+                        <th>Status</th>
+                        <th>Channel</th>
+                        <th className="col-route">Route</th>
+                        <th className="col-traffic">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lowSignalRows.map((row) => (
+                        <tr key={row.id || row.label} className={(row.label || row.id) === selectedName ? "selected" : ""}>
+                          <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
+                          <td>{row.role || "Unknown device"}</td>
+                          <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
+                          <td><StatusBadge value={row.status || "Inactive"} /></td>
+                          <td><ChannelBadge value={row.channel} /></td>
+                          <td><RouteBadge value={routeFromBytes(row)} /></td>
+                          <td>{bytes(row.total_bytes || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              ) : null}
               <Pagination
                 basePath="/clients"
                 page={clientsPage.page}
@@ -120,6 +160,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <>
               <div className="detail-list">
                 <div className="detail-row"><span>Total</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
+                <div className="detail-row"><span>Device role</span><strong>{selected.role || "Unknown device"}</strong></div>
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>
                 <div className="detail-row"><span>Last seen</span><strong>{shortDateTime(selected.last_seen || selected.collected_at)}</strong></div>
@@ -134,8 +175,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-list">
                   {selectedFlows.map((row, idx) => (
                     <div className="detail-row" key={idx}>
-                      <span>{row.destination || row.dns_qname || "n/a"}</span>
-                      <strong><RouteBadge value={row.route || routeFromBytes(row)} /></strong>
+                      <span>{row.destinationLabel || row.destination || row.dns_qname || "n/a"}</span>
+                      <strong>{bytes(row.bytes || 0)} <RouteBadge value={row.route || routeFromBytes(row)} /></strong>
                     </div>
                   ))}
                 </div>

@@ -11,6 +11,8 @@ and appends the resulting DNS/flow/route events to SQLite.
 
 Architecture details live in
 [`docs/ghostroute-console-architecture.md`](/docs/ghostroute-console-architecture.md).
+Monitoring semantics live in
+[`docs/monitoring-principles.md`](docs/monitoring-principles.md).
 
 The current post-MVP slice adds route explanation, channel attribution,
 known-device history, scheduled read-only collection, append-only live events,
@@ -76,13 +78,14 @@ The VPS deployment defaults to read-only SSH collection through the generated
   cards;
 - full snapshots every 30 minutes during 07:00-23:59 Moscow time;
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
-- live log-tail polling every 15 seconds.
+- live event polling every 10 minutes by default.
 
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
 snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
 for 30 days, and SQLite safety backups are daily with at most 2 recent files.
 The live collector stores normalized events in SQLite; the per-poll raw JSON is
-only short-term troubleshooting material.
+only short-term troubleshooting material. Live views show event snapshots and
+client activity summaries, not a continuous per-second stream.
 
 Freshness uses the same cadence: stale after 75 minutes during the day and
 after 210 minutes overnight.

@@ -31,6 +31,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
+    trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
@@ -48,9 +49,16 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
             <div className="toolbar">
               <div>
                 <h2>Flow table</h2>
-                <p>{diagnostics ? "Diagnostics mode: technical DNS and route events are visible." : "Operator traffic rows only: no-byte/system evidence is hidden by default."}</p>
+                <p>
+                  {diagnostics
+                    ? "Diagnostics mode: technical DNS and route events are visible."
+                    : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} traffic by volume; DNS-only rows are not counted as traffic.`}
+                </p>
               </div>
               <span className="subtle">{trafficPage.total} rows</span>
+            </div>
+            <div className="page-note">
+              Detailed traffic: последний тяжелый snapshot, обновляется реже. `estimated` - оценка по counters/log summaries; `dns-interest` - DNS-запрос, не доказательство переданного трафика.
             </div>
             <div className="page-note">
               {diagnostics ? (
@@ -66,6 +74,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   <th className="col-client">Client</th>
                   <th>Channel</th>
                   <th className="col-destination">Destination</th>
+                  <th>Class</th>
                   <th className="col-route">Route</th>
                   <th className="col-traffic">Traffic</th>
                   <th className="col-conn">Conn</th>
@@ -78,7 +87,8 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.eventTimeLabel}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
                     <td><ChannelBadge value={row.channel} /></td>
-                    <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{row.destination}</Link></td>
+                    <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{row.flow?.destinationLabel || row.destination}</Link></td>
+                    <td>{row.flow?.trafficClassLabel || "Client"}</td>
                     <td><RouteBadge value={row.route} /></td>
                     <td>{bytes(row.bytes)}</td>
                     <td>{row.connections}</td>

@@ -16,6 +16,7 @@ export type ConsoleFilters = {
   channel?: string;
   client?: string;
   confidence?: string;
+  trafficClass?: string;
   search?: string;
 };
 

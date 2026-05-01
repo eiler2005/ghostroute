@@ -19,7 +19,7 @@ console.log(`light_collector_mode=${process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE 
 console.log(`light_collect_interval_seconds=${process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || "300"}`);
 console.log(`live_mode=${process.env.GHOSTROUTE_LIVE_MODE || "disabled"}`);
 console.log(`live_collector_mode=${process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"}`);
-console.log(`live_poll_seconds=${process.env.GHOSTROUTE_LIVE_POLL_SECONDS || "2"}`);
+console.log(`live_poll_seconds=${process.env.GHOSTROUTE_LIVE_POLL_SECONDS || "600"}`);
 
 if (!fs.existsSync(snapshotDir)) {
   console.log("snapshots=0");
