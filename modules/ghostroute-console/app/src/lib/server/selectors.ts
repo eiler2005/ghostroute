@@ -25,6 +25,11 @@ import {
   trafficClassLabel,
   trafficClasses,
 } from "../traffic-classification.mjs";
+import {
+  applyDeviceAttribution,
+  canonicalDeviceKey,
+  displayDeviceLabel,
+} from "../device-attribution.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 
@@ -172,7 +177,16 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
     if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel && !(row.channels || []).includes(filters.channel)) return false;
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
     if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) return false;
-    if (filters.client && filters.client !== "all" && row.client !== filters.client && row.label !== filters.client) return false;
+    if (filters.client && filters.client !== "all") {
+      const requestedKey = canonicalDeviceKey(filters.client);
+      const rowKey = canonicalDeviceKey(row);
+      const aliases = [row.client, row.raw_client, row.label, row.id, row.device_id, ...(row.aliases || [])].filter(Boolean).map(String);
+      if (requestedKey && rowKey && requestedKey === rowKey) {
+        // same canonical device
+      } else if (!aliases.includes(filters.client)) {
+        return false;
+      }
+    }
     if (!search) return true;
     return JSON.stringify(row).toLowerCase().includes(search);
   });
@@ -180,8 +194,14 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
 
 function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
   const trafficClass = trafficClassFor(row);
+  const rawClient = row.client;
+  const client = displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
   return {
     ...row,
+    raw_client: rawClient,
+    client,
+    label: row.label ? displayDeviceLabel(row.label) : row.label,
+    device_key: canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
     destinationLabel: displayDestination(row),
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
@@ -213,13 +233,13 @@ function statusFromLastSeen(value?: string) {
 
 function keyForDevice(row: Record<string, any>) {
   const text = [row.device_id, row.id, row.label, row.client, row.profile].filter(Boolean).join(" ").toLowerCase();
-  const canonical = text.match(/\b(mobile-client-\d+|mobile-source-\d+|lan-host-\d+)\b/);
-  if (canonical) return canonical[1];
+  const canonical = canonicalDeviceKey(text);
+  if (canonical) return canonical;
   return String(row.device_id || row.id || row.label || row.ip || "unknown-device").toLowerCase();
 }
 
 function deviceLabel(row: Record<string, any>) {
-  return String(row.label || row.client || row.id || row.device_id || "Unknown").trim();
+  return displayDeviceLabel(String(row.label || row.client || row.id || row.device_id || "Unknown").trim());
 }
 
 function labelScore(value?: string) {
@@ -311,6 +331,8 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
         aliases: label ? [label] : [],
         raw: row.raw || row,
       });
+      const created = byKey.get(key);
+      if (created) Object.assign(created, applyDeviceAttribution(created));
       return;
     }
     addAlias(current, label);
@@ -347,6 +369,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
     }
     const channel = preservedChannel(row);
     addChannel(current, channel);
+    Object.assign(current, applyDeviceAttribution(current));
   };
   for (const row of latest) remember(row, false);
   if (includeHistory) {
@@ -691,8 +714,14 @@ function addCommonFilters(where: string[], params: any[], filters: ConsoleFilter
     params.push(filters.confidence);
   }
   if (filters.client && filters.client !== "all") {
-    where.push(`${client} = ?`);
-    params.push(filters.client);
+    const key = canonicalDeviceKey(filters.client);
+    if (key) {
+      where.push(`(${client} = ? or lower(${client}) like ?)`);
+      params.push(filters.client, `%${key}%`);
+    } else {
+      where.push(`${client} = ?`);
+      params.push(filters.client);
+    }
   }
   const search = filters.search?.trim();
   if (search) {
@@ -976,7 +1005,7 @@ export function listClientInventory(args: PageArgs = {}) {
 function originForLive(row: Record<string, any>) {
   const client = String(row.client || row.client_ip || "").trim();
   const source = String(row.source_log || row.source || "").toLowerCase();
-  if (client && !["client", "unknown", "not observed"].includes(client.toLowerCase())) return client;
+  if (client && !["client", "unknown", "not observed"].includes(client.toLowerCase())) return displayDeviceLabel(client);
   if (source.includes("dnsmasq")) return "Router DNS service";
   if (source.includes("sing-box")) return "Router/sing-box";
   if (String(row.event_type || "").includes("collector")) return "Collector";

@@ -47,6 +47,15 @@ The Clients page shows a role next to each source. Known labels can become
 source`. The Console does not invent real device names; it only uses labels,
 profiles and safe inference from observed metadata.
 
+Operators may add a private `device-attribution.json` file in the Console data
+directory to pin stable names and roles for known sources. That file is local
+runtime state, not tracked documentation, because it can contain household
+device names. The same attribution is applied consistently in Dashboard,
+Traffic Explorer, Clients, Live, Budget and API payloads. If a source is not in
+the table and the snapshots do not identify it, Console displays it as
+`Unknown device`, `Unknown Home Reality profile` or `Unattributed source`
+instead of guessing.
+
 Client totals sort by the latest factual snapshot for the selected period.
 Historical rows may enrich the display label and role, but they must not make an
 old total look current. If one canonical source such as `lan-host-08` has been

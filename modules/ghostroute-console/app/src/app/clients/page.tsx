@@ -45,13 +45,13 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
   const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
   const selected =
-    clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client)) ||
+    clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client || (row.aliases || []).includes(filters.client))) ||
     primaryRows[0] ||
     clientsPage.rows[0];
-  const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.label || selected.id } }).rows : [];
+  const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
   const model = buildPagedEvidenceContext(filters, trafficRows);
   model.devices = clientsPage.rows;
-  const selectedName = selected?.label || selected?.id || "";
+  const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
   const selectedFlows = selected ? trafficRows.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
   const selectedDns = selected ? model.dnsQueries.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
@@ -94,9 +94,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   {primaryRows.map((row) => (
                     <tr
                       key={row.id || row.label}
-                      className={(row.label || row.id) === selectedName ? "selected" : ""}
+                      className={(row.id || row.label) === selectedName ? "selected" : ""}
                     >
-                      <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
+                      <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
                       <td>{row.role || "Unknown device"}</td>
                       <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
                       <td><StatusBadge value={row.status || "Inactive"} /></td>
@@ -124,8 +124,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                     </thead>
                     <tbody>
                       {unattributedRows.map((row) => (
-                        <tr key={row.id || row.label} className={(row.label || row.id) === selectedName ? "selected" : ""}>
-                          <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
+                        <tr key={row.id || row.label} className={(row.id || row.label) === selectedName ? "selected" : ""}>
+                          <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
                           <td>{row.role || "Unknown device"}</td>
                           <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
                           <td><StatusBadge value={row.status || "Inactive"} /></td>

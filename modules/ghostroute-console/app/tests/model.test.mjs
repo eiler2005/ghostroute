@@ -9,6 +9,8 @@ const normalizeModule = await import(new URL("../scr" + "ipts/lib/normalize.mjs"
 const { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
 const { deviceRole, displayDestination, trafficClassFor } = classificationModule;
+const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
+const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions } = attributionModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -177,4 +179,36 @@ test("device role inference keeps pseudo sources out of normal device meaning", 
   assert.equal(deviceRole({ label: "lan-host-12 (Windows laptop)" }), "Windows laptop");
   assert.equal(deviceRole({ label: "lan-host-09 (Windows PC)" }), "Windows PC");
   assert.equal(deviceRole({ label: "lan-host-07 (Unknown mobile/private MAC)" }), "Private MAC mobile device");
+});
+
+test("operator-local device attribution labels known devices and marks unknown sources", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-attribution-"));
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.json"),
+    JSON.stringify({
+      schema_version: 1,
+      devices: {
+        "lan-host-08": { label: "lan-host-08 (Phone)", role: "iPhone", channel: "Home Wi-Fi/LAN" },
+        "mobile-client-01": { label: "mobile-client-01 (Owner A)", role: "Home Reality profile" },
+      },
+    })
+  );
+  const registry = loadDeviceAttributions(tmp);
+  assert.equal(displayDeviceLabel("lan-host-08", registry), "lan-host-08 (Phone)");
+  assert.equal(displayDeviceLabel("mobile-client-01 / B", registry), "mobile-client-01 (Owner A) / B");
+  assert.equal(displayDeviceLabel("lan-host-99", registry), "lan-host-99 (Unknown device)");
+  assert.equal(displayDeviceLabel("mobile-source-08", registry), "mobile-source-08 (Unattributed source)");
+  assert.deepEqual(
+    applyDeviceAttribution({ id: "lan-host-08", label: "lan-host-08", role: "Home LAN device", total_bytes: 1 }, registry),
+    {
+      id: "lan-host-08",
+      label: "lan-host-08 (Phone)",
+      role: "iPhone",
+      total_bytes: 1,
+      channel: "Home Wi-Fi/LAN",
+      device_key: "lan-host-08",
+      attribution_confidence: "operator-local",
+      aliases: ["lan-host-08"],
+    }
+  );
 });
