@@ -86,6 +86,20 @@ dnsmasq RU/direct/default -> home/RF/default resolver
 
 DoH/DoT generated inside an app is not force-blocked in v1. It remains a
 residual risk and should be checked during BrowserLeaks/app proof testing.
+For Shadowrocket proof tests, the endpoint Config must therefore be strict and
+universal: `FINAL,PROXY`, `bypass-system = false`,
+explicit foreign DoH `dns-server` / `fallback-dns-server`,
+`dns-fallback-system = false`, `dns-direct = false`, `hijack-dns = :53`, IPv6
+disabled, and unsupported UDP rejected. A Geo/RU client config, missing
+explicit DNS server, or helper rule such as `DOMAIN-SUFFIX,sslip.io,DIRECT` is
+not proof-mode evidence because arbitrary DNS test names can fall back before
+the router sees them.
+
+For everyday Shadowrocket use, a separate daily template may intentionally use
+`dns-server = system` and narrow `DIRECT` rules for domestic banking, SMTP/IMAP,
+or corporate services. That daily profile is not a BrowserLeaks proof profile.
+Keep real corporate domains and private hostnames in local imported configs,
+not in tracked docs.
 
 ## Channel A
 
@@ -219,13 +233,14 @@ If BrowserLeaks for a managed domain shows public IP = VPS but DNS includes
 home/RF, Google/Cloudflare or many resolver pools, check in this order:
 
 ```text
-1. Is the tested site in configs/dnsmasq-stealth.conf.add?
-2. Is it absent from configs/domains-no-vpn.txt?
-3. Is it not a RU/SU/RF TLD? RU-like domains are intentionally kept out of VPS DNS.
-4. Does /jffs/configs/dnsmasq-vps-managed.conf.add contain server=/domain/127.0.0.1#<port>?
-5. Did dnsmasq restart after the include changed?
-6. Did Safari/iOS cache old DNS? Toggle airplane mode or restart the profile.
-7. Is the app/browser using its own DoH/DoT? v1 does not block every app-level encrypted DNS path.
+1. Is the active endpoint Config the generated strict Shadowrocket proof config?
+2. Is the tested site in configs/dnsmasq-stealth.conf.add?
+3. Is it absent from configs/domains-no-vpn.txt?
+4. Is it not a RU/SU/RF TLD? RU-like domains are intentionally kept out of VPS DNS.
+5. Does /jffs/configs/dnsmasq-vps-managed.conf.add contain server=/domain/127.0.0.1#<port>?
+6. Did dnsmasq restart after the include changed?
+7. Did Safari/iOS cache old DNS? Toggle airplane mode or restart the profile.
+8. Is the app/browser using its own DoH/DoT? v1 does not block every app-level encrypted DNS path.
 ```
 
 Expected live proofs:

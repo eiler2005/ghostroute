@@ -157,6 +157,22 @@ ssh admin@192.168.50.1 '
 '
 ```
 
+Перед router-side диагностикой проверьте активный iPhone Config. Для proof
+режима Shadowrocket должен использовать сгенерированный strict config из
+`ansible/out/shadowrocket-proof/`: `FINAL,PROXY`, `bypass-system = false`,
+explicit foreign DoH `dns-server` / `fallback-dns-server`,
+`dns-fallback-system = false`, `dns-direct = false`, `hijack-dns = :53`, IPv6
+off и unsupported UDP reject. Geo/RU templates, `sslip.io DIRECT`,
+`fallback-dns-server = system`, отсутствие explicit `dns-server` и
+`always-real-ip = *` не подходят для BrowserLeaks-style тестов: они могут увести
+произвольные probe names к hotel/LTE/system resolver до входа в Channel A/B/C.
+
+Для everyday-режима используйте отдельный daily Config с `dns-server = system`
+и узкими `DIRECT` исключениями для банков, SMTP/IMAP и корпоративных сервисов.
+Такой daily Config не является BrowserLeaks proof. Реальные corporate domains и
+private hostnames держите только в локально импортированном Shadowrocket Config,
+не в tracked docs.
+
 Если include есть, но результат старый, очистите клиентский cache: airplane
 mode on/off, restart VPN profile, restart Safari/tab. Если только один browser
 упрямо показывает другой DNS, проверьте app-level DoH/DoT: v1 не ломает
