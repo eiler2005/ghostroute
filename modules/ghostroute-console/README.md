@@ -67,6 +67,12 @@ The dedicated public listener is owned by Caddy and proxies to
 `/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS. Legacy nginx files
 may remain on disk but should be stopped when Caddy owns the Console port.
 
+Operator-local device attribution can be stored in the same data directory as
+`device-attribution.json`. It is intentionally gitignored runtime data: Console
+uses it to render stable device labels and roles such as phone, tablet, laptop
+or owner/profile names, while new or unmatched sources remain explicitly marked
+as unknown/unattributed.
+
 Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
 `GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains
 `disabled`, `/api/live/stream` still serves the stored append-only events from

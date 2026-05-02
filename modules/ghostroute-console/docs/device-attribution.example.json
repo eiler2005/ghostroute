@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-02T00:00:00Z",
+  "devices": {
+    "mobile-client-01": {
+      "label": "mobile-client-01 (Owner A)",
+      "role": "Home Reality profile",
+      "kind": "Phone"
+    },
+    "lan-host-08": {
+      "label": "lan-host-08 (Phone)",
+      "role": "iPhone",
+      "kind": "iPhone",
+      "channel": "Home Wi-Fi/LAN"
+    },
+    "lan-host-10": {
+      "label": "lan-host-10 (Windows laptop)",
+      "role": "Windows laptop",
+      "kind": "Windows laptop",
+      "channel": "Home Wi-Fi/LAN"
+    }
+  }
+}
