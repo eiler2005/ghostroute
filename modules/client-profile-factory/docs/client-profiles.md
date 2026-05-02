@@ -64,6 +64,12 @@ three Shadowrocket-imported lanes:
 bypass-system = false
 ipv6 = false
 prefer-ipv6 = false
+dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+fallback-dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+dns-fallback-system = false
+dns-direct = false
+hijack-dns = :53
+udp-policy-not-supported-behaviour = REJECT
 
 [Rule]
 FINAL,PROXY
@@ -81,6 +87,16 @@ given a full `[General]`/`[Rule]` config it may fail with `cannot fetch subs
 servers` or import with warnings. Use the Config import UI or the Files share
 sheet.
 
+The generator also writes a daily-use template:
+
+```text
+ansible/out/shadowrocket-proof/ghostroute-shadowrocket-daily-template.conf
+```
+
+Use the strict proof config for BrowserLeaks and channel proof. Use the daily
+template for normal phone use where banking apps, SMTP/IMAP, or corporate
+services need local/system DNS and narrow direct exceptions.
+
 The proof config is shared because the Shadowrocket layer should only own the
 first hop:
 
@@ -97,6 +113,12 @@ Channel A Reality server       -> PROXY
 Channel B XHTTP server         -> PROXY
 Channel C1-Shadowrocket server -> PROXY
 ```
+
+The proof config is deliberately universal. Do not add special BrowserLeaks or
+ipify rules for the proof itself. `FINAL,PROXY` sends arbitrary checker domains
+to the selected GhostRoute server, while explicit DoH, DNS fallback/hijack,
+`dns-direct = false`, and UDP/IPv6 fail-closed settings keep resolver and QUIC
+behavior from silently falling back to the hotel, LTE, or system network.
 
 Expected canaries:
 
@@ -147,16 +169,62 @@ Problems they caused or can cause:
   proof mode it can also encourage local/private answers to be treated as
   direct/local. Leave it out unless a specific local-LAN workflow needs it.
 
-Useful ideas from the expanded config, but only after proof mode is stable:
+Strict DNS/UDP settings that must stay in proof configs:
 
-- `hijack-dns = :53` can help catch plain DNS in a richer production config.
+- `dns-server = ...` and `fallback-dns-server = ...` avoid implicit system DNS.
+- `dns-direct = false` asks Shadowrocket to avoid sending DNS outside the
+  selected proxy path when the client build supports the key.
+- `hijack-dns = :53` catches plain DNS before it reaches the system network.
 - `dns-fallback-system = false` prevents system resolver fallback.
 - `udp-policy-not-supported-behaviour = REJECT` makes unsupported UDP fail
   closed instead of silently going direct.
 
-Do not add these to the proof config first. They change DNS/UDP behavior and
-made diagnosis harder. Start with minimal `FINAL,PROXY`, prove that Channel
-A/B/C reaches the router, then add stricter DNS controls deliberately.
+These are part of the shared strict proof config because DNS leak tests use
+arbitrary hostnames, not only the page domain already present in
+`STEALTH_DOMAINS`. If an older minimal config is needed for transport-only
+debugging, generate or edit it as a one-off and label the result clearly so it
+is not reused for leak proof.
+
+### Shadowrocket Daily Template
+
+The daily template intentionally trades BrowserLeaks purity for application
+compatibility:
+
+```ini
+[General]
+bypass-system = false
+ipv6 = false
+prefer-ipv6 = false
+dns-server = system
+fallback-dns-server = system
+dns-fallback-system = false
+hijack-dns = :53
+udp-policy-not-supported-behaviour = REJECT
+
+[Rule]
+DOMAIN-SUFFIX,vtb.ru,DIRECT
+DOMAIN,ip-check-perf.radar.cloudflare.com,DIRECT
+DOMAIN-SUFFIX,radar.cloudflare.com,DIRECT
+DOMAIN-SUFFIX,app-analytics-services-att.com,DIRECT
+DOMAIN-SUFFIX,app-measurement.com,DIRECT
+DOMAIN-SUFFIX,firebaseinstallations.googleapis.com,DIRECT
+DOMAIN-SUFFIX,sentry.io,DIRECT
+DOMAIN-SUFFIX,app-site-association.cdn-apple.com,DIRECT
+DOMAIN-SUFFIX,mzstorekit.itunes.apple.com,DIRECT
+DOMAIN-SUFFIX,iosapps.itunes.apple.com,DIRECT
+
+DOMAIN,smtp.gmail.com,DIRECT
+DOMAIN,imap.gmail.com,DIRECT
+
+# Keep real corporate/private direct exceptions local.
+# DOMAIN-SUFFIX,corp.example.invalid,DIRECT
+# DOMAIN-KEYWORD,corp-keyword,DIRECT
+
+FINAL,PROXY
+```
+
+Do not commit real corporate domains or private hostnames to this repository.
+Add those direct exceptions only in the locally imported Shadowrocket Config.
 
 ## Mobile App Configuration (Critical) — OneXray
 
@@ -369,6 +437,11 @@ For Shadowrocket Channel B profiles, keep `UDP Relay` disabled by default.
 Channel B's first hop is XHTTP/TLS over TCP; enabling UDP relay can change
 QUIC/DNS behavior and make first-hop fingerprint diagnostics harder to read.
 Enable it only when explicitly testing UDP behavior.
+
+For BrowserLeaks and other arbitrary checker tests, use the shared strict
+Shadowrocket proof Config. A Geo/RU template, `sslip.io DIRECT` helper rule, or
+system DNS fallback is not valid proof-mode evidence because it can move
+resolver ownership back to the endpoint before Channel B reaches the router.
 
 ## Channel C1 Home-First Naive
 

@@ -270,6 +270,12 @@
           bypass-system = false
           ipv6 = false
           prefer-ipv6 = false
+          dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+          fallback-dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+          dns-fallback-system = false
+          dns-direct = false
+          hijack-dns = :53
+          udp-policy-not-supported-behaviour = REJECT
 
           [Rule]
           FINAL,PROXY
@@ -296,6 +302,12 @@
           bypass-system = false
           ipv6 = false
           prefer-ipv6 = false
+          dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+          fallback-dns-server = https://1.1.1.1/dns-query, https://cloudflare-dns.com/dns-query
+          dns-fallback-system = false
+          dns-direct = false
+          hijack-dns = :53
+          udp-policy-not-supported-behaviour = REJECT
 
           [Rule]
           FINAL,PROXY
@@ -318,10 +330,65 @@
           https://api64.ipify.org -> VPS IP or blocked/timeout, but not LTE provider IP
           ```
 
+          This config is deliberately universal and fail-closed for proof
+          tests. It does not need per-site rules for BrowserLeaks, ipify, or
+          another checker: every non-system flow reaches the active GhostRoute
+          server, DNS does not fall back to the hotel/LTE resolver, and the
+          router owns direct-vs-managed decisions after the endpoint reaches
+          Channel A/B/C.
+
           Do not use a client-side Geo/RU split proof config for GhostRoute
-          channel tests. The router owns direct-vs-managed decisions after the
-          endpoint reaches Channel A/B/C.
+          channel tests. Rules such as `GEOIP,RU,DIRECT`,
+          `DOMAIN-SUFFIX,sslip.io,DIRECT`, `fallback-dns-server = system`, no
+          explicit `dns-server`, or `always-real-ip = *` can move DNS/routing
+          decisions back to the endpoint before GhostRoute sees the flow.
+
+          For everyday use, start from
+          `ghostroute-shadowrocket-daily-template.conf` instead. It keeps system
+          DNS for domestic/banking compatibility and has narrow direct rules for
+          banking and mail. Add real corporate/private direct exceptions only in
+          your local imported Config, not in tracked repository docs.
       tags:
+        - shadowrocket_proof
+
+    - name: Render shared Shadowrocket daily template
+      ansible.builtin.copy:
+        dest: "{{ shadowrocket_proof_out_dir }}/ghostroute-shadowrocket-daily-template.conf"
+        mode: "0600"
+        content: |
+          [General]
+          bypass-system = false
+          ipv6 = false
+          prefer-ipv6 = false
+          dns-server = system
+          fallback-dns-server = system
+          dns-fallback-system = false
+          hijack-dns = :53
+          udp-policy-not-supported-behaviour = REJECT
+
+          [Rule]
+          DOMAIN-SUFFIX,vtb.ru,DIRECT
+          DOMAIN,ip-check-perf.radar.cloudflare.com,DIRECT
+          DOMAIN-SUFFIX,radar.cloudflare.com,DIRECT
+          DOMAIN-SUFFIX,app-analytics-services-att.com,DIRECT
+          DOMAIN-SUFFIX,app-measurement.com,DIRECT
+          DOMAIN-SUFFIX,firebaseinstallations.googleapis.com,DIRECT
+          DOMAIN-SUFFIX,sentry.io,DIRECT
+          DOMAIN-SUFFIX,app-site-association.cdn-apple.com,DIRECT
+          DOMAIN-SUFFIX,mzstorekit.itunes.apple.com,DIRECT
+          DOMAIN-SUFFIX,iosapps.itunes.apple.com,DIRECT
+
+          DOMAIN,smtp.gmail.com,DIRECT
+          DOMAIN,imap.gmail.com,DIRECT
+
+          # Keep real corporate/private direct exceptions in the local imported
+          # Shadowrocket config only. Do not commit them to tracked docs.
+          # DOMAIN-SUFFIX,corp.example.invalid,DIRECT
+          # DOMAIN-KEYWORD,corp-keyword,DIRECT
+
+          FINAL,PROXY
+      tags:
+        - shadowrocket_daily
         - shadowrocket_proof
 
     - name: Render emergency direct-VPS URI for each mobile client
@@ -600,6 +667,14 @@
           policy. The Shadowrocket config is a routing layer, not just a VPN
           toggle.
 
+          For leak and egress proof tests, use the generated shared strict
+          proof config from `ansible/out/shadowrocket-proof/` instead of a
+          Geo/RU or provider template. It forces `FINAL,PROXY`, disables system
+          DNS fallback, sets explicit foreign DoH resolvers, asks Shadowrocket
+          not to send DNS direct, hijacks plain DNS, disables IPv6, and rejects
+          unsupported UDP so arbitrary checker domains cannot silently fall
+          back to the hotel/LTE resolver.
+
           ## Shadowrocket Channel B
 
           - Import the `*-channel-b-home` QR/text URI for the selected device.
@@ -607,6 +682,9 @@
           - Enable `UDP Relay` only for explicit UDP behavior tests.
           - Re-check `FINAL -> MANAGED/PROXY` after importing or editing config
             files.
+          - Re-check the active Config is the strict proof config before
+            BrowserLeaks-style tests; a DIRECT rule for a helper hostname such
+            as `sslip.io` is not valid proof-mode evidence.
 
           ## Expected First Hop
 
