@@ -4,6 +4,8 @@ services:
   ghostroute-console:
     build:
       context: ../app
+      args:
+        GHOSTROUTE_CONSOLE_BUILD_COMMIT: ${GHOSTROUTE_CONSOLE_BUILD_COMMIT:-unknown}
     image: ghostroute-console:latest
     container_name: ghostroute-console
     restart: unless-stopped
@@ -21,6 +23,7 @@ services:
       - /opt/ghostroute-console/ssh:/ssh:ro
     environment:
       NODE_ENV: production
+      GHOSTROUTE_CONSOLE_BUILD_COMMIT: ${GHOSTROUTE_CONSOLE_BUILD_COMMIT:-unknown}
       HOSTNAME: 127.0.0.1
       PORT: 3000
       GHOSTROUTE_CONSOLE_DATA_DIR: /data

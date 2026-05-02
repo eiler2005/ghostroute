@@ -39,6 +39,13 @@ export function ConsoleShell({
     model.nextExpectedCollection ? `next ${shortDateTime(model.nextExpectedCollection)}` : "",
     model.staleThresholdMinutes ? `stale>${model.staleThresholdMinutes}m` : "",
   ].filter(Boolean).join(" · ");
+  const latestTraffic = model.runtime.latestSnapshots.traffic ? shortDateTime(model.runtime.latestSnapshots.traffic) : "n/a";
+  const latestSummary = model.runtime.latestSnapshots.traffic_summary ? shortDateTime(model.runtime.latestSnapshots.traffic_summary) : "n/a";
+  const sourceTitle = [
+    `data: ${model.runtime.dataDirLabel}`,
+    `repo: ${model.runtime.repoRootLabel}`,
+    `env: ${model.runtime.nodeEnv}`,
+  ].join(" · ");
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -116,6 +123,12 @@ export function ConsoleShell({
             <button type="submit">Фильтр</button>
           </form>
         </header>
+        <div className="source-strip" title={sourceTitle}>
+          <span>{model.runtime.sourceLabel}</span>
+          <span>build {model.runtime.buildCommit}</span>
+          <span>traffic {latestTraffic}</span>
+          <span>summary {latestSummary}</span>
+        </div>
         {children}
       </main>
     </div>

@@ -27,6 +27,14 @@ export type ConsoleModel = {
   freshnessLabel?: string;
   nextExpectedCollection?: string;
   staleThresholdMinutes?: number;
+  runtime: {
+    sourceLabel: string;
+    dataDirLabel: string;
+    repoRootLabel: string;
+    buildCommit: string;
+    nodeEnv: string;
+    latestSnapshots: Record<string, string>;
+  };
   collectorErrors: Array<Record<string, any>>;
   collectorRun?: Record<string, any> | null;
   hourlyTraffic: Array<Record<string, any>>;

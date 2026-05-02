@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import type { ConsoleFilters, ConsoleModel, SnapshotRecord } from "./types";
+import { dataDir, repoRoot } from "./paths";
 import {
   auditLog,
   catalogReviews,
@@ -25,6 +27,49 @@ import {
 } from "../traffic-classification.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
+
+function shortCommit(value?: string) {
+  const commit = String(value || "").trim();
+  if (!commit || commit === "unknown") return "unknown";
+  return commit.slice(0, 8);
+}
+
+function gitCommit() {
+  if (process.env.GHOSTROUTE_CONSOLE_BUILD_COMMIT) {
+    return shortCommit(process.env.GHOSTROUTE_CONSOLE_BUILD_COMMIT);
+  }
+  try {
+    return shortCommit(execFileSync("git", ["rev-parse", "--short=8", "HEAD"], { cwd: repoRoot(), encoding: "utf8", timeout: 1000 }));
+  } catch {
+    return "unknown";
+  }
+}
+
+function labelPath(value: string) {
+  if (value === "/data") return "/data";
+  const marker = "modules/ghostroute-console/";
+  const idx = value.indexOf(marker);
+  if (idx >= 0) return value.slice(idx);
+  return value;
+}
+
+function runtimeInfo(snapshots: ConsoleModel["snapshots"]) {
+  const dir = dataDir();
+  const repo = repoRoot();
+  const sourceLabel = process.env.NODE_ENV === "production" || dir === "/data" ? "VPS/runtime data" : "local dev data";
+  return {
+    sourceLabel,
+    dataDirLabel: labelPath(dir),
+    repoRootLabel: labelPath(repo),
+    buildCommit: gitCommit(),
+    nodeEnv: process.env.NODE_ENV || "development",
+    latestSnapshots: Object.fromEntries(
+      Object.entries(snapshots)
+        .filter(([, row]) => Boolean(row?.collectedAt))
+        .map(([type, row]) => [type, row?.collectedAt || ""])
+    ),
+  };
+}
 
 function latestByType(records: SnapshotRecord[]) {
   return Object.fromEntries(records.map((row) => [row.type, row])) as ConsoleModel["snapshots"];
@@ -568,6 +613,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     freshnessLabel: newest || "",
     nextExpectedCollection: nextExpectedCollection(newest),
     staleThresholdMinutes: staleThreshold,
+    runtime: runtimeInfo(snapshots),
     collectorErrors,
     collectorRun,
     hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
@@ -855,6 +901,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     freshnessLabel: newest || "",
     nextExpectedCollection: nextExpectedCollection(newest),
     staleThresholdMinutes: staleThreshold,
+    runtime: runtimeInfo(snapshots),
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
     hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
