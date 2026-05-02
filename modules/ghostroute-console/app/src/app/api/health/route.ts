@@ -8,5 +8,6 @@ export async function GET() {
     generated_at: new Date().toISOString(),
     snapshots: Object.values(model.snapshots).filter(Boolean).length,
     freshness_minutes: model.freshnessMinutes,
+    runtime: model.runtime,
   });
 }

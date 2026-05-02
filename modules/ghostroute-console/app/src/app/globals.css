@@ -30,6 +30,8 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .freshness-fresh { border-color: rgba(88,214,141,.45); color: #65e89b; }
 .freshness-stale { border-color: rgba(245,185,66,.55); color: #ffc85a; }
 .freshness-empty { border-color: rgba(183,195,210,.34); color: #b7c3d2; }
+.source-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; color: #a9bad0; font-size: 12px; }
+.source-strip span { border: 1px solid #243954; border-radius: 8px; background: rgba(13,27,46,.78); padding: 5px 8px; }
 .grid { display: grid; gap: 14px; }
 .grid.cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .grid.two { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); align-items: start; }

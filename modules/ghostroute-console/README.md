@@ -88,6 +88,12 @@ The live collector stores normalized events in SQLite; the per-poll raw JSON is
 only short-term troubleshooting material. Live views show event snapshots and
 client activity summaries, not a continuous per-second stream.
 
+The Console header shows the runtime/data source and build marker on every page:
+`local dev data` or `VPS/runtime data`, the short build commit, and the latest
+`traffic` / `traffic_summary` snapshot timestamps. `/api/health` exposes the
+same metadata under `runtime` so deploy-vs-data differences can be checked
+without opening the GUI.
+
 Freshness uses the same cadence: stale after 75 minutes during the day and
 after 210 minutes overnight.
 
