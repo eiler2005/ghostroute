@@ -132,7 +132,10 @@ listener with Basic Auth and a small local buffering proxy in front of the app.
 This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
 a second public listener owner. Legacy nginx files may remain on disk for
 rollback, but the nginx listener must be stopped when Caddy owns the Console
-port. The data directory is `/opt/ghostroute-console/data`; repo sources are
+port. The dedicated Console listener is pinned to HTTP/1.1 and HTTP/2; HTTP/3
+is intentionally not advertised on that port. Provider-level firewalls must
+allow the configured Console TCP port before host UFW or Caddy can receive
+traffic. The data directory is `/opt/ghostroute-console/data`; repo sources are
 mounted read-only at `/opt/ghostroute-console/repo`.
 
 The operator UI intentionally keeps first-page HTML small. Large evidence
