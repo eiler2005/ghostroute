@@ -148,6 +148,18 @@
         regexp: "(?m)(^\\s*route @reality \\{\\n^\\s*proxy 127\\.0\\.0\\.1:{{ console_reality_backend_port }}\\n^\\s*\\}\\n)(^\\s*tls\\n)"
         replace: "\\1            }\n\\2"
 
+    - name: Disable HTTP/3 advertisement on the Console listener
+      ansible.builtin.blockinfile:
+        path: /etc/caddy/Caddyfile
+        marker: "    # {mark} GHOSTROUTE CONSOLE H1 H2 ONLY"
+        insertafter: "^\\{$"
+        backup: true
+        block: |
+          servers :{{ console_public_port }} {
+              protocols h1 h2
+          }
+      when: console_public_listener == 'caddy'
+
     - name: Allow inbound Console dedicated HTTPS port
       community.general.ufw:
         rule: allow

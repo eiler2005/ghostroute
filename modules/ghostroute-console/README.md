@@ -66,6 +66,10 @@ SQLite database at `ghostroute.db`.
 The dedicated public listener is owned by Caddy and proxies to
 `/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS. Legacy nginx files
 may remain on disk but should be stopped when Caddy owns the Console port.
+The Caddy listener is pinned to HTTP/1.1 and HTTP/2 so browsers do not try
+HTTP/3/QUIC on the dedicated Console port. Provider-level firewalls must allow
+the configured public TCP port; host UFW alone is not enough if the cloud
+firewall drops packets before they reach the VPS.
 
 Operator-local device attribution can be stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console

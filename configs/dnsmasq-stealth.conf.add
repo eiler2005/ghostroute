@@ -204,6 +204,7 @@ ipset=/dyson.com/STEALTH_DOMAINS
 ipset=/hackernoon.com/STEALTH_DOMAINS
 ipset=/harvestapp.com/STEALTH_DOMAINS
 ipset=/hetzner.com/STEALTH_DOMAINS
+ipset=/console.hetzner.com/STEALTH_DOMAINS
 ipset=/hetzner.cloud/STEALTH_DOMAINS
 ipset=/hostinger.com/STEALTH_DOMAINS
 ipset=/iherb.com/STEALTH_DOMAINS
