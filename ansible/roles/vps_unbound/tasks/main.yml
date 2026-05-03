@@ -18,6 +18,46 @@
   notify: restart unbound
   when: vps_unbound_enabled | bool
 
+- name: Ensure Unbound systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/unbound.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - vps_unbound_enabled | bool
+    - vps_unbound_docker_bridge_host | default('') | length > 0
+
+- name: Wait for Docker bridge address before starting Unbound
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/unbound.service.d/ghostroute-docker-bridge.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      After=docker.service
+      Wants=docker.service
+
+      [Service]
+      ExecStartPre=/usr/bin/timeout {{ vps_unbound_docker_bridge_startup_wait_seconds | int }} /bin/sh -c 'until ip -4 addr show | grep -q "{{ vps_unbound_docker_bridge_host }}/"; do sleep 1; done'
+  notify: restart unbound
+  when:
+    - vps_unbound_enabled | bool
+    - vps_unbound_docker_bridge_host | default('') | length > 0
+
+- name: Remove Unbound Docker bridge startup guard when not needed
+  ansible.builtin.file:
+    path: /etc/systemd/system/unbound.service.d/ghostroute-docker-bridge.conf
+    state: absent
+  notify: restart unbound
+  when: (not (vps_unbound_enabled | bool)) or (vps_unbound_docker_bridge_host | default('') | length == 0)
+
+- name: Reload systemd after Unbound unit metadata updates
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: Enable Unbound loopback resolver
   ansible.builtin.service:
     name: unbound
@@ -31,4 +71,3 @@
     state: absent
   notify: restart unbound
   when: not (vps_unbound_enabled | bool)
-

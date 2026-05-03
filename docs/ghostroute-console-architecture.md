@@ -127,11 +127,13 @@ thresholds: stale after 75 minutes during the day and 210 minutes overnight.
 ## Deployment And Access
 
 The deployed Console app runs as a single Docker container on
-`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 HTTPS
-listener with Basic Auth, served by nginx and a small local buffering proxy in
-front of the app. This keeps Console off the shared Reality/layer4 `:443`
-listener. The data directory is `/opt/ghostroute-console/data`; repo sources
-are mounted read-only at `/opt/ghostroute-console/repo`.
+`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 Caddy HTTPS
+listener with Basic Auth and a small local buffering proxy in front of the app.
+This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
+a second public listener owner. Legacy nginx files may remain on disk for
+rollback, but the nginx listener must be stopped when Caddy owns the Console
+port. The data directory is `/opt/ghostroute-console/data`; repo sources are
+mounted read-only at `/opt/ghostroute-console/repo`.
 
 The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
