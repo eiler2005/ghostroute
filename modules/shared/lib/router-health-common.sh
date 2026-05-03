@@ -594,7 +594,17 @@ printf 'HOME_REALITY_ALL_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$dnscrypt_socks_port")"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" "socks5://127.0.0.1:$dnscrypt_socks_port")"
 printf 'VPS_DNS_FORWARD_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$vps_dns_forward_port")"
-printf 'VPS_DNS_FORWARD_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"vps-dns-in","outbound":"reality-out"')"
+printf 'VPS_DNS_FORWARD_RULE=%s\n' "$(
+  if bool_grep "$singbox_config_compact" '"inbound":"vps-dns-in","outbound":"reality-out"' | grep -q 1; then
+    printf '1\n'
+  elif bool_grep "$singbox_config_compact" '"inbound":"vps-dns-in","action":"hijack-dns"' | grep -q 1 &&
+    bool_grep "$singbox_config_compact" '"tag":"vps-dns-server"' | grep -q 1 &&
+    bool_grep "$singbox_config_compact" '"detour":"reality-out"' | grep -q 1; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
 printf 'MANAGED_VPS_DNS_INCLUDE=%s\n' "$( { bool_grep "$dnsmasq_config" 'conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add' | grep -q 1; } && { bool_grep "$managed_vps_dns_config" 'server=/browserleaks.com/127.0.0.1#' | grep -q 1; } && printf '1\n' || printf '0\n' )"
 printf 'LAN_DNS_CAPTURE_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
 printf 'LAN_DNS_CAPTURE_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i br0 -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53')"
