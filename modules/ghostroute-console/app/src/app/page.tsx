@@ -201,6 +201,33 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         </section>
       </div>
 
+      <div className="grid two" style={{ marginTop: 14 }}>
+        <section className="card">
+          <div className="toolbar">
+            <h2>Route topology</h2>
+            <span className="subtle">logical view</span>
+          </div>
+          <div className="topology-strip">
+            <span>Client</span><i /><span>Router</span><i className={model.totals.viaVpsBytes > 0 ? "active" : ""} /><span>VPS</span><i className={model.totals.viaVpsBytes > 0 ? "active" : ""} /><span>Internet</span>
+          </div>
+          <div className="topology-strip direct">
+            <span>Client</span><i /><span>Router</span><i className={model.totals.directBytes > 0 ? "active direct" : ""} /><span>Direct</span><i /><span>Internet</span>
+          </div>
+        </section>
+        <section className="card">
+          <div className="toolbar">
+            <h2>Operator Actions</h2>
+            <span className="subtle">read-only safe entrypoints</span>
+          </div>
+          <div className="operator-actions">
+            <Link className="muted-button" href="/live">Open Live mode</Link>
+            <Link className="muted-button" href="/health">Review alarms</Link>
+            <Link className="muted-button" href="/catalog">Review catalog</Link>
+            <Link className="muted-button" href="/reports">LLM-safe report</Link>
+          </div>
+        </section>
+      </div>
+
     </ConsoleShell>
   );
 }

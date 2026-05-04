@@ -172,7 +172,7 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
       client_ip: "192.168.1.24",
       domain: "telegram.org",
       qtype: "A",
-      answer_ip: "149.154.167.220",
+      answer_ip: "203.0.113.220",
       count: 1,
       confidence: "dns-interest",
     }],

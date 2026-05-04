@@ -14,11 +14,11 @@ Architecture details live in
 Monitoring semantics live in
 [`docs/monitoring-principles.md`](docs/monitoring-principles.md).
 
-The current post-MVP slice adds route explanation, channel attribution,
-known-device history, scheduled read-only collection, append-only live events,
-controlled catalog review actions, notifications settings, budget history and
-audited ops actions. It still does not mutate router runtime or deploy catalog
-changes implicitly.
+The current observability v2 slice adds Flow Explorer read models, DNS Query
+Log, Alarm Center, route explanation, channel attribution, known-device history,
+scheduled read-only collection, append-only live events, controlled catalog
+review actions, notifications settings, budget history and audited ops actions.
+It still does not mutate router runtime or deploy catalog changes implicitly.
 
 ## Public Commands
 
@@ -75,7 +75,7 @@ Operator-local client identity is stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console
 uses it as the private authoritative client registry for stable labels, roles,
 primary channel and explicit Channel A/B/C/LAN aliases. Dashboard, Traffic
-Explorer, Clients, Live, Budget, Reports, Settings and JSON endpoints all pass
+Explorer, DNS Query Log, Clients, Live, Budget, Reports, Settings and JSON endpoints all pass
 raw rows through the same resolver before grouping or rendering client names.
 Raw evidence still keeps the observed labels separately. New or unmatched
 `mobile-source-*` counters remain diagnostics until the operator adds an
@@ -112,7 +112,7 @@ The VPS deployment defaults to read-only SSH collection through the generated
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
-latest collected traffic window. Dashboard, Traffic Explorer and Clients do not
+latest collected traffic window. Dashboard, Flow Explorer and Clients do not
 borrow stale historical traffic totals when the current-day window is empty.
 Clients still keeps historical inventory metadata for names, roles, aliases and
 last-seen state, but the displayed traffic totals, route split and selected
@@ -124,6 +124,12 @@ authoritative `traffic-summary`/`traffic` KPI totals before rendering Dashboard,
 Traffic Explorer and Clients. This prevents several cumulative snapshots or
 Channel A/B/C aliases from being summed into impossible Top clients or Top
 destination totals.
+Observability v2 also rebuilds additive SQLite read models after each
+collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
+`alarm_events`, `read_model_state` and non-secret `console_settings`. These
+tables feed `/api/flows`, `/api/dns`, `/api/alarms`, Flow Explorer, DNS Query
+Log and Alarm Center while preserving the normalized source tables as the
+fallback contract.
 For selected-client details, Console derives an activity series from sequential
 current-window device snapshots. Multiple snapshots become hourly deltas; if a
 client only appears in one current snapshot, the chart shows that hour as a
@@ -163,8 +169,13 @@ from the public Console URL.
 
 ## Post-MVP Interfaces
 
-- `/traffic` and `/traffic/[id]` explain route decisions with channel, route,
+- `/traffic` and `/traffic/[id]` provide Flow Explorer sessions and route
+  explanation with client, destination, port, policy, route, duration, risk,
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
+- `/dns` shows DNS Query Log rows: client, domain, answer IP, route decision,
+  catalog status, status and risk context.
+- `/health` includes Alarm Center rows with severity, source, evidence,
+  suggested action and status.
 - `/clients` shows all known devices with `Online`, `Recently seen` or
   `Inactive` state and last-seen timestamps, so devices do not disappear just
   because they are absent from today's latest snapshot.

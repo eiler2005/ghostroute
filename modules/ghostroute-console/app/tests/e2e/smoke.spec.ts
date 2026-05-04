@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const pages = ["/", "/traffic", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
+const pages = ["/", "/traffic", "/dns", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
 
 for (const path of pages) {
   test(`renders ${path}`, async ({ page }) => {
@@ -40,7 +40,7 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
     await expect(page.getByText("Нет traffic rows")).toBeVisible();
     return;
   }
-  await expect(page.getByText("Client traffic by volume")).toBeVisible();
+  await expect(page.getByText("Flow Explorer")).toBeVisible();
   await expect(page.getByText("Showing traffic rows only")).toBeVisible();
   await expect(page.getByText("system/no-byte evidence hidden")).toBeVisible();
   const firstRow = page.locator(".route-table-card tbody tr").first();
@@ -71,7 +71,7 @@ test("traffic classes and live cadence are explicit", async ({ page }) => {
   if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
     await expect(page.getByText("Нет traffic rows")).toBeVisible();
   } else {
-    await expect(page.getByText("Needs attribution traffic by volume")).toBeVisible();
+    await expect(page.getByText("Needs attribution flows by volume")).toBeVisible();
   }
   await page.goto("/live");
   await expect(page.getByText("Автообновление около 10 минут")).toBeVisible();

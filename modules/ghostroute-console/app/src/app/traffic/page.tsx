@@ -11,6 +11,19 @@ function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function durationLabel(seconds?: number) {
+  const value = Number(seconds || 0);
+  if (!value) return "n/a";
+  if (value >= 3600) return `${Math.floor(value / 3600)}h ${Math.floor((value % 3600) / 60)}m`;
+  if (value >= 60) return `${Math.floor(value / 60)}m ${value % 60}s`;
+  return `${value}s`;
+}
+
+function riskBadge(value?: string) {
+  const risk = String(value || "low");
+  return <span className={`badge risk-${risk.toLowerCase()}`}>{risk}</span>;
+}
+
 export default async function TrafficPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
@@ -27,6 +40,10 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
     Math.max(evidences.length - 1, 0)
   );
   const evidence = hasSelectedFlow ? evidences[selectedIndex] || null : null;
+  const rows = trafficPage.rows;
+  const vpsRows = rows.filter((row) => row.route === "VPS").length;
+  const suspiciousRows = rows.filter((row) => row.route === "Direct" && ["medium", "high"].includes(String(row.risk || ""))).length;
+  const unknownRows = rows.filter((row) => !row.destination || row.destination === "unknown destination" || row.route === "Unknown").length;
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -39,6 +56,12 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
 
   return (
     <ConsoleShell active="/traffic" model={model} filters={filters}>
+      <div className="grid cards" style={{ marginBottom: 14 }}>
+        <section className="card metric"><span>Active/completed flows</span><strong>{trafficPage.total}</strong><small>read-model rows for selected window</small></section>
+        <section className="card metric"><span>Via VPS</span><strong>{vpsRows}</strong><small>matched stealth/VPS route rows</small></section>
+        <section className="card metric"><span>Suspicious direct</span><strong>{suspiciousRows}</strong><small>direct rows with elevated risk</small></section>
+        <section className="card metric"><span>Unknown destinations</span><strong>{unknownRows}</strong><small>needs attribution or DNS link</small></section>
+      </div>
       {evidences.length === 0 ? (
         <section className="card">
           <EmptyState title="Нет traffic rows" />
@@ -49,11 +72,11 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
           <section className="card route-table-card">
             <div className="toolbar">
               <div>
-                <h2>Flow table</h2>
+                <h2>Flow Explorer</h2>
                 <p>
                   {diagnostics
                     ? "Diagnostics mode: technical DNS and route events are visible."
-                    : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} traffic by volume; DNS-only rows are not counted as traffic.`}
+                    : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} flows by volume with policy, route and risk context.`}
                 </p>
               </div>
               <span className="subtle">{trafficPage.total} rows</span>
@@ -73,26 +96,31 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 <tr>
                   <th className="col-time">Time</th>
                   <th className="col-client">Client</th>
-                  <th className="col-channel">Channel</th>
                   <th className="col-destination">Destination</th>
-                  <th className="col-class">Class</th>
+                  <th>Port</th>
                   <th className="col-route">Route</th>
+                  <th>Policy / Rule</th>
                   <th className="col-traffic">Traffic</th>
-                  <th className="col-conn">Conn</th>
+                  <th>Duration</th>
+                  <th>Risk</th>
                   <th className="col-confidence">Confidence</th>
                 </tr>
               </thead>
               <tbody>
-                {evidences.map((row, idx) => (
+                {rows.map((row, idx) => (
                   <tr key={row.id} className={idx === selectedIndex ? "selected" : ""}>
-                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.eventTimeLabel}</Link></td>
+                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.last_seen || row.event_ts || row.collected_at ? new Date(row.last_seen || row.event_ts || row.collected_at).toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }) : "n/a"}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
-                    <td className="col-channel"><ChannelBadge value={row.channel} /></td>
-                    <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{trafficDisplayDestination(row.flow || row)}</Link></td>
-                    <td className="col-class">{row.flow?.trafficClassLabel || "Client"}</td>
+                    <td>
+                      <Link href={`/traffic/${encodeURIComponent(row.id)}`}>{trafficDisplayDestination(row)}</Link>
+                      <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
+                    </td>
+                    <td>{row.destination_port || "n/a"}<small className="subtle block-detail">{row.protocol || "TCP"}</small></td>
                     <td><RouteBadge value={row.route} /></td>
-                    <td>{bytes(row.bytes)}</td>
-                    <td>{row.connections}</td>
+                    <td>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}<small className="subtle block-detail">{row.matched_rule || row.outbound || "no matching rule evidence"}</small></td>
+                    <td>{bytes(row.bytes || row.total_bytes || 0)}<small className="subtle block-detail">{row.connections || 0} sessions</small></td>
+                    <td>{durationLabel(row.duration_seconds)}</td>
+                    <td>{riskBadge(row.risk)}</td>
                     <td><ConfidenceBadge value={row.confidence} /></td>
                   </tr>
                 ))}

@@ -4,15 +4,16 @@ const PAGE_BUDGET_MS = 2500;
 const API_BUDGET_MS = 1500;
 
 const pages = [
-  { path: "/", markers: ["Observed traffic"] },
-  { path: "/traffic", markers: ["Flow table", "Нет traffic rows"] },
-  { path: "/clients", markers: ["Device Inventory"] },
-  { path: "/health", markers: ["Health Center"] },
-  { path: "/catalog", markers: ["Diff preview"] },
-  { path: "/budget", markers: ["Потребление по устройствам"] },
-  { path: "/live", markers: ["Client activity summary"] },
-  { path: "/reports", markers: ["Reports"] },
-  { path: "/settings", markers: ["Settings"] },
+  { path: "/", nav: "Dashboard", markers: ["Observed traffic"] },
+  { path: "/traffic", nav: "Flow Explorer", markers: ["Flow Explorer", "Нет traffic rows"] },
+  { path: "/dns", nav: "DNS Query Log", markers: ["DNS Query Log", "Нет DNS query rows"] },
+  { path: "/clients", nav: "Clients", markers: ["Device Inventory"] },
+  { path: "/health", nav: "Health Center", markers: ["Health Center"] },
+  { path: "/catalog", nav: "Catalog", markers: ["Diff preview"] },
+  { path: "/budget", nav: "Budget", markers: ["Потребление по устройствам"] },
+  { path: "/live", nav: "Live", markers: ["Client activity summary"] },
+  { path: "/reports", nav: "Reports", markers: ["Privacy / Redaction Mode"] },
+  { path: "/settings", nav: "Settings", markers: ["Settings"] },
 ];
 
 const apiPaths = [
@@ -55,7 +56,7 @@ test("rapid sidebar navigation stays responsive", async ({ page }) => {
   await page.goto("/");
   for (const item of pages.slice(1)) {
     const started = performance.now();
-    const label = item.path === "/" ? "Dashboard" : item.path.slice(1).replace(/^\w/, (value) => value.toUpperCase()).replace("-", " ");
+    const label = item.nav;
     await page.locator(".sidebar").getByRole("link", { name: new RegExp(label, "i") }).click();
     await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
     const elapsed = performance.now() - started;
