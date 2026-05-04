@@ -19,10 +19,10 @@ export default async function RouteDetailPage({
   const fallbackPage = Number.isFinite(index) ? listTrafficRows({ page: 1, pageSize: Math.max(index + 1, 25), filters }) : null;
   const row = getTrafficRowById(decodedId, filters) || fallbackPage?.rows[index];
   if (!row) notFound();
-  const neighbors = listTrafficRows({ page: 1, pageSize: 24, filters }).rows.filter((item) => item.id !== row.id);
+  const neighbors = listTrafficRows({ page: 1, pageSize: 24, filters }).rows.filter((item: Record<string, any>) => item.id !== row.id);
   const model = buildPagedEvidenceContext(filters, [row, ...neighbors]);
   const evidenceSet = buildRouteEvidenceSet(model, { limit: 25, fallbackToDiagnostics: true });
-  const evidence = evidenceSet.evidences.find((item) => item.id === row.id) || evidenceSet.evidences[0];
+  const evidence = evidenceSet.evidences.find((item: Record<string, any>) => item.id === row.id) || evidenceSet.evidences[0];
   if (!evidence) notFound();
   return (
     <ConsoleShell active="/traffic" model={model} filters={filters}>

@@ -11,8 +11,17 @@ export function shortDateTime(value?: string | number | Date) {
   if (!value) return "n/a";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
 
 export function StatusBadge({ value }: { value?: string }) {

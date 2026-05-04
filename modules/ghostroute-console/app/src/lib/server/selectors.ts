@@ -11,7 +11,6 @@ import {
   latestCollectorRun,
   latestEvents,
   latestRouteDecisions,
-  latestSnapshotIds,
   latestSnapshots,
   normalizedRows,
   notificationSettings,
@@ -29,7 +28,14 @@ import {
   applyDeviceAttribution,
   canonicalDeviceKey,
   displayDeviceLabel,
+  resolveClient,
 } from "../device-attribution.mjs";
+import {
+  dedupeAlerts,
+  moscowDateKey,
+  reconcileTrafficRows,
+  snapshotMatchesPeriod,
+} from "../traffic-window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 
@@ -178,12 +184,26 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
     if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) return false;
     if (filters.client && filters.client !== "all") {
-      const requestedKey = canonicalDeviceKey(filters.client);
-      const rowKey = canonicalDeviceKey(row);
-      const aliases = [row.client, row.raw_client, row.label, row.id, row.device_id, ...(row.aliases || [])].filter(Boolean).map(String);
+      const requested = resolveClient(filters.client);
+      const rowResolved = resolveClient({ ...row, profile: row.profile || row.raw?.profile });
+      const requestedKey = requested.client_key || canonicalDeviceKey(filters.client);
+      const rowKey = row.client_key || rowResolved.client_key || canonicalDeviceKey(row);
+      const aliases = [
+        row.client_key,
+        row.device_key,
+        row.client_label,
+        row.client,
+        row.raw_client,
+        row.label,
+        row.id,
+        row.device_id,
+        ...(row.aliases || []),
+        ...(row.observed_aliases || []),
+        ...(rowResolved.observed_aliases || []),
+      ].filter(Boolean).map(String);
       if (requestedKey && rowKey && requestedKey === rowKey) {
         // same canonical device
-      } else if (!aliases.includes(filters.client)) {
+      } else if (!aliases.includes(filters.client) && !aliases.map((value) => value.toLowerCase()).includes(String(filters.client).toLowerCase())) {
         return false;
       }
     }
@@ -195,13 +215,23 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
 function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
   const trafficClass = trafficClassFor(row);
   const rawClient = row.client;
-  const client = displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
+  const rawProfile = row.profile || row.raw?.profile || "";
+  const resolved = resolveClient({ ...row, profile: rawProfile });
+  const client = resolved.client_label || displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
   return {
     ...row,
     raw_client: rawClient,
+    raw_profile: rawProfile,
     client,
-    label: row.label ? displayDeviceLabel(row.label) : row.label,
-    device_key: canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
+    client_key: resolved.client_key || row.client_key || "",
+    client_label: client,
+    client_role: resolved.client_role || row.client_role || "",
+    client_channel: resolved.client_channel || row.client_channel || "",
+    matched_by: resolved.matched_by,
+    attribution_confidence: resolved.attribution_confidence,
+    observed_aliases: Array.from(new Set([...(row.observed_aliases || []), row.client, row.raw?.client, rawProfile, row.label, ...(resolved.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16),
+    label: row.label ? (resolved.client_label || displayDeviceLabel(row.label)) : row.label,
+    device_key: resolved.client_key || canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
     destinationLabel: displayDestination(row),
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
@@ -232,14 +262,19 @@ function statusFromLastSeen(value?: string) {
 }
 
 function keyForDevice(row: Record<string, any>) {
-  const text = [row.device_id, row.id, row.label, row.client, row.profile].filter(Boolean).join(" ").toLowerCase();
-  const canonical = canonicalDeviceKey(text);
+  const resolved = resolveClient({ ...row, profile: row.profile || row.raw?.profile });
+  const canonical = resolved.client_key || canonicalDeviceKey({ ...row, profile: row.profile || row.raw?.profile });
   if (canonical) return canonical;
   return String(row.device_id || row.id || row.label || row.ip || "unknown-device").toLowerCase();
 }
 
 function deviceLabel(row: Record<string, any>) {
-  return displayDeviceLabel(String(row.label || row.client || row.id || row.device_id || "Unknown").trim());
+  return resolveClient({ ...row, profile: row.profile || row.raw?.profile }).client_label || displayDeviceLabel({ ...row, profile: row.profile || row.raw?.profile });
+}
+
+function rawDeviceKey(row: Record<string, any>) {
+  return canonicalDeviceKey(row.device_id || row.id || row.profile || row.raw?.profile || row.label || row.client)
+    || String(row.device_id || row.id || row.profile || row.label || row.client || row.ip || "").toLowerCase();
 }
 
 function labelScore(value?: string) {
@@ -314,6 +349,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       via_vps_bytes: Number(row.via_vps_bytes || row.reality_bytes || 0),
       direct_bytes: Number(row.direct_bytes || row.wan_bytes || 0),
     };
+    const sourceId = `${collected}|${rawDeviceKey(row)}|${preservedChannel(row)}`;
     if (!current) {
       byKey.set(key, {
         id: key,
@@ -329,6 +365,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
         from_history: fromHistory,
         channels: preservedChannel(row) !== "Unknown" ? [preservedChannel(row)] : [],
         aliases: label ? [label] : [],
+        source_ids: [sourceId],
         raw: row.raw || row,
       });
       const created = byKey.get(key);
@@ -345,9 +382,18 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       current.via_vps_bytes = rowTotals.via_vps_bytes;
       current.direct_bytes = rowTotals.direct_bytes;
     } else if (sameTime) {
-      current.total_bytes = Math.max(Number(current.total_bytes || 0), rowTotals.total_bytes);
-      current.via_vps_bytes = Math.max(Number(current.via_vps_bytes || 0), rowTotals.via_vps_bytes);
-      current.direct_bytes = Math.max(Number(current.direct_bytes || 0), rowTotals.direct_bytes);
+      const sourceIds = new Set([...(current.source_ids || [])]);
+      if (!sourceIds.has(sourceId)) {
+        current.total_bytes = Number(current.total_bytes || 0) + rowTotals.total_bytes;
+        current.via_vps_bytes = Number(current.via_vps_bytes || 0) + rowTotals.via_vps_bytes;
+        current.direct_bytes = Number(current.direct_bytes || 0) + rowTotals.direct_bytes;
+        sourceIds.add(sourceId);
+        current.source_ids = Array.from(sourceIds).slice(0, 32);
+      } else {
+        current.total_bytes = Math.max(Number(current.total_bytes || 0), rowTotals.total_bytes);
+        current.via_vps_bytes = Math.max(Number(current.via_vps_bytes || 0), rowTotals.via_vps_bytes);
+        current.direct_bytes = Math.max(Number(current.direct_bytes || 0), rowTotals.direct_bytes);
+      }
     }
     if (labelScore(label) > labelScore(current.label)) {
       current.label = label;
@@ -366,6 +412,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       current.confidence = row.confidence || current.confidence;
       current.ip = row.ip || row.client_ip || current.ip;
       current.raw = row.raw || row;
+      current.source_ids = [sourceId];
     }
     const channel = preservedChannel(row);
     addChannel(current, channel);
@@ -385,15 +432,191 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
   });
 }
 
+function snapshotRecordsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
+  const now = new Date();
+  return latestSnapshots().filter((row) => types.has(row.type) && snapshotMatchesPeriod(row, period || "today", now));
+}
+
+function snapshotIdsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
+  return snapshotRecordsForWindow(period, types).filter((row) => row.id > 0).map((row) => row.id);
+}
+
+function snapshotIdsForDeviceWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
+  const placeholders = Array.from(types).map(() => "?").join(",");
+  if ((period || "today") === "today") {
+    const today = moscowDateKey(new Date());
+    const rows = getDb()
+      .prepare(`select id, type, collected_at from snapshots where type in (${placeholders}) order by collected_at desc limit 1000`)
+      .all(...Array.from(types));
+    return rows
+      .filter((row: any) => moscowDateKey(row.collected_at) === today)
+      .map((row: any) => row.id);
+  }
+  const rows = getDb()
+    .prepare(`select id, type, collected_at, source, path, payload_json from snapshots where type in (${placeholders}) order by collected_at desc limit 1000`)
+    .all(...Array.from(types))
+    .map((row: any) => ({
+      id: row.id,
+      type: row.type,
+      collectedAt: row.collected_at,
+      source: row.source,
+      path: row.path,
+      payload: rawJson({ raw_json: row.payload_json }),
+    }));
+  return rows.filter((row: SnapshotRecord) => snapshotMatchesPeriod(row, period || "today", new Date())).map((row: SnapshotRecord) => row.id);
+}
+
+function authoritativeTotalsForPeriod(period = "today") {
+  const latestPayload = (type: string) => {
+    const rows = getDb()
+      .prepare("select collected_at, payload_json from snapshots where type = ? order by collected_at desc limit 50")
+      .all(type) as Array<Record<string, any>>;
+    for (const row of rows) {
+      if ((period || "today") === "today" && moscowDateKey(row.collected_at) !== moscowDateKey(new Date())) continue;
+      const payload = rawJson({ raw_json: row.payload_json });
+      if (snapshotMatchesPeriod({ type, collectedAt: row.collected_at, payload }, period || "today", new Date())) return payload;
+    }
+    return {};
+  };
+  const trafficSummary = latestPayload("traffic_summary");
+  const traffic = latestPayload("traffic");
+  const totals = (trafficSummary.totals || traffic.totals || {}) as Record<string, any>;
+  return {
+    observed: Number(totals.client_observed_bytes || 0),
+    vps: Number(totals.via_vps_bytes || 0),
+    direct: Number(totals.direct_bytes || 0),
+    unknown: Number(totals.unknown_bytes || 0),
+  };
+}
+
+function deviceDeltaRowsForPeriod(period = "today") {
+  const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"])))
+    .map((row: any) => ({
+      id: row.device_id,
+      device_id: row.device_id,
+      label: row.label,
+      ip: row.ip,
+      channel: row.channel,
+      route: row.route,
+      confidence: row.confidence,
+      total_bytes: Number(row.total_bytes || 0),
+      via_vps_bytes: Number(row.via_vps_bytes || 0),
+      direct_bytes: Number(row.direct_bytes || 0),
+      raw: row.raw,
+      collected_at: row.collected_at,
+      profile: row.raw?.profile,
+    }));
+  const byKey = new Map<string, Map<string, Array<Record<string, any>>>>();
+  for (const row of rows) {
+    const key = keyForDevice(row);
+    if (!key || key === "unknown-device") continue;
+    const bySource = byKey.get(key) || new Map<string, Array<Record<string, any>>>();
+    const sourceKey = rawDeviceKey(row) || key;
+    const list = bySource.get(sourceKey) || [];
+    list.push(row);
+    bySource.set(sourceKey, list);
+    byKey.set(key, bySource);
+  }
+  const deltas: Array<Record<string, any>> = [];
+  for (const [key, sourceGroups] of byKey) {
+    let latest: Record<string, any> | null = null;
+    const acc = {
+      total_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      snapshot_samples: 0,
+      delta_samples: 0,
+    };
+    const aliases = new Set<string>();
+    for (const list of sourceGroups.values()) {
+      const ordered = list.sort((a, b) => Date.parse(a.collected_at || "") - Date.parse(b.collected_at || ""));
+      let previous: Record<string, any> | null = null;
+      for (const sample of ordered) {
+        aliases.add(rawDeviceKey(sample));
+        if (!latest || Date.parse(sample.collected_at || "") >= Date.parse(latest.collected_at || "")) latest = sample;
+        const first = !previous;
+        const deltaTotal = first ? Number(sample.total_bytes || 0) : Math.max(0, Number(sample.total_bytes || 0) - Number(previous?.total_bytes || 0));
+        const deltaVps = first ? Number(sample.via_vps_bytes || 0) : Math.max(0, Number(sample.via_vps_bytes || 0) - Number(previous?.via_vps_bytes || 0));
+        const deltaDirect = first ? Number(sample.direct_bytes || 0) : Math.max(0, Number(sample.direct_bytes || 0) - Number(previous?.direct_bytes || 0));
+        if (deltaTotal > 0 || deltaVps > 0 || deltaDirect > 0) {
+          acc.total_bytes += deltaTotal;
+          acc.via_vps_bytes += deltaVps;
+          acc.direct_bytes += deltaDirect;
+          if (first) acc.snapshot_samples += 1;
+          else acc.delta_samples += 1;
+        }
+        previous = sample;
+      }
+    }
+    if (!latest) continue;
+    deltas.push({
+      ...latest,
+      id: key,
+      device_id: key,
+      aliases: Array.from(aliases).filter(Boolean),
+      total_bytes: acc.total_bytes,
+      via_vps_bytes: acc.via_vps_bytes,
+      direct_bytes: acc.direct_bytes,
+      route: routeFromCounters(acc),
+      confidence: latest.confidence || (acc.snapshot_samples ? "estimated" : "unknown"),
+      traffic_basis: acc.snapshot_samples && !acc.delta_samples ? "snapshot_total" : acc.snapshot_samples ? "snapshot_total+delta" : "delta",
+      delta_samples: acc.delta_samples,
+      snapshot_samples: acc.snapshot_samples,
+      last_seen: latest.collected_at,
+    });
+  }
+  return reconcileTrafficRows(deltas, authoritativeTotalsForPeriod(period));
+}
+
+function latestWindowSnapshot(snapshots: ConsoleModel["snapshots"], type: string, period = "today") {
+  const row = snapshots[type as keyof ConsoleModel["snapshots"]];
+  return row && snapshotMatchesPeriod(row, period || "today", new Date()) ? row : undefined;
+}
+
+function normalizedRowsForIds(table: string, ids: number[]) {
+  const allowed = new Set([
+    "normalized_devices",
+    "normalized_flows",
+    "normalized_dns",
+    "normalized_health",
+    "normalized_catalog",
+    "normalized_alerts",
+  ]);
+  if (!allowed.has(table) || ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  try {
+    return getDb()
+      .prepare(`select * from ${table} where snapshot_id in (${placeholders}) order by collected_at desc`)
+      .all(...ids)
+      .map((row: any) => ({ ...row, raw: rawJson(row) }));
+  } catch {
+    return [];
+  }
+}
+
+function evidenceRowsForWindow(rows: Array<Record<string, any>>, period = "today") {
+  if ((period || "today") !== "today") return rows;
+  return rows.filter((row) => {
+    const collectedAt = row.occurred_at || row.event_ts || row.collected_at || row.created_at || "";
+    return snapshotMatchesPeriod({ collectedAt, payload: { source: { period: "today" } } }, "today", new Date());
+  });
+}
+
 export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
   const snapshots = latestByType(latestSnapshots());
-  const trafficSummary = snapshots.traffic_summary?.payload || {};
-  const traffic = snapshots.traffic?.payload || {};
+  const period = filters.period || "today";
+  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
+  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
+  const trafficSummary = trafficSummarySnapshot?.payload || {};
+  const traffic = trafficSnapshot?.payload || {};
   const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
   const domains = snapshots.domains?.payload || {};
   const dns = snapshots.dns?.payload || {};
+  const detailTrafficWindowIds = snapshotIdsForWindow(period, new Set(["traffic"]));
+  const dnsWindowIds = snapshotIdsForWindow(period, new Set(["dns", "traffic"]));
+  const alertWindowIds = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
 
   const newest = Object.values(snapshots)
     .filter(Boolean)
@@ -401,19 +624,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     .sort()
     .pop();
 
-  const normalizedDevices = normalizedRows("normalized_devices").map((row: any) => ({
-    id: row.device_id,
-    label: row.label,
-    ip: row.ip,
-    channel: row.channel,
-    route: row.route,
-    confidence: row.confidence,
-    total_bytes: row.total_bytes,
-    via_vps_bytes: row.via_vps_bytes,
-    direct_bytes: row.direct_bytes,
-    raw: row.raw,
-    collected_at: row.collected_at,
-  }));
+  const normalizedDevices = deviceDeltaRowsForPeriod(period);
 
   const latestDevices = normalizedDevices.length
     ? normalizedDevices
@@ -432,9 +643,9 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
       confidence: row.confidence,
     })),
   ];
-  const devices = mergeKnownDevices(latestDevices);
+  const devices = mergeKnownDevices(latestDevices, false);
 
-  const normalizedFlows = normalizedRows("normalized_flows").map((row: any) => decorateTrafficRow({
+  const normalizedFlows = normalizedRowsForIds("normalized_flows", detailTrafficWindowIds).map((row: any) => decorateTrafficRow({
     client: row.client,
     client_ip: row.client_ip,
     channel: row.channel,
@@ -464,7 +675,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
 
   const flows = filterRows(
     normalizedFlows.length
-      ? normalizedFlows
+      ? reconcileTrafficRows(normalizedFlows, authoritativeTotalsForPeriod(period))
       : [
       ...(traffic.app_flows || []).map((row: any) => decorateTrafficRow(row)),
       ...(traffic.destinations || []).map((row: any) => decorateTrafficRow({
@@ -475,7 +686,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     filters
   );
 
-  const normalizedDns = normalizedRows("normalized_dns").map((row: any) => ({
+  const normalizedDns = normalizedRowsForIds("normalized_dns", dnsWindowIds).map((row: any) => ({
     client: row.client,
     domain: row.domain,
     qtype: row.qtype,
@@ -523,7 +734,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     confidence: row.confidence || "estimated",
   }));
 
-  const normalizedAlerts = normalizedRows("normalized_alerts").map((row: any) => ({
+  const normalizedAlerts = normalizedRowsForIds("normalized_alerts", alertWindowIds).map((row: any) => ({
     severity: row.severity,
     title: row.title,
     source: row.snapshot_type,
@@ -582,7 +793,10 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
         ]
       : [];
 
-  const derivedNotifications = [...staleAlert, ...egressIdentityAlert, ...normalizedAlerts, ...leakAlerts, ...routingAlerts, ...collectorAlerts].map((row: any, idx) => ({
+  const alerts = dedupeAlerts([...staleAlert, ...egressIdentityAlert, ...collectorAlerts, ...normalizedAlerts, ...leakAlerts, ...routingAlerts]);
+  const events = evidenceRowsForWindow(latestEvents() as Array<Record<string, any>>, period);
+  const routeDecisions = evidenceRowsForWindow(latestRouteDecisions() as Array<Record<string, any>>, period);
+  const derivedNotifications = alerts.map((row: any, idx: number) => ({
     id: `derived-${idx}`,
     type: row.source || "alert",
     severity: row.severity || "warning",
@@ -640,8 +854,8 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     collectorErrors,
     collectorRun,
     hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
-    events: latestEvents() as Array<Record<string, any>>,
-    routeDecisions: latestRouteDecisions() as Array<Record<string, any>>,
+    events,
+    routeDecisions,
     catalogReviews: catalogReviews() as Array<Record<string, any>>,
     notifications: [...(notifications() as Array<Record<string, any>>), ...derivedNotifications],
     notificationSettings: notificationSettings() as Record<string, any>,
@@ -660,7 +874,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
     devices: filterRows(devices.map((row: any) => ({ ...row, route: row.route || routeFromCounters(row) })), filters),
     flows,
     dnsQueries,
-    alerts: [...staleAlert, ...egressIdentityAlert, ...collectorAlerts, ...normalizedAlerts, ...leakAlerts, ...routingAlerts],
+    alerts,
     catalog,
   };
 }
@@ -689,8 +903,8 @@ function rawJson(row: any) {
   }
 }
 
-function latestIdWhere() {
-  const ids = latestSnapshotIds();
+function latestIdWhereForFilters(filters: ConsoleFilters = {}) {
+  const ids = snapshotIdsForWindow(filters.period || "today", new Set(["traffic"]));
   if (ids.length === 0) return { ids, sql: "1 = 0", params: [] as any[] };
   return { ids, sql: `snapshot_id in (${ids.map(() => "?").join(",")})`, params: ids as any[] };
 }
@@ -713,16 +927,9 @@ function addCommonFilters(where: string[], params: any[], filters: ConsoleFilter
     where.push(`${confidence} = ?`);
     params.push(filters.confidence);
   }
-  if (filters.client && filters.client !== "all") {
-    const key = canonicalDeviceKey(filters.client);
-    if (key) {
-      where.push(`(${client} = ? or lower(${client}) like ?)`);
-      params.push(filters.client, `%${key}%`);
-    } else {
-      where.push(`${client} = ?`);
-      params.push(filters.client);
-    }
-  }
+  // Client filters are applied after rows pass through the registry resolver:
+  // one canonical client can have Channel A/B/C/LAN aliases that are not
+  // representable as a single SQL predicate over the raw client column.
   const search = filters.search?.trim();
   if (search) {
     const needle = `%${search.toLowerCase()}%`;
@@ -796,7 +1003,7 @@ function mapFlowRow(row: any) {
 export function listTrafficRows(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
-  const latest = latestIdWhere();
+  const latest = latestIdWhereForFilters(args.filters || {});
   const where = [latest.sql];
   const params = [...latest.params];
   addCommonFilters(where, params, args.filters || {});
@@ -807,7 +1014,7 @@ export function listTrafficRows(args: PageArgs = {}) {
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;
-  const allRows = getDb()
+  const rawRows = getDb()
     .prepare(
       `select ${flowSelect()}
          from normalized_flows
@@ -817,8 +1024,11 @@ export function listTrafficRows(args: PageArgs = {}) {
     )
     .all(...params)
     .map(mapFlowRow)
+    .filter((row) => filterRows([row], args.filters || {}).length > 0)
     .filter((row) => !args.filters?.trafficClass || args.filters.trafficClass === "all" || row.trafficClass === args.filters.trafficClass)
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+  const allRows = (reconcileTrafficRows(rawRows, authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
+    .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const total = allRows.length;
   const rows = allRows.slice(offset, offset + pageSize);
   return {
@@ -843,8 +1053,11 @@ export function getTrafficRowById(id: string, filters: ConsoleFilters = {}) {
 
 function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
   const snapshots = latestByType(latestSnapshots());
-  const trafficSummary = snapshots.traffic_summary?.payload || {};
-  const traffic = snapshots.traffic?.payload || {};
+  const period = filters.period || "today";
+  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
+  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
+  const trafficSummary = trafficSummarySnapshot?.payload || {};
+  const traffic = trafficSnapshot?.payload || {};
   const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
@@ -866,7 +1079,9 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     evidence: row.evidence,
     confidence: row.confidence || "exact",
   }));
-  const normalizedAlerts = normalizedRows("normalized_alerts").slice(0, 50).map((row: any) => ({
+  const alertWindowIds = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+  const dnsWindowIds = snapshotIdsForWindow(period, new Set(["dns", "traffic"]));
+  const normalizedAlerts = normalizedRowsForIds("normalized_alerts", alertWindowIds).slice(0, 50).map((row: any) => ({
     severity: row.severity,
     title: row.title,
     source: row.snapshot_type,
@@ -886,8 +1101,10 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
           confidence: "exact",
         }]
       : [];
-  const devices = mergeKnownDevices(knownDeviceRows(200), false);
-  const dnsQueries = normalizedRows("normalized_dns").slice(0, 80).map((row: any) => ({
+  const devices = clientInventoryRows(filters).slice(0, 200);
+  const events = evidenceRowsForWindow(latestEvents(80) as Array<Record<string, any>>, period);
+  const routeDecisions = evidenceRowsForWindow(latestRouteDecisions(80) as Array<Record<string, any>>, period);
+  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 80).map((row: any) => ({
     client: row.client,
     domain: row.domain,
     qtype: row.qtype,
@@ -934,8 +1151,8 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
     hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
-    events: latestEvents(80) as Array<Record<string, any>>,
-    routeDecisions: latestRouteDecisions(80) as Array<Record<string, any>>,
+    events,
+    routeDecisions,
     catalogReviews: catalogReviews() as Array<Record<string, any>>,
     notifications: notifications() as Array<Record<string, any>>,
     notificationSettings: notificationSettings() as Record<string, any>,
@@ -954,7 +1171,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     devices,
     flows: [],
     dnsQueries,
-    alerts: [...staleAlert, ...normalizedAlerts, ...leakAlerts],
+    alerts: dedupeAlerts([...staleAlert, ...normalizedAlerts, ...leakAlerts]),
     catalog,
   };
   return { ...model, ...overrides };
@@ -967,13 +1184,55 @@ export function buildPagedEvidenceContext(filters: ConsoleFilters, flows: Array<
 function clientSearch(row: Record<string, any>, search?: string) {
   if (!search) return true;
   const needle = search.toLowerCase();
-  return [row.label, row.id, row.ip, row.channel, row.route].filter(Boolean).join(" ").toLowerCase().includes(needle);
+  return [row.label, row.client_label, row.id, row.client_key, row.ip, row.channel, row.route, ...(row.aliases || [])].filter(Boolean).join(" ").toLowerCase().includes(needle);
+}
+
+function clientInventoryRows(filters: ConsoleFilters = {}) {
+  const period = filters.period || "today";
+  const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
+  const currentRows = deviceDeltaRowsForPeriod(period);
+  const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));
+  const seen = new Set<string>();
+  const rows: Array<Record<string, any>> = inventory.map((row) => {
+    const key = keyForDevice(row);
+    seen.add(key);
+    const current = currentByKey.get(key);
+    return {
+      ...row,
+      inventory_total_bytes: row.total_bytes || 0,
+      inventory_via_vps_bytes: row.via_vps_bytes || 0,
+      inventory_direct_bytes: row.direct_bytes || 0,
+      total_bytes: current ? Number(current.total_bytes || 0) : 0,
+      via_vps_bytes: current ? Number(current.via_vps_bytes || 0) : 0,
+      direct_bytes: current ? Number(current.direct_bytes || 0) : 0,
+      route: current ? deviceRoute(current) : "Unknown",
+      confidence: current?.confidence || "unknown",
+      traffic_window_active: Boolean(current && Number(current.total_bytes || 0) > 0),
+      traffic_collected_at: current?.last_seen || current?.collected_at || "",
+    };
+  });
+  for (const [key, row] of currentByKey) {
+    if (seen.has(key)) continue;
+    rows.push({
+      ...row,
+      traffic_window_active: Number(row.total_bytes || 0) > 0,
+      traffic_collected_at: row.last_seen || row.collected_at || "",
+    });
+  }
+  return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period)) as Array<Record<string, any>>).sort((a, b) => {
+    const trafficDelta = Number(b.total_bytes || 0) - Number(a.total_bytes || 0);
+    if (trafficDelta !== 0) return trafficDelta;
+    const aSeen = Date.parse(a.last_seen || "");
+    const bSeen = Date.parse(b.last_seen || "");
+    if (Number.isFinite(aSeen) && Number.isFinite(bSeen) && aSeen !== bSeen) return bSeen - aSeen;
+    return String(a.label || a.id || "").localeCompare(String(b.label || b.id || ""));
+  });
 }
 
 export function listClientInventory(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
-  const rows = mergeKnownDevices(knownDeviceRows(2000), false)
+  const rows = clientInventoryRows(args.filters || {})
     .filter((row) => {
       const total = Number(row.total_bytes || 0);
       const confidence = String(row.confidence || "");
@@ -987,7 +1246,7 @@ export function listClientInventory(args: PageArgs = {}) {
       ) return false;
       if (args.filters?.route && args.filters.route !== "all" && routeFromCounters(row) !== args.filters.route) return false;
       if (args.filters?.confidence && args.filters.confidence !== "all" && row.confidence !== args.filters.confidence) return false;
-      if (args.filters?.client && args.filters.client !== "all" && row.label !== args.filters.client && row.id !== args.filters.client) return false;
+      if (args.filters?.client && args.filters.client !== "all" && filterRows([row], args.filters).length === 0) return false;
       return clientSearch(row, args.filters?.search);
     });
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -1002,10 +1261,111 @@ export function listClientInventory(args: PageArgs = {}) {
   };
 }
 
+function moscowHourKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 13);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}T${pick("hour")}:00:00+03:00`;
+}
+
+function rowIdentityTokens(row: Record<string, any>) {
+  const raw = rawJson(row);
+  const resolved = resolveClient({ ...row, raw, profile: row.profile || raw.profile });
+  return [
+    resolved.client_key,
+    resolved.client_label,
+    row.client_key,
+    row.client_label,
+    keyForDevice({ ...row, raw }),
+    row.device_id,
+    row.id,
+    row.label,
+    row.client,
+    row.profile,
+    raw.profile,
+    raw.label,
+    raw.client,
+    ...(resolved.observed_aliases || []),
+    ...(row.aliases || []),
+    ...(row.observed_aliases || []),
+  ].filter(Boolean).map((value) => String(value).toLowerCase());
+}
+
+export function listClientActivity(client: Record<string, any> | string, period = "today") {
+  const target = typeof client === "string" ? { label: client } : client || {};
+  const targetTokens = new Set(rowIdentityTokens(target));
+  const targetKey = keyForDevice(target);
+  if (targetKey) targetTokens.add(targetKey.toLowerCase());
+  if (targetTokens.size === 0) return [];
+  const ids = snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"]));
+  const samples = normalizedRowsForIds("normalized_devices", ids)
+    .filter((row: any) => {
+      const tokens = rowIdentityTokens(row);
+      if (targetKey && keyForDevice({ ...row, raw: row.raw }) === targetKey) return true;
+      return tokens.some((token) => targetTokens.has(token));
+    })
+    .map((row: any) => ({
+      collected_at: row.collected_at,
+      hour_key: moscowHourKey(row.collected_at),
+      total_bytes: Number(row.total_bytes || 0),
+      via_vps_bytes: Number(row.via_vps_bytes || 0),
+      direct_bytes: Number(row.direct_bytes || 0),
+      channel: preservedChannel({ ...row, raw: row.raw }),
+      route: deviceRoute(row),
+      confidence: row.confidence || "unknown",
+    }))
+    .sort((a: any, b: any) => Date.parse(a.collected_at) - Date.parse(b.collected_at));
+  const byCollected = new Map<string, Record<string, any>>();
+  for (const sample of samples) {
+    const current = byCollected.get(sample.collected_at);
+    if (!current || Number(sample.total_bytes || 0) > Number(current.total_bytes || 0)) byCollected.set(sample.collected_at, sample);
+  }
+  const ordered = Array.from(byCollected.values()).sort((a, b) => Date.parse(a.collected_at) - Date.parse(b.collected_at));
+  const byHour = new Map<string, Record<string, any>>();
+  let previous: Record<string, any> | null = null;
+  for (const sample of ordered) {
+    const first = !previous;
+    const deltaTotal = first ? sample.total_bytes : Math.max(0, Number(sample.total_bytes || 0) - Number(previous?.total_bytes || 0));
+    const deltaVps = first ? sample.via_vps_bytes : Math.max(0, Number(sample.via_vps_bytes || 0) - Number(previous?.via_vps_bytes || 0));
+    const deltaDirect = first ? sample.direct_bytes : Math.max(0, Number(sample.direct_bytes || 0) - Number(previous?.direct_bytes || 0));
+    previous = sample;
+    if (deltaTotal <= 0 && deltaVps <= 0 && deltaDirect <= 0) continue;
+    const current = byHour.get(sample.hour_key) || {
+      hour_key: sample.hour_key,
+      bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      samples: 0,
+      mode: first ? "snapshot" : "delta",
+      channel: sample.channel,
+      route: sample.route,
+      confidence: sample.confidence,
+      latest_collected_at: sample.collected_at,
+    };
+    current.bytes += deltaTotal;
+    current.via_vps_bytes += deltaVps;
+    current.direct_bytes += deltaDirect;
+    current.samples += 1;
+    current.latest_collected_at = sample.collected_at;
+    current.mode = current.mode === "delta" || !first ? "delta" : "snapshot";
+    current.route = routeFromCounters(current);
+    byHour.set(sample.hour_key, current);
+  }
+  return Array.from(byHour.values()).sort((a, b) => String(a.hour_key).localeCompare(String(b.hour_key)));
+}
+
 function originForLive(row: Record<string, any>) {
   const client = String(row.client || row.client_ip || "").trim();
   const source = String(row.source_log || row.source || "").toLowerCase();
-  if (client && !["client", "unknown", "not observed"].includes(client.toLowerCase())) return displayDeviceLabel(client);
+  if (client && !["client", "unknown", "not observed"].includes(client.toLowerCase())) return resolveClient(row).client_label || displayDeviceLabel(client);
   if (source.includes("dnsmasq")) return "Router DNS service";
   if (source.includes("sing-box")) return "Router/sing-box";
   if (String(row.event_type || "").includes("collector")) return "Collector";

@@ -419,6 +419,13 @@ export function rebuildHourlyAggregates(db) {
   }
 }
 
+function usefulDeviceLabel(row) {
+  const label = text(row.label || "");
+  const profile = text(row.profile || "");
+  if (profile && /^mobile-client-\d+$/i.test(label)) return profile;
+  return text(row.label || row.profile || row.ip || row.id, "Unknown device");
+}
+
 export function resetNormalizedForSnapshot(db, snapshotId) {
   for (const table of [
     "normalized_devices",
@@ -455,7 +462,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       type,
       collectedAt,
       text(row.id || row.ip || row.profile || row.label, "unknown-device"),
-      text(row.label || row.profile || row.ip || row.id, "Unknown device"),
+      usefulDeviceLabel(row),
       text(row.ip || ""),
       inferChannel(row),
       text(row.route || "Unknown"),

@@ -15,6 +15,7 @@
     console_router_remote_port: "{{ ghostroute_router_remote_port | default('22022', true) }}"
     console_router_remote_user: "{{ ghostroute_router_remote_user | default('admin', true) }}"
     console_reset_db: "{{ ghostroute_console_reset_db | default(false) }}"
+    console_seed_local_data: "{{ ghostroute_console_seed_local_data | default(false) }}"
   tasks:
     - name: Create Console runtime directories
       ansible.builtin.file:
@@ -54,9 +55,9 @@
       ansible.builtin.copy:
         src: "{{ console_router_remote_key_src }}"
         dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
-        owner: root
+        owner: "{{ console_readonly_user }}"
         group: "{{ console_readonly_user }}"
-        mode: "0440"
+        mode: "0400"
       no_log: true
       when:
         - console_router_remote_key.stat.exists
@@ -67,9 +68,9 @@
       ansible.builtin.copy:
         content: "{{ console_router_remote_key_content }}"
         dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
-        owner: root
+        owner: "{{ console_readonly_user }}"
         group: "{{ console_readonly_user }}"
-        mode: "0440"
+        mode: "0400"
       no_log: true
       when:
         - console_router_remote_key_content | length > 0
@@ -216,6 +217,7 @@
       delegate_to: localhost
       become: false
       changed_when: true
+      when: console_seed_local_data | bool
 
     - name: Ensure Console data ownership after sync
       ansible.builtin.file:

@@ -60,6 +60,24 @@ destination/DNS/client evidence. They must not replace the traffic row as the
 primary UI object when they only prove `rule/outbound/time/destination IP` and
 do not prove client traffic or bytes.
 
+Dashboard, Traffic Explorer and Clients share the same selected traffic window.
+For the default `today` period, that window is the operator-local Moscow day:
+from `00:00` to the latest collected traffic snapshot. Historical known-device
+rows may enrich inventory labels and roles, but they must not contribute traffic
+totals, top clients, selected-client domains or route split values for the
+current window. If no current-day traffic snapshot exists, traffic views should
+show an empty state instead of presenting stale bytes as today's data.
+
+Traffic report snapshots can contain cumulative counters. Console therefore
+does not sum multiple same-day snapshots as independent traffic rows. Current
+client/device views use positive deltas between sequential samples when they are
+available, then reconcile the displayed rows to the authoritative
+`traffic-summary`/`traffic` KPI totals for the selected window. Reconciled rows
+may keep their raw snapshot total as troubleshooting evidence, but the primary
+UI amount must remain bounded by the current-window KPI. Destination rows follow
+the same rule: a generic category can enrich a row as class/type, but a Top
+destination needs concrete DNS/SNI/domain/IP evidence.
+
 Traffic UI must also explain operator-facing terms in-product:
 
 - `VPS`, `Direct`, `Mixed` and `Unknown` describe the final route decision.
@@ -90,6 +108,12 @@ Clients are shown as a known-device inventory, not only a latest-snapshot
 active list. Console keeps historical device rows, preserves the last known
 channel when a newer source is weaker, and displays status as `Online`,
 `Recently seen` or `Inactive` with a short last-seen timestamp.
+Traffic columns inside Clients are window-scoped: the inventory row may remain
+visible with `0 B` when the device has no traffic in the selected period.
+Selected-client activity charts are derived from the same window-scoped device
+snapshots. They use positive deltas between sequential cumulative samples when
+available; a single sample is rendered as a snapshot total so the UI does not
+invent a peak time that the collector did not observe.
 
 ## Live Tail
 
@@ -142,6 +166,8 @@ The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response; `/traffic` defaults to a small page and accepts `pageSize` up to
 100 for operator browsing.
+Playwright performance checks cover the main pages and JSON APIs with local
+budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
 
 The restricted SSH surface is `ghostroute_readonly` with forced-command
 whitelisting. Whitelisted commands must require `--json` and must remain

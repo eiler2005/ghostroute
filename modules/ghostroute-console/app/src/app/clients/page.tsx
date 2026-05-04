@@ -14,15 +14,16 @@ import {
   SplitBars,
   StatusBadge,
 } from "@/components/Widgets";
-import { buildPagedEvidenceContext, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, listClientActivity, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
 function clientTokens(client?: Record<string, any>) {
-  return [client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || [])].filter(Boolean).map(String);
+  return [client?.client_key, client?.client_label, client?.device_key, client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || [])].filter(Boolean).map(String);
 }
 
 function belongsToClient(row: Record<string, any>, tokens: string[]) {
@@ -31,6 +32,50 @@ function belongsToClient(row: Record<string, any>, tokens: string[]) {
   if (clientFields.some((value) => tokens.includes(value))) return true;
   const raw = JSON.stringify(row);
   return tokens.some((token) => token.length > 2 && raw.includes(token));
+}
+
+function hourLabel(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(11, 13);
+  return new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", hour12: false }).format(date);
+}
+
+function ClientActivityChart({ rows }: { rows: Array<Record<string, any>> }) {
+  if (rows.length === 0) return <EmptyState title="Нет истории активности клиента" />;
+  const max = Math.max(...rows.map((row) => Number(row.bytes || 0)), 1);
+  const width = 360;
+  const height = 136;
+  const padX = 18;
+  const padY = 14;
+  const step = rows.length > 1 ? (width - padX * 2) / (rows.length - 1) : 0;
+  const points = rows.map((row, idx) => {
+    const x = rows.length > 1 ? padX + idx * step : width - padX;
+    const y = height - padY - (Number(row.bytes || 0) / max) * (height - padY * 2);
+    return { x, y, row };
+  });
+  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const area = `${padX},${height - padY} ${line} ${points[points.length - 1].x},${height - padY}`;
+  return (
+    <div className="client-activity-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Client hourly traffic">
+        <polygon points={area} />
+        <polyline points={line} />
+        {points.map((point, idx) => <circle key={idx} cx={point.x} cy={point.y} r="3.5" />)}
+      </svg>
+      <div className="chart-axis">
+        {rows.map((row) => <span key={row.hour_key}>{hourLabel(row.hour_key)}h</span>)}
+      </div>
+      <div className="detail-list chart-breakdown">
+        {rows.slice(-5).reverse().map((row) => (
+          <div className="detail-row" key={row.hour_key}>
+            <span>{hourLabel(row.hour_key)}h {row.mode === "snapshot" ? "snapshot total" : "delta"}</span>
+            <strong>{bytes(row.bytes || 0)} <RouteBadge value={row.route} /></strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
@@ -45,7 +90,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
   const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
   const selected =
-    clientsPage.rows.find((row) => filters.client !== "all" && (row.label === filters.client || row.id === filters.client || (row.aliases || []).includes(filters.client))) ||
+    clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
     primaryRows[0] ||
     clientsPage.rows[0];
   const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
@@ -53,10 +98,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   model.devices = clientsPage.rows;
   const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
-  const selectedFlows = selected ? trafficRows.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
-  const selectedDns = selected ? model.dnsQueries.filter((row) => belongsToClient(row, tokens)).slice(0, 8) : [];
-  const selectedAlerts = selected ? model.alerts.filter((row) => belongsToClient(row, tokens)).slice(0, 5) : [];
+  const selectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const selectedDns = selected ? model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
+  const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -72,7 +118,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
         <section className="card clients-card">
           <div className="toolbar">
             <h2>Устройства</h2>
-            <span className="subtle">{clientsPage.total} known clients</span>
+            <span className="subtle">{clientsPage.total} known clients · traffic for selected window</span>
           </div>
           {clientsPage.rows.length === 0 ? (
             <EmptyState title="Нет фактической инвентаризации" />
@@ -87,7 +133,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                     <th>Status</th>
                     <th>Channel</th>
                     <th className="col-route">Route</th>
-                    <th className="col-traffic">Total</th>
+                    <th className="col-traffic">Window traffic</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -119,7 +165,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                         <th>Status</th>
                         <th>Channel</th>
                         <th className="col-route">Route</th>
-                        <th className="col-traffic">Total</th>
+                        <th className="col-traffic">Window traffic</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -159,7 +205,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
           ) : (
             <>
               <div className="detail-list">
-                <div className="detail-row"><span>Total</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
+                <div className="detail-row"><span>Window traffic</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
                 <div className="detail-row"><span>Device role</span><strong>{selected.role || "Unknown device"}</strong></div>
                 {selected.aliases?.length > 1 ? (
                   <div className="detail-row"><span>Observed labels</span><strong>{selected.aliases.slice(0, 4).join(", ")}</strong></div>
@@ -167,18 +213,21 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>
                 <div className="detail-row"><span>Last seen</span><strong>{shortDateTime(selected.last_seen || selected.collected_at)}</strong></div>
+                <div className="detail-row"><span>Traffic observed</span><strong>{selected.traffic_collected_at ? shortDateTime(selected.traffic_collected_at) : "not in window"}</strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
               </div>
               <SplitBars vps={selected.via_vps_bytes || 0} direct={selected.direct_bytes || 0} />
+              <h3>Client activity</h3>
+              <ClientActivityChart rows={selectedActivity} />
               <h3>Top domains</h3>
               {selectedFlows.length === 0 ? (
                 <EmptyState title="Нет доменов для выбранного клиента" />
               ) : (
                 <div className="detail-list">
-                  {selectedFlows.map((row, idx) => (
+                  {selectedFlows.map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
-                      <span>{row.destinationLabel || row.destination || row.dns_qname || "n/a"}</span>
+                      <span>{trafficDisplayDestination(row)}</span>
                       <strong>{bytes(row.bytes || 0)} <RouteBadge value={row.route || routeFromBytes(row)} /></strong>
                     </div>
                   ))}
@@ -189,7 +238,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="subtle">No DNS rows tied to this client in the latest snapshots.</div>
               ) : (
                 <div className="detail-list">
-                  {selectedDns.map((row, idx) => (
+                  {selectedDns.map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
                       <span>{row.domain || row.qname || "n/a"}</span>
                       <strong>{row.count || row.qtype || "seen"}</strong>
@@ -202,13 +251,19 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="subtle">No client-specific alerts in latest snapshots.</div>
               ) : (
                 <div className="detail-list">
-                  {selectedAlerts.map((row, idx) => (
-                    <div className="detail-row" key={idx}><span>{row.title}</span><strong>{row.severity}</strong></div>
+                  {selectedAlerts.map((row: Record<string, any>, idx: number) => (
+                    <div className="detail-row" key={idx}>
+                      <span>
+                        {row.title}
+                        {row.detail ? <small className="subtle block-detail">{row.detail}</small> : null}
+                      </span>
+                      <strong>{row.severity}</strong>
+                    </div>
                   ))}
                 </div>
               )}
               <ConfidenceHelp />
-              <RawEvidence value={{ client: selected, flows: selectedFlows, dns: selectedDns, alerts: selectedAlerts }} />
+              <RawEvidence value={{ client: selected, activity: selectedActivity, flows: selectedFlows, dns: selectedDns, alerts: selectedAlerts }} />
             </>
           )}
         </aside>
