@@ -972,6 +972,17 @@ type PageArgs = {
   diagnostics?: boolean;
 };
 
+type DnsPageArgs = PageArgs & {
+  status?: string;
+  catalogStatus?: string;
+};
+
+type AlarmPageArgs = PageArgs & {
+  severity?: string;
+  status?: string;
+  source?: string;
+};
+
 function clampPage(value?: number) {
   return Math.max(1, Number.isFinite(Number(value)) ? Math.floor(Number(value)) : 1);
 }
@@ -989,8 +1000,31 @@ function rawJson(row: any) {
   }
 }
 
+function evidenceJson(row: any) {
+  try {
+    return row.evidence_json ? JSON.parse(row.evidence_json) : {};
+  } catch {
+    return {};
+  }
+}
+
+function readModelHasRows(table: string) {
+  if (!/^(flow_sessions|dns_query_log|device_inventory|alarm_events)$/.test(table)) return false;
+  try {
+    return Number((getDb().prepare(`select count(*) as count from ${table}`).get() as any)?.count || 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 function latestIdWhereForFilters(filters: ConsoleFilters = {}) {
   const ids = snapshotIdsForWindow(filters.period || "today", new Set(["traffic"]));
+  if (ids.length === 0) return { ids, sql: "1 = 0", params: [] as any[] };
+  return { ids, sql: `snapshot_id in (${ids.map(() => "?").join(",")})`, params: ids as any[] };
+}
+
+function idWhereForWindow(period = "today", types = new Set<string>(["traffic"])) {
+  const ids = snapshotIdsForWindow(period || "today", types);
   if (ids.length === 0) return { ids, sql: "1 = 0", params: [] as any[] };
   return { ids, sql: `snapshot_id in (${ids.map(() => "?").join(",")})`, params: ids as any[] };
 }
@@ -1028,23 +1062,23 @@ function isUsefulClientSql(column = "client") {
   return `trim(${column}) != '' and lower(trim(${column})) not in ('unknown','client','not observed') and lower(trim(${column})) not glob '[0-9]*ms'`;
 }
 
-function notSystemDestinationSql() {
-  return `coalesce(destination, destination_ip, dns_qname, '') != ''
-    and destination not like '192.168.%'
-    and destination not like '10.%'
-    and destination not like '172.16.%'
-    and destination not like '172.17.%'
-    and destination not like '172.18.%'
-    and destination not like '172.19.%'
-    and destination not like '172.2_.%'
-    and destination not like '172.30.%'
-    and destination not like '172.31.%'
-    and destination not like '127.%'
-    and destination not like '169.254.%'
-    and destination not like '0.%'
-    and lower(destination) not like '%localhost%'
-    and lower(destination) not like '%router.local%'
-    and lower(destination) not like '%sslip.io%'`;
+function notSystemDestinationSql(destination = "destination", dns = "dns_qname") {
+  return `coalesce(${destination}, destination_ip, ${dns}, '') != ''
+    and ${destination} not like '192.168.%'
+    and ${destination} not like '10.%'
+    and ${destination} not like '172.16.%'
+    and ${destination} not like '172.17.%'
+    and ${destination} not like '172.18.%'
+    and ${destination} not like '172.19.%'
+    and ${destination} not like '172.2_.%'
+    and ${destination} not like '172.30.%'
+    and ${destination} not like '172.31.%'
+    and ${destination} not like '127.%'
+    and ${destination} not like '169.254.%'
+    and ${destination} not like '0.%'
+    and lower(${destination}) not like '%localhost%'
+    and lower(${destination}) not like '%router.local%'
+    and lower(${destination}) not like '%sslip.io%'`;
 }
 
 function flowSelect() {
@@ -1083,6 +1117,50 @@ function mapFlowRow(row: any) {
     source_log: row.source_log,
     collected_at: row.collected_at,
     raw: rawJson(row),
+  });
+}
+
+function flowSessionSelect() {
+  return `id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip, device_key,
+    channel, destination, destination_ip, destination_port, protocol, route, policy, matched_rule,
+    outbound, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
+    confidence, source_kind, evidence_json`;
+}
+
+function mapFlowSessionRow(row: any) {
+  const raw = evidenceJson(row);
+  const rowid = String(row.id || "").replace(/^flow:/, "");
+  return decorateTrafficRow({
+    id: row.id,
+    rowid,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
+    client: row.client,
+    client_ip: row.client_ip,
+    device_key: row.device_key,
+    channel: row.channel,
+    destination: row.destination,
+    destination_ip: row.destination_ip,
+    destination_port: row.destination_port,
+    route: row.route,
+    confidence: row.confidence,
+    bytes: Number(row.bytes || 0),
+    total_bytes: Number(row.bytes || 0),
+    connections: Number(row.connections || 0),
+    protocol: row.protocol,
+    outbound: row.outbound,
+    matched_rule: row.matched_rule || row.policy,
+    rule_set: row.policy,
+    policy: row.policy,
+    risk: row.risk,
+    risk_reason: row.risk_reason,
+    duration_seconds: Number(row.duration_seconds || 0),
+    duration_confidence: row.duration_confidence,
+    event_ts: row.last_seen || row.first_seen || row.collected_at,
+    source_log: row.source_kind,
+    raw,
   });
 }
 
@@ -1134,12 +1212,335 @@ export function listTrafficRows(args: PageArgs = {}) {
   };
 }
 
+export function listFlowSessions(args: PageArgs = {}) {
+  if (!readModelHasRows("flow_sessions")) return listTrafficRows(args);
+  const page = clampPage(args.page);
+  const pageSize = clampPageSize(args.pageSize, 25, 100);
+  const latest = idWhereForWindow(args.filters?.period || "today", new Set(["traffic"]));
+  const where = [latest.sql];
+  const params = [...latest.params];
+  const filters = args.filters || {};
+  if (filters.route && filters.route !== "all") {
+    where.push("route = ?");
+    params.push(filters.route);
+  }
+  if (filters.channel && filters.channel !== "all") {
+    where.push("channel = ?");
+    params.push(filters.channel);
+  }
+  if (filters.confidence && filters.confidence !== "all") {
+    where.push("confidence = ?");
+    params.push(filters.confidence);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    const needle = `%${search.toLowerCase()}%`;
+    where.push(`(
+      lower(client) like ? or lower(client_ip) like ? or lower(destination) like ?
+      or lower(destination_ip) like ? or lower(policy) like ? or lower(matched_rule) like ?
+      or lower(outbound) like ?
+    )`);
+    params.push(needle, needle, needle, needle, needle, needle, needle);
+  }
+  if (!args.diagnostics) {
+    where.push(isUsefulClientSql());
+    where.push("(bytes > 0 or connections > 1)");
+    where.push(notSystemDestinationSql("destination", "destination"));
+  }
+  const whereSql = where.map((item) => `(${item})`).join(" and ");
+  const offset = (page - 1) * pageSize;
+  const trafficClass = filters.trafficClass || "client";
+  const hasRegistryFilter = Boolean(filters.client && filters.client !== "all");
+  const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
+  const fetchLimit = hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize;
+  const db = getDb();
+  const sqlTotal = Number((db.prepare(`select count(*) as count from flow_sessions where ${whereSql}`).get(...params) as any)?.count || 0);
+  const rawRows = db
+    .prepare(
+      `select ${flowSessionSelect()}
+         from flow_sessions
+        where ${whereSql}
+        order by bytes desc, coalesce(nullif(last_seen, ''), collected_at) desc, id desc
+        limit ?`
+    )
+    .all(...params, fetchLimit)
+    .map(mapFlowSessionRow)
+    .filter((row) => filterRows([row], filters).length > 0)
+    .filter((row) => !trafficClass || trafficClass === "all" || row.trafficClass === trafficClass)
+    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+  const allRows = (reconcileTrafficRows(rawRows, authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
+    .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+  const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
+  const rows = allRows.slice(offset, offset + pageSize);
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    hiddenCount: args.diagnostics
+      ? 0
+      : Math.max(0, Number((db.prepare(`select count(*) as count from flow_sessions where ${latest.sql}`).get(...latest.params) as any)?.count || 0) - total),
+  };
+}
+
 export function getTrafficRowById(id: string, filters: ConsoleFilters = {}) {
   const match = String(id || "").match(/^flow:(\d+)$/);
   if (!match) return null;
+  if (readModelHasRows("flow_sessions")) {
+    const readModelRow = getDb().prepare(`select ${flowSessionSelect()} from flow_sessions where id = ?`).get(`flow:${match[1]}`) as any;
+    if (readModelRow) return mapFlowSessionRow(readModelRow);
+  }
   const row = getDb().prepare(`select ${flowSelect()} from normalized_flows where rowid = ?`).get(Number(match[1])) as any;
   if (!row) return null;
   return mapFlowRow(row);
+}
+
+function mapDnsReadModelRow(row: any) {
+  const raw = evidenceJson(row);
+  return decorateTrafficRow({
+    id: row.id,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    event_ts: row.event_ts,
+    client: row.client,
+    client_ip: row.client_ip,
+    device_key: row.device_key,
+    destination: row.domain,
+    domain: row.domain,
+    dns_qname: row.domain,
+    qtype: row.qtype,
+    answer_ip: row.answer_ip,
+    dns_answer_ip: row.answer_ip,
+    route: row.route,
+    catalog_status: row.catalog_status,
+    status: row.status,
+    count: Number(row.count || 0),
+    risk: row.risk,
+    confidence: row.confidence,
+    raw,
+  });
+}
+
+function mapDnsFallbackRow(row: any) {
+  return decorateTrafficRow({
+    id: `dns:fallback:${row.snapshot_id}:${row.domain}:${row.qtype}:${row.event_ts || row.collected_at}`,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    event_ts: row.event_ts,
+    client: row.client,
+    destination: row.domain,
+    domain: row.domain,
+    dns_qname: row.domain,
+    qtype: row.qtype,
+    answer_ip: row.answer_ip,
+    dns_answer_ip: row.answer_ip,
+    route: "Unknown",
+    catalog_status: "unknown",
+    status: "OK",
+    count: Number(row.count || 0),
+    risk: "low",
+    confidence: row.confidence || "dns-interest",
+    raw: row.raw,
+  });
+}
+
+export function listDnsQueryLog(args: DnsPageArgs = {}) {
+  const page = clampPage(args.page);
+  const pageSize = clampPageSize(args.pageSize, 50, 100);
+  const filters = args.filters || {};
+  const status = args.status || "all";
+  const catalogStatus = args.catalogStatus || "all";
+  const route = filters.route || "all";
+  const period = filters.period || "today";
+  if (!readModelHasRows("dns_query_log")) {
+    const rows = normalizedRowsForIds("normalized_dns", snapshotIdsForWindow(period, new Set(["dns", "traffic"])))
+      .map(mapDnsFallbackRow)
+      .filter((row) => route === "all" || row.route === route)
+      .filter((row) => catalogStatus === "all" || row.catalog_status === catalogStatus)
+      .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
+      .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const offset = (effectivePage - 1) * pageSize;
+    return {
+      rows: rows.slice(offset, offset + pageSize),
+      total: rows.length,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  }
+  const latest = idWhereForWindow(period, new Set(["dns", "live"]));
+  const where = [latest.sql];
+  const params = [...latest.params];
+  if (route !== "all") {
+    where.push("route = ?");
+    params.push(route);
+  }
+  if (filters.channel && filters.channel !== "all") {
+    where.push("1 = 0");
+  }
+  if (filters.confidence && filters.confidence !== "all") {
+    where.push("confidence = ?");
+    params.push(filters.confidence);
+  }
+  if (status !== "all") {
+    where.push("lower(status) = ?");
+    params.push(status.toLowerCase());
+  }
+  if (catalogStatus !== "all") {
+    where.push("catalog_status = ?");
+    params.push(catalogStatus);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    const needle = `%${search.toLowerCase()}%`;
+    where.push("(lower(client) like ? or lower(client_ip) like ? or lower(domain) like ? or lower(answer_ip) like ? or lower(route) like ? or lower(catalog_status) like ?)");
+    params.push(needle, needle, needle, needle, needle, needle);
+  }
+  const whereSql = where.map((item) => `(${item})`).join(" and ");
+  const offset = (page - 1) * pageSize;
+  const hasRegistryFilter = Boolean(filters.client && filters.client !== "all");
+  const fetchLimit = hasRegistryFilter ? Math.max(offset + pageSize * 8, 1000) : offset + pageSize;
+  const db = getDb();
+  const sqlTotal = Number((db.prepare(`select count(*) as count from dns_query_log where ${whereSql}`).get(...params) as any)?.count || 0);
+  const rows = db
+    .prepare(
+      `select id, snapshot_id, collected_at, event_ts, client, client_ip, device_key, domain,
+              qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
+         from dns_query_log
+        where ${whereSql}
+        order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
+        limit ?`
+    )
+    .all(...params, fetchLimit)
+    .map(mapDnsReadModelRow)
+    .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
+  const total = hasRegistryFilter ? Math.max(rows.length, rows.length >= fetchLimit ? sqlTotal : rows.length) : sqlTotal;
+  return {
+    rows: rows.slice(offset, offset + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+function mapAlarmReadModelRow(row: any) {
+  return {
+    id: row.id,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    created_at: row.collected_at,
+    severity: row.severity,
+    source: row.source,
+    title: row.title,
+    status: row.status,
+    evidence: row.evidence,
+    suggested_action: row.suggested_action,
+    snoozed_until: row.snoozed_until,
+    confidence: row.confidence,
+    risk: row.risk,
+    raw: evidenceJson(row),
+  };
+}
+
+function mapAlarmFallbackRow(row: any) {
+  return {
+    id: `alarm:fallback:${row.snapshot_id || "local"}:${row.title}:${row.collected_at}`,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    created_at: row.collected_at,
+    severity: row.severity,
+    source: row.snapshot_type,
+    title: row.title,
+    status: row.status || "open",
+    evidence: row.evidence,
+    suggested_action: "",
+    snoozed_until: "",
+    confidence: row.confidence,
+    risk: row.severity === "critical" ? "high" : row.severity === "info" ? "low" : "medium",
+    raw: row.raw,
+  };
+}
+
+export function listAlarmEvents(args: AlarmPageArgs = {}) {
+  const page = clampPage(args.page);
+  const pageSize = clampPageSize(args.pageSize, 25, 100);
+  const filters = args.filters || {};
+  const period = filters.period || "today";
+  const severity = args.severity || "all";
+  const status = args.status || "all";
+  const source = args.source || "all";
+  if (!readModelHasRows("alarm_events")) {
+    const ids = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+    const rows = normalizedRowsForIds("normalized_alerts", ids)
+      .map(mapAlarmFallbackRow)
+      .filter((row) => severity === "all" || String(row.severity || "").toLowerCase() === severity.toLowerCase())
+      .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
+      .filter((row) => source === "all" || row.source === source)
+      .filter((row) => {
+        const search = filters.search?.trim().toLowerCase();
+        if (!search) return true;
+        return [row.title, row.source, row.severity, row.status, row.evidence, row.suggested_action].filter(Boolean).join(" ").toLowerCase().includes(search);
+      });
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const offset = (effectivePage - 1) * pageSize;
+    return {
+      rows: rows.slice(offset, offset + pageSize),
+      total: rows.length,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  }
+  const latest = idWhereForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+  const where = [latest.sql];
+  const params = [...latest.params];
+  if (severity !== "all") {
+    where.push("lower(severity) = ?");
+    params.push(severity.toLowerCase());
+  }
+  if (status !== "all") {
+    where.push("lower(status) = ?");
+    params.push(status.toLowerCase());
+  }
+  if (source !== "all") {
+    where.push("source = ?");
+    params.push(source);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    const needle = `%${search.toLowerCase()}%`;
+    where.push("(lower(title) like ? or lower(source) like ? or lower(severity) like ? or lower(status) like ? or lower(evidence) like ? or lower(suggested_action) like ?)");
+    params.push(needle, needle, needle, needle, needle, needle);
+  }
+  const whereSql = where.map((item) => `(${item})`).join(" and ");
+  const offset = (page - 1) * pageSize;
+  const db = getDb();
+  const total = Number((db.prepare(`select count(*) as count from alarm_events where ${whereSql}`).get(...params) as any)?.count || 0);
+  const rows = db
+    .prepare(
+      `select id, snapshot_id, collected_at, severity, source, title, status, evidence,
+              suggested_action, snoozed_until, confidence, risk, evidence_json
+         from alarm_events
+        where ${whereSql}
+        order by case lower(severity) when 'critical' then 0 when 'warning' then 1 when 'review' then 2 when 'info' then 3 else 4 end,
+                 collected_at desc,
+                 id desc
+        limit ? offset ?`
+    )
+    .all(...params, pageSize, offset)
+    .map(mapAlarmReadModelRow);
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
@@ -1169,15 +1570,14 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     evidence: row.evidence,
     confidence: row.confidence || "exact",
   }));
-  const alertWindowIds = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
-  const dnsWindowIds = snapshotIdsForWindow(period, new Set(["dns", "traffic"]));
-  const normalizedAlerts = normalizedRowsForIds("normalized_alerts", alertWindowIds).slice(0, 50).map((row: any) => ({
+  const normalizedAlerts = listAlarmEvents({ page: 1, pageSize: 50, filters }).rows.map((row: any) => ({
     severity: row.severity,
     title: row.title,
-    source: row.snapshot_type,
+    source: row.source,
     status: row.status,
     confidence: row.confidence,
     evidence: row.evidence,
+    suggested_action: row.suggested_action,
     raw: row.raw,
   }));
   const staleAlert =
@@ -1192,18 +1592,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
         }]
       : [];
   const devices = clientInventoryRows(filters).slice(0, 200);
-  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 80).map((row: any) => ({
-    client: row.client,
-    domain: row.domain,
-    qtype: row.qtype,
-    count: row.count,
-    answer_ip: row.answer_ip,
-    event_ts: row.event_ts,
-    ts_confidence: row.ts_confidence,
-    confidence: row.confidence,
-    raw: row.raw,
-    collected_at: row.collected_at,
-  }));
+  const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 80, filters: { ...filters, trafficClass: "all" } }).rows;
   const statusCards = [
     { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
     { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
@@ -1286,6 +1675,7 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
           confidence: "exact",
         }]
       : [];
+  const alarmRows = listAlarmEvents({ page: 1, pageSize: 50, filters }).rows;
   const statusCards = [
     { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
     { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
@@ -1326,7 +1716,7 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
     devices: [],
     flows: [],
     dnsQueries: [],
-    alerts: dedupeAlerts([...staleAlert, ...leakAlerts, ...collectorErrors.map((row) => ({
+    alerts: dedupeAlerts([...staleAlert, ...alarmRows, ...leakAlerts, ...collectorErrors.map((row) => ({
       severity: "warning",
       title: row.type || "collector warning",
       source: "collector",
@@ -1341,43 +1731,19 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
 
 export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel {
   const allFilters = { ...filters, trafficClass: "all" };
-  const flows = listTrafficRows({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
+  const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 100, filters }).rows;
   return buildShellModel(filters, { devices, flows });
 }
 
 export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
-  const dnsWindowIds = snapshotIdsForWindow(filters.period || "today", new Set(["dns", "traffic"]));
-  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 12).map((row: any) => ({
-    client: row.client,
-    domain: row.domain,
-    qtype: row.qtype,
-    count: row.count,
-    answer_ip: row.answer_ip,
-    event_ts: row.event_ts,
-    ts_confidence: row.ts_confidence,
-    confidence: row.confidence,
-    raw: row.raw,
-    collected_at: row.collected_at,
-  }));
+  const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 12, filters: { ...filters, trafficClass: "all" } }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 10, filters }).rows;
   return buildShellModel(filters, { flows, devices, dnsQueries });
 }
 
 export function buildClientsModel(filters: ConsoleFilters = {}, devices: Array<Record<string, any>> = [], flows: Array<Record<string, any>> = []): ConsoleModel {
-  const dnsWindowIds = snapshotIdsForWindow(filters.period || "today", new Set(["dns", "traffic"]));
-  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 80).map((row: any) => ({
-    client: row.client,
-    domain: row.domain,
-    qtype: row.qtype,
-    count: row.count,
-    answer_ip: row.answer_ip,
-    event_ts: row.event_ts,
-    ts_confidence: row.ts_confidence,
-    confidence: row.confidence,
-    raw: row.raw,
-    collected_at: row.collected_at,
-  }));
+  const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 80, filters: { ...filters, trafficClass: "all" } }).rows;
   return buildShellModel(filters, { devices, flows, dnsQueries });
 }
 

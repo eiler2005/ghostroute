@@ -94,7 +94,7 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
 });
 
 test("api smoke endpoints respond", async ({ request }) => {
-  for (const path of ["/api/dashboard", "/api/flows", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
+  for (const path of ["/api/dashboard", "/api/flows", "/api/dns", "/api/alarms", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
     const response = await request.get(path);
     expect(response.ok(), path).toBeTruthy();
     const body = await response.json();
