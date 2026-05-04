@@ -48,17 +48,24 @@ source`. The Console does not invent real device names; it only uses labels,
 profiles and safe inference from observed metadata.
 
 Operators may add a private `device-attribution.json` file in the Console data
-directory to pin stable names and roles for known sources. That file is local
-runtime state, not tracked documentation, because it can contain household
-device names. The same attribution is applied consistently in Dashboard,
-Traffic Explorer, Clients, Live, Budget and API payloads. If a source is not in
-the table and the snapshots do not identify it, Console displays it as
-`Unknown device`, `Unknown Home Reality profile` or `Unattributed source`
-instead of guessing.
+directory to pin the canonical client registry: stable names, roles, primary
+channel, Channel A/B/C/LAN aliases and optional explicit MAC/IP aliases. That
+file is local runtime state, not tracked documentation, because it can contain
+household device names. The same resolver is applied consistently in Dashboard,
+Traffic Explorer, Clients, Live, Budget, Reports, Settings and API payloads. If
+a source is not in the registry and the snapshots do not identify it, Console
+displays it as `Unknown device`, `Unknown Home Reality profile` or
+`Unattributed source` instead of guessing.
 
-Client totals sort by the latest factual snapshot for the selected period.
-Historical rows may enrich the display label and role, but they must not make an
-old total look current. If one canonical source such as `lan-host-08` has been
-seen under several labels, the detail panel can show observed labels and the
-channel badge can show combined access paths such as A/Home Reality plus Channel
-B/C.
+Client totals sort by the selected traffic window. Historical rows may enrich
+the display label and role, but they must not make an old total look current. If
+one canonical client has been seen under several observed labels, the detail
+panel can show those labels and the channel badge can show combined access
+paths such as A/Home Reality plus Channel B/C. Raw evidence keeps original
+observed aliases so attribution decisions remain auditable.
+
+Traffic reports may redact profile names with per-report aliases such as
+`report-mobile-profile-N` and older snapshots may contain `mobile-client-N`.
+Those aliases are local to that report order and must not be treated as stable
+ownership. If the row includes a stable profile id, Console resolves the client
+from that profile and only shows the redacted alias as evidence.

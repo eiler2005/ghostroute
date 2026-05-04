@@ -1,5 +1,5 @@
 import type { ConsoleModel } from "./types";
-import { canonicalDeviceKey, displayDeviceLabel } from "../device-attribution.mjs";
+import { canonicalDeviceKey, displayDeviceLabel, resolveClient } from "../device-attribution.mjs";
 
 function lower(value: unknown) {
   return String(value || "").toLowerCase();
@@ -32,10 +32,12 @@ function suffixMatch(domain: string, candidate: string) {
 }
 
 function clientMatches(row: Record<string, any>, client: string) {
-  const rowKey = canonicalDeviceKey(row);
-  const clientKey = canonicalDeviceKey(client);
+  const rowResolved = resolveClient(row);
+  const clientResolved = resolveClient(client);
+  const rowKey = row.client_key || rowResolved.client_key || canonicalDeviceKey(row);
+  const clientKey = clientResolved.client_key || canonicalDeviceKey(client);
   if (rowKey && clientKey && rowKey === clientKey) return true;
-  const haystack = lower([row.client, row.raw_client, row.label, row.id, row.ip, row.client_ip, row.device_id, ...(row.aliases || []), row.raw?.client, row.raw?.ip, row.raw?.client_ip].filter(Boolean).join(" "));
+  const haystack = lower([row.client_key, row.client_label, row.client, row.raw_client, row.label, row.id, row.ip, row.client_ip, row.device_id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(rowResolved.observed_aliases || []), row.raw?.client, row.raw?.ip, row.raw?.client_ip].filter(Boolean).join(" "));
   return client ? haystack.includes(lower(client)) || lower(client).includes(haystack) : false;
 }
 
@@ -343,7 +345,8 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const rawDestination = text(flow.destination || flow.destination_ip || flow.dns_qname || flow.family || flow.domain || flow.app, "unknown destination");
   const dnsByAnswer = model.dnsQueries.find((row) => lower(row.answer_ip) === lower(rawDestination) || lower(row.raw?.dns_answer_ip) === lower(rawDestination));
   const destination = text(flow.dns_qname || dnsByAnswer?.domain || dnsByAnswer?.qname || rawDestination, "unknown destination");
-  const client = displayDeviceLabel(text(flow.client || flow.label || dnsByAnswer?.client || flow.channel, "unknown client"));
+  const resolvedClient = resolveClient({ ...flow, client: flow.client || dnsByAnswer?.client, label: flow.label });
+  const client = resolvedClient.client_label || displayDeviceLabel(text(flow.client || flow.label || dnsByAnswer?.client || flow.channel, "unknown client"));
   const device = model.devices.find((row) => clientMatches(row, client));
   const channel = inferAccessChannel(flow, device);
   const dnsMatches = model.dnsQueries.filter((row) => suffixMatch(destination, row.domain || row.qname || row.query)).slice(0, 6);

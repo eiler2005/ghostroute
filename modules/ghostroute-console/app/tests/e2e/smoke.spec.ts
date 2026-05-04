@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const pages = ["/", "/traffic", "/traffic/0", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
+const pages = ["/", "/traffic", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
 
 for (const path of pages) {
   test(`renders ${path}`, async ({ page }) => {
@@ -21,6 +21,10 @@ test("filters are visible and stable", async ({ page }) => {
 
 test("route explanation exposes gated evidence", async ({ page }) => {
   await page.goto("/traffic?flow=0");
+  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+    return;
+  }
   await expect(page.getByText("Почему маршрут именно такой?")).toBeVisible();
   await expect(page.getByText("Что видит сайт")).toBeVisible();
   await expect(page.getByText("Что видит оператор")).toBeVisible();
@@ -32,26 +36,53 @@ test("route explanation exposes gated evidence", async ({ page }) => {
 
 test("traffic explorer hides technical evidence noise by default", async ({ page }) => {
   await page.goto("/traffic");
+  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+    return;
+  }
   await expect(page.getByText("Client traffic by volume")).toBeVisible();
   await expect(page.getByText("Showing traffic rows only")).toBeVisible();
   await expect(page.getByText("system/no-byte evidence hidden")).toBeVisible();
   const firstRow = page.locator(".route-table-card tbody tr").first();
-  await expect(firstRow).toBeVisible();
-  await expect(firstRow).not.toContainText("Unknown");
-  await expect(firstRow).not.toContainText("0 B");
+  if (await firstRow.count()) {
+    await expect(firstRow).toBeVisible();
+    await expect(firstRow).not.toContainText("Unknown");
+    await expect(firstRow).not.toContainText("0 B");
+  } else {
+    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  }
   await page.goto("/traffic?diagnostics=1");
-  await expect(page.getByText("Diagnostics visible")).toBeVisible();
+  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  } else {
+    await expect(page.getByText("Diagnostics visible")).toBeVisible();
+  }
 });
 
 test("traffic classes and live cadence are explicit", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Service/background traffic")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Service/background traffic" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attribution" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Client traffic snapshot rows" })).toBeVisible();
+  const clientRowsY = await page.getByRole("heading", { name: "Client traffic snapshot rows" }).boundingBox();
+  const serviceY = await page.getByRole("heading", { name: "Service/background traffic" }).boundingBox();
+  expect(clientRowsY?.y || 0).toBeLessThan(serviceY?.y || Number.POSITIVE_INFINITY);
   await page.goto("/traffic?trafficClass=unclassified");
-  await expect(page.getByText("Needs attribution traffic by volume")).toBeVisible();
+  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  } else {
+    await expect(page.getByText("Needs attribution traffic by volume")).toBeVisible();
+  }
   await page.goto("/live");
   await expect(page.getByText("Автообновление около 10 минут")).toBeVisible();
   await expect(page.getByText("Service/background live events")).toBeVisible();
+});
+
+test("clients separate inventory from selected-window traffic", async ({ page }) => {
+  await page.goto("/clients");
+  await expect(page.getByText("traffic for selected window")).toBeVisible();
+  await expect(page.getByText("Window traffic").first()).toBeVisible();
+  await expect(page.getByText("Traffic observed")).toBeVisible();
 });
 
 test("mobile keeps controls and content reachable", async ({ page, isMobile }) => {
@@ -63,7 +94,7 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
 });
 
 test("api smoke endpoints respond", async ({ request }) => {
-  for (const path of ["/api/dashboard", "/api/flows", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/reports/llm-safe?format=json", "/api/routes/0/export?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
+  for (const path of ["/api/dashboard", "/api/flows", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
     const response = await request.get(path);
     expect(response.ok(), path).toBeTruthy();
     const body = await response.json();

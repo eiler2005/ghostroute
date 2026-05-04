@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     page: Math.max(1, Number(search.get("page") || 1)),
     pageSize: Math.min(Number(search.get("pageSize") || 25), 100),
     filters: {
+      period: search.get("period") || "today",
       route: search.get("route") || "all",
       channel: search.get("channel") || "all",
       confidence: search.get("confidence") || "all",

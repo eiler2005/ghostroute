@@ -71,11 +71,19 @@ HTTP/3/QUIC on the dedicated Console port. Provider-level firewalls must allow
 the configured public TCP port; host UFW alone is not enough if the cloud
 firewall drops packets before they reach the VPS.
 
-Operator-local device attribution can be stored in the same data directory as
+Operator-local client identity is stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console
-uses it to render stable device labels and roles such as phone, tablet, laptop
-or owner/profile names, while new or unmatched sources remain explicitly marked
-as unknown/unattributed.
+uses it as the private authoritative client registry for stable labels, roles,
+primary channel and explicit Channel A/B/C/LAN aliases. Dashboard, Traffic
+Explorer, Clients, Live, Budget, Reports, Settings and JSON endpoints all pass
+raw rows through the same resolver before grouping or rendering client names.
+Raw evidence still keeps the observed labels separately. New or unmatched
+`mobile-source-*` counters remain diagnostics until the operator adds an
+explicit profile, MAC or IP alias.
+Home Reality report-local aliases such as `mobile-client-N` or
+`report-mobile-profile-N` are not stable client identities. When a row carries a
+stable `profile` such as `iphone-N`, Console resolves and aggregates by that
+profile/registry entry and keeps the redacted report alias only as evidence.
 
 Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
 `GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains
@@ -90,6 +98,25 @@ The VPS deployment defaults to read-only SSH collection through the generated
 - full snapshots every 30 minutes during 07:00-23:59 Moscow time;
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
 - live event polling every 10 minutes by default.
+
+Traffic-driven UI surfaces use one selected traffic window at a time. The
+default `today` window means the operator-local day, from Moscow midnight to the
+latest collected traffic window. Dashboard, Traffic Explorer and Clients do not
+borrow stale historical traffic totals when the current-day window is empty.
+Clients still keeps historical inventory metadata for names, roles, aliases and
+last-seen state, but the displayed traffic totals, route split and selected
+client domains come from the selected window only. Because detailed snapshots
+can be cumulative, Console derives current-window client rows from positive
+deltas between same-day samples per observed source, then aggregates those
+sources into the canonical registry client and reconciles them to the
+authoritative `traffic-summary`/`traffic` KPI totals before rendering Dashboard,
+Traffic Explorer and Clients. This prevents several cumulative snapshots or
+Channel A/B/C aliases from being summed into impossible Top clients or Top
+destination totals.
+For selected-client details, Console derives an activity series from sequential
+current-window device snapshots. Multiple snapshots become hourly deltas; if a
+client only appears in one current snapshot, the chart shows that hour as a
+snapshot total rather than pretending to know the earlier peak time.
 
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
 snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
@@ -138,3 +165,16 @@ from the public Console URL.
   actions without storing delivery secrets.
 - `/api/actions/ops` records controlled ops actions such as collect/report
   refresh and collector restart requests.
+
+## Local Checks
+
+```bash
+cd modules/ghostroute-console/app
+npm test
+npm run test:e2e
+npm run test:perf
+```
+
+`test:perf` warms the local Playwright dev server, then checks that the main
+Console pages render within 2.5 seconds and key JSON APIs respond within 1.5
+seconds.

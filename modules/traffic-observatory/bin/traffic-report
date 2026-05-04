@@ -1050,8 +1050,15 @@ else
 fi
 
 ruby -rjson -e '
-  current = JSON.parse(File.read(ARGV[0]))
-  base = JSON.parse(File.read(ARGV[1]))
+  def read_json(path)
+    raw = File.read(path).strip
+    raw.empty? ? {} : JSON.parse(raw)
+  rescue JSON::ParserError
+    {}
+  end
+
+  current = read_json(ARGV[0])
+  base = read_json(ARGV[1])
   base_peers = {}
   (base["Peer"] || {}).each_value do |peer|
     next unless peer["ID"]
@@ -1099,7 +1106,7 @@ if [ "$REPORT_REDACT_NAMES" = "1" ] && { [ -s "$MOBILE_CLIENTS" ] || [ -s "$MOBI
     }
     BEGIN { OFS = "|" }
     $1 == "profile" && $2 != "" {
-      if (!($2 in alias)) alias[$2] = sprintf("mobile-client-%02d", ++profile_idx)
+      if (!($2 in alias)) alias[$2] = sprintf("report-mobile-profile-%02d", ++profile_idx)
       next
     }
     $1 == "source" && $2 != "" {

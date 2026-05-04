@@ -5,6 +5,7 @@ import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -87,7 +88,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.eventTimeLabel}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
                     <td className="col-channel"><ChannelBadge value={row.channel} /></td>
-                    <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{row.flow?.destinationLabel || row.destination}</Link></td>
+                    <td><Link href={`/traffic/${encodeURIComponent(row.id)}`}>{trafficDisplayDestination(row.flow || row)}</Link></td>
                     <td className="col-class">{row.flow?.trafficClassLabel || "Client"}</td>
                     <td><RouteBadge value={row.route} /></td>
                     <td>{bytes(row.bytes)}</td>
