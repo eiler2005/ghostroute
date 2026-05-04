@@ -82,19 +82,25 @@ function normalizeEntry(key, value) {
   if (!value) return null;
   if (typeof value === "string") return { client_key: key, label: `${key} (${value})` };
   if (typeof value !== "object") return null;
+  const clientKey = clean(value.client_key || key).toLowerCase();
+  const deviceKey = clean(value.device_key || value.physical_device_key || value.inventory_key || clientKey).toLowerCase();
   const owner = clean(value.owner || value.name || value.display_name);
-  const kind = clean(value.kind || value.profile_type);
+  const kind = clean(value.kind || value.profile_type || value.device_type);
   const label = clean(value.label || value.display_name) || (owner ? `${key} (${owner})` : kind ? `${key} (${kind})` : fallbackLabelFor(key));
+  const deviceLabel = clean(value.device_label || value.physical_device_label || value.inventory_label) || label;
   const aliases = normalizeAliasList(value.aliases);
   const observedIds = normalizeAliasList(value.observed_ids || value.observedIds);
   const macAliases = normalizeAliasList(value.mac_aliases || value.macs || value.mac || value.mac_address);
   const ipAliases = normalizeAliasList(value.ip_aliases || value.ips || value.ip || value.client_ip);
   return {
-    client_key: clean(value.client_key || key).toLowerCase(),
+    client_key: clientKey,
+    device_key: deviceKey,
+    device_label: deviceLabel,
     label,
     display_name: clean(value.display_name || value.name || label),
     role: clean(value.role || kind || ""),
     owner,
+    device_type: clean(value.device_type || kind || ""),
     profile_type: kind,
     primary_channel: clean(value.primary_channel || value.channel || ""),
     channel: clean(value.channel || value.primary_channel || ""),
@@ -229,7 +235,11 @@ function fallbackResolution(value) {
   return {
     client_key: key,
     client_label: label,
+    device_key: key,
+    device_label: label,
     client_role: role,
+    client_owner: "",
+    device_type: "",
     client_channel: "",
     matched_by: key ? "observed_alias" : "unmatched",
     attribution_confidence: key.startsWith("mobile-source-") ? "unattributed" : "inferred",
@@ -247,7 +257,11 @@ export function resolveClient(value, registry = loadDeviceAttributions()) {
     return {
       client_key: key,
       client_label: entry.label,
+      device_key: entry.device_key || key,
+      device_label: entry.device_label || entry.label,
       client_role: entry.role,
+      client_owner: entry.owner,
+      device_type: entry.device_type || entry.profile_type,
       client_channel: entry.primary_channel || entry.channel,
       matched_by: canonical && registry.aliases[canonical] === key ? "exact_observed_id" : "exact_alias",
       attribution_confidence: entry.confidence || "operator-local",
@@ -262,7 +276,11 @@ export function resolveClient(value, registry = loadDeviceAttributions()) {
     return {
       client_key: key,
       client_label: entry.label,
+      device_key: entry.device_key || key,
+      device_label: entry.device_label || entry.label,
       client_role: entry.role,
+      client_owner: entry.owner,
+      device_type: entry.device_type || entry.profile_type,
       client_channel: entry.primary_channel || entry.channel,
       matched_by: IP_RE.test(literal) ? "explicit_ip_alias" : "explicit_mac_alias",
       attribution_confidence: entry.confidence || "operator-local",
@@ -294,18 +312,23 @@ export function displayDeviceLabel(value, registry = loadDeviceAttributions()) {
 export function applyDeviceAttribution(row, registry = loadDeviceAttributions()) {
   const resolved = resolveClient(row, registry);
   const key = resolved.client_key || canonicalDeviceKey(row);
+  const deviceKey = resolved.device_key || key;
   const originalLabel = clean(row?.label || row?.client || row?.profile || row?.id || row?.device_id || "");
   const raw = row?.raw || {};
   const aliases = new Set([...(row?.aliases || []), originalLabel, row?.id, row?.device_id, row?.profile, raw.profile, row?.client, raw.client, key, ...(resolved.observed_aliases || [])].filter(Boolean).map(String));
   return {
     ...row,
-    id: resolved.client_key || row?.id || key || row?.device_id || row?.label,
-    device_key: resolved.client_key || key || row?.device_key || "",
+    id: deviceKey || row?.id || key || row?.device_id || row?.label,
+    device_key: deviceKey || row?.device_key || "",
+    physical_device_key: deviceKey || row?.physical_device_key || "",
+    device_label: resolved.device_label || row?.device_label || resolved.client_label,
     client_key: resolved.client_key || key || "",
     client_label: resolved.client_label,
-    label: resolved.client_label || displayDeviceLabel(row, registry),
+    label: resolved.device_label || resolved.client_label || displayDeviceLabel(row, registry),
     role: resolved.client_role || row?.role,
     client_role: resolved.client_role || row?.role,
+    owner: resolved.client_owner || row?.owner || "",
+    device_type: resolved.device_type || row?.device_type || "",
     channel: resolved.client_channel || row?.channel,
     client_channel: resolved.client_channel || row?.channel,
     matched_by: resolved.matched_by,

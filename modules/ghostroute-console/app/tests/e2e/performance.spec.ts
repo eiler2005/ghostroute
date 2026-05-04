@@ -6,7 +6,7 @@ const API_BUDGET_MS = 1500;
 const pages = [
   { path: "/", markers: ["Observed traffic"] },
   { path: "/traffic", markers: ["Flow table", "Нет traffic rows"] },
-  { path: "/clients", markers: ["Устройства"] },
+  { path: "/clients", markers: ["Device Inventory"] },
   { path: "/health", markers: ["Health Center"] },
   { path: "/catalog", markers: ["Diff preview"] },
   { path: "/budget", markers: ["Потребление по устройствам"] },

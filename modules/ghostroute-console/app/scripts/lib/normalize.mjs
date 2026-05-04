@@ -31,7 +31,7 @@ function inferChannel(row) {
   const raw = JSON.stringify(row || {}).toLowerCase();
   const client = text(row.client || row.label || row.profile || row.channel || row.source || "");
   const source = `${raw} ${client.toLowerCase()}`;
-  if (source.includes('mobile-client-')) return 'A/Home Reality';
+  if (source.includes('mobile-client-') || source.includes('report-mobile-profile-')) return 'A/Home Reality';
   if (/\b\/\s*c1\b|\bc1_|channel-c|shadowrocket|naive/.test(source)) return "Channel C";
   if (/\b\/\s*b\b|iphone-b|channel-b|xhttp|xray|selected-client/.test(source)) return "Channel B";
   if (source.includes("channel-c") || source.includes("shadowrocket") || source.includes("naive")) return "Channel C";
@@ -422,8 +422,8 @@ export function rebuildHourlyAggregates(db) {
 function usefulDeviceLabel(row) {
   const label = text(row.label || "");
   const profile = text(row.profile || "");
-  if (profile && /^mobile-client-\d+$/i.test(label)) return profile;
-  return text(row.label || row.profile || row.ip || row.id, "Unknown device");
+  if (profile && /^(mobile-client|report-mobile-profile)-\d+$/i.test(label)) return profile;
+  return text(row.device_label || row.label || row.profile || row.ip || row.id, "Unknown device");
 }
 
 export function resetNormalizedForSnapshot(db, snapshotId) {
@@ -481,7 +481,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   for (const row of [...(payload.app_flows || []), ...(payload.destinations || []), ...(payload.route_events || [])]) {
     const route = text(row.route || routeFromTraffic(row));
     const channel = inferChannel(row);
-    const client = text(row.client || row.label || row.channel || "");
+    const client = text(row.canonical_hint || row.profile || row.client || row.label || row.channel || "");
     const destination = text(row.destination || row.domain || row.app || row.family || "");
     const rowConfidence = confidence(row.confidence, "estimated");
     const eventTs = eventTimestamp(row, collectedAt);

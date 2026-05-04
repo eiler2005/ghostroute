@@ -130,8 +130,14 @@
               header X-Robots-Tag "noindex, nofollow"
               header Referrer-Policy "no-referrer"
               header -Alt-Svc
-              encode gzip
-              reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }}
+              reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }} {
+                  flush_interval -1
+                  transport http {
+                      versions 1.1
+                      keepalive off
+                  }
+                  header_up Connection close
+              }
           }
       no_log: true
       when: console_public_listener == 'caddy'
@@ -148,7 +154,7 @@
         regexp: "(?m)(^\\s*route @reality \\{\\n^\\s*proxy 127\\.0\\.0\\.1:{{ console_reality_backend_port }}\\n^\\s*\\}\\n)(^\\s*tls\\n)"
         replace: "\\1            }\n\\2"
 
-    - name: Disable HTTP/3 advertisement on the Console listener
+    - name: Keep Console listener on HTTP/1 only
       ansible.builtin.blockinfile:
         path: /etc/caddy/Caddyfile
         marker: "    # {mark} GHOSTROUTE CONSOLE H1 H2 ONLY"
@@ -156,7 +162,7 @@
         backup: true
         block: |
           servers :{{ console_public_port }} {
-              protocols h1 h2
+              protocols h1
           }
       when: console_public_listener == 'caddy'
 

@@ -23,7 +23,7 @@ function scalar(value: string | string[] | undefined) {
 }
 
 function clientTokens(client?: Record<string, any>) {
-  return [client?.client_key, client?.client_label, client?.device_key, client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || [])].filter(Boolean).map(String);
+  return [client?.client_key, client?.client_label, client?.device_key, client?.device_label, client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || []), ...(client?.observed_identities || [])].filter(Boolean).map(String);
 }
 
 function belongsToClient(row: Record<string, any>, tokens: string[]) {
@@ -90,7 +90,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
   const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
   const selected =
-    clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
+    clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(row.observed_identities || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
     primaryRows[0] ||
     clientsPage.rows[0];
   const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
@@ -117,8 +117,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
       <div className="grid two">
         <section className="card clients-card">
           <div className="toolbar">
-            <h2>Устройства</h2>
-            <span className="subtle">{clientsPage.total} known clients · traffic for selected window</span>
+            <h2>Device Inventory</h2>
+            <span className="subtle">{clientsPage.total} devices · traffic for selected window</span>
           </div>
           {clientsPage.rows.length === 0 ? (
             <EmptyState title="Нет фактической инвентаризации" />
@@ -128,7 +128,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <thead>
                   <tr>
                     <th className="col-client">Device</th>
-                    <th>Role</th>
+                    <th>Owner/Profile</th>
+                    <th>Type</th>
                     <th>Last seen</th>
                     <th>Status</th>
                     <th>Channel</th>
@@ -142,8 +143,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                       key={row.id || row.label}
                       className={(row.id || row.label) === selectedName ? "selected" : ""}
                     >
-                      <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
-                      <td>{row.role || "Unknown device"}</td>
+                      <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.device_label || row.label || row.id}</Link></td>
+                      <td>{row.owner || row.client_label || "Inventory"}</td>
+                      <td>{row.device_type || row.role || "Unknown device"}</td>
                       <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
                       <td><StatusBadge value={row.status || "Inactive"} /></td>
                       <td><ChannelBadge value={row.channel} /></td>
@@ -206,9 +208,16 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <>
               <div className="detail-list">
                 <div className="detail-row"><span>Window traffic</span><strong>{bytes(selected.total_bytes || 0)}</strong></div>
-                <div className="detail-row"><span>Device role</span><strong>{selected.role || "Unknown device"}</strong></div>
+                <div className="detail-row"><span>Owner/Profile</span><strong>{selected.owner || selected.client_label || "Inventory"}</strong></div>
+                <div className="detail-row"><span>Device type</span><strong>{selected.device_type || selected.role || "Unknown device"}</strong></div>
                 {selected.aliases?.length > 1 ? (
                   <div className="detail-row"><span>Observed labels</span><strong>{selected.aliases.slice(0, 4).join(", ")}</strong></div>
+                ) : null}
+                {selected.observed_identities?.length ? (
+                  <div className="detail-row">
+                    <span>Observed identities</span>
+                    <strong>{selected.observed_identities.slice(0, 8).join(", ")}</strong>
+                  </div>
                 ) : null}
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>

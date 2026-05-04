@@ -90,7 +90,7 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
   await page.goto("/clients");
   await expect(page.locator(".sidebar")).toBeVisible();
   await expect(page.locator("input[name='search']")).toBeVisible();
-  await expect(page.getByText("Устройства")).toBeVisible();
+  await expect(page.getByText("Device Inventory")).toBeVisible();
 });
 
 test("api smoke endpoints respond", async ({ request }) => {

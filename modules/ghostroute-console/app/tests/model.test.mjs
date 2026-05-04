@@ -61,6 +61,11 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
     app_flows: [{
       client: "lan-host-01",
       client_ip: "192.168.1.24",
+      canonical_hint: "lan-host-01",
+      identity_type: "lan_host",
+      bytes_confidence: "exact",
+      counter_scope: "cumulative_day",
+      destination_class: "Telegram",
       destination: "telegram.org",
       destination_port: "443",
       route: "VPS",
@@ -99,13 +104,16 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(db.prepare("select label from normalized_devices where device_id = 'macbook'").get().label, "macbook");
   assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 1);
   assert.equal(db.prepare("select channel from normalized_flows limit 1").get().channel, "Home Wi-Fi/LAN");
-  const flow = db.prepare("select client_ip, sni, outbound, matched_rule, egress_ip, egress_asn from normalized_flows limit 1").get();
+  const flow = db.prepare("select client, client_ip, sni, outbound, matched_rule, egress_ip, egress_asn, raw_json from normalized_flows limit 1").get();
+  assert.equal(flow.client, "lan-host-01");
   assert.equal(flow.client_ip, "192.168.1.24");
   assert.equal(flow.sni, "telegram.org");
   assert.equal(flow.outbound, "reality-out");
   assert.equal(flow.matched_rule, "STEALTH_DOMAINS");
   assert.equal(flow.egress_ip, "203.0.113.67");
   assert.equal(flow.egress_asn, "AS209529");
+  assert.equal(JSON.parse(flow.raw_json).identity_type, "lan_host");
+  assert.equal(JSON.parse(flow.raw_json).bytes_confidence, "exact");
   assert.equal(db.prepare("select count(*) as count from events where event_type = 'flow.observed'").get().count, 1);
   assert.equal(db.prepare("select count(*) as count from route_decisions").get().count, 1);
 
@@ -317,6 +325,10 @@ test("unified client registry resolves A/B/C aliases and keeps source counters d
       clients: {
         "client-alpha": {
           label: "client-alpha (Operator phone)",
+          device_key: "operator-phone",
+          device_label: "Operator iPhone",
+          owner: "Operator",
+          device_type: "iPhone",
           role: "iPhone",
           primary_channel: "A/Home Reality",
           aliases: {
@@ -348,6 +360,10 @@ test("unified client registry resolves A/B/C aliases and keeps source counters d
   assert.equal(profileBackedRow.client_key, "client-beta");
   assert.deepEqual(profileBackedRow.observed_aliases, ["iphone-2"]);
   assert.equal(resolveClient({ mac: "02-00-00-00-00-01" }, registry).client_key, "client-alpha");
+  assert.equal(resolveClient("iphone-b-1", registry).device_key, "operator-phone");
+  assert.equal(resolveClient("iphone-b-1", registry).device_label, "Operator iPhone");
+  assert.equal(resolveClient("iphone-b-1", registry).client_owner, "Operator");
+  assert.equal(resolveClient("iphone-b-1", registry).device_type, "iPhone");
   assert.equal(resolveClient({ client_ip: "192.0.2.10" }, registry).matched_by, "explicit_ip_alias");
   assert.equal(resolveClient({ mac: "02:00:00:00:00:02" }, registry).client_key, "");
   assert.equal(resolveClient("mobile-source-15", registry).client_key, "mobile-source-15");

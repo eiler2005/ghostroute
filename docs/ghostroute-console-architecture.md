@@ -108,12 +108,22 @@ Clients are shown as a known-device inventory, not only a latest-snapshot
 active list. Console keeps historical device rows, preserves the last known
 channel when a newer source is weaker, and displays status as `Online`,
 `Recently seen` or `Inactive` with a short last-seen timestamp.
+The inventory key is the operator-local physical `device_key` when present, so
+multiple observed identities can collapse into one physical device row. Raw
+snapshot labels such as Channel A/B/C profiles, LAN host ids, MAC/IP aliases and
+redacted report-local labels remain available as observed identities in the
+detail panel and raw evidence.
 Traffic columns inside Clients are window-scoped: the inventory row may remain
 visible with `0 B` when the device has no traffic in the selected period.
 Selected-client activity charts are derived from the same window-scoped device
 snapshots. They use positive deltas between sequential cumulative samples when
 available; a single sample is rendered as a snapshot total so the UI does not
 invent a peak time that the collector did not observe.
+Traffic Observatory reports do not encode private ownership. They expose
+evidence-contract fields such as `canonical_hint`, `identity_type`, `matched_by`,
+`bytes_confidence`, `allocation_basis`, `counter_scope`, `destination_class`,
+`destination_evidence` and `flow_group_key` so Console can explain why a row was
+grouped or estimated while still resolving owner/device names privately.
 
 ## Live Tail
 
@@ -166,6 +176,9 @@ The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response; `/traffic` defaults to a small page and accepts `pageSize` up to
 100 for operator browsing.
+Budget uses a page-scoped lightweight model: it reads current totals, short
+hourly history and top device usage, but does not load live events, route
+decision logs, catalog review queues or audit/ops history for first render.
 Playwright performance checks cover the main pages and JSON APIs with local
 budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
 
