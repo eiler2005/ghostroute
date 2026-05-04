@@ -57,6 +57,13 @@ a source is not in the registry and the snapshots do not identify it, Console
 displays it as `Unknown device`, `Unknown Home Reality profile` or
 `Unattributed source` instead of guessing.
 
+The Clients page is a physical Device Inventory. A registry profile may point to
+a shared `device_key`/`device_label`, so Channel A, Channel B, Channel C,
+LAN/Wi-Fi, MAC/IP and report-local aliases can be shown under one device without
+pretending those raw labels are independent users. Traffic totals and details
+are aggregated by the physical device key for the selected window; observed
+aliases stay visible as audit evidence.
+
 Client totals sort by the selected traffic window. Historical rows may enrich
 the display label and role, but they must not make an old total look current. If
 one canonical client has been seen under several observed labels, the detail
@@ -69,3 +76,10 @@ Traffic reports may redact profile names with per-report aliases such as
 Those aliases are local to that report order and must not be treated as stable
 ownership. If the row includes a stable profile id, Console resolves the client
 from that profile and only shows the redacted alias as evidence.
+
+`traffic-report` should separate observed evidence from private attribution. JSON
+rows can include `canonical_hint`, `identity_type`, `matched_by`,
+`unresolved_reason`, `bytes_confidence`, `allocation_basis`, `counter_scope`,
+`destination_class`, `destination_evidence` and `flow_group_key`. Console may use
+these fields for display, diagnostics and deduplication, but owner/device
+identity still comes from the private registry.

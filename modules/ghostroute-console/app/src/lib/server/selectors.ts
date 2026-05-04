@@ -225,13 +225,17 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     client,
     client_key: resolved.client_key || row.client_key || "",
     client_label: client,
+    device_key: resolved.device_key || resolved.client_key || row.device_key || "",
+    device_label: resolved.device_label || resolved.client_label || client,
     client_role: resolved.client_role || row.client_role || "",
+    owner: resolved.client_owner || row.owner || "",
+    device_type: resolved.device_type || row.device_type || "",
     client_channel: resolved.client_channel || row.client_channel || "",
     matched_by: resolved.matched_by,
     attribution_confidence: resolved.attribution_confidence,
     observed_aliases: Array.from(new Set([...(row.observed_aliases || []), row.client, row.raw?.client, rawProfile, row.label, ...(resolved.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16),
     label: row.label ? (resolved.client_label || displayDeviceLabel(row.label)) : row.label,
-    device_key: resolved.client_key || canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
+    physical_device_key: resolved.device_key || resolved.client_key || canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
     destinationLabel: displayDestination(row),
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
@@ -263,13 +267,14 @@ function statusFromLastSeen(value?: string) {
 
 function keyForDevice(row: Record<string, any>) {
   const resolved = resolveClient({ ...row, profile: row.profile || row.raw?.profile });
-  const canonical = resolved.client_key || canonicalDeviceKey({ ...row, profile: row.profile || row.raw?.profile });
+  const canonical = resolved.device_key || resolved.client_key || canonicalDeviceKey({ ...row, profile: row.profile || row.raw?.profile });
   if (canonical) return canonical;
   return String(row.device_id || row.id || row.label || row.ip || "unknown-device").toLowerCase();
 }
 
 function deviceLabel(row: Record<string, any>) {
-  return resolveClient({ ...row, profile: row.profile || row.raw?.profile }).client_label || displayDeviceLabel({ ...row, profile: row.profile || row.raw?.profile });
+  const resolved = resolveClient({ ...row, profile: row.profile || row.raw?.profile });
+  return resolved.device_label || resolved.client_label || displayDeviceLabel({ ...row, profile: row.profile || row.raw?.profile });
 }
 
 function rawDeviceKey(row: Record<string, any>) {
@@ -303,6 +308,30 @@ function addAlias(current: Record<string, any>, label?: string) {
   if (!value || value === "Unknown") return;
   const aliases = new Set([...(current.aliases || []), value]);
   current.aliases = Array.from(aliases).slice(0, 8);
+}
+
+function addObservedIdentity(current: Record<string, any>, row: Record<string, any>) {
+  const raw = row.raw || {};
+  const values = [
+    row.device_id,
+    row.id,
+    row.profile,
+    raw.profile,
+    row.client,
+    raw.client,
+    row.label,
+    raw.label,
+    raw.observed_label,
+    raw.redacted_label,
+    raw.canonical_hint,
+    ...(row.observed_aliases || []),
+  ].filter(Boolean).map(String);
+  const observed = new Set([...(current.observed_identities || [])]);
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== "Unknown") observed.add(trimmed);
+  }
+  current.observed_identities = Array.from(observed).slice(0, 32);
 }
 
 function preservedChannel(row: Record<string, any>) {
@@ -354,8 +383,11 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       byKey.set(key, {
         id: key,
         label,
+        device_label: label,
         ip: row.ip || row.client_ip || "",
         role,
+        owner: row.owner || row.client_owner || "",
+        device_type: row.device_type || "",
         channel: preservedChannel(row),
         route: deviceRoute(row),
         confidence: row.confidence || "unknown",
@@ -365,14 +397,19 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
         from_history: fromHistory,
         channels: preservedChannel(row) !== "Unknown" ? [preservedChannel(row)] : [],
         aliases: label ? [label] : [],
+        observed_identities: [],
         source_ids: [sourceId],
         raw: row.raw || row,
       });
       const created = byKey.get(key);
-      if (created) Object.assign(created, applyDeviceAttribution(created));
+      if (created) {
+        addObservedIdentity(created, row);
+        Object.assign(created, applyDeviceAttribution(created));
+      }
       return;
     }
     addAlias(current, label);
+    addObservedIdentity(current, row);
     const currentTs = Date.parse(current.last_seen || "");
     const rowTs = Date.parse(collected || "");
     const newer = Number.isFinite(rowTs) && (!Number.isFinite(currentTs) || rowTs > currentTs);
@@ -1175,6 +1212,95 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     catalog,
   };
   return { ...model, ...overrides };
+}
+
+export function buildBudgetModel(filters: ConsoleFilters = {}): ConsoleModel {
+  const snapshots = latestByType(latestSnapshots());
+  const period = filters.period || "today";
+  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
+  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
+  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : trafficSnapshot?.payload || {};
+  const health = snapshots.health?.payload || {};
+  const leaks = snapshots.leaks?.payload || {};
+  const newest = Object.values(snapshots)
+    .filter(Boolean)
+    .map((row) => row?.collectedAt)
+    .sort()
+    .pop();
+  const staleMinutes = minutesSince(newest);
+  const staleThreshold = staleThresholdMinutes();
+  const totals = dashboardTraffic.totals || {};
+  const currentRows = mergeKnownDevices(deviceDeltaRowsForPeriod(period), false).slice(0, 50);
+  const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
+  const collectorErrors = collectorDisabled ? [] : (latestCollectorErrors(3) as Array<Record<string, any>>);
+  const leakAlerts = (leaks.leaks || []).map((row: any) => ({
+    severity: row.severity || "warning",
+    title: row.label || row.probe,
+    source: "leak-check",
+    status: row.status,
+    evidence: row.evidence,
+    confidence: row.confidence || "exact",
+  }));
+  const statusCards = [
+    { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
+    { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
+    { label: "DNS", status: normalizeStatus(health.services?.dns), detail: "dnscrypt + policy" },
+    { label: "IPv6", status: normalizeStatus(health.services?.ipv6), detail: "not in routing scope" },
+    { label: "Rule-set", status: normalizeStatus(health.services?.rule_set_sync), detail: "catalog mirror" },
+    { label: "Leaks", status: normalizeStatus(leaks.overall), detail: `${leakAlerts.length} signals` },
+  ];
+  const staleAlert =
+    staleMinutes !== null && staleMinutes > staleThreshold
+      ? [{
+          severity: "warning",
+          title: "stale snapshot",
+          source: "console",
+          status: "WARN",
+          evidence: `${staleMinutes} minutes since latest snapshot; threshold ${staleThreshold} minutes`,
+          confidence: "exact",
+        }]
+      : [];
+  return {
+    generatedAt: new Date().toISOString(),
+    freshnessMinutes: staleMinutes,
+    freshnessStatus: staleMinutes === null ? "empty" : staleMinutes > staleThreshold || collectorErrors.length > 0 ? "stale" : "fresh",
+    freshnessLabel: newest || "",
+    nextExpectedCollection: nextExpectedCollection(newest),
+    staleThresholdMinutes: staleThreshold,
+    runtime: runtimeInfo(snapshots),
+    collectorErrors,
+    collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
+    hourlyTraffic: hourlyTraffic(96) as Array<Record<string, any>>,
+    events: [],
+    routeDecisions: [],
+    catalogReviews: [],
+    notifications: [],
+    notificationSettings: {},
+    auditLog: [],
+    opsRuns: [],
+    snapshots,
+    statusCards,
+    totals: {
+      observedBytes: Number(totals.client_observed_bytes || 0),
+      viaVpsBytes: Number(totals.via_vps_bytes || 0),
+      directBytes: Number(totals.direct_bytes || 0),
+      unknownBytes: Number(totals.unknown_bytes || 0),
+      periodLabel: trafficPeriodLabel(dashboardTraffic),
+      windowLabel: trafficWindowLabel(dashboardTraffic),
+    },
+    devices: filterRows(reconcileTrafficRows(currentRows, authoritativeTotalsForPeriod(period)), filters),
+    flows: [],
+    dnsQueries: [],
+    alerts: dedupeAlerts([...staleAlert, ...leakAlerts, ...collectorErrors.map((row) => ({
+      severity: "warning",
+      title: row.type || "collector warning",
+      source: "collector",
+      status: "WARN",
+      evidence: row.message || "",
+      confidence: "exact",
+    }))]),
+    catalog: [],
+  };
 }
 
 export function buildPagedEvidenceContext(filters: ConsoleFilters, flows: Array<Record<string, any>>) {

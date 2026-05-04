@@ -1763,6 +1763,48 @@ def split_host_port(value)
   [host, port]
 end
 
+def identity_type(profile, client = '')
+  value = [profile, client].join(' ')
+  return 'profile' if value.match?(/\b(iphone-\d+|iphone-b-\d+|c1_iphone_\d+|\d+-sr)\b/i)
+  return 'lan_host' if value.match?(/\blan-host-\d+\b/i)
+  return 'source_only' if value.match?(/\b(mobile-source-\d+|unattributed-source-\d+|unattributed-external-\d+)\b/i)
+  return 'report_alias' if value.match?(/\breport-mobile-profile-\d+\b/i)
+  'unknown'
+end
+
+def identity_evidence(profile, client)
+  observed = client.to_s
+  canonical = profile.to_s
+  {
+    canonical_hint: canonical,
+    observed_label: observed,
+    redacted_label: observed,
+    identity_type: identity_type(canonical, observed),
+    matched_by: canonical.empty? ? 'redacted_report_alias' : 'profile',
+    unresolved_reason: canonical.empty? ? 'no_profile_id' : ''
+  }
+end
+
+def bytes_evidence(channel, confidence)
+  estimated = channel == 'A/Home Reality'
+  {
+    bytes_confidence: estimated ? 'allocated' : (confidence.to_s.empty? ? 'unknown' : confidence.to_s),
+    allocation_basis: estimated ? 'connection_share' : 'counter',
+    counter_scope: 'cumulative_day',
+    is_cumulative: true
+  }
+end
+
+def destination_evidence(destination, destination_class)
+  concrete = destination.to_s
+  ip_only = concrete.match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+  generic = ['AI services', 'Dev/Productivity', 'Other', 'Other/IP', 'AWS/CDN', 'DNS/Resolver'].include?(concrete)
+  {
+    destination_class: destination_class.to_s,
+    destination_evidence: ip_only ? 'ip' : (generic ? 'app_family' : 'domain_or_sni')
+  }
+end
+
 def route_event(row, source_ref)
   destination, port = split_host_port(row[:destination] || row[:family] || row[:app_family])
   route = row[:route].to_s.empty? ? route_from_split(row[:vps_connections], row[:direct_connections], row[:unresolved_connections]) : row[:route]
@@ -1807,14 +1849,52 @@ def route_event(row, source_ref)
     egress_country: route == 'VPS' ? ENV.fetch('GHOSTROUTE_VPS_EGRESS_COUNTRY', ENV.fetch('GHOSTROUTE_CONSOLE_EGRESS_COUNTRY', '')) : '',
     confidence: row[:confidence].to_s.empty? ? 'estimated' : row[:confidence],
     raw_refs: [{ source: source_ref }]
-  }
+  }.merge(
+    identity_evidence(row[:profile], row[:client])
+  ).merge(
+    bytes_evidence(row[:channel], row[:confidence])
+  ).merge(
+    destination_evidence(destination, row[:family] || row[:app_family])
+  ).merge({
+    flow_group_key: Digest::SHA1.hexdigest([source_ref, row[:channel], row[:profile], row[:client], destination, route, row[:confidence]].join('|'))[0, 20]
+  })
+end
+
+def flow_contract(row)
+  destination = row[:destination] || row[:family] || row[:app_family]
+  row.merge(
+    identity_evidence(row[:profile], row[:client] || row[:label])
+  ).merge(
+    bytes_evidence(row[:channel], row[:confidence])
+  ).merge(
+    destination_evidence(destination, row[:family] || row[:app_family] || family(destination))
+  ).merge({
+    flow_group_key: Digest::SHA1.hexdigest([row[:channel], row[:profile], row[:client] || row[:label], destination, row[:route], row[:confidence]].join('|'))[0, 20]
+  })
+end
+
+def device_contract(row)
+  row.merge(
+    identity_evidence(row[:profile], row[:label] || row[:client])
+  ).merge(
+    bytes_evidence(row[:channel], row[:confidence])
+  )
+end
+
+def source_diagnostic(row)
+  row.merge(
+    identity_type: 'source_only',
+    unresolved_reason: 'source-only counter, no profile id',
+    matched_by: 'source_counter'
+  )
 end
 
 devices = read_rows(lan_user_apps_path).map do |line|
   label, total, vps, direct, other, families = line.split('|', -1)
-  {
+  device_contract({
     id: label,
     label: label,
+    profile: label,
     total_bytes: total.to_i,
     via_vps_bytes: vps.to_i,
     direct_bytes: direct.to_i,
@@ -1822,13 +1902,13 @@ devices = read_rows(lan_user_apps_path).map do |line|
     top_dns_families: families.to_s,
     confidence: 'exact',
     evidence: ['lan-device-counters.tsv', 'dns-forensics hourly snapshot']
-  }
+  })
 end
 
 home_reality_clients = read_rows(user_channel_totals_path).map do |line|
   channel, display, profile, bytes_total, bytes_vps, bytes_direct, _unused, conn, vps, direct, unresolved, note = line.split('|', -1)
   confidence = channel == 'A/Home Reality' ? 'estimated' : 'dns-interest'
-  {
+  device_contract({
     channel: channel,
     label: display,
     profile: profile,
@@ -1842,12 +1922,12 @@ home_reality_clients = read_rows(user_channel_totals_path).map do |line|
     route: route_from_split(vps, direct, unresolved),
     confidence: confidence,
     evidence: [note.to_s]
-  }
+  })
 end
 
 app_rows = read_rows(user_channel_apps_path).map do |line|
   channel, display, profile, app_family, bytes_total, bytes_vps, bytes_direct, conn, vps, direct, unresolved = line.split('|', -1)
-  {
+  flow_contract({
     channel: channel,
     client: display,
     client_ip: '',
@@ -1863,12 +1943,12 @@ app_rows = read_rows(user_channel_apps_path).map do |line|
     route: route_from_split(vps, direct, unresolved),
     confidence: channel == 'A/Home Reality' ? 'estimated' : 'dns-interest',
     evidence: ['sing-box log connection attribution']
-  }
+  })
 end
 
 mobile_destinations = read_rows(mobile_dests_path).map do |line|
   dest, total, vps, direct = line.split('|', -1)
-  {
+  flow_contract({
     channel: 'A/Home Reality',
     client: 'A/Home Reality',
     client_ip: '',
@@ -1880,12 +1960,12 @@ mobile_destinations = read_rows(mobile_dests_path).map do |line|
     route: route_from_split(vps, direct, 0),
     confidence: 'estimated',
     evidence: ['sing-box reality-in log']
-  }
+  })
 end
 
 relay_destinations = read_rows(channel_b_dests_path).map do |line|
   dest, total, vps, direct, unresolved = line.split('|', -1)
-  {
+  flow_contract({
     channel: 'B/XHTTP relay',
     client: 'B/XHTTP relay',
     client_ip: '',
@@ -1898,12 +1978,12 @@ relay_destinations = read_rows(channel_b_dests_path).map do |line|
     route: route_from_split(vps, direct, unresolved),
     confidence: 'dns-interest',
     evidence: ['sing-box channel-b-relay-socks log']
-  }
+  })
 end
 
 channel_c_destinations = read_rows(channel_c_dests_path).map do |line|
   dest, total, vps, direct, unresolved = line.split('|', -1)
-  {
+  flow_contract({
     channel: 'C1',
     client: 'C1',
     client_ip: '',
@@ -1916,7 +1996,7 @@ channel_c_destinations = read_rows(channel_c_dests_path).map do |line|
     route: route_from_split(vps, direct, unresolved),
     confidence: 'dns-interest',
     evidence: ['sing-box channel-c log']
-  }
+  })
 end
 
 warnings = []

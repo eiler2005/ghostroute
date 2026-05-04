@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildBudgetModel } from "@/lib/server/selectors";
 
 function quotaBytes(bytesEnv: string, gbEnv: string) {
   const rawBytes = Number(process.env[bytesEnv] || 0);
@@ -20,7 +20,7 @@ function dailyHistory(rows: Array<Record<string, any>>) {
 }
 
 export async function GET() {
-  const model = buildConsoleModel();
+  const model = buildBudgetModel();
   return NextResponse.json({
     generated_at: model.generatedAt,
     freshness_minutes: model.freshnessMinutes,
@@ -39,6 +39,9 @@ export async function GET() {
       reset_day: Number(process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY || 1),
       provider_billing_enabled: process.env.GHOSTROUTE_PROVIDER_BILLING_ENABLED === "1",
     },
-    clients: model.devices.slice(0, 50).map(({ raw, ...row }) => row),
+    clients: model.devices.slice(0, 50).map((device: Record<string, any>) => {
+      const { raw, ...row } = device;
+      return row;
+    }),
   });
 }

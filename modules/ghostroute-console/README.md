@@ -80,10 +80,21 @@ raw rows through the same resolver before grouping or rendering client names.
 Raw evidence still keeps the observed labels separately. New or unmatched
 `mobile-source-*` counters remain diagnostics until the operator adds an
 explicit profile, MAC or IP alias.
+Registry entries may also define a physical `device_key`, `device_label`,
+`owner` and `device_type`. The Clients page renders that physical Device
+Inventory first, then lists observed identities such as Channel A/B/C profiles,
+LAN host ids, MAC/IP aliases and report-local redacted labels as evidence for
+the selected device.
 Home Reality report-local aliases such as `mobile-client-N` or
 `report-mobile-profile-N` are not stable client identities. When a row carries a
 stable `profile` such as `iphone-N`, Console resolves and aggregates by that
 profile/registry entry and keeps the redacted report alias only as evidence.
+`traffic-report` JSON rows carry evidence-contract fields such as
+`canonical_hint`, `observed_label`, `redacted_label`, `identity_type`,
+`matched_by`, `bytes_confidence`, `allocation_basis`, `counter_scope`,
+`destination_class`, `destination_evidence` and `flow_group_key`. Console treats
+these fields as evidence hints, while private ownership and physical-device
+grouping remain in the operator-local registry.
 
 Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
 `GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains

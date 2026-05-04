@@ -29,7 +29,7 @@ HOP_BY_HOP = {
 
 
 class BufferProxyHandler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+    protocol_version = "HTTP/1.0"
 
     def do_GET(self):
         self._proxy()
@@ -84,12 +84,15 @@ class BufferProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             if send_body and self.command != "HEAD":
                 self.wfile.write(response_body)
+                self.wfile.flush()
+            self.close_connection = True
             conn.close()
         except Exception:
             self.send_response(502)
             self.send_header("Content-Length", "0")
             self.send_header("Connection", "close")
             self.end_headers()
+            self.close_connection = True
 
     def _read_body(self):
         length = int(self.headers.get("Content-Length", "0") or "0")

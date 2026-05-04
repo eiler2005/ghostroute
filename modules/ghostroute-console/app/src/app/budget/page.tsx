@@ -1,6 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, EmptyState, MetricCard, ProgressBar } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildBudgetModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function quotaBytes(bytesEnv: string, gbEnv: string) {
@@ -38,7 +38,7 @@ function dailyHistory(rows: Array<Record<string, any>>) {
 
 export default async function BudgetPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
+  const model = buildBudgetModel(filters);
   const vpsQuota = quotaBytes("GHOSTROUTE_CONSOLE_VPS_QUOTA_BYTES", "GHOSTROUTE_CONSOLE_VPS_QUOTA_GB");
   const lteQuota = quotaBytes("GHOSTROUTE_CONSOLE_LTE_QUOTA_BYTES", "GHOSTROUTE_CONSOLE_LTE_QUOTA_GB");
   const vpsUsed = model.totals.viaVpsBytes;
