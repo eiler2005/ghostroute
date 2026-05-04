@@ -18,6 +18,8 @@ const pages = [
 const apiPaths = [
   "/api/dashboard",
   "/api/flows?pageSize=25",
+  "/api/dns?pageSize=25",
+  "/api/alarms?pageSize=25",
   "/api/clients?pageSize=25",
   "/api/health",
   "/api/catalog",

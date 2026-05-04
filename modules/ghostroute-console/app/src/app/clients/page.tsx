@@ -14,7 +14,7 @@ import {
   SplitBars,
   StatusBadge,
 } from "@/components/Widgets";
-import { buildClientsModel, listClientActivity, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
+import { buildClientsModel, listClientActivity, listClientInventory, listFlowSessions } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
@@ -93,7 +93,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(row.observed_identities || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
     primaryRows[0] ||
     clientsPage.rows[0];
-  const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
+  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
   const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);

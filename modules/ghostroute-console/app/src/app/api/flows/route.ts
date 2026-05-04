@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listTrafficRows } from "@/lib/server/selectors";
+import { listFlowSessions } from "@/lib/server/selectors";
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;
   const page = Math.max(1, Number(search.get("page") || 1));
   const pageSize = Math.min(Number(search.get("pageSize") || search.get("limit") || 25), 100);
-  const result = listTrafficRows({
+  const result = listFlowSessions({
     page,
     pageSize,
     diagnostics: search.get("diagnostics") === "1",

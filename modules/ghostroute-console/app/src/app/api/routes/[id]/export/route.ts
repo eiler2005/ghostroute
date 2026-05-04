@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildRouteEvidence } from "@/lib/server/evidence";
-import { buildPagedEvidenceContext, getTrafficRowById, listTrafficRows } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors";
 import { redactJson, redactedMarkdown } from "@/lib/server/redaction";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const fallback =
     row ||
     (Number.isFinite(index)
-      ? listTrafficRows({ page: 1, pageSize: Math.max(index + 1, 25) }).rows[index]
+      ? listFlowSessions({ page: 1, pageSize: Math.max(index + 1, 25) }).rows[index]
       : null);
   const evidence = fallback ? buildRouteEvidence(buildPagedEvidenceContext({}, [fallback]), 0) : null;
   if (!evidence) return NextResponse.json({ error: "route evidence not found" }, { status: 404 });

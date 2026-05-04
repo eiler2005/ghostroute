@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { LiveStreamPanel } from "@/components/LiveStreamPanel";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, shortDateTime, StatusBadge } from "@/components/Widgets";
-import { buildLiveModel, listLiveEvents, listTrafficRows } from "@/lib/server/selectors";
+import { buildLiveModel, listFlowSessions, listLiveEvents } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {
@@ -16,7 +16,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: 50, filters });
   const serviceEvents = listLiveEvents({ page: 1, pageSize: 50, filters: { ...filters, trafficClass: "service_background" } });
-  const trafficPage = listTrafficRows({ page: activityPage, pageSize: 20, filters });
+  const trafficPage = listFlowSessions({ page: activityPage, pageSize: 20, filters });
   const model = buildLiveModel(filters, trafficPage.rows);
   const activeFlows = trafficPage.rows;
   const activeClients = model.devices;
