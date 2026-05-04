@@ -102,6 +102,14 @@ everything else                   -> home WAN direct
 в `stealth-domains.json`, а CIDR — в `stealth-static.json`. Российские TLD и
 домены из `domains-no-vpn.txt` не должны попадать в auto-managed каталог.
 
+Некоторые игровые и media-сервисы резолвятся через CNAME-цепочки в cloud/CDN.
+Если DNS-логи показывают, что клиент отдельно спрашивает стабильный backend
+hostname, можно добавить точный CNAME-target рядом с базовым доменом. Например,
+eFootball покрывается `konami.net`, но также держит observed targets вроде
+`pes22-prd-lb-1361062069.us-west-2.elb.amazonaws.com`. Не добавляйте широкие
+provider rules вроде `amazonaws.com`, `azurefd.net`, `edgekey.net` или
+`cloudfront.net`: они утащат через VPS несвязанный трафик.
+
 ## Проверить домен
 
 На роутере:

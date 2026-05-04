@@ -243,6 +243,23 @@ ipset=/sora.com/STEALTH_DOMAINS
 ipset=/x.ai/STEALTH_DOMAINS
 
 # Games
+# KONAMI / eFootball. Official KONAMI guidance identifies www.konami.com and
+# xxx.konami.net as official website families; eFootball pages currently resolve
+# through shared CDN/cloud providers, so keep this domain-based instead of adding
+# volatile provider IP ranges to configs/static-networks.txt.
+ipset=/konami.com/STEALTH_DOMAINS
+ipset=/konami.net/STEALTH_DOMAINS
+# Observed eFootball/My KONAMI CNAME targets. Keep these exact instead of
+# adding broad AWS/Azure/Akamai/CloudFront provider rules.
+ipset=/my.konami.net.edgekey.net/STEALTH_DOMAINS
+ipset=/my1.konami.net.edgekey.net/STEALTH_DOMAINS
+ipset=/account-applb-1040330410.ap-northeast-1.elb.amazonaws.com/STEALTH_DOMAINS
+ipset=/pes22-prd-lb-1361062069.us-west-2.elb.amazonaws.com/STEALTH_DOMAINS
+ipset=/efootball-prod-frontdoor-endpoint-user-b9fpgxfschepghg7.z01.azurefd.net/STEALTH_DOMAINS
+ipset=/efootball-prod-frontdoor-endpoint-user-api-eseddha0a8esekda.z01.azurefd.net/STEALTH_DOMAINS
+ipset=/efootball-prod-cdn-ms.azureedge.net/STEALTH_DOMAINS
+ipset=/efootball-prod-cdn-ms.afd.azureedge.net/STEALTH_DOMAINS
+ipset=/d2fbzftqq66qjv.cloudfront.net/STEALTH_DOMAINS
 ipset=/anzu-us.com/STEALTH_DOMAINS
 ipset=/clashofclans.com/STEALTH_DOMAINS
 ipset=/game-assets.clashofclans.com/STEALTH_DOMAINS
