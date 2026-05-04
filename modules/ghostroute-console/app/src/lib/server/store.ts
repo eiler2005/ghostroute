@@ -268,6 +268,105 @@ export function getDb() {
         summary text not null default '',
         evidence_json text not null default '{}'
       );
+      create table if not exists read_model_state (
+        model text primary key,
+        source_version text not null default '',
+        rebuilt_at text not null,
+        row_count integer not null default 0,
+        duration_ms integer not null default 0,
+        status text not null default 'ok',
+        detail text not null default ''
+      );
+      create table if not exists flow_sessions (
+        id text primary key,
+        snapshot_id integer,
+        collected_at text not null,
+        first_seen text not null default '',
+        last_seen text not null default '',
+        client text not null default '',
+        client_ip text not null default '',
+        device_key text not null default '',
+        channel text not null default 'Unknown',
+        destination text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        protocol text not null default '',
+        route text not null default 'Unknown',
+        policy text not null default '',
+        matched_rule text not null default '',
+        outbound text not null default '',
+        bytes integer not null default 0,
+        connections integer not null default 0,
+        duration_seconds integer not null default 0,
+        duration_confidence text not null default 'unknown',
+        risk text not null default 'low',
+        risk_reason text not null default '',
+        confidence text not null default 'unknown',
+        source_kind text not null default 'traffic',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists dns_query_log (
+        id text primary key,
+        snapshot_id integer,
+        collected_at text not null,
+        event_ts text not null default '',
+        client text not null default '',
+        client_ip text not null default '',
+        device_key text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        answer_ip text not null default '',
+        route text not null default 'Unknown',
+        catalog_status text not null default 'unknown',
+        status text not null default 'OK',
+        count integer not null default 0,
+        risk text not null default 'low',
+        confidence text not null default 'dns-interest',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists device_inventory (
+        device_key text primary key,
+        label text not null default '',
+        ip text not null default '',
+        hostname text not null default '',
+        mac text not null default '',
+        aliases_json text not null default '[]',
+        profile text not null default '',
+        trust_state text not null default 'unknown',
+        device_type text not null default 'unknown',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        last_seen text not null default '',
+        total_bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        top_domains_json text not null default '[]',
+        health_status text not null default 'unknown',
+        risk text not null default 'low',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists alarm_events (
+        id text primary key,
+        snapshot_id integer,
+        collected_at text not null,
+        severity text not null default 'warning',
+        source text not null default '',
+        title text not null default '',
+        status text not null default 'open',
+        evidence text not null default '',
+        suggested_action text not null default '',
+        snoozed_until text not null default '',
+        confidence text not null default 'unknown',
+        risk text not null default 'medium',
+        evidence_json text not null default '{}'
+      );
+      create table if not exists console_settings (
+        key text primary key,
+        value_json text not null,
+        updated_at text not null
+      );
     `);
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -334,9 +433,16 @@ export function getDb() {
       create index if not exists idx_normalized_devices_fast on normalized_devices(collected_at desc, label, device_id, channel, route);
       create index if not exists idx_events_fast on events(occurred_at desc, event_type, client, channel, route);
       create index if not exists idx_route_decisions_fast on route_decisions(occurred_at desc, client, channel, route);
+      create index if not exists idx_flow_sessions_time on flow_sessions(last_seen desc, first_seen desc);
+      create index if not exists idx_flow_sessions_filters on flow_sessions(route, channel, confidence, risk, client, destination);
+      create index if not exists idx_flow_sessions_destination on flow_sessions(destination, destination_ip, destination_port);
+      create index if not exists idx_dns_query_log_time on dns_query_log(event_ts desc, collected_at desc);
+      create index if not exists idx_dns_query_log_filters on dns_query_log(route, catalog_status, status, client, domain);
+      create index if not exists idx_device_inventory_activity on device_inventory(last_seen desc, total_bytes desc, route);
+      create index if not exists idx_alarm_events_status on alarm_events(status, severity, collected_at desc);
     `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-      4,
+      5,
       new Date().toISOString()
     );
   }

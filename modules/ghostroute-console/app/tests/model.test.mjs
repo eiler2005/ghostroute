@@ -6,7 +6,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 const normalizeModule = await import(new URL("../scr" + "ipts/lib/normalize.mjs", import.meta.url));
-const { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates } = normalizeModule;
+const { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
 const { deviceRole, displayDestination, trafficClassFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
@@ -165,9 +165,27 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
     auto: [{ domain: "telegram.org", confidence: "exact" }],
     candidates: [{ domain: "example.org" }],
   });
+  normalizeSnapshot(db, 5, "dns", "2026-04-29T00:00:03Z", {
+    source: { command: "dns-forensics-report" },
+    queries: [{
+      client: "lan-host-01",
+      client_ip: "192.168.1.24",
+      domain: "telegram.org",
+      qtype: "A",
+      answer_ip: "149.154.167.220",
+      count: 1,
+      confidence: "dns-interest",
+    }],
+  });
   assert.equal(db.prepare("select count(*) as count from normalized_catalog").get().count, 2);
   rebuildHourlyAggregates(db);
+  const readModels = rebuildObservabilityReadModels(db);
   assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count, 1);
+  assert.equal(readModels.flowCount, 1);
+  assert.equal(db.prepare("select policy from flow_sessions where destination = 'telegram.org'").get().policy, "STEALTH_DOMAINS");
+  assert.equal(db.prepare("select catalog_status from dns_query_log where domain = 'telegram.org'").get().catalog_status, "managed");
+  assert.equal(db.prepare("select count(*) as count from device_inventory").get().count > 0, true);
+  assert.ok(db.prepare("select 1 from read_model_state where model = 'flow_sessions'").get());
   db.close();
 });
 
@@ -175,10 +193,10 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
-  assert.ok(db.prepare("select version from schema_migrations where version = 4").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 5").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   db.close();
 });

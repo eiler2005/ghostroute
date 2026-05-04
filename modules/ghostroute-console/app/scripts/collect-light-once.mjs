@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, normalizeSnapshot } from "./lib/normalize.mjs";
+import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -119,6 +119,7 @@ try {
     .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
     .run("traffic_summary", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
   normalizeSnapshot(db, Number(result.lastInsertRowid), "traffic_summary", collectedAt, payload);
+  rebuildObservabilityReadModels(db);
   const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
   pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
   db.prepare("delete from snapshots where collected_at < ?").run(cutoffIso(rawDays));

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates } from "./lib/normalize.mjs";
+import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -206,6 +206,7 @@ for (const [type, command, args] of commands) {
 }
 
 rebuildHourlyAggregates(db);
+rebuildObservabilityReadModels(db);
 applyRetention();
 
 db.prepare("update collector_runs set finished_at = ?, ok_count = ?, error_count = ? where id = ?").run(

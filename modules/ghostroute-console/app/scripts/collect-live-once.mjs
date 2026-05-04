@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, normalizeSnapshot } from "./lib/normalize.mjs";
+import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -125,6 +125,7 @@ const result = db
   .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
   .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
 normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
+rebuildObservabilityReadModels(db);
 const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
 const pruned = pruneLiveSnapshots(liveRetentionHours);
 console.log(
