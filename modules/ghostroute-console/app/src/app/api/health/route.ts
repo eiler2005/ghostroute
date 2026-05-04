@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildHealthModel } from "@/lib/server/selectors";
 
 export async function GET() {
-  const model = buildConsoleModel();
+  const model = buildHealthModel();
   return NextResponse.json({
     ok: true,
     generated_at: new Date().toISOString(),

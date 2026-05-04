@@ -38,6 +38,47 @@ import {
 } from "../traffic-window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
+const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 15_000);
+const derivedCache = new Map<string, { expiresAt: number; value: any }>();
+
+function cacheGet<T>(key: string, build: () => T): T {
+  if (DERIVED_CACHE_TTL_MS <= 0) return build();
+  const now = Date.now();
+  const cached = derivedCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.value as T;
+  const value = build();
+  derivedCache.set(key, { expiresAt: now + DERIVED_CACHE_TTL_MS, value });
+  return value;
+}
+
+export function clearDerivedCache() {
+  derivedCache.clear();
+}
+
+function latestSnapshotRecords() {
+  return cacheGet("latest-snapshots", () => latestSnapshots());
+}
+
+function latestSnapshotVersion(records = latestSnapshotRecords()) {
+  return records.map((row) => `${row.type}:${row.collectedAt}`).sort().join("|") || "empty";
+}
+
+function cachedLatestByType() {
+  const records = latestSnapshotRecords();
+  return cacheGet(`latest-by-type:${latestSnapshotVersion(records)}`, () => latestByType(records));
+}
+
+function filtersKey(filters: ConsoleFilters = {}) {
+  return JSON.stringify({
+    period: filters.period || "today",
+    route: filters.route || "all",
+    channel: filters.channel || "all",
+    client: filters.client || "all",
+    confidence: filters.confidence || "all",
+    trafficClass: filters.trafficClass || "client",
+    search: filters.search || "",
+  });
+}
 
 function shortCommit(value?: string) {
   const commit = String(value || "").trim();
@@ -471,7 +512,8 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
 
 function snapshotRecordsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
   const now = new Date();
-  return latestSnapshots().filter((row) => types.has(row.type) && snapshotMatchesPeriod(row, period || "today", now));
+  const key = `snapshot-records:${latestSnapshotVersion()}:${period}:${Array.from(types).sort().join(",")}`;
+  return cacheGet(key, () => latestSnapshotRecords().filter((row) => types.has(row.type) && snapshotMatchesPeriod(row, period || "today", now)));
 }
 
 function snapshotIdsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
@@ -479,6 +521,8 @@ function snapshotIdsForWindow(period = "today", types = new Set<string>(["traffi
 }
 
 function snapshotIdsForDeviceWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
+  const cacheKey = `device-window-ids:${latestSnapshotVersion()}:${period}:${Array.from(types).sort().join(",")}`;
+  return cacheGet(cacheKey, () => {
   const placeholders = Array.from(types).map(() => "?").join(",");
   if ((period || "today") === "today") {
     const today = moscowDateKey(new Date());
@@ -501,9 +545,11 @@ function snapshotIdsForDeviceWindow(period = "today", types = new Set<string>(["
       payload: rawJson({ raw_json: row.payload_json }),
     }));
   return rows.filter((row: SnapshotRecord) => snapshotMatchesPeriod(row, period || "today", new Date())).map((row: SnapshotRecord) => row.id);
+  });
 }
 
 function authoritativeTotalsForPeriod(period = "today") {
+  return cacheGet(`authoritative-totals:${latestSnapshotVersion()}:${period}`, () => {
   const latestPayload = (type: string) => {
     const rows = getDb()
       .prepare("select collected_at, payload_json from snapshots where type = ? order by collected_at desc limit 50")
@@ -524,9 +570,11 @@ function authoritativeTotalsForPeriod(period = "today") {
     direct: Number(totals.direct_bytes || 0),
     unknown: Number(totals.unknown_bytes || 0),
   };
+  });
 }
 
 function deviceDeltaRowsForPeriod(period = "today") {
+  return cacheGet(`device-deltas:${latestSnapshotVersion()}:${period}`, () => {
   const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"])))
     .map((row: any) => ({
       id: row.device_id,
@@ -603,6 +651,7 @@ function deviceDeltaRowsForPeriod(period = "today") {
     });
   }
   return reconcileTrafficRows(deltas, authoritativeTotalsForPeriod(period));
+  });
 }
 
 function latestWindowSnapshot(snapshots: ConsoleModel["snapshots"], type: string, period = "today") {
@@ -640,7 +689,7 @@ function evidenceRowsForWindow(rows: Array<Record<string, any>>, period = "today
 }
 
 export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
-  const snapshots = latestByType(latestSnapshots());
+  const snapshots = cachedLatestByType();
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
   const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
@@ -1051,22 +1100,27 @@ export function listTrafficRows(args: PageArgs = {}) {
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;
+  const trafficClass = args.filters?.trafficClass || "client";
+  const hasRegistryFilter = Boolean(args.filters?.client && args.filters.client !== "all");
+  const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
+  const fetchLimit = hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize;
+  const sqlTotal = Number((getDb().prepare(`select count(*) as count from normalized_flows where ${whereSql}`).get(...params) as any)?.count || 0);
   const rawRows = getDb()
     .prepare(
       `select ${flowSelect()}
          from normalized_flows
         where ${whereSql}
-        order by coalesce(nullif(event_ts, ''), collected_at) desc, bytes desc, rowid desc
-        limit 5000`
+        order by bytes desc, coalesce(nullif(event_ts, ''), collected_at) desc, rowid desc
+        limit ?`
     )
-    .all(...params)
+    .all(...params, fetchLimit)
     .map(mapFlowRow)
     .filter((row) => filterRows([row], args.filters || {}).length > 0)
-    .filter((row) => !args.filters?.trafficClass || args.filters.trafficClass === "all" || row.trafficClass === args.filters.trafficClass)
+    .filter((row) => !trafficClass || trafficClass === "all" || row.trafficClass === trafficClass)
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(rawRows, authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const total = allRows.length;
+  const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
   const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
@@ -1089,7 +1143,7 @@ export function getTrafficRowById(id: string, filters: ConsoleFilters = {}) {
 }
 
 function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
-  const snapshots = latestByType(latestSnapshots());
+  const snapshots = cachedLatestByType();
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
   const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
@@ -1098,7 +1152,6 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
   const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
-  const domains = snapshots.domains?.payload || {};
   const newest = Object.values(snapshots)
     .filter(Boolean)
     .map((row) => row?.collectedAt)
@@ -1139,8 +1192,6 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
         }]
       : [];
   const devices = clientInventoryRows(filters).slice(0, 200);
-  const events = evidenceRowsForWindow(latestEvents(80) as Array<Record<string, any>>, period);
-  const routeDecisions = evidenceRowsForWindow(latestRouteDecisions(80) as Array<Record<string, any>>, period);
   const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 80).map((row: any) => ({
     client: row.client,
     domain: row.domain,
@@ -1153,21 +1204,6 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     raw: row.raw,
     collected_at: row.collected_at,
   }));
-  const normalizedCatalog = normalizedRows("normalized_catalog").slice(0, 500).map((row: any) => ({
-    domain: row.domain,
-    type: row.entry_type,
-    source: row.source,
-    confidence: row.confidence,
-    raw: row.raw,
-    collected_at: row.collected_at,
-  }));
-  const catalog = normalizedCatalog.length
-    ? normalizedCatalog
-    : [
-        ...(domains.managed || []),
-        ...(domains.auto || []),
-        ...(domains.candidates || []),
-      ].slice(0, 500);
   const statusCards = [
     { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
     { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
@@ -1187,14 +1223,14 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     runtime: runtimeInfo(snapshots),
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
-    hourlyTraffic: hourlyTraffic() as Array<Record<string, any>>,
-    events,
-    routeDecisions,
-    catalogReviews: catalogReviews() as Array<Record<string, any>>,
-    notifications: notifications() as Array<Record<string, any>>,
-    notificationSettings: notificationSettings() as Record<string, any>,
-    auditLog: auditLog() as Array<Record<string, any>>,
-    opsRuns: opsRuns() as Array<Record<string, any>>,
+    hourlyTraffic: [],
+    events: [],
+    routeDecisions: [],
+    catalogReviews: [],
+    notifications: [],
+    notificationSettings: {},
+    auditLog: [],
+    opsRuns: [],
     snapshots,
     statusCards,
     totals: {
@@ -1209,13 +1245,180 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     flows: [],
     dnsQueries,
     alerts: dedupeAlerts([...staleAlert, ...normalizedAlerts, ...leakAlerts]),
-    catalog,
+    catalog: [],
   };
   return { ...model, ...overrides };
 }
 
+export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
+  const snapshots = cachedLatestByType();
+  const period = filters.period || "today";
+  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
+  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
+  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : trafficSnapshot?.payload || {};
+  const health = snapshots.health?.payload || {};
+  const leaks = snapshots.leaks?.payload || {};
+  const newest = Object.values(snapshots)
+    .filter(Boolean)
+    .map((row) => row?.collectedAt)
+    .sort()
+    .pop();
+  const staleMinutes = minutesSince(newest);
+  const staleThreshold = staleThresholdMinutes();
+  const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
+  const collectorErrors = collectorDisabled ? [] : (latestCollectorErrors(3) as Array<Record<string, any>>);
+  const leakAlerts = (leaks.leaks || []).map((row: any) => ({
+    severity: row.severity || "warning",
+    title: row.label || row.probe,
+    source: "leak-check",
+    status: row.status,
+    evidence: row.evidence,
+    confidence: row.confidence || "exact",
+  }));
+  const staleAlert =
+    staleMinutes !== null && staleMinutes > staleThreshold
+      ? [{
+          severity: "warning",
+          title: "stale snapshot",
+          source: "console",
+          status: "WARN",
+          evidence: `${staleMinutes} minutes since latest snapshot; threshold ${staleThreshold} minutes`,
+          confidence: "exact",
+        }]
+      : [];
+  const statusCards = [
+    { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
+    { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
+    { label: "DNS", status: normalizeStatus(health.services?.dns), detail: "dnscrypt + policy" },
+    { label: "IPv6", status: normalizeStatus(health.services?.ipv6), detail: "not in routing scope" },
+    { label: "Rule-set", status: normalizeStatus(health.services?.rule_set_sync), detail: "catalog mirror" },
+    { label: "Leaks", status: normalizeStatus(leaks.overall), detail: `${leakAlerts.length} signals` },
+  ];
+  const totals = dashboardTraffic.totals || {};
+  const model: ConsoleModel = {
+    generatedAt: new Date().toISOString(),
+    freshnessMinutes: staleMinutes,
+    freshnessStatus: staleMinutes === null ? "empty" : staleMinutes > staleThreshold || collectorErrors.length > 0 ? "stale" : "fresh",
+    freshnessLabel: newest || "",
+    nextExpectedCollection: nextExpectedCollection(newest),
+    staleThresholdMinutes: staleThreshold,
+    runtime: runtimeInfo(snapshots),
+    collectorErrors,
+    collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
+    hourlyTraffic: [],
+    events: [],
+    routeDecisions: [],
+    catalogReviews: [],
+    notifications: [],
+    notificationSettings: {},
+    auditLog: [],
+    opsRuns: [],
+    snapshots,
+    statusCards,
+    totals: {
+      observedBytes: Number(totals.client_observed_bytes || 0),
+      viaVpsBytes: Number(totals.via_vps_bytes || 0),
+      directBytes: Number(totals.direct_bytes || 0),
+      unknownBytes: Number(totals.unknown_bytes || 0),
+      periodLabel: trafficPeriodLabel(dashboardTraffic),
+      windowLabel: trafficWindowLabel(dashboardTraffic),
+    },
+    devices: [],
+    flows: [],
+    dnsQueries: [],
+    alerts: dedupeAlerts([...staleAlert, ...leakAlerts, ...collectorErrors.map((row) => ({
+      severity: "warning",
+      title: row.type || "collector warning",
+      source: "collector",
+      status: "WARN",
+      evidence: row.message || "",
+      confidence: "exact",
+    }))]),
+    catalog: [],
+  };
+  return { ...model, ...overrides };
+}
+
+export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel {
+  const allFilters = { ...filters, trafficClass: "all" };
+  const flows = listTrafficRows({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
+  const devices = listClientInventory({ page: 1, pageSize: 100, filters }).rows;
+  return buildShellModel(filters, { devices, flows });
+}
+
+export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
+  const dnsWindowIds = snapshotIdsForWindow(filters.period || "today", new Set(["dns", "traffic"]));
+  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 12).map((row: any) => ({
+    client: row.client,
+    domain: row.domain,
+    qtype: row.qtype,
+    count: row.count,
+    answer_ip: row.answer_ip,
+    event_ts: row.event_ts,
+    ts_confidence: row.ts_confidence,
+    confidence: row.confidence,
+    raw: row.raw,
+    collected_at: row.collected_at,
+  }));
+  const devices = listClientInventory({ page: 1, pageSize: 10, filters }).rows;
+  return buildShellModel(filters, { flows, devices, dnsQueries });
+}
+
+export function buildClientsModel(filters: ConsoleFilters = {}, devices: Array<Record<string, any>> = [], flows: Array<Record<string, any>> = []): ConsoleModel {
+  const dnsWindowIds = snapshotIdsForWindow(filters.period || "today", new Set(["dns", "traffic"]));
+  const dnsQueries = normalizedRowsForIds("normalized_dns", dnsWindowIds).slice(0, 80).map((row: any) => ({
+    client: row.client,
+    domain: row.domain,
+    qtype: row.qtype,
+    count: row.count,
+    answer_ip: row.answer_ip,
+    event_ts: row.event_ts,
+    ts_confidence: row.ts_confidence,
+    confidence: row.confidence,
+    raw: row.raw,
+    collected_at: row.collected_at,
+  }));
+  return buildShellModel(filters, { devices, flows, dnsQueries });
+}
+
+export function buildHealthModel(filters: ConsoleFilters = {}) {
+  return buildShellModel(filters);
+}
+
+export function buildCatalogModel(filters: ConsoleFilters = {}) {
+  const domains = cachedLatestByType().domains?.payload || {};
+  const normalizedCatalog = normalizedRows("normalized_catalog").slice(0, 500).map((row: any) => ({
+    domain: row.domain,
+    type: row.entry_type,
+    source: row.source,
+    confidence: row.confidence,
+    raw: row.raw,
+    collected_at: row.collected_at,
+  }));
+  const catalog = normalizedCatalog.length
+    ? normalizedCatalog
+    : [
+        ...(domains.managed || []),
+        ...(domains.auto || []),
+        ...(domains.candidates || []),
+      ].slice(0, 500);
+  return buildShellModel(filters, {
+    catalog,
+    catalogReviews: catalogReviews() as Array<Record<string, any>>,
+  });
+}
+
+export function buildSettingsModel(filters: ConsoleFilters = {}) {
+  const devices = listClientInventory({ page: 1, pageSize: 200, filters }).rows;
+  return buildShellModel(filters, {
+    devices,
+    auditLog: auditLog() as Array<Record<string, any>>,
+    opsRuns: opsRuns() as Array<Record<string, any>>,
+  });
+}
+
 export function buildBudgetModel(filters: ConsoleFilters = {}): ConsoleModel {
-  const snapshots = latestByType(latestSnapshots());
+  const snapshots = cachedLatestByType();
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
   const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
@@ -1315,6 +1518,7 @@ function clientSearch(row: Record<string, any>, search?: string) {
 
 function clientInventoryRows(filters: ConsoleFilters = {}) {
   const period = filters.period || "today";
+  return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}`, () => {
   const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
   const currentRows = deviceDeltaRowsForPeriod(period);
   const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));
@@ -1352,6 +1556,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
     const bSeen = Date.parse(b.last_seen || "");
     if (Number.isFinite(aSeen) && Number.isFinite(bSeen) && aSeen !== bSeen) return bSeen - aSeen;
     return String(a.label || a.id || "").localeCompare(String(b.label || b.id || ""));
+  });
   });
 }
 
@@ -1521,19 +1726,26 @@ export function listLiveEvents(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 50, 50);
   const offset = (page - 1) * pageSize;
-  const union = `
+  const fetchLimit = Math.max(offset + pageSize * 4, 50);
+  const eventSelect = `
     select 'event' as kind, id, event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
       from events
-    union all
+     order by occurred_at desc, id desc
+     limit ?`;
+  const decisionSelect = `
     select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, '' as summary, source_log
-      from route_decisions`;
+      from route_decisions
+     order by occurred_at desc, id desc
+     limit ?`;
   const filter = { ...(args.filters || {}), trafficClass: args.filters?.trafficClass || "client" };
-  const candidates = getDb()
-    .prepare(`select * from (${union}) order by occurred_at desc, id desc limit 500`)
-    .all()
+  const eventRows = getDb().prepare(eventSelect).all(fetchLimit);
+  const decisionRows = getDb().prepare(decisionSelect).all(fetchLimit);
+  const candidates = [...eventRows, ...decisionRows]
+    .sort((a: any, b: any) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || Number(b.id || 0) - Number(a.id || 0))
+    .slice(0, fetchLimit)
     .map(mapLiveRow)
     .filter((row) => filterRows([row], filter).length > 0);
-  const total = candidates.length;
+  const total = candidates.length >= fetchLimit ? fetchLimit : candidates.length;
   const rows = candidates.slice(offset, offset + pageSize);
   return {
     rows,

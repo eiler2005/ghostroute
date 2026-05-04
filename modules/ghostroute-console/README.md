@@ -188,4 +188,5 @@ npm run test:perf
 
 `test:perf` warms the local Playwright dev server, then checks that the main
 Console pages render within 2.5 seconds and key JSON APIs respond within 1.5
-seconds.
+seconds. It also clicks through the sidebar quickly to catch regressions where
+one page rebuilds the full Console evidence model during navigation.

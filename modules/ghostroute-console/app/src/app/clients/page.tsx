@@ -14,7 +14,7 @@ import {
   SplitBars,
   StatusBadge,
 } from "@/components/Widgets";
-import { buildPagedEvidenceContext, listClientActivity, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
+import { buildClientsModel, listClientActivity, listClientInventory, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
@@ -94,8 +94,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     primaryRows[0] ||
     clientsPage.rows[0];
   const trafficRows = selected ? listTrafficRows({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
-  const model = buildPagedEvidenceContext(filters, trafficRows);
-  model.devices = clientsPage.rows;
+  const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
   const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
   const selectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];

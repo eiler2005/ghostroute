@@ -1,12 +1,12 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, RawEvidence } from "@/components/Widgets";
 import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildCatalogModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function CatalogPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
+  const model = buildCatalogModel(filters);
   const counts = model.catalog.reduce<Record<string, number>>((acc, row) => {
     const key = row.type || row.kind || row.status || "observed";
     acc[key] = (acc[key] || 0) + 1;
