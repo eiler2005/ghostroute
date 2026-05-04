@@ -6,6 +6,7 @@ import {
   ConfidenceBadge,
   ConfidenceHelp,
   EmptyState,
+  MetricCard,
   Pagination,
   RawEvidence,
   RouteBadge,
@@ -89,6 +90,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
   const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
   const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
+  const activeRows = clientsPage.rows.filter((row) => Number(row.total_bytes || 0) > 0 || ["Online", "Recently seen"].includes(String(row.status || "")));
+  const knownRows = primaryRows.filter((row) => !String(row.role || row.label || "").toLowerCase().includes("unknown"));
   const selected =
     clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(row.observed_identities || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
     primaryRows[0] ||
@@ -113,6 +116,12 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   };
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
+      <div className="grid cards" style={{ marginBottom: 14 }}>
+        <MetricCard label="Devices" value={String(clientsPage.total)} detail="inventory rows in selected view" />
+        <MetricCard label="Known/trusted" value={String(knownRows.length)} detail="operator-attributed or inferred" />
+        <MetricCard label="Unknown" value={String(unattributedRows.length)} detail="needs attribution review" />
+        <MetricCard label="Active now" value={String(activeRows.length)} detail="traffic or recent status" />
+      </div>
       <div className="grid two">
         <section className="card clients-card">
           <div className="toolbar">

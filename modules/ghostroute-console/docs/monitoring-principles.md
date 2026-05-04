@@ -62,9 +62,9 @@ directory to pin the canonical client registry: stable names, roles, primary
 channel, Channel A/B/C/LAN aliases and optional explicit MAC/IP aliases. That
 file is local runtime state, not tracked documentation, because it can contain
 household device names. The same resolver is applied consistently in Dashboard,
-Traffic Explorer, Clients, Live, Budget, Reports, Settings and API payloads. If
-a source is not in the registry and the snapshots do not identify it, Console
-displays it as `Unknown device`, `Unknown Home Reality profile` or
+Flow Explorer, DNS Query Log, Clients, Live, Budget, Reports, Settings and API
+payloads. If a source is not in the registry and the snapshots do not identify
+it, Console displays it as `Unknown device`, `Unknown Home Reality profile` or
 `Unattributed source` instead of guessing.
 
 The Clients page is a physical Device Inventory. A registry profile may point to

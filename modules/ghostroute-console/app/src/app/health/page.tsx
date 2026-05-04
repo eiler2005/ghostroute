@@ -1,11 +1,15 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, RawEvidence, StatusBadge } from "@/components/Widgets";
-import { buildHealthModel } from "@/lib/server/selectors";
+import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function HealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildHealthModel(filters);
+  const alarms = listAlarmEvents({ page: 1, pageSize: 50, filters }).rows;
+  const critical = alarms.filter((row) => row.severity === "critical");
+  const warnings = alarms.filter((row) => row.severity === "warning" || row.severity === "review");
+  const info = alarms.filter((row) => row.severity === "info");
   const checks = [
     ...(model.snapshots.health?.payload?.checks || []),
     ...(model.snapshots.leaks?.payload?.checks || []),
@@ -22,6 +26,48 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           </section>
         ))}
       </div>
+      <section className="card" style={{ marginBottom: 14 }}>
+        <div className="toolbar">
+          <div>
+            <h2>Alarm Center</h2>
+            <p>Critical, Warning и Info события с evidence и suggested action.</p>
+          </div>
+          <span className="subtle">{alarms.length} signals</span>
+        </div>
+        <div className="grid three alarm-summary" style={{ marginBottom: 14 }}>
+          <section><span>Critical</span><strong>{critical.length}</strong></section>
+          <section><span>Warning</span><strong>{warnings.length}</strong></section>
+          <section><span>Info</span><strong>{info.length}</strong></section>
+        </div>
+        {alarms.length === 0 ? (
+          <EmptyState title="Нет активных alarm events" />
+        ) : (
+          <table className="table alarm-table">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Source</th>
+                <th>Event</th>
+                <th>Evidence</th>
+                <th>Suggested action</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alarms.map((row) => (
+                <tr key={row.id}>
+                  <td><span className={`badge severity-${String(row.severity || "warning").toLowerCase()}`}>{row.severity}</span></td>
+                  <td>{row.source || "snapshot"}</td>
+                  <td>{row.title}</td>
+                  <td>{row.evidence || "n/a"}</td>
+                  <td>{row.suggested_action || "Review source evidence before changing runtime state."}</td>
+                  <td><StatusBadge value={row.status || "open"} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
       <section className="card">
         <div className="toolbar">
           <h2>Health Center</h2>
