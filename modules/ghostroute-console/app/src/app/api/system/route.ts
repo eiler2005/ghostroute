@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildShellModel } from "@/lib/server/selectors";
 
 export async function GET() {
-  const model = buildConsoleModel();
+  const model = buildShellModel();
   return NextResponse.json({
     status_cards: model.statusCards,
     health: model.snapshots.health?.payload || null,

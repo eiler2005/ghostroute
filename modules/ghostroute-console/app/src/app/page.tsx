@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildDashboardModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, groupDestinationRows, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
@@ -11,22 +11,21 @@ function share(value: number, total: number) {
 
 export default async function Dashboard({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
-  const allTrafficModel = buildConsoleModel({ ...filters, trafficClass: "all" });
+  const model = buildDashboardModel(filters);
   const total = model.totals.observedBytes || 1;
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "сегодня, окно не указано";
   const topClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
-  const clientTrafficRows = [...allTrafficModel.flows]
+  const clientTrafficRows = [...model.flows]
     .filter((row) => row.trafficClass === "client" && Number(row.bytes || row.total_bytes || 0) > 0)
     .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0));
   const topDestinations = groupDestinationRows(clientTrafficRows, 8);
-  const serviceTraffic = [...allTrafficModel.flows]
+  const serviceTraffic = [...model.flows]
     .filter((row) => row.trafficClass === "service_background" && Number(row.bytes || row.total_bytes || 0) > 0)
     .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
     .slice(0, 5);
   const needsAttribution = groupAttributionRows(
-    allTrafficModel.flows.filter((row) => row.trafficClass === "unclassified" && Number(row.bytes || row.total_bytes || 0) > 0),
+    model.flows.filter((row) => row.trafficClass === "unclassified" && Number(row.bytes || row.total_bytes || 0) > 0),
     10
   );
   const latestDecisions = clientTrafficRows.slice(0, 8);

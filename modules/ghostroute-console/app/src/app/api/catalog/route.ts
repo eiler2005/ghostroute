@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildCatalogModel } from "@/lib/server/selectors";
 
 export async function GET() {
-  const model = buildConsoleModel();
+  const model = buildCatalogModel();
   const catalog = model.catalog;
   return NextResponse.json({
     total: catalog.length,

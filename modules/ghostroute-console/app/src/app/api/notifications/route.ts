@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { notifications } from "@/lib/server/store";
 
 export async function GET() {
-  const model = buildConsoleModel();
+  const rows = notifications(100) as Array<Record<string, any>>;
   return NextResponse.json({
-    total: model.notifications.length,
-    notifications: model.notifications.slice(0, 100).map(({ raw, evidence_json, ...row }) => row),
+    total: rows.length,
+    notifications: rows.map(({ raw, evidence_json, ...row }) => row),
   });
 }

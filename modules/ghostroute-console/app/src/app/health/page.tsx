@@ -1,11 +1,11 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, RawEvidence, StatusBadge } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildHealthModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function HealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
+  const model = buildHealthModel(filters);
   const checks = [
     ...(model.snapshots.health?.payload?.checks || []),
     ...(model.snapshots.leaks?.payload?.checks || []),

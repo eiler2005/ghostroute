@@ -175,10 +175,12 @@ mounted read-only at `/opt/ghostroute-console/repo`.
 The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response; `/traffic` defaults to a small page and accepts `pageSize` up to
-100 for operator browsing.
-Budget uses a page-scoped lightweight model: it reads current totals, short
-hourly history and top device usage, but does not load live events, route
-decision logs, catalog review queues or audit/ops history for first render.
+100 for operator browsing. First-render pages use scoped read models rather
+than the full report model: Budget, Dashboard, Live, Clients, Health, Catalog
+and Settings load only the data each view renders. Short in-process caching is
+allowed for read-only derived snapshot/window data and is invalidated by a
+small TTL plus the latest snapshot timestamp; write/action endpoints do not use
+that cache.
 Playwright performance checks cover the main pages and JSON APIs with local
 budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
 

@@ -1,14 +1,14 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { SettingsActions } from "@/components/SettingsActions";
 import { TrafficTermsHelp } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildSettingsModel } from "@/lib/server/selectors";
 import { dataDir } from "@/lib/server/paths";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { clientRegistrySummary } from "@/lib/device-attribution.mjs";
 
 export default async function SettingsPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
+  const model = buildSettingsModel(filters);
   const registry = clientRegistrySummary();
   const unattributed = model.devices.filter((row) => row.role === "Unattributed mobile ingress source" || row.attribution_confidence === "unattributed").length;
   return (

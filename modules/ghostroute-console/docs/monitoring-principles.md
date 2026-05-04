@@ -32,6 +32,16 @@ attribution later.
 - Week/month views must read saved snapshots or aggregates. They must not launch
   heavy on-demand full reports.
 
+## Navigation Performance
+
+- Sidebar pages should render from page-scoped read models, not from the full
+  report/evidence model unless the page is explicitly a report export.
+- Read-only derived snapshot data may use a short in-process TTL cache keyed by
+  the latest snapshot timestamp and active filters. Action/write endpoints and
+  private credential material must not use that cache.
+- `test:perf` covers both individual page/API budgets and rapid sidebar
+  navigation so regressions show up before deploy.
+
 ## Evidence Labels
 
 - `exact` means explicit counter, report or log evidence.

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { LiveStreamPanel } from "@/components/LiveStreamPanel";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, shortDateTime, StatusBadge } from "@/components/Widgets";
-import { buildRouteEvidenceSet } from "@/lib/server/evidence";
-import { buildPagedEvidenceContext, listClientInventory, listLiveEvents, listTrafficRows } from "@/lib/server/selectors";
+import { buildLiveModel, listLiveEvents, listTrafficRows } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {
@@ -18,10 +17,9 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: 50, filters });
   const serviceEvents = listLiveEvents({ page: 1, pageSize: 50, filters: { ...filters, trafficClass: "service_background" } });
   const trafficPage = listTrafficRows({ page: activityPage, pageSize: 20, filters });
-  const model = buildPagedEvidenceContext(filters, trafficPage.rows);
-  const evidenceSet = buildRouteEvidenceSet(model, { limit: 20, fallbackToDiagnostics: false });
-  const activeFlows = evidenceSet.evidences;
-  const activeClients = listClientInventory({ page: 1, pageSize: 10, filters }).rows;
+  const model = buildLiveModel(filters, trafficPage.rows);
+  const activeFlows = trafficPage.rows;
+  const activeClients = model.devices;
   const dnsRows = model.dnsQueries.slice(0, 8);
   const filterParams = {
     period: filters.period,
@@ -110,13 +108,13 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
               </thead>
               <tbody>
                 {activeFlows.map((row, idx) => (
-                  <tr key={idx}>
-                    <td>{row.eventTimeLabel}</td>
+                  <tr key={row.id || idx}>
+                    <td>{shortDateTime(row.event_ts || row.collected_at)}</td>
                     <td>{row.client}</td>
                     <td><ChannelBadge value={row.channel} /></td>
-                    <td><Link href={`/traffic?flow=${idx}`}>{row.flow?.destinationLabel || row.destination}</Link></td>
+                    <td><Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{row.destinationLabel || row.destination}</Link></td>
                     <td><RouteBadge value={row.route} /></td>
-                    <td>{bytes(row.bytes)}</td>
+                    <td>{bytes(row.bytes || row.total_bytes || 0)}</td>
                     <td>{row.confidence}</td>
                   </tr>
                 ))}

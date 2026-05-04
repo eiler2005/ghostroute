@@ -49,6 +49,18 @@ for (const item of pages) {
   });
 }
 
+test("rapid sidebar navigation stays responsive", async ({ page }) => {
+  await page.goto("/");
+  for (const item of pages.slice(1)) {
+    const started = performance.now();
+    const label = item.path === "/" ? "Dashboard" : item.path.slice(1).replace(/^\w/, (value) => value.toUpperCase()).replace("-", " ");
+    await page.locator(".sidebar").getByRole("link", { name: new RegExp(label, "i") }).click();
+    await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
+    const elapsed = performance.now() - started;
+    expect(elapsed, `${item.path} navigation rendered in ${Math.round(elapsed)}ms`).toBeLessThan(item.path === "/live" ? 3000 : PAGE_BUDGET_MS);
+  }
+});
+
 for (const path of apiPaths) {
   test(`api performance ${path}`, async ({ request }) => {
     const started = performance.now();
