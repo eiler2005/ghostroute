@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
+import { acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -40,6 +41,7 @@ process.on("exit", () => {
     // Best-effort lock cleanup.
   }
 });
+acquireSharedCollectorLock(dataDir, "collector");
 
 const db = new Database(path.join(dataDir, "ghostroute.db"));
 db.pragma("journal_mode = WAL");
