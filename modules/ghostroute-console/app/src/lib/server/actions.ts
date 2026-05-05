@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { dataDir } from "./paths";
+import { writeAlarmState } from "./alarm-state";
 import { buildConsoleModel } from "./selectors";
 import { recordAudit, recordOpsRun, setNotificationSetting, updateNotification, upsertCatalogReview } from "./store";
 
@@ -79,6 +80,26 @@ export function snoozeNotification(id: number, minutes = 60) {
   updateNotification(id, "snoozed", until);
   recordAudit("notifications.snooze", String(id), "ok", `notification snoozed until ${until}`, { id, until });
   return { ok: true, id, status: "snoozed", snoozed_until: until };
+}
+
+export function setAlarmStatus(id: string, action: "ack" | "snooze" | "open", minutes = 60) {
+  if (!id) throw new Error("alarm id is required");
+  const result = writeAlarmState(action, id, minutes);
+  recordAudit(
+    `alarms.${action}`,
+    id,
+    result.ok ? "ok" : "failed",
+    result.ok ? `alarm ${action} stored in ${result.source}` : `alarm ${action} failed`,
+    { id, action, minutes, source: result.source, warning: result.warning || "" }
+  );
+  return {
+    ok: result.ok,
+    id,
+    action,
+    source: result.source,
+    warning: result.warning || "",
+    state: result.state.alarms[id] || null,
+  };
 }
 
 export function testNotification() {

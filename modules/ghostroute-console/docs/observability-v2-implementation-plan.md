@@ -15,6 +15,9 @@
   SQLite contention tolerance, serialized collector writers, bounded
   observability read-model caches, PID-based stale lock recovery and startup
   collector ordering.
+- Post-MVP follow-up adds readonly Settings inventory and router-backed
+  Alarm Center ack/snooze/open state. The write scope is limited to the Console
+  alarm-state JSON file and does not touch routing runtime.
 
 ## Phase 0: Branch And Baseline
 

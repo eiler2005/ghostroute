@@ -1,0 +1,181 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+JSON_MODE=0
+OP="${1:-get}"
+if [ "$OP" = "--json" ]; then
+  JSON_MODE=1
+  shift || true
+  OP="${1:-get}"
+fi
+shift || true
+
+ALARM_ID="${1:-}"
+MINUTES="${2:-60}"
+SNOOZED_UNTIL="${3:-}"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./modules/ghostroute-console/bin/alarm-state --json <get|ack|snooze|open> [alarm_id] [minutes]
+EOF
+}
+
+[ "$JSON_MODE" -eq 1 ] || { usage; exit 2; }
+
+case "$OP" in
+  get|ack|snooze|open) ;;
+  *) usage; exit 2 ;;
+esac
+
+case "$ALARM_ID" in
+  *[!A-Za-z0-9:._=@+,-]*)
+    echo "alarm id contains unsupported characters" >&2
+    exit 2
+    ;;
+esac
+
+case "$MINUTES" in
+  ''|*[!0-9]*) MINUTES=60 ;;
+esac
+
+case "$SNOOZED_UNTIL" in
+  *[!0-9TZ:._+-]*) SNOOZED_UNTIL="" ;;
+esac
+
+state_payload_script='
+set -eu
+
+json_escape() {
+  printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g"
+}
+
+default_state() {
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf "{\n  \"version\": 1,\n  \"updated_at\": \"%s\",\n  \"alarms\": {\n  }\n}\n" "$now"
+}
+
+pick_state_file() {
+  if [ -n "${GHOSTROUTE_ALARM_STATE_FILE:-}" ]; then
+    printf "%s\n" "$GHOSTROUTE_ALARM_STATE_FILE"
+    return 0
+  fi
+  primary="${GHOSTROUTE_ALARM_STATE_PRIMARY:-/opt/var/log/router_configuration/console/alarm-state.json}"
+  fallback="${GHOSTROUTE_ALARM_STATE_FALLBACK:-/jffs/addons/router_configuration/console/alarm-state.json}"
+  primary_dir="$(dirname "$primary")"
+  if mkdir -p "$primary_dir" 2>/dev/null && [ -d "$primary_dir" ]; then
+    printf "%s\n" "$primary"
+    return 0
+  fi
+  fallback_dir="$(dirname "$fallback")"
+  mkdir -p "$fallback_dir"
+  printf "%s\n" "$fallback"
+}
+
+write_state() {
+  file="$1"
+  op="$2"
+  alarm_id="$3"
+  minutes="$4"
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  tmp="${file}.tmp.$$"
+  entries="${file}.entries.$$"
+  mkdir -p "$(dirname "$file")"
+  : > "$entries"
+
+  if [ -f "$file" ]; then
+    awk "/^[[:space:]]*\\\"[A-Za-z0-9:._=@+,-]+\\\":\\{/" "$file" | grep -Fv "\"$alarm_id\":" > "$entries" 2>/dev/null || true
+  fi
+
+  case "$op" in
+    ack)
+      status="acknowledged"
+      snoozed_until=""
+      ;;
+    snooze)
+      status="snoozed"
+      snoozed_until="${GHOSTROUTE_ALARM_SNOOZED_UNTIL:-}"
+      if [ -z "$snoozed_until" ]; then
+        snoozed_until="$(date -u -d "+${minutes} minutes" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)"
+      fi
+      ;;
+    open)
+      status="open"
+      snoozed_until=""
+      ;;
+    *)
+      status=""
+      snoozed_until=""
+      ;;
+  esac
+
+  if [ -n "$status" ]; then
+    escaped_id="$(json_escape "$alarm_id")"
+    printf "    \"%s\":{\"status\":\"%s\",\"actor\":\"console\",\"updated_at\":\"%s\",\"snoozed_until\":\"%s\",\"note\":\"\"}\n" \
+      "$escaped_id" "$status" "$now" "$snoozed_until" >> "$entries"
+  fi
+
+  {
+    printf "{\n"
+    printf "  \"version\": 1,\n"
+    printf "  \"updated_at\": \"%s\",\n" "$now"
+    printf "  \"alarms\": {\n"
+    count="$(wc -l < "$entries" | tr -d " ")"
+    index=0
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      index=$((index + 1))
+      if [ "$index" -lt "$count" ]; then
+        printf "%s,\n" "$line"
+      else
+        printf "%s\n" "$line"
+      fi
+    done < "$entries"
+    printf "  }\n"
+    printf "}\n"
+  } > "$tmp"
+  mv "$tmp" "$file"
+  rm -f "$entries"
+  cat "$file"
+}
+
+op="${GHOSTROUTE_ALARM_OP:-get}"
+alarm_id="${GHOSTROUTE_ALARM_ID:-}"
+minutes="${GHOSTROUTE_ALARM_MINUTES:-60}"
+export GHOSTROUTE_ALARM_SNOOZED_UNTIL="${GHOSTROUTE_ALARM_SNOOZED_UNTIL:-}"
+file="$(pick_state_file)"
+
+case "$op" in
+  get)
+    if [ -f "$file" ]; then
+      cat "$file"
+    else
+      default_state
+    fi
+    ;;
+  ack|snooze|open)
+    [ -n "$alarm_id" ] || { echo "alarm id is required" >&2; exit 2; }
+    write_state "$file" "$op" "$alarm_id" "$minutes"
+    ;;
+  *)
+    echo "unsupported alarm op" >&2
+    exit 2
+    ;;
+esac
+'
+
+if [ -n "${GHOSTROUTE_ALARM_STATE_FILE:-}" ]; then
+  GHOSTROUTE_ALARM_OP="$OP" \
+  GHOSTROUTE_ALARM_ID="$ALARM_ID" \
+  GHOSTROUTE_ALARM_MINUTES="$MINUTES" \
+  GHOSTROUTE_ALARM_SNOOZED_UNTIL="$SNOOZED_UNTIL" \
+  sh -c "$state_payload_script"
+  exit 0
+fi
+
+router_health_load_env
+router_ssh "GHOSTROUTE_ALARM_OP='$OP' GHOSTROUTE_ALARM_ID='$ALARM_ID' GHOSTROUTE_ALARM_MINUTES='$MINUTES' GHOSTROUTE_ALARM_SNOOZED_UNTIL='$SNOOZED_UNTIL' sh -s" <<REMOTE
+$state_payload_script
+REMOTE

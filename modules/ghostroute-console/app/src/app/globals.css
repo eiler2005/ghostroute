@@ -209,6 +209,8 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .alarm-summary section { border: 1px solid #243954; border-radius: 8px; padding: 12px; background: rgba(8,18,33,.52); }
 .alarm-summary span { display: block; color: #a9bad0; font-size: 13px; }
 .alarm-summary strong { display: block; margin-top: 4px; font-size: 26px; }
+.alarm-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.alarm-actions .muted-button { min-height: 30px; padding: 0 8px; font-size: 12px; }
 .redaction-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .redaction-grid section { border: 1px solid #243954; border-radius: 8px; padding: 14px; background: rgba(8,18,33,.52); min-width: 0; }
 @media (max-width: 1100px) {

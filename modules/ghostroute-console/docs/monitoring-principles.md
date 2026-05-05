@@ -42,6 +42,21 @@ attribution later.
 - `test:perf` covers both individual page/API budgets and rapid sidebar
   navigation so regressions show up before deploy.
 
+## Alarm State
+
+- `alarm_events` remains a derived read model from factual snapshots and
+  normalized alert evidence.
+- Operator state for Alarm Center is a narrow overlay: `acknowledged`,
+  `snoozed` or `open`, plus actor, update time and snooze deadline.
+- The overlay is stored on router disk through the dedicated Console
+  `alarm-state --json` command. It must not restart services, deploy catalog
+  changes or touch Channel A/B/C routing state.
+- If router state is temporarily unavailable, Console may render the last local
+  cache with a `console-cache` source marker; the factual alarm evidence stays
+  visible.
+- Telegram/e-mail delivery can later consume the same state, but delivery
+  secrets and provider credentials must stay outside SQLite and tracked docs.
+
 ## Evidence Labels
 
 - `exact` means explicit counter, report or log evidence.

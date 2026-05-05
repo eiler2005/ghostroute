@@ -1,15 +1,24 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { EmptyState, RawEvidence, StatusBadge } from "@/components/Widgets";
+import { AlarmActions } from "@/components/AlarmActions";
+import { EmptyState, RawEvidence, shortDateTime, StatusBadge } from "@/components/Widgets";
 import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
+function scalar(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function HealthPage({ searchParams }: { searchParams?: SearchParams }) {
+  const rawParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildHealthModel(filters);
-  const alarms = listAlarmEvents({ page: 1, pageSize: 50, filters }).rows;
+  const alarmStatus = scalar(rawParams.status) || "active";
+  const alarmPage = listAlarmEvents({ page: 1, pageSize: 50, filters, status: alarmStatus });
+  const alarms = alarmPage.rows;
   const critical = alarms.filter((row) => row.severity === "critical");
   const warnings = alarms.filter((row) => row.severity === "warning" || row.severity === "review");
   const info = alarms.filter((row) => row.severity === "info");
+  const stateWarning = alarms.find((row) => row.state_warning)?.state_warning || "";
   const checks = [
     ...(model.snapshots.health?.payload?.checks || []),
     ...(model.snapshots.leaks?.payload?.checks || []),
@@ -32,8 +41,13 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
             <h2>Alarm Center</h2>
             <p>Critical, Warning и Info события с evidence и suggested action.</p>
           </div>
-          <span className="subtle">{alarms.length} signals</span>
+          <div className="button-row">
+            {["active", "open", "acknowledged", "snoozed", "all"].map((value) => (
+              <a className={`muted-button ${alarmStatus === value ? "primary" : ""}`} href={`/health?status=${value}`} key={value}>{value}</a>
+            ))}
+          </div>
         </div>
+        <p className="subtle">{alarmPage.total} signals; state source: {alarms[0]?.state_source || "n/a"}{stateWarning ? `; sync warning: ${stateWarning}` : ""}</p>
         <div className="grid three alarm-summary" style={{ marginBottom: 14 }}>
           <section><span>Critical</span><strong>{critical.length}</strong></section>
           <section><span>Warning</span><strong>{warnings.length}</strong></section>
@@ -51,6 +65,8 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
                 <th>Evidence</th>
                 <th>Suggested action</th>
                 <th>Status</th>
+                <th>State</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -62,6 +78,12 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
                   <td>{row.evidence || "n/a"}</td>
                   <td>{row.suggested_action || "Review source evidence before changing runtime state."}</td>
                   <td><StatusBadge value={row.status || "open"} /></td>
+                  <td>
+                    <span className="subtle">{row.state_source || "derived"}</span>
+                    {row.snoozed_until ? <small className="block-detail">until {shortDateTime(row.snoozed_until)}</small> : null}
+                    {row.operator_updated_at ? <small className="block-detail">updated {shortDateTime(row.operator_updated_at)}</small> : null}
+                  </td>
+                  <td><AlarmActions id={row.id} status={row.status} /></td>
                 </tr>
               ))}
             </tbody>

@@ -27,6 +27,7 @@ It still does not mutate router runtime or deploy catalog changes implicitly.
 ./modules/ghostroute-console/bin/ghostroute-console build
 ./modules/ghostroute-console/bin/ghostroute-console collect-once
 ./modules/ghostroute-console/bin/ghostroute-console collect-light
+./modules/ghostroute-console/bin/ghostroute-console alarm-state --json get
 ./modules/ghostroute-console/bin/ghostroute-console doctor
 ./modules/traffic-observatory/bin/traffic-summary --json today
 ./modules/traffic-observatory/bin/live-events-report --json --limit 200
@@ -185,7 +186,9 @@ from the public Console URL.
 - `/dns` shows DNS Query Log rows: client, domain, answer IP, route decision,
   catalog status, status and risk context.
 - `/health` includes Alarm Center rows with severity, source, evidence,
-  suggested action and status.
+  suggested action and status. Ack/snooze/reopen is stored as a narrow operator
+  state overlay on the router at the Console alarm-state JSON path; it does not
+  change routing, services or catalog runtime.
 - `/clients` shows all known devices with `Online`, `Recently seen` or
   `Inactive` state and last-seen timestamps, so devices do not disappear just
   because they are absent from today's latest snapshot.
@@ -197,6 +200,12 @@ from the public Console URL.
   actions without storing delivery secrets.
 - `/api/actions/ops` records controlled ops actions such as collect/report
   refresh and collector restart requests.
+- `/api/alarms/:id/(ack|snooze|open)` updates only the router-backed alarm
+  state overlay and keeps derived `alarm_events` as factual snapshot evidence.
+- `/settings` is a readonly runtime inventory: collectors, retention, read
+  models, access posture, router profile status, safety gates and notification
+  readiness are shown without exposing real endpoints, ports, users, keys or
+  local device identifiers.
 
 ## Local Checks
 
