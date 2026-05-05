@@ -418,7 +418,7 @@ docs/
 ./deploy.sh
 
 # Только из домашней LAN можно разово переопределить LAN-IP:
-# ROUTER=192.168.50.1 ./deploy.sh
+# ROUTER=<router_lan_ip> ./deploy.sh
 
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
@@ -481,12 +481,12 @@ home WAN, какие устройства и Home Reality ingress clients был
 
 ```bash
 # После deploy.sh или Ansible можно вручную собрать локальный health sample.
-ssh admin@192.168.50.1 '/jffs/scripts/health-monitor/run-once'
+ssh admin@<router_lan_ip> '/jffs/scripts/health-monitor/run-once'
 
 # Primary storage на роутере:
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/status.json'
 
 # Единый router+VPS отчет с control machine.
 ./modules/ghostroute-health-monitor/bin/ghostroute-health-report

@@ -372,7 +372,7 @@ rules or regenerating the VLESS URI.
 Router-side audit helper:
 
 ```bash
-ssh admin@192.168.50.1 \
+ssh admin@<router_lan_ip> \
   'TODAY="$(date +%Y-%m-%d)"; grep " $TODAY " /opt/var/log/sing-box.log |
    grep "inbound/vless\\[reality-in\\]" -A3 |
    grep -E "direct\\[direct-out\\].*:(53|853)" || true'

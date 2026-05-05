@@ -144,8 +144,8 @@
 
 | Область | Риск | Симптом | Как легально диагностировать | Минимальное улучшение | Приоритет |
 |---|---|---|---|---|---|
-| DNS leak | Низкий | DNS уходит к LTE-оператору | `dig @192.168.50.1 youtube.com` vs `dig @8.8.8.8 youtube.com`, сравнить, проверить sing-box log на SOCKS-traffic от dnscrypt | Уже OK через DoH+SOCKS+Reality | — |
-| IPv6 leak | Низкий → Medium | AAAA-резолв уходит к оператору | `dig AAAA youtube.com @192.168.50.1` (должен быть пустой) | `filter-AAAA` уже включён, есть verify-проверка | — |
+| DNS leak | Низкий | DNS уходит к LTE-оператору | `dig @<router_lan_ip> youtube.com` vs `dig @8.8.8.8 youtube.com`, сравнить, проверить sing-box log на SOCKS-traffic от dnscrypt | Уже OK через DoH+SOCKS+Reality | — |
+| IPv6 leak | Низкий → Medium | AAAA-резолв уходит к оператору | `dig AAAA youtube.com @<router_lan_ip>` (должен быть пустой) | `filter-AAAA` уже включён, есть verify-проверка | — |
 | WebRTC leak | На клиенте, не на роутере | Browser STUN запросы | `https://browserleaks.com/webrtc` через iPhone profile | Это вне scope роутера; добавить caveat в [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) | Medium |
 | SNI fingerprint | Низкий | DPI matches Reality SNI | tcpdump → Wireshark, посмотреть Client Hello SNI | `gateway.icloud.com` — strong cover, ротация документирована в [modules/reality-sni-rotation/docs/sni-rotation-candidates.md](/modules/reality-sni-rotation/docs/sni-rotation-candidates.md) | — |
 | Protocol fingerprint | Низкий | Reality detection (TLS-fingerprint mismatch с реальным iCloud) | YouTube stream + iperf3 timing analysis | Vision flow + xtls-rprx-vision корректно скрывают TLS overhead | — |

@@ -61,7 +61,7 @@ RU TLD и `configs/domains-no-vpn.txt` туда не попадают.
 ## Deploy
 
 ```bash
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/99-verify.yml

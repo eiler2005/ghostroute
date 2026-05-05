@@ -164,7 +164,7 @@ Fake schema example:
 vps_ssh_host: "203.0.113.10"
 vps_ssh_user: "deploy"
 
-router_ssh_host: "192.168.50.1"
+router_ssh_host: "<router_lan_ip>"
 router_ssh_user: "admin"
 
 xui_admin_username: "admin"
@@ -245,7 +245,7 @@ ansible-playbook playbooks/22-channel-c-router.yml
 
 ```bash
 cd ..
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 ```
 
 This manages historical Merlin scripts and dnsmasq managed blocks.
@@ -482,7 +482,7 @@ OpenClaw is intentionally hidden from public DNS and is not served by public Cad
 
 ```bash
 ssh -N -L <private-forward-port>:127.0.0.1:<private-forward-port> \
-  -o ProxyCommand='ssh admin@192.168.50.1 nc -w 120 %h %p' \
+  -o ProxyCommand='ssh admin@<router_lan_ip> nc -w 120 %h %p' \
   deploy@<vps-ip>
 ```
 

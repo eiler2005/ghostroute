@@ -23,10 +23,16 @@ if [ -f "$STATIC_NETWORKS_FILE" ]; then
   done
 fi
 
-# Remote management is LAN-only. Merlin may leave a broad SSH ACCEPT rule in
-# INPUT; keep an explicit WAN-side drop ahead of it after firewall rebuilds.
-iptables -D INPUT ! -i br0 -p tcp --dport 22 -j DROP 2>/dev/null
-iptables -I INPUT 1 ! -i br0 -p tcp --dport 22 -j DROP
+# Router SSH access is owned by the Merlin SSH service setting. GhostRoute
+# supports both direct LAN operator access and the approved WAN SSH profile, so
+# remove the older LAN-only guard if it is still present after firewall rebuilds.
+SSH_PORT="$(nvram get sshd_port 2>/dev/null || true)"
+[ -n "$SSH_PORT" ] || SSH_PORT=22
+iptables -D INPUT ! -i br0 -p tcp --dport "$SSH_PORT" -j DROP 2>/dev/null || true
+if [ "$(nvram get sshd_enable 2>/dev/null || true)" = "1" ]; then
+  iptables -D INPUT -p tcp --dport "$SSH_PORT" -j ACCEPT 2>/dev/null || true
+  iptables -I INPUT 1 -p tcp --dport "$SSH_PORT" -j ACCEPT
+fi
 
 # Keep per-device LAN byte accounting chains up to date without resetting
 # their counters during ordinary refreshes.

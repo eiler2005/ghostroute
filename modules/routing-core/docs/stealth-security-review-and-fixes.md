@@ -137,7 +137,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
    ssh "$ROUTER_SSH" '
      [ "$(nvram get ipv6_service)" = "disabled" ] || { echo "FAIL: IPv6 not disabled"; exit 1; }
      ip -6 addr show dev br0 2>/dev/null | grep -qE "inet6 (2|3)" && { echo "FAIL: LAN GUA v6 present"; exit 1; } || true
-     dig @192.168.50.1 youtube.com AAAA +short | grep . && { echo "FAIL: AAAA answers are not filtered"; exit 1; }
+     dig @<router_lan_ip> youtube.com AAAA +short | grep . && { echo "FAIL: AAAA answers are not filtered"; exit 1; }
      echo "OK: IPv6 disabled, no LAN GUA v6"
    '
    ```
@@ -146,7 +146,7 @@ When LAN device resolves a dual-stack destination (e.g. YouTube AAAA), the IPv6 
    ```
    - [ ] `nvram get ipv6_service` == `disabled`
    - [ ] `ip -6 addr show dev br0` shows no global unicast IPv6 addresses
-   - [ ] `dig @192.168.50.1 youtube.com AAAA +short` is empty
+   - [ ] `dig @<router_lan_ip> youtube.com AAAA +short` is empty
    ```
 
 ### Verification
@@ -355,7 +355,7 @@ Revert SystemCaddyfile.j2 `bind` directive removal, re-deploy. Release floating 
 4. Access OpenClaw via SSH local-forward to the loopback upstream:
    ```bash
    ssh -N -L <private-forward-port>:127.0.0.1:<private-forward-port> \
-     -o ProxyCommand='ssh admin@192.168.50.1 nc -w 120 %h %p' \
+     -o ProxyCommand='ssh admin@<router_lan_ip> nc -w 120 %h %p' \
      deploy@<vps-ip>
    ```
 5. Open `http://127.0.0.1:<private-forward-port>/` locally.

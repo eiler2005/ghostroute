@@ -45,7 +45,7 @@ SSH port: 22
 Проверка:
 
 ```bash
-ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@192.168.50.1
+ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa admin@<router_lan_ip>
 ```
 
 `deploy.sh` уже использует параметры, подходящие для Merlin/dropbear.
@@ -64,7 +64,7 @@ cp .env.example secrets/router.env
 Минимально полезно указать:
 
 ```text
-ROUTER=192.168.50.1
+ROUTER=<router_lan_ip>
 ROUTER_USER=admin
 SSH_IDENTITY_FILE=/Users/<user>/.ssh/id_rsa
 ```
@@ -85,7 +85,7 @@ ansible-vault edit secrets/stealth.yml
 В документации и чатах допускаются только fake-примеры:
 
 ```yaml
-router_ssh_host: "192.168.50.1"
+router_ssh_host: "<router_lan_ip>"
 reality_server_public_key: "FAKE_PUBLIC_KEY"
 clients:
   - name: "iphone-1"
@@ -155,7 +155,7 @@ ansible-playbook playbooks/10-stealth-vps.yml
 
 ```bash
 cd ..
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 ```
 
 Этот шаг доставляет и применяет:

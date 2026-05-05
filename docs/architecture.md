@@ -476,7 +476,7 @@ rebuild.
 ## Verification
 
 ```bash
-ROUTER=192.168.50.1 ./verify.sh
+ROUTER=<router_lan_ip> ./verify.sh
 cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers
 ```
 

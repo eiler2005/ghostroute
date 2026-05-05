@@ -130,5 +130,5 @@ Disallowed behavior:
 3. Test a temporary direct bypass for one device/profile.
 4. Confirm app behavior on LAN and mobile Home Reality.
 5. Only then edit the catalog and deploy.
-6. Run `ROUTER=192.168.50.1 ./verify.sh` and `99-verify.yml`.
+6. Run `ROUTER=<router_lan_ip> ./verify.sh` and `99-verify.yml`.
 7. Save a short decision log in this document or `docs/vpn-domain-journal.md`.

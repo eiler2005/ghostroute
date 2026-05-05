@@ -315,7 +315,7 @@ what the LTE carrier saw as the first hop.
 ## Useful Checks
 
 ```bash
-ROUTER=192.168.50.1 ./verify.sh
+ROUTER=<router_lan_ip> ./verify.sh
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ./modules/traffic-observatory/bin/traffic-report
 ```
