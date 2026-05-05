@@ -525,17 +525,20 @@ Channel A RF-like profile
 - Не открывать DNS endpoint наружу.
 - Не менять DNS runtime без rollback и external proof.
 
-### 11. Semi-auto backup VPS egress для managed domains
+### 11. Semi-auto backup managed egress для managed domains
 
 Отдельный future-roadmap зафиксирован в
 [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).
 
 Идея: если primary Hetzner/VPS как foreign managed egress недоступен, роутер
 может полуавтоматически переключить только managed destinations на резервный
-`VLESS + Reality/Vision` VPS у другого провайдера/ASN. Router-managed split
-остается владельцем policy: `STEALTH_DOMAINS` / `VPN_STATIC_NETS` по-прежнему
-решают, что идет через foreign egress, а direct/RU/default трафик остается на
-home WAN.
+foreign egress. Первый практический v1-кандидат для proof-of-logic теперь
+зафиксирован как Red Shield `VLESS (XTLS)` provider profile; долгосрочный
+вариант собственного второго `VLESS + Reality/Vision` VPS у другого
+провайдера/ASN остаётся совместимым с тем же router-side contract.
+Router-managed split остается владельцем policy: `STEALTH_DOMAINS` /
+`VPN_STATIC_NETS` по-прежнему решают, что идет через foreign egress, а
+direct/RU/default трафик остается на home WAN.
 
 Ключевые ограничения:
 
