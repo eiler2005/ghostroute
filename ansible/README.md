@@ -40,6 +40,36 @@ Ansible Vault.
 Generated client profiles and QR files are written under `out/`. They are local
 operator artifacts and must stay out of git.
 
+## Router Access Profiles
+
+Router SSH access is intentionally split by where the control machine is:
+
+- When operating from the home LAN/Wi-Fi, direct LAN access is acceptable with a
+  local override such as `ROUTER=192.168.50.1`.
+- When operating remotely, including through Channel A/VPN, the primary router
+  path is the dedicated remote-router SSH endpoint and port. Store that profile
+  in gitignored `secrets/router.env` and use the gitignored operator key under
+  `secrets/router-remote-ssh/`, or store the equivalent
+  `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
+  `ghostroute_router_remote_user` and `ghostroute_router_remote_private_key` in
+  Vault.
+
+Remote `secrets/router.env` should contain only local secret values and must not
+be committed:
+
+```sh
+ROUTER=<remote-router-ssh-host>
+ROUTER_PORT=<remote-router-ssh-port>
+ROUTER_USER=<router-ssh-user>
+SSH_IDENTITY_FILE=<absolute-path-to-gitignored-router-key>
+CONNECT_TIMEOUT=15
+```
+
+`./verify.sh`, router health reports and traffic/catalog diagnostics load
+`secrets/router.env` automatically through the shared router helper. If that file
+is absent, the helper may auto-detect `192.168.50.1`; that is a home-LAN
+fallback, not the preferred remote workflow.
+
 ## Deployment Component Map
 
 Ansible is the repeatable control plane, not the data plane itself. It keeps

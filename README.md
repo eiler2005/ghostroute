@@ -87,6 +87,24 @@ If the router reports WAN `carrier=0` or "network cable unplugged", that is a
 physical/provider WAN-link incident. It is not evidence that Channel A,
 Caddy/VPS, or the Reality/Vision data plane is broken.
 
+## Operator Router Access
+
+Router SSH has two supported operator paths:
+
+- **Home LAN:** use the router LAN address, for example
+  `ROUTER=192.168.50.1`, only when the control machine is actually on the home
+  LAN/Wi-Fi.
+- **Remote/off-LAN:** the primary path is the dedicated remote-router SSH
+  endpoint and port stored outside git in `secrets/router.env`, backed by the
+  operator key under `secrets/router-remote-ssh/` or the equivalent
+  `ghostroute_router_remote_*` Vault values.
+
+When the operator is connected through Channel A/VPN or any other off-LAN path,
+do not rely on `192.168.50.1` for verification. The route may go through a VPN
+interface and fail before SSH authentication. Use `secrets/router.env` for
+`./verify.sh`, router health reports and other read-only diagnostics; keep the
+remote host, port and key out of tracked docs and commits.
+
 ---
 
 ## Key Features
@@ -430,8 +448,12 @@ overviews. The Ansible router/VPS deployment component map lives in
 ## Quick Start
 
 ```bash
-# Base router deploy: dnsmasq, firewall-start, nat-start, cron scripts
-ROUTER=192.168.50.1 ./deploy.sh
+# Base router deploy through the active router access profile.
+# Remote operators should prepare gitignored secrets/router.env first.
+./deploy.sh
+
+# Home-LAN-only one-off override:
+# ROUTER=192.168.50.1 ./deploy.sh
 
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
