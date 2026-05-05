@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
-import { acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -15,35 +15,16 @@ fs.mkdirSync(snapshotDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 const lockFile = path.join(dataDir, "live-collector.lock");
-let lockFd = null;
-try {
-  const stat = fs.statSync(lockFile);
-  const maxAgeMs = Math.max(10000, Number(process.env.GHOSTROUTE_LIVE_TIMEOUT_SECONDS || 30) * 1000 * 2);
-  if (Date.now() - stat.mtimeMs > maxAgeMs) fs.unlinkSync(lockFile);
-} catch {
-  // No existing lock.
-}
-try {
-  lockFd = fs.openSync(lockFile, "wx");
-  fs.writeFileSync(lockFd, `${process.pid} ${new Date().toISOString()}\n`);
-} catch {
+const lockRelease = acquireCollectorLock(
+  lockFile,
+  "live collector",
+  Math.max(10000, Number(process.env.GHOSTROUTE_LIVE_TIMEOUT_SECONDS || 30) * 1000 * 2)
+);
+if (!lockRelease) {
   console.log("live collector skipped: another collect-live-once run is active");
   process.exit(0);
 }
-process.on("exit", () => {
-  try {
-    if (lockFd !== null) fs.closeSync(lockFd);
-    fs.unlinkSync(lockFile);
-  } catch {
-    // Best-effort lock cleanup.
-  }
-});
-acquireSharedCollectorLock(dataDir, "live collector");
-
-const db = new Database(path.join(dataDir, "ghostroute.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 10000");
-ensureConsoleSchema(db);
+let db = null;
 
 const command = "modules/traffic-observatory/bin/live-events-report";
 const limit = String(Math.max(1, Math.min(1000, Number(process.env.GHOSTROUTE_LIVE_LIMIT || 200))));
@@ -71,10 +52,18 @@ function pruneLiveSnapshots(retentionHours) {
 }
 
 function cursor() {
+  let cursorDb = null;
   try {
-    return db.prepare("select cursor from live_cursors where source = ?").get("live-events-report")?.cursor || "";
+    cursorDb = new Database(path.join(dataDir, "ghostroute.db"), { readonly: true, fileMustExist: true });
+    return cursorDb.prepare("select cursor from live_cursors where source = ?").get("live-events-report")?.cursor || "";
   } catch {
     return "";
+  } finally {
+    try {
+      cursorDb?.close();
+    } catch {
+      // Best-effort close.
+    }
   }
 }
 
@@ -123,14 +112,29 @@ const stdout = runReadOnlyCommand(args);
 const payload = JSON.parse(stdout);
 const collectedAt = payload.generated_at || new Date().toISOString();
 const file = path.join(snapshotDir, `live-${collectedAt.replace(/[:.]/g, "-")}.json`);
-fs.writeFileSync(file, JSON.stringify(payload, null, 2));
-const result = db
-  .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
-  .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
-normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
-rebuildObservabilityReadModels(db);
-const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
-const pruned = pruneLiveSnapshots(liveRetentionHours);
-console.log(
-  `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`
-);
+const writerRelease = acquireSharedCollectorLock(dataDir, "live collector");
+try {
+  db = new Database(path.join(dataDir, "ghostroute.db"));
+  db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 10000");
+  ensureConsoleSchema(db);
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+  const result = db
+    .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
+    .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
+  normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
+  rebuildObservabilityReadModels(db);
+  const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
+  const pruned = pruneLiveSnapshots(liveRetentionHours);
+  console.log(
+    `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`
+  );
+} finally {
+  try {
+    db?.close();
+  } catch {
+    // Best-effort close.
+  }
+  writerRelease();
+  lockRelease();
+}

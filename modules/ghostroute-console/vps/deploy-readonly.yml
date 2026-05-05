@@ -259,13 +259,19 @@
           GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh
           GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS=1800
           GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS=10800
-          GHOSTROUTE_COLLECT_TIMEOUT_SECONDS=180
+          GHOSTROUTE_COLLECT_TIMEOUT_SECONDS=900
           GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS=300
           GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS=45
           GHOSTROUTE_HOURLY_RETENTION_DAYS=30
           GHOSTROUTE_DB_BACKUP_MODE=daily
           GHOSTROUTE_BACKUP_RETENTION_DAYS=2
           GHOSTROUTE_DB_BACKUP_MAX_FILES=2
+          GHOSTROUTE_COLLECTOR_WRITER_LOCK_WAIT_SECONDS=120
+          GHOSTROUTE_READ_MODEL_FLOW_LIMIT=5000
+          GHOSTROUTE_READ_MODEL_DNS_LIMIT=20000
+          GHOSTROUTE_READ_MODEL_LIVE_DNS_LIMIT=10000
+          GHOSTROUTE_READ_MODEL_DEVICE_LIMIT=5000
+          GHOSTROUTE_READ_MODEL_ALARM_LIMIT=2000
           GHOSTROUTE_LIVE_RAW_RETENTION_HOURS=6
           GHOSTROUTE_LIVE_POLL_SECONDS=600
           GHOSTROUTE_LIVE_UI_REFRESH_MS=600000
@@ -295,7 +301,9 @@
         state: absent
       loop:
         - "{{ console_root }}/data/collector.lock"
+        - "{{ console_root }}/data/light-collector.lock"
         - "{{ console_root }}/data/live-collector.lock"
+        - "{{ console_root }}/data/collector-writer.lock"
 
     - name: Build and start Console container
       ansible.builtin.command:

@@ -39,6 +39,10 @@ function suffixMatch(domain, candidate) {
   return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
 }
 
+function domainKey(value) {
+  return lower(value).replace(/^\*\./, "").replace(/\.$/, "");
+}
+
 function addColumnIfMissing(db, table, column, definition) {
   const columns = db.prepare(`pragma table_info(${table})`).all();
   if (!columns.some((row) => row.name === column)) {
@@ -567,6 +571,29 @@ function writeReadModelState(db, model, sourceVersion, rowCount, startedAt, stat
   `).run(model, sourceVersion, new Date().toISOString(), rowCount, Math.max(0, Date.now() - startedAt), status, detail);
 }
 
+function readModelLimit(name, fallback) {
+  const parsed = Number(process.env[name] || fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function buildCatalogMatcher(catalogRows) {
+  const exact = new Map();
+  for (const row of catalogRows) {
+    const key = domainKey(row.domain);
+    if (key && !exact.has(key)) exact.set(key, row);
+  }
+  return (domain) => {
+    const key = domainKey(domain);
+    if (!key) return undefined;
+    const labels = key.split(".");
+    for (let index = 0; index < labels.length; index += 1) {
+      const match = exact.get(labels.slice(index).join("."));
+      if (match) return match;
+    }
+    return undefined;
+  };
+}
+
 function identityKey(row) {
   const raw = parseJson(row.raw_json || row.evidence_json, {});
   return text(
@@ -631,6 +658,7 @@ function durationConfidence(row) {
 }
 
 function catalogMatchFor(domain, catalogRows) {
+  if (typeof catalogRows === "function") return catalogRows(domain);
   return catalogRows.find((row) => suffixMatch(domain, row.domain));
 }
 
@@ -716,6 +744,11 @@ export function rebuildObservabilityReadModels(db) {
   let dnsCount = 0;
   let deviceCount = 0;
   let alarmCount = 0;
+  const flowLimit = readModelLimit("GHOSTROUTE_READ_MODEL_FLOW_LIMIT", 5000);
+  const dnsLimit = readModelLimit("GHOSTROUTE_READ_MODEL_DNS_LIMIT", 20000);
+  const liveDnsLimit = readModelLimit("GHOSTROUTE_READ_MODEL_LIVE_DNS_LIMIT", 10000);
+  const deviceLimit = readModelLimit("GHOSTROUTE_READ_MODEL_DEVICE_LIMIT", 5000);
+  const alarmLimit = readModelLimit("GHOSTROUTE_READ_MODEL_ALARM_LIMIT", 2000);
 
   db.transaction(() => {
     db.prepare("delete from flow_sessions").run();
@@ -724,6 +757,7 @@ export function rebuildObservabilityReadModels(db) {
     db.prepare("delete from alarm_events").run();
 
     const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
+    const catalogMatch = buildCatalogMatcher(catalogRows);
     const flowInsert = db.prepare(`
       insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip,
         device_key, channel, destination, destination_ip, destination_port, protocol, route, policy,
@@ -731,7 +765,7 @@ export function rebuildObservabilityReadModels(db) {
         risk_reason, confidence, source_kind, evidence_json)
       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc").all();
+    const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc limit ?").all(flowLimit);
     const flowTopDomains = new Map();
     for (const row of flowRows) {
       const raw = parseJson(row.raw_json, {});
@@ -781,9 +815,9 @@ export function rebuildObservabilityReadModels(db) {
         confidence, evidence_json)
       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const dnsRows = db.prepare("select rowid, * from normalized_dns order by collected_at desc, rowid desc").all();
+    const dnsRows = db.prepare("select rowid, * from normalized_dns order by collected_at desc, rowid desc limit ?").all(dnsLimit);
     for (const row of dnsRows) {
-      const match = catalogMatchFor(row.domain, catalogRows);
+      const match = catalogMatchFor(row.domain, catalogMatch);
       const status = queryStatusForDns(match, row);
       dnsInsert.run(
         `dns:n:${row.rowid}`,
@@ -807,12 +841,12 @@ export function rebuildObservabilityReadModels(db) {
       dnsCount += 1;
     }
     const liveDnsRows = db
-      .prepare("select id, snapshot_id, occurred_at as collected_at, occurred_at, client, client_ip, dns_qname, dns_answer_ip, confidence, evidence_json from events where event_type in ('dns.query','dns.answer') order by occurred_at desc, id desc")
-      .all();
+      .prepare("select id, snapshot_id, occurred_at as collected_at, occurred_at, client, client_ip, dns_qname, dns_answer_ip, confidence, evidence_json from events where event_type in ('dns.query','dns.answer') order by occurred_at desc, id desc limit ?")
+      .all(liveDnsLimit);
     for (const row of liveDnsRows) {
       const domain = text(row.dns_qname);
       if (!domain) continue;
-      const match = catalogMatchFor(domain, catalogRows);
+      const match = catalogMatchFor(domain, catalogMatch);
       dnsInsert.run(
         `dns:e:${row.id}`,
         row.snapshot_id,
@@ -862,7 +896,7 @@ export function rebuildObservabilityReadModels(db) {
         risk = excluded.risk,
         evidence_json = excluded.evidence_json
     `);
-    const deviceRows = db.prepare("select rowid, * from normalized_devices order by collected_at desc, rowid desc").all();
+    const deviceRows = db.prepare("select rowid, * from normalized_devices order by collected_at desc, rowid desc limit ?").all(deviceLimit);
     for (const row of deviceRows) {
       const raw = parseJson(row.raw_json, {});
       const key = identityKey(row);
@@ -907,7 +941,7 @@ export function rebuildObservabilityReadModels(db) {
         evidence, suggested_action, snoozed_until, confidence, risk, evidence_json)
       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const alertRows = db.prepare("select rowid, * from normalized_alerts order by collected_at desc, rowid desc").all();
+    const alertRows = db.prepare("select rowid, * from normalized_alerts order by collected_at desc, rowid desc limit ?").all(alarmLimit);
     for (const row of alertRows) {
       const raw = parseJson(row.raw_json, {});
       const severity = lower(row.severity || raw.severity || "warning");
