@@ -1,25 +1,35 @@
 #!/bin/sh
 # Restart sing-box only after repeated local listener failures.
 
-PORTS="{{ singbox_redirect_port }}{% if home_reality_enabled | default(false) | bool %} {{ home_reality_ingress_port }}{% endif %}"
+PORTS="{{ singbox_redirect_port }} {{ singbox_dnscrypt_socks_port }} {{ router_vps_dns_forward_port }}{% if home_reality_enabled | default(false) | bool %} {{ home_reality_ingress_port }}{% endif %}"
 INIT={{ singbox_init_path }}
 STATE_FILE=/opt/tmp/singbox-watchdog.state
-FAIL_LIMIT=2
+FAIL_LIMIT=1
 
 mkdir -p "$(dirname "$STATE_FILE")"
 
-if command -v nc >/dev/null 2>&1; then
-  NC=nc
-elif [ -x /opt/bin/nc ]; then
-  NC=/opt/bin/nc
-else
-  logger -t singbox-watchdog "nc not found; skipping probe"
-  exit 0
-fi
+listener_present() {
+  port="$1"
+
+  if netstat -nl 2>/dev/null | grep "[.:]${port}[[:space:]]" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 127.0.0.1 "$port" >/dev/null 2>&1
+    return $?
+  fi
+  if [ -x /opt/bin/nc ]; then
+    /opt/bin/nc -z -w 2 127.0.0.1 "$port" >/dev/null 2>&1
+    return $?
+  fi
+
+  return 1
+}
 
 ALL_OK=1
 for PORT in $PORTS; do
-  if ! "$NC" -z -w 2 127.0.0.1 "$PORT" >/dev/null 2>&1; then
+  if ! listener_present "$PORT"; then
     ALL_OK=0
   fi
 done

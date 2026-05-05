@@ -45,7 +45,7 @@ operator artifacts and must stay out of git.
 Router SSH access is intentionally split by where the control machine is:
 
 - When operating from the home LAN/Wi-Fi, direct LAN access is acceptable with a
-  local override such as `ROUTER=192.168.50.1`.
+  local setting such as `ROUTER_LAN=<router_lan_ip>` and `ROUTER_LAN_PORT=22`.
 - When operating remotely, including through Channel A/VPN, the primary router
   path is the dedicated remote-router SSH endpoint and port. Store that profile
   in gitignored `secrets/router.env` and use the gitignored operator key under
@@ -58,17 +58,24 @@ Remote `secrets/router.env` should contain only local secret values and must not
 be committed:
 
 ```sh
+ROUTER_ACCESS_MODE=auto
+ROUTER_LAN=<router_lan_ip>
+ROUTER_LAN_PORT=22
 ROUTER=<remote-router-ssh-host>
-ROUTER_PORT=<remote-router-ssh-port>
+ROUTER_WAN_PORT=<remote-router-ssh-port>
+# ROUTER_PORT remains supported as a legacy fallback.
 ROUTER_USER=<router-ssh-user>
 SSH_IDENTITY_FILE=<absolute-path-to-gitignored-router-key>
 CONNECT_TIMEOUT=15
 ```
 
 `./verify.sh`, router health reports and traffic/catalog diagnostics load
-`secrets/router.env` automatically through the shared router helper. If that file
-is absent, the helper may auto-detect `192.168.50.1`; that is a home-LAN
-fallback, not the preferred remote workflow.
+`secrets/router.env` automatically through the shared router helper. In
+`ROUTER_ACCESS_MODE=auto`, the helper uses `ROUTER_LAN:22` only when the route
+to the LAN address is on a non-VPN interface; when the route goes through
+`utun`, `tun`, `wg`, Tailscale or another VPN-like interface it keeps the
+WAN/remote `ROUTER:ROUTER_WAN_PORT` profile, with `ROUTER_PORT` as a legacy
+fallback.
 
 ## Deployment Component Map
 

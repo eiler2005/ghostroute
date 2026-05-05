@@ -20,10 +20,18 @@ router_health_load_env() {
     set +a
   fi
 
+  local configured_router
+  local configured_router_port
+  configured_router="${ROUTER:-}"
+  configured_router_port="${ROUTER_WAN_PORT:-${ROUTER_PORT:-22}}"
+
   ROUTER_USER="${ROUTER_USER:-admin}"
-  ROUTER_PORT="${ROUTER_PORT:-22}"
   CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
-  ROUTER="${ROUTER:-}"
+  ROUTER_ACCESS_MODE="${ROUTER_ACCESS_MODE:-auto}"
+  ROUTER_LAN="${ROUTER_LAN:-${ROUTER_LAN_IP:-}}"
+  ROUTER_LAN_PORT="${ROUTER_LAN_PORT:-22}"
+  ROUTER_REMOTE="$configured_router"
+  ROUTER_REMOTE_PORT="$configured_router_port"
   SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
   GHOSTROUTE_REDIRECT_PORT="${GHOSTROUTE_REDIRECT_PORT:-${SINGBOX_REDIRECT_PORT:-}}"
   GHOSTROUTE_HOME_REALITY_PORT="${GHOSTROUTE_HOME_REALITY_PORT:-${HOME_REALITY_PORT:-}}"
@@ -33,42 +41,278 @@ router_health_load_env() {
   GHOSTROUTE_HOME_REALITY_MSS="${GHOSTROUTE_HOME_REALITY_MSS:-${HOME_REALITY_MSS:-1360}}"
   GHOSTROUTE_HOME_REALITY_CONNLIMIT="${GHOSTROUTE_HOME_REALITY_CONNLIMIT:-${HOME_REALITY_CONNLIMIT_ABOVE:-500}}"
 
-  if [ -z "$ROUTER" ]; then
-    ROUTER="$(router_detect_ip)"
-  fi
+  router_select_access_profile "$configured_router" "$configured_router_port" || return 1
   [ -n "$ROUTER" ] || { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; return 1; }
 
+  router_build_ssh_opts
+  router_verify_access_profile || return 1
+
+  ROUTER_HEALTH_INIT_DONE=1
+}
+
+router_build_ssh_opts() {
   SSH_OPTS=(
     -i "$SSH_IDENTITY_FILE"
     -p "$ROUTER_PORT"
     -o ConnectTimeout="$CONNECT_TIMEOUT"
+    -o BatchMode=yes
+    -o ConnectionAttempts="${SSH_CONNECTION_ATTEMPTS:-1}"
     -o IdentitiesOnly=yes
     -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
     -o PubkeyAcceptedAlgorithms=+ssh-rsa
     -o StrictHostKeyChecking=accept-new
     -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
   )
+}
 
-  ROUTER_HEALTH_INIT_DONE=1
+router_ssh_preflight() {
+  [ "${ROUTER_ACCESS_PREFLIGHT:-ssh}" = "ssh" ] || return 0
+  ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "true" </dev/null >/dev/null 2>&1
+}
+
+router_verify_access_profile() {
+  local selected_router="$ROUTER"
+  local selected_port="$ROUTER_PORT"
+
+  router_ssh_preflight && return 0
+
+  case "${ROUTER_ACCESS_MODE:-auto}" in
+    auto|"")
+      if [ -n "${ROUTER_LAN:-}" ] || [ "$ROUTER" = "${ROUTER_REMOTE:-}" ]; then
+        if router_select_direct_lan_profile; then
+          router_build_ssh_opts
+          if router_ssh_preflight; then
+            echo "Router SSH WAN preflight failed; using direct LAN fallback." >&2
+            return 0
+          fi
+        fi
+      fi
+
+      if [ "$selected_router" != "${ROUTER_REMOTE:-}" ] && [ -n "${ROUTER_REMOTE:-}" ]; then
+        ROUTER="$ROUTER_REMOTE"
+        ROUTER_PORT="${ROUTER_REMOTE_PORT:-22}"
+        router_build_ssh_opts
+        if router_ssh_preflight; then
+          echo "Router SSH LAN preflight failed; using WAN fallback." >&2
+          return 0
+        fi
+      fi
+      ;;
+  esac
+
+  ROUTER="$selected_router"
+  ROUTER_PORT="$selected_port"
+  router_build_ssh_opts
+  echo "Router SSH preflight failed on selected profile and fallback profiles are unavailable." >&2
+  return 1
+}
+
+router_select_access_profile() {
+  local remote_router="$1"
+  local remote_port="$2"
+  local mode="${ROUTER_ACCESS_MODE:-auto}"
+
+  case "$mode" in
+    auto|"")
+      if router_select_lan_profile; then
+        return 0
+      fi
+      if [ -n "$remote_router" ]; then
+        ROUTER="$remote_router"
+        ROUTER_PORT="$remote_port"
+        return 0
+      fi
+      ROUTER="$(router_detect_ip)"
+      ROUTER_PORT="${ROUTER_PORT:-22}"
+      ;;
+    lan|home|local)
+      if router_select_lan_profile; then
+        return 0
+      fi
+      echo "Cannot detect a home-LAN router path. Set ROUTER_LAN=<router_lan_ip> or use ROUTER_ACCESS_MODE=remote." >&2
+      return 1
+      ;;
+    remote|wan|off-lan)
+      ROUTER="$remote_router"
+      ROUTER_PORT="$remote_port"
+      ;;
+    *)
+      echo "Invalid ROUTER_ACCESS_MODE=$mode; expected auto, lan, or remote." >&2
+      return 1
+      ;;
+  esac
+}
+
+router_select_lan_profile() {
+  local candidate
+
+  candidate="$(router_lan_candidate)"
+  [ -n "$candidate" ] || return 1
+  router_route_is_local_lan "$candidate" || return 1
+  router_tcp_reachable "$candidate" "${ROUTER_LAN_PORT:-22}" || return 1
+
+  ROUTER="$candidate"
+  ROUTER_PORT="${ROUTER_LAN_PORT:-22}"
+}
+
+router_select_direct_lan_profile() {
+  local candidate
+  local seen=" "
+
+  for candidate in "${ROUTER_LAN:-}" "${ROUTER_LAN_IP:-}" 192.168.50.1 192.168.1.1 192.168.0.1 10.0.0.1; do
+    [ -n "$candidate" ] || continue
+    case "$seen" in
+      *" $candidate "*) continue ;;
+    esac
+    seen="${seen}${candidate} "
+    router_private_ipv4 "$candidate" || continue
+    router_tcp_reachable "$candidate" "${ROUTER_LAN_PORT:-22}" || continue
+    ROUTER="$candidate"
+    ROUTER_PORT="${ROUTER_LAN_PORT:-22}"
+    return 0
+  done
+
+  return 1
+}
+
+router_lan_candidate() {
+  if [ -n "${ROUTER_LAN:-}" ]; then
+    printf '%s\n' "$ROUTER_LAN"
+    return 0
+  fi
+
+  if router_private_ipv4 "${ROUTER:-}" && [ "${ROUTER_PORT:-22}" = "22" ]; then
+    printf '%s\n' "$ROUTER"
+    return 0
+  fi
+
+  router_detect_lan_ip
+}
+
+router_detect_lan_ip() {
+  local candidate
+
+  candidate="$(router_default_gateway)"
+  if router_private_ipv4 "$candidate" && router_route_is_local_lan "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if command -v ifconfig >/dev/null 2>&1; then
+    while IFS='|' read -r iface ip; do
+      [ -n "$ip" ] || continue
+      router_interface_is_vpn "$iface" && continue
+      candidate="$(printf '%s\n' "$ip" | awk -F. 'NF == 4 { printf "%s.%s.%s.1\n", $1, $2, $3 }')"
+      [ -n "$candidate" ] || continue
+      router_route_is_local_lan "$candidate" || continue
+      printf '%s\n' "$candidate"
+      return 0
+    done < <(
+      ifconfig 2>/dev/null | awk '
+        /^[[:alnum:]][^:]*:/ {
+          iface = $1
+          sub(/:$/, "", iface)
+          next
+        }
+        $1 == "inet" {
+          ip = $2
+          if (iface ~ /^(lo|utun|tun|tap|wg|wgs|wgc|tailscale|ts|ppp|ipsec)/) next
+          if (ip ~ /^127\./ || ip ~ /^169\.254\./) next
+          if (ip ~ /^10\./ || ip ~ /^192\.168\./ || ip ~ /^172\.(1[6-9]|2[0-9]|3[0-1])\./) {
+            printf "%s|%s\n", iface, ip
+          }
+        }'
+    )
+  fi
+
+  for candidate in 192.168.50.1 192.168.1.1 192.168.0.1 10.0.0.1; do
+    router_route_is_local_lan "$candidate" || continue
+    router_tcp_reachable "$candidate" "${ROUTER_LAN_PORT:-22}" && { printf '%s\n' "$candidate"; return 0; }
+  done
+
+  return 1
+}
+
+router_default_gateway() {
+  if command -v route >/dev/null 2>&1; then
+    route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }'
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1; then
+    ip route show default 2>/dev/null | awk '/default/ { print $3; exit }'
+    return 0
+  fi
+}
+
+router_route_interface() {
+  local target="$1"
+
+  if command -v route >/dev/null 2>&1; then
+    route -n get "$target" 2>/dev/null | awk '/interface:/ { print $2; exit }'
+    return 0
+  fi
+
+  if command -v ip >/dev/null 2>&1; then
+    ip route get "$target" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
+    return 0
+  fi
+}
+
+router_route_is_local_lan() {
+  local target="$1"
+  local iface
+
+  iface="$(router_route_interface "$target")"
+  [ -n "$iface" ] || return 1
+  ! router_interface_is_vpn "$iface"
+}
+
+router_interface_is_vpn() {
+  case "${1:-}" in
+    lo|lo0|utun*|tun*|tap*|wg*|wgs*|wgc*|tailscale*|ts*|ppp*|ipsec*|zt*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+router_tcp_reachable() {
+  local host="$1"
+  local port="$2"
+
+  if ! command -v nc >/dev/null 2>&1; then
+    return 0
+  fi
+
+  nc -G 1 -z "$host" "$port" >/dev/null 2>&1 && return 0
+  nc -w 1 -z "$host" "$port" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+router_private_ipv4() {
+  local ip="${1:-}"
+
+  awk -F. -v ip="$ip" '
+    BEGIN {
+      if (split(ip, octets, ".") != 4) exit 1
+      for (i = 1; i <= 4; i++) {
+        if (octets[i] !~ /^[0-9]+$/ || octets[i] < 0 || octets[i] > 255) exit 1
+      }
+      if (octets[1] == 10) exit 0
+      if (octets[1] == 192 && octets[2] == 168) exit 0
+      if (octets[1] == 172 && octets[2] >= 16 && octets[2] <= 31) exit 0
+      exit 1
+    }'
 }
 
 router_detect_ip() {
   local candidate
 
-  if command -v route >/dev/null 2>&1; then
-    candidate="$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2; exit }')"
-    if [ -n "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  fi
-
-  if command -v ip >/dev/null 2>&1; then
-    candidate="$(ip route show default 2>/dev/null | awk '/default/ { print $3; exit }')"
-    if [ -n "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
+  candidate="$(router_default_gateway)"
+  if [ -n "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
   fi
 
   if command -v ifconfig >/dev/null 2>&1; then
@@ -77,7 +321,7 @@ router_detect_ip() {
       candidate="$(printf '%s\n' "$ip" | awk -F. 'NF == 4 { printf "%s.%s.%s.1\n", $1, $2, $3 }')"
       [ -n "$candidate" ] || continue
       if command -v nc >/dev/null 2>&1; then
-        nc -G 1 -z "$candidate" 22 >/dev/null 2>&1 && { printf '%s\n' "$candidate"; return 0; }
+        router_tcp_reachable "$candidate" 22 && { printf '%s\n' "$candidate"; return 0; }
       else
         printf '%s\n' "$candidate"
         return 0
@@ -102,7 +346,7 @@ router_detect_ip() {
 
   for candidate in 192.168.50.1 192.168.1.1 192.168.0.1 10.0.0.1; do
     if command -v nc >/dev/null 2>&1; then
-      nc -G 1 -z "$candidate" 22 >/dev/null 2>&1 && { printf '%s\n' "$candidate"; return 0; }
+      router_tcp_reachable "$candidate" 22 && { printf '%s\n' "$candidate"; return 0; }
     fi
   done
 

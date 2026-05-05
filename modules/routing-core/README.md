@@ -10,6 +10,8 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 
 - Builds and refreshes router-side hooks for NAT, firewall and service startup.
 - Maintains sing-box rule-set synchronization from the repo-managed catalogs.
+- Installs the sing-box listener watchdog used to recover from process death or
+  listener loss.
 - Preserves Channel A only as a cold fallback path, not as steady-state routing.
 
 ## How It Works
@@ -26,6 +28,10 @@ install the REDIRECT, counter and cron behavior used by the rest of GhostRoute.
   runtime paths.
 - sing-box rule-sets are generated under the configured router rule-set
   directory, currently `/opt/etc/sing-box/rule-sets`.
+- `/jffs/scripts/singbox-watchdog.sh` runs from cron and checks the critical
+  redirect, SOCKS, router DNS-forward and Home Reality listeners.
+- `configs/runtime-inventory.yml` records Routing Core runtime ownership,
+  compatibility notes and symbolic port/listener sources.
 
 ## Read-only / Mutating Contract
 
@@ -45,7 +51,9 @@ inspect its state, but must not silently change routing.
 - `/jffs/scripts/nat-start`
 - `/jffs/scripts/services-start`
 - `/jffs/scripts/update-singbox-rule-sets.sh`
+- `/jffs/scripts/singbox-watchdog.sh`
 - `/opt/etc/sing-box/rule-sets`
+- `/opt/tmp/singbox-watchdog.state`
 
 ## Dependencies On Other Modules
 
@@ -58,6 +66,8 @@ inspect its state, but must not silently change routing.
 - Missing Merlin hook files.
 - Rule-set drift between router runtime and repo catalogs.
 - sing-box REDIRECT not receiving managed traffic.
+- sing-box process death after local rule-set hot reload; the watchdog should
+  restart the service when critical listeners disappear.
 - WireGuard cold fallback accidentally re-enabled.
 
 ## Tests
@@ -73,3 +83,4 @@ inspect its state, but must not silently change routing.
 - `modules/routing-core/docs/network-flow-and-observer-model.md`
 - `modules/routing-core/docs/channel-routing-operations.md`
 - `modules/routing-core/docs/stealth-channel-implementation-guide.md`
+- `docs/runtime-inventory.md`

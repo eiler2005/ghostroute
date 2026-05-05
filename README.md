@@ -92,18 +92,27 @@ Caddy/VPS, or the Reality/Vision data plane is broken.
 Router SSH has two supported operator paths:
 
 - **Home LAN:** use the router LAN address, for example
-  `ROUTER=192.168.50.1`, only when the control machine is actually on the home
-  LAN/Wi-Fi.
+  `ROUTER_LAN=<router_lan_ip>` with `ROUTER_LAN_PORT=22`, only when the control
+  machine is actually on the home LAN/Wi-Fi.
 - **Remote/off-LAN:** the primary path is the dedicated remote-router SSH
   endpoint and port stored outside git in `secrets/router.env`, backed by the
   operator key under `secrets/router-remote-ssh/` or the equivalent
   `ghostroute_router_remote_*` Vault values.
 
-When the operator is connected through Channel A/VPN or any other off-LAN path,
-do not rely on `192.168.50.1` for verification. The route may go through a VPN
-interface and fail before SSH authentication. Use `secrets/router.env` for
-`./verify.sh`, router health reports and other read-only diagnostics; keep the
-remote host, port and key out of tracked docs and commits.
+The shared router helper defaults to `ROUTER_ACCESS_MODE=auto`: if the control
+machine's route to `ROUTER_LAN` is through a normal LAN interface it uses
+`ROUTER_LAN:22`; if the route goes through a VPN-style interface such as
+`utun`, `tun`, `wg` or Tailscale, it keeps the WAN/remote
+`ROUTER:ROUTER_WAN_PORT` profile from `secrets/router.env`. `ROUTER_PORT`
+remains a legacy fallback for older local env files. This keeps `./verify.sh`,
+`live-check`, router health reports and traffic/catalog diagnostics on the
+intended SSH path; keep the remote host, port and key out of tracked docs and
+commits.
+
+In `auto` mode the helper performs a short SSH preflight, not just a TCP port
+probe. If the WAN endpoint accepts TCP but does not send an SSH banner, the
+helper tries the direct LAN/Wi-Fi fallback before failing with a transport
+diagnostic.
 
 ---
 

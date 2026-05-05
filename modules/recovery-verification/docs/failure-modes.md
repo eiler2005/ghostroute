@@ -10,6 +10,10 @@ Mobile QR -> home Reality ingress :<home-reality-port> -> Reality
 Legacy WireGuard (`wgs1`/`wgc1`) is decommissioned. `wgc1_*` NVRAM remains only for
 manual cold fallback through `/jffs/scripts/emergency-enable-wgc1.sh`.
 
+Use [docs/runtime-inventory.md](/docs/runtime-inventory.md) before runtime
+upgrades or port changes. It records the sanitized component inventory,
+proven-good version policy, listener ownership and required upgrade gates.
+
 ## sing-box Down
 
 Symptom: managed LAN destinations stall while unmanaged traffic still works.
@@ -31,6 +35,37 @@ Recover:
 ```
 
 The watchdog probes both the LAN REDIRECT listener and the home Reality ingress.
+
+### Rule-set Hot Reload Crash
+
+Observed failure mode: sing-box can die during local source rule-set hot reload,
+with a `SIGSEGV` stack in the JSON rule-set reload path. After the process dies,
+the local SOCKS, LAN REDIRECT, router DNS-forward and Home Reality listeners
+disappear. GhostRoute Console then reports Router/Reality/Leaks as critical, and
+router-side curl through `127.0.0.1:<router-socks-port>` fails because the SOCKS
+listener is already gone.
+
+Recovery:
+
+```sh
+/opt/etc/init.d/S99sing-box restart
+/jffs/scripts/stealth-route-init.sh
+/jffs/scripts/health-monitor/run-once
+```
+
+Guardrails:
+
+- `update-singbox-rule-sets.sh` must replace generated JSON rule-sets
+  atomically, then restart sing-box only after `sing-box check` passes.
+- `/jffs/scripts/singbox-watchdog.sh` is part of the production guardrail. It
+  checks redirect, SOCKS, router DNS-forward and Home Reality listeners every
+  minute and restarts sing-box when they disappear.
+- Do not treat an upstream generic sing-box binary as a drop-in replacement for
+  the Entware package without testing LAN transparent REDIRECT from a real Wi-Fi
+  client. Keep the previous `/opt/bin/sing-box.backup.*` binary until `live-check`,
+  `leak-check` and a LAN managed-domain probe all pass.
+- Record durable version and compatibility outcomes in
+  `configs/runtime-inventory.yml`, not as one-off incident prose.
 
 ## dnscrypt-proxy Down
 

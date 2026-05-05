@@ -403,6 +403,15 @@ Expected:
 - sing-box logs have no fresh `x509: certificate is valid for ... microsoft.com, not gateway.icloud.com`.
 - Channel A WireGuard runtime hooks are absent; `wgc1_*` NVRAM is preserved only for cold fallback.
 - `domain-auto-add.sh` default-skips when `/opt/tmp/blocked-domains.lst` is missing or empty.
+- Rule-set updates replace generated sing-box JSON files atomically before any
+  requested restart, so fswatch never observes a partially written rule-set.
+- `singbox-watchdog.sh` checks redirect, SOCKS, router DNS-forward, and Home
+  Reality listeners with `netstat` first and restarts sing-box on the first
+  failed cron probe.
+- Router sing-box upgrades are not complete until a real LAN/Wi-Fi client proves
+  both managed and direct browsing. `sing-box check`, process status and
+  listener checks are necessary but not sufficient for transparent REDIRECT
+  compatibility.
 
 ---
 

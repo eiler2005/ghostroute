@@ -185,21 +185,38 @@ write_dnsmasq_vps_dns() {
 install_if_changed() {
   new_file="$1"
   target_file="$2"
+  target_dir="$(dirname "$target_file")"
+  target_base="$(basename "$target_file")"
+  tmp_target="${target_dir}/.${target_base}.$$"
 
-  if [ ! -f "$target_file" ] || ! cmp -s "$new_file" "$target_file"; then
-    cp "$new_file" "$target_file"
+  mkdir -p "$target_dir"
+  cp "$new_file" "$tmp_target"
+  chmod 0644 "$tmp_target" 2>/dev/null || true
+
+  if [ ! -f "$target_file" ] || ! cmp -s "$tmp_target" "$target_file"; then
+    mv "$tmp_target" "$target_file"
     CHANGED=1
+  else
+    rm -f "$tmp_target"
   fi
 }
 
 install_dnsmasq_if_changed() {
   new_file="$1"
   target_file="$2"
+  target_dir="$(dirname "$target_file")"
+  target_base="$(basename "$target_file")"
+  tmp_target="${target_dir}/.${target_base}.$$"
 
-  if [ ! -f "$target_file" ] || ! cmp -s "$new_file" "$target_file"; then
-    mkdir -p "$(dirname "$target_file")"
-    cp "$new_file" "$target_file"
+  mkdir -p "$target_dir"
+  cp "$new_file" "$tmp_target"
+  chmod 0644 "$tmp_target" 2>/dev/null || true
+
+  if [ ! -f "$target_file" ] || ! cmp -s "$tmp_target" "$target_file"; then
+    mv "$tmp_target" "$target_file"
     DNSMASQ_CHANGED=1
+  else
+    rm -f "$tmp_target"
   fi
 }
 
