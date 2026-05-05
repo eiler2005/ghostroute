@@ -28,6 +28,9 @@ jobs:
       - name: Install Console dependencies
         run: npm --prefix modules/ghostroute-console/app ci
 
+      - name: Install repo check tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Fast repo checks
         run: ./tests/run-fast.sh
 
