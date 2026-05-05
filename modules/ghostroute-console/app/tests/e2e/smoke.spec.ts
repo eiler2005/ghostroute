@@ -94,11 +94,25 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
 });
 
 test("api smoke endpoints respond", async ({ request }) => {
-  for (const path of ["/api/dashboard", "/api/flows", "/api/dns", "/api/alarms", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
+  for (const path of ["/api/dashboard", "/api/flows", "/api/dns", "/api/alarms", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/settings", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
     const response = await request.get(path);
     expect(response.ok(), path).toBeTruthy();
     const body = await response.json();
     expect(body).toBeTruthy();
+  }
+});
+
+test("alarm state actions are exposed when alarms exist", async ({ request }) => {
+  const response = await request.get("/api/alarms?pageSize=1");
+  expect(response.ok()).toBeTruthy();
+  const body = await response.json();
+  if (!body.alarms?.length) return;
+  const id = encodeURIComponent(body.alarms[0].id);
+  for (const path of [`/api/alarms/${id}/ack`, `/api/alarms/${id}/snooze`, `/api/alarms/${id}/open`]) {
+    const action = await request.post(path, { data: { minutes: 60 } });
+    expect(action.ok(), path).toBeTruthy();
+    const actionBody = await action.json();
+    expect(actionBody).toHaveProperty("ok");
   }
 });
 

@@ -60,4 +60,5 @@ export type ConsoleModel = {
   dnsQueries: Array<Record<string, any>>;
   alerts: Array<Record<string, any>>;
   catalog: Array<Record<string, any>>;
+  settingsInventory?: Record<string, any>;
 };

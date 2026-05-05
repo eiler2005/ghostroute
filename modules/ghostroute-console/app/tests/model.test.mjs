@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -78,6 +78,29 @@ test("collector lock replaces stale locks and preserves active peer locks", asyn
   assert.equal(acquireCollectorLock(lockFile, "collector", 60000), null);
   child.kill("SIGTERM");
   fs.unlinkSync(lockFile);
+});
+
+test("alarm-state command stores ack snooze and reopen as bounded JSON", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-alarm-state-"));
+  const stateFile = path.join(tmp, "alarm-state.json");
+  const command = path.resolve(new URL("../../bin/alarm-state", import.meta.url).pathname);
+  const env = { ...process.env, GHOSTROUTE_ALARM_STATE_FILE: stateFile };
+
+  let state = JSON.parse(execFileSync(command, ["--json", "get"], { encoding: "utf8", env }));
+  assert.equal(state.version, 1);
+  assert.deepEqual(state.alarms, {});
+
+  state = JSON.parse(execFileSync(command, ["--json", "ack", "alarm:1"], { encoding: "utf8", env }));
+  assert.equal(state.alarms["alarm:1"].status, "acknowledged");
+  assert.equal(state.alarms["alarm:1"].actor, "console");
+
+  state = JSON.parse(execFileSync(command, ["--json", "snooze", "alarm:1", "60"], { encoding: "utf8", env }));
+  assert.equal(state.alarms["alarm:1"].status, "snoozed");
+  assert.match(state.alarms["alarm:1"].snoozed_until, /^20/);
+
+  state = JSON.parse(execFileSync(command, ["--json", "open", "alarm:1"], { encoding: "utf8", env }));
+  assert.equal(state.alarms["alarm:1"].status, "open");
+  assert.equal(state.alarms["alarm:1"].snoozed_until, "");
 });
 
 test("collector normalizes factual traffic and catalog snapshots", () => {

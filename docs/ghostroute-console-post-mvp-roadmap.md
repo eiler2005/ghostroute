@@ -20,9 +20,10 @@ Status: implementation slices exist in `modules/ghostroute-console/` and are
 summarized in [ghostroute-console-architecture.md](ghostroute-console-architecture.md).
 Route explanation, channel badges, SQLite v4 evidence rows, real log-tail event
 ingestion, SSE live stream, catalog review/dry-run, notification settings,
-budget history, ops actions and audit tables are present. Remaining work is
-hardening, real notification delivery/provider integrations and any
-router/runtime mutation beyond prepared/audited local actions.
+budget history, ops actions, audit tables, readonly Settings inventory and
+router-backed alarm ack/snooze state are present. Remaining work is hardening,
+real notification delivery/provider integrations and any router/runtime mutation
+beyond prepared/audited local actions.
 
 Latest implementation note: the Console now treats Clients as a known-device
 inventory with historical last-seen state, enables scheduled read-only
@@ -54,7 +55,8 @@ instead of guessing site-visible IP/ASN/country.
 4. **Notifications**
    - Telegram/e-mail alerts для stale snapshots, leaks, quota warnings,
      unusual routing и collector errors.
-   - UI для ack/snooze без автоматических runtime-действий.
+   - UI для ack/snooze реализован через router-backed alarm-state overlay без
+     автоматических runtime-действий.
 
 5. **Budget Provider Integration**
    - Сначала реальные VPS/LTE квоты из config/env.
@@ -76,6 +78,8 @@ instead of guessing site-visible IP/ASN/country.
 8. **Collector Control**
    - Manual `collect-once`, collector status, job log, last error,
      schedule visibility.
+   - `/settings` показывает readonly inventory collectors/runtime/cache/access
+     без runtime editor.
    - Restart/deploy/router runtime actions скрыты до отдельного design review.
 
 9. **Security Hardening**

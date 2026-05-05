@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import crypto from "node:crypto";
 import type { ConsoleFilters, ConsoleModel, SnapshotRecord } from "./types";
 import { dataDir, repoRoot } from "./paths";
+import { alarmStatusMatches, overlayAlarmState, readAlarmState } from "./alarm-state";
 import {
   auditLog,
   catalogReviews,
@@ -1000,6 +1003,11 @@ function rawJson(row: any) {
   }
 }
 
+function stableAlarmId(...parts: Array<string | number | undefined | null>) {
+  const hash = crypto.createHash("sha256").update(parts.filter(Boolean).join("|")).digest("hex").slice(0, 16);
+  return `alarm:fallback:${hash}`;
+}
+
 function evidenceJson(row: any) {
   try {
     return row.evidence_json ? JSON.parse(row.evidence_json) : {};
@@ -1448,7 +1456,7 @@ function mapAlarmReadModelRow(row: any) {
 
 function mapAlarmFallbackRow(row: any) {
   return {
-    id: `alarm:fallback:${row.snapshot_id || "local"}:${row.title}:${row.collected_at}`,
+    id: stableAlarmId(row.snapshot_id || "local", row.snapshot_type, row.title, row.collected_at),
     snapshot_id: row.snapshot_id,
     collected_at: row.collected_at,
     created_at: row.collected_at,
@@ -1473,18 +1481,19 @@ export function listAlarmEvents(args: AlarmPageArgs = {}) {
   const severity = args.severity || "all";
   const status = args.status || "all";
   const source = args.source || "all";
+  const state = readAlarmState();
   if (!readModelHasRows("alarm_events")) {
     const ids = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
-    const rows = normalizedRowsForIds("normalized_alerts", ids)
+    const rows = overlayAlarmState(normalizedRowsForIds("normalized_alerts", ids)
       .map(mapAlarmFallbackRow)
       .filter((row) => severity === "all" || String(row.severity || "").toLowerCase() === severity.toLowerCase())
-      .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
       .filter((row) => source === "all" || row.source === source)
       .filter((row) => {
         const search = filters.search?.trim().toLowerCase();
         if (!search) return true;
         return [row.title, row.source, row.severity, row.status, row.evidence, row.suggested_action].filter(Boolean).join(" ").toLowerCase().includes(search);
-      });
+      }), state)
+      .filter((row) => alarmStatusMatches(row, status));
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     const effectivePage = Math.min(page, totalPages);
     const offset = (effectivePage - 1) * pageSize;
@@ -1503,10 +1512,6 @@ export function listAlarmEvents(args: AlarmPageArgs = {}) {
     where.push("lower(severity) = ?");
     params.push(severity.toLowerCase());
   }
-  if (status !== "all") {
-    where.push("lower(status) = ?");
-    params.push(status.toLowerCase());
-  }
   if (source !== "all") {
     where.push("source = ?");
     params.push(source);
@@ -1518,26 +1523,31 @@ export function listAlarmEvents(args: AlarmPageArgs = {}) {
     params.push(needle, needle, needle, needle, needle, needle);
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
-  const offset = (page - 1) * pageSize;
   const db = getDb();
-  const total = Number((db.prepare(`select count(*) as count from alarm_events where ${whereSql}`).get(...params) as any)?.count || 0);
-  const rows = db
+  const fetchLimit = 500;
+  const candidates = overlayAlarmState(db
     .prepare(
       `select id, snapshot_id, collected_at, severity, source, title, status, evidence,
-              suggested_action, snoozed_until, confidence, risk, evidence_json
-         from alarm_events
-        where ${whereSql}
-        order by case lower(severity) when 'critical' then 0 when 'warning' then 1 when 'review' then 2 when 'info' then 3 else 4 end,
-                 collected_at desc,
-                 id desc
-        limit ? offset ?`
+               suggested_action, snoozed_until, confidence, risk, evidence_json
+          from alarm_events
+         where ${whereSql}
+         order by case lower(severity) when 'critical' then 0 when 'warning' then 1 when 'review' then 2 when 'info' then 3 else 4 end,
+                  collected_at desc,
+                  id desc
+         limit ?`
     )
-    .all(...params, pageSize, offset)
-    .map(mapAlarmReadModelRow);
+    .all(...params, fetchLimit)
+    .map(mapAlarmReadModelRow), state)
+    .filter((row) => alarmStatusMatches(row, status));
+  const total = candidates.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const offset = (effectivePage - 1) * pageSize;
+  const rows = candidates.slice(offset, offset + pageSize);
   return {
     rows,
     total,
-    page,
+    page: effectivePage,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
@@ -1776,11 +1786,158 @@ export function buildCatalogModel(filters: ConsoleFilters = {}) {
 
 export function buildSettingsModel(filters: ConsoleFilters = {}) {
   const devices = listClientInventory({ page: 1, pageSize: 200, filters }).rows;
-  return buildShellModel(filters, {
+  const model = buildShellModel(filters, {
     devices,
+    notificationSettings: notificationSettings() as Record<string, any>,
     auditLog: auditLog() as Array<Record<string, any>>,
     opsRuns: opsRuns() as Array<Record<string, any>>,
   });
+  return { ...model, settingsInventory: buildSettingsInventory(model) };
+}
+
+function configured(value?: string) {
+  return value ? "configured" : "missing";
+}
+
+function enabled(value?: string) {
+  const normalized = String(value || "").toLowerCase();
+  if (["1", "true", "yes", "enabled", "on"].includes(normalized)) return "enabled";
+  if (["0", "false", "no", "disabled", "off"].includes(normalized)) return "disabled";
+  return value ? "configured" : "external";
+}
+
+function envNumber(name: string, fallback: string | number) {
+  return String(process.env[name] || fallback);
+}
+
+function tableCount(table: string) {
+  if (!/^[a-z_]+$/.test(table)) return 0;
+  try {
+    return Number((getDb().prepare(`select count(*) as count from ${table}`).get() as any)?.count || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function latestRetentionRun() {
+  try {
+    return getDb()
+      .prepare("select ran_at, raw_deleted, snapshot_rows_deleted, backups_deleted, backup_path from retention_runs order by ran_at desc limit 1")
+      .get() as Record<string, any> | undefined;
+  } catch {
+    return null;
+  }
+}
+
+function readModelStates() {
+  try {
+    return getDb()
+      .prepare("select model, source_version, rebuilt_at, row_count, duration_ms, status, detail from read_model_state order by model")
+      .all() as Array<Record<string, any>>;
+  } catch {
+    return [];
+  }
+}
+
+function lockStatus(name: string) {
+  const file = pathJoin(dataDir(), name);
+  if (!fs.existsSync(file)) return "clear";
+  try {
+    const ageSeconds = Math.round((Date.now() - fs.statSync(file).mtimeMs) / 1000);
+    return `present (${ageSeconds}s old)`;
+  } catch {
+    return "present";
+  }
+}
+
+function pathJoin(...parts: string[]) {
+  return parts.join("/").replace(/\/+/g, "/");
+}
+
+function buildSettingsInventory(model: ConsoleModel) {
+  const readModels = readModelStates();
+  const registryRows = model.devices || [];
+  const unattributed = registryRows.filter((row) => row.role === "Unattributed mobile ingress source" || row.attribution_confidence === "unattributed").length;
+  const routerProfile = process.env.GHOSTROUTE_READONLY_SSH_HOST && process.env.GHOSTROUTE_READONLY_SSH_KEY_PATH ? "configured" : "missing";
+  const alarmMode = process.env.GHOSTROUTE_ALARM_STATE_MODE || "disabled";
+  return {
+    runtime: [
+      ["Source", model.runtime.sourceLabel],
+      ["Build commit", model.runtime.buildCommit],
+      ["Node env", model.runtime.nodeEnv],
+      ["Data dir", model.runtime.dataDirLabel],
+      ["Repo root", model.runtime.repoRootLabel],
+      ["Freshness", model.freshnessStatus],
+    ],
+    collectors: [
+      ["Full collector", process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
+      ["Light collector", process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
+      ["Live collector", process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
+      ["Day interval", `${envNumber("GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS", 1800)}s`],
+      ["Night interval", `${envNumber("GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS", 10800)}s`],
+      ["Light interval", `${envNumber("GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS", 300)}s`],
+      ["Live poll", `${envNumber("GHOSTROUTE_LIVE_POLL_SECONDS", 600)}s`],
+      ["Writer lock wait", `${envNumber("GHOSTROUTE_COLLECTOR_WRITER_LOCK_WAIT_SECONDS", 120)}s`],
+    ],
+    retention: [
+      ["Raw snapshots", `${envNumber("GHOSTROUTE_RAW_RETENTION_DAYS", 7)}d`],
+      ["Live raw snapshots", `${envNumber("GHOSTROUTE_LIVE_RAW_RETENTION_HOURS", 6)}h`],
+      ["Hourly aggregates", `${envNumber("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30)}d`],
+      ["DB backups", `${envNumber("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2)}d / max ${envNumber("GHOSTROUTE_DB_BACKUP_MAX_FILES", 2)}`],
+      ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 15000)}ms`],
+      ["Latest retention run", latestRetentionRun()?.ran_at || "n/a"],
+    ],
+    access: [
+      ["Console auth", enabled(process.env.GHOSTROUTE_CONSOLE_AUTH || process.env.GHOSTROUTE_CONSOLE_BASIC_AUTH)],
+      ["Public listener", process.env.GHOSTROUTE_CONSOLE_PUBLIC_MODE || "caddy dedicated listener"],
+      ["Router remote profile", routerProfile],
+      ["Router write scope", alarmMode === "ssh" ? "alarm-state only" : alarmMode],
+      ["Router host", routerProfile === "configured" ? "redacted" : "missing"],
+      ["Router key", configured(process.env.GHOSTROUTE_READONLY_SSH_KEY_PATH)],
+    ],
+    dataSources: [
+      ["Snapshots", String(Object.values(model.snapshots).filter(Boolean).length)],
+      ["Latest traffic", model.runtime.latestSnapshots.traffic || "missing"],
+      ["Latest traffic summary", model.runtime.latestSnapshots.traffic_summary || "missing"],
+      ["Latest DNS", model.runtime.latestSnapshots.dns || "missing"],
+      ["Latest health", model.runtime.latestSnapshots.health || "missing"],
+      ["Collector run", model.collectorRun ? `${model.collectorRun.ok_count}/${Number(model.collectorRun.ok_count || 0) + Number(model.collectorRun.error_count || 0)}` : "n/a"],
+      ["Collector errors", String(model.collectorErrors.length)],
+    ],
+    readModels: [
+      ["flow_sessions", String(tableCount("flow_sessions"))],
+      ["dns_query_log", String(tableCount("dns_query_log"))],
+      ["device_inventory", String(tableCount("device_inventory"))],
+      ["alarm_events", String(tableCount("alarm_events"))],
+      ["events", String(tableCount("events"))],
+      ["route_decisions", String(tableCount("route_decisions"))],
+    ],
+    locks: [
+      ["Full collector", lockStatus("collector.lock")],
+      ["Light collector", lockStatus("light-collector.lock")],
+      ["Live collector", lockStatus("live-collector.lock")],
+      ["SQLite writer", lockStatus("collector-writer.lock")],
+    ],
+    safety: [
+      ["Catalog apply", "prepare patch only"],
+      ["Router mutation", alarmMode === "ssh" ? "alarm-state JSON only" : "disabled"],
+      ["Production deploy", "not exposed in Console UI"],
+      ["Secrets display", "redacted/configured flags only"],
+    ],
+    notifications: [
+      ["Telegram delivery", "planned"],
+      ["Email delivery", "planned"],
+      ["Stored settings", String(Object.keys(model.notificationSettings || {}).length)],
+      ["Delivery secrets", "not stored in SQLite"],
+    ],
+    registry: [
+      ["Inventory rows", String(registryRows.length)],
+      ["Unattributed rows", String(unattributed)],
+      ["Audit entries", String(model.auditLog.length)],
+      ["Ops runs", String(model.opsRuns.length)],
+    ],
+    readModelState: readModels,
+  };
 }
 
 export function buildBudgetModel(filters: ConsoleFilters = {}): ConsoleModel {

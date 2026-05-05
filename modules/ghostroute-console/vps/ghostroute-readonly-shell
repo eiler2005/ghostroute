@@ -32,13 +32,15 @@ case "$command" in
   modules/ghostroute-health-monitor/bin/leak-check|\
   modules/dns-catalog-intelligence/bin/domain-report|\
   modules/dns-catalog-intelligence/bin/dns-forensics-report|\
+  modules/ghostroute-console/bin/alarm-state|\
   "$repo_root"/modules/traffic-observatory/bin/traffic-report|\
   "$repo_root"/modules/traffic-observatory/bin/traffic-summary|\
   "$repo_root"/modules/traffic-observatory/bin/live-events-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/router-health-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/leak-check|\
   "$repo_root"/modules/dns-catalog-intelligence/bin/domain-report|\
-  "$repo_root"/modules/dns-catalog-intelligence/bin/dns-forensics-report)
+  "$repo_root"/modules/dns-catalog-intelligence/bin/dns-forensics-report|\
+  "$repo_root"/modules/ghostroute-console/bin/alarm-state)
     ;;
   *)
     echo "rejected: command is not whitelisted" >&2
