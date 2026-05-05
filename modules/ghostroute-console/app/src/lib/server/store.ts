@@ -23,6 +23,7 @@ export function getDb() {
   if (!db) {
     db = new Database(dbPath());
     db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 10000");
     db.exec(`
       create table if not exists schema_migrations (
         version integer primary key,

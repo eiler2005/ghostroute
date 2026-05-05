@@ -43,6 +43,7 @@ process.on("exit", () => {
 
 const db = new Database(path.join(dataDir, "ghostroute.db"));
 db.pragma("journal_mode = WAL");
+db.pragma("busy_timeout = 10000");
 ensureConsoleSchema(db);
 
 const commands = [
