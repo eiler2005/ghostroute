@@ -35,13 +35,16 @@ components:
       candidate: Firmware SSH changes require router access preflight from LAN and WAN profiles.
       known_problematic:
         - TCP-open WAN SSH can still fail before authentication if the SSH banner never arrives.
+        - A stale LAN-only firewall-start DROP ahead of Merlin's SSH ACCEPT blocks WAN SSH even when firmware SSH is set to LAN and WAN.
       rollback_available: Use local console or web admin to restore SSH service settings.
     relationships:
       - provides_operator_router_access
     runtime_checks:
       - router_ssh preflight through shared helper
+      - external WAN TCP probe from a non-home host when validating remote access
     compatibility_notes:
       - Allow SSH port forwarding is unrelated to normal operator login.
+      - Routing Core firewall-start must not install a LAN-only SSH DROP when the approved WAN SSH profile is in use.
 
   - id: router_sing_box
     component_name: sing-box
@@ -425,7 +428,7 @@ ports:
     source_var: dnsmasq_lan_dns_port
     conflict_group: router_lan_services
     iana_range: system
-    runtime_check: nslookup example.com 192.168.50.1
+    runtime_check: nslookup example.com <router_lan_ip>
 
   - id: home_reality_ingress
     owner_component: router_sing_box

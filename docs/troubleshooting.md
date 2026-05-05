@@ -8,7 +8,7 @@
 ## Сначала
 
 ```bash
-ROUTER=192.168.50.1 ./verify.sh
+ROUTER=<router_lan_ip> ./verify.sh
 ./modules/ghostroute-health-monitor/bin/router-health-report
 cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers
 ```
@@ -56,7 +56,7 @@ tail -100 /opt/var/log/sing-box.log | grep redirect-in
 Проверка:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   pidof sing-box
   ipset list STEALTH_DOMAINS | awk "/^Type:|^Number of entries:/ {print}"
   iptables -t nat -S PREROUTING | grep REDIRECT
@@ -75,7 +75,7 @@ Expected:
 Fast recovery:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   chmod +x /jffs/scripts/firewall-start /jffs/scripts/stealth-route-init.sh
   /jffs/scripts/firewall-start
   /jffs/scripts/cron-save-ipset 2>/dev/null || true
@@ -94,9 +94,9 @@ from being installed.
 Проверьте AAAA leakage:
 
 ```sh
-dig @192.168.50.1 youtube.com AAAA +short
-dig @192.168.50.1 youtube.com A +short
-ssh admin@192.168.50.1 'grep "^filter-AAAA$" /jffs/configs/dnsmasq.conf.add'
+dig @<router_lan_ip> youtube.com AAAA +short
+dig @<router_lan_ip> youtube.com A +short
+ssh admin@<router_lan_ip> 'grep "^filter-AAAA$" /jffs/configs/dnsmasq.conf.add'
 ```
 
 Expected:
@@ -108,7 +108,7 @@ Expected:
 Исправление:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   CONF=/jffs/configs/dnsmasq.conf.add
   touch "$CONF"
   sed -i "/^filter-AAAA$/d" "$CONF"
@@ -149,7 +149,7 @@ DNS.
 Если `browserleaks.com` показывает VPS IP, но DNS home/RF или Google/Cloudflare:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   grep "^server=/browserleaks.com/" /jffs/configs/dnsmasq-vps-managed.conf.add
   grep "^conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add$" /jffs/configs/dnsmasq.conf.add
   netstat -nlp 2>/dev/null | grep ":<vps-dns-forward-port> "
@@ -209,7 +209,7 @@ another VPN or DNS profile is active, the route may bypass GhostRoute entirely:
 ```bash
 scutil --dns | sed -n '1,80p'
 networksetup -getdnsservers Wi-Fi
-CHATGPT_IP="$(dig +short @192.168.50.1 chatgpt.com A | head -1)"
+CHATGPT_IP="$(dig +short @<router_lan_ip> chatgpt.com A | head -1)"
 route -n get "$CHATGPT_IP"
 curl -4 https://ifconfig.me
 ```
@@ -217,8 +217,8 @@ curl -4 https://ifconfig.me
 Expected for clean Wi-Fi:
 
 ```text
-Wi-Fi DNS: 192.168.50.1 or DHCP-provided router DNS
-route to ChatGPT Cloudflare IP: interface en0, gateway 192.168.50.1
+Wi-Fi DNS: <router_lan_ip> or DHCP-provided router DNS
+route to ChatGPT Cloudflare IP: interface en0, gateway <router_lan_ip>
 no utun/VPN route for chatgpt.com destination IPs
 ```
 
@@ -226,7 +226,7 @@ If DNS is pinned to a VPN/private resolver such as `10.x.x.x`, restore router
 DNS for Wi-Fi:
 
 ```bash
-sudo networksetup -setdnsservers Wi-Fi 192.168.50.1
+sudo networksetup -setdnsservers Wi-Fi <router_lan_ip>
 sudo dscacheutil -flushcache
 sudo killall -HUP mDNSResponder
 ```
@@ -293,7 +293,7 @@ LTE provider IP.
 Router-side sanity check:
 
 ```bash
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   tail -2500 /opt/var/log/sing-box.log |
     grep -E "api(64)?\\.ipify|reality-in|redirect-in|reality-out|direct-out" |
     tail -160
@@ -307,7 +307,7 @@ router managed split.
 ## Mobile Home QR Не Работает
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   netstat -nlp 2>/dev/null | grep ":<home-reality-port> "
   iptables -S INPUT | grep <home-reality-port>
   tail -100 /opt/var/log/sing-box.log
@@ -458,7 +458,7 @@ Expected:
 Если drift появился, сначала пере-примените cleanup:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   nvram set wgs1_enable=0
   nvram set wgc1_enable=0
   nvram commit
@@ -475,15 +475,15 @@ ssh admin@192.168.50.1 '
 Dry-run only:
 
 ```sh
-ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --dry-run'
+ssh admin@<router_lan_ip> '/jffs/scripts/emergency-enable-wgc1.sh --dry-run'
 ```
 
 Live fallback creates WireGuard traffic and should be used only for catastrophic
 Reality outage:
 
 ```sh
-ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --enable'
-ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --disable'
+ssh admin@<router_lan_ip> '/jffs/scripts/emergency-enable-wgc1.sh --enable'
+ssh admin@<router_lan_ip> '/jffs/scripts/emergency-enable-wgc1.sh --disable'
 ```
 
 ## Blocked-List Update Fails
@@ -492,7 +492,7 @@ ssh admin@192.168.50.1 '/jffs/scripts/emergency-enable-wgc1.sh --disable'
 download if the router curl build has no SOCKS proxy support:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   netstat -nlp 2>/dev/null | grep "127.0.0.1:<router-socks-port>"
   /jffs/addons/x3mRouting/update-blocked-list.sh
   ls -lh /opt/tmp/blocked-domains.lst

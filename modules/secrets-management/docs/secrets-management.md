@@ -43,10 +43,10 @@ Format:
 
 ```text
 # ip-or-key|friendly alias|device type
-192.168.50.21|Denis laptop|Windows laptop
-192.168.50.150||iPad
-192.168.50.195||iPad
-192.168.50.228|Office desktop|Windows PC
+<lan_client_ip_1>|owner laptop|laptop
+<lan_client_ip_2>||tablet
+<lan_client_ip_3>||tablet
+<lan_client_ip_4>|office desktop|desktop
 ```
 
 Reports use the shared parser in

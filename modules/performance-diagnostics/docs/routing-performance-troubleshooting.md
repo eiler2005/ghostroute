@@ -112,7 +112,7 @@ measurements and easy rollback.
 ### Verification
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   iptables-save -t mangle | grep -iE "TCPMSS|<home-reality-port>"
 '
 ```
@@ -167,7 +167,7 @@ These are applied by `stealth-route-init.sh`, which is re-run from
 ### Verification
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   for p in \
     /proc/sys/net/core/rmem_max \
     /proc/sys/net/core/wmem_max \
@@ -197,7 +197,7 @@ Router TCP high-BDP tuning        | OK
 BBR/fq and Westwood were checked on the router:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   modprobe tcp_bbr 2>/dev/null || true
   modprobe sch_fq 2>/dev/null || true
   cat /proc/sys/net/ipv4/tcp_available_congestion_control
@@ -262,7 +262,7 @@ LTE CGNAT source before removing the rule entirely.
 ### Verification
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   iptables -nvxL INPUT --line-numbers | grep -E "<home-reality-port>|connlimit"
 '
 ```
@@ -302,7 +302,7 @@ socket behavior.
 4. Watch router counters:
 
 ```sh
-ssh admin@192.168.50.1 '
+ssh admin@<router_lan_ip> '
   iptables -nvxL INPUT --line-numbers | grep -E "<home-reality-port>|connlimit"
   iptables-save -t mangle | grep -iE "TCPMSS|<home-reality-port>"
 '
@@ -311,8 +311,8 @@ ssh admin@192.168.50.1 '
 5. Generate health:
 
 ```sh
-ROUTER=192.168.50.1 ./verify.sh
-ROUTER=192.168.50.1 ./modules/ghostroute-health-monitor/bin/router-health-report --save
+ROUTER=<router_lan_ip> ./verify.sh
+ROUTER=<router_lan_ip> ./modules/ghostroute-health-monitor/bin/router-health-report --save
 ```
 
 Expected:
@@ -333,7 +333,7 @@ Remove the two TCPMSS blocks from `stealth-route-init.sh.j2`, deploy:
 
 ```sh
 ANSIBLE_CONFIG=ansible/ansible.cfg \
-  ROUTER=192.168.50.1 \
+  ROUTER=<router_lan_ip> \
   ansible-playbook ansible/playbooks/20-stealth-router.yml --limit routers
 ```
 

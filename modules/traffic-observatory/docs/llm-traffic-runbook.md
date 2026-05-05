@@ -198,7 +198,7 @@ When the user asks for a router traffic report or router health/capacity report 
 ./modules/dns-catalog-intelligence/bin/catalog-review-report --save
 ./modules/dns-catalog-intelligence/bin/dns-forensics-report
 ./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05
-./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip <lan_client_ip>
 ```
 
 Минимальный рекомендуемый набор команд для типового workflow:
@@ -292,7 +292,7 @@ REPORT_REDACT_NAMES=0 ./modules/traffic-observatory/bin/traffic-report
 ```bash
 ./modules/dns-catalog-intelligence/bin/dns-forensics-report
 ./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05
-./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip 192.168.50.34
+./modules/dns-catalog-intelligence/bin/dns-forensics-report 2026-04-21T05 --ip <lan_client_ip>
 ```
 
 Использовать, когда нужен ответ:

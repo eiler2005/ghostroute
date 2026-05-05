@@ -204,9 +204,9 @@ Format:
 
 ```text
 # ip-or-key|friendly alias|device type
-192.168.50.21|owner-a laptop|Windows laptop
-192.168.50.150||iPad
-192.168.50.195||iPad
+<lan_client_ip_1>|owner-a laptop|laptop
+<lan_client_ip_2>||tablet
+<lan_client_ip_3>||tablet
 iphone-1|owner-a|Home Reality profile
 iphone-2|owner-b|Home Reality profile
 macbook|owner-a laptop|Home Reality profile

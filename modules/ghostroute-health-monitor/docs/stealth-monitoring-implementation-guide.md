@@ -227,7 +227,7 @@ Runtime scripts не должны:
 Base deploy:
 
 ```bash
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 ```
 
 Ansible router role:

@@ -172,7 +172,7 @@ uses that historical static-CIDR set name.
 Use this order after changing local repo files:
 
 ```bash
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 ansible-playbook playbooks/99-verify.yml --limit routers
@@ -286,7 +286,7 @@ No new `server=/example.com/...@wgc1` lines are needed.
 Deploy:
 
 ```bash
-ROUTER=192.168.50.1 ./deploy.sh
+ROUTER=<router_lan_ip> ./deploy.sh
 cd ansible && ansible-playbook playbooks/20-stealth-router.yml
 ```
 

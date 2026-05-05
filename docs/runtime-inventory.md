@@ -36,6 +36,11 @@ line. Upstream generic or musl builds are candidates only. They are not adopted
 until `sing-box check`, listener checks, `live-check`, `leak-check`, and a real
 LAN/Wi-Fi managed-domain probe all pass.
 
+Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
+WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
+is considered configuration drift because it can shadow Merlin's own SSH ACCEPT
+rule and make the WAN profile fail from an external host.
+
 ## Port Registry Rules
 
 Each port entry names an owner component, protocol, bind scope, exposure class,

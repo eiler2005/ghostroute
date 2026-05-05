@@ -462,7 +462,7 @@ overviews. The Ansible router/VPS deployment component map lives in
 ./deploy.sh
 
 # Home-LAN-only one-off override:
-# ROUTER=192.168.50.1 ./deploy.sh
+# ROUTER=<router_lan_ip> ./deploy.sh
 
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
@@ -523,12 +523,12 @@ Health monitor:
 
 ```bash
 # Install/update with deploy.sh or ansible, then run a local router-side sample.
-ssh admin@192.168.50.1 '/jffs/scripts/health-monitor/run-once'
+ssh admin@<router_lan_ip> '/jffs/scripts/health-monitor/run-once'
 
 # Primary storage on the router:
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
-ssh admin@192.168.50.1 'cat /opt/var/log/router_configuration/health-monitor/status.json'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/summary-latest.md'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/alerts/$(date +%F).md'
+ssh admin@<router_lan_ip> 'cat /opt/var/log/router_configuration/health-monitor/status.json'
 
 # Unified router+VPS report from the control machine.
 ./modules/ghostroute-health-monitor/bin/ghostroute-health-report

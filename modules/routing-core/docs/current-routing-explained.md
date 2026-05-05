@@ -186,7 +186,7 @@ br0 UDP/443 -> VPN_STATIC_NETS -> DROP, чтобы приложение ушло
 ## Проверка Live State
 
 ```bash
-ROUTER=192.168.50.1 ./verify.sh
+ROUTER=<router_lan_ip> ./verify.sh
 cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers
 ```
 
@@ -201,7 +201,7 @@ ipset list STEALTH_DOMAINS | head
 ipset list VPN_STATIC_NETS | head
 iptables -t nat -S PREROUTING | grep <lan-redirect-port>
 iptables -S FORWARD | grep 'dport 443'
-dig @192.168.50.1 youtube.com AAAA +short
+dig @<router_lan_ip> youtube.com AAAA +short
 ```
 
 Expected:
