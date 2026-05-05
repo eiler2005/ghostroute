@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
-import { acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -18,35 +18,17 @@ fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(backupsDir, { recursive: true });
 
 const lockFile = path.join(dataDir, "collector.lock");
-let lockFd = null;
-try {
-  const stat = fs.statSync(lockFile);
-  const maxAgeMs = Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 180) * 1000 * 2);
-  if (Date.now() - stat.mtimeMs > maxAgeMs) fs.unlinkSync(lockFile);
-} catch {
-  // No existing lock.
-}
-try {
-  lockFd = fs.openSync(lockFile, "wx");
-  fs.writeFileSync(lockFd, `${process.pid} ${new Date().toISOString()}\n`);
-} catch {
+const lockRelease = acquireCollectorLock(
+  lockFile,
+  "collector",
+  Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 900) * 1000 * 2)
+);
+if (!lockRelease) {
   console.log("collector skipped: another collect-once run is active");
   process.exit(0);
 }
-process.on("exit", () => {
-  try {
-    if (lockFd !== null) fs.closeSync(lockFd);
-    fs.unlinkSync(lockFile);
-  } catch {
-    // Best-effort lock cleanup.
-  }
-});
-acquireSharedCollectorLock(dataDir, "collector");
 
-const db = new Database(path.join(dataDir, "ghostroute.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 10000");
-ensureConsoleSchema(db);
+let db = null;
 
 const commands = [
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
@@ -179,43 +161,83 @@ function applyRetention() {
   ).run(new Date().toISOString(), rawDeleted, snapshotRows, backupsDeleted, backupPath);
 }
 
-const insert = db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)");
-const insertError = db.prepare(
-  "insert into collector_errors(run_id, type, collected_at, command, message, output_sample) values (?, ?, ?, ?, ?, ?)"
-);
-const run = db
-  .prepare("insert into collector_runs(started_at, ok_count, error_count) values (?, 0, 0)")
-  .run(new Date().toISOString());
-const runId = Number(run.lastInsertRowid);
-let ok = 0;
-let errors = 0;
+const collected = [];
 for (const [type, command, args] of commands) {
   try {
     const stdout = runReadOnlyCommand(command, args);
     const payload = JSON.parse(stdout);
     const collectedAt = payload.generated_at || new Date().toISOString();
     const file = path.join(snapshotDir, `${type}-${collectedAt.replace(/[:.]/g, "-")}.json`);
-    fs.writeFileSync(file, JSON.stringify(payload, null, 2));
-    const result = insert.run(type, collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
-    normalizeSnapshot(db, Number(result.lastInsertRowid), type, collectedAt, payload);
-    ok += 1;
-    console.log(`stored ${type}: ${file}`);
+    collected.push({ type, command, args, payload, collectedAt, file });
   } catch (error) {
     const sample = String(error.stdout || error.stderr || error.message || "").slice(0, 1000);
-    insertError.run(runId, type, new Date().toISOString(), [command, ...args].join(" "), error.message, sample);
-    errors += 1;
+    collected.push({ type, command, args, error, sample });
     console.error(`skipped ${type}: ${error.message}`);
   }
 }
 
-rebuildHourlyAggregates(db);
-rebuildObservabilityReadModels(db);
-applyRetention();
+const writerRelease = acquireSharedCollectorLock(dataDir, "collector");
+try {
+  db = new Database(path.join(dataDir, "ghostroute.db"));
+  db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 10000");
+  ensureConsoleSchema(db);
 
-db.prepare("update collector_runs set finished_at = ?, ok_count = ?, error_count = ? where id = ?").run(
-  new Date().toISOString(),
-  ok,
-  errors,
-  runId
-);
-console.log(`collector complete: ${ok}/${commands.length} snapshots stored`);
+  const insert = db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)");
+  const insertError = db.prepare(
+    "insert into collector_errors(run_id, type, collected_at, command, message, output_sample) values (?, ?, ?, ?, ?, ?)"
+  );
+  const run = db
+    .prepare("insert into collector_runs(started_at, ok_count, error_count) values (?, 0, 0)")
+    .run(new Date().toISOString());
+  const runId = Number(run.lastInsertRowid);
+  let ok = 0;
+  let errors = 0;
+
+  for (const entry of collected) {
+    if (entry.error) {
+      insertError.run(
+        runId,
+        entry.type,
+        new Date().toISOString(),
+        [entry.command, ...entry.args].join(" "),
+        entry.error.message,
+        entry.sample
+      );
+      errors += 1;
+      continue;
+    }
+
+    fs.writeFileSync(entry.file, JSON.stringify(entry.payload, null, 2));
+    const result = insert.run(
+      entry.type,
+      entry.collectedAt,
+      entry.payload.source?.command || entry.command,
+      entry.file,
+      JSON.stringify(entry.payload)
+    );
+    normalizeSnapshot(db, Number(result.lastInsertRowid), entry.type, entry.collectedAt, entry.payload);
+    ok += 1;
+    console.log(`stored ${entry.type}: ${entry.file}`);
+  }
+
+  rebuildHourlyAggregates(db);
+  rebuildObservabilityReadModels(db);
+  applyRetention();
+
+  db.prepare("update collector_runs set finished_at = ?, ok_count = ?, error_count = ? where id = ?").run(
+    new Date().toISOString(),
+    ok,
+    errors,
+    runId
+  );
+  console.log(`collector complete: ${ok}/${commands.length} snapshots stored`);
+} finally {
+  try {
+    db?.close();
+  } catch {
+    // Best-effort close.
+  }
+  writerRelease();
+  lockRelease();
+}

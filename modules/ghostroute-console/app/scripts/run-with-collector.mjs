@@ -5,7 +5,7 @@ import path from "node:path";
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const dayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || 1800));
 const nightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 10800));
-const collectTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 180) * 1000);
+const collectTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 900) * 1000);
 const lightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || 300));
 const lightTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS || 45) * 1000);
 const liveTimeoutMs = Math.max(10000, Number(process.env.GHOSTROUTE_LIVE_TIMEOUT_SECONDS || 30) * 1000);
@@ -22,6 +22,8 @@ let collectingLive = false;
 let timer = null;
 let lightTimer = null;
 let liveTimer = null;
+let startupFullCollect = Promise.resolve();
+let startupFastCollectors = false;
 
 function moscowHour() {
   return Number(new Intl.DateTimeFormat("en-GB", {
@@ -123,12 +125,23 @@ function scheduleLiveCollect() {
   }, liveIntervalSeconds * 1000);
 }
 
+async function collectStartupFastOnce() {
+  if (startupFastCollectors || shuttingDown) return;
+  startupFastCollectors = true;
+  if (lightCollectorMode !== "disabled") await collectLightOnce("startup");
+  if (liveMode !== "disabled" && liveCollectorMode !== "disabled") await collectLiveOnce("startup");
+}
+
 if (collectorMode === "disabled") {
   console.log("[collector] disabled; serving synced factual snapshots only");
 } else {
-  setTimeout(() => {
-    void collectOnce("startup");
-  }, 1500);
+  startupFullCollect = new Promise((resolve) => {
+    setTimeout(() => {
+      void collectOnce("startup")
+        .catch((error) => console.error(`[collector] startup failed: ${error.message}`))
+        .finally(resolve);
+    }, 1500);
+  });
   scheduleCollect();
 }
 
@@ -136,7 +149,9 @@ if (lightCollectorMode === "disabled") {
   console.log("[light-collector] disabled; Dashboard uses stored summary/full snapshots");
 } else {
   setTimeout(() => {
-    void collectLightOnce("startup");
+    void startupFullCollect
+      .then(() => collectStartupFastOnce())
+      .catch((error) => console.log(`[light-collector] startup skipped: ${error.message}`));
   }, 15000);
   scheduleLightCollect();
 }
@@ -145,7 +160,9 @@ if (liveMode === "disabled" || liveCollectorMode === "disabled") {
   console.log("[live-collector] disabled; SSE uses stored snapshot/events");
 } else {
   setTimeout(() => {
-    void collectLiveOnce("startup");
+    void startupFullCollect
+      .then(() => collectStartupFastOnce())
+      .catch((error) => console.log(`[live-collector] startup skipped: ${error.message}`));
   }, 30000);
   scheduleLiveCollect();
 }

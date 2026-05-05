@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
-import { acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -16,35 +16,15 @@ fs.mkdirSync(snapshotDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 const lockFile = path.join(dataDir, "light-collector.lock");
-let lockFd = null;
-try {
-  const stat = fs.statSync(lockFile);
-  const maxAgeMs = Math.max(30000, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS || 45) * 1000 * 2);
-  if (Date.now() - stat.mtimeMs > maxAgeMs) fs.unlinkSync(lockFile);
-} catch {
-  // No existing lock.
-}
-try {
-  lockFd = fs.openSync(lockFile, "wx");
-  fs.writeFileSync(lockFd, `${process.pid} ${new Date().toISOString()}\n`);
-} catch {
+const lockRelease = acquireCollectorLock(
+  lockFile,
+  "light collector",
+  Math.max(30000, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS || 45) * 1000 * 2)
+);
+if (!lockRelease) {
   console.log("light collector skipped: another collect-light-once run is active");
   process.exit(0);
 }
-process.on("exit", () => {
-  try {
-    if (lockFd !== null) fs.closeSync(lockFd);
-    fs.unlinkSync(lockFile);
-  } catch {
-    // Best-effort lock cleanup.
-  }
-});
-acquireSharedCollectorLock(dataDir, "light collector");
-
-const db = new Database(path.join(dataDir, "ghostroute.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 10000");
-ensureConsoleSchema(db);
 
 const command = "modules/traffic-observatory/bin/traffic-summary";
 
@@ -117,18 +97,36 @@ try {
   const payload = JSON.parse(stdout);
   const collectedAt = payload.generated_at || new Date().toISOString();
   const file = path.join(snapshotDir, `traffic_summary-${collectedAt.replace(/[:.]/g, "-")}.json`);
-  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
-  const result = db
-    .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
-    .run("traffic_summary", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
-  normalizeSnapshot(db, Number(result.lastInsertRowid), "traffic_summary", collectedAt, payload);
-  rebuildObservabilityReadModels(db);
-  const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
-  pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
-  db.prepare("delete from snapshots where collected_at < ?").run(cutoffIso(rawDays));
+
+  const writerRelease = acquireSharedCollectorLock(dataDir, "light collector");
+  let db = null;
+  try {
+    db = new Database(path.join(dataDir, "ghostroute.db"));
+    db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 10000");
+    ensureConsoleSchema(db);
+    fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+    const result = db
+      .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
+      .run("traffic_summary", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
+    normalizeSnapshot(db, Number(result.lastInsertRowid), "traffic_summary", collectedAt, payload);
+    rebuildObservabilityReadModels(db);
+    const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
+    pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
+    db.prepare("delete from snapshots where collected_at < ?").run(cutoffIso(rawDays));
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // Best-effort close.
+    }
+    writerRelease();
+  }
   console.log(`stored traffic_summary: ${file}`);
 } catch (error) {
   const sample = String(error.stdout || error.stderr || error.message || "").slice(0, 1000);
   console.error(`skipped traffic_summary: ${sample || error.message}`);
   process.exit(1);
+} finally {
+  lockRelease();
 }

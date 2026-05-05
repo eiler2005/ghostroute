@@ -110,6 +110,16 @@ The VPS deployment defaults to read-only SSH collection through the generated
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
 - live event polling every 10 minutes by default.
 
+Collectors keep per-job locks to avoid duplicate runs and a short shared SQLite
+writer lock only while storing snapshots and rebuilding read models. Stale locks
+are recovered by PID; writer contention waits for up to 120 seconds before a
+collector skips; startup light/live collection is serialized after the full
+startup pass. The full snapshot timeout defaults to 15 minutes because it may
+run several read-only reports in one pass. The observability read models are
+bounded caches for the Console UI: by default they keep the most recent 5,000
+flow rows, 20,000 DNS rows, 10,000 live DNS rows, 5,000 device rows and 2,000
+alarm rows while raw snapshots remain under the normal retention policy.
+
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
 latest collected traffic window. Dashboard, Flow Explorer and Clients do not

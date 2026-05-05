@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +22,8 @@ const {
   snapshotMatchesPeriod,
   trafficDisplayDestination,
 } = trafficWindowModule;
+const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
+const { acquireCollectorLock } = collectorLockModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -38,6 +41,43 @@ test("console data directory can hold factual snapshots", async () => {
     })
   );
   assert.equal(fs.readdirSync(snapshots).length, 1);
+});
+
+test("collector lock replaces stale locks and preserves active peer locks", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-lock-"));
+  const lockFile = path.join(tmp, "collector.lock");
+  let deadPid = 999999;
+  while (deadPid > 900000) {
+    try {
+      process.kill(deadPid, 0);
+      deadPid -= 1;
+    } catch (error) {
+      if (error?.code === "ESRCH") break;
+      deadPid -= 1;
+    }
+  }
+
+  fs.writeFileSync(lockFile, `collector ${deadPid} 2026-05-05T00:00:00.000Z\n`);
+  const release = acquireCollectorLock(lockFile, "collector", 60000);
+  assert.equal(typeof release, "function");
+  assert.match(fs.readFileSync(lockFile, "utf8"), new RegExp(`collector ${process.pid} `));
+  release();
+  assert.equal(fs.existsSync(lockFile), false);
+
+  fs.writeFileSync(lockFile, `collector ${process.pid} 2026-05-05T00:00:00.000Z\n`);
+  const samePidRelease = acquireCollectorLock(lockFile, "collector", 60000);
+  assert.equal(typeof samePidRelease, "function");
+  samePidRelease();
+
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  await new Promise((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  fs.writeFileSync(lockFile, `collector ${child.pid} 2026-05-05T00:00:00.000Z\n`);
+  assert.equal(acquireCollectorLock(lockFile, "collector", 60000), null);
+  child.kill("SIGTERM");
+  fs.unlinkSync(lockFile);
 });
 
 test("collector normalizes factual traffic and catalog snapshots", () => {
