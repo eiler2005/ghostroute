@@ -128,7 +128,7 @@ if (collectorMode === "disabled") {
 } else {
   setTimeout(() => {
     void collectOnce("startup");
-  }, 2500);
+  }, 1500);
   scheduleCollect();
 }
 
@@ -137,7 +137,7 @@ if (lightCollectorMode === "disabled") {
 } else {
   setTimeout(() => {
     void collectLightOnce("startup");
-  }, 1800);
+  }, 15000);
   scheduleLightCollect();
 }
 
@@ -146,7 +146,7 @@ if (liveMode === "disabled" || liveCollectorMode === "disabled") {
 } else {
   setTimeout(() => {
     void collectLiveOnce("startup");
-  }, 1500);
+  }, 30000);
   scheduleLiveCollect();
 }
 
