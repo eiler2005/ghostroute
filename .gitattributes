@@ -6,6 +6,7 @@
 *.mjs text eol=lf
 *.ts text eol=lf
 *.tsx text eol=lf
+.github/workflows/*.yml text eol=lf
 deploy.sh text eol=lf
 verify.sh text eol=lf
 modules/**/bin/* text eol=lf
