@@ -1,0 +1,581 @@
+metadata:
+  schema_version: 1
+  inventory_type: lightweight_obom_runtime_inventory
+  owner: GhostRoute operator
+  scope: router_and_vps_runtime_components
+  confidentiality: sanitized_tracked_source
+  generated_from_live_state: false
+  notes:
+    - Uses symbolic variable names instead of deployment-specific endpoints or port values.
+    - Real live snapshots belong in gitignored reports or router health output.
+  fixed_port_sources:
+    - dnsmasq_lan_dns_port
+    - vps_public_tls_port
+  references:
+    - https://cyclonedx.org/capabilities/sbom/
+    - https://cyclonedx.org/capabilities/obom/
+    - https://scvs.owasp.org/scvs/v1-inventory/
+    - https://www.ntia.gov/files/ntia/publications/sbom_minimum_elements_report.pdf
+    - https://spdx.dev/
+    - https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml
+
+components:
+  - id: router_firmware_ssh
+    component_name: Asuswrt-Merlin SSH service
+    supplier: Asuswrt-Merlin
+    type: firmware_service
+    ecosystem: asuswrt_merlin
+    origin: Router firmware administration service
+    package_names:
+      - dropbear
+      - openssh-compatible server
+    version_policy:
+      proven_good: Router firmware SSH service with key-based operator access.
+      minimum_required: Must support LAN and approved WAN operator paths.
+      candidate: Firmware SSH changes require router access preflight from LAN and WAN profiles.
+      known_problematic:
+        - TCP-open WAN SSH can still fail before authentication if the SSH banner never arrives.
+      rollback_available: Use local console or web admin to restore SSH service settings.
+    relationships:
+      - provides_operator_router_access
+    runtime_checks:
+      - router_ssh preflight through shared helper
+    compatibility_notes:
+      - Allow SSH port forwarding is unrelated to normal operator login.
+
+  - id: router_sing_box
+    component_name: sing-box
+    supplier: SagerNet / Entware package maintainers
+    type: runtime_binary
+    ecosystem: entware_opkg
+    origin: Entware aarch64-k3.10 package for router runtime
+    package_names:
+      - sing-box-go
+    version_policy:
+      proven_good: Entware sing-box 1.13.3 package line is the current stable router baseline.
+      minimum_required: sing-box 1.13.x is required for Channel C native Naive server-side features.
+      candidate: Upstream arm64-musl builds require explicit LAN transparent REDIRECT regression testing before adoption.
+      known_problematic:
+        - Generic upstream linux-arm64 binary needs glibc/libpthread that is absent on the router.
+        - Upstream arm64-musl 1.13.11 passed config and listener checks but still required rollback after LAN-client regression.
+      rollback_available: Keep /opt/bin/sing-box.backup.* until live-check, leak-check and LAN managed-domain probes pass.
+    relationships:
+      - consumes_stealth_domains_rule_set
+      - consumes_static_cidr_rule_set
+      - provides_lan_redirect
+      - provides_home_reality_ingress
+      - provides_router_socks
+      - provides_router_vps_dns_forwarder
+    runtime_checks:
+      - /opt/bin/sing-box check -C /opt/etc/sing-box
+      - ./modules/ghostroute-health-monitor/bin/live-check --json --no-log
+      - ./modules/ghostroute-health-monitor/bin/leak-check --json
+      - LAN/Wi-Fi managed-domain probe must show managed exit through Reality.
+    compatibility_notes:
+      - Process status and listener checks are necessary but not sufficient after binary upgrades.
+      - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
+
+  - id: router_singbox_watchdog
+    component_name: singbox-watchdog.sh
+    supplier: GhostRoute Routing Core
+    type: router_script
+    ecosystem: asuswrt_merlin_jffs
+    origin: ansible singbox_client role template
+    package_names:
+      - /jffs/scripts/singbox-watchdog.sh
+    version_policy:
+      proven_good: Checks redirect, SOCKS, router DNS-forward and Home Reality listeners every minute.
+      minimum_required: Installed cron entry must be present whenever sing-box owns Channel A.
+      candidate: Add more listener probes only after they are part of the stable data plane.
+      known_problematic: []
+      rollback_available: Remove cron entry and restore the previous script only during approved recovery.
+    relationships:
+      - monitors_router_sing_box
+      - restarts_router_sing_box
+    runtime_checks:
+      - cru l | grep singbox-watchdog
+      - /jffs/scripts/singbox-watchdog.sh
+    compatibility_notes:
+      - Uses netstat first so it does not depend on nc availability.
+
+  - id: router_dnscrypt_proxy
+    component_name: dnscrypt-proxy
+    supplier: dnscrypt-proxy / Entware package maintainers
+    type: runtime_service
+    ecosystem: entware_opkg
+    origin: Entware router package
+    package_names:
+      - dnscrypt-proxy2
+    version_policy:
+      proven_good: Current Entware package line used by Asuswrt-Merlin router runtime.
+      minimum_required: Must support SOCKS upstream proxy configuration.
+      candidate: Entware package upgrades are acceptable after DNS and managed-domain probes pass.
+      known_problematic: []
+      rollback_available: Reinstall previous Entware package only during approved recovery.
+    relationships:
+      - forwards_dns_through_router_socks
+      - serves_dnsmasq_upstream
+    runtime_checks:
+      - netstat -nlp | grep dnscrypt
+      - nslookup example.com 127.0.0.1
+    compatibility_notes:
+      - dnsmasq depends on the local dnscrypt listener for normal upstream DNS.
+
+  - id: router_dnsmasq
+    component_name: dnsmasq
+    supplier: Asuswrt-Merlin
+    type: firmware_service
+    ecosystem: asuswrt_merlin
+    origin: Router firmware
+    package_names:
+      - dnsmasq
+    version_policy:
+      proven_good: Asuswrt-Merlin bundled dnsmasq line.
+      minimum_required: Must support ipset catalog rules and local upstream forwarding.
+      candidate: Firmware updates require catalog, DNS and LAN-client probes.
+      known_problematic: []
+      rollback_available: Firmware rollback only through explicit operator recovery.
+    relationships:
+      - populates_stealth_domains_ipset
+      - forwards_to_dnscrypt_proxy
+      - serves_lan_clients
+    runtime_checks:
+      - pidof dnsmasq
+      - nslookup example.com 127.0.0.1
+      - nslookup example.com <router_lan_ip>
+    compatibility_notes:
+      - Tracked docs must use placeholder LAN addresses only.
+
+  - id: router_firewall_ipset
+    component_name: iptables and ipset
+    supplier: Asuswrt-Merlin / Linux netfilter
+    type: kernel_firewall_runtime
+    ecosystem: asuswrt_merlin
+    origin: Router firmware
+    package_names:
+      - iptables
+      - ipset
+    version_policy:
+      proven_good: Asuswrt-Merlin bundled netfilter tools.
+      minimum_required: Must support nat REDIRECT, ipset match and UDP/443 DROP policy.
+      candidate: Firmware updates require 99-verify and LAN-client probes.
+      known_problematic: []
+      rollback_available: Re-run stealth-route-init.sh or restart firewall during approved recovery.
+    relationships:
+      - redirects_managed_lan_tcp_to_sing_box
+      - drops_managed_udp_443
+      - owns_stealth_domains_ipset
+      - owns_vpn_static_nets_ipset
+    runtime_checks:
+      - iptables -t nat -S PREROUTING
+      - iptables -S FORWARD
+      - ipset list STEALTH_DOMAINS
+    compatibility_notes:
+      - Managed redirect rules must be verified with a real LAN/Wi-Fi client after routing changes.
+
+  - id: router_tls_tools
+    component_name: curl / wget-ssl / CA bundle
+    supplier: Entware package maintainers
+    type: diagnostic_tools
+    ecosystem: entware_opkg
+    origin: Entware router packages
+    package_names:
+      - curl
+      - wget-ssl
+      - ca-certificates
+      - ca-bundle
+    version_policy:
+      proven_good: Current Entware packages used for router-side diagnostics and downloads.
+      minimum_required: curl must support SOCKS probes; wget-ssl must validate public TLS downloads.
+      candidate: Entware package upgrades are acceptable after download and SOCKS probes pass.
+      known_problematic:
+        - Firmware wget may fail on GitHub release asset TLS redirects.
+      rollback_available: Reinstall Entware package versions only during approved recovery.
+    relationships:
+      - probes_router_socks_reality
+      - downloads_candidate_runtime_binaries
+    runtime_checks:
+      - /opt/bin/curl --socks5-hostname 127.0.0.1:<router-socks-port> https://api.ipify.org
+      - /opt/bin/wget --version
+    compatibility_notes:
+      - Use placeholders for real endpoints in tracked docs and reports.
+
+  - id: router_health_monitor
+    component_name: GhostRoute router health monitor
+    supplier: GhostRoute
+    type: router_script_suite
+    ecosystem: asuswrt_merlin_jffs
+    origin: modules/ghostroute-health-monitor
+    package_names:
+      - /jffs/scripts/health-monitor/run-once
+    version_policy:
+      proven_good: Current repo-managed health monitor scripts.
+      minimum_required: Must emit status.json and summary-latest.md without mutating routing state.
+      candidate: Probe additions are acceptable after fixture tests pass.
+      known_problematic: []
+      rollback_available: Redeploy previous router scripts during approved recovery.
+    relationships:
+      - observes_router_sing_box
+      - observes_rule_set_sync
+      - observes_dns_ipv6_policy
+    runtime_checks:
+      - /jffs/scripts/health-monitor/run-once
+      - ./modules/ghostroute-health-monitor/bin/status
+    compatibility_notes:
+      - Runtime status files are live snapshots and must stay out of tracked docs.
+
+  - id: router_channel_b_xray_relay
+    component_name: Router Channel B Xray home relay
+    supplier: XTLS / GhostRoute
+    type: router_runtime_service
+    ecosystem: entware_opkg
+    origin: channel_b_home_relay Ansible role
+    package_names:
+      - xray-core
+      - /opt/etc/init.d/S99xray-channel-b-home
+    version_policy:
+      proven_good: Current Channel B selected-client home relay deployment.
+      minimum_required: Must provide the home XHTTP ingress and forward to local sing-box SOCKS.
+      candidate: Xray package updates require Channel B live-check and split-routing leak checks.
+      known_problematic: []
+      rollback_available: Disable Channel B home relay only during explicit selected-client recovery.
+    relationships:
+      - receives_channel_b_selected_clients
+      - forwards_to_channel_b_upstream_socks
+    runtime_checks:
+      - live-check channel_b_chain
+      - leak-check channel_b_routing_leaks
+    compatibility_notes:
+      - Channel B is selected-client production and must not take over Channel A redirect ownership.
+
+  - id: vps_caddy_l4
+    component_name: Caddy with layer4 module
+    supplier: Caddy project / mholt caddy-l4
+    type: vps_runtime_service
+    ecosystem: system_service
+    origin: System Caddy listener wrapper
+    package_names:
+      - caddy
+      - caddy-l4
+    version_policy:
+      proven_good: system_caddy_target_version from Ansible inventory.
+      minimum_required: Must support layer4 Reality demux and the dedicated console listener mode.
+      candidate: Caddy upgrades require VPS 443 and Reality SNI verification.
+      known_problematic: []
+      rollback_available: system_caddy_backup_path from Ansible inventory.
+    relationships:
+      - fronts_xray_reality
+      - owns_public_443
+      - separates_console_listener_from_reality_listener
+    runtime_checks:
+      - ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+    compatibility_notes:
+      - Channel B direct mode may add SNI routing without changing Channel A Reality ownership.
+
+  - id: vps_xray_reality
+    component_name: Xray / 3x-ui Reality inbound
+    supplier: XTLS / 3x-ui
+    type: vps_runtime_service
+    ecosystem: docker_compose
+    origin: VPS stealth stack
+    package_names:
+      - xray
+      - 3x-ui
+    version_policy:
+      proven_good: Current Docker stack managed by the VPS playbooks.
+      minimum_required: Must support Reality/Vision ingress behind Caddy L4.
+      candidate: Image upgrades require 99-verify, SNI and managed exit probes.
+      known_problematic: []
+      rollback_available: Docker image rollback through approved VPS recovery.
+    relationships:
+      - receives_caddy_l4_reality_traffic
+      - provides_router_reality_exit
+      - allows_managed_dns_reality_path
+    runtime_checks:
+      - ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+      - ./modules/ghostroute-health-monitor/bin/leak-check --json
+    compatibility_notes:
+      - Router managed exit must continue to match the expected VPS egress.
+
+  - id: vps_xray_channel_b
+    component_name: VPS Channel B XHTTP backend
+    supplier: XTLS / GhostRoute
+    type: vps_runtime_service
+    ecosystem: docker_compose
+    origin: Optional direct-mode Channel B VPS role
+    package_names:
+      - xray-core
+    version_policy:
+      proven_good: Current optional direct-mode Channel B backend when enabled.
+      minimum_required: Must stay loopback-bound behind system Caddy when enabled.
+      candidate: Image upgrades require Channel B VPS route validation.
+      known_problematic: []
+      rollback_available: Disable Channel B direct mode and keep Channel B home relay isolated.
+    relationships:
+      - receives_caddy_channel_b_sni_route
+    runtime_checks:
+      - ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+    compatibility_notes:
+      - This is not Channel A failover and must not change Reality :443 ownership.
+
+  - id: vps_unbound_policy_dns
+    component_name: Unbound managed DNS resolver
+    supplier: NLnet Labs / distribution package maintainers
+    type: vps_runtime_service
+    ecosystem: system_package
+    origin: VPS managed DNS role
+    package_names:
+      - unbound
+    version_policy:
+      proven_good: Current VPS package line managed by Ansible.
+      minimum_required: Must serve restricted managed-DNS listeners only.
+      candidate: Package upgrades require VPS DNS and router vps-dns-in probes.
+      known_problematic: []
+      rollback_available: Restore previous package/config through approved VPS recovery.
+    relationships:
+      - serves_router_vps_dns_forwarder
+      - restricted_to_expected_sources
+    runtime_checks:
+      - ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+    compatibility_notes:
+      - Public docs must not expose real restricted listener addresses.
+
+ports:
+  - id: router_ssh_lan
+    owner_component: router_firmware_ssh
+    protocol: tcp
+    bind_scope: router_lan
+    exposure: operator_lan_only
+    source_var: ROUTER_LAN_PORT
+    conflict_group: router_admin_access
+    iana_range: system
+    runtime_check: ssh preflight to ROUTER_LAN when route is non-VPN
+
+  - id: router_ssh_wan
+    owner_component: router_firmware_ssh
+    protocol: tcp
+    bind_scope: router_wan
+    exposure: operator_remote
+    source_var: ROUTER_WAN_PORT
+    conflict_group: router_admin_access
+    iana_range: system
+    runtime_check: ssh preflight to ROUTER when off-LAN
+
+  - id: singbox_redirect_in
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: lan_transparent_redirect
+    source_var: singbox_redirect_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: live-check channel_a_lan_listener
+
+  - id: singbox_dnscrypt_socks
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_loopback
+    exposure: router_local_only
+    source_var: singbox_dnscrypt_socks_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows 127.0.0.1:<router-socks-port>
+
+  - id: channel_b_upstream_socks
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_loopback
+    exposure: router_local_only
+    source_var: channel_b_home_upstream_socks_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: Channel B relay config points to local sing-box SOCKS
+
+  - id: router_vps_dns_forward
+    owner_component: router_sing_box
+    protocol:
+      - tcp
+      - udp
+    bind_scope: router_loopback
+    exposure: router_local_only
+    source_var: router_vps_dns_forward_port
+    conflict_group: router_dns_local_listeners
+    iana_range: user
+    runtime_check: live-check vps_dns_in_listener
+
+  - id: dnscrypt_proxy_local_dns
+    owner_component: router_dnscrypt_proxy
+    protocol:
+      - tcp
+      - udp
+    bind_scope: router_loopback
+    exposure: router_local_only
+    source_var: dnscrypt_port
+    conflict_group: router_dns_local_listeners
+    iana_range: user
+    runtime_check: netstat shows dnscrypt listener
+
+  - id: dnsmasq_lan_dns
+    owner_component: router_dnsmasq
+    protocol:
+      - tcp
+      - udp
+    bind_scope: router_lan
+    exposure: lan_clients
+    source_var: dnsmasq_lan_dns_port
+    conflict_group: router_lan_services
+    iana_range: system
+    runtime_check: nslookup example.com 192.168.50.1
+
+  - id: home_reality_ingress
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: selected_remote_clients
+    source_var: home_reality_ingress_port
+    conflict_group: router_public_ingress
+    iana_range: user
+    runtime_check: live-check home_reality_chain
+
+  - id: channel_b_home_ingress
+    owner_component: router_channel_b_xray_relay
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: selected_remote_clients
+    source_var: channel_b_home_ingress_port
+    conflict_group: router_public_ingress
+    iana_range: user
+    runtime_check: live-check channel_b_chain
+
+  - id: channel_c_native_public
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_wan
+    exposure: selected_remote_clients
+    source_var: channel_c_home_public_port
+    conflict_group: router_public_ingress
+    iana_range: system
+    runtime_check: live-check channel_c_native_chain
+
+  - id: channel_c_native_ingress
+    owner_component: router_sing_box
+    protocol:
+      - tcp
+      - udp
+    bind_scope: router_all_interfaces
+    exposure: redirected_public_ingress
+    source_var: channel_c_home_ingress_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows channel-c-naive-in listener
+
+  - id: channel_c_shadowrocket_public
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_wan
+    exposure: selected_remote_clients
+    source_var: channel_c_shadowrocket_public_port
+    conflict_group: router_public_ingress
+    iana_range: user
+    runtime_check: live-check channel_c_shadowrocket_chain
+
+  - id: channel_c_shadowrocket_ingress
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: redirected_public_ingress
+    source_var: channel_c_shadowrocket_ingress_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows channel-c-shadowrocket-http-in listener
+
+  - id: vps_public_reality_tls
+    owner_component: vps_caddy_l4
+    protocol: tcp
+    bind_scope: vps_public
+    exposure: public_internet
+    source_var: vps_public_tls_port
+    conflict_group: vps_public_ingress
+    iana_range: system
+    runtime_check: ansible 99-verify confirms public TLS listener
+
+  - id: vps_xray_reality_local
+    owner_component: vps_xray_reality
+    protocol: tcp
+    bind_scope: vps_loopback
+    exposure: vps_local_only
+    source_var: xray_reality_listen_port
+    conflict_group: vps_local_services
+    iana_range: user
+    runtime_check: ansible 99-verify confirms Xray local listener
+
+  - id: vps_unbound_policy_dns
+    owner_component: vps_unbound_policy_dns
+    protocol:
+      - tcp
+      - udp
+    bind_scope: vps_restricted
+    exposure: restricted_managed_dns
+    source_var: vps_unbound_listen_port
+    conflict_group: vps_restricted_dns
+    iana_range: user
+    runtime_check: ansible 99-verify confirms restricted Unbound listeners
+
+  - id: channel_b_xhttp_local
+    owner_component: vps_xray_channel_b
+    protocol: tcp
+    bind_scope: vps_loopback
+    exposure: vps_local_only
+    source_var: channel_b_xhttp_local_port
+    conflict_group: vps_local_services
+    iana_range: user
+    runtime_check: ansible 99-verify confirms Channel B local XHTTP listener
+
+compatibility_claims:
+  - id: sing_box_entware_baseline
+    component_id: router_sing_box
+    status: proven_good
+    evidence:
+      - live-check overall OK
+      - leak-check overall OK
+      - LAN managed-domain probe exits through Reality
+    notes: Current stable router baseline remains the Entware package line.
+
+  - id: sing_box_upstream_musl_candidate
+    component_id: router_sing_box
+    status: candidate
+    evidence:
+      - Config check and listeners are insufficient for adoption.
+      - LAN/Wi-Fi transparent REDIRECT regression must pass before marking proven_good.
+    notes: Keep rollback binary until all upgrade gates pass.
+
+  - id: channel_c_native_client_support
+    component_id: router_sing_box
+    status: client_blocked
+    evidence:
+      - Router-side native Naive ingress is server-ready.
+      - Tested iPhone SFI line did not support the required native Naive outbound.
+    notes: C1-Shadowrocket remains the live-proven compatibility path.
+
+upgrade_gates:
+  - id: router_sing_box_upgrade_gate
+    component_id: router_sing_box
+    required_checks:
+      - candidate binary version prints successfully on router
+      - candidate binary passes sing-box check -C /opt/etc/sing-box
+      - old binary is backed up before replacement
+      - service starts and expected listeners exist
+      - live-check overall OK
+      - leak-check overall OK
+      - real LAN/Wi-Fi managed-domain probe shows Reality exit
+      - real LAN/Wi-Fi direct destination probe stays reachable
+    rollback_action: Restore /opt/bin/sing-box.backup.* and restart sing-box.
+
+  - id: router_port_change_gate
+    component_id: router_firewall_ipset
+    required_checks:
+      - runtime-inventory static validation passes
+      - ansible singbox_client validation passes
+      - live-check confirms listener and firewall rules
+      - no conflict group contains duplicate source_var references
+    rollback_action: Restore previous Vault/local vars and redeploy only after approval.

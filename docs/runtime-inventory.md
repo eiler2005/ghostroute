@@ -1,0 +1,66 @@
+# Runtime Inventory and Port Registry
+
+`configs/runtime-inventory.yml` is the tracked, sanitized runtime inventory for
+GhostRoute. It is a lightweight OBOM-style registry for operational components,
+version policy, compatibility claims, port/listener ownership and upgrade gates.
+It is not a full release SBOM and does not replace Ansible inventory or Vault.
+
+The registry follows the useful parts of SBOM/OBOM practice: component identity,
+supplier/origin, package names, version policy, relationships, machine-readable
+port ownership and validation. It deliberately stores symbolic references such
+as `singbox_redirect_port`, not real endpoints or deployment-specific port
+values.
+
+## What Belongs Here
+
+- Router and VPS runtime components that affect compatibility or recovery.
+- Proven-good, minimum-required, candidate and known-problematic version notes.
+- Port/listener ownership and conflict groups.
+- Upgrade gates that must pass before a candidate becomes proven-good.
+
+Live snapshots do not belong here. Put live command output, real endpoints,
+actual listener values, public IPs and generated client material in gitignored
+`reports/`, router health output or `secrets/`.
+
+## Version Policy Classes
+
+- `proven_good`: the currently trusted runtime baseline.
+- `minimum_required`: the oldest feature-capable line for a specific feature.
+- `candidate`: a version or package source that may work but still needs gates.
+- `known_problematic`: a version, package source or platform combination that
+  failed or has a known compatibility risk.
+- `rollback_available`: where the operator can restore a previous runtime state.
+
+For router `sing-box`, the current proven-good policy is the Entware package
+line. Upstream generic or musl builds are candidates only. They are not adopted
+until `sing-box check`, listener checks, `live-check`, `leak-check`, and a real
+LAN/Wi-Fi managed-domain probe all pass.
+
+## Port Registry Rules
+
+Each port entry names an owner component, protocol, bind scope, exposure class,
+symbolic source variable and conflict group. The static inventory test validates
+that IDs are unique, owners exist, source variables are known, and conflict
+groups do not accidentally reuse the same symbolic port source.
+
+Use `fixed_port_sources` in the inventory metadata only for standards-owned
+ports that are intentionally not Ansible variables, such as DNS `53` or public
+TLS `443`.
+
+## Validation
+
+Run the inventory check before committing runtime or port changes:
+
+```sh
+./tests/test-runtime-inventory.sh
+```
+
+The fast test suite also runs it:
+
+```sh
+./tests/run-fast.sh
+```
+
+Future work may add a read-only live comparison report that checks the tracked
+symbolic inventory against router/VPS runtime snapshots. That report should
+write only to gitignored reports or runtime health output.

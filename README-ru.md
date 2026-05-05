@@ -60,19 +60,26 @@ Caddy/VPS или Reality/Vision data plane.
 Для SSH-доступа к роутеру есть два штатных пути:
 
 - **Домашняя LAN/Wi-Fi:** можно использовать LAN-адрес роутера, например
-  `ROUTER=192.168.50.1`, только когда control machine реально находится в
-  домашней сети.
+  `ROUTER_LAN=<router_lan_ip>` и `ROUTER_LAN_PORT=22`, только когда control
+  machine реально находится в домашней сети.
 - **Удаленно / не из домашней сети:** основной путь — выделенный внешний SSH
   endpoint и отдельный порт роутера. Локально он задается в gitignored
   `secrets/router.env` и использует ключ из `secrets/router-remote-ssh/`; в
   Ansible/VPS окружении тот же смысл задают Vault-переменные
   `ghostroute_router_remote_*`.
 
-Если оператор подключен через Channel A/VPN или другой удаленный путь, не надо
-полагаться на `192.168.50.1` для `verify.sh`: маршрут может уйти через VPN
-interface и зависнуть еще до SSH authentication. Для `./verify.sh`, health
-reports и read-only диагностики удаленно используем `secrets/router.env`.
-Реальный host, port и ключ не фиксируются в tracked docs и не коммитятся.
+Общий helper по умолчанию работает в `ROUTER_ACCESS_MODE=auto`: если маршрут от
+control machine к `ROUTER_LAN` идет через обычный LAN-интерфейс, используется
+`ROUTER_LAN:22`; если маршрут идет через VPN-интерфейс вроде `utun`, `tun`,
+`wg` или Tailscale, helper оставляет WAN/remote `ROUTER:ROUTER_WAN_PORT` из
+`secrets/router.env`. `ROUTER_PORT` остается legacy fallback для старых local
+env files. Поэтому `./verify.sh`, `live-check`, health reports и read-only
+diagnostics автоматически выбирают правильный SSH-путь. Реальный host, port и
+ключ не фиксируются в tracked docs и не коммитятся.
+
+В `auto` режиме helper делает короткий SSH-preflight, а не только TCP port
+probe. Если WAN endpoint принимает TCP, но не отдает SSH banner, helper пробует
+direct LAN/Wi-Fi fallback и только потом возвращает transport diagnostic.
 
 ---
 
