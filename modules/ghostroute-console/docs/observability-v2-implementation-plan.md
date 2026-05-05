@@ -5,11 +5,16 @@
 - Phase 0-1 complete in `docs(console): capture observability v2 baseline`.
 - Phase 2 complete in `feat(console): add observability v2 read models`.
 - Phase 3 complete in `feat(console): expose observability read APIs`.
-- Phase 4 is in progress: Console shell navigation now includes Flow Explorer
-  and DNS Query Log; Health includes Alarm Center; Reports includes
-  Privacy/Redaction Mode.
-- Deployment remains pending until local unit, build, Playwright smoke/perf,
-  JSON contract and final repository checks pass.
+- Phase 4 complete in `feat(console): refresh observability screens`.
+- Phase 5 complete: Console README and stable operator docs were updated,
+  including the remote router access profile for off-LAN verification.
+- Phase 6 complete: Console-only deployment via
+  `modules/ghostroute-console/vps/deploy-readonly.yml` succeeded. Post-deploy
+  API, collector log, lock/process and `./verify.sh` checks passed.
+- Follow-up hardening complete in collector-lock commits:
+  SQLite contention tolerance, serialized collector writers, bounded
+  observability read-model caches, PID-based stale lock recovery and startup
+  collector ordering.
 
 ## Phase 0: Branch And Baseline
 
