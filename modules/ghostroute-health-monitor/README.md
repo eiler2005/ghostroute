@@ -14,6 +14,8 @@ digests and disk-based alert ledgers without changing production routing state.
 - VPS observer probes for Caddy, Xray, 3x-ui, disk pressure and recent Reality
   evidence.
 - Compact daily status and active leak-check commands for operator triage.
+- Short live A/B/C runtime-chain check with text/JSON output, local logging and
+  optional active probes.
 - Local-only alert ledgers and merged control-machine reports.
 - Rolling baseline learning for RTT and retransmit degradation.
 
@@ -46,6 +48,7 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/ghostroute-health-report --save`
 - `./modules/ghostroute-health-monitor/bin/status`
 - `./modules/ghostroute-health-monitor/bin/leak-check`
+- `./modules/ghostroute-health-monitor/bin/live-check`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
 
 `status` is the compact daily view: overall drift count, STEALTH capacity,
@@ -61,6 +64,14 @@ validates that the static raw-IP mirror exists. Both commands sanitize IP/port
 evidence and never mutate routing, services, catalogs or secrets. `leak-check`
 may append health probe evidence to the router health-monitor log directory,
 which is the module-owned monitoring state.
+
+`live-check` is the canonical short "are A/B/C alive now?" check. Default mode
+is config/log based and normally takes 1-3 seconds: listeners, firewall rules,
+sing-box split rules, DNS/catalog sanity, direct-domain sanity, the iCloud
+Reality cover SNI and recent sanitised sing-box evidence. Use `--json` for
+Console/LLM automation. Use `--active-probe` only when the default check is
+green but a user still reports a symptom; it runs bounded network probes and may
+take 15-30 seconds.
 
 ## Runtime Storage & Artifacts
 

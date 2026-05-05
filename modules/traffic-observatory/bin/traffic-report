@@ -140,6 +140,35 @@ split_status() {
   fi
 }
 
+catalog_domain_status() {
+  domain="$1"
+  file="$2"
+  set_name="$3"
+  [ -f "$file" ] && grep -q "^ipset=/$domain/$set_name\$" "$file" 2>/dev/null && printf 'OK' || printf 'MISSING'
+}
+
+direct_domain_status() {
+  domain="$1"
+  file="$2"
+  [ -f "$file" ] && grep -Eq "^[[:space:]]*$domain([[:space:]]*(#.*)?)?$" "$file" 2>/dev/null && printf 'OK' || printf 'MISSING'
+}
+
+ruleset_domain_status() {
+  domain="$1"
+  file="$2"
+  [ -f "$file" ] && grep -q "\"$domain\"" "$file" 2>/dev/null && printf 'OK' || printf 'MISSING'
+}
+
+cover_sni_status() {
+  expected="$1"
+  if printf '%s\n' "$singbox_config_compact" | grep -Fq "\"server_name\":\"$expected\"" &&
+    printf '%s\n' "$singbox_config_compact" | grep -Fq "\"handshake\":{\"server\":\"$expected\",\"server_port\":443}"; then
+    printf 'OK'
+  else
+    printf 'MISSING'
+  fi
+}
+
 log="/opt/var/log/sing-box.log"
 tmp="/tmp/ghostroute-channels-check.$$"
 trap 'rm -f "$tmp"' EXIT
@@ -185,6 +214,13 @@ native_redirect="$(redirect_status "$home_public" "$home_port")"
 native_input="$(input_status "$home_port")"
 native_split="$(split_status channel-c-naive-in)"
 sr_split="$(split_status channel-c-shadowrocket-http-in)"
+managed_check_domain="${GHOSTROUTE_MANAGED_CHECK_DOMAIN:-ipify.org}"
+direct_check_domain="${GHOSTROUTE_DIRECT_CHECK_DOMAIN:-championat.com}"
+cover_sni="${GHOSTROUTE_COVER_SNI:-gateway.icloud.com}"
+managed_catalog="$(catalog_domain_status "$managed_check_domain" /jffs/configs/dnsmasq-stealth.conf.add STEALTH_DOMAINS)"
+managed_ruleset="$(ruleset_domain_status "$managed_check_domain" /opt/etc/sing-box/rule-sets/stealth-domains.json)"
+direct_exclusion="$(direct_domain_status "$direct_check_domain" /jffs/configs/domains-no-vpn.txt)"
+cover_sni_config="$(cover_sni_status "$cover_sni")"
 
 filter="${GHOSTROUTE_QUICK_FILTER:-all}"
 
@@ -223,10 +259,17 @@ if [ "$filter" = "all" ] || [ "$filter" = "channel-c" ]; then
   fi
 fi
 
+if [ "$filter" = "all" ]; then
+  printf 'Domain sanity: managed_domain=%s dnsmasq_catalog=%s sing_box_ruleset=%s\n' "$managed_check_domain" "$managed_catalog" "$managed_ruleset"
+  printf 'Domain sanity: direct_domain=%s no_vpn_exclusion=%s expected_route=direct\n' "$direct_check_domain" "$direct_exclusion"
+  printf 'Reality cover SNI: expected=%s router_sing_box_config=%s\n' "$cover_sni" "$cover_sni_config"
+fi
+
 if [ "$redirect_listener" = "OK" ] && [ "$lan_redirect" = "OK" ] &&
   [ "$reality_listener" = "OK" ] && [ "$reality_input" = "OK" ] && [ "$reality_split" = "OK" ] &&
   { [ "$channel_b_enabled" != "1" ] || { [ "$channel_b_listener" = "OK" ] && [ "$channel_b_input" = "OK" ] && [ "$channel_b_split" = "OK" ]; }; } &&
-  [ "$sr_listener" = "OK" ] && [ "$sr_redirect" != "MISSING" ] && [ "$sr_input" = "OK" ] && [ "$sr_split" = "OK" ]; then
+  [ "$sr_listener" = "OK" ] && [ "$sr_redirect" != "MISSING" ] && [ "$sr_input" = "OK" ] && [ "$sr_split" = "OK" ] &&
+  { [ "$filter" != "all" ] || { [ "$managed_catalog" = "OK" ] && [ "$managed_ruleset" = "OK" ] && [ "$direct_exclusion" = "OK" ] && [ "$cover_sni_config" = "OK" ]; }; }; then
   printf 'Decision: OK - fast channel invariants are green. C1-Shadowrocket is the current working Channel C client lane.\n'
 else
   printf 'Decision: WARN - one or more fast channel invariants are incomplete; check the MISSING fields above.\n'

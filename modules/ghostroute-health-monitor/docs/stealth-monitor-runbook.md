@@ -12,12 +12,36 @@
 
 ```bash
 ./modules/ghostroute-health-monitor/bin/status
+./modules/ghostroute-health-monitor/bin/live-check
 ./modules/ghostroute-health-monitor/bin/leak-check
 ```
 
 `status` подходит для ежедневной проверки: общий статус, drift count, емкость
 `STEALTH_DOMAINS`, Channel A/Home Reality инварианты, Channel B ingress/relay,
 rule-set mirror и последний non-OK probe.
+
+`live-check` - короткая системная проверка "работают ли каналы сейчас". Она
+проверяет Channel A/LAN REDIRECT, Home Reality, Channel B relay, Channel C1
+Shadowrocket/native, dnsmasq/catalog/rule-set path, прямой домен из
+`domains-no-vpn`, iCloud Reality cover SNI (`gateway.icloud.com`) и свежие
+sanitised sing-box события. По умолчанию это config/log check без внешних
+probe-запросов; результат пишется в `reports/live-check/`.
+
+```bash
+./modules/ghostroute-health-monitor/bin/live-check
+./modules/ghostroute-health-monitor/bin/live-check --json
+./modules/ghostroute-health-monitor/bin/live-check channel-c
+```
+
+Если default `live-check` зеленый, но пользовательский клиент все равно
+жалуется, можно явно запустить bounded active probes:
+
+```bash
+./modules/ghostroute-health-monitor/bin/live-check --active-probe
+```
+
+Ориентир по времени: default 1-3 секунды; `--active-probe` 15-30 секунд.
+Exit codes: `0` OK, `1` WARN, `2` CRIT, `64` usage.
 
 По умолчанию `status` не запускает полный `traffic-report`, чтобы оставаться
 быстрым. Если нужен byte-level Home Reality / Channel A split прямо в этом выводе:

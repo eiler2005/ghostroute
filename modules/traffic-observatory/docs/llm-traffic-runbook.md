@@ -11,6 +11,9 @@ When the user asks for a router traffic report or router health/capacity report 
 
 1. Map the request to the correct command:
    - "проверка роутера", "health", "router health", "состояние роутера", "дрейф", "freshness" -> ./verify.sh
+   - "короткий live check", "live check", "быстро проверь A/B/C", "channel live", "сейчас работают каналы?" -> ./modules/ghostroute-health-monitor/bin/live-check
+   - "проверь channel-a/channel-b/channel-c" -> ./modules/ghostroute-health-monitor/bin/live-check channel-a|channel-b|channel-c
+   - "default live check зеленый, но клиент жалуется", "проверь реальным probe" -> ask before running, then ./modules/ghostroute-health-monitor/bin/live-check --active-probe
    - "сохрани health snapshot", "router health report", "здоровье роутера для llm" -> ./modules/ghostroute-health-monitor/bin/router-health-report
    - "сохрани health snapshot и обнови журнал", "health report save" -> ./modules/ghostroute-health-monitor/bin/router-health-report --save
    - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report
