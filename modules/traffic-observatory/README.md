@@ -43,6 +43,10 @@ counters and snapshot files on the router.
 - `./modules/traffic-observatory/bin/traffic-report week`
 - `./modules/traffic-observatory/bin/traffic-daily-report`
 
+`modules/traffic-observatory/bin/live-check` remains a compatibility wrapper,
+but the canonical live A/B/C health owner is
+`./modules/ghostroute-health-monitor/bin/live-check`.
+
 ## Runtime Storage & Artifacts
 
 - Router traffic counters and snapshot files.

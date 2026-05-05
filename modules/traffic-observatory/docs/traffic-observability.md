@@ -128,7 +128,8 @@ For the full end-to-end workflow and observer table, see
 | `./verify.sh` | compact live health summary |
 | `./modules/ghostroute-health-monitor/bin/router-health-report` | sanitised Markdown state for humans/LLMs |
 | `./modules/ghostroute-health-monitor/bin/router-health-report --save` | local report snapshot + local journal + router-side copy |
-| `./modules/traffic-observatory/bin/traffic-report check` | lightweight live A/B/C channel check: listeners, redirects, INPUT allow, managed split and recent log tail |
+| `./modules/ghostroute-health-monitor/bin/live-check` | canonical short live A/B/C health check for humans and LLMs; text/JSON, logs to `reports/live-check/`, optional `--active-probe` |
+| `./modules/traffic-observatory/bin/traffic-report check` | compatibility lightweight A/B/C channel check; prefer Health Monitor `live-check` for health decisions |
 | `./modules/traffic-observatory/bin/traffic-summary --json today` | lightweight current-day counter summary for frequent Console Dashboard collection |
 | `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./modules/traffic-observatory/bin/traffic-report channel-a|channel-b|channel-c` | filtered variant of the lightweight live channel check |
@@ -151,9 +152,28 @@ Use the lightweight channel check when the question is only “does the current
 path work?”:
 
 ```bash
+./modules/ghostroute-health-monitor/bin/live-check
+./modules/ghostroute-health-monitor/bin/live-check --json
+./modules/ghostroute-health-monitor/bin/live-check channel-c
 ./modules/traffic-observatory/bin/traffic-report check
-./modules/traffic-observatory/bin/traffic-report channel-c
 ```
+
+The short check verifies the live chain, not only counters:
+
+- Channel A/LAN: sing-box `redirect-in` listener and `br0` NAT REDIRECT.
+- Channel A/Home Reality: public listener, INPUT allow, sing-box `reality-in`
+  split to `reality-out` for managed sets and `direct-out` fallback.
+- Channel B: home-first ingress listener, INPUT allow, and dedicated
+  `channel-b-relay-socks` split rules.
+- Channel C: C1-Shadowrocket HTTPS CONNECT listener/redirect/INPUT/split plus
+  native Naive listener/split status.
+- Domain sanity: one managed checker domain is present in dnsmasq catalog and
+  sing-box rule-set; one direct checker domain is present in `domains-no-vpn`.
+- Reality cover SNI: router sing-box config still uses the expected iCloud
+  cover SNI (`gateway.icloud.com`) and handshake target.
+- Evidence: recent sanitised sing-box log tail for each active channel.
+- Optional `--active-probe`: bounded managed/direct/SNI probes for cases where
+  the default check is green but a user still reports a symptom.
 
 Use `router-health-report` when you need one compact state document for humans
 or LLM handoff:
