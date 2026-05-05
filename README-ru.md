@@ -55,6 +55,25 @@ Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эк
 физическая/провайдерская авария WAN-link. Это не признак поломки Channel A,
 Caddy/VPS или Reality/Vision data plane.
 
+## Операторский доступ к роутеру
+
+Для SSH-доступа к роутеру есть два штатных пути:
+
+- **Домашняя LAN/Wi-Fi:** можно использовать LAN-адрес роутера, например
+  `ROUTER=192.168.50.1`, только когда control machine реально находится в
+  домашней сети.
+- **Удаленно / не из домашней сети:** основной путь — выделенный внешний SSH
+  endpoint и отдельный порт роутера. Локально он задается в gitignored
+  `secrets/router.env` и использует ключ из `secrets/router-remote-ssh/`; в
+  Ansible/VPS окружении тот же смысл задают Vault-переменные
+  `ghostroute_router_remote_*`.
+
+Если оператор подключен через Channel A/VPN или другой удаленный путь, не надо
+полагаться на `192.168.50.1` для `verify.sh`: маршрут может уйти через VPN
+interface и зависнуть еще до SSH authentication. Для `./verify.sh`, health
+reports и read-only диагностики удаленно используем `secrets/router.env`.
+Реальный host, port и ключ не фиксируются в tracked docs и не коммитятся.
+
 ---
 
 ## Возможности
@@ -387,8 +406,12 @@ docs/
 ## Быстрый старт
 
 ```bash
-# Base router deploy: dnsmasq, firewall-start, nat-start, cron scripts
-ROUTER=192.168.50.1 ./deploy.sh
+# Base router deploy через активный router access profile.
+# Удаленно сначала используем gitignored secrets/router.env.
+./deploy.sh
+
+# Только из домашней LAN можно разово переопределить LAN-IP:
+# ROUTER=192.168.50.1 ./deploy.sh
 
 # Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
 cd ansible
