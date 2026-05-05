@@ -10,5 +10,6 @@ deploy.sh text eol=lf
 verify.sh text eol=lf
 modules/**/bin/* text eol=lf
 modules/**/router/* text eol=lf
+modules/**/vps/* text eol=lf
 modules/**/vps/ghostroute-readonly-shell text eol=lf
 tests/*.sh text eol=lf
