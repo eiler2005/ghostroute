@@ -66,12 +66,13 @@ may append health probe evidence to the router health-monitor log directory,
 which is the module-owned monitoring state.
 
 `live-check` is the canonical short "are A/B/C alive now?" check. Default mode
-is config/log based and normally takes 1-3 seconds: listeners, firewall rules,
+is config/log based and normally takes 1-8 seconds: listeners, firewall rules,
 sing-box split rules, DNS/catalog sanity, direct-domain sanity, the iCloud
-Reality cover SNI and recent sanitised sing-box evidence. Use `--json` for
-Console/LLM automation. Use `--active-probe` only when the default check is
-green but a user still reports a symptom; it runs bounded network probes and may
-take 15-30 seconds.
+Reality cover SNI, recent sanitised sing-box evidence, and the Console
+collector path from VPS to the router remote endpoint when the control machine
+has Ansible/Vault access. Use `--json` for Console/LLM automation. Use
+`--active-probe` only when the default check is green but a user still reports a
+symptom; it runs bounded network probes and may take 15-30 seconds.
 
 ## Runtime Storage & Artifacts
 

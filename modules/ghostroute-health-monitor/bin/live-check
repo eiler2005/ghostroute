@@ -16,7 +16,8 @@ Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-pro
 
 Read-only live A/B/C runtime-chain check.
 Default mode checks listeners, firewall rules, sing-box split rules, DNS/catalog
-sanity, iCloud Reality cover SNI and recent sanitised log evidence.
+sanity, iCloud Reality cover SNI, recent sanitised log evidence, and the
+Console VPS-to-router collector path when Ansible/Vault are available.
 --active-probe also runs bounded curl/TCP probes and may take about 15-30s.
 USAGE
 }
@@ -66,6 +67,96 @@ router_health_load_env
 
 raw_tmp="$(mktemp)"
 trap 'rm -f "$raw_tmp"' EXIT
+
+append_local_check() {
+  printf 'CHECK|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "$6" >>"$raw_tmp"
+}
+
+append_vps_router_check() {
+  [ "$CHANNEL" = "all" ] || return 0
+  [ "${GHOSTROUTE_LIVE_CHECK_VPS_ROUTER:-1}" = "1" ] || {
+    append_local_check console_vps_router_tcp N/A "Console collector" "VPS to router check is disabled" "enabled=0" "Enable GHOSTROUTE_LIVE_CHECK_VPS_ROUTER when debugging Console freshness."
+    return 0
+  }
+
+  ansible_dir="${PROJECT_ROOT}/ansible"
+  if ! command -v ansible >/dev/null 2>&1 || [ ! -r "${ansible_dir}/secrets/stealth.yml" ]; then
+    append_local_check console_vps_router_profile N/A "Console collector" "VPS router profile check is unavailable on this control machine" "ansible_or_vault=missing" "Run from the GhostRoute control machine with Vault access to check Console freshness path."
+    append_local_check console_vps_router_tcp N/A "Console collector" "VPS to router TCP check is unavailable on this control machine" "ansible_or_vault=missing" "Run from the GhostRoute control machine with Vault access to check Console freshness path."
+    return 0
+  fi
+
+  set +e
+  vps_check_output="$(
+    cd "$ansible_dir" &&
+      ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a 'set -eu
+profile=missing
+key=missing
+tcp=NA
+tool=none
+if [ -r /opt/ghostroute-console/router.env ]; then
+  profile=present
+  set -a
+  . /opt/ghostroute-console/router.env
+  set +a
+  probe_timeout=5
+  if [ -n "${SSH_IDENTITY_FILE:-}" ] && [ -r "$SSH_IDENTITY_FILE" ]; then
+    key=present
+  fi
+  if [ -n "${ROUTER:-}" ] && [ -n "${ROUTER_PORT:-}" ]; then
+    if command -v nc >/dev/null 2>&1; then
+      tool=nc
+      timeout "$probe_timeout" nc -z "$ROUTER" "$ROUTER_PORT" >/dev/null 2>&1 && tcp=OK || tcp=FAIL
+    elif command -v bash >/dev/null 2>&1; then
+      tool=bash
+      timeout "$probe_timeout" bash -c ": > /dev/tcp/$ROUTER/$ROUTER_PORT" >/dev/null 2>&1 && tcp=OK || tcp=FAIL
+    else
+      tcp=NO_TOOL
+    fi
+  fi
+fi
+echo PROFILE=$profile
+echo KEY=$key
+echo TCP=$tcp
+echo TOOL=$tool
+' 2>/dev/null
+  )"
+  vps_check_rc=$?
+  set -e
+
+  if [ "$vps_check_rc" -ne 0 ]; then
+    append_local_check console_vps_router_profile WARN "Console collector" "Could not verify Console router profile on VPS" "ansible=failed" "Check Ansible/Vault access, then verify /opt/ghostroute-console/router.env on the VPS."
+    append_local_check console_vps_router_tcp WARN "Console collector" "Could not verify VPS to router TCP reachability" "ansible=failed" "Run Console collector smoke from the VPS before trusting Dashboard freshness."
+    return 0
+  fi
+
+  profile="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="PROFILE"{print $2; exit}')"
+  key="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="KEY"{print $2; exit}')"
+  tcp="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="TCP"{print $2; exit}')"
+  tool="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="TOOL"{print $2; exit}')"
+
+  if [ "$profile" = "present" ] && [ "$key" = "present" ]; then
+    append_local_check console_vps_router_profile OK "Console collector" "Console router profile is installed on VPS" "profile=present key=present" "No action."
+  else
+    append_local_check console_vps_router_profile WARN "Console collector" "Console router profile is incomplete on VPS" "profile=${profile:-unknown} key=${key:-unknown}" "Install the Console read-only router profile before relying on live Dashboard freshness."
+  fi
+
+  case "$tcp" in
+    OK)
+      append_local_check console_vps_router_tcp OK "Console collector" "VPS can open the router remote endpoint used by Console" "tcp=OK tool=${tool:-unknown}" "No action."
+      ;;
+    FAIL)
+      append_local_check console_vps_router_tcp WARN "Console collector" "VPS cannot open the router remote endpoint used by Console" "tcp=FAIL tool=${tool:-unknown}" "Compare Console router.env with the active local router profile and check router remote SSH exposure."
+      ;;
+    NO_TOOL)
+      append_local_check console_vps_router_tcp WARN "Console collector" "VPS cannot run a bounded TCP reachability check" "tcp=NO_TOOL" "Install nc or bash on the VPS before relying on this check."
+      ;;
+    *)
+      append_local_check console_vps_router_tcp N/A "Console collector" "VPS to router TCP check has no configured endpoint" "tcp=${tcp:-unknown}" "Install the Console router profile if Dashboard freshness is expected."
+      ;;
+  esac
+}
+
 router_ssh "GHOSTROUTE_LIVE_FILTER='$CHANNEL' GHOSTROUTE_LIVE_ACTIVE_PROBE='$ACTIVE_PROBE' sh -s" >"$raw_tmp" <<'REMOTE'
 set -eu
 
@@ -220,6 +311,8 @@ if [ "$active_probe" = 1 ]; then
   fi
 fi
 REMOTE
+
+append_vps_router_check
 raw="$(cat "$raw_tmp")"
 
 stamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -260,7 +353,7 @@ payload = {
   generated_at: generated_at,
   mode: active_probe ? "active-probe" : "default",
   channel: channel,
-  estimated_duration: active_probe ? "15-30s" : "1-3s",
+  estimated_duration: active_probe ? "15-30s" : "1-8s",
   overall_status: overall,
   exit_code: overall == "CRIT" ? 2 : overall == "WARN" ? 1 : 0,
   checks: checks

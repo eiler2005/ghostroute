@@ -24,8 +24,11 @@ rule-set mirror и последний non-OK probe.
 проверяет Channel A/LAN REDIRECT, Home Reality, Channel B relay, Channel C1
 Shadowrocket/native, dnsmasq/catalog/rule-set path, прямой домен из
 `domains-no-vpn`, iCloud Reality cover SNI (`gateway.icloud.com`) и свежие
-sanitised sing-box события. По умолчанию это config/log check без внешних
-probe-запросов; результат пишется в `reports/live-check/`.
+sanitised sing-box события. Если команда запущена с control machine, где есть
+Ansible/Vault, она также проверяет Console collector path: может ли VPS открыть
+remote-router endpoint, который использует `/opt/ghostroute-console/router.env`.
+По умолчанию это config/log check без внешних probe-запросов; результат пишется
+в `reports/live-check/`.
 
 ```bash
 ./modules/ghostroute-health-monitor/bin/live-check
@@ -40,8 +43,13 @@ probe-запросов; результат пишется в `reports/live-check
 ./modules/ghostroute-health-monitor/bin/live-check --active-probe
 ```
 
-Ориентир по времени: default 1-3 секунды; `--active-probe` 15-30 секунд.
+Ориентир по времени: default 1-8 секунд; `--active-probe` 15-30 секунд.
 Exit codes: `0` OK, `1` WARN, `2` CRIT, `64` usage.
+
+Если Dashboard показывает `STALE`, а A/B/C с клиентов работают, смотри checks
+`console_vps_router_profile` и `console_vps_router_tcp`. `WARN` там означает,
+что data plane может быть здоровым, но Console collector с VPS не может собрать
+свежие snapshots с роутера.
 
 По умолчанию `status` не запускает полный `traffic-report`, чтобы оставаться
 быстрым. Если нужен byte-level Home Reality / Channel A split прямо в этом выводе:
