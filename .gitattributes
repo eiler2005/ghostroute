@@ -1,0 +1,14 @@
+# Keep scripts and application sources LF even when a workstation has
+# core.autocrlf=true. CRLF breaks shebang execution on macOS/Linux.
+.gitattributes text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+deploy.sh text eol=lf
+verify.sh text eol=lf
+modules/**/bin/* text eol=lf
+modules/**/router/* text eol=lf
+modules/**/vps/ghostroute-readonly-shell text eol=lf
+tests/*.sh text eol=lf
