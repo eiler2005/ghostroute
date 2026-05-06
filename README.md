@@ -104,10 +104,10 @@ machine's route to `ROUTER_LAN` is through a normal LAN interface it uses
 `ROUTER_LAN:22`; if the route goes through a VPN-style interface such as
 `utun`, `tun`, `wg` or Tailscale, it keeps the WAN/remote
 `ROUTER:ROUTER_WAN_PORT` profile from `secrets/router.env`. `ROUTER_PORT`
-remains a legacy fallback for older local env files. This keeps `./verify.sh`,
-`live-check`, router health reports and traffic/catalog diagnostics on the
-intended SSH path; keep the remote host, port and key out of tracked docs and
-commits.
+remains a legacy fallback for older local env files. This keeps `deploy.sh`,
+`./verify.sh`, `live-check`, router health reports and traffic/catalog
+diagnostics on the intended SSH path; keep the remote host, port and key out of
+tracked docs and commits.
 
 In `auto` mode the helper performs a short SSH preflight, not just a TCP port
 probe. If the WAN endpoint accepts TCP but does not send an SSH banner, the
