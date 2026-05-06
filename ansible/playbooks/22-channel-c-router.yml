@@ -6,6 +6,9 @@
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   tasks:
+    - name: GhostRoute deploy gate before Channel C router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
     - name: Channel C1 home lane is enabled
       ansible.builtin.assert:
         that:
@@ -36,6 +39,9 @@
     - ../group_vars/all.yml
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
+  pre_tasks:
+    - name: Capture last-known-good router runtime before Channel C deploy
+      ansible.builtin.include_tasks: ../tasks/router-last-good-backup.yml
   roles:
     - singbox_client
     - stealth_routing
@@ -81,3 +87,6 @@
       when:
         - channel_c_shadowrocket_enabled | default(false) | bool
         - channel_c_shadowrocket_public_port | string != channel_c_shadowrocket_ingress_port | string
+
+    - name: GhostRoute deploy gate after Channel C router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

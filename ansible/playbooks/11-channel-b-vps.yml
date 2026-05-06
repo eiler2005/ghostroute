@@ -5,6 +5,12 @@
     - ../group_vars/all.yml
     - ../group_vars/vps_stealth.yml
     - ../secrets/stealth.yml
+  pre_tasks:
+    - name: GhostRoute deploy gate before Channel B VPS mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Capture last-known-good VPS edge before Channel B deploy
+      ansible.builtin.include_tasks: ../tasks/vps-last-good-backup.yml
   roles:
     - xray_xhttp
   tasks:
@@ -32,3 +38,6 @@
       when:
         - channel_b_xhttp_enabled | default(false) | bool
         - stealth_caddy_mode == 'system_listener_wrapper'
+
+    - name: GhostRoute deploy gate after Channel B VPS mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

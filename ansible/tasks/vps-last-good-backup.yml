@@ -1,0 +1,27 @@
+- name: Capture last-known-good VPS edge bundle
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup_dir=/opt/ghostroute/backups/last-good
+    mkdir -p "$backup_dir"
+    stamp="$(date +%Y%m%d%H%M%S)"
+    bundle="$backup_dir/vps-edge-${stamp}.tgz"
+    paths=()
+    for path in \
+      /etc/caddy/Caddyfile \
+      /etc/caddy \
+      /opt/stealth \
+      /opt/ghostroute-health-monitor \
+      /etc/ufw
+    do
+      [ -e "$path" ] && paths+=("${path#/}")
+    done
+    if [ "${#paths[@]}" -eq 0 ]; then
+      echo "No VPS edge files found for last-good backup" >&2
+      exit 1
+    fi
+    tar -czf "$bundle" -C / "${paths[@]}"
+    ln -sf "$bundle" "$backup_dir/vps-edge-latest.tgz"
+    echo "last-good VPS edge bundle: $bundle"
+  args:
+    executable: /bin/bash
+  changed_when: false

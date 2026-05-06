@@ -1,0 +1,259 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+JSON_MODE=0
+FAIL_IF_GATE_REQUIRED=0
+BASE_REF=""
+READ_STDIN=0
+
+usage() {
+  cat <<'USAGE'
+Usage: ./modules/ghostroute-health-monitor/bin/deploy-risk [--json] [--base <ref>] [--stdin] [--fail-if-gate-required] [path...]
+
+Classify changed paths and decide whether the full live deploy gate is required.
+This is a decision aid for local/CI workflows. Mutating router/VPS deploy
+entrypoints still run the full deploy gate themselves.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    --base)
+      BASE_REF="${2:-}"
+      if [ -z "$BASE_REF" ]; then
+        echo "--base requires a git ref" >&2
+        exit 64
+      fi
+      shift 2
+      ;;
+    --stdin)
+      READ_STDIN=1
+      shift
+      ;;
+    --fail-if-gate-required)
+      FAIL_IF_GATE_REQUIRED=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+collect_changed_paths() {
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$@"
+    return 0
+  fi
+
+  if [ "$READ_STDIN" = "1" ]; then
+    cat
+    return 0
+  fi
+
+  if ! git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -n "$BASE_REF" ]; then
+    git -C "$PROJECT_ROOT" diff --name-only "${BASE_REF}...HEAD" 2>/dev/null || true
+    git -C "$PROJECT_ROOT" diff --name-only 2>/dev/null || true
+    git -C "$PROJECT_ROOT" diff --name-only --cached 2>/dev/null || true
+    git -C "$PROJECT_ROOT" ls-files --others --exclude-standard 2>/dev/null || true
+    return 0
+  fi
+
+  git -C "$PROJECT_ROOT" diff --name-only 2>/dev/null || true
+  git -C "$PROJECT_ROOT" diff --name-only --cached 2>/dev/null || true
+  git -C "$PROJECT_ROOT" ls-files --others --exclude-standard 2>/dev/null || true
+}
+
+is_docs_path() {
+  local path="$1"
+  case "$path" in
+    README.md|README-ru.md|AGENTS.md|CLAUDE.md|SECURITY.md|docs/*|*.md)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_console_path() {
+  local path="$1"
+  case "$path" in
+    modules/ghostroute-console/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_test_path() {
+  local path="$1"
+  case "$path" in
+    tests/*|modules/*/tests/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_deploy_critical_path() {
+  local path="$1"
+  case "$path" in
+    deploy.sh|verify.sh|ansible/tasks/*|ansible/group_vars/*|ansible/host_vars/*|ansible/inventory*|ansible/playbooks/10-stealth-vps.yml|ansible/playbooks/11-channel-b-vps.yml|ansible/playbooks/20-stealth-router.yml|ansible/playbooks/21-channel-b-router.yml|ansible/playbooks/22-channel-c-router.yml|ansible/playbooks/30-generate-client-profiles.yml)
+      return 0
+      ;;
+    configs/dnsmasq*|configs/static-networks.txt|configs/no-vpn-ip-ports.txt|configs/domains-no-vpn.txt|configs/private/*)
+      return 0
+      ;;
+    modules/routing-core/*|modules/dns-catalog-intelligence/*|modules/ghostroute-health-monitor/*|modules/recovery-verification/*|modules/client-profile-factory/*)
+      return 0
+      ;;
+    modules/*/router/*|modules/*/vps/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+CHANGED_PATHS=()
+while IFS= read -r path; do
+  [ -n "$path" ] && CHANGED_PATHS+=("$path")
+done < <(collect_changed_paths "$@" | sed '/^[[:space:]]*$/d' | sort -u)
+
+critical_paths=()
+unknown_paths=()
+docs_count=0
+console_count=0
+test_count=0
+
+for path in "${CHANGED_PATHS[@]}"; do
+  if is_deploy_critical_path "$path"; then
+    critical_paths+=("$path")
+  elif is_docs_path "$path"; then
+    docs_count=$((docs_count + 1))
+  elif is_console_path "$path"; then
+    console_count=$((console_count + 1))
+  elif is_test_path "$path"; then
+    test_count=$((test_count + 1))
+  else
+    unknown_paths+=("$path")
+  fi
+done
+
+gate_required=false
+classification="no_changes"
+reason="No changed paths were detected."
+
+if [ "${#critical_paths[@]}" -gt 0 ]; then
+  gate_required=true
+  classification="runtime_critical"
+  reason="Changed paths touch router/VPS runtime, DNS/catalog routing, deploy, recovery, Channel A/B/C or Health Monitor gate ownership."
+elif [ "${#unknown_paths[@]}" -gt 0 ]; then
+  gate_required=true
+  classification="unknown_risk"
+  reason="Changed paths are outside known docs, tests and Console-only surfaces; require the full gate unless reviewed manually."
+elif [ "${#CHANGED_PATHS[@]}" -gt 0 ] && [ "$console_count" -gt 0 ]; then
+  classification="console_only"
+  reason="Changed paths are limited to Console, docs or tests; full live deploy gate is not required by path risk."
+elif [ "${#CHANGED_PATHS[@]}" -gt 0 ]; then
+  classification="docs_or_tests_only"
+  reason="Changed paths are limited to documentation and tests; full live deploy gate is not required by path risk."
+fi
+
+recommended_checks=()
+if [ "$gate_required" = true ]; then
+  recommended_checks+=("./modules/ghostroute-health-monitor/bin/live-check --active-probe --deploy-gate")
+fi
+if [ "$classification" = "console_only" ]; then
+  recommended_checks+=("cd modules/ghostroute-console/app && npm test")
+  recommended_checks+=("cd modules/ghostroute-console/app && npm run build")
+  recommended_checks+=("./modules/ghostroute-console/tests/test-json-contracts.sh")
+fi
+if [ "$classification" = "docs_or_tests_only" ]; then
+  recommended_checks+=("./tests/run-fast.sh")
+fi
+if [ "${#recommended_checks[@]}" -eq 0 ]; then
+  recommended_checks+=("./tests/run-fast.sh")
+fi
+
+changed_paths_env=""
+critical_paths_env=""
+unknown_paths_env=""
+recommended_checks_env=""
+[ "${#CHANGED_PATHS[@]}" -gt 0 ] && changed_paths_env="$(printf '%s\n' "${CHANGED_PATHS[@]}")"
+[ "${#critical_paths[@]}" -gt 0 ] && critical_paths_env="$(printf '%s\n' "${critical_paths[@]}")"
+[ "${#unknown_paths[@]}" -gt 0 ] && unknown_paths_env="$(printf '%s\n' "${unknown_paths[@]}")"
+[ "${#recommended_checks[@]}" -gt 0 ] && recommended_checks_env="$(printf '%s\n' "${recommended_checks[@]}")"
+
+if [ "$JSON_MODE" = "1" ]; then
+  env \
+    GATE_REQUIRED="$gate_required" \
+    CLASSIFICATION="$classification" \
+    REASON="$reason" \
+    CHANGED_PATHS="$changed_paths_env" \
+    CRITICAL_PATHS="$critical_paths_env" \
+    UNKNOWN_PATHS="$unknown_paths_env" \
+    RECOMMENDED_CHECKS="$recommended_checks_env" \
+    ruby -rjson -e '
+    payload = {
+      schema_version: 1,
+      command: "ghostroute-health-monitor deploy-risk",
+      gate_required: ENV.fetch("GATE_REQUIRED") == "true",
+      classification: ENV.fetch("CLASSIFICATION"),
+      reason: ENV.fetch("REASON"),
+      changed_paths: ENV.fetch("CHANGED_PATHS").split("\n").reject(&:empty?),
+      critical_paths: ENV.fetch("CRITICAL_PATHS").split("\n").reject(&:empty?),
+      unknown_paths: ENV.fetch("UNKNOWN_PATHS").split("\n").reject(&:empty?),
+      recommended_checks: ENV.fetch("RECOMMENDED_CHECKS").split("\n").reject(&:empty?)
+    }
+    puts JSON.pretty_generate(payload)
+  '
+else
+  printf 'GhostRoute deploy risk: gate_required=%s\n' "$gate_required"
+  printf 'classification: %s\n' "$classification"
+  printf 'reason: %s\n' "$reason"
+  printf 'changed_paths: %s\n' "${#CHANGED_PATHS[@]}"
+  if [ "${#critical_paths[@]}" -gt 0 ]; then
+    printf '\nCritical paths:\n'
+    printf '  %s\n' "${critical_paths[@]}"
+  fi
+  if [ "${#unknown_paths[@]}" -gt 0 ]; then
+    printf '\nUnknown-risk paths:\n'
+    printf '  %s\n' "${unknown_paths[@]}"
+  fi
+  printf '\nRecommended checks:\n'
+  printf '  %s\n' "${recommended_checks[@]}"
+fi
+
+if [ "$FAIL_IF_GATE_REQUIRED" = "1" ] && [ "$gate_required" = true ]; then
+  exit 1
+fi

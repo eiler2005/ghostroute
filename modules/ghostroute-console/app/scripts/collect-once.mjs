@@ -34,6 +34,7 @@ const commands = [
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
   ["traffic", "modules/traffic-observatory/bin/traffic-report", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"]],
+  ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate"], { allowFailure: true }],
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"]],
   ["domains", "modules/dns-catalog-intelligence/bin/domain-report", ["--json", "--all"]],
   ["dns", "modules/dns-catalog-intelligence/bin/dns-forensics-report", ["--json"]],
@@ -41,7 +42,7 @@ const commands = [
 
 const allowedCommands = new Set(commands.map(([, command]) => command));
 
-function runReadOnlyCommand(command, args) {
+function runReadOnlyCommand(command, args, options = {}) {
   if (!allowedCommands.has(command)) {
     throw new Error(`collector command is not whitelisted: ${command}`);
   }
@@ -53,34 +54,44 @@ function runReadOnlyCommand(command, args) {
     const remoteRoot = process.env.GHOSTROUTE_READONLY_REMOTE_ROOT || "/opt/router_configuration";
     if (!host) throw new Error("GHOSTROUTE_READONLY_SSH_HOST is required in ssh collector mode");
     const remoteCommand = [path.posix.join(remoteRoot, command), ...args].join(" ");
-    return execFileSync("ssh", [
-      "-i",
-      key,
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      "UserKnownHostsFile=/tmp/ghostroute-known-hosts",
-      `${user}@${host}`,
-      remoteCommand,
-    ], {
+    try {
+      return execFileSync("ssh", [
+        "-i",
+        key,
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "UserKnownHostsFile=/tmp/ghostroute-known-hosts",
+        `${user}@${host}`,
+        remoteCommand,
+      ], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        env: process.env,
+        timeout: 120000,
+        maxBuffer: collectMaxBuffer,
+      });
+    } catch (error) {
+      if (options.allowFailure && error.stdout) return String(error.stdout);
+      throw error;
+    }
+  }
+
+  try {
+    return execFileSync(path.join(repoRoot, command), args, {
+      cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
       timeout: 120000,
       maxBuffer: collectMaxBuffer,
     });
+  } catch (error) {
+    if (options.allowFailure && error.stdout) return String(error.stdout);
+    throw error;
   }
-
-  return execFileSync(path.join(repoRoot, command), args, {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
-    timeout: 120000,
-    maxBuffer: collectMaxBuffer,
-  });
 }
 
 function days(name, fallback) {
@@ -162,9 +173,9 @@ function applyRetention() {
 }
 
 const collected = [];
-for (const [type, command, args] of commands) {
+for (const [type, command, args, options = {}] of commands) {
   try {
-    const stdout = runReadOnlyCommand(command, args);
+    const stdout = runReadOnlyCommand(command, args, options);
     const payload = JSON.parse(stdout);
     const collectedAt = payload.generated_at || new Date().toISOString();
     const file = path.join(snapshotDir, `${type}-${collectedAt.replace(/[:.]/g, "-")}.json`);

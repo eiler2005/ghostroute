@@ -154,7 +154,9 @@ core, not just a set of firewall scripts:
 - **GhostRoute Health Monitor** — a read-only reliability module for the
   router + VPS setup. It produces local `STATUS_OK` / `STATUS_FAIL` sentinels,
   `status.json`, Markdown summaries, daily digests and disk-based alert
-  ledgers without changing production routing state.
+  ledgers without changing production routing state. It also owns the live
+  deploy gate and `deploy-risk` path classifier used to decide when the full
+  A/B/C + DNS + VPS canary is required for a change set.
 - **Traffic Observatory** — usage and routing reports for WAN, LAN/Wi-Fi,
   Home Reality QR clients, popular destinations and split-routing mistakes.
   It is designed for day-to-day inspection and safe LLM handoff with redacted
@@ -488,6 +490,19 @@ cd ..
 ./verify.sh
 ./modules/ghostroute-health-monitor/bin/router-health-report
 ```
+
+Mutating deploy entrypoints run a shared pre/post canary gate:
+
+```bash
+./modules/ghostroute-health-monitor/bin/live-check --active-probe --deploy-gate
+```
+
+The gate normally takes 40-90 seconds. It checks the existing Wi-Fi managed
+domain path, VPS TCP/443 edge, public DNS 53 exposure, managed/direct DNS split,
+cover SNI and Channel A/B/C runtime chain before deploy is allowed to mutate
+files or restart services. Bypass is explicit and should be reserved for
+emergency recovery: `GHOSTROUTE_SKIP_DEPLOY_GATE=1 ./deploy.sh` or
+`ansible-playbook ... -e ghostroute_skip_deploy_gate=true`.
 
 `20-stealth-router.yml` also installs the Channel A reboot hooks and catalog
 scripts (`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,

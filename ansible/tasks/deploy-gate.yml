@@ -1,0 +1,17 @@
+- name: Skip GhostRoute deploy gate only when explicitly requested
+  ansible.builtin.debug:
+    msg: "GHOSTROUTE deploy gate skipped by ghostroute_skip_deploy_gate=true. Use only for emergency recovery."
+  when: ghostroute_skip_deploy_gate | default(false) | bool
+
+- name: Run GhostRoute deploy gate
+  ansible.builtin.command:
+    argv:
+      - "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/bin/live-check"
+      - "--json"
+      - "--active-probe"
+      - "--deploy-gate"
+  delegate_to: localhost
+  become: false
+  register: ghostroute_deploy_gate_result
+  changed_when: false
+  when: not (ghostroute_skip_deploy_gate | default(false) | bool)

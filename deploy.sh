@@ -16,6 +16,7 @@ CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-5}"
 ROUTER="${ROUTER:-}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
 ENABLE_DNSMASQ_LOGGING="${ENABLE_DNSMASQ_LOGGING:-1}"
+GHOSTROUTE_SKIP_DEPLOY_GATE="${GHOSTROUTE_SKIP_DEPLOY_GATE:-0}"
 REMOTE_STAGE="/tmp/router_configuration.$$"
 SSH_OPTS=(
   -i "$SSH_IDENTITY_FILE"
@@ -103,6 +104,17 @@ upload_file() {
   scp "${SCP_OPTS[@]}" "$source_path" "${ROUTER_USER}@${ROUTER}:${target_path}"
 }
 
+run_deploy_gate() {
+  local phase="$1"
+  if [ "$GHOSTROUTE_SKIP_DEPLOY_GATE" = "1" ]; then
+    echo "WARNING: skipping GhostRoute deploy gate for ${phase}. Use only for emergency recovery." >&2
+    return 0
+  fi
+
+  echo "Running GhostRoute deploy gate (${phase}); expected duration about 40-90 seconds..."
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/live-check" --active-probe --deploy-gate
+}
+
 ROUTER="$(detect_router_ip)"
 if [ -z "$ROUTER" ]; then
   echo "Could not detect router IP automatically. Set ROUTER=<ip> and retry." >&2
@@ -132,6 +144,7 @@ require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run
 require_local_file "${PROJECT_ROOT}/modules/routing-core/router/services-start"
 require_local_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/domain-auto-add.sh"
 require_local_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/update-blocked-list.sh"
+require_local_file "${PROJECT_ROOT}/modules/recovery-verification/router/restore-last-good-runtime.sh"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   require_local_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add"
 fi
@@ -148,6 +161,8 @@ if ! router_has_port "$ROUTER_PORT"; then
   fi
   exit 1
 fi
+
+run_deploy_gate "pre-deploy"
 
 ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts/health-monitor' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
 
@@ -180,6 +195,7 @@ upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/run-once" 
 upload_file "${PROJECT_ROOT}/modules/routing-core/router/services-start" "${REMOTE_STAGE}/scripts/services-start"
 upload_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/domain-auto-add.sh" "${REMOTE_STAGE}/scripts/domain-auto-add.sh"
 upload_file "${PROJECT_ROOT}/modules/dns-catalog-intelligence/router/update-blocked-list.sh" "${REMOTE_STAGE}/scripts/update-blocked-list.sh"
+upload_file "${PROJECT_ROOT}/modules/recovery-verification/router/restore-last-good-runtime.sh" "${REMOTE_STAGE}/scripts/restore-last-good-runtime.sh"
 upload_file "${PROJECT_ROOT}/configs/domains-no-vpn.txt" "${REMOTE_STAGE}/configs/domains-no-vpn.txt"
 if [ "${ENABLE_DNSMASQ_LOGGING}" = "1" ]; then
   upload_file "${PROJECT_ROOT}/configs/dnsmasq-logging.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-logging.conf.add"
@@ -194,6 +210,39 @@ backup_if_present() {
   target="$1"
   if [ -f "$target" ]; then
     cp "$target" "${target}.bak.${timestamp}"
+  fi
+}
+
+create_last_good_bundle() {
+  backup_dir=/jffs/backups/ghostroute-last-good
+  mkdir -p "$backup_dir"
+  bundle="$backup_dir/router-runtime-${timestamp}.tgz"
+  set --
+  for path in \
+    jffs/configs/dnsmasq.conf.add \
+    jffs/configs/dnsmasq-stealth.conf.add \
+    jffs/configs/dnsmasq-vps-managed.conf.add \
+    jffs/configs/domains-no-vpn.txt \
+    jffs/configs/router_configuration.static_nets \
+    jffs/configs/router_configuration.no_vpn_ip_ports \
+    jffs/scripts/ghostroute-runtime.env \
+    jffs/scripts/firewall-start \
+    jffs/scripts/nat-start \
+    jffs/scripts/services-start \
+    jffs/scripts/stealth-route-init.sh \
+    jffs/scripts/update-singbox-rule-sets.sh \
+    opt/etc/sing-box/config.json \
+    opt/etc/sing-box/rule-sets \
+    opt/etc/dnscrypt-proxy.toml
+  do
+    [ -e "/$path" ] && set -- "$@" "$path"
+  done
+  if [ "$#" -gt 0 ]; then
+    tar -czf "$bundle" -C / "$@"
+    ln -sf "$bundle" "$backup_dir/router-runtime-latest.tgz"
+    echo "last-good router runtime bundle: $bundle"
+  else
+    echo "No router runtime files found for last-good backup" >&2
   fi
 }
 
@@ -280,6 +329,8 @@ install_fully_managed_script() {
   cp "$source_file" "$target_file"
   chmod a+rx "$target_file"
 }
+
+create_last_good_bundle
 
 backup_if_present /jffs/configs/dnsmasq.conf.add
 remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq.conf.add"
@@ -379,6 +430,10 @@ install_fully_managed_script \
   "$REMOTE_STAGE/scripts/services-start" \
   /jffs/scripts/services-start
 
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/restore-last-good-runtime.sh" \
+  /jffs/scripts/restore-last-good-runtime.sh
+
 mkdir -p /jffs/addons/x3mRouting
 cp "$REMOTE_STAGE/scripts/domain-auto-add.sh" /jffs/addons/x3mRouting/domain-auto-add.sh
 chmod +x /jffs/addons/x3mRouting/domain-auto-add.sh
@@ -403,5 +458,11 @@ service restart_dnsmasq
 
 rm -rf "$REMOTE_STAGE"
 REMOTE
+
+run_deploy_gate "post-deploy" || {
+  echo "Post-deploy gate failed. To restore the latest router last-good bundle, run:" >&2
+  echo "  ssh -p ${ROUTER_PORT} ${ROUTER_USER}@${ROUTER} '/jffs/scripts/restore-last-good-runtime.sh'" >&2
+  exit 1
+}
 
 echo "Deployment complete. Run ./verify.sh to validate the router state."

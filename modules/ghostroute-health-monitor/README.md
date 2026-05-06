@@ -73,6 +73,18 @@ collector path from VPS to the router remote endpoint when the control machine
 has Ansible/Vault access. Use `--json` for Console/LLM automation. Use
 `--active-probe` only when the default check is green but a user still reports a
 symptom; it runs bounded network probes and may take 15-30 seconds.
+Use `--deploy-gate` before mutating deploys. It implies `--active-probe`, adds
+VPS edge checks when Ansible/Vault are available, and promotes deploy-critical
+WARN/N/A results to CRIT. A full deploy gate normally takes 40-90 seconds and is
+intended to protect the current working Wi-Fi managed domains, VPS edge and
+Channel A/B/C runtime chain before files or services are changed.
+
+`deploy-risk` is a fast path classifier for local and CI workflows. It inspects
+changed paths and reports whether the full live deploy gate is required:
+router/VPS runtime, DNS/catalog routing, Channel A/B/C, deploy, recovery and
+Health Monitor changes require the gate; Console-only, docs-only and test-only
+changes can use their narrower local checks. This command is advisory only:
+mutating deploy entrypoints still run their own pre/post deploy gate.
 
 ## Runtime Storage & Artifacts
 

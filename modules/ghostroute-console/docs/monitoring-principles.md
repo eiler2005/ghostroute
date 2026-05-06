@@ -57,6 +57,17 @@ attribution later.
 - Telegram/e-mail delivery can later consume the same state, but delivery
   secrets and provider credentials must stay outside SQLite and tracked docs.
 
+## Deploy Gate Evidence
+
+- Deploy-gate snapshots come from Health Monitor `live-check --active-probe
+  --deploy-gate`.
+- They are factual canary evidence for deploy readiness, not a Console deploy
+  action.
+- Console stores and renders the JSON even when the command exits CRIT, because
+  the failed evidence is the useful operator signal.
+- Health Center shows the latest gate status and suggested actions; Dashboard
+  remains focused on runtime traffic and freshness.
+
 ## Evidence Labels
 
 - `exact` means explicit counter, report or log evidence.

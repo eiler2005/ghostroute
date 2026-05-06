@@ -1009,6 +1009,7 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   resetNormalizedForSnapshot(db, snapshotId);
   if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
   if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);
+  if (type === "deploy_gate") normalizeDeployGate(db, snapshotId, type, collectedAt, payload);
   if (type === "leaks") normalizeLeaks(db, snapshotId, type, collectedAt, payload);
   if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);
   if (type === "dns") normalizeDns(db, snapshotId, collectedAt, payload);
@@ -1156,6 +1157,24 @@ function normalizeHealth(db, snapshotId, type, collectedAt, payload) {
   }
   for (const [name, status] of Object.entries(payload.services || {})) {
     insert.run(snapshotId, collectedAt, name, text(status || "UNKNOWN").toUpperCase(), confidence(payload.confidence), "", json({ name, status }));
+  }
+}
+
+function normalizeDeployGate(db, snapshotId, type, collectedAt, payload) {
+  const insert = db.prepare(`
+    insert into normalized_health(snapshot_id, collected_at, check_name, status, confidence, detail, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of payload.checks || []) {
+    insert.run(
+      snapshotId,
+      collectedAt,
+      text(row.id || row.name || row.check || row.label, "deploy-gate-check"),
+      text(row.status || "UNKNOWN").toUpperCase(),
+      confidence(row.confidence, payload.overall_status === "OK" ? "exact" : "mixed"),
+      text(row.summary || row.message || row.evidence || ""),
+      json(row)
+    );
   }
 }
 

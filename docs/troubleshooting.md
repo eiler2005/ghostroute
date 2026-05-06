@@ -254,6 +254,29 @@ vtb.ru / championat.com / .ru control:
   traffic должен идти direct/home WAN, если домен не классифицирован как managed
 ```
 
+## Deploy Gate Заблокировал Deploy
+
+Перед mutating deploy `deploy.sh` и Ansible playbooks запускают:
+
+```sh
+./modules/ghostroute-health-monitor/bin/live-check --active-probe --deploy-gate
+```
+
+Обычно это занимает 40-90 секунд. Gate должен быть зелёным до изменений: он
+проверяет managed DNS, managed Reality egress, direct/RU policy, cover SNI,
+VPS TCP/443, закрытый public DNS 53 и Channel A/B/C runtime chain.
+
+Если pre-gate красный, deploy не начался и рабочее состояние не менялось.
+Сначала чините указанную причину в evidence/suggested action. Если post-gate
+красный после router deploy, восстановите последний bundle:
+
+```sh
+ssh -p <router_ssh_port> admin@<router_host> '/jffs/scripts/restore-last-good-runtime.sh'
+```
+
+Bypass (`GHOSTROUTE_SKIP_DEPLOY_GATE=1` или
+`-e ghostroute_skip_deploy_gate=true`) допустим только для emergency recovery.
+
 ## ChatGPT / Codex Stream Disconnects On Home Wi-Fi
 
 Symptom:
