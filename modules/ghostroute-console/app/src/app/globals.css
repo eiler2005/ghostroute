@@ -35,6 +35,7 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .grid { display: grid; gap: 14px; }
 .grid.cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .grid.two { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); align-items: start; }
+.clients-layout { grid-template-columns: minmax(720px, 1fr) minmax(360px, 430px); }
 .route-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 14px; align-items: start; }
 .route-layout-wide { grid-template-columns: minmax(0, 1fr) minmax(360px, 430px); }
 .route-main { display: grid; gap: 14px; min-width: 0; }
@@ -48,7 +49,8 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .table th { color: #a9bad0; font-weight: 700; font-size: 12px; }
 .table td { overflow-wrap: anywhere; }
 .table .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.table tr.selected td { background: rgba(92, 168, 255, .08); box-shadow: inset 3px 0 0 #5ca8ff; }
+.table tr.selected td { background: rgba(92, 168, 255, .08); }
+.table tr.selected td:first-child { box-shadow: inset 3px 0 0 #5ca8ff; }
 .table tr:hover td { background: rgba(141, 182, 255, .05); }
 .col-time { width: 132px; color: #c5d2e4; }
 .col-client { width: 22%; }
@@ -91,6 +93,7 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .detail-row span, .detail-row strong { min-width: 0; overflow-wrap: anywhere; }
 .detail-row strong { color: #e6edf7; text-align: right; }
 .block-detail { display: block; margin-top: 4px; line-height: 1.35; }
+.truncate-text { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .side-panel { position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow: auto; }
 .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .panel-title h2 { margin: 0; overflow-wrap: anywhere; }
@@ -156,16 +159,27 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .route-rail h3 { display: flex; gap: 8px; align-items: center; }
 .route-titlebar { align-items: flex-start; }
 .route-table-card { margin-top: 14px; overflow-x: auto; }
-.traffic-table { min-width: 1180px; }
+.traffic-table { min-width: 1560px; }
+.traffic-table .col-time { width: 128px; }
+.traffic-table .col-client { width: 230px; }
+.traffic-table .col-destination { width: 360px; }
+.traffic-table .col-port { width: 82px; }
+.traffic-table .col-route { width: 104px; }
+.traffic-table .col-policy { width: 210px; overflow-wrap: normal; }
+.traffic-table .col-traffic { width: 140px; }
+.traffic-table .col-duration { width: 112px; }
+.traffic-table .col-risk { width: 90px; }
+.traffic-table .col-confidence { width: 140px; }
 .dns-table { min-width: 1120px; }
+.catalog-table { min-width: 980px; }
 .dns-table-card, .alarm-table { overflow-x: auto; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: #a9bad0; flex-wrap: wrap; }
 .pagination > div { display: flex; align-items: center; gap: 10px; }
 .pagination strong { color: #e6edf7; }
 .clients-card { overflow-x: auto; }
-.clients-table { min-width: 1160px; }
+.clients-table { min-width: 1260px; }
 .clients-table .col-client { width: 21%; }
-.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 180px; }
+.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 210px; }
 .clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 136px; }
 .clients-table th:nth-child(4), .clients-table td:nth-child(4) { width: 128px; }
 .clients-table th:nth-child(5), .clients-table td:nth-child(5) { width: 128px; }
@@ -211,6 +225,9 @@ p { margin: 6px 0 0; color: #a9bad0; }
 .alarm-summary strong { display: block; margin-top: 4px; font-size: 26px; }
 .alarm-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .alarm-actions .muted-button { min-height: 30px; padding: 0 8px; font-size: 12px; }
+.compact-warnings .detail-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.compact-warnings .detail-row { align-items: start; }
+.compact-warnings .block-detail, .alarm-table td { overflow-wrap: anywhere; }
 .redaction-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .redaction-grid section { border: 1px solid #243954; border-radius: 8px; padding: 14px; background: rgba(8,18,33,.52); min-width: 0; }
 @media (max-width: 1100px) {
@@ -218,6 +235,7 @@ p { margin: 6px 0 0; color: #a9bad0; }
   .sidebar { position: relative; height: auto; }
   .system-pill { position: static; margin-top: 18px; }
   .grid.cards, .grid.two, .grid.three, .route-layout { grid-template-columns: 1fr; }
+  .clients-layout, .compact-warnings .detail-list { grid-template-columns: 1fr; }
   .topbar { display: grid; }
   .filters { justify-content: stretch; }
   .filters input, .filters select, .filters button { width: 100%; max-width: none; }

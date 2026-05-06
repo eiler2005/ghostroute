@@ -84,6 +84,13 @@ attribution later.
   the failed evidence is the useful operator signal.
 - Health Center shows the latest gate status and suggested actions; Dashboard
   remains focused on runtime traffic and freshness.
+- Checks that require Ansible/Vault on the control machine, such as VPS edge
+  probes, may appear in VPS-collected snapshots with
+  `evidence=ansible_or_vault=missing`. Health Center renders those rows as
+  `N/A` control-machine-only evidence so they do not become false runtime CRIT
+  signals inside the read-only Console collector. The same checks remain strict
+  blockers when `live-check --active-probe --deploy-gate` is run from the
+  control machine before a mutating deploy.
 
 ## Evidence Labels
 

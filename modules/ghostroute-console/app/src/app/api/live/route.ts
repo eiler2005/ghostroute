@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const model = buildLiveModel(filters, flows);
   const events = listLiveEvents({
     page: Math.max(1, Number(search.get("page") || 1)),
-    pageSize: Math.min(Number(search.get("pageSize") || 50), 50),
+    pageSize: Math.min(Number(search.get("pageSize") || 150), 1000),
     filters,
   });
   return NextResponse.json({

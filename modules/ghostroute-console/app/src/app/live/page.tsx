@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { LiveStreamPanel } from "@/components/LiveStreamPanel";
-import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, shortDateTime, StatusBadge } from "@/components/Widgets";
+import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, shortDateTime, StatusBadge, timeWithMillis } from "@/components/Widgets";
 import { buildLiveModel, listFlowSessions, listLiveEvents } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -13,14 +13,34 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const eventsPage = Math.max(1, Number.parseInt(scalar(params.eventsPage) || "1", 10) || 1);
+  const eventsPageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.eventsPageSize) || "150", 10) || 150));
+  const servicePage = Math.max(1, Number.parseInt(scalar(params.servicePage) || "1", 10) || 1);
+  const servicePageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.servicePageSize) || "150", 10) || 150));
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
-  const liveEvents = listLiveEvents({ page: eventsPage, pageSize: 50, filters });
-  const serviceEvents = listLiveEvents({ page: 1, pageSize: 50, filters: { ...filters, trafficClass: "service_background" } });
+  const liveEvents = listLiveEvents({ page: eventsPage, pageSize: eventsPageSize, filters });
+  const serviceEvents = listLiveEvents({ page: servicePage, pageSize: servicePageSize, filters: { ...filters, trafficClass: "service_background" } });
   const trafficPage = listFlowSessions({ page: activityPage, pageSize: 20, filters });
   const model = buildLiveModel(filters, trafficPage.rows);
   const activeFlows = trafficPage.rows;
   const activeClients = model.devices;
   const dnsRows = model.dnsQueries.slice(0, 8);
+  const serviceRows = serviceEvents.rows.length > 0
+    ? serviceEvents.rows
+    : model.dnsQueries.slice((servicePage - 1) * servicePageSize, servicePage * servicePageSize).map((row, idx) => ({
+        id: `dns-service:${row.id || idx}`,
+        event_type: "dns.query",
+        occurred_at: row.event_ts || row.collected_at,
+        origin: row.client || row.client_ip || "Router DNS service",
+        client: row.client || "",
+        summary: row.domain || row.answer_ip || "",
+        destination: row.domain || row.dns_qname || row.answer_ip || "",
+        destinationLabel: row.domain || row.dns_qname || row.answer_ip,
+        channel: row.channel || "Service/background",
+        route: row.route || "Unknown",
+      }));
+  const serviceTotal = serviceEvents.rows.length > 0 ? serviceEvents.total : model.dnsQueries.length;
+  const approxClientPages = Math.max(1, Math.ceil(liveEvents.total / liveEvents.pageSize));
+  const approxServicePages = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -29,6 +49,8 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
     trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
+    eventsPageSize,
+    servicePageSize,
   };
 
   return (
@@ -53,15 +75,19 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             route_decisions: [],
             alerts: model.alerts.slice(0, 20).map(({ raw, ...row }) => row),
           }}
+          visibleCount={eventsPageSize}
         />
+        <div className="page-note">Страница {liveEvents.page} из {approxClientPages}; целевой дизайн: 100-150 событий на странице и до ~30 страниц истории без перегруза первого экрана.</div>
+        <div className="page-note">Service/background: страница {servicePage} из {approxServicePages}.</div>
         <Pagination
           basePath="/live"
           page={liveEvents.page}
           pageParam="eventsPage"
+          pageSizeParam="eventsPageSize"
           pageSize={liveEvents.pageSize}
           total={liveEvents.total}
           totalPages={liveEvents.totalPages}
-          extraParams={{ ...filterParams, eventsPage: liveEvents.page, activityPage: trafficPage.page }}
+          extraParams={{ ...filterParams, activityPage: trafficPage.page, servicePage }}
         />
       </div>
 
@@ -71,15 +97,15 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             <h2>Service/background live events</h2>
             <p>Служебные DNS/CDN/Apple/system события отдельно, чтобы не забивать клиентский live.</p>
           </div>
-          <span className="subtle">показано {serviceEvents.rows.length} из {serviceEvents.total}</span>
+          <span className="subtle">показано {serviceRows.length} из {serviceTotal}</span>
         </div>
-        {serviceEvents.rows.length === 0 ? (
+        {serviceRows.length === 0 ? (
           <EmptyState title="Нет service/background events" />
         ) : (
           <div className="live-feed">
-            {serviceEvents.rows.map((row, idx) => (
+            {serviceRows.map((row, idx) => (
               <div className="live-feed-row" key={`${row.event_type || "event"}-${row.id || idx}`}>
-                <span>{shortDateTime(row.occurred_at)}</span>
+                <span>{timeWithMillis(row.occurred_at)}</span>
                 <strong>{row.event_type || "event"}</strong>
                 <small>{row.origin || row.client || "System"} → {row.destinationLabel || row.destination || row.summary || "destination"}</small>
                 <ChannelBadge value={row.channel} />
@@ -88,6 +114,16 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             ))}
           </div>
         )}
+        <Pagination
+          basePath="/live"
+          page={servicePage}
+          pageParam="servicePage"
+          pageSizeParam="servicePageSize"
+          pageSize={servicePageSize}
+          total={serviceTotal}
+          totalPages={Math.max(1, Math.ceil(serviceTotal / servicePageSize))}
+          extraParams={{ ...filterParams, eventsPage: liveEvents.page, activityPage: trafficPage.page }}
+        />
       </section>
 
       <div className="grid two" style={{ marginTop: 14 }}>
@@ -109,7 +145,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
               <tbody>
                 {activeFlows.map((row, idx) => (
                   <tr key={row.id || idx}>
-                    <td>{shortDateTime(row.event_ts || row.collected_at)}</td>
+                    <td>{timeWithMillis(row.event_ts || row.collected_at)}</td>
                     <td>{row.client}</td>
                     <td><ChannelBadge value={row.channel} /></td>
                     <td><Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{row.destinationLabel || row.destination}</Link></td>
@@ -128,7 +164,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             pageSize={trafficPage.pageSize}
             total={trafficPage.total}
             totalPages={trafficPage.totalPages}
-            extraParams={{ ...filterParams, activityPage: trafficPage.page, eventsPage: liveEvents.page }}
+            extraParams={{ ...filterParams, eventsPage: liveEvents.page, servicePage }}
           />
         </section>
 

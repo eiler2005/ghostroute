@@ -1355,7 +1355,7 @@ function mapDnsFallbackRow(row: any) {
 
 export function listDnsQueryLog(args: DnsPageArgs = {}) {
   const page = clampPage(args.page);
-  const pageSize = clampPageSize(args.pageSize, 50, 100);
+  const pageSize = clampPageSize(args.pageSize, 100, 1000);
   const filters = args.filters || {};
   const status = args.status || "all";
   const catalogStatus = args.catalogStatus || "all";
@@ -2247,9 +2247,9 @@ function mapLiveRow(row: any) {
 
 export function listLiveEvents(args: PageArgs = {}) {
   const page = clampPage(args.page);
-  const pageSize = clampPageSize(args.pageSize, 50, 50);
+  const pageSize = clampPageSize(args.pageSize, 150, 1000);
   const offset = (page - 1) * pageSize;
-  const fetchLimit = Math.max(offset + pageSize * 4, 50);
+  const fetchLimit = Math.max(offset + pageSize * 2, pageSize * 30);
   const eventSelect = `
     select 'event' as kind, id, event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
       from events

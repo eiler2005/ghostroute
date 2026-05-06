@@ -122,7 +122,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
         <MetricCard label="Unknown" value={String(unattributedRows.length)} detail="needs attribution review" />
         <MetricCard label="Active now" value={String(activeRows.length)} detail="traffic or recent status" />
       </div>
-      <div className="grid two">
+      <div className="grid two clients-layout">
         <section className="card clients-card">
           <div className="toolbar">
             <h2>Device Inventory</h2>

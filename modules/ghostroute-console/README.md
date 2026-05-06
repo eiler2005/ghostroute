@@ -251,8 +251,15 @@ from the public Console URL.
 - `/traffic` and `/traffic/[id]` provide Flow Explorer sessions and route
   explanation with client, destination, port, policy, route, duration, risk,
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
-- `/dns` shows DNS Query Log rows: client, domain, answer IP, route decision,
-  catalog status, status and risk context.
+- `/traffic` keeps wide flow tables horizontally scrollable and treats
+  category-only rows as aggregates in the route explanation instead of implying
+  a concrete site saw the category label.
+- `/dns` shows DNS Query Log rows with the resolved Console client label,
+  observed client IP, millisecond event time, domain, answer IP, route decision,
+  catalog status, status and risk context. `/dns?page=&pageSize=` can page up
+  to 1,000 rows for larger troubleshooting windows.
+- `/catalog?page=&pageSize=` pages the read-only catalog snapshot up to 1,000
+  rows per page; catalog review actions remain separate from runtime deploy.
 - `/health` includes Alarm Center rows with severity, source, evidence,
   suggested action and status. Ack/snooze/reopen is stored as a narrow operator
   state overlay on the router at the Console alarm-state JSON path; it does not
@@ -263,6 +270,9 @@ from the public Console URL.
 - `/clients` shows all known devices with `Online`, `Recently seen` or
   `Inactive` state and last-seen timestamps, so devices do not disappear just
   because they are absent from today's latest snapshot.
+- `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
+  client and service/background live events separately, with millisecond event
+  times and page sizes up to 1,000 rows.
 - `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
   updates from append-only real log events, with polling fallback in the UI.
 - `/api/actions/catalog/*` implements review, dry-run, apply preparation and
@@ -273,6 +283,7 @@ from the public Console URL.
   refresh and collector restart requests.
 - `/api/alarms/:id/(ack|snooze|open)` updates only the router-backed alarm
   state overlay and keeps derived `alarm_events` as factual snapshot evidence.
+  It never mutates DNS, sing-box, dnsmasq or router firewall.
 - `/settings` is a readonly runtime inventory: collectors, retention, read
   models, access posture, router profile status, safety gates and notification
   readiness are shown without exposing real endpoints, ports, users, keys or

@@ -8,6 +8,28 @@ function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function isControlMachineOnlyGate(row: Record<string, any>) {
+  return String(row.id || "").startsWith("vps_edge_") && String(row.evidence || "").includes("ansible_or_vault=missing");
+}
+
+function displayDeployGateCheck(row: Record<string, any>) {
+  if (!isControlMachineOnlyGate(row)) return row;
+  return {
+    ...row,
+    status: "N/A",
+    summary: String(row.summary || "").replace(/^Deploy gate failed:\s*/i, "") || "Control-machine-only check not available inside Console collector",
+    suggested_action: "Run the deploy gate from the GhostRoute control machine with Vault access. Console marks this row N/A because the VPS collector is intentionally readonly.",
+  };
+}
+
+function displayDeployGateStatus(rows: Array<Record<string, any>>, fallback?: string) {
+  const visibleRows = rows.map(displayDeployGateCheck);
+  if (visibleRows.some((row) => row.status === "CRIT")) return "CRIT";
+  if (visibleRows.some((row) => row.status === "WARN")) return "WARN";
+  if (visibleRows.some((row) => row.status === "OK")) return "OK";
+  return fallback || "UNKNOWN";
+}
+
 export default async function HealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const rawParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(searchParams);
@@ -24,7 +46,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
     ...(model.snapshots.leaks?.payload?.checks || []),
   ];
   const deployGateSnapshot = model.snapshots.deploy_gate?.payload;
-  const deployGateChecks = deployGateSnapshot?.checks || [];
+  const deployGateChecks = (deployGateSnapshot?.checks || []).map(displayDeployGateCheck);
   const leakSnapshot = model.snapshots.leaks?.payload;
   return (
     <ConsoleShell active="/health" model={model} filters={filters}>
@@ -98,7 +120,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
             <h2>Deploy Gate</h2>
             <p>Pre-deploy canary for managed Wi-Fi, VPS edge and Channel A/B/C.</p>
           </div>
-          <StatusBadge value={deployGateSnapshot?.overall_status || "UNKNOWN"} />
+          <StatusBadge value={displayDeployGateStatus(deployGateChecks, deployGateSnapshot?.overall_status || "UNKNOWN")} />
         </div>
         {!deployGateSnapshot ? (
           <EmptyState title="Нет deploy-gate snapshot" />
