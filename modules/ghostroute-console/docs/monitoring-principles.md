@@ -42,6 +42,23 @@ attribution later.
 - `test:perf` covers both individual page/API budgets and rapid sidebar
   navigation so regressions show up before deploy.
 
+## Browser Loading Incidents
+
+- If a Console page is currently fast, do not change nginx, Caddy, Next.js or
+  runtime routing to chase a stale incident.
+- If a page is blank or slow, collect browser evidence before server changes:
+  Chrome DevTools Network with Preserve log and Disable cache, or Safari/WebKit
+  Web Inspector Network for Safari/iOS.
+- Classify the stalled row before changing config: slow document TTFB points to
+  server render/read-model work; fast TTFB with slow download points to
+  proxy/TLS/client path; failed JS/CSS chunks point to static asset, auth or
+  cache handling; hanging `?_rsc` rows point to Next.js App Router navigation.
+- Compare browser timings with VPS-local and public curl baselines for
+  `/health` and `/api/health`. If API is fast but HTML stalls, the collector and
+  router health reports are probably not the bottleneck.
+- Console browser loading diagnostics must not mutate Channel A/B/C, managed
+  DNS, sing-box, dnsmasq or router firewall.
+
 ## Alarm State
 
 - `alarm_events` remains a derived read model from factual snapshots and

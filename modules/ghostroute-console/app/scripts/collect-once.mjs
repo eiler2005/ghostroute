@@ -34,7 +34,7 @@ const commands = [
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
   ["traffic", "modules/traffic-observatory/bin/traffic-report", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"]],
-  ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate"], { allowFailure: true }],
+  ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate", "--no-log"], { allowFailure: true }],
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"]],
   ["domains", "modules/dns-catalog-intelligence/bin/domain-report", ["--json", "--all"]],
   ["dns", "modules/dns-catalog-intelligence/bin/dns-forensics-report", ["--json"]],
