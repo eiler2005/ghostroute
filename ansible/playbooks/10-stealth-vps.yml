@@ -5,6 +5,12 @@
     - ../group_vars/all.yml
     - ../group_vars/vps_stealth.yml
     - ../secrets/stealth.yml
+  pre_tasks:
+    - name: GhostRoute deploy gate before VPS mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Capture last-known-good VPS edge before deploy
+      ansible.builtin.include_tasks: ../tasks/vps-last-good-backup.yml
   roles:
     - caddy_l4
     - xray_reality
@@ -13,3 +19,6 @@
     - role: vps_health_monitor
       tags:
         - vps_health_monitor
+  post_tasks:
+    - name: GhostRoute deploy gate after VPS mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

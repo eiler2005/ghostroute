@@ -6,6 +6,9 @@
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   tasks:
+    - name: GhostRoute deploy gate before router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
     - name: Ensure bash + python3 via opkg
       ansible.builtin.raw: |
         /opt/bin/opkg list-installed | grep -q '^bash ' || /opt/bin/opkg install bash
@@ -19,6 +22,9 @@
     - ../group_vars/all.yml
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
+  pre_tasks:
+    - name: Capture last-known-good router runtime before deploy
+      ansible.builtin.include_tasks: ../tasks/router-last-good-backup.yml
   roles:
     - role: ipv6_kill
       tags:
@@ -50,3 +56,6 @@
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
       changed_when: false
       when: stealth_channel_a_lan_enabled | bool
+
+    - name: GhostRoute deploy gate after router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

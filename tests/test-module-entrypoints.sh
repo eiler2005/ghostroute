@@ -26,6 +26,7 @@ assert_executable "modules/ghostroute-health-monitor/bin/ghostroute-health-repor
 assert_executable "modules/ghostroute-health-monitor/bin/status"
 assert_executable "modules/ghostroute-health-monitor/bin/leak-check"
 assert_executable "modules/ghostroute-health-monitor/bin/live-check"
+assert_executable "modules/ghostroute-health-monitor/bin/deploy-risk"
 assert_executable "modules/dns-catalog-intelligence/bin/catalog-review-report"
 assert_executable "modules/dns-catalog-intelligence/bin/dns-forensics-report"
 assert_executable "modules/dns-catalog-intelligence/bin/domain-report"

@@ -143,6 +143,20 @@ scripts/                         # Ansible-local helper scripts
 | `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 
+Mutating playbooks run the shared GhostRoute deploy gate before and after the
+change unless `ghostroute_skip_deploy_gate=true` is passed explicitly. The gate
+uses `modules/ghostroute-health-monitor/bin/live-check --active-probe
+--deploy-gate` from the control machine, so it blocks when the current
+Wi-Fi managed-domain path, VPS edge or Channel A/B/C runtime chain is already
+unhealthy. Router and VPS playbooks also capture a last-known-good bundle before
+mutation so post-deploy recovery has a concrete restore point.
+
+For non-mutating local/CI decisions, use
+`modules/ghostroute-health-monitor/bin/deploy-risk`. It classifies changed paths
+and recommends whether the full live deploy gate is necessary. This does not
+weaken the playbooks: any playbook that mutates router/VPS runtime still runs
+the gate itself.
+
 ## Roles
 
 | Role | Owner Area |
@@ -163,6 +177,8 @@ scripts/                         # Ansible-local helper scripts
 ## Safety Contract
 
 - Playbooks `00`, `10` and `20` are mutating and should be run intentionally.
+- Playbooks `10`, `11`, `20`, `21` and `22` are protected by the deploy gate.
+  Use `-e ghostroute_skip_deploy_gate=true` only for emergency recovery.
 - Playbook `30` writes local generated artifacts only.
 - Playbook `99` is read-only and is safe as a post-change health gate.
 - Secrets live in Vault or gitignored local files only.

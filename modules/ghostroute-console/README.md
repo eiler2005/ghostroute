@@ -110,6 +110,8 @@ The VPS deployment defaults to read-only SSH collection through the generated
 - full snapshots every 30 minutes during 07:00-23:59 Moscow time;
 - full snapshots every 3 hours during 00:00-06:59 Moscow time;
 - live event polling every 10 minutes by default.
+- deploy-gate snapshots with the full pass. CRIT output is stored even when the
+  command exits non-zero, so Health Center can show the exact deploy blocker.
 
 Collectors keep per-job locks to avoid duplicate runs and a short shared SQLite
 writer lock only while storing snapshots and rebuilding read models. Stale locks
@@ -189,6 +191,9 @@ from the public Console URL.
   suggested action and status. Ack/snooze/reopen is stored as a narrow operator
   state overlay on the router at the Console alarm-state JSON path; it does not
   change routing, services or catalog runtime.
+- `/health` also renders the latest deploy-gate snapshot. It is informational:
+  Console does not run deploys, but it shows whether the current canary would
+  block a mutating deploy.
 - `/clients` shows all known devices with `Online`, `Recently seen` or
   `Inactive` state and last-seen timestamps, so devices do not disappear just
   because they are absent from today's latest snapshot.

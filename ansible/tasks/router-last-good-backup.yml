@@ -1,0 +1,41 @@
+- name: Capture last-known-good router runtime bundle
+  ansible.builtin.raw: |
+    set -eu
+    backup_dir=/jffs/backups/ghostroute-last-good
+    mkdir -p "$backup_dir"
+    stamp="$(date +%Y%m%d%H%M%S)"
+    bundle="$backup_dir/router-runtime-${stamp}.tgz"
+    set --
+    for path in \
+      jffs/configs/dnsmasq.conf.add \
+      jffs/configs/dnsmasq-stealth.conf.add \
+      jffs/configs/dnsmasq-vps-managed.conf.add \
+      jffs/configs/domains-no-vpn.txt \
+      jffs/configs/router_configuration.static_nets \
+      jffs/configs/router_configuration.no_vpn_ip_ports \
+      jffs/scripts/ghostroute-runtime.env \
+      jffs/scripts/firewall-start \
+      jffs/scripts/nat-start \
+      jffs/scripts/services-start \
+      jffs/scripts/stealth-route-init.sh \
+      jffs/scripts/update-singbox-rule-sets.sh \
+      opt/etc/sing-box/config.json \
+      opt/etc/sing-box/rule-sets \
+      opt/etc/dnscrypt-proxy.toml
+    do
+      [ -e "/$path" ] && set -- "$@" "$path"
+    done
+    if [ "$#" -eq 0 ]; then
+      echo "No router runtime files found for last-good backup" >&2
+      exit 1
+    fi
+    tar -czf "$bundle" -C / "$@"
+    ln -sf "$bundle" "$backup_dir/router-runtime-latest.tgz"
+    echo "last-good router runtime bundle: $bundle"
+  changed_when: false
+
+- name: Install last-known-good router restore helper
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/recovery-verification/router/restore-last-good-runtime.sh"
+    dest: /jffs/scripts/restore-last-good-runtime.sh
+    mode: "0755"

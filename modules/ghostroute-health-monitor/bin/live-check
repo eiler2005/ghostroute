@@ -6,19 +6,22 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 JSON_MODE=0
 ACTIVE_PROBE=0
+DEPLOY_GATE=0
 LOG_ENABLED=1
 CHANNEL="all"
 LOG_DIR="${GHOSTROUTE_LIVE_CHECK_LOG_DIR:-${PROJECT_ROOT}/reports/live-check}"
 
 usage() {
   cat <<'USAGE'
-Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-probe] [--no-log] [all|channel-a|channel-b|channel-c]
+Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-probe] [--deploy-gate] [--no-log] [all|channel-a|channel-b|channel-c]
 
 Read-only live A/B/C runtime-chain check.
 Default mode checks listeners, firewall rules, sing-box split rules, DNS/catalog
 sanity, iCloud Reality cover SNI, recent sanitised log evidence, and the
 Console VPS-to-router collector path when Ansible/Vault are available.
 --active-probe also runs bounded curl/TCP probes and may take about 15-30s.
+--deploy-gate implies --active-probe and promotes deploy-critical WARN/N/A
+checks to CRIT so mutating deploy entrypoints can stop before changing runtime.
 USAGE
 }
 
@@ -29,6 +32,11 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --active-probe)
+      ACTIVE_PROBE=1
+      shift
+      ;;
+    --deploy-gate)
+      DEPLOY_GATE=1
       ACTIVE_PROBE=1
       shift
       ;;
@@ -157,7 +165,73 @@ echo TOOL=$tool
   esac
 }
 
-router_ssh "GHOSTROUTE_LIVE_FILTER='$CHANNEL' GHOSTROUTE_LIVE_ACTIVE_PROBE='$ACTIVE_PROBE' sh -s" >"$raw_tmp" <<'REMOTE'
+append_vps_edge_check() {
+  [ "$CHANNEL" = "all" ] || return 0
+  [ "$DEPLOY_GATE" = "1" ] || return 0
+
+  ansible_dir="${PROJECT_ROOT}/ansible"
+  if ! command -v ansible >/dev/null 2>&1 || [ ! -r "${ansible_dir}/secrets/stealth.yml" ]; then
+    append_local_check vps_edge_tcp443_listener N/A "VPS edge" "VPS edge check is unavailable on this control machine" "ansible_or_vault=missing" "Run from the GhostRoute control machine with Vault access before deploying."
+    append_local_check vps_edge_public_dns53_closed N/A "VPS edge" "VPS public DNS exposure check is unavailable on this control machine" "ansible_or_vault=missing" "Run from the GhostRoute control machine with Vault access before deploying."
+    return 0
+  fi
+
+  set +e
+  vps_edge_output="$(
+    cd "$ansible_dir" &&
+      ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a 'set -eu
+tcp443=FAIL
+dns53=UNKNOWN
+tool=none
+if command -v ss >/dev/null 2>&1; then
+  tool=ss
+  ss -ltn 2>/dev/null | awk '"'"'$4 ~ /(^|[.:])443$/ { found = 1 } END { exit(found ? 0 : 1) }'"'"' && tcp443=OK || tcp443=FAIL
+elif command -v netstat >/dev/null 2>&1; then
+  tool=netstat
+  netstat -ltn 2>/dev/null | awk '"'"'$4 ~ /(^|[.:])443$/ { found = 1 } END { exit(found ? 0 : 1) }'"'"' && tcp443=OK || tcp443=FAIL
+fi
+if command -v ufw >/dev/null 2>&1; then
+  ufw_text="$(ufw status verbose 2>/dev/null || true)"
+  if printf "%s\n" "$ufw_text" | grep -E "^[[:space:]]*53/(tcp|udp)[[:space:]]+ALLOW[[:space:]]+IN" >/dev/null 2>&1; then
+    dns53=FAIL
+  elif printf "%s\n" "$ufw_text" | grep -E "^[[:space:]]*53/(tcp|udp)[[:space:]]+DENY[[:space:]]+IN" >/dev/null 2>&1; then
+    dns53=OK
+  else
+    dns53=UNKNOWN
+  fi
+fi
+echo TCP443=$tcp443
+echo DNS53=$dns53
+echo TOOL=$tool
+' 2>/dev/null
+  )"
+  vps_edge_rc=$?
+  set -e
+
+  if [ "$vps_edge_rc" -ne 0 ]; then
+    append_local_check vps_edge_tcp443_listener WARN "VPS edge" "Could not verify VPS TCP/443 listener" "ansible=failed" "Check Ansible/Vault access, then verify Caddy/layer4 and provider firewall."
+    append_local_check vps_edge_public_dns53_closed WARN "VPS edge" "Could not verify VPS public DNS exposure" "ansible=failed" "Verify UFW/provider firewall keeps public TCP/UDP 53 closed."
+    return 0
+  fi
+
+  tcp443="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="TCP443"{print $2; exit}')"
+  dns53="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="DNS53"{print $2; exit}')"
+  tool="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="TOOL"{print $2; exit}')"
+
+  if [ "$tcp443" = "OK" ]; then
+    append_local_check vps_edge_tcp443_listener OK "VPS edge" "VPS TCP/443 listener is present" "tcp443=OK tool=${tool:-unknown}" "No action."
+  else
+    append_local_check vps_edge_tcp443_listener WARN "VPS edge" "VPS TCP/443 listener is missing or not visible" "tcp443=${tcp443:-unknown} tool=${tool:-unknown}" "Check Caddy/layer4, Xray/Reality backend and host/provider firewall before deploying."
+  fi
+
+  if [ "$dns53" = "OK" ]; then
+    append_local_check vps_edge_public_dns53_closed OK "VPS edge" "VPS public TCP/UDP 53 is not allowed by host firewall" "dns53=closed" "No action."
+  else
+    append_local_check vps_edge_public_dns53_closed WARN "VPS edge" "VPS public DNS 53 exposure is not proven closed" "dns53=${dns53:-unknown}" "Ensure public TCP/UDP 53 is denied in provider and host firewall."
+  fi
+}
+
+router_ssh "GHOSTROUTE_LIVE_FILTER='$CHANNEL' GHOSTROUTE_LIVE_ACTIVE_PROBE='$ACTIVE_PROBE' GHOSTROUTE_LIVE_DEPLOY_GATE='$DEPLOY_GATE' sh -s" >"$raw_tmp" <<'REMOTE'
 set -eu
 
 emit() {
@@ -227,6 +301,7 @@ sr_port="${sr_port:-41956}"
 
 filter="${GHOSTROUTE_LIVE_FILTER:-all}"
 active_probe="${GHOSTROUTE_LIVE_ACTIVE_PROBE:-0}"
+deploy_gate="${GHOSTROUTE_LIVE_DEPLOY_GATE:-0}"
 managed_domain="${GHOSTROUTE_MANAGED_CHECK_DOMAIN:-ipify.org}"
 direct_domain="${GHOSTROUTE_DIRECT_CHECK_DOMAIN:-championat.com}"
 cover_sni="${GHOSTROUTE_COVER_SNI:-gateway.icloud.com}"
@@ -298,6 +373,7 @@ if [ "$filter" = all ]; then
   grep -q "^server=/$managed_domain/127.0.0.1#$managed_dns_forward_port\$" /jffs/configs/dnsmasq-vps-managed.conf.add 2>/dev/null && emit managed_dns_forward_target OK "DNS/catalog" "Managed DNS include points to dnscrypt-backed local forwarder" "domain=$managed_domain port=$managed_dns_forward_port" "No action." || emit managed_dns_forward_target WARN "DNS/catalog" "Managed DNS include is not using the dnscrypt-backed forwarder" "domain=$managed_domain expected_port=$managed_dns_forward_port" "Regenerate rule-sets with the current managed DNS forward target before troubleshooting clients."
   grep -q "^ipset=/$managed_domain/STEALTH_DOMAINS\$" /jffs/configs/dnsmasq-stealth.conf.add 2>/dev/null && grep -q "\"$managed_domain\"" /opt/etc/sing-box/rule-sets/stealth-domains.json 2>/dev/null && emit managed_domain_sanity OK "DNS/catalog" "Managed checker domain is present in dnsmasq catalog and sing-box rule-set" "domain=$managed_domain" "No action." || emit managed_domain_sanity CRIT "DNS/catalog" "Managed checker domain is missing from catalog or rule-set" "domain=$managed_domain" "Run catalog review/sync dry-run before applying changes."
   grep -Eq "^[[:space:]]*$direct_domain([[:space:]]*(#.*)?)?$" /jffs/configs/domains-no-vpn.txt 2>/dev/null && emit direct_domain_sanity OK "DNS/catalog" "Direct checker domain is present in domains-no-vpn" "domain=$direct_domain expected_route=direct" "No action." || emit direct_domain_sanity WARN "DNS/catalog" "Direct checker domain is missing from domains-no-vpn" "domain=$direct_domain" "Review direct-domain policy before changing catalog."
+  ! grep -q "^server=/$direct_domain/" /jffs/configs/dnsmasq-vps-managed.conf.add 2>/dev/null && ! grep -q "\"$direct_domain\"" /opt/etc/sing-box/rule-sets/stealth-domains.json 2>/dev/null && emit direct_domain_not_managed OK "DNS/catalog" "Direct checker domain is absent from managed DNS include and sing-box managed rule-set" "domain=$direct_domain expected_route=direct" "No action." || emit direct_domain_not_managed WARN "DNS/catalog" "Direct checker domain is present in managed DNS or sing-box rule-set" "domain=$direct_domain" "Remove the direct checker from managed catalogs before deploying."
   printf '%s\n' "$singbox_compact" | grep -Fq "\"server_name\":\"$cover_sni\"" && printf '%s\n' "$singbox_compact" | grep -Fq "\"handshake\":{\"server\":\"$cover_sni\",\"server_port\":443}" && emit reality_cover_sni OK "Reality SNI" "Router sing-box uses expected iCloud cover SNI" "sni=$cover_sni" "No action." || emit reality_cover_sni CRIT "Reality SNI" "Router sing-box cover SNI does not match expected iCloud value" "sni=$cover_sni" "Check generated sing-box config; do not rotate SNI blindly."
 fi
 
@@ -313,8 +389,18 @@ if [ "$active_probe" = 1 ]; then
   else
     timeout 6 nslookup "$managed_domain" 127.0.0.1 >/dev/null 2>&1 && emit active_managed_dns_query OK "Active probe" "Managed checker resolves through router dnsmasq" "domain=$managed_domain" "No action." || emit active_managed_dns_query WARN "Active probe" "Managed checker DNS resolution through router dnsmasq failed" "domain=$managed_domain" "Inspect dnsmasq managed forward target and sing-box DNS logs before changing routing."
     timeout 6 nslookup "$cover_sni" 127.0.0.1 >/dev/null 2>&1 && emit active_cover_dns_query OK "Active probe" "Reality cover SNI resolves through router dnsmasq" "sni=$cover_sni" "No action." || emit active_cover_dns_query WARN "Active probe" "Reality cover SNI DNS resolution through router dnsmasq failed" "sni=$cover_sni" "Check the sing-box DNS resolver path; mobile Reality handshakes can fail if this lookup is broken."
-    "$curl_bin" -sS --max-time 8 --proxy "socks5h://127.0.0.1:$dnscrypt_socks_port" "https://api.ipify.org" >/tmp/ghostroute-active-managed.$$ 2>/dev/null && emit active_managed_egress OK "Active probe" "Managed checker can use sing-box SOCKS/Reality path" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "No action." || emit active_managed_egress WARN "Active probe" "Managed active egress probe failed" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "Use default evidence and health report before restarting services."
+    managed_identity=""
+    direct_identity=""
+    "$curl_bin" -sS --max-time 8 --proxy "socks5h://127.0.0.1:$dnscrypt_socks_port" "https://api.ipify.org" >/tmp/ghostroute-active-managed.$$ 2>/dev/null && managed_identity="$(cat /tmp/ghostroute-active-managed.$$ 2>/dev/null || true)" && emit active_managed_egress OK "Active probe" "Managed checker can use sing-box SOCKS/Reality path" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "No action." || emit active_managed_egress WARN "Active probe" "Managed active egress probe failed" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "Use default evidence and health report before restarting services."
     "$curl_bin" -skI --max-time 8 "https://$direct_domain" >/dev/null 2>&1 && emit active_direct_egress OK "Active probe" "Direct checker domain is reachable from router" "domain=$direct_domain" "No action." || emit active_direct_egress WARN "Active probe" "Direct checker domain probe failed" "domain=$direct_domain" "Could be remote site/network; compare with client symptom before changing rules."
+    direct_identity="$("$curl_bin" -sS --max-time 8 "https://api.ipify.org" 2>/dev/null || true)"
+    if [ -n "$managed_identity" ] && [ -n "$direct_identity" ] && [ "$managed_identity" != "$direct_identity" ]; then
+      emit active_direct_identity OK "Active probe" "Router direct identity differs from managed Reality identity" "identity_match=0" "No action."
+    elif [ -n "$managed_identity" ] && [ -n "$direct_identity" ]; then
+      emit active_direct_identity WARN "Active probe" "Router direct identity matches managed Reality identity" "identity_match=1" "Check router OUTPUT/default path; direct/RU traffic may be using the managed egress."
+    else
+      emit active_direct_identity WARN "Active probe" "Could not compare direct and managed egress identity" "identity_match=unknown" "Check curl/ipify reachability before deploying."
+    fi
     "$curl_bin" -skI --max-time 8 "https://$cover_sni" >/dev/null 2>&1 && emit active_cover_sni OK "Active probe" "iCloud cover SNI is reachable from router" "sni=$cover_sni" "No action." || emit active_cover_sni WARN "Active probe" "iCloud cover SNI reachability probe failed" "sni=$cover_sni" "Check WAN/DNS reachability; do not rotate SNI from one failed probe."
     rm -f /tmp/ghostroute-active-managed.$$
   fi
@@ -322,23 +408,53 @@ fi
 REMOTE
 
 append_vps_router_check
+append_vps_edge_check
 raw="$(cat "$raw_tmp")"
 
 stamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 rendered_tmp="$(mktemp)"
 trap 'rm -f "$raw_tmp" "$rendered_tmp"' EXIT
-RAW_INPUT="$raw" ruby -rjson -rtime - "$JSON_MODE" "$ACTIVE_PROBE" "$CHANNEL" "$stamp" >"$rendered_tmp" <<'RUBY'
+RAW_INPUT="$raw" ruby -rjson -rtime - "$JSON_MODE" "$ACTIVE_PROBE" "$CHANNEL" "$stamp" "$DEPLOY_GATE" >"$rendered_tmp" <<'RUBY'
 json_mode = ARGV[0] == "1"
 active_probe = ARGV[1] == "1"
 channel = ARGV[2]
 generated_at = ARGV[3]
+deploy_gate = ARGV[4] == "1"
 
 rank = { "OK" => 0, "N/A" => 0, "IDLE" => 0, "WARN" => 1, "CRIT" => 2 }
+gate_required = %w[
+  channel_a_lan_listener
+  channel_a_lan_redirect
+  channel_a_udp443_drop
+  home_reality_chain
+  channel_b_chain
+  channel_c_shadowrocket_chain
+  dnsmasq_listener
+  managed_dns_forward_target
+  managed_domain_sanity
+  direct_domain_sanity
+  direct_domain_not_managed
+  reality_cover_sni
+  active_probe_tooling
+  active_managed_dns_query
+  active_cover_dns_query
+  active_managed_egress
+  active_direct_egress
+  active_direct_identity
+  active_cover_sni
+  vps_edge_tcp443_listener
+  vps_edge_public_dns53_closed
+].to_h { |id| [id, true] }
 checks = ENV.fetch("RAW_INPUT", "").each_line.map do |line|
   line = line.chomp
   next unless line.start_with?("CHECK|")
   _, id, status, component, summary, evidence, action = line.split("|", 7)
+  if deploy_gate && gate_required[id] && status != "OK"
+    status = "CRIT"
+    summary = "Deploy gate failed: #{summary}"
+    action = "#{action} This check must be OK before mutating deploy."
+  end
   fields = {}
   evidence.to_s.scan(/([A-Za-z0-9_]+)=("[^"]*"|[^ ]+)/) do |key, value|
     fields[key] = value.to_s.sub(/\A"/, "").sub(/"\z/, "")
@@ -360,9 +476,10 @@ payload = {
   schema_version: 1,
   command: "ghostroute-health-monitor live-check",
   generated_at: generated_at,
-  mode: active_probe ? "active-probe" : "default",
+  mode: deploy_gate ? "deploy-gate" : active_probe ? "active-probe" : "default",
+  deploy_gate: deploy_gate,
   channel: channel,
-  estimated_duration: active_probe ? "15-30s" : "1-8s",
+  estimated_duration: deploy_gate ? "40-90s" : active_probe ? "15-30s" : "1-8s",
   overall_status: overall,
   exit_code: overall == "CRIT" ? 2 : overall == "WARN" ? 1 : 0,
   checks: checks

@@ -23,6 +23,8 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
     ...(model.snapshots.health?.payload?.checks || []),
     ...(model.snapshots.leaks?.payload?.checks || []),
   ];
+  const deployGateSnapshot = model.snapshots.deploy_gate?.payload;
+  const deployGateChecks = deployGateSnapshot?.checks || [];
   const leakSnapshot = model.snapshots.leaks?.payload;
   return (
     <ConsoleShell active="/health" model={model} filters={filters}>
@@ -88,6 +90,46 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
               ))}
             </tbody>
           </table>
+        )}
+      </section>
+      <section className="card" style={{ marginBottom: 14 }}>
+        <div className="toolbar">
+          <div>
+            <h2>Deploy Gate</h2>
+            <p>Pre-deploy canary for managed Wi-Fi, VPS edge and Channel A/B/C.</p>
+          </div>
+          <StatusBadge value={deployGateSnapshot?.overall_status || "UNKNOWN"} />
+        </div>
+        {!deployGateSnapshot ? (
+          <EmptyState title="Нет deploy-gate snapshot" />
+        ) : (
+          <>
+            <p className="subtle">
+              mode: {deployGateSnapshot.mode || "unknown"}; estimated: {deployGateSnapshot.estimated_duration || "n/a"}; generated: {shortDateTime(deployGateSnapshot.generated_at)}
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Status</th>
+                  <th>Summary</th>
+                  <th>Evidence</th>
+                  <th>Suggested action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deployGateChecks.map((row: any) => (
+                  <tr key={row.id || row.summary}>
+                    <td>{row.component ? `${row.component} / ${row.id}` : row.id}</td>
+                    <td><StatusBadge value={row.status} /></td>
+                    <td>{row.summary}</td>
+                    <td>{row.evidence || "n/a"}</td>
+                    <td>{row.suggested_action || "Review gate evidence before deploy."}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </section>
       <section className="card">
