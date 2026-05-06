@@ -69,10 +69,11 @@ The dedicated public listener defaults to nginx and proxies to
 certificate storage and the separate Reality/layer4 surface. Legacy dedicated
 Caddy Console blocks may remain only as rollback configuration and should be
 removed or disabled while nginx owns the Console port. The dedicated Console
-port is TCP/TLS only; browsers must not depend on HTTP/3/QUIC for Console
-access. Provider-level firewalls must allow the configured public TCP port;
-host UFW alone is not enough if the cloud firewall drops packets before they
-reach the VPS.
+port is TCP/TLS only and uses a small nginx TLS buffer so larger HTML responses
+are split into smaller writes over the operator network path; browsers must not
+depend on HTTP/3/QUIC for Console access. Provider-level firewalls must allow
+the configured public TCP port; host UFW alone is not enough if the cloud
+firewall drops packets before they reach the VPS.
 
 Operator-local client identity is stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console

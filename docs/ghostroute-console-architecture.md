@@ -167,8 +167,10 @@ This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
 a second owner for the Reality surface. Caddy still owns certificate storage and
 the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may
 remain only as rollback configuration and must be disabled while nginx owns the
-Console port. Provider-level firewalls must allow the configured Console TCP
-port before host UFW or nginx can receive traffic. The data directory is
+Console port. The nginx listener uses an explicit small TLS buffer so larger
+HTML pages do not depend on a single large TLS write over the operator network
+path. Provider-level firewalls must allow the configured Console TCP port before
+host UFW or nginx can receive traffic. The data directory is
 `/opt/ghostroute-console/data`; repo sources are mounted read-only at
 `/opt/ghostroute-console/repo`.
 
