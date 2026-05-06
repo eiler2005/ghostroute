@@ -30,6 +30,7 @@ case "$command" in
   modules/traffic-observatory/bin/live-events-report|\
   modules/ghostroute-health-monitor/bin/router-health-report|\
   modules/ghostroute-health-monitor/bin/leak-check|\
+  modules/ghostroute-health-monitor/bin/live-check|\
   modules/dns-catalog-intelligence/bin/domain-report|\
   modules/dns-catalog-intelligence/bin/dns-forensics-report|\
   modules/ghostroute-console/bin/alarm-state|\
@@ -38,6 +39,7 @@ case "$command" in
   "$repo_root"/modules/traffic-observatory/bin/live-events-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/router-health-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/leak-check|\
+  "$repo_root"/modules/ghostroute-health-monitor/bin/live-check|\
   "$repo_root"/modules/dns-catalog-intelligence/bin/domain-report|\
   "$repo_root"/modules/dns-catalog-intelligence/bin/dns-forensics-report|\
   "$repo_root"/modules/ghostroute-console/bin/alarm-state)

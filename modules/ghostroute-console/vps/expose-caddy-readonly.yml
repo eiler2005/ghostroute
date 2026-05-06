@@ -15,7 +15,7 @@
     console_tls_key_file: "/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ console_public_host }}/{{ console_public_host }}.key"
     console_nginx_root: "{{ console_root }}/nginx"
     console_buffer_proxy_port: "{{ ghostroute_console_buffer_proxy_port | default(3001) }}"
-    console_public_listener: "{{ ghostroute_console_public_listener | default('caddy') }}"
+    console_public_listener: "{{ ghostroute_console_public_listener | default('nginx') }}"
     console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
     console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
     console_basic_auth_password: "{{ lookup('ansible.builtin.ini', 'password type=properties file=' ~ console_basic_auth_file) }}"
@@ -130,8 +130,7 @@
               header X-Robots-Tag "noindex, nofollow"
               header Referrer-Policy "no-referrer"
               header -Alt-Svc
-              reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }} {
-                  flush_interval -1
+              reverse_proxy 127.0.0.1:3000 {
                   transport http {
                       versions 1.1
                       keepalive off
@@ -141,6 +140,13 @@
           }
       no_log: true
       when: console_public_listener == 'caddy'
+
+    - name: Remove GhostRoute Console dedicated Caddy listener when nginx owns the public port
+      ansible.builtin.replace:
+        path: /etc/caddy/Caddyfile
+        regexp: "(?ms)^\\s*# BEGIN GHOSTROUTE CONSOLE DEDICATED LISTENER\\n.*?^\\s*# END GHOSTROUTE CONSOLE DEDICATED LISTENER[^\\n]*\\n"
+        replace: ""
+      when: console_public_listener == 'nginx'
 
     - name: Remove existing GhostRoute Console L4 bridge
       ansible.builtin.replace:
@@ -165,6 +171,13 @@
               protocols h1
           }
       when: console_public_listener == 'caddy'
+
+    - name: Remove Console Caddy HTTP/1 server override when nginx owns the public port
+      ansible.builtin.replace:
+        path: /etc/caddy/Caddyfile
+        regexp: "(?ms)^\\s*# BEGIN GHOSTROUTE CONSOLE H1 H2 ONLY\\n.*?^\\s*# END GHOSTROUTE CONSOLE H1 H2 ONLY[^\\n]*\\n"
+        replace: ""
+      when: console_public_listener == 'nginx'
 
     - name: Allow inbound Console dedicated HTTPS port
       community.general.ufw:
@@ -238,7 +251,6 @@
                   ssl_certificate {{ console_tls_cert_file }};
                   ssl_certificate_key {{ console_tls_key_file }};
                   ssl_protocols TLSv1.2 TLSv1.3;
-                  ssl_buffer_size 512;
 
                   auth_basic "GhostRoute Console";
                   auth_basic_user_file {{ console_root }}/auth/nginx.htpasswd;
@@ -256,7 +268,10 @@
                       proxy_set_header Connection close;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                      proxy_buffering off;
+                      proxy_buffering on;
+                      proxy_buffer_size 16k;
+                      proxy_buffers 16 64k;
+                      proxy_busy_buffers_size 128k;
                       proxy_read_timeout 60s;
                       proxy_send_timeout 60s;
                   }

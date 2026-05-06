@@ -161,16 +161,16 @@ thresholds: stale after 75 minutes during the day and 210 minutes overnight.
 ## Deployment And Access
 
 The deployed Console app runs as a single Docker container on
-`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 Caddy HTTPS
+`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 nginx HTTPS
 listener with Basic Auth and a small local buffering proxy in front of the app.
 This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
-a second public listener owner. Legacy nginx files may remain on disk for
-rollback, but the nginx listener must be stopped when Caddy owns the Console
-port. The dedicated Console listener is pinned to HTTP/1.1 and HTTP/2; HTTP/3
-is intentionally not advertised on that port. Provider-level firewalls must
-allow the configured Console TCP port before host UFW or Caddy can receive
-traffic. The data directory is `/opt/ghostroute-console/data`; repo sources are
-mounted read-only at `/opt/ghostroute-console/repo`.
+a second owner for the Reality surface. Caddy still owns certificate storage and
+the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may
+remain only as rollback configuration and must be disabled while nginx owns the
+Console port. Provider-level firewalls must allow the configured Console TCP
+port before host UFW or nginx can receive traffic. The data directory is
+`/opt/ghostroute-console/data`; repo sources are mounted read-only at
+`/opt/ghostroute-console/repo`.
 
 The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
@@ -183,6 +183,19 @@ small TTL plus the latest snapshot timestamp; write/action endpoints do not use
 that cache.
 Playwright performance checks cover the main pages and JSON APIs with local
 budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
+
+Browser loading incidents must be diagnosed from the browser edge first. For a
+blank or long-loading page, collect a Chrome DevTools Network waterfall with
+Preserve log and Disable cache enabled, or Safari/WebKit Web Inspector Network
+evidence for Safari/iOS. Compare the HTML document, `?_rsc` requests, static
+chunks and API timings with a VPS-local curl baseline to
+`127.0.0.1:3000/health` and a public curl baseline to the dedicated Console
+URL. A slow document TTFB points toward server render/read-model work; fast TTFB
+with a slow body points toward proxy/TLS/client-path behavior; failed chunks
+point toward static asset/auth/cache handling; hanging `?_rsc` requests point
+toward App Router navigation. Do not change Channel A/B/C, managed DNS,
+sing-box, dnsmasq or router firewall while investigating Console-only browser
+loading.
 
 The restricted SSH surface is `ghostroute_readonly` with forced-command
 whitelisting. Whitelisted commands must require `--json` and must remain

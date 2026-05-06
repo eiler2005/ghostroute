@@ -43,10 +43,10 @@ It still does not mutate router runtime or deploy catalog changes implicitly.
 - No seed data in production UI. Empty snapshots render as empty states.
 - JSON reports are the machine contract; Markdown remains for humans and LLMs.
 - Runtime access is protected by Basic Auth. The public read-only deployment
-  uses a dedicated Caddy HTTPS listener on a non-443 port, backed by a tiny local
-  buffering proxy, so Console does not share the Reality/layer4 `:443` listener.
-  Tailnet-only access through `tailscale serve` remains a valid hardening
-  option, but it is not required for the MVP.
+  uses a dedicated nginx HTTPS listener on a non-443 port, backed by a tiny
+  local buffering proxy, so Console does not share the Reality/layer4 `:443`
+  listener. Tailnet-only access through `tailscale serve` remains a valid
+  hardening option, but it is not required for the MVP.
 
 ## Data Directory
 
@@ -64,13 +64,15 @@ VPS runtime uses:
 
 The collector writes raw JSON snapshots under `snapshots/` and an embedded
 SQLite database at `ghostroute.db`.
-The dedicated public listener is owned by Caddy and proxies to
-`/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS. Legacy nginx files
-may remain on disk but should be stopped when Caddy owns the Console port.
-The Caddy listener is pinned to HTTP/1.1 and HTTP/2 so browsers do not try
-HTTP/3/QUIC on the dedicated Console port. Provider-level firewalls must allow
-the configured public TCP port; host UFW alone is not enough if the cloud
-firewall drops packets before they reach the VPS.
+The dedicated public listener defaults to nginx and proxies to
+`/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS. Caddy still owns
+certificate storage and the separate Reality/layer4 surface. Legacy dedicated
+Caddy Console blocks may remain only as rollback configuration and should be
+removed or disabled while nginx owns the Console port. The dedicated Console
+port is TCP/TLS only; browsers must not depend on HTTP/3/QUIC for Console
+access. Provider-level firewalls must allow the configured public TCP port;
+host UFW alone is not enough if the cloud firewall drops packets before they
+reach the VPS.
 
 Operator-local client identity is stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console
@@ -167,6 +169,69 @@ after 210 minutes overnight.
 The public Console URL uses the configured dedicated HTTPS port, not bare
 `:443`; bare `:443` remains reserved for the existing Reality/layer4 surface
 and may intentionally return 404 for the Console hostname.
+The dedicated public listener defaults to nginx on the non-443 Console port and
+proxies through the local Python buffering proxy to the Next.js container on
+`127.0.0.1:3000`; Caddy still owns certificate storage and the separate
+Reality/layer4 surface.
+
+## Browser Loading Diagnostics
+
+If `/health` or another Console page appears blank or takes much longer than
+the usual first render, do not tune nginx, Caddy, Next.js or router runtime
+blindly. First collect browser evidence, then compare it with the server-side
+baseline. If the page is currently fast, leave runtime unchanged and treat the
+existing `nginx -> buffer proxy -> Next.js` path as healthy.
+
+Browser evidence:
+
+- Chrome: open DevTools, use the Network panel, enable Preserve log and Disable
+  cache, hard reload the page, then inspect the `Document`, `?_rsc`, JS chunks,
+  CSS and API rows. Save a HAR/export if available; otherwise keep a waterfall
+  screenshot and the names of stalled requests.
+- Safari on macOS or iOS: use Web Inspector Network, reload the same page and
+  compare whether the stalled resource is the HTML document, an RSC request,
+  a static chunk or an API call. For iPhone, use Safari remote Web Inspector
+  from the Mac before changing server config.
+
+Classify the failure before changing anything:
+
+- slow TTFB on the HTML document means a Console server/render/SQLite/snapshot
+  issue is more likely.
+- fast TTFB with slow download or a mid-body stall points to proxy, TLS,
+  transport, MTU or client-path behavior.
+- JS or CSS chunk failures point to static asset, auth, proxy or browser cache
+  handling.
+- hanging `?_rsc` requests point to Next.js App Router navigation/RSC behavior.
+- fast API responses with stuck HTML point to HTML streaming, proxy buffering or
+  client transport, not to the collector itself.
+
+Server-side baseline:
+
+```bash
+# From the VPS:
+curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
+  http://127.0.0.1:3000/health
+
+curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
+  https://<console-host>:<console-port>/health
+
+# From the operator workstation, with Basic Auth configured locally:
+curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
+  -u '<console-user>:<console-password>' \
+  https://<console-host>:<console-port>/api/health
+```
+
+Use the browser waterfall and these timings together: server-local fast plus
+operator-browser slow means the next change belongs in the Console public
+listener/proxy/client path, not in Channel A/B/C, managed DNS, sing-box or
+router firewall.
+
+References for this runbook: Chrome DevTools Network
+(`https://developer.chrome.com/docs/devtools/network/overview`),
+Safari/WebKit Web Inspector Network (`https://webkit.org/web-inspector/network-tab/`),
+nginx proxy buffering (`https://nginx.org/en/docs/http/ngx_http_proxy_module.html`)
+and Next.js App Router streaming
+(`https://nextjs.org/learn/dashboard-app/streaming`) docs.
 
 Router access for this collector is runtime-secret only. Clean deploys should
 store `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
