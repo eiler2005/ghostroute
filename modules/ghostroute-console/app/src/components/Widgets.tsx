@@ -24,7 +24,7 @@ export function shortDateTime(value?: string | number | Date) {
   return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
 
-export function timeWithMillis(value?: string | number | Date) {
+export function timeWithMillis(value?: string | number | Date, alwaysShowMillis = false) {
   if (!value) return "n/a";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -40,7 +40,7 @@ export function timeWithMillis(value?: string | number | Date) {
   }).formatToParts(date);
   const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
   const base = `${pick("hour")}:${pick("minute")}:${pick("second")}`;
-  if (!hasExplicitMillis && millis === 0) return base;
+  if (!alwaysShowMillis && !hasExplicitMillis && millis === 0) return base;
   return `${base}.${String(millis).padStart(3, "0")}`;
 }
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, Users, Wifi } from "lucide-react";
+import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, SlidersHorizontal, Users, Wifi } from "lucide-react";
 import { shortDateTime } from "@/components/Widgets";
 import { filterOptions } from "@/lib/server/selectors";
 import type { ConsoleFilters, ConsoleModel } from "@/lib/server/types";
@@ -121,7 +121,7 @@ export function ConsoleShell({
               ))}
             </select>
             <input name="search" defaultValue={filters.search || ""} placeholder="Поиск..." />
-            <button type="submit">Фильтр</button>
+            <button type="submit"><span>Фильтры</span><SlidersHorizontal size={15} /></button>
           </form>
         </header>
         <div className="source-strip" title={sourceTitle}>

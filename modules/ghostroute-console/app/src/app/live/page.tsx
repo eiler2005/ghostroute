@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { LiveStreamPanel } from "@/components/LiveStreamPanel";
-import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, shortDateTime, StatusBadge, timeWithMillis } from "@/components/Widgets";
+import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { buildLiveModel, listFlowSessions, listLiveEvents } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -39,8 +39,6 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         route: row.route || "Unknown",
       }));
   const serviceTotal = serviceEvents.rows.length > 0 ? serviceEvents.total : model.dnsQueries.length;
-  const approxClientPages = Math.max(1, Math.ceil(liveEvents.total / liveEvents.pageSize));
-  const approxServicePages = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -55,17 +53,17 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
 
   return (
     <ConsoleShell active="/live" model={model} filters={filters}>
-      <div className="grid cards">
-        <section className="card"><h3>Mode</h3><StatusBadge value="SSE" /><p>events snapshot with polling fallback</p></section>
-        <section className="card"><h3>Freshness</h3><strong>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</strong><p>{model.freshnessStatus}</p></section>
-        <section className="card"><h3>Update</h3><strong>~10m</strong><p>Live events refresh cadence</p></section>
-        <section className="card"><h3>Flows</h3><strong>{trafficPage.total}</strong><p>client activity rows</p></section>
-        <section className="card"><h3>Clients</h3><strong>{activeClients.length}</strong><p>top observed devices</p></section>
-        <section className="card"><h3>DNS</h3><strong>{model.dnsQueries.length}</strong><p>DNS-interest rows</p></section>
-        <section className="card"><h3>Alerts</h3><strong>{model.alerts.length}</strong><p>open signals</p></section>
+      <div className="grid live-kpis">
+        <section className="card compact-kpi"><h3>Mode</h3><strong className="kpi-pill">SSE</strong><p>events snapshot with polling fallback</p></section>
+        <section className="card compact-kpi"><h3>Freshness</h3><strong>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</strong><p>{model.freshnessStatus}</p></section>
+        <section className="card compact-kpi"><h3>Update</h3><strong>~10m</strong><p>Live events refresh cadence</p></section>
+        <section className="card compact-kpi"><h3>Flows</h3><strong>{trafficPage.total}</strong><p>client activity rows</p></section>
+        <section className="card compact-kpi"><h3>Clients</h3><strong>{activeClients.length}</strong><p>top observed devices</p></section>
+        <section className="card compact-kpi"><h3>DNS</h3><strong>{model.dnsQueries.length}</strong><p>DNS-interest rows</p></section>
+        <section className="card compact-kpi"><h3>Alerts</h3><strong>{model.alerts.length}</strong><p>open signals</p></section>
       </div>
 
-      <div style={{ marginTop: 14 }}>
+      <div className="live-primary">
         <LiveStreamPanel
           initial={{
             generated_at: model.generatedAt,
@@ -77,8 +75,6 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
           }}
           visibleCount={eventsPageSize}
         />
-        <div className="page-note">Страница {liveEvents.page} из {approxClientPages}; целевой дизайн: 100-150 событий на странице и до ~30 страниц истории без перегруза первого экрана.</div>
-        <div className="page-note">Service/background: страница {servicePage} из {approxServicePages}.</div>
         <Pagination
           basePath="/live"
           page={liveEvents.page}
@@ -91,27 +87,58 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         />
       </div>
 
-      <section className="card" style={{ marginTop: 14 }}>
-        <div className="toolbar">
-          <div>
+      <section className="card live-stream-card service-events-card">
+        <div className="live-stream-toolbar">
+          <div className="live-stream-title">
             <h2>Service/background live events</h2>
-            <p>Служебные DNS/CDN/Apple/system события отдельно, чтобы не забивать клиентский live.</p>
+            <span>показано {serviceRows.length} из {serviceTotal}</span>
           </div>
-          <span className="subtle">показано {serviceRows.length} из {serviceTotal}</span>
         </div>
+        <div className="live-stream-meta">Служебные DNS/CDN/Apple/system события отдельно, чтобы не забивать клиентский live.</div>
         {serviceRows.length === 0 ? (
           <EmptyState title="Нет service/background events" />
         ) : (
-          <div className="live-feed">
-            {serviceRows.map((row, idx) => (
-              <div className="live-feed-row" key={`${row.event_type || "event"}-${row.id || idx}`}>
-                <span>{timeWithMillis(row.occurred_at)}</span>
-                <strong>{row.event_type || "event"}</strong>
-                <small>{row.origin || row.client || "System"} → {row.destinationLabel || row.destination || row.summary || "destination"}</small>
-                <ChannelBadge value={row.channel} />
-                <RouteBadge value={row.route || "Unknown"} />
-              </div>
-            ))}
+          <div className="live-table-wrap service-table-wrap">
+            <table className="live-events-table service-events-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Событие</th>
+                  <th>Маршрут / Назначение</th>
+                  <th>Клиент</th>
+                  <th>Канал / Route</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {serviceRows.map((row, idx) => {
+                  const eventType = row.event_type || "event";
+                  const origin = row.origin || row.client || "System";
+                  const destination = row.destinationLabel || row.destination || row.summary || "destination";
+                  const clientIp = (row as Record<string, any>).client_ip;
+                  return (
+                    <tr key={`${eventType}-${row.id || idx}`}>
+                      <td className="live-col-time">{timeWithMillis(row.occurred_at, true)}</td>
+                      <td className="live-col-event">
+                        <span className={`event-dot event-${String(eventType).split(".")[0]}`} />
+                        <strong>{eventType}</strong>
+                      </td>
+                      <td className="live-col-destination">
+                        <span>{origin}</span>
+                        <i>→</i>
+                        <strong>{destination}</strong>
+                      </td>
+                      <td className="live-col-client">{row.client || clientIp || "service/background"}</td>
+                      <td className="live-col-route route-stack">
+                        <ChannelBadge value={row.channel} />
+                        <RouteBadge value={row.route || "Unknown"} />
+                      </td>
+                      <td className="live-col-status status-text-ok">OK</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
         <Pagination

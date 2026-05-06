@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChannelBadge, RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
+import { useEffect, useRef, useState } from "react";
+import { Download, Pause, Play } from "lucide-react";
+import { RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 
 type LivePayload = {
   generated_at: string;
@@ -15,39 +16,101 @@ type LivePayload = {
 export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: LivePayload; visibleCount?: number }) {
   const [payload, setPayload] = useState(initial);
   const [mode, setMode] = useState("SSE connecting");
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
 
   useEffect(() => {
     const source = new EventSource("/api/live/stream");
     source.addEventListener("snapshot", (event) => {
-      setPayload(JSON.parse((event as MessageEvent).data));
-      setMode("SSE live");
+      if (!pausedRef.current) {
+        setPayload(JSON.parse((event as MessageEvent).data));
+      }
+      setMode("SSE connected");
     });
     source.onerror = () => {
-      setMode("SSE fallback");
+      setMode("SSE connecting");
     };
     return () => source.close();
   }, []);
 
+  const togglePaused = () => {
+    setPaused((value) => {
+      pausedRef.current = !value;
+      return !value;
+    });
+  };
+
+  const exportPayload = () => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ghostroute-live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const rows = [...(payload.events || []), ...(payload.route_decisions || [])].slice(0, visibleCount);
+
   return (
     <section className="card live-stream-card">
-      <div className="toolbar">
-        <div>
+      <div className="live-stream-toolbar">
+        <div className="live-stream-title">
           <h2>Live event stream</h2>
-          <p>Последние client events из log snapshots. Автообновление около 10 минут; service/background показан отдельно.</p>
+          <span>Всего событий: {new Intl.NumberFormat("ru-RU").format(payload.total_events || (payload.events || []).length)}</span>
         </div>
-        <span className={`badge status-${payload.freshness_status === "fresh" ? "ok" : "warn"}`}>{mode}</span>
+        <div className="live-stream-actions">
+          <span className={`badge sse-badge status-${mode.includes("connected") ? "ok" : "warn"}`}>{mode}</span>
+          <button className="icon-button" type="button" onClick={togglePaused} title={paused ? "Продолжить live updates" : "Пауза live updates"} aria-label={paused ? "Продолжить live updates" : "Пауза live updates"}>
+            {paused ? <Play size={15} /> : <Pause size={15} />}
+          </button>
+          <button className="muted-button live-export-button" type="button" onClick={exportPayload}>
+            <Download size={15} />
+            <span>Экспорт</span>
+          </button>
+        </div>
       </div>
-      <div className="page-note">Последнее обновление: {shortDateTime(payload.generated_at)} · показано {Math.min((payload.events || []).length, visibleCount)} из {payload.total_events || (payload.events || []).length}</div>
-      <div className="live-feed">
-        {[...(payload.events || []), ...(payload.route_decisions || [])].slice(0, visibleCount).map((row, idx) => (
-          <div className="live-feed-row" key={`${row.event_type || "decision"}-${row.event_id || row.id || idx}`}>
-            <span>{timeWithMillis(row.occurred_at || payload.generated_at)}</span>
-            <strong>{row.event_type || "route.decision"}</strong>
-            <small>{row.origin || row.client || row.client_ip || "System"} → {row.destinationLabel || row.destination || row.dns_qname || row.summary || "destination"}</small>
-            <ChannelBadge value={row.channel} />
-            <RouteBadge value={row.route || "Unknown"} />
-          </div>
-        ))}
+      <div className="live-stream-meta">Автообновление около 10 минут · последнее: {shortDateTime(payload.generated_at)} · показано {rows.length}</div>
+      <div className="live-table-wrap">
+        <table className="live-events-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Событие</th>
+              <th>Маршрут / Назначение</th>
+              <th>Клиент</th>
+              <th>Канал / Route</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const eventType = row.event_type || "route.decision";
+              const destination = row.destinationLabel || row.destination || row.dns_qname || row.summary || "destination";
+              const origin = row.origin || row.source_log || "Router/sing-box";
+              const client = row.client || row.client_label || row.client_ip || "not observed";
+              const status = row.status || row.result || (String(row.route || "").toLowerCase() === "blocked" ? "Blocked" : "OK");
+              const statusSlug = String(status).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+              return (
+                <tr key={`${eventType}-${row.event_id || row.id || idx}`}>
+                  <td className="live-col-time">{timeWithMillis(row.occurred_at || payload.generated_at, true)}</td>
+                  <td className="live-col-event">
+                    <span className={`event-dot event-${String(eventType).split(".")[0]}`} />
+                    <strong>{eventType}</strong>
+                  </td>
+                  <td className="live-col-destination">
+                    <span>{origin}</span>
+                    <i>→</i>
+                    <strong>{destination}</strong>
+                  </td>
+                  <td className="live-col-client">{client}</td>
+                  <td className="live-col-route"><RouteBadge value={row.route || "Unknown"} /></td>
+                  <td className={`live-col-status status-text-${statusSlug}`}>{status}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );
