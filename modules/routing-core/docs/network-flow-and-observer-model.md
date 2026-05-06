@@ -40,12 +40,12 @@ compatibility/native paths:
 | Client at home | Browser/app on Wi-Fi/LAN | Работает без VPN-приложения; роутер принимает решение прозрачно |
 | Router OS | ASUS RT-AX88U Pro + Asuswrt-Merlin | dnsmasq, ipset, iptables, sing-box hooks |
 | Router DNS | `dnsmasq` | Наполняет `STEALTH_DOMAINS`, фильтрует AAAA while IPv6 is off |
-| Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS, при необходимости через локальный sing-box SOCKS |
+| Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS through local sing-box SOCKS/Reality |
 | Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow/redirect home mobile ingress ports |
 | Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `channel-b-relay-socks`, `channel-c-naive-in`, `channel-c-shadowrocket-http-in`, `vps-dns-in`, `reality-out`, `direct-out` |
 | VPS ingress | VPS host + Caddy L4 TCP/443 | Принимает router-side Reality connection |
 | VPS proxy | Existing `3x-ui`/Xray Docker container | Финальный Reality ingress перед выходом в интернет |
-| VPS DNS | Unbound on restricted `:15353` listeners | Managed-domain DNS resolver; UFW allows it only from the Xray Docker bridge |
+| VPS restricted DNS | Unbound on restricted private listeners, when enabled | Optional legacy/private resolver leg; generated managed DNS now uses dnscrypt-over-Reality |
 | Cold fallback | Preserved `wgc1_*` NVRAM | Не активен; включается только emergency script вручную |
 
 ## Scenario A: Home Wi-Fi / LAN
@@ -232,23 +232,23 @@ Expected website-facing exit: домашний российский WAN IP.
 Wi-Fi/LAN or mobile plain DNS
   -> router dnsmasq
   -> managed foreign name:
-       server=/domain/127.0.0.1#<vps-dns-forward-port>
-       -> sing-box vps-dns-in
-       -> hijack-dns
-       -> vps-dns-server over reality-out
-       -> VPS Unbound :15353
+       server=/domain/127.0.0.1#<dnscrypt-port>
+       -> dnscrypt-proxy
+       -> sing-box SOCKS
+       -> reality-out
+       -> dnscrypt upstream
   -> RU/direct/default name:
        dnsmasq default upstream
        -> home/RF/default resolver
 ```
 
 This DNS path is policy-based, not "all DNS through VPS". Managed foreign
-services get consistent VPS web egress plus VPS DNS egress, while Russian or
-direct/default services do not get resolved through the VPS resolver.
+lookups use dnscrypt-over-Reality, while Russian or direct/default services do
+not get resolved through the managed path.
 
-Because the VPS Reality backend is the existing `3x-ui`/Xray Docker container,
-the DNS target is `vps_unbound_reality_target_host:15353`. UFW allows that port
-only from the Xray Docker bridge, and public DNS `53/tcp,udp` remains closed.
+The optional VPS Unbound resolver is not public. If enabled, its restricted
+port is for host/container/private diagnostics only. Public DNS `53/tcp,udp`
+remains closed.
 
 ## Scenario G: Router-Originated Traffic
 
@@ -303,8 +303,8 @@ what the LTE carrier saw as the first hop.
   TCP/<home-channel-c-public-port>.
 - Managed destinations route to `reality-out`.
 - Non-managed destinations from mobile route to `direct-out`.
-- Managed foreign DNS reaches `vps-dns-in`, is hijacked to `vps-dns-server`,
-  and crosses Reality to VPS Unbound `:15353`.
+- Managed foreign DNS reaches dnscrypt-proxy through the generated dnsmasq
+  include, then crosses Reality via local sing-box SOCKS.
 - RU/direct/default DNS stays on the home/RF/default resolver path.
 - `STEALTH_DOMAINS` is the active domain set.
 - `VPN_STATIC_NETS` remains as the historical static CIDR set name.

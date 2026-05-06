@@ -51,7 +51,7 @@ server=/example.com/9.9.9.9@wgc1
 DNS upstream теперь policy-based:
 
 ```text
-managed foreign domains -> /jffs/configs/dnsmasq-vps-managed.conf.add -> 127.0.0.1#<vps-dns-forward-port>
+managed foreign domains -> /jffs/configs/dnsmasq-vps-managed.conf.add -> 127.0.0.1#<dnscrypt-port> -> dnscrypt -> sing-box SOCKS/Reality
 RU/direct/default domains -> dnsmasq default home/RF resolver
 ```
 

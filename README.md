@@ -378,7 +378,8 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
-  policy DNS split via dnsmasq + sing-box vps-dns-in
+  policy DNS split via dnsmasq + dnscrypt-proxy over sing-box SOCKS/Reality
+  sing-box vps-dns-in remains for DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
@@ -386,10 +387,12 @@ VPS:
   shared system Caddy with layer4 plugin on :443
   existing 3x-ui/Xray Docker container behind Caddy
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
-  Unbound managed-DNS resolver on restricted :15353 listeners:
+  optional restricted/private DNS resolver support:
     - 127.0.0.1 for host checks
-    - Docker bridge / configured Reality target for Xray-routed DNS
-    - UFW allows :15353 only from the Xray Docker bridge
+    - Docker bridge / configured private target when enabled
+    - host firewall allows restricted DNS only from trusted private sources
+  public TCP/443 must be allowed by provider and host firewalls for Reality/Caddy
+  public TCP/UDP 53 must stay denied
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   stealth stack under /opt/stealth
 
@@ -563,11 +566,12 @@ Expected invariants:
 - Router-side `sing-box` accepts `reality-in` on `0.0.0.0:<home-reality-port>`.
 - Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
 - Plain DNS from Wi-Fi/LAN and mobile Channels A/B/C reaches router dnsmasq.
-- Managed/foreign DNS goes through `dnsmasq -> vps-dns-in -> hijack-dns ->
-  vps-dns-server -> reality-out -> VPS Unbound`; RU/direct/default DNS stays on
-  the home/RF/default resolver path.
-- VPS Unbound `:15353` is not public: UFW allows it only from the Xray Docker
-  bridge, while public `53/tcp,udp` is denied.
+- Managed/foreign DNS goes through `dnsmasq -> dnscrypt-proxy -> sing-box SOCKS
+  -> reality-out`; RU/direct/default DNS stays on the home/RF/default resolver
+  path. Router `vps-dns-in` remains for DNS hijack compatibility, but it is no
+  longer the generated managed-domain forward target.
+- Optional VPS restricted DNS, when enabled, is not public: host firewall allows
+  it only from trusted private sources, while public `53/tcp,udp` is denied.
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` and active `wgc1` are absent.
 
@@ -675,6 +679,8 @@ contracts.
 | [0005](/docs/adr/0005-secrets-outside-git.md) | Keep real credentials and generated artifacts outside git. |
 | [0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Define initial channel terminology and no automatic B/C failover. |
 | [0007](/docs/adr/0007-channel-b-production-channel-c-planned.md) | Record current B/C channel maturity. |
+| [0008](/docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Record Channel C live compatibility and native Naive blocker. |
+| [0009](/docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Keep managed DNS on dnscrypt-backed forwarding; public VPS 443 open for Reality, public DNS 53 closed. |
 
 See [docs/adr/](/docs/adr/) for the full index and when to add a new record.
 

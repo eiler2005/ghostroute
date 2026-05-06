@@ -43,6 +43,8 @@ VERIFY="ansible/playbooks/99-verify.yml"
 assert_contains "ansible/group_vars/routers.yml" "router_dns_egress_mode"
 assert_contains "ansible/group_vars/routers.yml" "router_vps_dns_forward_port"
 assert_contains "ansible/group_vars/routers.yml" "router_vps_dnsmasq_conf_path"
+assert_contains "ansible/group_vars/routers.yml" "router_managed_dns_forward_port"
+assert_contains "ansible/group_vars/routers.yml" "router_singbox_dns_server_host"
 assert_contains "ansible/group_vars/routers.yml" "vps_unbound_reality_target_host"
 assert_contains "ansible/group_vars/vps_stealth.yml" "vps_unbound_enabled"
 assert_contains "ansible/group_vars/vps_stealth.yml" "vps_unbound_docker_bridge_host"
@@ -64,6 +66,7 @@ assert_contains "$ROUTER_TASKS" "conf-file={{ router_vps_dnsmasq_conf_path }}"
 assert_contains "$DNSCRYPT_TASKS" "Keep default dnsmasq upstream in policy-split DNS mode"
 assert_contains "$DNSCRYPT_TASKS" "^no-resolv$"
 assert_contains "$RULESET_SCRIPT" "DNSMASQ_VPS_DNS_CONF"
+assert_contains "$RULESET_SCRIPT" "GHOSTROUTE_MANAGED_DNS_FORWARD_PORT"
 assert_contains "$RULESET_SCRIPT" "filter_vps_dns_domains"
 assert_contains "$RULESET_SCRIPT" "server=/%s/%s#%s"
 assert_contains "$RULESET_SCRIPT" "return domain ~ /(^|[.])(ru|su|рф)$/"
@@ -80,8 +83,8 @@ assert_not_contains "$SINGBOX_TEMPLATE" '"port": [53, 853]'
 
 assert_contains "$VERIFY" "VPS Unbound resolver listens only on private hosts when enabled"
 assert_contains "$VERIFY" "Xray permits only the private VPS Unbound endpoint before private-IP block"
-assert_contains "$VERIFY" "Managed DNS include sends BrowserLeaks DNS to VPS forwarder"
-assert_contains "$VERIFY" "RU and direct domains are absent from managed VPS DNS include"
+assert_contains "$VERIFY" "Managed DNS include sends BrowserLeaks DNS to dnscrypt-backed forwarder"
+assert_contains "$VERIFY" "RU and direct domains are absent from managed DNS include"
 assert_contains "$VERIFY" "Router-side Reality ingress sends plain DNS to router-local dnsmasq"
 
 TMPDIR="$(mktemp -d)"
@@ -107,14 +110,14 @@ SINGBOX_RULE_DIR="$TMPDIR/rules" \
 DNSMASQ_VPS_DNS_CONF="$TMPDIR/vps-dns.conf" \
   "${PROJECT_ROOT}/${RULESET_SCRIPT}" --no-restart >/dev/null
 
-rg -n -F 'server=/browserleaks.com/127.0.0.1#15353' "$TMPDIR/vps-dns.conf" >/dev/null
-rg -n -F 'server=/browserleaks.net/127.0.0.1#15353' "$TMPDIR/vps-dns.conf" >/dev/null
-rg -n -F 'server=/browserleaks.org/127.0.0.1#15353' "$TMPDIR/vps-dns.conf" >/dev/null
-rg -n -F 'server=/openai.com/127.0.0.1#15353' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/browserleaks.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/browserleaks.net/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/browserleaks.org/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/openai.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
 if rg -n -F 'server=/4pda.ru/' "$TMPDIR/vps-dns.conf" >/dev/null ||
    rg -n -F 'server=/vtb.ru/' "$TMPDIR/vps-dns.conf" >/dev/null ||
    rg -n -F 'server=/championat.com/' "$TMPDIR/vps-dns.conf" >/dev/null; then
-  echo "direct/RU domains leaked into VPS DNS include" >&2
+  echo "direct/RU domains leaked into managed DNS include" >&2
   sed -n '1,160p' "$TMPDIR/vps-dns.conf" >&2
   exit 1
 fi

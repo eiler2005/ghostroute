@@ -138,12 +138,12 @@ The VPS is remote egress for selected managed traffic. Sites and checkers see
 the VPS IP for managed traffic; non-managed traffic selected as `DIRECT` or
 home-WAN direct does not use the VPS egress.
 
-The VPS also hosts the managed-domain DNS resolver used by policy-split DNS.
-This is intentionally not a public resolver. The current Reality backend runs
-inside the existing `3x-ui`/Xray Docker container behind Caddy, so managed DNS
-is transported through `reality-out` to the configured
-`vps_unbound_reality_target_host:15353`. UFW allows that private DNS port only
-from the Xray Docker bridge, while public `53/tcp,udp` stays denied.
+Policy-split managed DNS is generated on the router and normally uses the
+router-local dnscrypt listener. dnscrypt sends upstream DoH through sing-box
+SOCKS and `reality-out`, so the protected path remains Reality-backed without
+depending on a separate VPS resolver leg. If the optional VPS Unbound resolver
+is enabled for private diagnostics, it is intentionally not public: public
+`53/tcp,udp` stays denied.
 
 ### Observability And Console
 
@@ -289,10 +289,10 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | Component | Role |
 |---|---|
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
-| `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the local `vps-dns-in` forwarder |
-| `dnscrypt-proxy` | default upstream DNS on `127.0.0.1:<dnscrypt-port>` for RU/direct/default names |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in`, managed split, Reality outbound to VPS |
-| VPS host | Caddy :443, existing 3x-ui/Xray Docker container, private Unbound managed-DNS resolver |
+| `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the dnscrypt-backed local forwarder |
+| `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`; its DoH traffic goes through sing-box SOCKS/Reality |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to VPS |
+| VPS host | Caddy :443, existing 3x-ui/Xray Docker container, optional restricted/private DNS resolver support |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
@@ -311,10 +311,11 @@ only as a cold fallback through `modules/recovery-verification/router/emergency-
 | Router internal | `:<home-channel-c-ingress-port>` | sing-box `channel-c-naive-in` | C1 native Naive inbound |
 | Router WAN | `:4443` | DNAT/REDIRECT to C1-SR | C1-Shadowrocket compatibility public endpoint |
 | Router internal | `:<channel-c-shadowrocket-ingress-port>` | sing-box `channel-c-shadowrocket-http-in` | C1-SR HTTPS CONNECT inbound |
-| Router local | `127.0.0.1:<vps-dns-forward-port>` | sing-box `vps-dns-in` | Managed DNS forwarder from dnsmasq |
+| Router local | `127.0.0.1:<dnscrypt-port>` | dnscrypt-proxy | Primary managed DNS forwarder from dnsmasq |
+| Router local | `127.0.0.1:<vps-dns-forward-port>` | sing-box `vps-dns-in` | DNS hijack compatibility listener, not the primary generated managed DNS target |
 | VPS public | `:443` | system Caddy layer4 | Reality/Vision entrypoint |
 | VPS local | `127.0.0.1:<xray-local-port>` | 3x-ui/Xray Docker publish | Reality backend behind Caddy |
-| VPS restricted | `:15353` | Unbound | Managed DNS resolver, UFW allowed only from Xray Docker bridge |
+| VPS restricted | `:<restricted-dns-port>` | Unbound, when enabled | Optional private resolver; never exposed as public DNS |
 | VPS local | `127.0.0.1:<xui-admin-port>` | 3x-ui | Admin UI, localhost-only |
 
 ## Ansible Deployment Boundaries

@@ -152,8 +152,9 @@ DNS.
 ssh admin@<router_lan_ip> '
   grep "^server=/browserleaks.com/" /jffs/configs/dnsmasq-vps-managed.conf.add
   grep "^conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add$" /jffs/configs/dnsmasq.conf.add
-  netstat -nlp 2>/dev/null | grep ":<vps-dns-forward-port> "
-  tail -200 /opt/var/log/sing-box.log | grep vps-dns-in
+  netstat -nlp 2>/dev/null | grep ":<dnscrypt-port> "
+  grep "^proxy = .socks5://127.0.0.1:<router-socks-port>." /opt/etc/dnscrypt-proxy.toml
+  nslookup browserleaks.com 127.0.0.1
 '
 ```
 
@@ -178,13 +179,72 @@ mode on/off, restart VPN profile, restart Safari/tab. Если только од
 упрямо показывает другой DNS, проверьте app-level DoH/DoT: v1 не ломает
 встроенный encrypted DNS внутри приложений.
 
-Если `browserleaks.com` вообще не резолвится через managed DNS, проверьте VPS:
-Reality сейчас работает в Docker-контейнере `xray`, а 3x-ui блокирует
-`geoip:private` по умолчанию. Поэтому Unbound должен слушать configured
-`vps_unbound_reality_target_host:15353`, а UFW должен разрешать этот порт
-только от Docker bridge. На роутере `vps-dns-in` должен быть связан с
-sing-box action `hijack-dns`, а DNS server `vps-dns-server` должен иметь
-`detour: reality-out`.
+## Managed Домены Не Резолвятся, Но Reality/SOCKS Зелёный
+
+Симптом: YouTube/Telegram/OpenAI или другой managed-сайт пишет “нет интернета”,
+а `live-check` показывает, что `active_managed_egress` через SOCKS/Reality OK.
+
+Это обычно DNS-слой, а не порт Reality:
+
+```text
+dnsmasq -> dnsmasq-vps-managed.conf.add -> dnscrypt-proxy -> sing-box SOCKS -> reality-out
+```
+
+Проверка:
+
+```sh
+ssh admin@<router_lan_ip> '
+  grep "^server=/youtube.com/127.0.0.1#<dnscrypt-port>$" /jffs/configs/dnsmasq-vps-managed.conf.add
+  nslookup youtube.com 127.0.0.1
+  nslookup gateway.icloud.com 127.0.0.1
+  tail -200 /opt/var/log/sing-box.log | grep -E "SERVFAIL|EOF|dns|reality-out"
+'
+./modules/ghostroute-health-monitor/bin/live-check --active-probe
+```
+
+Recovery без deploy:
+
+```sh
+ssh admin@<router_lan_ip> '
+  /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+  /opt/etc/init.d/S99sing-box restart
+  service restart_dnsmasq
+'
+```
+
+Если DNS зелёный, но managed egress через Reality падает, это уже другой слой:
+проверьте Caddy/VPS public TCP/443 и provider + host firewall.
+
+## VPS TCP/443 Или Public DNS 53 Настроены Неверно
+
+Правило простое:
+
+- TCP/443 на VPS должен быть доступен для router-side Reality/Caddy;
+- public TCP/UDP 53 на VPS не должен быть открыт;
+- SSH/admin ports не являются доказательством, что data-plane Reality работает.
+
+Проверки с placeholders:
+
+```sh
+# VPS:
+sudo ss -tulpn | grep ':443'
+sudo ufw status verbose
+
+# Provider firewall:
+#   allow TCP/443 from <router_wan_or_allowed_source>
+#   deny TCP/UDP/53 from Internet
+
+# Router:
+/opt/bin/curl -skI --max-time 8 --proxy socks5h://127.0.0.1:<router-socks-port> https://api.ipify.org
+```
+
+Если `browserleaks.com` вообще не резолвится через managed DNS, сначала
+проверьте router-side path: generated dnsmasq include должен указывать на
+`127.0.0.1#<dnscrypt-port>`, dnscrypt-proxy должен слушать локально и иметь
+SOCKS proxy через sing-box. VPS нужен для Reality/Caddy egress на TCP/443, но
+публичный DNS `53/tcp,udp` не должен открываться. `vps-dns-in` на роутере
+остаётся compatibility path для DNS hijack и должен иметь `detour:
+reality-out`, но это не основной generated managed-domain target.
 
 Для RU/direct контроля:
 

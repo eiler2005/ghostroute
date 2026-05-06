@@ -29,3 +29,4 @@ Long implementation details stay in module docs and runbooks.
 - `0006-channel-terminology-and-manual-fallbacks.md`
 - `0007-channel-b-production-channel-c-planned.md`
 - `0008-channel-c-live-compatibility-and-native-naive-blocker.md`
+- `0009-managed-dns-dnscrypt-backed-forwarder.md`

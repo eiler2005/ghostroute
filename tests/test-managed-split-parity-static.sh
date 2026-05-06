@@ -153,12 +153,12 @@ DNSMASQ_VPS_DNS_CONF="$TMPDIR/managed-vps-dns.conf" \
 
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"ipify.org"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"auto-managed.example"'
-assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.com/127.0.0.1#15353'
-assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.net/127.0.0.1#15353'
-assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.org/127.0.0.1#15353'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.com/127.0.0.1#5354'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.net/127.0.0.1#5354'
+assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.org/127.0.0.1#5354'
 if rg -n -F -- 'server=/4pda.ru/' "$TMPDIR/managed-vps-dns.conf" >/dev/null ||
    rg -n -F -- 'server=/championat.com/' "$TMPDIR/managed-vps-dns.conf" >/dev/null; then
-  echo "RU/direct domains must not be sent to VPS DNS" >&2
+  echo "RU/direct domains must not be sent to managed DNS" >&2
   sed -n '1,160p' "$TMPDIR/managed-vps-dns.conf" >&2
   exit 1
 fi

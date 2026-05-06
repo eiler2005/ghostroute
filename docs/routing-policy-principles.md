@@ -51,8 +51,8 @@ Layer 2 is the shared router managed split.
 - Non-managed destinations go to `direct-out` through the home WAN.
 - Plain DNS port `53` from remote selected-client inbounds is sent to
   router-local dnsmasq. dnsmasq then applies the same policy-based DNS split as
-  Wi-Fi/LAN: managed/foreign names use VPS DNS, while RU/direct/default names
-  use the home/RF/default resolver.
+  Wi-Fi/LAN: managed/foreign names use the dnscrypt-over-Reality path, while
+  RU/direct/default names use the home/RF/default resolver.
 - A small explicit direct exception set exists for known local/trusted
   destinations such as selected banking and telemetry domains.
 
@@ -96,7 +96,7 @@ GhostRoute intentionally uses a curated managed catalog, not a blanket
 foreign-TLD rule.
 
 ```text
-known managed foreign service -> VPS traffic + VPS DNS
+known managed foreign service -> VPS traffic + dnscrypt-over-Reality DNS
 known RU/direct service       -> home/RF traffic + home/RF DNS
 unknown/default destination   -> home/RF path until classified
 ```
@@ -167,8 +167,8 @@ DNS selection is intentionally separate from traffic selection:
 
 ```text
 managed foreign domain
-  -> DNS via router vps-dns-in -> hijack-dns/vps-dns-server
-  -> reality-out -> VPS Unbound
+  -> DNS via router dnscrypt-proxy -> sing-box SOCKS
+  -> reality-out
   -> traffic via reality-out -> VPS
 
 RU/direct/default domain
@@ -177,20 +177,23 @@ RU/direct/default domain
 ```
 
 RU TLDs and entries in `configs/domains-no-vpn.txt` must not be written into
-the VPS DNS include. This prevents Russian sites from seeing the VPS resolver
-when their web traffic is intended to stay on the home/RF path.
+the managed DNS include. This prevents Russian sites from seeing the managed
+resolver path when their web traffic is intended to stay on the home/RF path.
 
-The VPS resolver is not public. The current VPS Reality endpoint is served by
-the existing `3x-ui`/Xray Docker container behind Caddy. Because
-`127.0.0.1` inside that container is container-local, the managed DNS target is
-the configured `vps_unbound_reality_target_host:15353`, not container-local
-loopback. UFW allows `15353` only from the Xray Docker bridge, and public
-`53/tcp,udp` stays denied from the internet.
+The current managed DNS target is router-local dnscrypt-proxy. dnscrypt sends
+DoH through sing-box SOCKS and `reality-out`, so managed lookups cross Reality
+without depending on a separate VPS Unbound leg. `vps-dns-in` remains as a
+DNS hijack compatibility listener for inbound/mobile paths. On the VPS, public
+TCP/443 must be open for Reality/Caddy, while public `53/tcp,udp` stays denied
+from the internet. Any optional VPS private DNS listener is restricted only.
 
-In policy-split mode, router sing-box uses `hijack-dns` plus an internal TCP
-DNS server with `detour: reality-out` for the managed DNS forwarder. This is a
-transport choice, not a classification change: managed domains still use the
-VPS DNS path, and RU/direct/default domains still use home/RF/default upstreams.
+In policy-split mode, generated managed DNS entries point dnsmasq to the
+router-local dnscrypt listener. dnscrypt sends its DoH upstream traffic through
+sing-box SOCKS/Reality. `vps-dns-in` still exists for inbound/mobile DNS hijack
+compatibility, and its internal TCP DNS server also detours through
+`reality-out`. This is a transport choice, not a classification change:
+managed domains still take the protected path, and RU/direct/default domains
+still use home/RF/default upstreams.
 
 ## Runtime Implementation Map
 
@@ -208,7 +211,7 @@ The routing principles above are implemented in these places:
   - mirrors dnsmasq/ipset/static policy into sing-box rule-set files for mobile
     Channels A/B/C
   - generates `/jffs/configs/dnsmasq-vps-managed.conf.add` for policy-based DNS
-    consistency
+    consistency, pointing managed domains at the dnscrypt-backed local forwarder
 - `configs/dnsmasq-stealth.conf.add`
   - manual managed domain catalog
 - `configs/static-networks.txt`
@@ -251,7 +254,8 @@ Expected behavior:
 
 - Plain DNS `53` from selected mobile clients follows the active channel to the
   router, then goes to router-local dnsmasq.
-- dnsmasq sends only managed/foreign domains to VPS Unbound over Reality.
+- dnsmasq sends only managed/foreign domains to dnscrypt-proxy, which sends DoH
+  over sing-box SOCKS/Reality.
 - RU/direct/default DNS stays on the home/RF/default resolver path.
 - DoH/DoT created inside an app is not fully blocked in v1 and remains a proof
   checklist item.

@@ -84,8 +84,8 @@ iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j R
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
 # Keep plain LAN DNS under router policy control. dnsmasq then sends only
-# managed/foreign domains to the VPS DNS forwarder and leaves RU/default names
-# on the home/RF resolver path.
+# managed/foreign domains to the dnscrypt-over-Reality path and leaves
+# RU/default names on the home/RF resolver path.
 iptables -t nat -D PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
 iptables -t nat -D PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
 if [ "$ROUTER_DNS_CAPTURE_LAN_PLAIN_53" = "1" ]; then

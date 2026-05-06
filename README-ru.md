@@ -335,7 +335,8 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay к sing-box SOCKS на 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
-  policy DNS split via dnsmasq + sing-box vps-dns-in
+  policy DNS split via dnsmasq + dnscrypt-proxy через sing-box SOCKS/Reality
+  sing-box vps-dns-in остаётся для DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
 VPS:
@@ -343,10 +344,12 @@ VPS:
   shared system Caddy with layer4 plugin on :443
   existing 3x-ui/Xray Docker container behind Caddy
   Xray/3x-ui Reality inbound on 127.0.0.1:<xray-local-port>
-  Unbound managed-DNS resolver on restricted :15353 listeners:
+  optional restricted/private DNS resolver support:
     - 127.0.0.1 for host checks
-    - Docker bridge / configured Reality target for Xray-routed DNS
-    - UFW allows :15353 only from the Xray Docker bridge
+    - Docker bridge / configured private target when enabled
+    - host firewall allows restricted DNS only from trusted private sources
+  public TCP/443 должен быть разрешён в provider и host firewall для Reality/Caddy
+  public TCP/UDP 53 должен оставаться закрытым
   optional direct-mode Channel B Xray XHTTP on 127.0.0.1:<xhttp-local-port>
   stealth stack under /opt/stealth
 
@@ -520,6 +523,7 @@ VPS observer хранит свой local-only статус на VPS в
 - Remote QR/VLESS-клиенты подключаются к домашнему белому IP на `:<home-reality-port>`, не напрямую к VPS.
 - Router-side `sing-box` принимает `reality-in` на `0.0.0.0:<home-reality-port>`.
 - Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
+- Managed/foreign DNS идёт через `dnsmasq -> dnscrypt-proxy -> sing-box SOCKS -> reality-out`; RU/direct/default DNS остаётся на домашнем/RF/default resolver path.
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` существуют.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` и active `wgc1` отсутствуют.
 

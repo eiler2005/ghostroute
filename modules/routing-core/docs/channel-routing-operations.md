@@ -14,8 +14,8 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 DNS is policy-split through router dnsmasq:
 
 ```text
-managed/foreign names -> dnsmasq -> vps-dns-in -> hijack-dns
-                      -> vps-dns-server -> reality-out -> VPS Unbound
+managed/foreign names -> dnsmasq -> dnscrypt-proxy
+                      -> sing-box SOCKS -> reality-out
 
 RU/direct/default names -> dnsmasq -> home/RF/default resolver
 ```
@@ -135,22 +135,53 @@ exist unless `modules/recovery-verification/router/emergency-enable-wgc1.sh --en
 
 ```sh
 grep '^conf-file=/jffs/configs/dnsmasq-vps-managed.conf.add$' /jffs/configs/dnsmasq.conf.add
-grep '^server=/browserleaks.com/127.0.0.1#<vps-dns-forward-port>$' /jffs/configs/dnsmasq-vps-managed.conf.add
+grep '^server=/browserleaks.com/127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq-vps-managed.conf.add
 grep '@wgc1' /jffs/configs/dnsmasq.conf.add
-netstat -nlp 2>/dev/null | grep ':<vps-dns-forward-port> '
+netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 ```
 
 Expected:
 
-- managed VPS DNS include exists and contains managed foreign domains.
-- RU/direct/default domains are absent from the managed VPS DNS include.
+- managed DNS include exists and contains managed foreign domains pointed at the dnscrypt-backed local forwarder.
+- RU/direct/default domains are absent from the managed DNS include.
 - active `@wgc1` entries do not exist.
-- `vps-dns-in` listens on `127.0.0.1:<vps-dns-forward-port>`.
-- On VPS, Unbound listens on loopback and the configured private/Reality target
-  addresses for `:15353`; UFW allows `:15353` only from the Xray Docker bridge,
-  and public `:53` is closed.
-- `vps-dns-in` uses sing-box `hijack-dns`; `vps-dns-server` uses TCP with
-  `detour: reality-out`.
+- dnscrypt listens on `127.0.0.1:<dnscrypt-port>` and routes DoH through sing-box SOCKS/Reality.
+- `vps-dns-in` may still listen locally for DNS hijack compatibility, but it is
+  not the primary generated target for managed-domain dnsmasq entries.
+- On VPS, public DNS `:53` is closed. Optional restricted DNS listeners, when
+  enabled, are not public and are reachable only from their intended private
+  source.
+
+### VPS Port Boundary
+
+Use two firewall layers: provider firewall and host firewall. They must agree.
+
+Expected:
+
+- public TCP/443 is open for the router source so Caddy/layer4 can accept
+  Reality traffic;
+- public TCP/UDP 53 is denied;
+- SSH/admin ports are restricted to operator/control sources and are not part of
+  the data-plane Reality health decision;
+- optional private DNS ports are not exposed to the public internet.
+
+Examples with placeholders only:
+
+```sh
+# Provider firewall:
+#   allow TCP/443 from <router_wan_or_allowed_source>
+#   deny TCP/UDP/53 from Internet
+#
+# VPS host firewall:
+sudo ufw allow proto tcp from <router_wan_or_allowed_source> to any port 443 comment 'GhostRoute Reality/Caddy'
+sudo ufw deny 53/tcp comment 'No public DNS'
+sudo ufw deny 53/udp comment 'No public DNS'
+sudo ss -tulpn | grep ':443'
+```
+
+If the router can resolve managed domains through dnsmasq but Reality egress
+times out, check Caddy listening on public TCP/443 and both firewall layers
+before changing catalogs.
 
 ### ipsets
 
@@ -340,7 +371,7 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 |---|---|
 | LAN site does not use Reality exit | `STEALTH_DOMAINS`, REDIRECT `:<lan-redirect-port>`, UDP/443 DROP, sing-box log |
 | Emergency WGC1 fallback unexpectedly active | `wgs1`, `RC_VPN_ROUTE`, `0x1000`, table `wgc1`, emergency script state |
-| DNS looks wrong | managed VPS DNS include, `vps-dns-in` listener, no active `@wgc1`, app-level DoH/DoT |
+| DNS looks wrong | managed dnsmasq include, dnscrypt listener/SOCKS path, `vps-dns-in` compatibility listener, no active `@wgc1`, app-level DoH/DoT |
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |
 | Reality tunnel down | `sing-box` status/log, VPS Caddy/Xray, `99-verify.yml` |
 

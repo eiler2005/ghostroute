@@ -381,9 +381,10 @@ ssh admin@<router_lan_ip> \
 This audit does not prove an LTE DNS leak. It only catches DNS traffic that
 already entered the Home Reality tunnel and then tried to exit unexpectedly.
 The router `sing-box` config sends tunneled mobile plain DNS `53` to
-router-local dnsmasq. dnsmasq then sends managed/foreign names to VPS Unbound
-and leaves RU/direct/default names on the home resolver path. DoH/DoT generated
-inside an app remains a separate client-side proof item.
+router-local dnsmasq. dnsmasq then sends managed/foreign names to the
+router-local dnscrypt listener, which uses sing-box SOCKS/Reality, and leaves
+RU/direct/default names on the home resolver path. DoH/DoT generated inside an
+app remains a separate client-side proof item.
 
 ## Emergency Direct-VPS Profiles
 
