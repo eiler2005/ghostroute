@@ -3,6 +3,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 
 # Загружаем персональные переменные из локального secrets-файла.
 # Рекомендуемый путь: secrets/router.env
@@ -18,23 +19,23 @@ SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${HOME}/.ssh/id_rsa}"
 ENABLE_DNSMASQ_LOGGING="${ENABLE_DNSMASQ_LOGGING:-1}"
 GHOSTROUTE_SKIP_DEPLOY_GATE="${GHOSTROUTE_SKIP_DEPLOY_GATE:-0}"
 REMOTE_STAGE="/tmp/router_configuration.$$"
-SSH_OPTS=(
-  -i "$SSH_IDENTITY_FILE"
-  -p "$ROUTER_PORT"
-  -o ConnectTimeout="$CONNECT_TIMEOUT"
-  -o IdentitiesOnly=yes
-  -o PubkeyAcceptedAlgorithms=+ssh-rsa
-  -o StrictHostKeyChecking=accept-new
-)
-SCP_OPTS=(
-  -O
-  -i "$SSH_IDENTITY_FILE"
-  -P "$ROUTER_PORT"
-  -o ConnectTimeout="$CONNECT_TIMEOUT"
-  -o IdentitiesOnly=yes
-  -o PubkeyAcceptedAlgorithms=+ssh-rsa
-  -o StrictHostKeyChecking=accept-new
-)
+SCP_OPTS=()
+
+build_scp_opts() {
+  SCP_OPTS=(
+    -O
+    -i "$SSH_IDENTITY_FILE"
+    -P "$ROUTER_PORT"
+    -o ConnectTimeout="$CONNECT_TIMEOUT"
+    -o BatchMode=yes
+    -o ConnectionAttempts="${SSH_CONNECTION_ATTEMPTS:-1}"
+    -o IdentitiesOnly=yes
+    -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
+    -o PubkeyAcceptedAlgorithms=+ssh-rsa
+    -o StrictHostKeyChecking=accept-new
+    -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
+  )
+}
 
 detect_router_ip() {
   local route_gateway=""
@@ -115,11 +116,8 @@ run_deploy_gate() {
   "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/live-check" --active-probe --deploy-gate
 }
 
-ROUTER="$(detect_router_ip)"
-if [ -z "$ROUTER" ]; then
-  echo "Could not detect router IP automatically. Set ROUTER=<ip> and retry." >&2
-  exit 1
-fi
+router_health_load_env || exit 1
+build_scp_opts
 
 require_local_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add"
 require_local_file "${PROJECT_ROOT}/configs/static-networks.txt"
@@ -151,16 +149,6 @@ fi
 
 echo "Router: ${ROUTER}"
 echo "SSH target: ${ROUTER_USER}@${ROUTER}:${ROUTER_PORT}"
-
-if ! router_has_port "$ROUTER_PORT"; then
-  echo "SSH port ${ROUTER_PORT} is not reachable on ${ROUTER}." >&2
-  if router_has_port 80 || router_has_port 8443; then
-    echo "The router web UI is reachable, so the device is online." >&2
-    echo "Enable SSH in the ASUS admin UI before running deploy.sh." >&2
-    echo "Path: Administration -> System -> Enable SSH" >&2
-  fi
-  exit 1
-fi
 
 run_deploy_gate "pre-deploy"
 
