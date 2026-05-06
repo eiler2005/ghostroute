@@ -8,11 +8,23 @@
   "dns": {
     "servers": [
       {
+        "type": "udp",
+        "tag": "cover-dns-server",
+        "server": "127.0.0.1",
+        "server_port": 53
+      },
+      {
         "type": "tcp",
         "tag": "vps-dns-server",
-        "server": "{{ router_singbox_dns_server_host | default('1.1.1.1') }}",
-        "server_port": {{ router_singbox_dns_server_port | default(53) }},
+        "server": "{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default('127.0.0.1')) }}",
+        "server_port": {{ vps_unbound_listen_port | default(15353) }},
         "detour": "reality-out"
+      }
+    ],
+    "rules": [
+      {
+        "domain": {{ ((home_reality_server_names | default([home_reality_dest_host | default('gateway.icloud.com')])) + [home_reality_handshake_host | default(home_reality_dest_host | default('gateway.icloud.com'))]) | unique | list | to_json }},
+        "server": "cover-dns-server"
       }
     ],
     "final": "vps-dns-server"
@@ -64,7 +76,7 @@
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "{{ home_reality_dest_host }}",
+            "server": "{{ home_reality_handshake_host | default(home_reality_dest_host) }}",
             "server_port": {{ home_reality_dest_port }}
           },
           "private_key": "{{ home_reality_server_private_key }}",
@@ -155,6 +167,9 @@
     { "type": "direct", "tag": "direct-out" }
   ],
   "route": {
+{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %}
+    "default_domain_resolver": "cover-dns-server",
+{% endif %}
     "rule_set": [
       {
         "type": "local",
@@ -170,13 +185,17 @@
       }
     ],
     "rules": [
-    { "inbound": "redirect-in", "outbound": "reality-out" },
+      { "inbound": "redirect-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
+      { "inbound": "dnscrypt-socks-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
+      { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
       { "inbound": "vps-dns-in", "action": "hijack-dns" }{% endif %}{% if home_reality_enabled | default(false) | bool %},
 {% if modern_sniff %}
       { "inbound": "reality-in", "action": "sniff" },
       { "inbound": "channel-b-relay-socks", "action": "sniff" },
 {% endif %}
+      { "inbound": "reality-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
+      { "inbound": "channel-b-relay-socks", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
 {% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "reality-in",
@@ -243,6 +262,7 @@
 {% if modern_sniff %}
       { "inbound": "channel-c-naive-in", "action": "sniff" },
 {% endif %}
+      { "inbound": "channel-c-naive-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
 {% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "channel-c-naive-in",
@@ -278,6 +298,7 @@
 {% if modern_sniff %}
       { "inbound": "channel-c-shadowrocket-http-in", "action": "sniff" },
 {% endif %}
+      { "inbound": "channel-c-shadowrocket-http-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
 {% if router_mobile_dns_plain_53_to_dnsmasq | default(true) | bool %}
       {
         "inbound": "channel-c-shadowrocket-http-in",

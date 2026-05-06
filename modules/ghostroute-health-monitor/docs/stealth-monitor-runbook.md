@@ -23,7 +23,8 @@ rule-set mirror и последний non-OK probe.
 `live-check` - короткая системная проверка "работают ли каналы сейчас". Она
 проверяет Channel A/LAN REDIRECT, Home Reality, Channel B relay, Channel C1
 Shadowrocket/native, dnsmasq/catalog/rule-set path, прямой домен из
-`domains-no-vpn`, iCloud Reality cover SNI (`gateway.icloud.com`) и свежие
+`domains-no-vpn`, строгий iCloud Reality cover SNI контракт, прикладной
+managed HTTP 204 smoke через SOCKS/Reality в `--active-probe` и свежие
 sanitised sing-box события. Если команда запущена с control machine, где есть
 Ansible/Vault, она также проверяет Console collector path: может ли VPS открыть
 remote-router endpoint, который использует `/opt/ghostroute-console/router.env`.
@@ -45,6 +46,21 @@ remote-router endpoint, который использует `/opt/ghostroute-con
 
 Ориентир по времени: default 1-8 секунд; `--active-probe` 15-30 секунд.
 Exit codes: `0` OK, `1` WARN, `2` CRIT, `64` usage.
+
+Если жалоба звучит как "канал подключился, но URL-проба не открывается",
+смотри `active_managed_http204`: он проверяет, что прикладной запрос
+`google_generate_204` возвращает HTTP 204 через sing-box SOCKS/Reality path.
+Это дополняет listener/exit-IP проверки и не требует менять клиентские QR.
+Для captive-проверок отдельно важен `active_managed_plain_http204`: plain HTTP
+`www.google.com:80/generate_204` должен проходить через точечный direct
+compatibility exception, потому что этот HTTP endpoint может таймаутиться через
+Reality path, даже когда HTTPS и обычный трафик уже здоровы.
+`active_cover_sni` является advisory HTTP-probe к cover endpoint; отказ этого
+endpoint принимать прямой router curl сам по себе не означает поломку
+managed-path, если strict config, DNS и HTTP 204 checks зелёные.
+Если Channel A ingress виден в логах, но там `lookup gateway.icloud.com:
+SERVFAIL`, смотри `reality_cover_dns_rule`: sing-box должен резолвить cover SNI
+через router-local dnsmasq, а не через managed DNS final.
 
 Если Dashboard показывает `STALE`, а A/B/C с клиентов работают, смотри checks
 `console_vps_router_profile` и `console_vps_router_tcp`. `WARN` там означает,

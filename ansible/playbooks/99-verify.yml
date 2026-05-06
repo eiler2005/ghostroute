@@ -417,8 +417,11 @@
       ansible.builtin.shell: |
         netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ router_vps_dns_forward_port }} ' &&
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})" &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"cover-dns-server","server":"127.0.0.1","server_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"server":"cover-dns-server"' &&
+        printf '%s' "$cfg" | grep -Fq '"default_domain_resolver":"cover-dns-server"' &&
         printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-in"' &&
-        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-server","server":"{{ router_singbox_dns_server_host | default("1.1.1.1") }}","server_port":{{ router_singbox_dns_server_port | default(53) }},"detour":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-server","server":"{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default("127.0.0.1")) }}","server_port":{{ vps_unbound_listen_port | default(15353) }},"detour":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"vps-dns-in","action":"hijack-dns"'
       changed_when: false
       when: router_dns_egress_mode | default('policy_split') == 'policy_split'
@@ -636,7 +639,7 @@
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
         printf '%s' "$cfg" | grep -Fq '"tag":"reality-in"' &&
         printf '%s' "$cfg" | grep -Fq '"server_name":"{{ home_reality_server_names[0] }}"' &&
-        printf '%s' "$cfg" | grep -Fq '"handshake":{"server":"{{ home_reality_dest_host }}","server_port":{{ home_reality_dest_port }}}'
+        printf '%s' "$cfg" | grep -Fq '"handshake":{"server":"{{ home_reality_handshake_host | default(home_reality_dest_host) }}","server_port":{{ home_reality_dest_port }}}'
       changed_when: false
       when: home_reality_enabled | default(false) | bool
 

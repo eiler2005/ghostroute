@@ -44,7 +44,6 @@ assert_contains "ansible/group_vars/routers.yml" "router_dns_egress_mode"
 assert_contains "ansible/group_vars/routers.yml" "router_vps_dns_forward_port"
 assert_contains "ansible/group_vars/routers.yml" "router_vps_dnsmasq_conf_path"
 assert_contains "ansible/group_vars/routers.yml" "router_managed_dns_forward_port"
-assert_contains "ansible/group_vars/routers.yml" "router_singbox_dns_server_host"
 assert_contains "ansible/group_vars/routers.yml" "vps_unbound_reality_target_host"
 assert_contains "ansible/group_vars/vps_stealth.yml" "vps_unbound_enabled"
 assert_contains "ansible/group_vars/vps_stealth.yml" "vps_unbound_docker_bridge_host"
@@ -72,7 +71,12 @@ assert_contains "$RULESET_SCRIPT" "server=/%s/%s#%s"
 assert_contains "$RULESET_SCRIPT" "return domain ~ /(^|[.])(ru|su|рф)$/"
 
 assert_contains "$SINGBOX_TEMPLATE" '"tag": "vps-dns-in"'
+assert_contains "$SINGBOX_TEMPLATE" '"tag": "cover-dns-server"'
 assert_contains "$SINGBOX_TEMPLATE" '"tag": "vps-dns-server"'
+assert_contains "$SINGBOX_TEMPLATE" "vps_unbound_reality_target_host"
+assert_compact_contains "$SINGBOX_TEMPLATE" '"server":"cover-dns-server"'
+assert_contains "$SINGBOX_TEMPLATE" '"default_domain_resolver": "cover-dns-server"'
+assert_contains "$SINGBOX_TEMPLATE" '"domain": ["www.google.com"], "port": 80, "outbound": "direct-out"'
 assert_contains "$SINGBOX_TEMPLATE" '"action": "hijack-dns"'
 assert_compact_contains "$SINGBOX_TEMPLATE" '"inbound":"vps-dns-in","action":"hijack-dns"'
 for inbound in reality-in channel-b-relay-socks channel-c-naive-in channel-c-shadowrocket-http-in; do

@@ -11,14 +11,13 @@ singbox_dnscrypt_socks_port: ""
 singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh
 router_vps_dns_forward_host: 127.0.0.1
 router_vps_dns_forward_port: 15353
-router_singbox_dns_server_host: 1.1.1.1
-router_singbox_dns_server_port: 53
 home_reality_enabled: true
 home_reality_listen: 0.0.0.0
 home_reality_ingress_port: ""
 home_reality_dest: gateway.icloud.com:443
 home_reality_dest_host: gateway.icloud.com
 home_reality_dest_port: 443
+home_reality_handshake_host: "{{ home_reality_dest_host }}"
 home_reality_server_names:
   - gateway.icloud.com
 channel_c_home_enabled: false

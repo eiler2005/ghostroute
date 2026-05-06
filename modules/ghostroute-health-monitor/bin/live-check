@@ -305,6 +305,7 @@ deploy_gate="${GHOSTROUTE_LIVE_DEPLOY_GATE:-0}"
 managed_domain="${GHOSTROUTE_MANAGED_CHECK_DOMAIN:-ipify.org}"
 direct_domain="${GHOSTROUTE_DIRECT_CHECK_DOMAIN:-championat.com}"
 cover_sni="${GHOSTROUTE_COVER_SNI:-gateway.icloud.com}"
+cover_target="${GHOSTROUTE_COVER_TARGET:-setup.icloud.com}"
 
 listen_sockets="$(netstat -nlp 2>/dev/null || true)"
 nat_prerouting="$(iptables -t nat -S PREROUTING 2>/dev/null || true)"
@@ -374,7 +375,13 @@ if [ "$filter" = all ]; then
   grep -q "^ipset=/$managed_domain/STEALTH_DOMAINS\$" /jffs/configs/dnsmasq-stealth.conf.add 2>/dev/null && grep -q "\"$managed_domain\"" /opt/etc/sing-box/rule-sets/stealth-domains.json 2>/dev/null && emit managed_domain_sanity OK "DNS/catalog" "Managed checker domain is present in dnsmasq catalog and sing-box rule-set" "domain=$managed_domain" "No action." || emit managed_domain_sanity CRIT "DNS/catalog" "Managed checker domain is missing from catalog or rule-set" "domain=$managed_domain" "Run catalog review/sync dry-run before applying changes."
   grep -Eq "^[[:space:]]*$direct_domain([[:space:]]*(#.*)?)?$" /jffs/configs/domains-no-vpn.txt 2>/dev/null && emit direct_domain_sanity OK "DNS/catalog" "Direct checker domain is present in domains-no-vpn" "domain=$direct_domain expected_route=direct" "No action." || emit direct_domain_sanity WARN "DNS/catalog" "Direct checker domain is missing from domains-no-vpn" "domain=$direct_domain" "Review direct-domain policy before changing catalog."
   ! grep -q "^server=/$direct_domain/" /jffs/configs/dnsmasq-vps-managed.conf.add 2>/dev/null && ! grep -q "\"$direct_domain\"" /opt/etc/sing-box/rule-sets/stealth-domains.json 2>/dev/null && emit direct_domain_not_managed OK "DNS/catalog" "Direct checker domain is absent from managed DNS include and sing-box managed rule-set" "domain=$direct_domain expected_route=direct" "No action." || emit direct_domain_not_managed WARN "DNS/catalog" "Direct checker domain is present in managed DNS or sing-box rule-set" "domain=$direct_domain" "Remove the direct checker from managed catalogs before deploying."
-  printf '%s\n' "$singbox_compact" | grep -Fq "\"server_name\":\"$cover_sni\"" && printf '%s\n' "$singbox_compact" | grep -Fq "\"handshake\":{\"server\":\"$cover_sni\",\"server_port\":443}" && emit reality_cover_sni OK "Reality SNI" "Router sing-box uses expected iCloud cover SNI" "sni=$cover_sni" "No action." || emit reality_cover_sni CRIT "Reality SNI" "Router sing-box cover SNI does not match expected iCloud value" "sni=$cover_sni" "Check generated sing-box config; do not rotate SNI blindly."
+  printf '%s\n' "$singbox_compact" | grep -Fq '"tag":"cover-dns-server","server":"127.0.0.1","server_port":53' && printf '%s\n' "$singbox_compact" | grep -Fq '"server":"cover-dns-server"' && printf '%s\n' "$singbox_compact" | grep -Fq '"default_domain_resolver":"cover-dns-server"' && emit reality_cover_dns_rule OK "Reality SNI" "Router sing-box resolves Reality cover SNI through router-local dnsmasq" "server=cover-dns-server resolver=default_domain_resolver" "No action." || emit reality_cover_dns_rule CRIT "Reality SNI" "Router sing-box cover SNI DNS rule is missing" "server=cover-dns-server" "Restore the cover DNS rule before troubleshooting client profiles."
+  if printf '%s\n' "$singbox_compact" | grep -Fq "\"server_name\":\"$cover_sni\"" &&
+    { printf '%s\n' "$singbox_compact" | grep -Fq "\"handshake\":{\"server\":\"$cover_sni\",\"server_port\":443}" || printf '%s\n' "$singbox_compact" | grep -Fq "\"handshake\":{\"server\":\"$cover_target\",\"server_port\":443}"; }; then
+    emit reality_cover_sni OK "Reality SNI" "Router sing-box uses expected client SNI and approved cover handshake target" "sni=$cover_sni target=${cover_target:-$cover_sni}" "No action."
+  else
+    emit reality_cover_sni CRIT "Reality SNI" "Router sing-box cover SNI or handshake target does not match expected values" "sni=$cover_sni target=${cover_target:-$cover_sni}" "Check generated sing-box config; do not rotate SNI blindly."
+  fi
 fi
 
 if [ "$active_probe" = 1 ]; then
@@ -392,6 +399,18 @@ if [ "$active_probe" = 1 ]; then
     managed_identity=""
     direct_identity=""
     "$curl_bin" -sS --max-time 8 --proxy "socks5h://127.0.0.1:$dnscrypt_socks_port" "https://api.ipify.org" >/tmp/ghostroute-active-managed.$$ 2>/dev/null && managed_identity="$(cat /tmp/ghostroute-active-managed.$$ 2>/dev/null || true)" && emit active_managed_egress OK "Active probe" "Managed checker can use sing-box SOCKS/Reality path" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "No action." || emit active_managed_egress WARN "Active probe" "Managed active egress probe failed" "domain=$managed_domain socks_port=$dnscrypt_socks_port" "Use default evidence and health report before restarting services."
+    managed_http_code="$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 --proxy "socks5h://127.0.0.1:$dnscrypt_socks_port" "https://www.google.com/generate_204" 2>/dev/null || true)"
+    if [ "$managed_http_code" = "204" ]; then
+      emit active_managed_http204 OK "Active probe" "Managed HTTP 204 smoke passed through sing-box SOCKS/Reality path" "url=google_generate_204 http_code=204 socks_port=$dnscrypt_socks_port" "No action."
+    else
+      emit active_managed_http204 WARN "Active probe" "Managed HTTP 204 smoke failed through sing-box SOCKS/Reality path" "url=google_generate_204 http_code=${managed_http_code:-none} socks_port=$dnscrypt_socks_port" "Check DNS and managed Reality path before changing client profiles."
+    fi
+    managed_plain_http_code="$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 --proxy "socks5h://127.0.0.1:$dnscrypt_socks_port" "http://www.google.com/generate_204" 2>/dev/null || true)"
+    if [ "$managed_plain_http_code" = "204" ]; then
+      emit active_managed_plain_http204 OK "Active probe" "Plain HTTP 204 compatibility smoke passed through the managed client path" "url=google_generate_204_plain http_code=204 socks_port=$dnscrypt_socks_port" "No action."
+    else
+      emit active_managed_plain_http204 WARN "Active probe" "Plain HTTP 204 compatibility smoke failed through the managed client path" "url=google_generate_204_plain http_code=${managed_plain_http_code:-none} socks_port=$dnscrypt_socks_port" "Check the www.google.com:80 direct compatibility exception before changing client profiles."
+    fi
     "$curl_bin" -skI --max-time 8 "https://$direct_domain" >/dev/null 2>&1 && emit active_direct_egress OK "Active probe" "Direct checker domain is reachable from router" "domain=$direct_domain" "No action." || emit active_direct_egress WARN "Active probe" "Direct checker domain probe failed" "domain=$direct_domain" "Could be remote site/network; compare with client symptom before changing rules."
     direct_identity="$("$curl_bin" -sS --max-time 8 "https://api.ipify.org" 2>/dev/null || true)"
     if [ -n "$managed_identity" ] && [ -n "$direct_identity" ] && [ "$managed_identity" != "$direct_identity" ]; then
@@ -401,7 +420,7 @@ if [ "$active_probe" = 1 ]; then
     else
       emit active_direct_identity WARN "Active probe" "Could not compare direct and managed egress identity" "identity_match=unknown" "Check curl/ipify reachability before deploying."
     fi
-    "$curl_bin" -skI --max-time 8 "https://$cover_sni" >/dev/null 2>&1 && emit active_cover_sni OK "Active probe" "iCloud cover SNI is reachable from router" "sni=$cover_sni" "No action." || emit active_cover_sni WARN "Active probe" "iCloud cover SNI reachability probe failed" "sni=$cover_sni" "Check WAN/DNS reachability; do not rotate SNI from one failed probe."
+    "$curl_bin" -skI --max-time 8 "https://$cover_sni" >/dev/null 2>&1 && emit active_cover_sni OK "Active probe" "iCloud cover SNI HTTP endpoint is reachable from router" "sni=$cover_sni" "No action." || emit active_cover_sni N/A "Active probe" "iCloud cover SNI HTTP endpoint did not accept a direct router probe" "sni=$cover_sni" "Advisory only; rely on cover DNS, strict config match and managed HTTP 204 before rotating SNI."
     rm -f /tmp/ghostroute-active-managed.$$
   fi
 fi
@@ -435,14 +454,16 @@ gate_required = %w[
   managed_domain_sanity
   direct_domain_sanity
   direct_domain_not_managed
+  reality_cover_dns_rule
   reality_cover_sni
   active_probe_tooling
   active_managed_dns_query
   active_cover_dns_query
   active_managed_egress
+  active_managed_http204
+  active_managed_plain_http204
   active_direct_egress
   active_direct_identity
-  active_cover_sni
   vps_edge_tcp443_listener
   vps_edge_public_dns53_closed
 ].to_h { |id| [id, true] }

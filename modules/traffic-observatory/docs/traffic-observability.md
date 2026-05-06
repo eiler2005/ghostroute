@@ -169,8 +169,8 @@ The short check verifies the live chain, not only counters:
   native Naive listener/split status.
 - Domain sanity: one managed checker domain is present in dnsmasq catalog and
   sing-box rule-set; one direct checker domain is present in `domains-no-vpn`.
-- Reality cover SNI: router sing-box config still uses the expected iCloud
-  cover SNI (`gateway.icloud.com`) and handshake target.
+- Reality cover SNI: router sing-box config still uses the expected client
+  cover SNI and approved router-side handshake target.
 - Evidence: recent sanitised sing-box log tail for each active channel.
 - Optional `--active-probe`: bounded managed/direct/SNI probes for cases where
   the default check is green but a user still reports a symptom.

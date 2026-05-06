@@ -398,8 +398,8 @@ ansible-playbook playbooks/99-verify.yml
 
 `99-verify.yml` checks both Reality SNI surfaces for config drift: the VPS
 Reality `dest` / `serverNames` must match Vault, and the router Home Reality
-ingress `server_name` / handshake target must match router config. This catches
-partial rotations before treating a checker result as meaningful.
+ingress `server_name` plus approved handshake target must match router config.
+This catches partial rotations before treating a checker result as meaningful.
 
 Router live checks:
 
@@ -493,6 +493,7 @@ reality_server_names:
 
 # Home ingress Reality surface
 home_reality_dest: "gateway.icloud.com:443"
+home_reality_handshake_host: "setup.icloud.com"
 home_reality_server_names:
   - "gateway.icloud.com"
 ```
