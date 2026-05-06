@@ -1,12 +1,19 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { ConfidenceBadge, EmptyState, RawEvidence } from "@/components/Widgets";
+import { ConfidenceBadge, EmptyState, Pagination, RawEvidence } from "@/components/Widgets";
 import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
 import { buildCatalogModel } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function CatalogPage({ searchParams }: { searchParams?: SearchParams }) {
-  const filters = await filtersFromSearchParams(searchParams);
+  const params = searchParams ? await searchParams : {};
+  const filters = await filtersFromSearchParams(Promise.resolve(params));
   const model = buildCatalogModel(filters);
+  const page = Math.max(1, Number.parseInt(Array.isArray(params.page) ? params.page[0] : params.page || "1", 10) || 1);
+  const pageSize = Math.min(1000, Math.max(50, Number.parseInt(Array.isArray(params.pageSize) ? params.pageSize[0] : params.pageSize || "100", 10) || 100));
+  const totalPages = Math.max(1, Math.ceil(model.catalog.length / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const offset = (effectivePage - 1) * pageSize;
+  const catalogRows = model.catalog.slice(offset, offset + pageSize);
   const counts = model.catalog.reduce<Record<string, number>>((acc, row) => {
     const key = row.type || row.kind || row.status || "observed";
     acc[key] = (acc[key] || 0) + 1;
@@ -27,28 +34,31 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
           {model.catalog.length === 0 ? (
             <EmptyState title="Нет фактического catalog snapshot" />
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Domain/CIDR</th>
-                  <th>Source</th>
-                  <th>Status</th>
-                  <th>Hits</th>
-                  <th>Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.catalog.slice(0, 200).map((row, idx) => (
-                  <tr key={idx}>
-                    <td>{row.domain || row.domain_or_cidr}</td>
-                    <td>{row.source || row.kind || "n/a"}</td>
-                    <td>{row.type || row.status || "observed"}</td>
-                    <td>{row.hit_count || 0}</td>
-                    <td><ConfidenceBadge value={row.confidence} /></td>
+            <>
+              <table className="table catalog-table">
+                <thead>
+                  <tr>
+                    <th>Domain/CIDR</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Hits</th>
+                    <th>Confidence</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {catalogRows.map((row, idx) => (
+                    <tr key={`${row.domain || row.domain_or_cidr || "catalog"}-${offset + idx}`}>
+                      <td>{row.domain || row.domain_or_cidr}</td>
+                      <td>{row.source || row.kind || "n/a"}</td>
+                      <td>{row.type || row.status || "observed"}</td>
+                      <td>{row.hit_count || 0}</td>
+                      <td><ConfidenceBadge value={row.confidence} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination basePath="/catalog" page={effectivePage} pageSize={pageSize} total={model.catalog.length} totalPages={totalPages} />
+            </>
           )}
         </section>
         <aside className="card side-panel">

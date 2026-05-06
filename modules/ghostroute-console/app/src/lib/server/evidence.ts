@@ -377,6 +377,9 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const clientIpValue = text(flow.client_ip || decision?.client_ip || device?.ip || flow.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed");
   const clientIpLabel = displayClientIp(clientIpValue, channel);
   const sni = displaySni(flow, decision, destination);
+  const aggregateDestination = isCategoryAggregate(destination) && !dns && !text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "");
+  const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : destination;
+  const siteSni = aggregateDestination && sni === "category aggregate" ? "not observed" : sni;
   const timeline = [
     { at: formatEventTime(dns?.event_ts || dns?.raw?.ts || dns?.collected_at || eventTime), label: "DNS запрос", detail: `${text(dns?.domain || flow.dns_qname || destination)}${dns?.answer_ip || flow.dns_answer_ip ? ` -> ${dns?.answer_ip || flow.dns_answer_ip}` : ""}` },
     { at: formatEventTime(eventTime), label: "IP/rule evidence", detail: `${matchedRule}${flow.rule_set ? ` / ${flow.rule_set}` : ""}` },
@@ -428,7 +431,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
     steps,
     timeline,
     siteView: {
-      destination,
+      destination: siteDestination,
       visitorIp: egressHint,
       countryAs: text(
         [
@@ -438,7 +441,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
         egressMissing ? "not configured" : "not observed"
       ),
       protocol,
-      sni,
+      sni: siteSni,
     },
     operatorView: {
       input: `${channel} / ${client}`,

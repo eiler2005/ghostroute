@@ -24,6 +24,26 @@ export function shortDateTime(value?: string | number | Date) {
   return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
 
+export function timeWithMillis(value?: string | number | Date) {
+  if (!value) return "n/a";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const source = typeof value === "string" ? value : "";
+  const hasExplicitMillis = /\.\d{1,9}(?:Z|[+-]\d\d:?\d\d)?$/.test(source);
+  const millis = date.getMilliseconds();
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+  const base = `${pick("hour")}:${pick("minute")}:${pick("second")}`;
+  if (!hasExplicitMillis && millis === 0) return base;
+  return `${base}.${String(millis).padStart(3, "0")}`;
+}
+
 export function StatusBadge({ value }: { value?: string }) {
   const status = String(value || "UNKNOWN").toLowerCase();
   const slug = status.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
@@ -79,6 +99,7 @@ export function Pagination({
   page,
   pageParam = "page",
   pageSize,
+  pageSizeParam = "pageSize",
   total,
   totalPages,
   extraParams = {},
@@ -87,6 +108,7 @@ export function Pagination({
   page: number;
   pageParam?: string;
   pageSize: number;
+  pageSizeParam?: string;
   total: number;
   totalPages: number;
   extraParams?: Record<string, string | number | undefined>;
@@ -94,7 +116,7 @@ export function Pagination({
   const makeHref = (nextPage: number) => {
     const params = new URLSearchParams();
     params.set(pageParam, String(nextPage));
-    params.set("pageSize", String(pageSize));
+    params.set(pageSizeParam, String(pageSize));
     for (const [key, value] of Object.entries(extraParams)) {
       if (value !== undefined && value !== "") params.set(key, String(value));
     }

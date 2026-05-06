@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { ChannelBadge, ConfidenceBadge, EmptyState, MetricCard, Pagination, RouteBadge, StatusBadge, shortDateTime } from "@/components/Widgets";
+import { ConfidenceBadge, EmptyState, MetricCard, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
 import { buildShellModel, listAlarmEvents, listDnsQueryLog } from "@/lib/server/selectors";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -28,7 +28,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(25, Number.parseInt(scalar(params.pageSize) || "50", 10) || 50));
+  const pageSize = Math.min(1000, Math.max(25, Number.parseInt(scalar(params.pageSize) || "100", 10) || 100));
   const status = scalar(params.status) || "all";
   const catalogStatus = scalar(params.catalogStatus) || "all";
   const dnsPage = listDnsQueryLog({ page, pageSize, status, catalogStatus, filters: { ...filters, trafficClass: "all" } });
@@ -91,10 +91,10 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                 <tbody>
                   {dnsPage.rows.map((row) => (
                     <tr key={row.id}>
-                      <td className="col-time">{shortDateTime(row.event_ts || row.collected_at)}</td>
+                      <td className="col-time">{timeWithMillis(row.event_ts || row.collected_at)}</td>
                       <td>
-                        <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{row.client || "Unknown"}</Link>
-                        {row.client_ip ? <small className="subtle block-detail">{row.client_ip}</small> : null}
+                        <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{row.device_label || row.client_label || row.client || "Unknown"}</Link>
+                        <small className="subtle block-detail">{[row.client_ip, row.raw_client && row.raw_client !== row.client ? row.raw_client : ""].filter(Boolean).join(" · ") || "IP not observed"}</small>
                       </td>
                       <td>
                         <Link href={`/traffic?search=${encodeURIComponent(row.domain || "")}`}>{row.domain || row.dns_qname || "n/a"}</Link>

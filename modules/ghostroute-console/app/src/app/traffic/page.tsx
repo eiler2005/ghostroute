@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge } from "@/components/Widgets";
+import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors";
@@ -97,30 +97,33 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   <th className="col-time">Time</th>
                   <th className="col-client">Client</th>
                   <th className="col-destination">Destination</th>
-                  <th>Port</th>
+                  <th className="col-port">Port</th>
                   <th className="col-route">Route</th>
-                  <th>Policy / Rule</th>
+                  <th className="col-policy">Policy / Rule</th>
                   <th className="col-traffic">Traffic</th>
-                  <th>Duration</th>
-                  <th>Risk</th>
+                  <th className="col-duration">Duration</th>
+                  <th className="col-risk">Risk</th>
                   <th className="col-confidence">Confidence</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, idx) => (
                   <tr key={row.id} className={idx === selectedIndex ? "selected" : ""}>
-                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{row.last_seen || row.event_ts || row.collected_at ? new Date(row.last_seen || row.event_ts || row.collected_at).toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }) : "n/a"}</Link></td>
+                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
                     <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
                     <td>
                       <Link href={`/traffic/${encodeURIComponent(row.id)}`}>{trafficDisplayDestination(row)}</Link>
                       <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
                     </td>
-                    <td>{row.destination_port || "n/a"}<small className="subtle block-detail">{row.protocol || "TCP"}</small></td>
+                    <td className="col-port">{row.destination_port || "n/a"}<small className="subtle block-detail">{row.protocol || "TCP"}</small></td>
                     <td><RouteBadge value={row.route} /></td>
-                    <td>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}<small className="subtle block-detail">{row.matched_rule || row.outbound || "no matching rule evidence"}</small></td>
+                    <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
+                      <span className="truncate-text">{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</span>
+                      <small className="subtle block-detail truncate-text">{row.matched_rule || row.outbound || "no matching rule evidence"}</small>
+                    </td>
                     <td>{bytes(row.bytes || row.total_bytes || 0)}<small className="subtle block-detail">{row.connections || 0} sessions</small></td>
-                    <td>{durationLabel(row.duration_seconds)}</td>
-                    <td>{riskBadge(row.risk)}</td>
+                    <td className="col-duration">{durationLabel(row.duration_seconds)}</td>
+                    <td className="col-risk">{riskBadge(row.risk)}</td>
                     <td><ConfidenceBadge value={row.confidence} /></td>
                   </tr>
                 ))}

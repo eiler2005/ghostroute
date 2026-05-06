@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;
   const result = listDnsQueryLog({
     page: Math.max(1, Number(search.get("page") || 1)),
-    pageSize: Math.min(Number(search.get("pageSize") || search.get("limit") || 50), 100),
+    pageSize: Math.min(Number(search.get("pageSize") || search.get("limit") || 100), 1000),
     status: search.get("status") || "all",
     catalogStatus: search.get("catalogStatus") || "all",
     filters: {

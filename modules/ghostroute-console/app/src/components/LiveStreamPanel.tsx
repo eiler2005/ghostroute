@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChannelBadge, RouteBadge, shortDateTime } from "@/components/Widgets";
+import { ChannelBadge, RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 
 type LivePayload = {
   generated_at: string;
@@ -12,7 +12,7 @@ type LivePayload = {
   alerts: Array<Record<string, any>>;
 };
 
-export function LiveStreamPanel({ initial }: { initial: LivePayload }) {
+export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: LivePayload; visibleCount?: number }) {
   const [payload, setPayload] = useState(initial);
   const [mode, setMode] = useState("SSE connecting");
 
@@ -37,11 +37,11 @@ export function LiveStreamPanel({ initial }: { initial: LivePayload }) {
         </div>
         <span className={`badge status-${payload.freshness_status === "fresh" ? "ok" : "warn"}`}>{mode}</span>
       </div>
-      <div className="page-note">Последнее обновление: {shortDateTime(payload.generated_at)} · показано {Math.min((payload.events || []).length, 50)} из {payload.total_events || (payload.events || []).length}</div>
+      <div className="page-note">Последнее обновление: {shortDateTime(payload.generated_at)} · показано {Math.min((payload.events || []).length, visibleCount)} из {payload.total_events || (payload.events || []).length}</div>
       <div className="live-feed">
-        {[...(payload.events || []), ...(payload.route_decisions || [])].slice(0, 50).map((row, idx) => (
+        {[...(payload.events || []), ...(payload.route_decisions || [])].slice(0, visibleCount).map((row, idx) => (
           <div className="live-feed-row" key={`${row.event_type || "decision"}-${row.event_id || row.id || idx}`}>
-            <span>{shortDateTime(row.occurred_at || payload.generated_at)}</span>
+            <span>{timeWithMillis(row.occurred_at || payload.generated_at)}</span>
             <strong>{row.event_type || "route.decision"}</strong>
             <small>{row.origin || row.client || row.client_ip || "System"} → {row.destinationLabel || row.destination || row.dns_qname || row.summary || "destination"}</small>
             <ChannelBadge value={row.channel} />

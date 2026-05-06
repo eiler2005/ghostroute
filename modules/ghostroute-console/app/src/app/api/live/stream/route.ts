@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 function eventPayload() {
   const model = buildPagedEvidenceContext({}, []);
-  const events = listLiveEvents({ page: 1, pageSize: 25 });
+  const events = listLiveEvents({ page: 1, pageSize: 150 });
   return {
     generated_at: new Date().toISOString(),
     freshness_minutes: model.freshnessMinutes,
