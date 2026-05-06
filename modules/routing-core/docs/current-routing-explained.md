@@ -20,8 +20,8 @@ Remote QR mobile clients  -> home IP :<home-reality-port>
                                 STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound -> VPS
                                 other destinations -> direct-out -> home WAN
 
-DNS managed names         -> dnsmasq -> vps-dns-in -> hijack-dns
-                           -> vps-dns-server -> Reality outbound -> VPS Unbound
+DNS managed names         -> dnsmasq -> dnscrypt-proxy
+                           -> sing-box SOCKS -> Reality outbound
 DNS RU/direct/default     -> dnsmasq -> home/RF/default resolver
 
 router OUTPUT             -> main routing unless explicitly proxied
@@ -137,27 +137,27 @@ Supported-схема теперь policy-based, а не "весь DNS через
 
 ```text
 managed/foreign domain
-  -> dnsmasq server=/domain/127.0.0.1#<vps-dns-forward-port>
-  -> sing-box vps-dns-in
-  -> hijack-dns
-  -> sing-box DNS server vps-dns-server
-  -> detour reality-out
-  -> VPS Unbound :15353
+  -> dnsmasq server=/domain/127.0.0.1#<dnscrypt-port>
+  -> dnscrypt-proxy
+  -> sing-box SOCKS dnscrypt-socks-in
+  -> reality-out
+  -> dnscrypt upstream
 
 RU/direct/default domain
   -> dnsmasq default upstream
   -> home/RF/default resolver
 ```
 
-For managed DNS transport, sing-box uses `hijack-dns` on `vps-dns-in` and an
-internal TCP DNS server with `detour: reality-out`. This does not send
-RU/default domains to the VPS; it only transports managed DNS across Reality.
+For managed DNS transport, the generated dnsmasq include sends managed names to
+the router-local dnscrypt listener. dnscrypt-proxy is configured to use the
+router sing-box SOCKS inbound, so DoH leaves through `reality-out`. This does
+not send RU/default names to the VPS; it only transports managed DNS lookups
+across Reality.
 
-Reality on the VPS is currently handled by the existing `3x-ui`/Xray Docker
-container behind Caddy. The managed DNS target is therefore the configured
-`vps_unbound_reality_target_host:15353`, not container-local `127.0.0.1`.
-UFW allows `15353` only from the Xray Docker bridge, while public DNS
-`53/tcp,udp` stays denied.
+`vps-dns-in` remains in the router sing-box config for DNS hijack compatibility
+with inbound/mobile paths, but it is no longer the primary generated target for
+managed dnsmasq rules. The optional VPS Unbound listener is restricted/private
+only; public `53/tcp,udp` stays denied.
 
 Wi-Fi/LAN plain DNS is captured back to router dnsmasq. Mobile Channel A/B/C
 plain DNS `:53`, once it reaches sing-box ingress, is rewritten to the same

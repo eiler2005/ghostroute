@@ -10,8 +10,8 @@
       {
         "type": "tcp",
         "tag": "vps-dns-server",
-        "server": "{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default('127.0.0.1')) }}",
-        "server_port": {{ vps_unbound_listen_port | default(15353) }},
+        "server": "{{ router_singbox_dns_server_host | default('1.1.1.1') }}",
+        "server_port": {{ router_singbox_dns_server_port | default(53) }},
         "detour": "reality-out"
       }
     ],

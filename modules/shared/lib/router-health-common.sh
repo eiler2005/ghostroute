@@ -1168,7 +1168,7 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] || drift_lines+=("missing LTE-safe MSS clamp for home Reality")
   [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] || drift_lines+=("router TCP high-BDP performance tuning is missing")
   [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing plain DNS -> router dnsmasq rule")
-  [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] || drift_lines+=("managed VPS DNS include is missing browserleaks.com")
+  [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] || drift_lines+=("managed DNS include is missing browserleaks.com")
   [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_LISTENER)" = "1" ] || drift_lines+=("vps-dns-in listener missing on router loopback")
   [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_RULE)" = "1" ] || drift_lines+=("vps-dns-in is not routed to reality-out")
   [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_UDP)" = "1" ] || drift_lines+=("LAN UDP/53 is not captured by router dnsmasq")
@@ -1254,7 +1254,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Home Reality LTE MSS clamp | $( [ "$(router_kv_get "$state_file" HOME_REALITY_MSS_CLAMP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Router TCP high-BDP tuning | $( [ "$(router_kv_get "$state_file" ROUTER_TCP_PERF_TUNING)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality DNS -> dnsmasq | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DNS_GUARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
-| Managed VPS DNS include | $( [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Managed DNS include | $( [ "$(router_kv_get "$state_file" MANAGED_VPS_DNS_INCLUDE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | vps-dns-in listener/rule | $( [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_LISTENER)" = "1" ] && [ "$(router_kv_get "$state_file" VPS_DNS_FORWARD_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN DNS capture :53 | $( [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_UDP)" = "1" ] && [ "$(router_kv_get "$state_file" LAN_DNS_CAPTURE_TCP)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality managed split | $( [ "$(router_kv_get "$state_file" HOME_REALITY_SPLIT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |

@@ -240,6 +240,8 @@
         GHOSTROUTE_CHANNEL_C_HOME_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PORT:-$(port_by_tag channel-c-naive-in)}"
         GHOSTROUTE_VPS_DNS_FORWARD_PORT="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(port_by_tag vps-dns-in)}"
         GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-{{ dnscrypt_port }}}"
+        GHOSTROUTE_MANAGED_DNS_FORWARD_HOST="${GHOSTROUTE_MANAGED_DNS_FORWARD_HOST:-{{ router_managed_dns_forward_host | default('127.0.0.1') }}}"
+        GHOSTROUTE_MANAGED_DNS_FORWARD_PORT="${GHOSTROUTE_MANAGED_DNS_FORWARD_PORT:-{{ router_managed_dns_forward_port | default(dnscrypt_port) }}}"
         printf 'GHOSTROUTE_REDIRECT_PORT=%s\n' "$GHOSTROUTE_REDIRECT_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_SOCKS_PORT"
         printf 'GHOSTROUTE_HOME_REALITY_PORT=%s\n' "$GHOSTROUTE_HOME_REALITY_PORT"
@@ -248,6 +250,8 @@
         printf 'GHOSTROUTE_CHANNEL_C_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PORT"
         printf 'GHOSTROUTE_VPS_DNS_FORWARD_PORT=%s\n' "$GHOSTROUTE_VPS_DNS_FORWARD_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_PORT"
+        printf 'GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=%s\n' "$GHOSTROUTE_MANAGED_DNS_FORWARD_HOST"
+        printf 'GHOSTROUTE_MANAGED_DNS_FORWARD_PORT=%s\n' "$GHOSTROUTE_MANAGED_DNS_FORWARD_PORT"
       register: router_runtime_ports
       changed_when: false
       no_log: true
@@ -262,6 +266,8 @@
         channel_c_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PORT=', '') }}"
         router_vps_dns_forward_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_VPS_DNS_FORWARD_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_VPS_DNS_FORWARD_PORT=', '') }}"
         dnscrypt_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_PORT=', '') }}"
+        router_managed_dns_forward_host: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=') | first | default('') | regex_replace('^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=', '') }}"
+        router_managed_dns_forward_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_MANAGED_DNS_FORWARD_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_MANAGED_DNS_FORWARD_PORT=', '') }}"
       no_log: true
 
     - name: IPv6 is disabled in Merlin
@@ -352,15 +358,15 @@
       ansible.builtin.shell: "grep -q '\"{{ managed_split_checker_domain }}\"' /opt/etc/sing-box/rule-sets/stealth-domains.json"
       changed_when: false
 
-    - name: Managed DNS include sends BrowserLeaks DNS to VPS forwarder
+    - name: Managed DNS include sends BrowserLeaks DNS to dnscrypt-backed forwarder
       ansible.builtin.shell: |
         grep -q '^conf-file={{ router_vps_dnsmasq_conf_path }}$' /jffs/configs/dnsmasq.conf.add &&
         ! grep -q '^tcp-upstream$' /jffs/configs/dnsmasq.conf.add &&
-        grep -q '^server=/browserleaks.com/{{ router_vps_dns_forward_host | default("127.0.0.1") }}#{{ router_vps_dns_forward_port }}$' {{ router_vps_dnsmasq_conf_path }}
+        grep -q '^server=/browserleaks.com/{{ router_managed_dns_forward_host | default("127.0.0.1") }}#{{ router_managed_dns_forward_port }}$' {{ router_vps_dnsmasq_conf_path }}
       changed_when: false
       when: router_dns_egress_mode | default('policy_split') == 'policy_split'
 
-    - name: RU and direct domains are absent from managed VPS DNS include
+    - name: RU and direct domains are absent from managed DNS include
       ansible.builtin.shell: |
         ! grep -Eq '^server=/([^/]+[.])?(ru|su|рф)/' {{ router_vps_dnsmasq_conf_path }} &&
         ! grep -q '^server=/vtb.ru/' {{ router_vps_dnsmasq_conf_path }} &&
@@ -407,12 +413,12 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ singbox_dnscrypt_socks_port }} '"
       changed_when: false
 
-    - name: sing-box VPS DNS forwarder is local-only in policy-split mode
+    - name: sing-box DNS hijack compatibility forwarder is local-only in policy-split mode
       ansible.builtin.shell: |
         netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ router_vps_dns_forward_port }} ' &&
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})" &&
         printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-in"' &&
-        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-server","server":"{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default("127.0.0.1")) }}","server_port":{{ vps_unbound_listen_port | default(15353) }},"detour":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"vps-dns-server","server":"{{ router_singbox_dns_server_host | default("1.1.1.1") }}","server_port":{{ router_singbox_dns_server_port | default(53) }},"detour":"reality-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"vps-dns-in","action":"hijack-dns"'
       changed_when: false
       when: router_dns_egress_mode | default('policy_split') == 'policy_split'

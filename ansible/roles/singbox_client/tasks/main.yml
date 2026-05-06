@@ -178,7 +178,10 @@
     mode: "0755"
 
 - name: Generate sing-box rule-sets for mobile split routing
-  ansible.builtin.raw: /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+  ansible.builtin.raw: >
+    MANAGED_DNS_FORWARD_HOST='{{ router_managed_dns_forward_host | default("127.0.0.1") }}'
+    MANAGED_DNS_FORWARD_PORT='{{ router_managed_dns_forward_port | default(dnscrypt_port) }}'
+    /jffs/scripts/update-singbox-rule-sets.sh --no-restart
   changed_when: false
 
 - name: Render sing-box config

@@ -50,24 +50,25 @@ RF-consistent profile.
 The current default is policy-based DNS consistency, not "all DNS through VPS":
 
 ```text
-managed/foreign domains -> DNS through VPS Unbound -> traffic through VPS
+managed/foreign domains -> DNS through dnscrypt-over-Reality -> traffic through VPS
 RU/direct/default domains -> DNS through home/RF/default resolver -> traffic direct/home WAN
 ```
 
-This keeps Russian/direct sites from seeing the VPS resolver while making
-managed foreign services see a consistent VPS/Hetzner profile for both web
-egress and DNS egress.
+This keeps Russian/direct sites on the home/default resolver while ensuring
+managed DNS does not leak to the client, LTE carrier or home ISP in plaintext.
+The visible resolver identity can be a dnscrypt upstream; the privacy invariant
+is that the lookup reached that upstream through Reality.
 
 Implementation:
 
 ```text
 Wi-Fi/LAN client
   -> router dnsmasq
-  -> managed domain? dnsmasq server=/domain/127.0.0.1#<vps-dns-forward-port>
-  -> router sing-box vps-dns-in
-  -> hijack-dns / vps-dns-server
+  -> managed domain? dnsmasq server=/domain/127.0.0.1#<dnscrypt-port>
+  -> dnscrypt-proxy
+  -> sing-box SOCKS
   -> reality-out
-  -> VPS Unbound :15353
+  -> dnscrypt upstream
 
 Wi-Fi/LAN client
   -> router dnsmasq
@@ -80,7 +81,7 @@ Mobile Channels A/B/C use the same DNS selection after reaching the router:
 ```text
 iPhone LTE -> Channel A/B/C ingress -> sing-box
 plain DNS :53 -> router-local dnsmasq
-dnsmasq managed domain -> VPS Unbound
+dnsmasq managed domain -> dnscrypt-over-Reality
 dnsmasq RU/direct/default -> home/RF/default resolver
 ```
 
@@ -119,7 +120,7 @@ Expected default:
 
 ```text
 managed Public IP: VPS
-managed DNS: VPS/Hetzner resolver path
+managed DNS: dnscrypt-over-Reality resolver path
 direct/RU Public IP: home/RF
 direct/RU DNS: home/RF/default resolver path
 ```
@@ -141,8 +142,9 @@ If the test goal is a VPS-like profile, DNS resolvers near the VPS or global
 DoH/DoT resolvers are acceptable as long as they are reached through the active
 channel and do not bypass to the mobile carrier.
 
-With the policy-split resolver, explicitly managed domains should no longer use
-random Google/Cloudflare pools by default. They should use the VPS Unbound path.
+With the policy-split resolver, explicitly managed domains should resolve
+through router dnsmasq and then dnscrypt-over-Reality, not through the LTE or
+home ISP resolver directly.
 
 ## Channel C
 
@@ -178,9 +180,9 @@ Interpretation:
 
 ```text
 DNS = LTE carrier        -> bad leak
-DNS = VPS/Hetzner        -> expected for managed foreign domains
+DNS = dnscrypt upstream  -> expected for managed foreign domains if reached through Reality
 DNS = home/RF resolver   -> expected for RU/direct/default domains
-DNS = Google/Cloudflare  -> possible app-level DoH/DoT or stale client cache; investigate
+DNS = LTE/mobile carrier -> bad for managed domains
 many DNS servers shown   -> noisy resolver anycast/load-balancing, not a leak by itself
 ```
 
@@ -210,22 +212,22 @@ Relevant expected signals:
 ```text
 IPv6 policy OK
 Mobile plain DNS :53 goes to router-local dnsmasq OK
-Managed DNS include has browserleaks.com/.net/.org -> 127.0.0.1#<vps-forward-port> OK
-VPS Unbound :15353 is restricted to the Xray Docker bridge OK
+Managed DNS include has browserleaks.com/.net/.org -> 127.0.0.1#<dnscrypt-port> OK
+dnscrypt-proxy routes DoH through sing-box SOCKS OK
 DNS/IPv6 leak probe OK
 ```
 
 On the current VPS, Reality is served by the existing `3x-ui`/`xray` Docker
 container. Because `127.0.0.1` inside that container is container-local,
-managed DNS is delivered to the configured `vps_unbound_reality_target_host`.
-In the current deployment that target is the VPS public IP on private port
-`15353`, with UFW allowing it only from the Xray Docker bridge. Public
-`53/tcp,udp` remains closed, and `15353` is not allowed from the internet.
+managed DNS is delivered to the router-local dnscrypt listener. dnscrypt sends
+its upstream DoH traffic through the local sing-box SOCKS inbound, so managed
+lookups still cross Reality without depending on the separate VPS Unbound leg.
 
-Router `sing-box` handles the managed DNS transport with `hijack-dns` and an
-internal TCP DNS server that detours through `reality-out`. That keeps dnsmasq's
-domain selection intact: RU/direct/default names still go to the
-home/RF/default resolver, while managed names cross Reality to VPS Unbound.
+Router `sing-box` still exposes `vps-dns-in` for inbound/mobile DNS hijack
+compatibility, but its internal TCP DNS server uses a bounded public resolver
+over `reality-out`. That keeps dnsmasq's domain selection intact:
+RU/direct/default names still go to the home/RF/default resolver, while managed
+names use dnscrypt-over-Reality.
 
 ## BrowserLeaks Mixed DNS Troubleshooting
 
@@ -236,8 +238,8 @@ home/RF, Google/Cloudflare or many resolver pools, check in this order:
 1. Is the active endpoint Config the generated strict Shadowrocket proof config?
 2. Is the tested site in configs/dnsmasq-stealth.conf.add?
 3. Is it absent from configs/domains-no-vpn.txt?
-4. Is it not a RU/SU/RF TLD? RU-like domains are intentionally kept out of VPS DNS.
-5. Does /jffs/configs/dnsmasq-vps-managed.conf.add contain server=/domain/127.0.0.1#<port>?
+4. Is it not a RU/SU/RF TLD? RU-like domains are intentionally kept out of managed DNS.
+5. Does /jffs/configs/dnsmasq-vps-managed.conf.add contain server=/domain/127.0.0.1#<dnscrypt-port>?
 6. Did dnsmasq restart after the include changed?
 7. Did Safari/iOS cache old DNS? Toggle airplane mode or restart the profile.
 8. Is the app/browser using its own DoH/DoT? v1 does not block every app-level encrypted DNS path.
@@ -246,7 +248,7 @@ home/RF, Google/Cloudflare or many resolver pools, check in this order:
 Expected live proofs:
 
 ```text
-browserleaks.com DNS test -> Public IP VPS, DNS VPS/Hetzner
+browserleaks.com DNS test -> Public IP VPS, DNS from the dnscrypt-over-Reality path
 vtb.ru / championat.com / .ru control -> Public IP home/RF, DNS not VPS
 ```
 
@@ -264,7 +266,7 @@ semi-manual catalog curation:
 
 ```text
 unknown/default -> home/RF DNS and traffic
-known managed foreign -> VPS DNS and traffic
+known managed foreign -> dnscrypt-over-Reality DNS + VPS traffic
 known RU/direct -> home/RF DNS and traffic
 ```
 

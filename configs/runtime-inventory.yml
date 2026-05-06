@@ -332,7 +332,7 @@ components:
     version_policy:
       proven_good: Current VPS package line managed by Ansible.
       minimum_required: Must serve restricted managed-DNS listeners only.
-      candidate: Package upgrades require VPS DNS and router vps-dns-in probes.
+      candidate: Package upgrades require private DNS and router vps-dns-in compatibility probes.
       known_problematic: []
       rollback_available: Restore previous package/config through approved VPS recovery.
     relationships:
