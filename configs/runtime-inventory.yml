@@ -57,10 +57,11 @@ components:
     version_policy:
       proven_good: Entware sing-box 1.13.3 package line is the current stable router baseline.
       minimum_required: sing-box 1.13.x is required for Channel C native Naive server-side features.
-      candidate: Upstream arm64-musl builds require explicit LAN transparent REDIRECT regression testing before adoption.
+      candidate: Upstream arm64-musl builds or direct public-resolver sing-box DNS require explicit LAN transparent REDIRECT and managed HTTP 204 regression testing before adoption.
       known_problematic:
         - Generic upstream linux-arm64 binary needs glibc/libpthread that is absent on the router.
         - Upstream arm64-musl 1.13.11 passed config and listener checks but still required rollback after LAN-client regression.
+        - IP-literal Reality handshake targets are incident workarounds; the stable contract keeps client server_name and the approved handshake target as DNS names.
       rollback_available: Keep /opt/bin/sing-box.backup.* until live-check, leak-check and LAN managed-domain probes pass.
     relationships:
       - consumes_stealth_domains_rule_set
@@ -73,7 +74,10 @@ components:
       - /opt/bin/sing-box check -C /opt/etc/sing-box
       - ./modules/ghostroute-health-monitor/bin/live-check --json --no-log
       - ./modules/ghostroute-health-monitor/bin/leak-check --json
+      - Reality cover SNI DNS rule resolves through router-local dnsmasq.
+      - Plain HTTP generate_204 compatibility probe returns 204 through the managed client path.
       - LAN/Wi-Fi managed-domain probe must show managed exit through Reality.
+      - Active managed HTTP 204 probe must pass through the sing-box SOCKS/Reality path.
     compatibility_notes:
       - Process status and listener checks are necessary but not sufficient after binary upgrades.
       - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
@@ -542,6 +546,7 @@ compatibility_claims:
       - live-check overall OK
       - leak-check overall OK
       - LAN managed-domain probe exits through Reality
+      - managed HTTP 204 active probe passes through sing-box SOCKS/Reality path
     notes: Current stable router baseline remains the Entware package line.
 
   - id: sing_box_upstream_musl_candidate
@@ -549,7 +554,7 @@ compatibility_claims:
     status: candidate
     evidence:
       - Config check and listeners are insufficient for adoption.
-      - LAN/Wi-Fi transparent REDIRECT regression must pass before marking proven_good.
+      - LAN/Wi-Fi transparent REDIRECT and managed HTTP 204 regression must pass before marking proven_good.
     notes: Keep rollback binary until all upgrade gates pass.
 
   - id: channel_c_native_client_support
@@ -570,6 +575,9 @@ upgrade_gates:
       - service starts and expected listeners exist
       - live-check overall OK
       - leak-check overall OK
+      - Reality cover SNI DNS rule remains present
+      - plain HTTP generate_204 compatibility probe passes
+      - managed HTTP 204 active probe passes through sing-box SOCKS/Reality path
       - real LAN/Wi-Fi managed-domain probe shows Reality exit
       - real LAN/Wi-Fi direct destination probe stays reachable
     rollback_action: Restore /opt/bin/sing-box.backup.* and restart sing-box.

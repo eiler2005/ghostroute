@@ -23,6 +23,7 @@ home_reality_dest_host: "{{ home_reality_dest.split(':')[0] }}"
 home_reality_dest_port: "{{ home_reality_dest.split(':')[1] | int }}"
 home_reality_server_names:
   - "gateway.icloud.com"
+home_reality_handshake_host: "{{ vault_home_reality_handshake_host | default('setup.icloud.com') }}"
 
 # Channel B home-first relay: mobile clients connect to a dedicated home
 # XHTTP+TLS ingress on router, then router forwards upstream through local
@@ -81,8 +82,6 @@ router_vps_dns_forward_port: "{{ vault_router_vps_dns_forward_port | default(vau
 router_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-vps-managed.conf.add
 router_managed_dns_forward_host: "127.0.0.1"
 router_managed_dns_forward_port: "{{ vault_router_managed_dns_forward_port | default(dnscrypt_port, true) }}"
-router_singbox_dns_server_host: "{{ vault_router_singbox_dns_server_host | default('1.1.1.1') }}"
-router_singbox_dns_server_port: "{{ vault_router_singbox_dns_server_port | default(53) }}"
 router_dns_capture_lan_plain_53: "{{ vault_router_dns_capture_lan_plain_53 | default(true) }}"
 router_mobile_dns_plain_53_to_dnsmasq: "{{ vault_router_mobile_dns_plain_53_to_dnsmasq | default(true) }}"
 vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1') }}"

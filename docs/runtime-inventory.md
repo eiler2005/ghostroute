@@ -36,6 +36,21 @@ line. Upstream generic or musl builds are candidates only. They are not adopted
 until `sing-box check`, listener checks, `live-check`, `leak-check`, and a real
 LAN/Wi-Fi managed-domain probe all pass.
 
+The stable Channel A DNS contract keeps sing-box DNS resolution on the private
+VPS Unbound path over `reality-out`; direct public-resolver DNS from sing-box is
+a candidate change, not the proven-good baseline. The Reality cover contract is
+also strict: client `server_name` remains the configured cover SNI, while the
+router-side handshake target is an approved DNS hostname that can differ when a
+cover edge stops accepting TCP/443. A dedicated sing-box DNS rule resolves both
+names through router-local dnsmasq. IP-literal handshake targets are incident
+workarounds only and must fail `live-check` until deliberately promoted through
+the upgrade gates.
+
+The captive/connectivity compatibility contract has one explicit direct
+exception: plain HTTP `www.google.com:80` may bypass managed Reality so
+`generate_204` health checks can complete. HTTPS Google traffic and normal
+managed destinations remain governed by the managed split.
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT
