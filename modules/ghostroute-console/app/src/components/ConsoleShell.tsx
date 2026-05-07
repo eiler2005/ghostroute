@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, SlidersHorizontal, Users, Wifi } from "lucide-react";
 import { shortDateTime } from "@/components/Widgets";
-import { ConsoleWarmup } from "@/components/ConsoleWarmup";
 import { filterOptions } from "@/lib/server/selectors/shell";
 import type { ConsoleFilters, ConsoleModel } from "@/lib/server/types";
 
@@ -52,7 +50,6 @@ export function ConsoleShell({
   ].filter(Boolean).join(" · ");
   return (
     <div className="shell">
-      <ConsoleWarmup />
       <aside className="sidebar">
         <div className="brand">
           <div className="ghost">GR</div>
@@ -63,10 +60,10 @@ export function ConsoleShell({
         </div>
         <nav>
           {nav.map(([label, href, Icon]) => (
-            <Link className={active === href ? "nav active" : "nav"} href={href} key={href}>
+            <a className={active === href ? "nav active" : "nav"} href={href} key={href}>
               <Icon size={18} />
               <span>{label}</span>
-            </Link>
+            </a>
           ))}
         </nav>
         <div className="system-pill">
