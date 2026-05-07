@@ -5,7 +5,7 @@ const API_BUDGET_MS = 1500;
 
 const pages = [
   { path: "/", nav: "Dashboard", markers: ["Observed traffic"] },
-  { path: "/traffic", nav: "Flow Explorer", markers: ["Flow Explorer", "Нет traffic rows"] },
+  { path: "/traffic", nav: "Flow Explorer", markers: ["Flow Explorer", "No traffic rows"] },
   { path: "/dns", nav: "DNS Query Log", markers: ["DNS Query Log", "Нет DNS query rows"] },
   { path: "/clients", nav: "Clients", markers: ["Device Inventory"] },
   { path: "/health", nav: "Health Center", markers: ["Health Center"] },

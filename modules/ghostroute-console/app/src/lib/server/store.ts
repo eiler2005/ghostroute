@@ -296,6 +296,13 @@ export function getDb() {
         policy text not null default '',
         matched_rule text not null default '',
         outbound text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        egress_ip text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        ts_confidence text not null default '',
         bytes integer not null default 0,
         connections integer not null default 0,
         duration_seconds integer not null default 0,
@@ -394,6 +401,15 @@ export function getDb() {
         event_ts: "text not null default ''",
         ts_confidence: "text not null default ''",
       },
+      flow_sessions: {
+        dns_qname: "text not null default ''",
+        dns_answer_ip: "text not null default ''",
+        sni: "text not null default ''",
+        egress_ip: "text not null default ''",
+        egress_asn: "text not null default ''",
+        egress_country: "text not null default ''",
+        ts_confidence: "text not null default ''",
+      },
       events: {
         event_id: "text not null default ''",
         client_ip: "text not null default ''",
@@ -443,7 +459,7 @@ export function getDb() {
       create index if not exists idx_alarm_events_status on alarm_events(status, severity, collected_at desc);
     `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-      5,
+      6,
       new Date().toISOString()
     );
   }

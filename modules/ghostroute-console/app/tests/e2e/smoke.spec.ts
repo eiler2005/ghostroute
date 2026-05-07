@@ -19,28 +19,51 @@ test("filters are visible and stable", async ({ page }) => {
   await expect(page.locator("input[name='search']")).toBeVisible();
 });
 
-test("route explanation exposes gated evidence", async ({ page }) => {
-  await page.goto("/traffic?flow=0");
-  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
-    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+test("dashboard shows traffic analytics in English", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Traffic today" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Top clients" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Top destinations" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "VPS traffic this month" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "LTE reserve (mobile internet)" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Traffic usage" })).toBeVisible();
+  await expect(page.locator(".chart-legend .legend-vps").first()).toContainText("Via VPS");
+  await expect(page.locator(".chart-legend .legend-forecast").first()).toContainText("VPS forecast");
+  await expect(page.locator("body")).not.toContainText("Трафик");
+});
+
+test("flow workbench exposes inline detail and gated evidence", async ({ page }) => {
+  await page.goto("/traffic");
+  if (await page.getByText("No traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("No traffic rows")).toBeVisible();
     return;
   }
-  await expect(page.getByText("Почему маршрут именно такой?")).toBeVisible();
-  await expect(page.getByText("Что видит сайт")).toBeVisible();
-  await expect(page.getByText("Что видит оператор")).toBeVisible();
-  await expect(page.getByText("Канал входа")).toBeVisible();
-  await expect(page.getByText("Хронология событий")).toBeVisible();
-  await page.locator(".evidence-details summary").first().click({ force: true });
-  await expect(page.locator(".codebox").first()).toBeVisible();
+  await expect(page.locator(".traffic-workbench")).toBeVisible();
+  await expect(page.locator(".flow-detail-panel")).toBeVisible();
+  await expect(page.locator(".flow-detail-panel")).toContainText("Why this route?");
+  await expect(page.locator(".flow-detail-panel")).toContainText("Site / Operator view");
+  const secondRowLink = page.locator(".route-table-card tbody tr").nth(1).locator("a").first();
+  await secondRowLink.click();
+  await expect(page).toHaveURL(/flow=/);
+  await expect(page.locator(".route-table-card tbody tr.selected")).toHaveCount(1);
+  await page.locator(".flow-detail-panel .evidence-details summary").first().click({ force: true });
+  await expect(page.locator(".flow-detail-panel .codebox").first()).toBeVisible();
+});
+
+test("shared route detail resolves exact flow session ids", async ({ page }) => {
+  await page.goto(`/traffic/${encodeURIComponent("test-seed:flow:0001")}`);
+  await expect(page.getByText("Why this route?")).toBeVisible();
+  await expect(page.getByText("Route for")).toBeVisible();
 });
 
 test("traffic explorer hides technical evidence noise by default", async ({ page }) => {
   await page.goto("/traffic");
-  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
-    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  if (await page.getByText("No traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("No traffic rows")).toBeVisible();
     return;
   }
-  await expect(page.getByRole("heading", { name: "Flow Explorer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
+  await expect(page.getByText("Read-only analysis of prepared flows")).toBeVisible();
   await expect(page.getByText("flows by volume with policy, route and risk context")).toBeVisible();
   await expect(page.locator(".traffic-stream-meta").nth(1)).toContainText("hidden system/no-byte evidence");
   const firstRow = page.locator(".route-table-card tbody tr").first();
@@ -49,11 +72,11 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
     await expect(firstRow).not.toContainText("Unknown");
     await expect(firstRow).not.toContainText("0 B");
   } else {
-    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+    await expect(page.getByText("No traffic rows")).toBeVisible();
   }
   await page.goto("/traffic?diagnostics=1");
-  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
-    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  if (await page.getByText("No traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("No traffic rows")).toBeVisible();
   } else {
     await expect(page.getByText("Diagnostics mode: technical DNS and route events are visible.")).toBeVisible();
   }
@@ -68,8 +91,8 @@ test("traffic classes and live cadence are explicit", async ({ page }) => {
   const serviceY = await page.getByRole("heading", { name: "Service/background traffic" }).boundingBox();
   expect(clientRowsY?.y || 0).toBeLessThan(serviceY?.y || Number.POSITIVE_INFINITY);
   await page.goto("/traffic?trafficClass=unclassified");
-  if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
-    await expect(page.getByText("Нет traffic rows")).toBeVisible();
+  if (await page.getByText("No traffic rows").isVisible().catch(() => false)) {
+    await expect(page.getByText("No traffic rows")).toBeVisible();
   } else {
     await expect(page.getByText("Needs attribution flows by volume")).toBeVisible();
   }
@@ -98,7 +121,7 @@ test("dense console tables keep pagination controls visible", async ({ page }) =
   }
 
   await page.goto("/traffic");
-  if (!(await page.getByText("Нет traffic rows").isVisible().catch(() => false))) {
+  if (!(await page.getByText("No traffic rows").isVisible().catch(() => false))) {
     await expect(page.locator(".traffic-stream-card .dense-top-pager .pagination")).toBeVisible();
     await expect(page.locator(".traffic-stream-card .live-card-footer .pagination")).toBeVisible();
   }

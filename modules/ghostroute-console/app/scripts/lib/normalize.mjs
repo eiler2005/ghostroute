@@ -1,4 +1,4 @@
-const MIGRATION_VERSION = 5;
+const MIGRATION_VERSION = 6;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -378,6 +378,13 @@ export function ensureConsoleSchema(db) {
         policy text not null default '',
         matched_rule text not null default '',
         outbound text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        egress_ip text not null default '',
+        egress_asn text not null default '',
+        egress_country text not null default '',
+        ts_confidence text not null default '',
         bytes integer not null default 0,
         connections integer not null default 0,
         duration_seconds integer not null default 0,
@@ -474,6 +481,15 @@ export function ensureConsoleSchema(db) {
     normalized_dns: {
       answer_ip: "text not null default ''",
       event_ts: "text not null default ''",
+      ts_confidence: "text not null default ''",
+    },
+    flow_sessions: {
+      dns_qname: "text not null default ''",
+      dns_answer_ip: "text not null default ''",
+      sni: "text not null default ''",
+      egress_ip: "text not null default ''",
+      egress_asn: "text not null default ''",
+      egress_country: "text not null default ''",
       ts_confidence: "text not null default ''",
     },
     events: {
@@ -761,9 +777,10 @@ export function rebuildObservabilityReadModels(db) {
     const flowInsert = db.prepare(`
       insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip,
         device_key, channel, destination, destination_ip, destination_port, protocol, route, policy,
-        matched_rule, outbound, bytes, connections, duration_seconds, duration_confidence, risk,
+        matched_rule, outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country,
+        ts_confidence, bytes, connections, duration_seconds, duration_confidence, risk,
         risk_reason, confidence, source_kind, evidence_json)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc limit ?").all(flowLimit);
     const flowTopDomains = new Map();
@@ -791,6 +808,13 @@ export function rebuildObservabilityReadModels(db) {
         policyForFlow(row),
         text(row.matched_rule),
         text(row.outbound),
+        text(row.dns_qname),
+        text(row.dns_answer_ip),
+        text(row.sni),
+        text(row.egress_ip),
+        text(row.egress_asn),
+        text(row.egress_country),
+        text(row.ts_confidence),
         number(row.bytes),
         number(row.connections),
         durationSeconds(row),
