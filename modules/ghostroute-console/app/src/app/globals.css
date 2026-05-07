@@ -221,7 +221,8 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .flow-events-table td a { color: #dbe8f8; font-weight: 700; }
 .clients-layout > * { min-width: 0; }
 .clients-card { min-width: 0; overflow: hidden; }
-.clients-table-scroll { display: block; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; padding-bottom: 10px; scrollbar-gutter: stable; scrollbar-color: #5ca8ff #0b1a2d; }
+.clients-table-scroll { display: block; width: 100%; max-width: 100%; max-height: clamp(240px, calc(100vh - 440px), 420px); overflow: auto; padding-bottom: 10px; scrollbar-gutter: stable; scrollbar-color: #5ca8ff #0b1a2d; }
+.clients-card h3 + .clients-table-scroll { max-height: clamp(200px, calc(100vh - 500px), 320px); }
 .clients-table-scroll::-webkit-scrollbar { height: 12px; }
 .clients-table-scroll::-webkit-scrollbar-track { background: #0b1a2d; border-radius: 999px; }
 .clients-table-scroll::-webkit-scrollbar-thumb { background: #355f8f; border-radius: 999px; border: 2px solid #0b1a2d; }
