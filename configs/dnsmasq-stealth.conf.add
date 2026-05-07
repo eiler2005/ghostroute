@@ -260,6 +260,10 @@ ipset=/efootball-prod-frontdoor-endpoint-user-api-eseddha0a8esekda.z01.azurefd.n
 ipset=/efootball-prod-cdn-ms.azureedge.net/STEALTH_DOMAINS
 ipset=/efootball-prod-cdn-ms.afd.azureedge.net/STEALTH_DOMAINS
 ipset=/d2fbzftqq66qjv.cloudfront.net/STEALTH_DOMAINS
+# Trial for eFootball/KONAMI update traffic observed from a LAN iPad using the
+# Home Reality profile. Keep this exact S3 host managed; do not broaden to
+# amazonaws.com.
+ipset=/eu-irl-00001.s3.dualstack.eu-west-1.amazonaws.com/STEALTH_DOMAINS
 ipset=/anzu-us.com/STEALTH_DOMAINS
 ipset=/clashofclans.com/STEALTH_DOMAINS
 ipset=/game-assets.clashofclans.com/STEALTH_DOMAINS
