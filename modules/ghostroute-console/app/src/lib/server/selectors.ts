@@ -226,7 +226,9 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
     if (filters.route && filters.route !== "all" && row.route !== filters.route) return false;
     if (filters.channel && filters.channel !== "all" && row.channel !== filters.channel && !(row.channels || []).includes(filters.channel)) return false;
     if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
-    if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) return false;
+    if (filters.trafficClass && filters.trafficClass !== "all" && row.trafficClass && row.trafficClass !== filters.trafficClass) {
+      if (!(filters.trafficClass === "client" && (row.accounting_bucket || row.raw?.accounting_bucket))) return false;
+    }
     if (filters.client && filters.client !== "all") {
       const requested = resolveClient(filters.client);
       const rowResolved = resolveClient({ ...row, profile: row.profile || row.raw?.profile });
@@ -277,6 +279,8 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     client_channel: resolved.client_channel || row.client_channel || "",
     matched_by: resolved.matched_by,
     attribution_confidence: resolved.attribution_confidence,
+    accounting_bucket: Boolean(row.accounting_bucket || row.raw?.accounting_bucket),
+    unattributed_reason: row.unattributed_reason || row.raw?.unattributed_reason || "",
     observed_aliases: Array.from(new Set([...(row.observed_aliases || []), row.client, row.raw?.client, rawProfile, row.label, ...(resolved.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16),
     label: row.label ? (resolved.client_label || displayDeviceLabel(row.label)) : row.label,
     physical_device_key: resolved.device_key || resolved.client_key || canonicalDeviceKey(row.client || row.label || row.device_id || row.id || ""),
@@ -576,6 +580,93 @@ function authoritativeTotalsForPeriod(period = "today") {
   });
 }
 
+function destinationAttributionCoverageForPeriod(period = "today") {
+  return cacheGet(`destination-coverage:${latestSnapshotVersion()}:${period}`, () => {
+    const rows = getDb()
+      .prepare("select collected_at, payload_json from snapshots where type = 'traffic' order by collected_at desc limit 50")
+      .all() as Array<Record<string, any>>;
+    for (const row of rows) {
+      if ((period || "today") === "today" && moscowDateKey(row.collected_at) !== moscowDateKey(new Date())) continue;
+      const payload = rawJson({ raw_json: row.payload_json });
+      if (snapshotMatchesPeriod({ type: "traffic", collectedAt: row.collected_at, payload }, period || "today", new Date())) {
+        return payload.destination_attribution_coverage || null;
+      }
+    }
+    return null;
+  });
+}
+
+function flowByteValue(row: Record<string, any>) {
+  return Number(row.bytes || row.total_bytes || 0);
+}
+
+function flowGroupKey(row: Record<string, any>) {
+  return [
+    row.raw?.flow_group_key,
+    row.raw?.accounting_bucket ? "bucket" : "",
+    row.channel,
+    row.raw_profile || row.raw?.profile,
+    row.raw_client || row.raw?.client || row.client,
+    row.destination,
+    row.route,
+    row.confidence,
+  ].filter(Boolean).join("|").toLowerCase();
+}
+
+function applyFlowWindowDeltas(rows: Array<Record<string, any>>) {
+  const groups = new Map<string, Array<Record<string, any>>>();
+  for (const row of rows) {
+    const key = flowGroupKey(row);
+    const list = groups.get(key) || [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  const result: Array<Record<string, any>> = [];
+  for (const list of groups.values()) {
+    const ordered = list.sort((a, b) => Date.parse(a.collected_at || a.event_ts || "") - Date.parse(b.collected_at || b.event_ts || ""));
+    let previous: Record<string, any> | null = null;
+    let latest: Record<string, any> = ordered[ordered.length - 1];
+    let bytes = 0;
+    let connections = 0;
+    let snapshotSamples = 0;
+    let deltaSamples = 0;
+    for (const sample of ordered) {
+      const currentBytes = flowByteValue(sample);
+      const currentConnections = Number(sample.connections || 0);
+      const first = !previous;
+      const previousBytes = previous ? flowByteValue(previous) : 0;
+      const previousConnections = Number(previous?.connections || 0);
+      const byteDelta = first ? currentBytes : Math.max(0, currentBytes - previousBytes);
+      const connectionDelta = first ? currentConnections : Math.max(0, currentConnections - previousConnections);
+      if (byteDelta > 0 || connectionDelta > 0) {
+        bytes += byteDelta;
+        connections += connectionDelta;
+        if (first) snapshotSamples += 1;
+        else deltaSamples += 1;
+      }
+      if (Date.parse(sample.collected_at || sample.event_ts || "") >= Date.parse(latest.collected_at || latest.event_ts || "")) latest = sample;
+      previous = sample;
+    }
+    result.push({
+      ...latest,
+      bytes,
+      total_bytes: bytes,
+      connections,
+      raw_total_bytes: flowByteValue(latest),
+      traffic_basis: snapshotSamples && !deltaSamples ? "snapshot_total" : snapshotSamples ? "snapshot_total+delta" : "delta",
+      snapshot_samples: snapshotSamples,
+      delta_samples: deltaSamples,
+    });
+  }
+  return result;
+}
+
+function matchesTrafficClass(row: Record<string, any>, trafficClass = "client") {
+  if (!trafficClass || trafficClass === "all") return true;
+  if (row.trafficClass === trafficClass) return true;
+  return trafficClass === "client" && Boolean(row.accounting_bucket);
+}
+
 function deviceDeltaRowsForPeriod(period = "today") {
   return cacheGet(`device-deltas:${latestSnapshotVersion()}:${period}`, () => {
   const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"])))
@@ -764,7 +855,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
 
   const flows = filterRows(
     normalizedFlows.length
-      ? reconcileTrafficRows(normalizedFlows, authoritativeTotalsForPeriod(period))
+      ? reconcileTrafficRows(applyFlowWindowDeltas(normalizedFlows), authoritativeTotalsForPeriod(period))
       : [
       ...(traffic.app_flows || []).map((row: any) => decorateTrafficRow(row)),
       ...(traffic.destinations || []).map((row: any) => decorateTrafficRow({
@@ -960,6 +1051,7 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
       periodLabel: trafficPeriodLabel(dashboardTraffic),
       windowLabel: trafficWindowLabel(dashboardTraffic),
     },
+    destinationAttributionCoverage: destinationAttributionCoverageForPeriod(period),
     devices: filterRows(devices.map((row: any) => ({ ...row, route: row.route || routeFromCounters(row) })), filters),
     flows,
     dnsQueries,
@@ -1202,9 +1294,9 @@ export function listTrafficRows(args: PageArgs = {}) {
     .all(...params, fetchLimit)
     .map(mapFlowRow)
     .filter((row) => filterRows([row], args.filters || {}).length > 0)
-    .filter((row) => !trafficClass || trafficClass === "all" || row.trafficClass === trafficClass)
+    .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const allRows = (reconcileTrafficRows(rawRows, authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
+  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
   const rows = allRows.slice(offset, offset + pageSize);
@@ -1274,9 +1366,9 @@ export function listFlowSessions(args: PageArgs = {}) {
     .all(...params, fetchLimit)
     .map(mapFlowSessionRow)
     .filter((row) => filterRows([row], filters).length > 0)
-    .filter((row) => !trafficClass || trafficClass === "all" || row.trafficClass === trafficClass)
+    .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const allRows = (reconcileTrafficRows(rawRows, authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
+  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
   const rows = allRows.slice(offset, offset + pageSize);
@@ -1640,6 +1732,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
       periodLabel: trafficPeriodLabel(dashboardTraffic),
       windowLabel: trafficWindowLabel(dashboardTraffic),
     },
+    destinationAttributionCoverage: destinationAttributionCoverageForPeriod(period),
     devices,
     flows: [],
     dnsQueries,
@@ -1723,6 +1816,7 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
       periodLabel: trafficPeriodLabel(dashboardTraffic),
       windowLabel: trafficWindowLabel(dashboardTraffic),
     },
+    destinationAttributionCoverage: destinationAttributionCoverageForPeriod(period),
     devices: [],
     flows: [],
     dnsQueries: [],

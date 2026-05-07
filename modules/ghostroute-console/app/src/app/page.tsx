@@ -54,11 +54,17 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "сегодня, окно не указано";
   const topClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
+  const coverage = model.destinationAttributionCoverage || {};
   const clientTrafficRows = [...model.flows]
-    .filter((row) => row.trafficClass === "client" && Number(row.bytes || row.total_bytes || 0) > 0)
+    .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && Number(row.bytes || row.total_bytes || 0) > 0)
     .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0));
-  const concreteDestinations = groupDestinationRows(clientTrafficRows, 8);
-  const topDestinations = concreteDestinations.length > 0 ? concreteDestinations : groupDestinationFallback(clientTrafficRows, 8);
+  const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0));
+  const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
+  const concreteDestinations = groupDestinationRows(clientTrafficRows.filter((row) => !row.accounting_bucket), 8);
+  const bucketDestinations = groupDestinationFallback(clientTrafficRows.filter((row) => row.accounting_bucket), 4);
+  const topDestinations = [...concreteDestinations, ...bucketDestinations]
+    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0))
+    .slice(0, 8);
   const serviceTraffic = [...model.flows]
     .filter((row) => row.trafficClass === "service_background" && Number(row.bytes || row.total_bytes || 0) > 0)
     .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
@@ -151,6 +157,12 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <h2>Top destinations</h2>
             <Link className="muted-button" href="/traffic?trafficClass=client">Open traffic</Link>
           </div>
+          <p className="subtle">
+            Attributed {bytes(destinationAttributedBytes)} of {bytes(model.totals.observedBytes)} observed client traffic;
+            {destinationAttributionGap > 0
+              ? ` ${bytes(destinationAttributionGap)} currently has client counters without destination-byte attribution.`
+              : " destination attribution covers the observed client total."}
+          </p>
           {topDestinations.length === 0 ? (
             <EmptyState title="Нет concrete или category destination snapshots" />
           ) : (

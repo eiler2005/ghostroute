@@ -5,6 +5,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
+TEST_DAY="$(date +%Y-%m-%d)"
 
 assert_json_valid() {
   local file="$1"
@@ -32,19 +33,19 @@ assert_common_contract() {
   ' "$file"
 }
 
-cat > "$TMPDIR/interface.tsv" <<'EOF'
-2026-04-29T00:00:00+0300|wan0|100|200
-2026-04-29T01:00:00+0300|wan0|1100|2200
-2026-04-29T00:00:00+0300|br0|10|20
-2026-04-29T01:00:00+0300|br0|210|420
+cat > "$TMPDIR/interface.tsv" <<EOF
+${TEST_DAY}T00:00:00+0300|wan0|100|200
+${TEST_DAY}T01:00:00+0300|wan0|1100|2200
+${TEST_DAY}T00:00:00+0300|br0|10|20
+${TEST_DAY}T01:00:00+0300|br0|210|420
 EOF
-cat > "$TMPDIR/lan.tsv" <<'EOF'
-2026-04-29T00:00:00+0300|192.168.50.10|phone|10|20|5|5|0|0
-2026-04-29T01:00:00+0300|192.168.50.10|phone|110|220|55|45|5|5
+cat > "$TMPDIR/lan.tsv" <<EOF
+${TEST_DAY}T00:00:00+0300|192.168.50.10|phone|10|20|5|5|0|0
+${TEST_DAY}T01:00:00+0300|192.168.50.10|phone|110|220|55|45|5|5
 EOF
-cat > "$TMPDIR/mobile.tsv" <<'EOF'
-2026-04-29T00:00:00+0300|iphone-1|iPhone|10|20
-2026-04-29T01:00:00+0300|iphone-1|iPhone|110|220
+cat > "$TMPDIR/mobile.tsv" <<EOF
+${TEST_DAY}T00:00:00+0300|iphone-1|iPhone|10|20
+${TEST_DAY}T01:00:00+0300|iphone-1|iPhone|110|220
 EOF
 
 TRAFFIC_OUT="$TMPDIR/traffic.json"
@@ -52,9 +53,21 @@ TRAFFIC_REPORT_SKIP_REFRESH=1 \
   TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
   TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
   TRAFFIC_MOBILE_COUNTERS_FILE="$TMPDIR/mobile.tsv" \
-  "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" --json 2026-04-29 > "$TRAFFIC_OUT"
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" --json today > "$TRAFFIC_OUT"
 assert_json_valid "$TRAFFIC_OUT"
 assert_common_contract "$TRAFFIC_OUT"
+ruby -rjson -e '
+  j=JSON.parse(File.read(ARGV[0]))
+  coverage=j.fetch("destination_attribution_coverage")
+  abort("missing coverage observed") unless coverage["observed_bytes"].to_i > 0
+  abort("missing coverage sources") unless coverage.fetch("sources").key?("lan_wifi")
+  buckets=j.fetch("destinations").select { |row| row["accounting_bucket"] }
+  abort("missing accounting bucket") if buckets.empty?
+  lan=buckets.find { |row| row["destination"] == "Unknown/Unattributed LAN-Wi-Fi" }
+  abort("missing LAN accounting bucket") unless lan
+  abort("bad LAN bucket confidence") unless lan["bytes_confidence"] == "exact-counter"
+  abort("bad LAN bucket evidence") unless lan["destination_evidence"] == "none"
+' "$TRAFFIC_OUT"
 
 cat > "$TMPDIR/current-interface.tsv" <<'EOF'
 wan0|1100|2200
@@ -67,7 +80,7 @@ cat > "$TMPDIR/current-mobile.tsv" <<'EOF'
 iphone-1|iPhone|110|220
 EOF
 TRAFFIC_SUMMARY_OUT="$TMPDIR/traffic-summary.json"
-TRAFFIC_SUMMARY_NOW="2026-04-29T01:00:00+0300" \
+TRAFFIC_SUMMARY_NOW="${TEST_DAY}T01:00:00+0300" \
   TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
   TRAFFIC_CURRENT_COUNTERS_FILE="$TMPDIR/current-interface.tsv" \
   TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
