@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, SlidersHorizontal, Users, Wifi } from "lucide-react";
 import { shortDateTime } from "@/components/Widgets";
-import { filterOptions } from "@/lib/server/selectors";
+import { ConsoleWarmup } from "@/components/ConsoleWarmup";
+import { filterOptions } from "@/lib/server/selectors/shell";
 import type { ConsoleFilters, ConsoleModel } from "@/lib/server/types";
 
 const nav = [
@@ -42,13 +43,16 @@ export function ConsoleShell({
   ].filter(Boolean).join(" · ");
   const latestTraffic = model.runtime.latestSnapshots.traffic ? shortDateTime(model.runtime.latestSnapshots.traffic) : "n/a";
   const latestSummary = model.runtime.latestSnapshots.traffic_summary ? shortDateTime(model.runtime.latestSnapshots.traffic_summary) : "n/a";
+  const buildLabel = model.runtime.buildAt ? `${model.runtime.buildCommit} · ${shortDateTime(model.runtime.buildAt)}` : model.runtime.buildCommit;
   const sourceTitle = [
     `data: ${model.runtime.dataDirLabel}`,
     `repo: ${model.runtime.repoRootLabel}`,
     `env: ${model.runtime.nodeEnv}`,
-  ].join(" · ");
+    model.runtime.buildAt ? `build: ${model.runtime.buildAt}` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <div className="shell">
+      <ConsoleWarmup />
       <aside className="sidebar">
         <div className="brand">
           <div className="ghost">GR</div>
@@ -126,7 +130,7 @@ export function ConsoleShell({
         </header>
         <div className="source-strip" title={sourceTitle}>
           <span>{model.runtime.sourceLabel}</span>
-          <span>build {model.runtime.buildCommit}</span>
+          <span>build {buildLabel}</span>
           <span>traffic {latestTraffic}</span>
           <span>summary {latestSummary}</span>
         </div>

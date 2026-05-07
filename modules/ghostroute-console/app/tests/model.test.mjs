@@ -24,6 +24,8 @@ const {
 } = trafficWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
+const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
+const { validateSnapshotPayload } = snapshotContractsModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -41,6 +43,27 @@ test("console data directory can hold factual snapshots", async () => {
     })
   );
   assert.equal(fs.readdirSync(snapshots).length, 1);
+});
+
+test("snapshot contracts keep unknown fields and reject missing core fields", () => {
+  const payload = validateSnapshotPayload("traffic_summary", {
+    schema_version: 1,
+    generated_at: "2026-05-07T00:00:00Z",
+    source: { command: "traffic-summary", extra_source_field: true },
+    confidence: "mixed",
+    totals: { client_observed_bytes: 10 },
+    future_field: { kept: true },
+  });
+  assert.equal(payload.future_field.kept, true);
+  assert.equal(payload.source.extra_source_field, true);
+  assert.throws(
+    () => validateSnapshotPayload("traffic_summary", {
+      schema_version: 1,
+      source: { command: "traffic-summary" },
+      totals: { client_observed_bytes: 10 },
+    }),
+    /generated_at/
+  );
 });
 
 test("collector lock replaces stale locks and preserves active peer locks", async () => {

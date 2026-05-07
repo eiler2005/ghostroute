@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildHealthModel } from "@/lib/server/selectors";
+import { buildHealthModel } from "@/lib/server/selectors/health";
 
 export async function GET() {
   const model = buildHealthModel();

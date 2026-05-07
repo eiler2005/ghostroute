@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveNotificationSettings } from "@/lib/server/actions";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildConsoleModel } from "@/lib/server/selectors/shell";
 
 export async function GET() {
   return NextResponse.json(buildConsoleModel().notificationSettings);

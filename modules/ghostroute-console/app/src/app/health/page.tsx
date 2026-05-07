@@ -1,7 +1,7 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { AlarmActions } from "@/components/AlarmActions";
 import { EmptyState, RawEvidence, shortDateTime, StatusBadge } from "@/components/Widgets";
-import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors";
+import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors/health";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {

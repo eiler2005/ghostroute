@@ -1,7 +1,7 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, Pagination, RawEvidence } from "@/components/Widgets";
 import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
-import { buildCatalogModel } from "@/lib/server/selectors";
+import { buildCatalogModel } from "@/lib/server/selectors/catalog";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function CatalogPage({ searchParams }: { searchParams?: SearchParams }) {

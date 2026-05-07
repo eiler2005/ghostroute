@@ -5,6 +5,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { validateSnapshotPayload } from "./lib/snapshot-contracts.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -177,6 +178,7 @@ for (const [type, command, args, options = {}] of commands) {
   try {
     const stdout = runReadOnlyCommand(command, args, options);
     const payload = JSON.parse(stdout);
+    validateSnapshotPayload(type, payload);
     const collectedAt = payload.generated_at || new Date().toISOString();
     const file = path.join(snapshotDir, `${type}-${collectedAt.replace(/[:.]/g, "-")}.json`);
     collected.push({ type, command, args, payload, collectedAt, file });

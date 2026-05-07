@@ -56,3 +56,47 @@ jobs:
 
       - name: Console smoke tests
         run: ./tests/run-smoke.sh
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-playwright-traces
+          path: |
+            modules/ghostroute-console/app/test-results/
+            modules/ghostroute-console/app/playwright-report/
+          if-no-files-found: ignore
+
+  console-performance:
+    name: Console performance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: modules/ghostroute-console/app/package-lock.json
+
+      - name: Install Console dependencies
+        run: npm --prefix modules/ghostroute-console/app ci
+
+      - name: Install Playwright Chromium
+        run: npm --prefix modules/ghostroute-console/app exec -- playwright install --with-deps chromium
+
+      - name: Console performance tests
+        run: npm --prefix modules/ghostroute-console/app run test:perf
+
+      - name: Upload Playwright performance traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-performance-traces
+          path: |
+            modules/ghostroute-console/app/test-results/
+            modules/ghostroute-console/app/playwright-report/
+          if-no-files-found: ignore

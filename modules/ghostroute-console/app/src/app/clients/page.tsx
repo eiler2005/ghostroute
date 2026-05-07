@@ -15,7 +15,8 @@ import {
   SplitBars,
   StatusBadge,
 } from "@/components/Widgets";
-import { buildClientsModel, listClientActivity, listClientInventory, listFlowSessions } from "@/lib/server/selectors";
+import { buildClientsModel, listClientActivity, listClientInventory } from "@/lib/server/selectors/clients";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 

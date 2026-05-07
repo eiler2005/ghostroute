@@ -173,24 +173,54 @@ This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
 a second owner for the Reality surface. Caddy still owns certificate storage and
 the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may
 remain only as rollback configuration and must be disabled while nginx owns the
-Console port. The nginx listener uses an explicit small TLS buffer so larger
-HTML pages do not depend on a single large TLS write over the operator network
-path. Provider-level firewalls must allow the configured Console TCP port before
-host UFW or nginx can receive traffic. The data directory is
+Console port. The nginx listener uses response compression plus an explicit
+small TLS buffer so larger HTML/JSON pages stay reliable over the operator
+network path. Provider-level firewalls must allow the configured Console TCP
+port before host UFW or nginx can receive traffic. The data directory is
 `/opt/ghostroute-console/data`; repo sources are mounted read-only at
 `/opt/ghostroute-console/repo`.
 
 The operator UI intentionally keeps first-page HTML small. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
-one response; `/traffic` defaults to a small page and accepts `pageSize` up to
-100 for operator browsing. First-render pages use scoped read models rather
-than the full report model: Budget, Dashboard, Live, Clients, Health, Catalog
-and Settings load only the data each view renders. Short in-process caching is
-allowed for read-only derived snapshot/window data and is invalidated by a
-small TTL plus the latest snapshot timestamp; write/action endpoints do not use
-that cache.
+one response. `/traffic`, `/dns` and `/live` default to compact first pages and
+allow larger page sizes only when the operator asks for them. First-render pages
+use scoped read models rather than the full report model: Dashboard, Flow
+Explorer, DNS Query Log, Clients, Health, Catalog, Budget, Live, Reports and
+Settings load only the data each view renders.
+
+Read-only derived selectors use a short in-process cache inside the Console
+Node process. The default TTL is 60 seconds and can be disabled with
+`GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys include the latest
+snapshot version, active filters, pagination args and view-specific row
+identity where needed, so new collected data naturally moves the UI to a new
+cache key. Cached selectors cover heavy flow, DNS, alarm, client, client
+activity and live-event lists, plus the page models for every sidebar view.
+Action/write endpoints either bypass this cache or clear it after a state
+change. The browser also runs a small idle warmup after the first Console page:
+it prefetches the main sidebar routes and warms the matching JSON APIs, so the
+next navigation commonly hits both browser prefetch and server-side derived
+cache.
+
+Each deployed build carries both a short git commit and a UTC build timestamp.
+The source strip renders them together as `build <commit> · <date>`, and
+`/api/health` exposes the same `runtime.buildCommit` and `runtime.buildAt`
+values. This makes it possible to confirm from the UI that the browser is
+seeing the freshly deployed container rather than a stale image or cached page.
 Playwright performance checks cover the main pages and JSON APIs with local
 budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
+
+Snapshot ingestion has a small runtime contract gate before data reaches the
+UI read models. JSON reports must carry the common machine-contract fields
+(`schema_version`, `generated_at` and `source.command`) plus the minimal shape
+expected for their snapshot type. The schemas are tolerant and preserve unknown
+fields so upstream reports can evolve, but invalid snapshots are recorded in
+`collector_errors` and skipped rather than becoming the latest UI state.
+
+The read-only VPS deploy keeps the existing Console container running while the
+new image builds. Only after the image is prepared does compose recreate the
+container and run local health, UI and API smoke checks. If those checks fail,
+the playbook tags the previous image back to `ghostroute-console:latest` and
+attempts a rollback start before failing the deploy.
 
 Browser loading incidents must be diagnosed from the browser edge first. For a
 blank or long-loading page, collect a Chrome DevTools Network waterfall with

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildCatalogModel } from "@/lib/server/selectors";
+import { buildCatalogModel } from "@/lib/server/selectors/catalog";
 
 export async function GET() {
   const model = buildCatalogModel();

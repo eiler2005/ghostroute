@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildShellModel } from "@/lib/server/selectors";
+import { buildShellModel } from "@/lib/server/selectors/shell";
 
 export async function GET() {
   const model = buildShellModel();

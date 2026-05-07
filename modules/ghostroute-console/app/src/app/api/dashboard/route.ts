@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildDashboardModel } from "@/lib/server/selectors";
+import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
 
 export async function GET() {
   const model = buildDashboardModel();

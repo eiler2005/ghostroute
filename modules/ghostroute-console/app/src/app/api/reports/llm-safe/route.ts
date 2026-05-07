@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildConsoleModel } from "@/lib/server/selectors/shell";
 import { llmSafePayload, redactedMarkdown, redactJson } from "@/lib/server/redaction";
 
 export async function GET(request: NextRequest) {

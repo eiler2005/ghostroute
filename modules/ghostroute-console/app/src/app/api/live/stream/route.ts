@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { buildPagedEvidenceContext, listLiveEvents } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext } from "@/lib/server/selectors/traffic";
+import { listLiveEvents } from "@/lib/server/selectors/live";
 
 export const dynamic = "force-dynamic";
 

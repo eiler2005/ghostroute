@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildLiveModel, listFlowSessions, listLiveEvents } from "@/lib/server/selectors";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
 
 function compact({ raw, evidence, evidence_json, ...row }: Record<string, any>) {
   return row;
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   const model = buildLiveModel(filters, flows);
   const events = listLiveEvents({
     page: Math.max(1, Number(search.get("page") || 1)),
-    pageSize: Math.min(Number(search.get("pageSize") || 150), 1000),
+    pageSize: Math.min(Number(search.get("pageSize") || 50), 500),
     filters,
   });
   return NextResponse.json({

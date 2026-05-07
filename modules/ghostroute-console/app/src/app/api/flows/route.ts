@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listFlowSessions } from "@/lib/server/selectors";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;

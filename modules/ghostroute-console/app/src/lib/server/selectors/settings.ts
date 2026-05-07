@@ -1,0 +1,1 @@
+export { buildSettingsModel } from "../selectors";

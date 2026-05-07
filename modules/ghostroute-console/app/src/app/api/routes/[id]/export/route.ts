@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildRouteEvidence } from "@/lib/server/evidence";
-import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { redactJson, redactedMarkdown } from "@/lib/server/redaction";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

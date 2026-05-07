@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildSettingsModel } from "@/lib/server/selectors";
+import { buildSettingsModel } from "@/lib/server/selectors/settings";
 
 export async function GET() {
   const model = buildSettingsModel();
