@@ -26,9 +26,10 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const servicePage = Math.max(1, Number.parseInt(scalar(params.servicePage) || "1", 10) || 1);
   const servicePageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.servicePageSize) || "150", 10) || 150));
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
+  const activityPageSize = Math.min(150, Math.max(150, Number.parseInt(scalar(params.activityPageSize) || "150", 10) || 150));
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: eventsPageSize, filters });
   const serviceEvents = listLiveEvents({ page: servicePage, pageSize: servicePageSize, filters: { ...filters, trafficClass: "service_background" } });
-  const trafficPage = listFlowSessions({ page: activityPage, pageSize: 20, filters });
+  const trafficPage = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 150, maxRows: 4500, filters });
   const model = buildLiveModel(filters, trafficPage.rows);
   const activeFlows = trafficPage.rows;
   const activeClients = model.devices;
@@ -58,6 +59,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
     search: filters.search,
     eventsPageSize,
     servicePageSize,
+    activityPageSize,
   };
   const liveStreamHref = hrefWithParams("/api/live/stream", {
     period: filters.period,
@@ -179,46 +181,62 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         </div>
       </section>
 
-      <div className="grid two" style={{ marginTop: 14 }}>
-        <section className="card">
-          <div className="toolbar">
-            <div>
+      <div className="grid two live-secondary-grid">
+        <section className="card live-stream-card client-activity-card">
+          <div className="live-stream-toolbar">
+            <div className="live-stream-title">
               <h2>Client activity summary</h2>
-              <p>Свежая выжимка по клиентам и трафику из последних snapshots; bytes зависят от confidence.</p>
+              <span>показано {activeFlows.length} из {trafficPage.total}</span>
             </div>
             <span className="subtle">последнее обновление {model.freshnessLabel || "n/a"}</span>
           </div>
+          <div className="live-stream-meta">Свежая выжимка по клиентам и трафику из последних snapshots; bytes зависят от confidence.</div>
           {activeFlows.length === 0 ? (
             <EmptyState title="Нет activity snapshot" />
           ) : (
-            <table className="table">
-              <thead>
-                <tr><th>Time</th><th>Client</th><th>Channel</th><th>Destination</th><th>Route</th><th>Traffic</th><th>Confidence</th></tr>
-              </thead>
-              <tbody>
-                {activeFlows.map((row, idx) => (
-                  <tr key={row.id || idx}>
-                    <td>{timeWithMillis(row.event_ts || row.collected_at)}</td>
-                    <td>{row.client}</td>
-                    <td><ChannelBadge value={row.channel} /></td>
-                    <td><Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{row.destinationLabel || row.destination}</Link></td>
-                    <td><RouteBadge value={row.route} /></td>
-                    <td>{bytes(row.bytes || row.total_bytes || 0)}</td>
-                    <td>{row.confidence}</td>
+            <div className="live-table-wrap client-activity-table-wrap">
+              <table className="live-events-table client-activity-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Client</th>
+                    <th>Channel</th>
+                    <th>Destination</th>
+                    <th>Route</th>
+                    <th>Traffic</th>
+                    <th>Confidence</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {activeFlows.map((row, idx) => (
+                    <tr key={row.id || idx}>
+                      <td className="live-col-time">{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</td>
+                      <td className="live-col-client" title={row.client}>{row.client}</td>
+                      <td className="activity-col-channel"><ChannelBadge value={row.channel} /></td>
+                      <td className="live-col-destination" title={row.destinationLabel || row.destination}>
+                        <Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{row.destinationLabel || row.destination}</Link>
+                      </td>
+                      <td className="live-col-route"><RouteBadge value={row.route} /></td>
+                      <td className="activity-col-traffic">{bytes(row.bytes || row.total_bytes || 0)}</td>
+                      <td className="activity-col-confidence">{row.confidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-          <Pagination
-            basePath="/live"
-            page={trafficPage.page}
-            pageParam="activityPage"
-            pageSize={trafficPage.pageSize}
-            total={trafficPage.total}
-            totalPages={trafficPage.totalPages}
-            extraParams={{ ...filterParams, eventsPage: liveEvents.page, servicePage }}
-          />
+          <div className="live-card-footer">
+            <Pagination
+              basePath="/live"
+              page={trafficPage.page}
+              pageParam="activityPage"
+              pageSizeParam="activityPageSize"
+              pageSize={trafficPage.pageSize}
+              total={trafficPage.total}
+              totalPages={trafficPage.totalPages}
+              extraParams={{ ...filterParams, eventsPage: liveEvents.page, servicePage }}
+            />
+          </div>
         </section>
 
         <aside className="card side-panel">
