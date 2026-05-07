@@ -13,6 +13,18 @@ function iso(now, offsetMs = 0) {
   return new Date(now.getTime() - offsetMs).toISOString();
 }
 
+function flowOffsetMs(index) {
+  if (index < 144) {
+    const hour = index % 24;
+    const sample = Math.floor(index / 24);
+    return (hour * 60 * 60 + sample * 7 * 60 + (index % 11) * 9) * 1000;
+  }
+  const day = 1 + (index % 30);
+  const hour = (index * 5) % 24;
+  const minute = (index * 13) % 60;
+  return (day * 24 * 60 * 60 + hour * 60 * 60 + minute * 60) * 1000;
+}
+
 function resetDataDir() {
   fs.rmSync(dataDir, { recursive: true, force: true });
   fs.mkdirSync(snapshotsDir, { recursive: true });
@@ -130,6 +142,13 @@ function createSchema(db) {
       policy text not null default '',
       matched_rule text not null default '',
       outbound text not null default '',
+      dns_qname text not null default '',
+      dns_answer_ip text not null default '',
+      sni text not null default '',
+      egress_ip text not null default '',
+      egress_asn text not null default '',
+      egress_country text not null default '',
+      ts_confidence text not null default '',
       bytes integer not null default 0,
       connections integer not null default 0,
       duration_seconds integer not null default 0,
@@ -274,19 +293,22 @@ function seed(db) {
   const flowStmt = db.prepare(`insert into flow_sessions(
     id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip, device_key, channel,
     destination, destination_ip, destination_port, protocol, route, policy, matched_rule, outbound,
+    dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence,
     bytes, connections, duration_seconds, duration_confidence, risk, risk_reason, confidence,
     source_kind, evidence_json
-  ) values (@id,@snapshot_id,@collected_at,@first_seen,@last_seen,@client,@client_ip,@device_key,@channel,@destination,@destination_ip,@destination_port,@protocol,@route,@policy,@matched_rule,@outbound,@bytes,@connections,@duration_seconds,@duration_confidence,@risk,@risk_reason,@confidence,@source_kind,@evidence_json)`);
+  ) values (@id,@snapshot_id,@collected_at,@first_seen,@last_seen,@client,@client_ip,@device_key,@channel,@destination,@destination_ip,@destination_port,@protocol,@route,@policy,@matched_rule,@outbound,@dns_qname,@dns_answer_ip,@sni,@egress_ip,@egress_asn,@egress_country,@ts_confidence,@bytes,@connections,@duration_seconds,@duration_confidence,@risk,@risk_reason,@confidence,@source_kind,@evidence_json)`);
   for (let i = 0; i < 320; i++) {
     const client = clients[i % clients.length];
     const [destLabel, domain, ip] = destinations[i % destinations.length];
     const route = routes[i % routes.length];
+    const offsetMs = flowOffsetMs(i);
+    const durationSeconds = 30 + (i % 900);
     flowStmt.run({
       id: `test-seed:flow:${String(i + 1).padStart(4, "0")}`,
       snapshot_id: trafficSnapshotId,
-      collected_at: iso(now),
-      first_seen: iso(now, i * 1370 + 45000),
-      last_seen: iso(now, i * 1370 + (i % 17)),
+      collected_at: iso(now, offsetMs),
+      first_seen: iso(now, offsetMs + durationSeconds * 1000),
+      last_seen: iso(now, offsetMs),
       client: client.label,
       client_ip: client.ip,
       device_key: client.key,
@@ -299,9 +321,16 @@ function seed(db) {
       policy: route === "VPS" ? "STEALTH_DOMAINS" : route === "Direct" ? "DEFAULT_DIRECT" : "MIXED_ROUTE",
       matched_rule: route === "VPS" ? domain : route === "Direct" ? "direct-policy" : "mixed-policy",
       outbound: route === "VPS" ? "reality-out" : route === "Direct" ? "direct" : "mixed",
+      dns_qname: domain,
+      dns_answer_ip: ip,
+      sni: domain,
+      egress_ip: route === "VPS" ? "198.51.100.200" : "",
+      egress_asn: route === "VPS" ? "AS64500" : "",
+      egress_country: route === "VPS" ? "Testland" : "",
+      ts_confidence: i % 5 === 0 ? "snapshot" : "exact",
       bytes: 90000000 - i * 177000,
       connections: 2 + (i % 9),
-      duration_seconds: 30 + (i % 900),
+      duration_seconds: durationSeconds,
       duration_confidence: i % 5 === 0 ? "estimated" : "exact",
       risk: i % 19 === 0 ? "medium" : "low",
       risk_reason: i % 19 === 0 ? "synthetic review sample" : "",

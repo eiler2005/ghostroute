@@ -107,6 +107,12 @@ events and route decisions:
 - `egress_ip`, `egress_asn`, `egress_country`;
 - `event_ts`, `ts_confidence`, `source_log`, `event_id`.
 
+Schema v6 carries the safe flow evidence subset from `normalized_flows` into the
+bounded `flow_sessions` read model as well: `dns_qname`, `dns_answer_ip`, `sni`,
+`egress_ip`, `egress_asn`, `egress_country` and `ts_confidence`. Flow Explorer
+uses those fields for its inline detail panel and still shows `not observed`
+when an upstream report did not prove a value.
+
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.
 
@@ -180,7 +186,10 @@ port before host UFW or nginx can receive traffic. The data directory is
 `/opt/ghostroute-console/data`; repo sources are mounted read-only at
 `/opt/ghostroute-console/repo`.
 
-The operator UI intentionally keeps first-page HTML small. Large evidence
+The operator UI intentionally keeps first-page HTML small. Dashboard analytics
+are derived from bounded `flow_sessions` rows and render SVG/CSS charts for
+today's route split, monthly VPS usage, mobile/selected-client LTE reserve and
+forecasted cumulative usage without adding a browser chart dependency. Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and
 allow larger page sizes only when the operator asks for them. First-render pages

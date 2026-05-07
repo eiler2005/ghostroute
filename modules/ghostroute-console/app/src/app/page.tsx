@@ -47,13 +47,193 @@ function groupDestinationFallback(rows: Array<Record<string, any>>, limit = 8) {
     }));
 }
 
+function pct(value: number, total: number) {
+  return total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+}
+
+function compactBytes(value: number) {
+  if (!value) return "0 B";
+  if (value >= 1024 ** 4) return `${(value / 1024 ** 4).toFixed(2)} TB`;
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(value >= 10 * 1024 ** 2 ? 0 : 1)} MB`;
+  return bytes(value);
+}
+
+function dateLabel(value?: string) {
+  if (!value) return "not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Moscow",
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
+  return Math.max(1, ...points.flatMap((point) => keys.map((key) => Number(point[key] || 0))));
+}
+
+function linePath(points: Array<Record<string, any>>, key: string, max: number, width = 100, height = 54) {
+  if (points.length === 0) return "";
+  return points.map((point, idx) => {
+    const x = points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
+    const y = height - (Number(point[key] || 0) / max) * (height - 8) - 2;
+    return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(" ");
+}
+
+function areaPath(points: Array<Record<string, any>>, key: string, max: number, width = 100, height = 54) {
+  const path = linePath(points, key, max, width, height);
+  if (!path) return "";
+  return `${path} L ${width} ${height} L 0 ${height} Z`;
+}
+
+function TrafficTodayChart({ points }: { points: Array<Record<string, any>> }) {
+  const max = maxSeries(points, ["totalBytes", "viaVpsBytes", "directBytes", "unknownBytes"]);
+  const ticks = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:00"];
+  return (
+    <section className="card dashboard-chart-card dashboard-traffic-card">
+      <div className="dashboard-card-head">
+        <h2>Traffic today</h2>
+        <div className="dashboard-card-actions"><span>MB</span><span>...</span></div>
+      </div>
+      <div className="chart-legend">
+        <span className="legend-total">Total</span>
+        <span className="legend-vps">Via VPS</span>
+        <span className="legend-direct">Direct</span>
+        <span className="legend-unknown">Unknown</span>
+      </div>
+      <div className="dashboard-chart-wrap">
+        <div className="chart-scale">
+          <span>{compactBytes(max)}</span>
+          <span>{compactBytes(max / 2)}</span>
+          <span>0</span>
+        </div>
+        <svg className="dashboard-line-chart" viewBox="0 0 100 58" role="img" aria-label="Traffic today chart" preserveAspectRatio="none">
+          <path className="area-total" d={areaPath(points, "totalBytes", max, 100, 54)} />
+          <path className="area-vps" d={areaPath(points, "viaVpsBytes", max, 100, 54)} />
+          <path className="line-total" d={linePath(points, "totalBytes", max, 100, 54)} />
+          <path className="line-vps" d={linePath(points, "viaVpsBytes", max, 100, 54)} />
+          <path className="line-direct" d={linePath(points, "directBytes", max, 100, 54)} />
+          <path className="line-unknown" d={linePath(points, "unknownBytes", max, 100, 54)} />
+        </svg>
+      </div>
+      <div className="chart-axis-labels">{ticks.map((tick) => <span key={tick}>{tick}</span>)}</div>
+    </section>
+  );
+}
+
+function QuotaCard({ title, data, tone }: { title: string; data: Record<string, any>; tone: "vps" | "lte" }) {
+  const quota = Number(data?.quotaBytes || 0);
+  const used = Number(data?.usedBytes || 0);
+  const percent = quota > 0 ? pct(used, quota) : 0;
+  const visiblePercent = quota > 0 && used > 0 ? Math.max(2, percent) : percent;
+  const percentLabel = quota > 0 && used > 0 && percent === 0 ? "<1%" : `${percent}%`;
+  return (
+    <section className={`card dashboard-quota-card quota-${tone}`}>
+      <h2>{title}</h2>
+      <div className="quota-value">
+        <strong>{compactBytes(used)}</strong>
+        <span>/ {quota > 0 ? compactBytes(quota) : "quota not set"}</span>
+      </div>
+      <div className="quota-progress"><span style={{ width: `${visiblePercent}%` }} /></div>
+      <div className="quota-meta">
+        <div><span>Remaining</span><strong>{quota > 0 ? compactBytes(Number(data.remainingBytes || 0)) : "not observed"}</strong></div>
+        <div><span>Quota reset</span><strong>{dateLabel(data?.resetDate)}</strong></div>
+        <div><span>Used</span><strong>{quota > 0 ? percentLabel : "not set"}</strong></div>
+      </div>
+    </section>
+  );
+}
+
+function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
+  const max = Math.max(1, ...rows.map((row) => Number(row.bytes || 0)));
+  return (
+    <section className="card dashboard-rank-card">
+      <div className="dashboard-card-head">
+        <h2>Top clients</h2>
+        <Link className="dashboard-card-link" href="/clients">Open all</Link>
+      </div>
+      {rows.length === 0 ? <EmptyState title="No client traffic observed" /> : (
+        <div className="dashboard-rank-list">
+          {rows.map((row) => (
+            <div className="dashboard-rank-row" key={row.key || row.label}>
+              <span className="rank-index">{row.rank}</span>
+              <div className="rank-title"><strong>{row.label}</strong><small>{row.channel || "not observed"}</small></div>
+              <div className="rank-meter"><strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span><i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i></div>
+              <span className={`rank-status status-${String(row.status || "OK").toLowerCase()}`}>{row.status || "OK"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
+  const max = Math.max(1, ...rows.map((row) => Number(row.bytes || 0)));
+  return (
+    <section className="card dashboard-rank-card">
+      <div className="dashboard-card-head">
+        <h2>Top destinations</h2>
+        <Link className="dashboard-card-link" href="/traffic?trafficClass=client">Open all</Link>
+      </div>
+      {rows.length === 0 ? <EmptyState title="No destination traffic observed" /> : (
+        <div className="dashboard-rank-list">
+          {rows.map((row) => (
+            <div className="dashboard-rank-row destination-row" key={row.key || row.label}>
+              <span className="rank-index">{row.rank}</span>
+              <div className="rank-title"><strong>{row.label}</strong><small>{row.detail || "not observed"}</small></div>
+              <RouteBadge value={row.route} />
+              <div className="rank-meter"><strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span><i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UsageChart({ points, note }: { points: Array<Record<string, any>>; note?: string }) {
+  const max = maxSeries(points, ["vpsBytes", "lteBytes", "vpsForecastBytes"]);
+  const labels = points.filter((_, idx) => idx === 0 || idx === Math.floor(points.length / 2) || idx === points.length - 1);
+  return (
+    <section className="card dashboard-chart-card dashboard-usage-card">
+      <div className="dashboard-card-head">
+        <h2>Traffic usage</h2>
+        <div className="dashboard-card-actions"><span>By day</span></div>
+      </div>
+      <div className="chart-legend">
+        <span className="legend-vps">VPS cumulative</span>
+        <span className="legend-lte">LTE reserve cumulative</span>
+        <span className="legend-forecast">VPS forecast</span>
+      </div>
+      <div className="dashboard-chart-wrap">
+        <div className="chart-scale"><span>{compactBytes(max)}</span><span>{compactBytes(max / 2)}</span><span>0</span></div>
+        <svg className="dashboard-line-chart usage-chart" viewBox="0 0 100 58" role="img" aria-label="Traffic usage chart" preserveAspectRatio="none">
+          <path className="area-vps" d={areaPath(points, "vpsBytes", max, 100, 54)} />
+          <path className="area-lte" d={areaPath(points, "lteBytes", max, 100, 54)} />
+          <path className="line-vps" d={linePath(points, "vpsBytes", max, 100, 54)} />
+          <path className="line-lte" d={linePath(points, "lteBytes", max, 100, 54)} />
+          <path className="line-forecast" d={linePath(points, "vpsForecastBytes", max, 100, 54)} />
+        </svg>
+      </div>
+      <div className="chart-axis-labels">{labels.map((point) => <span key={point.day}>{point.label}</span>)}</div>
+      <p className="chart-note">{note || "Forecast is based on prepared traffic evidence."}</p>
+    </section>
+  );
+}
+
 export default async function Dashboard({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildDashboardModel(filters);
   const total = model.totals.observedBytes || 1;
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
-  const trafficWindowText = trafficWindow || "сегодня, окно не указано";
-  const topClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
+  const trafficWindowText = trafficWindow || "today, window not observed";
+  const analytics = model.dashboardAnalytics || {};
+  const inventoryTopClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
   const coverage = model.destinationAttributionCoverage || {};
   const clientTrafficRows = [...model.flows]
     .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && Number(row.bytes || row.total_bytes || 0) > 0)
@@ -77,6 +257,19 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
 
   return (
     <ConsoleShell active="/" model={model} filters={filters}>
+      <div className="dashboard-analytics">
+        <TrafficTodayChart points={analytics.trafficToday?.points || []} />
+        <div className="dashboard-quota-grid">
+          <QuotaCard title="VPS traffic this month" data={analytics.quota?.vps || {}} tone="vps" />
+          <QuotaCard title="LTE reserve (mobile internet)" data={analytics.quota?.lte || {}} tone="lte" />
+        </div>
+        <div className="dashboard-rank-grid">
+          <RankedClients rows={analytics.topClients || []} />
+          <RankedDestinations rows={analytics.topDestinations || []} />
+        </div>
+        <UsageChart points={analytics.usage?.points || []} note={analytics.usage?.note} />
+      </div>
+
       <div className="grid cards">
         {model.statusCards.map((card) => (
           <section className="card" key={card.label}>
@@ -88,7 +281,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
       </div>
 
       <div className="grid three" style={{ marginTop: 14 }}>
-        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Данные за ${trafficWindowText} · обновление около 5 минут`} />
+        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Data for ${trafficWindowText} · refresh about 5 minutes`} />
         <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed · current-day KPI`} />
         <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
       </div>
@@ -108,7 +301,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
       <section className="card compact-warnings" style={{ marginTop: 14 }}>
           <h2>Warnings</h2>
           {model.alerts.length === 0 ? (
-            <EmptyState title="Нет активных предупреждений" />
+            <EmptyState title="No active warnings" />
           ) : (
             <div className="detail-list">
               {model.alerts.slice(0, 8).map((alert, idx) => (
@@ -130,15 +323,15 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <h2>Top clients</h2>
             <Link className="muted-button" href="/clients">Open clients</Link>
           </div>
-          {topClients.length === 0 ? (
-            <EmptyState title="Нет фактических устройств" />
+          {inventoryTopClients.length === 0 ? (
+            <EmptyState title="No factual devices" />
           ) : (
             <table className="table">
               <thead>
                 <tr><th>Client</th><th>Total</th><th>VPS</th><th>Direct</th><th>Confidence</th></tr>
               </thead>
               <tbody>
-                {topClients.map((row) => (
+                {inventoryTopClients.map((row) => (
                   <tr key={row.id || row.label}>
                     <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
                     <td>{bytes(row.total_bytes || 0)}</td>
@@ -164,7 +357,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
               : " destination attribution covers the observed client total."}
           </p>
           {topDestinations.length === 0 ? (
-            <EmptyState title="Нет concrete или category destination snapshots" />
+            <EmptyState title="No concrete or category destination snapshots" />
           ) : (
             <div className="detail-list">
               {topDestinations.map((row, idx) => (
@@ -187,7 +380,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
           <span className="subtle">{trafficWindowText}, sorted by volume</span>
         </div>
         {latestDecisions.length === 0 ? (
-          <EmptyState title="Нет client traffic rows" />
+          <EmptyState title="No client traffic rows" />
         ) : (
           <table className="table">
             <thead>
@@ -216,7 +409,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <Link className="muted-button" href="/traffic?trafficClass=service_background">Open service</Link>
           </div>
           {serviceTraffic.length === 0 ? (
-            <EmptyState title="Нет service/background traffic rows" />
+            <EmptyState title="No service/background traffic rows" />
           ) : (
             <div className="detail-list">
               {serviceTraffic.map((row, idx) => (
@@ -234,7 +427,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <Link className="muted-button" href="/traffic?trafficClass=unclassified">Open unknown</Link>
           </div>
           {needsAttribution.length === 0 ? (
-            <EmptyState title="Нет unclassified traffic rows" />
+            <EmptyState title="No unclassified traffic rows" />
           ) : (
             <div className="detail-list">
               {needsAttribution.map((row, idx) => (

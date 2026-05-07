@@ -155,7 +155,9 @@ collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
 `alarm_events`, `read_model_state` and non-secret `console_settings`. These
 tables feed `/api/flows`, `/api/dns`, `/api/alarms`, Flow Explorer, DNS Query
 Log and Alarm Center while preserving the normalized source tables as the
-fallback contract.
+fallback contract. The `flow_sessions` read model includes the safe DNS/SNI and
+egress evidence fields needed by the Flow Explorer inline detail panel; missing
+source evidence is rendered as `not observed`, not inferred.
 For selected-client details, Console derives an activity series from sequential
 current-window device snapshots. Multiple snapshots become hourly deltas; if a
 client only appears in one current snapshot, the chart shows that hour as a
@@ -258,7 +260,16 @@ from the public Console URL.
 
 ## Post-MVP Interfaces
 
-- `/traffic` and `/traffic/[id]` provide Flow Explorer sessions and route
+- `/` keeps the existing read-only operator overview and adds Dashboard traffic
+  analytics above it: Traffic today, Top clients, Top destinations, monthly VPS
+  usage, LTE reserve for mobile/selected-client traffic and a cumulative usage
+  chart with VPS forecast. These cards are derived from `flow_sessions`; quota
+  bars use `GHOSTROUTE_CONSOLE_VPS_QUOTA_*`,
+  `GHOSTROUTE_CONSOLE_LTE_QUOTA_*` and
+  `GHOSTROUTE_CONSOLE_BILLING_RESET_DAY`.
+- `/traffic` is a read-only Flow Explorer workbench with KPI cards, a dense
+  paged flow table and a right-side selected-flow detail panel keyed by
+  `?flow=<flow-id>`. `/traffic/[id]` remains the share/export route
   explanation with client, destination, port, policy, route, duration, risk,
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
 - `/traffic` keeps wide flow tables horizontally scrollable and treats
@@ -305,8 +316,10 @@ from the public Console URL.
 GUI changes should be reviewed on a local seeded Console before any deploy. The
 seeded database is synthetic, lives under the gitignored
 `modules/ghostroute-console/data/gui-test/`, and gives Flow Explorer, DNS Query
-Log, Clients and Live enough rows to verify compact tables, filters, horizontal
-scroll and pagination without waiting for real snapshots.
+Log, Dashboard analytics, Clients and Live enough rows to verify compact
+tables, charts, filters, horizontal scroll and pagination without waiting for
+real snapshots. `dev:gui` and `test:e2e:gui` also provide local-only default
+VPS/LTE quota env values unless the operator has already set them.
 
 Refresh that seeded data layer before local checks whenever GUI selectors,
 read models, cache keys or page rendering change:

@@ -57,6 +57,7 @@ export type ConsoleModel = {
     windowLabel: string;
   };
   destinationAttributionCoverage?: Record<string, any>;
+  dashboardAnalytics?: Record<string, any>;
   devices: Array<Record<string, any>>;
   flows: Array<Record<string, any>>;
   dnsQueries: Array<Record<string, any>>;

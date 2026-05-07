@@ -48,6 +48,99 @@ function EvidenceCard({ title, value, detail, tone }: { title: string; value: Re
   );
 }
 
+function notObserved(value: unknown) {
+  if (value === undefined || value === null || value === "") return "not observed";
+  return String(value);
+}
+
+export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
+  if (!evidence) {
+    return (
+      <aside className="flow-detail-panel">
+        <div className="flow-detail-empty">
+          <strong>No flow selected</strong>
+          <span>Select a table row to inspect read-only evidence.</span>
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="flow-detail-panel">
+      <div className="flow-detail-header">
+        <div>
+          <span>Flow</span>
+          <h2>{evidence.client}</h2>
+        </div>
+        <Link className="muted-button" href={`/traffic/${encodeURIComponent(evidence.id)}`}>Open</Link>
+      </div>
+
+      <div className="flow-route-summary">
+        <div>
+          <strong>{evidence.client}</strong>
+          <small>{evidence.clientIp}</small>
+        </div>
+        <span>{"->"}</span>
+        <div>
+          <strong>{evidence.destination}</strong>
+          <small>{evidence.destinationIp}:{evidence.destinationPort}</small>
+        </div>
+      </div>
+
+      <div className="inline-badges flow-detail-badges">
+        <RouteBadge value={evidence.route} />
+        <ChannelBadge value={evidence.channel} />
+        <ConfidenceBadge value={evidence.confidence} />
+      </div>
+
+      <section className="flow-detail-section">
+        <h3><ShieldCheck size={16} /> Why this route?</h3>
+        <p>{evidence.operatorView.decision}</p>
+        <div className="flow-reason-box">
+          <strong>{evidence.matchedRule}</strong>
+          <span>{evidence.matchedRuleDetail || evidence.confidenceReason}</span>
+        </div>
+      </section>
+
+      <section className="flow-detail-section">
+        <h3><Waypoints size={16} /> Policy / Rule</h3>
+        <div className="detail-list compact-detail-list">
+          <div className="detail-row"><span>Policy</span><strong>{notObserved(evidence.flow.policy || evidence.flow.rule_set)}</strong></div>
+          <div className="detail-row"><span>Rule</span><strong>{notObserved(evidence.matchedRule)}</strong></div>
+          <div className="detail-row"><span>Outbound</span><strong>{notObserved(evidence.outbound)}</strong></div>
+          <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain)}</strong></div>
+        </div>
+      </section>
+
+      <section className="flow-detail-section">
+        <h3><Network size={16} /> Flow details</h3>
+        <div className="detail-list compact-detail-list">
+          <div className="detail-row"><span>Transferred</span><strong>{bytes(evidence.bytes)}</strong></div>
+          <div className="detail-row"><span>Connections</span><strong>{evidence.connections || 0}</strong></div>
+          <div className="detail-row"><span>Protocol</span><strong>{notObserved(evidence.protocol)}</strong></div>
+          <div className="detail-row"><span>SNI</span><strong>{notObserved(evidence.sni)}</strong></div>
+          <div className="detail-row"><span>Time</span><strong>{evidence.eventTimeLabel}</strong></div>
+          <div className="detail-row"><span>Confidence</span><strong>{evidence.confidence}</strong></div>
+        </div>
+      </section>
+
+      <section className="flow-detail-section">
+        <h3><Globe2 size={16} /> Site / Operator view</h3>
+        <div className="detail-list compact-detail-list">
+          <div className="detail-row"><span>Site sees</span><strong>{notObserved(evidence.siteView.visitorIp)}</strong></div>
+          <div className="detail-row"><span>Country / AS</span><strong>{notObserved(evidence.siteView.countryAs)}</strong></div>
+          <div className="detail-row"><span>Ingress</span><strong>{notObserved(evidence.operatorView.input)}</strong></div>
+          <div className="detail-row"><span>Route</span><strong>{notObserved(evidence.operatorView.route)}</strong></div>
+        </div>
+      </section>
+
+      <section className="flow-detail-section">
+        <RawEvidence value={evidence.rawRefs} />
+      </section>
+    </aside>
+  );
+}
+
 export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: Evidence[] }) {
   const directExample = all.find((row) => row.id !== evidence.id && row.route === "Direct");
   return (
@@ -65,19 +158,19 @@ export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: E
 
         <div className="toolbar route-titlebar">
           <div>
-            <h2>Почему маршрут именно такой?</h2>
-            <p>Разбираем route decision по factual evidence: DNS, catalog, sing-box, counters и channel lane.</p>
+            <h2>Why this route?</h2>
+            <p>Route decision from factual evidence: DNS, catalog, sing-box, counters, and channel lane.</p>
           </div>
           <div className="button-row">
-            <Link className="muted-button" href={`/api/routes/${evidence.id}/export?format=markdown`}><Download size={15} /> Экспорт отчёта</Link>
-            <Link className="muted-button primary" href={`/traffic/${evidence.id}`}><Share2 size={15} /> Поделиться</Link>
+            <Link className="muted-button" href={`/api/routes/${evidence.id}/export?format=markdown`}><Download size={15} /> Export report</Link>
+            <Link className="muted-button primary" href={`/traffic/${evidence.id}`}><Share2 size={15} /> Share</Link>
           </div>
         </div>
 
         <section className="route-card">
           <div className="panel-title">
             <div>
-              <h3>Маршрут для {evidence.destination}</h3>
+              <h3>Route for {evidence.destination}</h3>
               <div className="inline-badges">
                 <ChannelBadge value={evidence.channel} />
                 <RouteBadge value={evidence.route} />
@@ -88,44 +181,44 @@ export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: E
           <RouteChain evidence={evidence} />
           <div className="result-strip">
             <CheckCircle2 size={18} />
-            Итог: traffic to <strong>{evidence.destination}</strong> прошёл как <RouteBadge value={evidence.route} /> через <strong>{evidence.outbound}</strong>.
-            Уверенность: <ConfidenceBadge value={evidence.confidence} />.
+            Result: traffic to <strong>{evidence.destination}</strong> used <RouteBadge value={evidence.route} /> through <strong>{evidence.outbound}</strong>.
+            Confidence: <ConfidenceBadge value={evidence.confidence} />.
           </div>
           <div className="evidence-grid evidence-grid-rich">
-            <EvidenceCard title="От кого запрос" value={evidence.client} detail={`Client IP: ${evidence.clientIp}`} />
-            <EvidenceCard title="Канал входа" value={<ChannelBadge value={evidence.channel} />} detail="access/client lane" />
+            <EvidenceCard title="Request source" value={evidence.client} detail={`Client IP: ${evidence.clientIp}`} />
+            <EvidenceCard title="Access channel" value={<ChannelBadge value={evidence.channel} />} detail="access/client lane" />
             <EvidenceCard
-              title="Запрос DNS"
+              title="DNS request"
               value={evidence.dnsMatches[0]?.domain || evidence.flow.dns_qname || evidence.destination}
               detail={`${evidence.dnsMatches[0]?.qtype || "A"} · answer ${evidence.dnsMatches[0]?.answer_ip || evidence.flow.dns_answer_ip || "not observed"}`}
             />
             <EvidenceCard title="IP/rule evidence" value={evidence.matchedRule} detail={evidence.matchedRuleDetail || evidence.flow.rule_set || "derived rule evidence"} />
             <EvidenceCard
-              title="Соединение (sing-box)"
+              title="Connection (sing-box)"
               value={evidence.destinationIp !== "not observed" ? `${evidence.destinationIp}:${evidence.destinationPort}` : evidence.protocol}
               detail={`${evidence.connections} connections · SNI ${evidence.sni} · ${evidence.outbound}`}
             />
-            <EvidenceCard title="Принятое решение" value={<RouteBadge value={evidence.route} />} detail={evidence.operatorView.decision} />
-            <EvidenceCard title="Передано" value={bytes(evidence.bytes)} detail="snapshot/event counters" />
-            <EvidenceCard title="Выходной IP (виден сайту)" value={evidence.visibleIpLabel || evidence.visibleIp} detail={evidence.siteView.countryAs} />
-            <EvidenceCard title="Время события" value={evidence.eventTimeLabel} detail={evidence.flow.ts_confidence || evidence.sourceKind} />
-            <EvidenceCard title="Уверенность" value={evidence.confidence} detail={evidence.confidenceReason} tone="evidence-confidence" />
+            <EvidenceCard title="Decision" value={<RouteBadge value={evidence.route} />} detail={evidence.operatorView.decision} />
+            <EvidenceCard title="Transferred" value={bytes(evidence.bytes)} detail="snapshot/event counters" />
+            <EvidenceCard title="Visible egress IP" value={evidence.visibleIpLabel || evidence.visibleIp} detail={evidence.siteView.countryAs} />
+            <EvidenceCard title="Event time" value={evidence.eventTimeLabel} detail={evidence.flow.ts_confidence || evidence.sourceKind} />
+            <EvidenceCard title="Confidence" value={evidence.confidence} detail={evidence.confidenceReason} tone="evidence-confidence" />
           </div>
         </section>
 
         {directExample ? (
           <section className="route-example">
-            <h3>Ещё один пример: почему {directExample.destination} ушёл Direct</h3>
+            <h3>Another example: why {directExample.destination} used Direct</h3>
             <RouteChain evidence={directExample} compact />
             <div className="result-strip">
               <CheckCircle2 size={18} />
-              Итог: traffic to <strong>{directExample.destination}</strong> прошёл напрямую. Причина: <strong>{directExample.matchedRule}</strong>.
+              Result: traffic to <strong>{directExample.destination}</strong> went direct. Reason: <strong>{directExample.matchedRule}</strong>.
             </div>
             <div className="evidence-grid direct-grid">
-              <EvidenceCard title="Причина" value={directExample.matchedRule} detail="direct rule/no managed match" />
-              <EvidenceCard title="Решение" value={<RouteBadge value={directExample.route} />} detail={directExample.operatorView.decision} />
-              <EvidenceCard title="Выходной IP" value={directExample.visibleIp} detail="home/direct visibility" />
-              <EvidenceCard title="Уверенность" value={directExample.confidence} detail={directExample.confidenceReason} tone="evidence-confidence" />
+              <EvidenceCard title="Reason" value={directExample.matchedRule} detail="direct rule/no managed match" />
+              <EvidenceCard title="Decision" value={<RouteBadge value={directExample.route} />} detail={directExample.operatorView.decision} />
+              <EvidenceCard title="Egress IP" value={directExample.visibleIp} detail="home/direct visibility" />
+              <EvidenceCard title="Confidence" value={directExample.confidence} detail={directExample.confidenceReason} tone="evidence-confidence" />
             </div>
           </section>
         ) : null}
@@ -133,34 +226,34 @@ export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: E
 
       <aside className="side-panel route-rail route-rail-tight">
         <section className="card">
-          <h3><Globe2 size={18} /> Что видит сайт</h3>
+          <h3><Globe2 size={18} /> Site view</h3>
           <div className="detail-list">
             <div className="detail-row"><span>Destination</span><strong>{evidence.siteView.destination}</strong></div>
-            <div className="detail-row"><span>IP посетителя</span><strong>{evidence.siteView.visitorIp}</strong></div>
-            <div className="detail-row"><span>Страна / AS</span><strong>{evidence.siteView.countryAs}</strong></div>
-            <div className="detail-row"><span>Протокол</span><strong>{evidence.siteView.protocol}</strong></div>
+            <div className="detail-row"><span>Visitor IP</span><strong>{evidence.siteView.visitorIp}</strong></div>
+            <div className="detail-row"><span>Country / AS</span><strong>{evidence.siteView.countryAs}</strong></div>
+            <div className="detail-row"><span>Protocol</span><strong>{evidence.siteView.protocol}</strong></div>
             <div className="detail-row"><span>SNI</span><strong>{evidence.siteView.sni}</strong></div>
           </div>
         </section>
         <section className="card">
-          <h3><Eye size={18} /> Что видит оператор</h3>
+          <h3><Eye size={18} /> Operator view</h3>
           <div className="detail-list">
-            <div className="detail-row"><span>Вход</span><strong>{evidence.operatorView.input}</strong></div>
+            <div className="detail-row"><span>Ingress</span><strong>{evidence.operatorView.input}</strong></div>
             <div className="detail-row"><span>Client IP</span><strong>{evidence.operatorView.clientIp}</strong></div>
-            <div className="detail-row"><span>Выход</span><strong>{evidence.operatorView.output}</strong></div>
-            <div className="detail-row"><span>Маршрут</span><strong>{evidence.operatorView.route}</strong></div>
-            <div className="detail-row"><span>Правило</span><strong>{evidence.operatorView.rule}</strong></div>
-            <div className="detail-row"><span>Решение</span><strong>{evidence.operatorView.decision}</strong></div>
-            <div className="detail-row"><span>Уверенность</span><strong>{evidence.operatorView.confidence}</strong></div>
+            <div className="detail-row"><span>Output</span><strong>{evidence.operatorView.output}</strong></div>
+            <div className="detail-row"><span>Route</span><strong>{evidence.operatorView.route}</strong></div>
+            <div className="detail-row"><span>Rule</span><strong>{evidence.operatorView.rule}</strong></div>
+            <div className="detail-row"><span>Decision</span><strong>{evidence.operatorView.decision}</strong></div>
+            <div className="detail-row"><span>Confidence</span><strong>{evidence.operatorView.confidence}</strong></div>
           </div>
         </section>
         <section className="card info-card">
-          <h3><ShieldCheck size={18} /> Об IP и логике</h3>
+          <h3><ShieldCheck size={18} /> IP and routing logic</h3>
           <p>{evidence.ipLogic}</p>
-          <p><strong>egress IP</strong> - внешний IP выхода, который видит сайт. <strong>ingress</strong> - как клиент вошёл в GhostRoute. <strong>candidate</strong> - подсказка каталога, не доказательство применённого правила.</p>
+          <p><strong>egress IP</strong> is the public exit IP visible to the destination. <strong>ingress</strong> is how the client entered GhostRoute. <strong>candidate</strong> is a catalog hint, not proof of an applied rule.</p>
         </section>
         <section className="card">
-          <h3>Хронология событий</h3>
+          <h3>Event timeline</h3>
           <div className="timeline timeline-vertical">
             {evidence.timeline.map((row: Record<string, any>, idx: number) => (
               <div className="timeline-row" key={`${row.label}-${idx}`}>

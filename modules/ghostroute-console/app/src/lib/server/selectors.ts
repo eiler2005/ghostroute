@@ -39,6 +39,7 @@ import {
   reconcileTrafficRows,
   snapshotMatchesPeriod,
 } from "../traffic-window.mjs";
+import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 60_000);
@@ -209,10 +210,10 @@ function nextExpectedCollection(value?: string) {
 }
 
 const periodLabels: Record<string, string> = {
-  today: "Сегодня",
-  yesterday: "Вчера",
-  week: "Неделя",
-  month: "Месяц",
+  today: "Today",
+  yesterday: "Yesterday",
+  week: "Week",
+  month: "Month",
 };
 
 function trafficPeriodLabel(traffic: Record<string, any>) {
@@ -244,9 +245,9 @@ function trafficWindowLabel(traffic: Record<string, any>) {
   if (!raw) return "";
   const [start, end] = raw.split(" -> ").map((value) => value.trim());
   const startLabel = formatMoscowBoundary(start);
-  const endLabel = end === "current router state" ? "сейчас" : formatMoscowBoundary(end);
-  if (startLabel && endLabel) return `с ${startLabel} до ${endLabel}`;
-  if (startLabel) return `с ${startLabel}`;
+  const endLabel = end === "current router state" ? "now" : formatMoscowBoundary(end);
+  if (startLabel && endLabel) return `from ${startLabel} to ${endLabel}`;
+  if (startLabel) return `from ${startLabel}`;
   return raw;
 }
 
@@ -1272,7 +1273,8 @@ function mapFlowRow(row: any) {
 function flowSessionSelect() {
   return `id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip, device_key,
     channel, destination, destination_ip, destination_port, protocol, route, policy, matched_rule,
-    outbound, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
+    outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence,
+    bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
     confidence, source_kind, evidence_json`;
 }
 
@@ -1299,9 +1301,16 @@ function mapFlowSessionRow(row: any) {
     total_bytes: Number(row.bytes || 0),
     connections: Number(row.connections || 0),
     protocol: row.protocol,
+    dns_qname: row.dns_qname,
+    dns_answer_ip: row.dns_answer_ip,
+    sni: row.sni,
     outbound: row.outbound,
     matched_rule: row.matched_rule || row.policy,
     rule_set: row.policy,
+    egress_ip: row.egress_ip,
+    egress_asn: row.egress_asn,
+    egress_country: row.egress_country,
+    ts_confidence: row.ts_confidence,
     policy: row.policy,
     risk: row.risk,
     risk_reason: row.risk_reason,
@@ -1311,6 +1320,50 @@ function mapFlowSessionRow(row: any) {
     source_log: row.source_kind,
     raw,
   });
+}
+
+function dashboardAnalyticsRows(filters: ConsoleFilters = {}) {
+  const effectiveFilters = { ...filters, period: "all" };
+  if (!readModelHasRows("flow_sessions")) {
+    return listTrafficRows({ page: 1, pageSize: 5000, maxRows: 5000, filters, diagnostics: true }).rows;
+  }
+  const where = ["bytes > 0"];
+  const params: any[] = [];
+  if (filters.route && filters.route !== "all") {
+    where.push("route = ?");
+    params.push(filters.route);
+  }
+  if (filters.channel && filters.channel !== "all") {
+    where.push("channel = ?");
+    params.push(filters.channel);
+  }
+  if (filters.confidence && filters.confidence !== "all") {
+    where.push("confidence = ?");
+    params.push(filters.confidence);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    const needle = `%${search.toLowerCase()}%`;
+    where.push(`(
+      lower(client) like ? or lower(client_ip) like ? or lower(destination) like ?
+      or lower(destination_ip) like ? or lower(policy) like ? or lower(matched_rule) like ?
+      or lower(outbound) like ? or lower(dns_qname) like ? or lower(sni) like ?
+    )`);
+    params.push(needle, needle, needle, needle, needle, needle, needle, needle, needle);
+  }
+  const trafficClass = filters.trafficClass || "all";
+  return getDb()
+    .prepare(
+      `select ${flowSessionSelect()}
+         from flow_sessions
+        where ${where.map((item) => `(${item})`).join(" and ")}
+        order by coalesce(nullif(last_seen, ''), collected_at) desc, id desc
+        limit 10000`
+    )
+    .all(...params)
+    .map(mapFlowSessionRow)
+    .filter((row) => filterRows([row], effectiveFilters).length > 0)
+    .filter((row) => matchesTrafficClass(row, trafficClass));
 }
 
 export function listTrafficRows(args: PageArgs = {}) {
@@ -1393,9 +1446,9 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
     where.push(`(
       lower(client) like ? or lower(client_ip) like ? or lower(destination) like ?
       or lower(destination_ip) like ? or lower(policy) like ? or lower(matched_rule) like ?
-      or lower(outbound) like ?
+      or lower(outbound) like ? or lower(dns_qname) like ? or lower(sni) like ?
     )`);
-    params.push(needle, needle, needle, needle, needle, needle, needle);
+    params.push(needle, needle, needle, needle, needle, needle, needle, needle, needle);
   }
   if (!args.diagnostics) {
     where.push(isUsefulClientSql());
@@ -1440,12 +1493,13 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
 }
 
 export function getTrafficRowById(id: string, filters: ConsoleFilters = {}) {
-  const match = String(id || "").match(/^flow:(\d+)$/);
-  if (!match) return null;
+  const normalizedId = String(id || "");
   if (readModelHasRows("flow_sessions")) {
-    const readModelRow = getDb().prepare(`select ${flowSessionSelect()} from flow_sessions where id = ?`).get(`flow:${match[1]}`) as any;
+    const readModelRow = getDb().prepare(`select ${flowSessionSelect()} from flow_sessions where id = ?`).get(normalizedId) as any;
     if (readModelRow) return mapFlowSessionRow(readModelRow);
   }
+  const match = normalizedId.match(/^flow:(\d+)$/);
+  if (!match) return null;
   const row = getDb().prepare(`select ${flowSelect()} from normalized_flows where rowid = ?`).get(Number(match[1])) as any;
   if (!row) return null;
   return mapFlowRow(row);
@@ -1905,7 +1959,15 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 100, filters }).rows;
-  return buildShellModel(filters, { devices, flows });
+  const dashboardAnalytics = buildDashboardAnalyticsFromRows(dashboardAnalyticsRows(filters), {
+    period: filters.period || "today",
+    vpsQuotaBytes: process.env.GHOSTROUTE_CONSOLE_VPS_QUOTA_BYTES,
+    vpsQuotaGb: process.env.GHOSTROUTE_CONSOLE_VPS_QUOTA_GB,
+    lteQuotaBytes: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_BYTES,
+    lteQuotaGb: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_GB,
+    resetDay: process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY,
+  });
+  return { ...buildShellModel(filters, { devices, flows }), dashboardAnalytics };
 }
 
 export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {

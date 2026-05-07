@@ -72,8 +72,8 @@ export function ConsoleShell({
         <div className="system-pill">
           <Activity size={16} />
           <div>
-            <strong>Система здорова</strong>
-            <span>{model.alerts.length === 0 ? "Нет активных предупреждений" : `${model.alerts.length} предупреждений`}</span>
+            <strong>System healthy</strong>
+            <span>{model.alerts.length === 0 ? "No active warnings" : `${model.alerts.length} warnings`}</span>
           </div>
         </div>
       </aside>
@@ -81,7 +81,7 @@ export function ConsoleShell({
         <header className="topbar">
           <div>
             <h1>GhostRoute Console</h1>
-            <p>Фактический read-only мониторинг маршрутов, клиентов и здоровья системы</p>
+            <p>Factual read-only monitoring for routes, clients, and system health</p>
           </div>
           <form className="filters">
             <span className={`freshness freshness-${model.freshnessStatus}`}>
@@ -89,12 +89,12 @@ export function ConsoleShell({
               <small title={freshnessTitle}>{freshnessLabel}</small>
             </span>
             <select name="period" defaultValue={filters.period || "today"}>
-              <option value="today">Сегодня</option>
-              <option value="week">Неделя</option>
-              <option value="month">Месяц</option>
+              <option value="today">Today</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
             </select>
             <select name="route" defaultValue={filters.route || "all"}>
-              <option value="all">Все маршруты</option>
+              <option value="all">All routes</option>
               {options.routes.map((route) => (
                 <option value={route} key={route}>
                   {route}
@@ -102,7 +102,7 @@ export function ConsoleShell({
               ))}
             </select>
             <select name="channel" defaultValue={filters.channel || "all"}>
-              <option value="all">Все каналы</option>
+              <option value="all">All channels</option>
               {options.channels.map((channel) => (
                 <option value={channel} key={channel}>
                   {channel}
@@ -110,7 +110,7 @@ export function ConsoleShell({
               ))}
             </select>
             <select name="confidence" defaultValue={filters.confidence || "all"}>
-              <option value="all">Любая уверенность</option>
+              <option value="all">Any confidence</option>
               {options.confidences.map((confidence) => (
                 <option value={confidence} key={confidence}>
                   {confidence}
@@ -124,8 +124,8 @@ export function ConsoleShell({
                 </option>
               ))}
             </select>
-            <input name="search" defaultValue={filters.search || ""} placeholder="Поиск..." />
-            <button type="submit"><span>Фильтры</span><SlidersHorizontal size={15} /></button>
+            <input name="search" defaultValue={filters.search || ""} placeholder="Search..." />
+            <button type="submit"><span>Filters</span><SlidersHorizontal size={15} /></button>
           </form>
         </header>
         <div className="source-strip" title={sourceTitle}>

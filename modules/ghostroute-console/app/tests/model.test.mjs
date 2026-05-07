@@ -22,6 +22,8 @@ const {
   snapshotMatchesPeriod,
   trafficDisplayDestination,
 } = trafficWindowModule;
+const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
+const { buildDashboardAnalyticsFromRows, isMobileTrafficRow } = dashboardAnalyticsModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
@@ -269,6 +271,13 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count, 1);
   assert.equal(readModels.flowCount, 1);
   assert.equal(db.prepare("select policy from flow_sessions where destination = 'telegram.org'").get().policy, "STEALTH_DOMAINS");
+  const sessionFlow = db.prepare("select dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence from flow_sessions where destination = 'telegram.org'").get();
+  assert.equal(sessionFlow.dns_qname, "");
+  assert.equal(sessionFlow.sni, "telegram.org");
+  assert.equal(sessionFlow.egress_ip, "203.0.113.67");
+  assert.equal(sessionFlow.egress_asn, "AS209529");
+  assert.equal(sessionFlow.egress_country, "");
+  assert.equal(sessionFlow.ts_confidence, "");
   assert.equal(db.prepare("select catalog_status from dns_query_log where domain = 'telegram.org'").get().catalog_status, "managed");
   assert.equal(db.prepare("select count(*) as count from device_inventory").get().count > 0, true);
   assert.ok(db.prepare("select 1 from read_model_state where model = 'flow_sessions'").get());
@@ -282,8 +291,10 @@ test("schema includes collector reliability and post-MVP tables", () => {
   for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
-  assert.ok(db.prepare("select version from schema_migrations where version = 5").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
   db.close();
 });
 
@@ -361,6 +372,34 @@ test("traffic class separates client, service background and attribution gaps", 
   assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
   assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
   assert.equal(trafficClassFor({ destination: "Unknown/Unattributed LAN-Wi-Fi", bytes: 1024, accounting_bucket: true }), "unclassified");
+});
+
+test("dashboard analytics derives traffic charts quotas and mobile LTE usage from flows", () => {
+  const rows = [
+    { client: "Laptop", channel: "Home Wi-Fi/LAN", destination: "telegram.org", route: "VPS", bytes: 100, last_seen: "2026-05-07T09:00:00Z" },
+    { client: "Phone", channel: "C/Mobile LTE", destination: "youtube.test", route: "Direct", bytes: 50, last_seen: "2026-05-07T10:00:00Z" },
+    { client: "Phone", channel: "Channel B", destination: "telegram.org", route: "VPS", bytes: 25, last_seen: "2026-05-06T10:00:00Z" },
+    { client: "Tablet", channel: "Home Wi-Fi/LAN", destination: "unknown destination", route: "Unknown", bytes: 10, last_seen: "2026-05-07T11:00:00Z" },
+    { client: "Old", channel: "Home Wi-Fi/LAN", destination: "old.test", route: "VPS", bytes: 20, last_seen: "2026-04-30T11:00:00Z" },
+  ];
+  const analytics = buildDashboardAnalyticsFromRows(rows, {
+    now: "2026-05-07T12:00:00Z",
+    period: "today",
+    vpsQuotaGb: 1,
+    lteQuotaGb: 1,
+    resetDay: 1,
+  });
+  assert.equal(analytics.trafficToday.totalBytes, 160);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 100);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.directBytes, 0), 50);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.unknownBytes, 0), 10);
+  assert.equal(analytics.topClients[0].label, "Laptop");
+  assert.equal(analytics.topDestinations[0].label, "telegram.org");
+  assert.equal(analytics.quota.vps.usedBytes, 125);
+  assert.equal(analytics.quota.lte.usedBytes, 75);
+  assert.equal(analytics.usage.points.at(-1).vpsForecastBytes > analytics.quota.vps.usedBytes, true);
+  assert.equal(isMobileTrafficRow({ channel: "A/Home Reality", client: "mobile-client-04" }), true);
+  assert.equal(isMobileTrafficRow({ channel: "Home Wi-Fi/LAN", client: "Laptop" }), false);
 });
 
 test("traffic window keeps stale today snapshots out of current-day views", () => {

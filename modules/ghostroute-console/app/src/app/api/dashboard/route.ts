@@ -11,6 +11,7 @@ export async function GET() {
     collector_errors: model.collectorErrors,
     status_cards: model.statusCards,
     totals: model.totals,
+    dashboard_analytics: model.dashboardAnalytics,
     alerts: model.alerts,
   });
 }

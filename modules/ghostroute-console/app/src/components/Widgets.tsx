@@ -69,7 +69,7 @@ export function EmptyState({ title }: { title: string }) {
   return (
     <div className="empty">
       <strong>{title}</strong>
-      <span>Запустите `./modules/ghostroute-console/bin/ghostroute-console collect-once`, чтобы собрать фактический snapshot.</span>
+      <span>Run `./modules/ghostroute-console/bin/ghostroute-console collect-once` to collect a factual snapshot.</span>
     </div>
   );
 }

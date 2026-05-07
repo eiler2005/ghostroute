@@ -93,11 +93,11 @@ function ruleFor(route: string, catalogMatch?: Record<string, any>, row?: Record
 }
 
 function confidenceReason(confidence: string) {
-  if (confidence === "exact") return "Основано на явных counters/report evidence.";
-  if (confidence === "estimated") return "Выведено из агрегатов или неполных log summaries.";
-  if (confidence === "dns-interest") return "Есть DNS-interest, но это не полное доказательство трафика.";
-  if (confidence === "mixed") return "Есть несколько источников с разной точностью.";
-  return "Источник не дал достаточно доказательств.";
+  if (confidence === "exact") return "Based on explicit counter or report evidence.";
+  if (confidence === "estimated") return "Derived from aggregates or incomplete log summaries.";
+  if (confidence === "dns-interest") return "DNS interest exists, but it is not complete traffic proof.";
+  if (confidence === "mixed") return "Several sources provide different precision levels.";
+  return "The source did not provide enough evidence.";
 }
 
 function routeRank(route: string) {
@@ -382,7 +382,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : destination;
   const siteSni = aggregateDestination && sni === "category aggregate" ? "not observed" : sni;
   const timeline = [
-    { at: formatEventTime(dns?.event_ts || dns?.raw?.ts || dns?.collected_at || eventTime), label: "DNS запрос", detail: `${text(dns?.domain || flow.dns_qname || destination)}${dns?.answer_ip || flow.dns_answer_ip ? ` -> ${dns?.answer_ip || flow.dns_answer_ip}` : ""}` },
+    { at: formatEventTime(dns?.event_ts || dns?.raw?.ts || dns?.collected_at || eventTime), label: "DNS request", detail: `${text(dns?.domain || flow.dns_qname || destination)}${dns?.answer_ip || flow.dns_answer_ip ? ` -> ${dns?.answer_ip || flow.dns_answer_ip}` : ""}` },
     { at: formatEventTime(eventTime), label: "IP/rule evidence", detail: `${matchedRule}${flow.rule_set ? ` / ${flow.rule_set}` : ""}` },
     { at: formatEventTime(decision?.occurred_at || eventTime), label: "Route decision", detail: `${route} / ${outbound}` },
     { at: formatEventTime(flow.raw?.last_seen || flow.raw?.timestamp || eventTime), label: "Traffic observed", detail: `${bytes} bytes` },
@@ -392,13 +392,13 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const direct = route === "Direct";
   const mixed = route === "Mixed";
   const steps = [
-    { label: "Client", detail: "Запрос от устройства" },
-    { label: "Router", detail: channel === "Home Wi-Fi/LAN" ? "Пакеты вошли из домашней сети" : `Вход через ${channel}` },
-    { label: "dnsmasq + ipset", detail: accountingBucket ? "destination not observed for this accounting bucket" : dns ? `${dns.domain || destination} -> ${dns.qtype || "A"}` : "DNS evidence не найден" },
-    { label: "sing-box", detail: `Правило: ${matchedRule}` },
-    { label: direct ? "Direct" : mixed ? "mixed-out" : "reality-out", detail: direct ? "Локальный/home WAN выход" : mixed ? "Смешанный выход" : "Reality/VPS outbound" },
-    ...(direct ? [] : [{ label: "VPS", detail: `Видимый IP: ${egressHint}` }]),
-    { label: "Internet", detail: "Доставка до сайта" },
+    { label: "Client", detail: "Request from device" },
+    { label: "Router", detail: channel === "Home Wi-Fi/LAN" ? "Packets entered from the home network" : `Ingress through ${channel}` },
+    { label: "dnsmasq + ipset", detail: accountingBucket ? "destination not observed for this accounting bucket" : dns ? `${dns.domain || destination} -> ${dns.qtype || "A"}` : "DNS evidence not found" },
+    { label: "sing-box", detail: `Rule: ${matchedRule}` },
+    { label: direct ? "Direct" : mixed ? "mixed-out" : "reality-out", detail: direct ? "Local/home WAN exit" : mixed ? "Mixed exit" : "Reality/VPS outbound" },
+    ...(direct ? [] : [{ label: "VPS", detail: `Visible IP: ${egressHint}` }]),
+    { label: "Internet", detail: "Delivery to destination" },
   ];
 
   return {
@@ -448,7 +448,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
       input: `${channel} / ${client}`,
       clientIp: clientIpLabel,
       output: outbound,
-      route: route === "VPS" ? "Через VPS" : route === "Direct" ? "Direct/Home WAN" : route,
+      route: route === "VPS" ? "Via VPS" : route === "Direct" ? "Direct/Home WAN" : route,
       rule: matchedRule,
       decision: accountingBucket ? "Bytes are client/channel counters without destination attribution" : route === "VPS" ? "Route via reality-out" : route === "Direct" ? "Direct allowed" : "Derived from counters",
       confidence,
@@ -457,10 +457,10 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
       accountingBucket
         ? "This row is an accounting bucket: bytes are real client/channel counters, but the concrete destination was not observed. DNS interest may help investigation, but it is not byte attribution."
         : route === "VPS"
-        ? "Внешние сайты видят egress IP - публичный IP выхода. reality-out означает выход sing-box через Reality/VPS. Оператор видит ingress: домашний LAN или мобильный профиль, но не финальный managed destination."
+        ? "External sites see the egress IP, the public exit address. reality-out means sing-box exited through Reality/VPS. The operator sees ingress, such as home LAN or a mobile profile, but not necessarily the final managed destination."
         : route === "Direct"
-          ? "Сайт видит home/direct egress IP, потому что destination не попал в managed rule-set или был явно разрешён как Direct."
-          : "Route decision смешанный или неполный: Console показывает только уровень уверенности, который подтверждён source evidence. candidate означает подсказку каталога, а не обязательно применённое правило.",
+          ? "The site sees the home/direct egress IP because the destination did not match the managed rule-set or was explicitly allowed as Direct."
+          : "The route decision is mixed or incomplete: Console shows only the confidence level supported by source evidence. candidate means a catalog hint, not necessarily an applied rule.",
     rawRefs: {
       flow,
       dns: dnsMatches,
