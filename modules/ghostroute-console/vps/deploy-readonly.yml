@@ -20,10 +20,15 @@
     console_ui_smoke_routes:
       - { path: "/", contains: "GhostRoute Console" }
       - { path: "/live", contains: "Live event stream" }
+      - { path: "/live", contains: "Showing" }
       - { path: "/live?activityPageSize=150", contains: "Client activity summary" }
       - { path: "/dns", contains: "DNS Query Log" }
+      - { path: "/dns", contains: "Showing" }
       - { path: "/traffic", contains: "Flow Explorer" }
+      - { path: "/traffic", contains: "Showing" }
+      - { path: "/traffic?trafficClass=all", contains: "All traffic" }
       - { path: "/clients", contains: "Device Inventory" }
+      - { path: "/clients", contains: "Showing" }
     console_api_smoke_routes:
       - /api/health
       - /api/dashboard
