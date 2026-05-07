@@ -87,6 +87,19 @@ test("live filters keep event pagination scoped", async ({ page }) => {
   await expect(page.locator(".live-primary .pagination")).toContainText("Showing 0-0 of 0");
 });
 
+test("dense console tables keep pagination controls visible", async ({ page }) => {
+  await page.setViewportSize({ width: 2048, height: 760 });
+  for (const path of ["/live", "/dns"]) {
+    await page.goto(path);
+    await expect(page.locator(".pagination").first()).toBeVisible();
+  }
+
+  await page.goto("/traffic");
+  if (!(await page.getByText("Нет traffic rows").isVisible().catch(() => false))) {
+    await expect(page.locator(".traffic-stream-card .pagination")).toBeVisible();
+  }
+});
+
 test("clients separate inventory from selected-window traffic", async ({ page }) => {
   await page.goto("/clients");
   await expect(page.getByText("traffic for selected window")).toBeVisible();
