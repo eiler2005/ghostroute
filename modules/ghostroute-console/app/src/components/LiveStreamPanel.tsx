@@ -17,12 +17,12 @@ export function LiveStreamPanel({
   initial,
   visibleCount = 150,
   streamHref = "/api/live/stream",
-  footer,
+  children,
 }: {
   initial: LivePayload;
   visibleCount?: number;
   streamHref?: string;
-  footer?: ReactNode;
+  children?: ReactNode;
 }) {
   const [payload, setPayload] = useState(initial);
   const [mode, setMode] = useState("SSE connecting");
@@ -126,7 +126,7 @@ export function LiveStreamPanel({
           </tbody>
         </table>
       </div>
-      {footer ? <div className="live-card-footer">{footer}</div> : null}
+      {children ? <div className="live-card-footer">{children}</div> : null}
     </section>
   );
 }

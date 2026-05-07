@@ -109,8 +109,9 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
           }}
           visibleCount={eventsPageSize}
           streamHref={liveStreamHref}
-          footer={liveEventsPagination}
-        />
+        >
+          {liveEventsPagination}
+        </LiveStreamPanel>
       </div>
 
       <section className="card live-stream-card service-events-card">
