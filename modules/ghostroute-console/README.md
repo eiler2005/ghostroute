@@ -69,11 +69,11 @@ The dedicated public listener defaults to nginx and proxies to
 certificate storage and the separate Reality/layer4 surface. Legacy dedicated
 Caddy Console blocks may remain only as rollback configuration and should be
 removed or disabled while nginx owns the Console port. The dedicated Console
-port is TCP/TLS only and uses a small nginx TLS buffer so larger HTML responses
-are split into smaller writes over the operator network path; browsers must not
-depend on HTTP/3/QUIC for Console access. Provider-level firewalls must allow
-the configured public TCP port; host UFW alone is not enough if the cloud
-firewall drops packets before they reach the VPS.
+port is TCP/TLS only and uses nginx response compression plus a small TLS buffer
+so larger HTML/JSON responses stay reliable over the operator network path;
+browsers must not depend on HTTP/3/QUIC for Console access. Provider-level
+firewalls must allow the configured public TCP port; host UFW alone is not
+enough if the cloud firewall drops packets before they reach the VPS.
 
 Operator-local client identity is stored in the same data directory as
 `device-attribution.json`. It is intentionally gitignored runtime data: Console
@@ -266,8 +266,9 @@ from the public Console URL.
   a concrete site saw the category label.
 - `/dns` shows DNS Query Log rows with the resolved Console client label,
   observed client IP, millisecond event time, domain, answer IP, route decision,
-  catalog status, status and risk context. `/dns?page=&pageSize=` can page up
-  to 1,000 rows for larger troubleshooting windows.
+  catalog status, status and risk context. It defaults to a compact first page;
+  `/dns?page=&pageSize=` can page up to 500 rows for larger troubleshooting
+  windows.
 - `/catalog?page=&pageSize=` pages the read-only catalog snapshot up to 1,000
   rows per page; catalog review actions remain separate from runtime deploy.
 - `/health` includes Alarm Center rows with severity, source, evidence,
@@ -282,7 +283,7 @@ from the public Console URL.
   because they are absent from today's latest snapshot.
 - `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
   client and service/background live events separately, with millisecond event
-  times and page sizes up to 1,000 rows.
+  times and page sizes up to 500 rows.
 - `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
   updates from append-only real log events, with polling fallback in the UI.
 - `/api/actions/catalog/*` implements review, dry-run, apply preparation and
@@ -307,6 +308,14 @@ seeded database is synthetic, lives under the gitignored
 Log, Clients and Live enough rows to verify compact tables, filters, horizontal
 scroll and pagination without waiting for real snapshots.
 
+Refresh that seeded data layer before local checks whenever GUI selectors,
+read models, cache keys or page rendering change:
+
+```bash
+cd modules/ghostroute-console/app
+npm run seed:gui
+```
+
 ```bash
 cd modules/ghostroute-console/app
 npm run dev:gui
@@ -317,6 +326,7 @@ For automated browser checks against the same seeded database:
 ```bash
 cd modules/ghostroute-console/app
 npm test
+npm run build
 npm run test:e2e:gui
 npm run test:perf
 ```
@@ -325,3 +335,21 @@ npm run test:perf
 Console pages render within 2.5 seconds and key JSON APIs respond within 1.5
 seconds. It also clicks through the sidebar quickly to catch regressions where
 one page rebuilds the full Console evidence model during navigation.
+
+Release hardening:
+
+- PR smoke uses the seeded GUI database across desktop and mobile Playwright
+  projects; performance remains a manual/release gate.
+- Collectors validate incoming JSON snapshots against tolerant versioned
+  contracts. Unknown fields are preserved, but missing core fields are recorded
+  as collector errors instead of being inserted as broken snapshots.
+- Read-only derived selectors use a short in-process cache keyed by latest
+  snapshot version, filters and pagination. The cache covers the heavy sidebar
+  pages and is paired with browser-side route/API warmup after the first page
+  loads.
+- The source strip and `/api/health` expose both build commit and UTC build
+  timestamp so operators can confirm which deployed container is serving the UI.
+- The VPS read-only deploy builds the new Console image before replacing the
+  running container, tags the prepared image with the build commit, passes the
+  build timestamp into the app, and attempts rollback to the previous image if
+  local health/UI/API smoke fails.

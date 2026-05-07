@@ -1,6 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, EmptyState, MetricCard, ProgressBar } from "@/components/Widgets";
-import { buildBudgetModel } from "@/lib/server/selectors";
+import { buildBudgetModel } from "@/lib/server/selectors/budget";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function quotaBytes(bytesEnv: string, gbEnv: string) {

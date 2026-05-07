@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listClientInventory } from "@/lib/server/selectors";
+import { listClientInventory } from "@/lib/server/selectors/clients";
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listAlarmEvents } from "@/lib/server/selectors";
+import { listAlarmEvents } from "@/lib/server/selectors/health";
 
 function compact({ raw, evidence_json, ...row }: Record<string, any>) {
   return row;

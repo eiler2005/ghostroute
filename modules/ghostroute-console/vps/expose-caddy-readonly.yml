@@ -242,6 +242,11 @@
               access_log /var/log/ghostroute-console-nginx-access.log combined;
               server_tokens off;
               keepalive_timeout 0;
+              tcp_nodelay on;
+              gzip on;
+              gzip_vary on;
+              gzip_min_length 512;
+              gzip_types text/plain text/css application/json application/javascript text/javascript;
 
               server {
                   listen 0.0.0.0:{{ console_public_port }} ssl;
@@ -251,7 +256,7 @@
                   ssl_certificate {{ console_tls_cert_file }};
                   ssl_certificate_key {{ console_tls_key_file }};
                   ssl_protocols TLSv1.2 TLSv1.3;
-                  ssl_buffer_size 4k;
+                  ssl_buffer_size 1400;
 
                   auth_basic "GhostRoute Console";
                   auth_basic_user_file {{ console_root }}/auth/nginx.htpasswd;

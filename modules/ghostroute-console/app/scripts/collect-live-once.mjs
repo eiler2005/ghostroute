@@ -5,6 +5,8 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { recordCollectorError } from "./lib/collector-errors.mjs";
+import { validateSnapshotPayload } from "./lib/snapshot-contracts.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -108,33 +110,42 @@ const args = ["--json", "--limit", limit];
 const since = cursor();
 if (since) args.push("--since", since);
 
-const stdout = runReadOnlyCommand(args);
-const payload = JSON.parse(stdout);
-const collectedAt = payload.generated_at || new Date().toISOString();
-const file = path.join(snapshotDir, `live-${collectedAt.replace(/[:.]/g, "-")}.json`);
-const writerRelease = acquireSharedCollectorLock(dataDir, "live collector");
 try {
-  db = new Database(path.join(dataDir, "ghostroute.db"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("busy_timeout = 10000");
-  ensureConsoleSchema(db);
-  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
-  const result = db
-    .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
-    .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
-  normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
-  rebuildObservabilityReadModels(db);
-  const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
-  const pruned = pruneLiveSnapshots(liveRetentionHours);
-  console.log(
-    `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`
-  );
-} finally {
+  const stdout = runReadOnlyCommand(args);
+  const payload = JSON.parse(stdout);
+  validateSnapshotPayload("live", payload);
+  const collectedAt = payload.generated_at || new Date().toISOString();
+  const file = path.join(snapshotDir, `live-${collectedAt.replace(/[:.]/g, "-")}.json`);
+  const writerRelease = acquireSharedCollectorLock(dataDir, "live collector");
   try {
-    db?.close();
-  } catch {
-    // Best-effort close.
+    db = new Database(path.join(dataDir, "ghostroute.db"));
+    db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 10000");
+    ensureConsoleSchema(db);
+    fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+    const result = db
+      .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
+      .run("live", collectedAt, payload.source?.command || command, file, JSON.stringify(payload));
+    normalizeSnapshot(db, Number(result.lastInsertRowid), "live", collectedAt, payload);
+    rebuildObservabilityReadModels(db);
+    const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
+    const pruned = pruneLiveSnapshots(liveRetentionHours);
+    console.log(
+      `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`
+    );
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // Best-effort close.
+    }
+    writerRelease();
   }
-  writerRelease();
+} catch (error) {
+  const sample = String(error.stdout || error.stderr || error.message || "").slice(0, 1000);
+  recordCollectorError({ dataDir, type: "live", command, args, error, sample });
+  console.error(`skipped live: ${sample || error.message}`);
+  process.exitCode = 1;
+} finally {
   lockRelease();
 }

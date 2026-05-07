@@ -12,8 +12,10 @@ RUN apk add --no-cache bash openssh-client tini && \
     adduser -D -u 10000 -G ghostroute ghostroute
 WORKDIR /app
 ARG GHOSTROUTE_CONSOLE_BUILD_COMMIT=unknown
+ARG GHOSTROUTE_CONSOLE_BUILD_AT=unknown
 ENV NODE_ENV=production
 ENV GHOSTROUTE_CONSOLE_BUILD_COMMIT=${GHOSTROUTE_CONSOLE_BUILD_COMMIT}
+ENV GHOSTROUTE_CONSOLE_BUILD_AT=${GHOSTROUTE_CONSOLE_BUILD_AT}
 COPY --from=builder --chown=ghostroute:ghostroute /app/.next/standalone ./
 COPY --from=builder --chown=ghostroute:ghostroute /app/.next/static ./.next/static
 COPY --from=builder --chown=ghostroute:ghostroute /app/public ./public

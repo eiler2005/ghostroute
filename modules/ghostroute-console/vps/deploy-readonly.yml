@@ -17,6 +17,8 @@
     console_reset_db: "{{ ghostroute_console_reset_db | default(false) }}"
     console_seed_local_data: "{{ ghostroute_console_seed_local_data | default(false) }}"
     console_build_commit: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ '/../../../ rev-parse --short HEAD') }}"
+    console_build_at: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+    console_rollback_tag: "ghostroute-console:rollback-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
     console_ui_smoke_routes:
       - { path: "/", contains: "GhostRoute Console" }
       - { path: "/live", contains: "Live event stream" }
@@ -193,8 +195,13 @@
         key_options: 'command="/usr/local/bin/ghostroute-readonly-shell",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding'
         manage_dir: true
 
-    - name: Stop Console before syncing updated sources
-      ansible.builtin.shell: docker stop ghostroute-console >/dev/null 2>&1 || true
+    - name: Tag current Console image for rollback before syncing updated sources
+      ansible.builtin.shell: |
+        set -eu
+        current_image="$(docker inspect ghostroute-console --format '{% raw %}{{ .Image }}{% endraw %}' 2>/dev/null || true)"
+        if [ -n "$current_image" ]; then
+          docker tag "$current_image" "{{ console_rollback_tag }}"
+        fi
       changed_when: false
 
     - name: Sync repo sources without secrets or generated artifacts
@@ -254,6 +261,7 @@
       loop:
         - "{{ console_root }}/data/ghostroute.db-shm"
         - "{{ console_root }}/data/ghostroute.db-wal"
+      when: console_reset_db | bool
 
     - name: Quarantine Console SQLite database when explicitly requested
       ansible.builtin.shell: |
@@ -305,6 +313,7 @@
           GHOSTROUTE_VPS_EGRESS_ASN={{ ghostroute_console_egress_asn | default('', true) }}
           GHOSTROUTE_VPS_EGRESS_COUNTRY={{ ghostroute_console_egress_country | default('', true) }}
           GHOSTROUTE_CONSOLE_BUILD_COMMIT={{ console_build_commit }}
+          GHOSTROUTE_CONSOLE_BUILD_AT={{ console_build_at }}
 
     - name: Remove legacy Console container before compose project migration
       ansible.builtin.shell: |
@@ -317,56 +326,88 @@
         fi
       changed_when: false
 
-    - name: Remove stale Console collector locks before restart
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ console_root }}/data/collector.lock"
-        - "{{ console_root }}/data/light-collector.lock"
-        - "{{ console_root }}/data/live-collector.lock"
-        - "{{ console_root }}/data/collector-writer.lock"
+    - name: Remove stale Console collector locks only when Console is stopped
+      ansible.builtin.shell: |
+        set -eu
+        running="$(docker inspect ghostroute-console --format '{% raw %}{{ .State.Running }}{% endraw %}' 2>/dev/null || true)"
+        if [ "$running" != "true" ]; then
+          rm -f \
+            "{{ console_root }}/data/collector.lock" \
+            "{{ console_root }}/data/light-collector.lock" \
+            "{{ console_root }}/data/live-collector.lock" \
+            "{{ console_root }}/data/collector-writer.lock"
+        fi
+      changed_when: false
 
-    - name: Build and start Console container
+    - name: Build Console image before touching the running container
       ansible.builtin.command:
-        cmd: docker compose -f modules/ghostroute-console/vps/docker-compose.yml up -d --build
+        cmd: docker compose -f modules/ghostroute-console/vps/docker-compose.yml build
         chdir: "{{ console_root }}/repo"
       changed_when: true
 
-    - name: Remove empty legacy generic network if present
-      ansible.builtin.shell: docker network rm vps_default >/dev/null 2>&1 || true
+    - name: Tag prepared Console image with build commit
+      ansible.builtin.shell: |
+        set -eu
+        docker tag ghostroute-console:latest "ghostroute-console:{{ console_build_commit }}"
       changed_when: false
 
-    - name: Check local Console health endpoint
-      ansible.builtin.uri:
-        url: http://127.0.0.1:3000/api/health
-        return_content: true
-        status_code: 200
-      register: console_health
+    - name: Start prepared Console image and verify smoke routes
+      block:
+        - name: Start Console container from prepared image
+          ansible.builtin.command:
+            cmd: docker compose -f modules/ghostroute-console/vps/docker-compose.yml up -d --no-build
+            chdir: "{{ console_root }}/repo"
+          changed_when: true
 
-    - name: Check local Console UI smoke routes
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:3000{{ item.path }}"
-        return_content: true
-        status_code: 200
-      loop: "{{ console_ui_smoke_routes }}"
-      register: console_ui_smoke
-      retries: 6
-      delay: 5
-      until:
-        - console_ui_smoke.status == 200
-        - item.contains in console_ui_smoke.content
+        - name: Remove empty legacy generic network if present
+          ansible.builtin.shell: docker network rm vps_default >/dev/null 2>&1 || true
+          changed_when: false
 
-    - name: Check local Console API smoke routes
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:3000{{ item }}"
-        return_content: true
-        status_code: 200
-      loop: "{{ console_api_smoke_routes }}"
-      register: console_api_smoke
-      retries: 6
-      delay: 5
-      until: console_api_smoke.status == 200
+        - name: Check local Console health endpoint
+          ansible.builtin.uri:
+            url: http://127.0.0.1:3000/api/health
+            return_content: true
+            status_code: 200
+          register: console_health
+
+        - name: Check local Console UI smoke routes
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:3000{{ item.path }}"
+            return_content: true
+            status_code: 200
+          loop: "{{ console_ui_smoke_routes }}"
+          register: console_ui_smoke
+          retries: 6
+          delay: 5
+          until:
+            - console_ui_smoke.status == 200
+            - item.contains in console_ui_smoke.content
+
+        - name: Check local Console API smoke routes
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:3000{{ item }}"
+            return_content: true
+            status_code: 200
+          loop: "{{ console_api_smoke_routes }}"
+          register: console_api_smoke
+          retries: 6
+          delay: 5
+          until: console_api_smoke.status == 200
+      rescue:
+        - name: Roll back Console image after failed start or smoke
+          ansible.builtin.shell: |
+            set -eu
+            if docker image inspect "{{ console_rollback_tag }}" >/dev/null 2>&1; then
+              docker tag "{{ console_rollback_tag }}" ghostroute-console:latest
+              docker compose -f modules/ghostroute-console/vps/docker-compose.yml up -d --no-build
+            fi
+          args:
+            chdir: "{{ console_root }}/repo"
+          changed_when: true
+
+        - name: Fail after Console rollback attempt
+          ansible.builtin.fail:
+            msg: "Console start or smoke failed; rollback to {{ console_rollback_tag }} was attempted."
 
     - name: Show Console local status
       ansible.builtin.debug:

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildBudgetModel } from "@/lib/server/selectors";
+import { buildBudgetModel } from "@/lib/server/selectors/budget";
 
 function quotaBytes(bytesEnv: string, gbEnv: string) {
   const rawBytes = Number(process.env[bytesEnv] || 0);

@@ -3,7 +3,7 @@ import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
-import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
@@ -29,7 +29,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(25, Number.parseInt(scalar(params.pageSize) || "100", 10) || 100));
+  const pageSize = Math.min(100, Math.max(25, Number.parseInt(scalar(params.pageSize) || "50", 10) || 50));
   const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });

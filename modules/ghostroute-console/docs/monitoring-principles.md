@@ -34,11 +34,21 @@ attribution later.
 
 ## Navigation Performance
 
-- Sidebar pages should render from page-scoped read models, not from the full
-  report/evidence model unless the page is explicitly a report export.
-- Read-only derived snapshot data may use a short in-process TTL cache keyed by
-  the latest snapshot timestamp and active filters. Action/write endpoints and
-  private credential material must not use that cache.
+- Sidebar pages render from page-scoped read models, not from the full
+  report/evidence model unless the page is explicitly a report export. The
+  current sidebar set is Dashboard, Flow Explorer, DNS Query Log, Clients,
+  Health Center, Catalog, Budget, Live, Reports and Settings.
+- Read-only derived snapshot data uses a short in-process TTL cache keyed by
+  the latest snapshot version, active filters and pagination args. The default
+  TTL is 60 seconds and can be disabled with
+  `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`.
+- The cache covers heavy flow, DNS, alarm, client, client-activity and live
+  selectors, plus page models for all sidebar views. Action/write endpoints and
+  private credential material must not use that cache; narrow operator-state
+  actions clear derived cache after a successful change.
+- The browser runs an idle warmup after the first Console render: it prefetches
+  the main sidebar routes and warms their JSON APIs. This is a convenience
+  layer only; correctness still comes from factual snapshots and read models.
 - `test:perf` covers both individual page/API budgets and rapid sidebar
   navigation so regressions show up before deploy.
 
@@ -47,6 +57,9 @@ attribution later.
 - GUI changes must be checked on a local seeded Console before deploy. Use
   `cd modules/ghostroute-console/app && npm run dev:gui` for visual review and
   `npm run test:e2e:gui` for browser coverage against the same synthetic data.
+- Refresh the seeded GUI data layer before local checks whenever page models,
+  selectors, cache keys or read-model rendering change: run
+  `npm run seed:gui` from `modules/ghostroute-console/app`.
 - The seeded database lives under the gitignored
   `modules/ghostroute-console/data/gui-test/` path. It should contain enough
   Flow Explorer, DNS Query Log, Clients and Live rows to verify dense tables,
@@ -54,6 +67,10 @@ attribution later.
 - Deploy comes after local visual checks and tests pass. The deployment playbook
   must continue to smoke more than `/api/health`: it should cover the key UI and
   API routes that changed.
+- Every deployed image carries both `GHOSTROUTE_CONSOLE_BUILD_COMMIT` and
+  `GHOSTROUTE_CONSOLE_BUILD_AT`. The source strip shows `build <commit> ·
+  <date>` so browser checks can confirm the newly deployed container is serving
+  the UI.
 
 ## Browser Loading Incidents
 

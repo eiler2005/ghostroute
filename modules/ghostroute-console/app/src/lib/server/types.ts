@@ -32,6 +32,7 @@ export type ConsoleModel = {
     dataDirLabel: string;
     repoRootLabel: string;
     buildCommit: string;
+    buildAt: string;
     nodeEnv: string;
     latestSnapshots: Record<string, string>;
   };

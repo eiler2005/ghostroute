@@ -1,6 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { TrafficTermsHelp } from "@/components/Widgets";
-import { buildSettingsModel } from "@/lib/server/selectors";
+import { buildSettingsModel } from "@/lib/server/selectors/settings";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { clientRegistrySummary } from "@/lib/device-attribution.mjs";
 

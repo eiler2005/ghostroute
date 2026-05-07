@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { LiveStreamPanel } from "@/components/LiveStreamPanel";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, timeWithMillis } from "@/components/Widgets";
-import { buildLiveModel, listFlowSessions, listLiveEvents } from "@/lib/server/selectors";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {
@@ -22,11 +23,11 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const eventsPage = Math.max(1, Number.parseInt(scalar(params.eventsPage) || "1", 10) || 1);
-  const eventsPageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.eventsPageSize) || "150", 10) || 150));
+  const eventsPageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.eventsPageSize) || "50", 10) || 50));
   const servicePage = Math.max(1, Number.parseInt(scalar(params.servicePage) || "1", 10) || 1);
-  const servicePageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.servicePageSize) || "150", 10) || 150));
+  const servicePageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.servicePageSize) || "50", 10) || 50));
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
-  const activityPageSize = Math.min(150, Math.max(150, Number.parseInt(scalar(params.activityPageSize) || "150", 10) || 150));
+  const activityPageSize = Math.min(150, Math.max(25, Number.parseInt(scalar(params.activityPageSize) || "50", 10) || 50));
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: eventsPageSize, filters });
   const serviceEvents = listLiveEvents({ page: servicePage, pageSize: servicePageSize, filters: { ...filters, trafficClass: "service_background" } });
   const trafficPage = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 150, maxRows: 4500, filters });

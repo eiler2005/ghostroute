@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, MetricCard, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
-import { buildShellModel, listAlarmEvents, listDnsQueryLog } from "@/lib/server/selectors";
+import { buildShellModel } from "@/lib/server/selectors/shell";
+import { listAlarmEvents } from "@/lib/server/selectors/health";
+import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {
@@ -28,7 +30,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.pageSize) || "150", 10) || 150));
+  const pageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.pageSize) || "50", 10) || 50));
   const status = scalar(params.status) || "all";
   const catalogStatus = scalar(params.catalogStatus) || "all";
   const dnsPage = listDnsQueryLog({ page, pageSize, status, catalogStatus, filters: { ...filters, trafficClass: "all" } });

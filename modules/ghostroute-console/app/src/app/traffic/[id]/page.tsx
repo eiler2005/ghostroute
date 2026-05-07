@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
-import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors";
+import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function RouteDetailPage({

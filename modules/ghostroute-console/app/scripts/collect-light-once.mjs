@@ -5,6 +5,8 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
+import { recordCollectorError } from "./lib/collector-errors.mjs";
+import { validateSnapshotPayload } from "./lib/snapshot-contracts.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -95,6 +97,7 @@ function pruneFiles(dir, retentionDays, predicate = () => true) {
 try {
   const stdout = runReadOnlyCommand(["--json", "today"]);
   const payload = JSON.parse(stdout);
+  validateSnapshotPayload("traffic_summary", payload);
   const collectedAt = payload.generated_at || new Date().toISOString();
   const file = path.join(snapshotDir, `traffic_summary-${collectedAt.replace(/[:.]/g, "-")}.json`);
 
@@ -125,6 +128,14 @@ try {
   console.log(`stored traffic_summary: ${file}`);
 } catch (error) {
   const sample = String(error.stdout || error.stderr || error.message || "").slice(0, 1000);
+  recordCollectorError({
+    dataDir,
+    type: "traffic_summary",
+    command,
+    args: ["--json", "today"],
+    error,
+    sample,
+  });
   console.error(`skipped traffic_summary: ${sample || error.message}`);
   process.exit(1);
 } finally {

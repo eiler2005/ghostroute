@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, StatusBadge } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors";
+import { buildConsoleModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { llmSafePayload } from "@/lib/server/redaction";
 

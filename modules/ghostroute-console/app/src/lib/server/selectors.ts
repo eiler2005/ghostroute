@@ -41,7 +41,7 @@ import {
 } from "../traffic-window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
-const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 15_000);
+const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 60_000);
 const derivedCache = new Map<string, { expiresAt: number; value: any }>();
 
 function cacheGet<T>(key: string, build: () => T): T {
@@ -83,6 +83,38 @@ function filtersKey(filters: ConsoleFilters = {}) {
   });
 }
 
+function pageArgsKey(args: PageArgs = {}) {
+  return JSON.stringify({
+    page: clampPage(args.page),
+    pageSize: args.pageSize,
+    maxPageSize: args.maxPageSize,
+    maxRows: args.maxRows,
+    diagnostics: Boolean(args.diagnostics),
+    filters: filtersKey(args.filters || {}),
+  });
+}
+
+function dnsPageArgsKey(args: DnsPageArgs = {}) {
+  return JSON.stringify({
+    page: clampPage(args.page),
+    pageSize: args.pageSize,
+    status: args.status || "all",
+    catalogStatus: args.catalogStatus || "all",
+    filters: filtersKey(args.filters || {}),
+  });
+}
+
+function alarmPageArgsKey(args: AlarmPageArgs = {}) {
+  return JSON.stringify({
+    page: clampPage(args.page),
+    pageSize: args.pageSize,
+    severity: args.severity || "all",
+    status: args.status || "all",
+    source: args.source || "all",
+    filters: filtersKey(args.filters || {}),
+  });
+}
+
 function shortCommit(value?: string) {
   const commit = String(value || "").trim();
   if (!commit || commit === "unknown") return "unknown";
@@ -97,6 +129,16 @@ function gitCommit() {
     return shortCommit(execFileSync("git", ["rev-parse", "--short=8", "HEAD"], { cwd: repoRoot(), encoding: "utf8", timeout: 1000 }));
   } catch {
     return "unknown";
+  }
+}
+
+function buildAt() {
+  const value = String(process.env.GHOSTROUTE_CONSOLE_BUILD_AT || "").trim();
+  if (value && value !== "unknown") return value;
+  try {
+    return execFileSync("git", ["show", "-s", "--format=%cI", "HEAD"], { cwd: repoRoot(), encoding: "utf8", timeout: 1000 }).trim();
+  } catch {
+    return "";
   }
 }
 
@@ -117,6 +159,7 @@ function runtimeInfo(snapshots: ConsoleModel["snapshots"]) {
     dataDirLabel: labelPath(dir),
     repoRootLabel: labelPath(repo),
     buildCommit: gitCommit(),
+    buildAt: buildAt(),
     nodeEnv: process.env.NODE_ENV || "development",
     latestSnapshots: Object.fromEntries(
       Object.entries(snapshots)
@@ -783,6 +826,10 @@ function evidenceRowsForWindow(rows: Array<Record<string, any>>, period = "today
 }
 
 export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
+  return cacheGet(`build-console-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildConsoleModelUncached(filters));
+}
+
+function buildConsoleModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const snapshots = cachedLatestByType();
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
@@ -1316,6 +1363,10 @@ export function listTrafficRows(args: PageArgs = {}) {
 }
 
 export function listFlowSessions(args: PageArgs = {}) {
+  return cacheGet(`list-flow-sessions:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listFlowSessionsUncached(args));
+}
+
+function listFlowSessionsUncached(args: PageArgs = {}) {
   if (!readModelHasRows("flow_sessions")) return listTrafficRows(args);
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
@@ -1450,6 +1501,10 @@ function mapDnsFallbackRow(row: any) {
 }
 
 export function listDnsQueryLog(args: DnsPageArgs = {}) {
+  return cacheGet(`list-dns-query-log:${latestSnapshotVersion()}:${dnsPageArgsKey(args)}`, () => listDnsQueryLogUncached(args));
+}
+
+function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 100, 1000);
   const maxRows = 1000;
@@ -1571,6 +1626,10 @@ function mapAlarmFallbackRow(row: any) {
 }
 
 export function listAlarmEvents(args: AlarmPageArgs = {}) {
+  return cacheGet(`list-alarm-events:${latestSnapshotVersion()}:${alarmPageArgsKey(args)}`, () => listAlarmEventsUncached(args));
+}
+
+function listAlarmEventsUncached(args: AlarmPageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
   const filters = args.filters || {};
@@ -1839,6 +1898,10 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
 }
 
 export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel {
+  return cacheGet(`build-dashboard-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildDashboardModelUncached(filters));
+}
+
+function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 100, filters }).rows;
@@ -1846,21 +1909,36 @@ export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel 
 }
 
 export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
+  const flowKey = flows.map((row) => row.id || row.destination || row.client).slice(0, 200).join("|");
+  return cacheGet(`build-live-model:${latestSnapshotVersion()}:${filtersKey(filters)}:${flows.length}:${flowKey}`, () => buildLiveModelUncached(filters, flows));
+}
+
+function buildLiveModelUncached(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
   const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 12, filters: { ...filters, trafficClass: "all" } }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 10, filters }).rows;
   return buildShellModel(filters, { flows, devices, dnsQueries });
 }
 
 export function buildClientsModel(filters: ConsoleFilters = {}, devices: Array<Record<string, any>> = [], flows: Array<Record<string, any>> = []): ConsoleModel {
+  const deviceKey = devices.map((row) => row.id || row.label || row.client).slice(0, 200).join("|");
+  const flowKey = flows.map((row) => row.id || row.destination || row.client).slice(0, 200).join("|");
+  return cacheGet(`build-clients-model:${latestSnapshotVersion()}:${filtersKey(filters)}:${devices.length}:${deviceKey}:${flows.length}:${flowKey}`, () => buildClientsModelUncached(filters, devices, flows));
+}
+
+function buildClientsModelUncached(filters: ConsoleFilters = {}, devices: Array<Record<string, any>> = [], flows: Array<Record<string, any>> = []): ConsoleModel {
   const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 80, filters: { ...filters, trafficClass: "all" } }).rows;
   return buildShellModel(filters, { devices, flows, dnsQueries });
 }
 
 export function buildHealthModel(filters: ConsoleFilters = {}) {
-  return buildShellModel(filters);
+  return cacheGet(`build-health-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildShellModel(filters));
 }
 
 export function buildCatalogModel(filters: ConsoleFilters = {}) {
+  return cacheGet(`build-catalog-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildCatalogModelUncached(filters));
+}
+
+function buildCatalogModelUncached(filters: ConsoleFilters = {}) {
   const domains = cachedLatestByType().domains?.payload || {};
   const normalizedCatalog = normalizedRows("normalized_catalog").slice(0, 500).map((row: any) => ({
     domain: row.domain,
@@ -1884,6 +1962,10 @@ export function buildCatalogModel(filters: ConsoleFilters = {}) {
 }
 
 export function buildSettingsModel(filters: ConsoleFilters = {}) {
+  return cacheGet(`build-settings-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildSettingsModelUncached(filters));
+}
+
+function buildSettingsModelUncached(filters: ConsoleFilters = {}) {
   const devices = listClientInventory({ page: 1, pageSize: 200, filters }).rows;
   const model = buildShellModel(filters, {
     devices,
@@ -1983,7 +2065,7 @@ function buildSettingsInventory(model: ConsoleModel) {
       ["Live raw snapshots", `${envNumber("GHOSTROUTE_LIVE_RAW_RETENTION_HOURS", 6)}h`],
       ["Hourly aggregates", `${envNumber("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30)}d`],
       ["DB backups", `${envNumber("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2)}d / max ${envNumber("GHOSTROUTE_DB_BACKUP_MAX_FILES", 2)}`],
-      ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 15000)}ms`],
+      ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 60000)}ms`],
       ["Latest retention run", latestRetentionRun()?.ran_at || "n/a"],
     ],
     access: [
@@ -2040,6 +2122,10 @@ function buildSettingsInventory(model: ConsoleModel) {
 }
 
 export function buildBudgetModel(filters: ConsoleFilters = {}): ConsoleModel {
+  return cacheGet(`build-budget-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildBudgetModelUncached(filters));
+}
+
+function buildBudgetModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const snapshots = cachedLatestByType();
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
@@ -2183,6 +2269,10 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
 }
 
 export function listClientInventory(args: PageArgs = {}) {
+  return cacheGet(`list-client-inventory:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listClientInventoryUncached(args));
+}
+
+function listClientInventoryUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
   const rows = clientInventoryRows(args.filters || {})
@@ -2253,6 +2343,22 @@ function rowIdentityTokens(row: Record<string, any>) {
 }
 
 export function listClientActivity(client: Record<string, any> | string, period = "today") {
+  const target = typeof client === "string" ? { label: client } : client || {};
+  const keyTarget = {
+    id: target.id,
+    label: target.label,
+    client_key: target.client_key,
+    client_label: target.client_label,
+    device_key: target.device_key,
+    device_label: target.device_label,
+    aliases: target.aliases,
+    observed_aliases: target.observed_aliases,
+    observed_identities: target.observed_identities,
+  };
+  return cacheGet(`list-client-activity:${latestSnapshotVersion()}:${period}:${JSON.stringify(keyTarget)}`, () => listClientActivityUncached(client, period));
+}
+
+function listClientActivityUncached(client: Record<string, any> | string, period = "today") {
   const target = typeof client === "string" ? { label: client } : client || {};
   const targetTokens = new Set(rowIdentityTokens(target));
   const targetKey = keyForDevice(target);
@@ -2345,6 +2451,10 @@ function mapLiveRow(row: any) {
 }
 
 export function listLiveEvents(args: PageArgs = {}) {
+  return cacheGet(`list-live-events:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listLiveEventsUncached(args));
+}
+
+function listLiveEventsUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 150, 1000);
   const offset = (page - 1) * pageSize;
