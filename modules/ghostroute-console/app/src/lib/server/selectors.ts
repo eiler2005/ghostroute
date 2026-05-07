@@ -1063,6 +1063,8 @@ export function buildConsoleModel(filters: ConsoleFilters = {}): ConsoleModel {
 type PageArgs = {
   page?: number;
   pageSize?: number;
+  maxPageSize?: number;
+  maxRows?: number;
   filters?: ConsoleFilters;
   diagnostics?: boolean;
 };
@@ -1266,7 +1268,8 @@ function mapFlowSessionRow(row: any) {
 
 export function listTrafficRows(args: PageArgs = {}) {
   const page = clampPage(args.page);
-  const pageSize = clampPageSize(args.pageSize, 25, 100);
+  const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
+  const maxRows = Math.max(pageSize, Number(args.maxRows || Number.MAX_SAFE_INTEGER));
   const latest = latestIdWhereForFilters(args.filters || {});
   const where = [latest.sql];
   const params = [...latest.params];
@@ -1281,8 +1284,8 @@ export function listTrafficRows(args: PageArgs = {}) {
   const trafficClass = args.filters?.trafficClass || "client";
   const hasRegistryFilter = Boolean(args.filters?.client && args.filters.client !== "all");
   const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
-  const fetchLimit = hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize;
-  const sqlTotal = Number((getDb().prepare(`select count(*) as count from normalized_flows where ${whereSql}`).get(...params) as any)?.count || 0);
+  const fetchLimit = Math.min(maxRows, hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize);
+  const sqlTotal = Math.min(maxRows, Number((getDb().prepare(`select count(*) as count from normalized_flows where ${whereSql}`).get(...params) as any)?.count || 0));
   const rawRows = getDb()
     .prepare(
       `select ${flowSelect()}
@@ -1298,7 +1301,7 @@ export function listTrafficRows(args: PageArgs = {}) {
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
+  const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
   const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
@@ -1315,7 +1318,8 @@ export function listTrafficRows(args: PageArgs = {}) {
 export function listFlowSessions(args: PageArgs = {}) {
   if (!readModelHasRows("flow_sessions")) return listTrafficRows(args);
   const page = clampPage(args.page);
-  const pageSize = clampPageSize(args.pageSize, 25, 100);
+  const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
+  const maxRows = Math.max(pageSize, Number(args.maxRows || Number.MAX_SAFE_INTEGER));
   const latest = idWhereForWindow(args.filters?.period || "today", new Set(["traffic"]));
   const where = [latest.sql];
   const params = [...latest.params];
@@ -1352,9 +1356,9 @@ export function listFlowSessions(args: PageArgs = {}) {
   const trafficClass = filters.trafficClass || "client";
   const hasRegistryFilter = Boolean(filters.client && filters.client !== "all");
   const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
-  const fetchLimit = hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize;
+  const fetchLimit = Math.min(maxRows, hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize);
   const db = getDb();
-  const sqlTotal = Number((db.prepare(`select count(*) as count from flow_sessions where ${whereSql}`).get(...params) as any)?.count || 0);
+  const sqlTotal = Math.min(maxRows, Number((db.prepare(`select count(*) as count from flow_sessions where ${whereSql}`).get(...params) as any)?.count || 0));
   const rawRows = db
     .prepare(
       `select ${flowSessionSelect()}
@@ -1370,7 +1374,7 @@ export function listFlowSessions(args: PageArgs = {}) {
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const total = hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal;
+  const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
   const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
