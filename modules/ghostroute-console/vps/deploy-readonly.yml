@@ -16,9 +16,11 @@
     console_router_remote_user: "{{ ghostroute_router_remote_user | default('admin', true) }}"
     console_reset_db: "{{ ghostroute_console_reset_db | default(false) }}"
     console_seed_local_data: "{{ ghostroute_console_seed_local_data | default(false) }}"
+    console_build_commit: "{{ lookup('pipe', 'git -C ' ~ playbook_dir ~ '/../../../ rev-parse --short HEAD') }}"
     console_ui_smoke_routes:
       - { path: "/", contains: "GhostRoute Console" }
       - { path: "/live", contains: "Live event stream" }
+      - { path: "/live?activityPageSize=150", contains: "Client activity summary" }
       - { path: "/dns", contains: "DNS Query Log" }
       - { path: "/traffic", contains: "Flow Explorer" }
       - { path: "/clients", contains: "Device Inventory" }
@@ -297,6 +299,7 @@
           GHOSTROUTE_VPS_EGRESS_IP={{ ghostroute_console_egress_ip | default(vps_ssh_host, true) }}
           GHOSTROUTE_VPS_EGRESS_ASN={{ ghostroute_console_egress_asn | default('', true) }}
           GHOSTROUTE_VPS_EGRESS_COUNTRY={{ ghostroute_console_egress_country | default('', true) }}
+          GHOSTROUTE_CONSOLE_BUILD_COMMIT={{ console_build_commit }}
 
     - name: Remove legacy Console container before compose project migration
       ansible.builtin.shell: |
