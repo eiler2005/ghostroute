@@ -209,6 +209,11 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: #a9bad0; flex-wrap: wrap; }
 .pagination > div { display: flex; align-items: center; gap: 10px; }
 .pagination strong { color: #e6edf7; }
+.dense-top-pager { flex: 0 1 auto; min-width: 0; }
+.dense-top-pager .pagination { margin-top: 0; gap: 8px; color: #b9c8da; font-size: 12px; flex-wrap: nowrap; justify-content: flex-end; }
+.dense-top-pager .pagination > span { white-space: nowrap; }
+.dense-top-pager .pagination > div { gap: 6px; }
+.dense-top-pager .muted-button { min-height: 30px; padding: 0 8px; }
 .traffic-stream-card { margin-top: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: clamp(300px, calc(100vh - 390px), 520px); }
 .traffic-table-wrap { flex: 1 1 auto; min-height: 140px; max-height: none !important; }
 .traffic-stream-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -301,10 +301,23 @@ from the public Console URL.
 
 ## Local Checks
 
+GUI changes should be reviewed on a local seeded Console before any deploy. The
+seeded database is synthetic, lives under the gitignored
+`modules/ghostroute-console/data/gui-test/`, and gives Flow Explorer, DNS Query
+Log, Clients and Live enough rows to verify compact tables, filters, horizontal
+scroll and pagination without waiting for real snapshots.
+
+```bash
+cd modules/ghostroute-console/app
+npm run dev:gui
+```
+
+For automated browser checks against the same seeded database:
+
 ```bash
 cd modules/ghostroute-console/app
 npm test
-npm run test:e2e
+npm run test:e2e:gui
 npm run test:perf
 ```
 

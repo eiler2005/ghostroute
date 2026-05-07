@@ -87,6 +87,16 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 <span>{trafficPage.total} rows · shown {rows.length}</span>
               </div>
               <div className="live-stream-actions">
+                <div className="dense-top-pager">
+                  <Pagination
+                    basePath="/traffic"
+                    page={trafficPage.page}
+                    pageSize={trafficPage.pageSize}
+                    total={trafficPage.total}
+                    totalPages={trafficPage.totalPages}
+                    extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
+                  />
+                </div>
                 {diagnostics ? (
                   <Link className="muted-button traffic-mode-button" href="/traffic">Traffic only</Link>
                 ) : (

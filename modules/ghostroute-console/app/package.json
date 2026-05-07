@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
+    "dev:gui": "npm run seed:gui && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test next dev --hostname 127.0.0.1 --port 3000",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "test": "node --test tests/*.test.mjs",
+    "seed:gui": "node scripts/seed-gui-test-db.mjs",
     "test:e2e": "playwright test tests/e2e/smoke.spec.ts",
+    "test:e2e:gui": "npm run seed:gui && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test playwright test tests/e2e/smoke.spec.ts",
     "test:perf": "playwright test tests/e2e/performance.spec.ts --project=desktop",
     "collector:once": "node scripts/collect-once.mjs",
     "collector:light": "node scripts/collect-light-once.mjs",

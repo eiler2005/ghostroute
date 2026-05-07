@@ -56,6 +56,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   checks before or while editing, then run the safe ones before finishing. For
   bug fixes, prefer a reproducing test or fixture before the fix when practical;
   for refactors, preserve behavior and verify before/after expectations.
+- For GhostRoute Console GUI work, use a local seeded GUI database and local
+  test server before any deploy. Run or offer `cd modules/ghostroute-console/app
+  && npm run dev:gui` for visual review and `npm run test:e2e:gui` for browser
+  coverage. Do not use the VPS deployment as the first place to discover layout,
+  pagination, filtering, or responsive regressions.
 - Prefer the narrowest check that proves the current change. Do not run broad
   suites such as `./tests/run-all.sh`, full Ansible verification, live reports,
   or long browser/e2e checks unless the user explicitly asks for them or the

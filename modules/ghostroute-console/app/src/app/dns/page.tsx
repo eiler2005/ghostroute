@@ -69,6 +69,9 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
             <span>Показано {dnsPage.rows.length} из {dnsPage.total} последних DNS rows</span>
           </div>
           <div className="live-stream-actions">
+            <div className="dense-top-pager">
+              <Pagination basePath="/dns" page={dnsPage.page} pageSize={dnsPage.pageSize} total={dnsPage.total} totalPages={dnsPage.totalPages} extraParams={filterParams} />
+            </div>
             <Link className="muted-button dns-flow-button" href="/traffic">Open Flow Explorer</Link>
           </div>
         </div>

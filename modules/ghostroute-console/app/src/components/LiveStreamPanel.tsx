@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Download, Pause, Play } from "lucide-react";
 import { RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 
@@ -15,10 +16,12 @@ type LivePayload = {
 
 export function LiveStreamPanel({
   initial,
+  topPagination,
   visibleCount = 150,
   streamHref = "/api/live/stream",
 }: {
   initial: LivePayload;
+  topPagination?: ReactNode;
   visibleCount?: number;
   streamHref?: string;
 }) {
@@ -72,6 +75,7 @@ export function LiveStreamPanel({
           <span>Всего событий: {new Intl.NumberFormat("ru-RU").format(payload.total_events || (payload.events || []).length)}</span>
         </div>
         <div className="live-stream-actions">
+          {topPagination ? <div className="dense-top-pager">{topPagination}</div> : null}
           <span className={`badge sse-badge status-${mode.includes("connected") ? "ok" : "warn"}`}>{mode}</span>
           <button className="icon-button" type="button" onClick={togglePaused} title={paused ? "Продолжить live updates" : "Пауза live updates"} aria-label={paused ? "Продолжить live updates" : "Пауза live updates"}>
             {paused ? <Play size={15} /> : <Pause size={15} />}
