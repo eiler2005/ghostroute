@@ -16,6 +16,19 @@
     console_router_remote_user: "{{ ghostroute_router_remote_user | default('admin', true) }}"
     console_reset_db: "{{ ghostroute_console_reset_db | default(false) }}"
     console_seed_local_data: "{{ ghostroute_console_seed_local_data | default(false) }}"
+    console_ui_smoke_routes:
+      - { path: "/", contains: "GhostRoute Console" }
+      - { path: "/live", contains: "Live event stream" }
+      - { path: "/dns", contains: "DNS Query Log" }
+      - { path: "/traffic", contains: "Flow Explorer" }
+      - { path: "/clients", contains: "Device Inventory" }
+    console_api_smoke_routes:
+      - /api/health
+      - /api/dashboard
+      - /api/live?limit=5
+      - /api/dns?pageSize=5
+      - /api/flows?pageSize=5
+      - /api/clients
   tasks:
     - name: Create Console runtime directories
       ansible.builtin.file:
@@ -323,6 +336,33 @@
         status_code: 200
       register: console_health
 
+    - name: Check local Console UI smoke routes
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000{{ item.path }}"
+        return_content: true
+        status_code: 200
+      loop: "{{ console_ui_smoke_routes }}"
+      register: console_ui_smoke
+      retries: 6
+      delay: 5
+      until:
+        - console_ui_smoke.status == 200
+        - item.contains in console_ui_smoke.content
+
+    - name: Check local Console API smoke routes
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000{{ item }}"
+        return_content: true
+        status_code: 200
+      loop: "{{ console_api_smoke_routes }}"
+      register: console_api_smoke
+      retries: 6
+      delay: 5
+      until: console_api_smoke.status == 200
+
     - name: Show Console local status
       ansible.builtin.debug:
-        msg: "{{ console_health.json }}"
+        msg:
+          health: "{{ console_health.json }}"
+          ui_smoke: "{{ console_ui_smoke.results | map(attribute='item.path') | list }}"
+          api_smoke: "{{ console_api_smoke.results | map(attribute='item') | list }}"
