@@ -78,6 +78,15 @@ test("traffic classes and live cadence are explicit", async ({ page }) => {
   await expect(page.getByText("Service/background live events")).toBeVisible();
 });
 
+test("live filters keep event pagination scoped", async ({ page }) => {
+  await page.goto("/live?client=__no_such_client__");
+  await expect(page.getByRole("heading", { name: "Live event stream" })).toBeVisible();
+  await expect(page.locator(".live-primary .pagination")).toContainText("Showing 0-0 of 0");
+  await expect(page.locator(".service-events-card .pagination")).toContainText("Showing 0-0 of 0");
+  await page.waitForTimeout(1200);
+  await expect(page.locator(".live-primary .pagination")).toContainText("Showing 0-0 of 0");
+});
+
 test("clients separate inventory from selected-window traffic", async ({ page }) => {
   await page.goto("/clients");
   await expect(page.getByText("traffic for selected window")).toBeVisible();

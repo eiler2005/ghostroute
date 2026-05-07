@@ -167,10 +167,21 @@ assert_json_key "$LIVE_OUT" events
 assert_json_key "$LIVE_OUT" route_events
 ruby -rjson -e '
   j=JSON.parse(File.read(ARGV[0]))
+  abort("not all live events have millisecond timestamps") unless j.fetch("events").all? { |row| row["ts"].to_s.match?(/\.\d{3}/) }
+  abort("missing timestamp precision metadata") unless j.fetch("events").all? { |row| row["ts_precision"].to_s != "" }
+  dns=j.fetch("events").find { |row| row["event_type"] == "dns.query" && row["destination"] == "telegram.org" }
+  abort("missing dns query event") unless dns
+  abort("dns event did not receive ordered milliseconds") unless dns["ts"].to_s.match?(/\.\d{3}/)
+  abort("bad dns timestamp precision") unless dns["ts_precision"] == "second_ordered"
+  catalog=j.fetch("events").find { |row| row["event_type"] == "catalog.candidate" }
+  abort("missing catalog candidate event") unless catalog
+  abort("bad catalog timestamp precision") unless catalog["ts_precision"] == "collector_time"
   event=j.fetch("route_events").find { |row| row["destination"] == "telegram.org" && row["sing_box_outbound"] == "reality-out" }
   abort("missing exact telegram route event") unless event
   abort("missing client ip") unless event["client_ip"] == "192.168.1.24"
   abort("missing destination port") unless event["destination_port"] == "443"
+  abort("missing millisecond timestamp") unless event["ts"].include?(".812")
+  abort("bad route timestamp precision") unless event["ts_precision"] == "millisecond"
 ' "$LIVE_OUT"
 
 echo "ghostroute-console JSON contract tests passed"

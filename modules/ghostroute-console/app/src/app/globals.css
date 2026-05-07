@@ -221,8 +221,10 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .icon-button:hover, .muted-button:hover { border-color: #5ca8ff; color: #f2f6fb; }
 .live-export-button { min-height: 34px; }
 .live-stream-meta { padding: 6px 14px; border-bottom: 1px solid #1d3148; color: #8da2bb; font-size: 12px; }
-.live-table-wrap { overflow: auto; max-height: calc(100vh - 320px); min-height: 360px; }
+.live-table-wrap { overflow: auto; max-height: clamp(320px, calc(100vh - 520px), 620px); min-height: 0; }
 .service-table-wrap { min-height: 300px; max-height: 420px; }
+.live-card-footer { border-top: 1px solid #1d3148; background: rgba(7, 17, 31, .42); padding: 10px 14px; }
+.live-card-footer .pagination { margin-top: 0; }
 .live-events-table { width: 100%; min-width: 1080px; border-collapse: collapse; table-layout: fixed; }
 .live-events-table th, .live-events-table td { border-bottom: 1px solid rgba(34, 53, 77, .86); padding: 5px 12px; text-align: left; vertical-align: middle; }
 .live-events-table th { position: sticky; top: 0; z-index: 1; background: #0d2742; color: #98acc5; font-size: 12px; line-height: 1.2; font-weight: 800; }
