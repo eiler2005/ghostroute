@@ -113,7 +113,7 @@ export function ConsoleShell({
                 </option>
               ))}
             </select>
-            <select name="trafficClass" defaultValue={filters.trafficClass || "client"}>
+            <select name="trafficClass" defaultValue={filters.trafficClass || "all"}>
               {options.trafficClasses.map((item) => (
                 <option value={item.value} key={item.value}>
                   {item.label}

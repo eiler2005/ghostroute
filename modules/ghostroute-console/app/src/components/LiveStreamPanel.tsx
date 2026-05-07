@@ -85,7 +85,7 @@ export function LiveStreamPanel({
         </div>
       </div>
       <div className="live-stream-meta">Автообновление около 10 минут · последнее: {shortDateTime(payload.generated_at)} · показано {rows.length}</div>
-      <div className="live-table-wrap">
+      <div className="live-table-wrap live-main-table-wrap">
         <table className="live-events-table">
           <thead>
             <tr>

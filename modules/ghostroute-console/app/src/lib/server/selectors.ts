@@ -78,7 +78,7 @@ function filtersKey(filters: ConsoleFilters = {}) {
     channel: filters.channel || "all",
     client: filters.client || "all",
     confidence: filters.confidence || "all",
-    trafficClass: filters.trafficClass || "client",
+    trafficClass: filters.trafficClass || "all",
     search: filters.search || "",
   });
 }
