@@ -15,7 +15,7 @@ function eventPayload(request: NextRequest) {
     route: search.get("route") || "all",
     channel: search.get("channel") || "all",
     confidence: search.get("confidence") || "all",
-    trafficClass: search.get("trafficClass") || "client",
+    trafficClass: search.get("trafficClass") || "all",
     client: search.get("client") || "all",
     search: search.get("search") || "",
   };

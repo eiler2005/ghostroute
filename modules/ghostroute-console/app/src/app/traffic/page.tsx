@@ -49,7 +49,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
-    trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
+    trafficClass: filters.trafficClass !== "all" ? filters.trafficClass : undefined,
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
@@ -97,7 +97,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
             <div className="live-stream-meta traffic-stream-meta">
               {diagnostics
                 ? "Diagnostics mode: technical DNS and route events are visible."
-                : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} flows by volume with policy, route and risk context.`}
+                : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : filters.trafficClass === "client" ? "Client" : "All traffic"} flows by volume with policy, route and risk context.`}
             </div>
             <div className="live-stream-meta traffic-stream-meta">
               Detailed traffic: последний тяжелый snapshot, обновляется реже · estimated - counters/log summaries · hidden system/no-byte evidence: {trafficPage.hiddenCount}
