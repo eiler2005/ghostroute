@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Pause, Play } from "lucide-react";
 import { RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 
@@ -17,12 +17,10 @@ export function LiveStreamPanel({
   initial,
   visibleCount = 150,
   streamHref = "/api/live/stream",
-  children,
 }: {
   initial: LivePayload;
   visibleCount?: number;
   streamHref?: string;
-  children?: ReactNode;
 }) {
   const [payload, setPayload] = useState(initial);
   const [mode, setMode] = useState("SSE connecting");
@@ -126,7 +124,6 @@ export function LiveStreamPanel({
           </tbody>
         </table>
       </div>
-      {children ? <div className="live-card-footer">{children}</div> : null}
     </section>
   );
 }
