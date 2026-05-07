@@ -28,7 +28,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(1000, Math.max(25, Number.parseInt(scalar(params.pageSize) || "100", 10) || 100));
+  const pageSize = Math.min(1000, Math.max(100, Number.parseInt(scalar(params.pageSize) || "150", 10) || 150));
   const status = scalar(params.status) || "all";
   const catalogStatus = scalar(params.catalogStatus) || "all";
   const dnsPage = listDnsQueryLog({ page, pageSize, status, catalogStatus, filters: { ...filters, trafficClass: "all" } });
@@ -53,8 +53,8 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
 
   return (
     <ConsoleShell active="/dns" model={model} filters={{ ...filters, trafficClass: "all" }}>
-      <div className="grid cards" style={{ marginBottom: 14 }}>
-        <MetricCard label="DNS queries shown" value={String(totalCount)} detail={`${dnsPage.total} read-model rows`} />
+      <div className="grid cards dns-kpis">
+        <MetricCard label="DNS rows" value={String(dnsPage.total)} detail={`latest log window, page ${dnsPage.page}/${dnsPage.totalPages}`} />
         <MetricCard label="Managed catalog hits" value={String(managedCount)} detail="catalog_status=managed" />
         <MetricCard label="Direct decisions" value={String(directCount)} detail="allowed/local/direct answers" />
         <MetricCard label="Suspicious/new" value={String(suspiciousCount)} detail="blocked, review or elevated risk" />
@@ -62,64 +62,78 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
         <MetricCard label="Alerts" value={String(alarms.length)} detail="linked alarm center signals" />
       </div>
 
-      <div className="grid two">
-        <section className="card dns-table-card">
-          <div className="toolbar">
-            <div>
-              <h2>DNS Query Log</h2>
-              <p>Кто спросил домен, какой ответ получил, какой маршрут и что решил catalog.</p>
-            </div>
-            <Link className="muted-button" href="/traffic">Open Flow Explorer</Link>
+      <section className="card live-stream-card dns-log-card">
+        <div className="live-stream-toolbar">
+          <div className="live-stream-title">
+            <h2>DNS Query Log</h2>
+            <span>Показано {dnsPage.rows.length} из {dnsPage.total} последних DNS rows</span>
           </div>
-          {dnsPage.rows.length === 0 ? (
-            <EmptyState title="Нет DNS query rows" />
-          ) : (
-            <>
-              <table className="table dns-table">
+          <div className="live-stream-actions">
+            <Link className="muted-button dns-flow-button" href="/traffic">Open Flow Explorer</Link>
+          </div>
+        </div>
+        <div className="live-stream-meta">
+          Кто спросил домен, какой ответ получил, какой маршрут и что решил catalog · pageSize до 1000
+        </div>
+        {dnsPage.rows.length === 0 ? (
+          <div className="dns-empty-wrap"><EmptyState title="Нет DNS query rows" /></div>
+        ) : (
+          <div className="live-table-wrap dns-table-wrap">
+            <table className="live-events-table dns-events-table">
                 <thead>
                   <tr>
-                    <th className="col-time">Time</th>
-                    <th className="col-client">Client</th>
-                    <th>Domain</th>
-                    <th>Type</th>
-                    <th>Resolved IP</th>
+                    <th>Время</th>
+                    <th>Клиент</th>
+                    <th>Домен</th>
+                    <th>Тип</th>
+                    <th>Ответ</th>
                     <th>Route</th>
                     <th>Catalog</th>
-                    <th>Status</th>
+                    <th>Статус</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dnsPage.rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="col-time">{timeWithMillis(row.event_ts || row.collected_at)}</td>
-                      <td>
-                        <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{row.device_label || row.client_label || row.client || "Unknown"}</Link>
-                        <small className="subtle block-detail">{[row.client_ip, row.raw_client && row.raw_client !== row.client ? row.raw_client : ""].filter(Boolean).join(" · ") || "IP not observed"}</small>
-                      </td>
-                      <td>
-                        <Link href={`/traffic?search=${encodeURIComponent(row.domain || "")}`}>{row.domain || row.dns_qname || "n/a"}</Link>
-                        <small className="subtle block-detail">count {row.count || 1}</small>
-                      </td>
-                      <td>{row.qtype || "A"}</td>
-                      <td>{row.answer_ip || row.dns_answer_ip || "n/a"}</td>
-                      <td><RouteBadge value={row.route} /></td>
-                      <td><ConfidenceBadge value={row.catalog_status || "unknown"} /></td>
-                      <td><StatusBadge value={row.status || "OK"} /></td>
-                    </tr>
-                  ))}
+                  {dnsPage.rows.map((row) => {
+                    const statusValue = String(row.status || "OK");
+                    const statusSlug = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+                    const clientLabel = row.device_label || row.client_label || row.client || "Unknown";
+                    const clientDetail = [row.client_ip, row.raw_client && row.raw_client !== row.client ? row.raw_client : ""].filter(Boolean).join(" · ");
+                    const domain = row.domain || row.dns_qname || "n/a";
+                    const answer = row.answer_ip || row.dns_answer_ip || "n/a";
+                    return (
+                      <tr key={row.id}>
+                        <td className="live-col-time">{timeWithMillis(row.event_ts || row.collected_at)}</td>
+                        <td className="live-col-client dns-col-client" title={clientDetail || clientLabel}>
+                          <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{clientLabel}</Link>
+                        </td>
+                        <td className="live-col-destination dns-col-domain" title={`${domain} · count ${row.count || 1}`}>
+                          <span className="event-dot event-dns" />
+                          <Link href={`/traffic?search=${encodeURIComponent(domain)}`}>{domain}</Link>
+                          {Number(row.count || 1) > 1 ? <small> x{row.count}</small> : null}
+                        </td>
+                        <td className="dns-col-type">{row.qtype || "A"}</td>
+                        <td className="dns-col-answer" title={answer}>{answer}</td>
+                        <td className="live-col-route"><RouteBadge value={row.route} /></td>
+                        <td className="dns-col-catalog"><ConfidenceBadge value={row.catalog_status || "unknown"} /></td>
+                        <td className="live-col-status"><span className={`status-text-${statusSlug}`}>{statusValue}</span></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-              <Pagination basePath="/dns" page={dnsPage.page} pageSize={dnsPage.pageSize} total={dnsPage.total} totalPages={dnsPage.totalPages} extraParams={filterParams} />
-            </>
-          )}
-        </section>
+          </div>
+        )}
+        <div className="live-card-footer">
+          <Pagination basePath="/dns" page={dnsPage.page} pageSize={dnsPage.pageSize} total={dnsPage.total} totalPages={dnsPage.totalPages} extraParams={filterParams} />
+        </div>
+      </section>
 
-        <aside className="card side-panel">
+      <div className="grid three dns-insights">
+        <aside className="card">
           <div className="panel-title">
-            <h2>DNS Forensics</h2>
+            <h2>Top clients</h2>
             <StatusBadge value={suspiciousCount > 0 ? "WARN" : "OK"} />
           </div>
-          <h3>Top clients</h3>
           <div className="mini-bars">
             {topClients.length === 0 ? <div className="subtle">No client grouping on this page.</div> : topClients.map((row) => (
               <div className="mini-bar" key={row.label}>
@@ -129,13 +143,17 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
               </div>
             ))}
           </div>
-          <h3 style={{ marginTop: 16 }}>Top domains</h3>
+        </aside>
+        <aside className="card">
+          <div className="panel-title"><h2>Top domains</h2></div>
           <div className="detail-list">
             {topDomains.length === 0 ? <div className="subtle">No domains visible.</div> : topDomains.map((row) => (
               <div className="detail-row" key={row.label}><span>{row.label}</span><strong>{row.count}</strong></div>
             ))}
           </div>
-          <h3 style={{ marginTop: 16 }}>Attention</h3>
+        </aside>
+        <aside className="card">
+          <div className="panel-title"><h2>Attention</h2></div>
           <div className="detail-list">
             {alarms.length === 0 ? <div className="subtle">No active DNS-linked alarms.</div> : alarms.slice(0, 5).map((row) => (
               <div className="detail-row" key={row.id}>
