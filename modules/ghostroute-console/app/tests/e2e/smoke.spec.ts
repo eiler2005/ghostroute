@@ -40,9 +40,9 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
     await expect(page.getByText("Нет traffic rows")).toBeVisible();
     return;
   }
-  await expect(page.getByText("Flow Explorer")).toBeVisible();
-  await expect(page.getByText("Showing traffic rows only")).toBeVisible();
-  await expect(page.getByText("system/no-byte evidence hidden")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Flow Explorer" })).toBeVisible();
+  await expect(page.getByText("flows by volume with policy, route and risk context")).toBeVisible();
+  await expect(page.locator(".traffic-stream-meta").nth(1)).toContainText("hidden system/no-byte evidence");
   const firstRow = page.locator(".route-table-card tbody tr").first();
   if (await firstRow.count()) {
     await expect(firstRow).toBeVisible();
@@ -55,7 +55,7 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
   if (await page.getByText("Нет traffic rows").isVisible().catch(() => false)) {
     await expect(page.getByText("Нет traffic rows")).toBeVisible();
   } else {
-    await expect(page.getByText("Diagnostics visible")).toBeVisible();
+    await expect(page.getByText("Diagnostics mode: technical DNS and route events are visible.")).toBeVisible();
   }
 });
 
@@ -81,30 +81,35 @@ test("traffic classes and live cadence are explicit", async ({ page }) => {
 test("live filters keep event pagination scoped", async ({ page }) => {
   await page.goto("/live?client=__no_such_client__");
   await expect(page.getByRole("heading", { name: "Live event stream" })).toBeVisible();
-  await expect(page.locator(".live-primary .pagination")).toContainText("Showing 0-0 of 0");
+  await expect(page.locator(".live-primary .dense-top-pager .pagination")).toContainText("Showing 0-0 of 0");
+  await expect(page.locator(".live-primary-footer .pagination")).toContainText("Showing 0-0 of 0");
   await expect(page.locator(".service-events-card .pagination")).toContainText("Showing 0-0 of 0");
   await page.waitForTimeout(1200);
-  await expect(page.locator(".live-primary .pagination")).toContainText("Showing 0-0 of 0");
+  await expect(page.locator(".live-primary .dense-top-pager .pagination")).toContainText("Showing 0-0 of 0");
+  await expect(page.locator(".live-primary-footer .pagination")).toContainText("Showing 0-0 of 0");
 });
 
 test("dense console tables keep pagination controls visible", async ({ page }) => {
   await page.setViewportSize({ width: 2048, height: 760 });
   for (const path of ["/live", "/dns"]) {
     await page.goto(path);
+    await expect(page.locator(".dense-top-pager .pagination").first()).toBeVisible();
     await expect(page.locator(".pagination").first()).toBeVisible();
   }
 
   await page.goto("/traffic");
   if (!(await page.getByText("Нет traffic rows").isVisible().catch(() => false))) {
-    await expect(page.locator(".traffic-stream-card .pagination")).toBeVisible();
+    await expect(page.locator(".traffic-stream-card .dense-top-pager .pagination")).toBeVisible();
+    await expect(page.locator(".traffic-stream-card .live-card-footer .pagination")).toBeVisible();
   }
 });
 
 test("clients separate inventory from selected-window traffic", async ({ page }) => {
   await page.goto("/clients");
+  await expect(page.getByRole("heading", { name: "Device Inventory" })).toBeVisible();
   await expect(page.getByText("traffic for selected window")).toBeVisible();
-  await expect(page.getByText("Window traffic").first()).toBeVisible();
-  await expect(page.getByText("Traffic observed")).toBeVisible();
+  await expect(page.locator(".clients-table th").filter({ hasText: "Window traffic" }).first()).toBeAttached();
+  await expect(page.locator(".clients-table-scroll").first()).toBeVisible();
 });
 
 test("mobile keeps controls and content reachable", async ({ page, isMobile }) => {

@@ -107,6 +107,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             route_decisions: [],
             alerts: model.alerts.slice(0, 20).map(({ raw, ...row }) => row),
           }}
+          topPagination={liveEventsPagination}
           visibleCount={eventsPageSize}
           streamHref={liveStreamHref}
         />

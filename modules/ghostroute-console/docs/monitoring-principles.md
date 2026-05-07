@@ -42,6 +42,19 @@ attribution later.
 - `test:perf` covers both individual page/API budgets and rapid sidebar
   navigation so regressions show up before deploy.
 
+## GUI Development Workflow
+
+- GUI changes must be checked on a local seeded Console before deploy. Use
+  `cd modules/ghostroute-console/app && npm run dev:gui` for visual review and
+  `npm run test:e2e:gui` for browser coverage against the same synthetic data.
+- The seeded database lives under the gitignored
+  `modules/ghostroute-console/data/gui-test/` path. It should contain enough
+  Flow Explorer, DNS Query Log, Clients and Live rows to verify dense tables,
+  filters, horizontal scroll and pagination without relying on live VPS data.
+- Deploy comes after local visual checks and tests pass. The deployment playbook
+  must continue to smoke more than `/api/health`: it should cover the key UI and
+  API routes that changed.
+
 ## Browser Loading Incidents
 
 - If a Console page is currently fast, do not change nginx, Caddy, Next.js or
