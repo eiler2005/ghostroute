@@ -75,8 +75,14 @@ available, then reconcile the displayed rows to the authoritative
 `traffic-summary`/`traffic` KPI totals for the selected window. Reconciled rows
 may keep their raw snapshot total as troubleshooting evidence, but the primary
 UI amount must remain bounded by the current-window KPI. Destination rows follow
-the same rule: a generic category can enrich a row as class/type, but a Top
-destination needs concrete DNS/SNI/domain/IP evidence.
+the same rule: a generic category can enrich a row as class/type, but concrete
+destinations need DNS/SNI/domain/IP evidence. When attributed destinations cover
+only part of the client/device counter total, `traffic-report --json` emits
+`destination_attribution_coverage` and synthetic `Unknown/Unattributed ...`
+accounting rows. Those rows carry real counter bytes and no destination
+evidence, so Dashboard, Flow Explorer, Clients, Live and API selectors can all
+show the same complete accounting total without pretending that DNS-interest
+hints prove per-site bytes.
 
 Traffic UI must also explain operator-facing terms in-product:
 

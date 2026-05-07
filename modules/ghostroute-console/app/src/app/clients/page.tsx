@@ -100,11 +100,26 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
   const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
-  const selectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const allSelectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)) : [];
+  const selectedFlows = allSelectedFlows.slice(0, 8);
   const selectedDns = selected ? model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
+  const selectedAttributedBytes = allSelectedFlows.reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0);
+  const selectedUnattributedBytes = Math.max(0, Number(selected?.total_bytes || 0) - selectedAttributedBytes);
+  const selectedDomainRows = selectedUnattributedBytes > 0
+    ? [
+        ...selectedFlows,
+        {
+          destination: "Unknown/Unattributed client traffic",
+          destinationLabel: "Unknown/Unattributed client traffic",
+          bytes: selectedUnattributedBytes,
+          route: selectedRoute,
+          accounting_bucket: true,
+        },
+      ]
+    : selectedFlows;
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -238,11 +253,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               <h3>Client activity</h3>
               <ClientActivityChart rows={selectedActivity} />
               <h3>Top domains</h3>
-              {selectedFlows.length === 0 ? (
+              {selectedDomainRows.length === 0 ? (
                 <EmptyState title="Нет доменов для выбранного клиента" />
               ) : (
                 <div className="detail-list">
-                  {selectedFlows.map((row: Record<string, any>, idx: number) => (
+                  {selectedDomainRows.map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
                       <span>{trafficDisplayDestination(row)}</span>
                       <strong>{bytes(row.bytes || 0)} <RouteBadge value={row.route || routeFromBytes(row)} /></strong>

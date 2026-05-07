@@ -140,6 +140,16 @@ authoritative `traffic-summary`/`traffic` KPI totals before rendering Dashboard,
 Traffic Explorer and Clients. This prevents several cumulative snapshots or
 Channel A/B/C aliases from being summed into impossible Top clients or Top
 destination totals.
+Destination views share the `traffic-report --json`
+`destination_attribution_coverage` contract. Concrete destination rows plus
+explicit `Unknown/Unattributed ...` accounting buckets must add back to the
+observed client/channel total for the selected window. The unknown buckets carry
+real counter bytes, `destination_evidence=none` and
+`allocation_basis=unattributed_bucket`; DNS-interest families remain
+investigation hints and are not converted into byte accounting. Dashboard, Flow
+Explorer, Clients and Live all read the same normalized accounting rows, so an
+attribution gap is visible consistently instead of disappearing on one page and
+looking like a mismatch on another.
 Observability v2 also rebuilds additive SQLite read models after each
 collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
 `alarm_events`, `read_model_state` and non-secret `console_settings`. These

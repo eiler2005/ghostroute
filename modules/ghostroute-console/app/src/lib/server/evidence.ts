@@ -377,7 +377,8 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const clientIpValue = text(flow.client_ip || decision?.client_ip || device?.ip || flow.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed");
   const clientIpLabel = displayClientIp(clientIpValue, channel);
   const sni = displaySni(flow, decision, destination);
-  const aggregateDestination = isCategoryAggregate(destination) && !dns && !text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "");
+  const accountingBucket = Boolean(flow.accounting_bucket || flow.raw?.accounting_bucket);
+  const aggregateDestination = (accountingBucket || isCategoryAggregate(destination)) && !dns && !text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "");
   const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : destination;
   const siteSni = aggregateDestination && sni === "category aggregate" ? "not observed" : sni;
   const timeline = [
@@ -393,7 +394,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const steps = [
     { label: "Client", detail: "Запрос от устройства" },
     { label: "Router", detail: channel === "Home Wi-Fi/LAN" ? "Пакеты вошли из домашней сети" : `Вход через ${channel}` },
-    { label: "dnsmasq + ipset", detail: dns ? `${dns.domain || destination} -> ${dns.qtype || "A"}` : "DNS evidence не найден" },
+    { label: "dnsmasq + ipset", detail: accountingBucket ? "destination not observed for this accounting bucket" : dns ? `${dns.domain || destination} -> ${dns.qtype || "A"}` : "DNS evidence не найден" },
     { label: "sing-box", detail: `Правило: ${matchedRule}` },
     { label: direct ? "Direct" : mixed ? "mixed-out" : "reality-out", detail: direct ? "Локальный/home WAN выход" : mixed ? "Смешанный выход" : "Reality/VPS outbound" },
     ...(direct ? [] : [{ label: "VPS", detail: `Видимый IP: ${egressHint}` }]),
@@ -449,11 +450,13 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
       output: outbound,
       route: route === "VPS" ? "Через VPS" : route === "Direct" ? "Direct/Home WAN" : route,
       rule: matchedRule,
-      decision: route === "VPS" ? "Route via reality-out" : route === "Direct" ? "Direct allowed" : "Derived from counters",
+      decision: accountingBucket ? "Bytes are client/channel counters without destination attribution" : route === "VPS" ? "Route via reality-out" : route === "Direct" ? "Direct allowed" : "Derived from counters",
       confidence,
     },
     ipLogic:
-      route === "VPS"
+      accountingBucket
+        ? "This row is an accounting bucket: bytes are real client/channel counters, but the concrete destination was not observed. DNS interest may help investigation, but it is not byte attribution."
+        : route === "VPS"
         ? "Внешние сайты видят egress IP - публичный IP выхода. reality-out означает выход sing-box через Reality/VPS. Оператор видит ingress: домашний LAN или мобильный профиль, но не финальный managed destination."
         : route === "Direct"
           ? "Сайт видит home/direct egress IP, потому что destination не попал в managed rule-set или был явно разрешён как Direct."

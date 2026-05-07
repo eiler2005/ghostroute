@@ -264,6 +264,69 @@ test("schema includes collector reliability and post-MVP tables", () => {
   db.close();
 });
 
+test("destination attribution coverage keeps unattributed accounting buckets", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-coverage-"));
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  ensureConsoleSchema(db);
+  const observed = 23 * 1024 ** 3;
+  const attributed = 800 * 1024 ** 2;
+  const unattributed = observed - attributed;
+  normalizeSnapshot(db, 1, "traffic", "2026-04-29T12:00:00Z", {
+    generated_at: "2026-04-29T12:00:00Z",
+    source: { command: "traffic-report", period: "today" },
+    totals: { client_observed_bytes: observed, via_vps_bytes: observed, direct_bytes: 0, unknown_bytes: 0 },
+    destination_attribution_coverage: {
+      observed_bytes: observed,
+      attributed_bytes: attributed,
+      unattributed_bytes: unattributed,
+      coverage_pct: 3.4,
+      sources: {
+        lan_wifi: {
+          observed_bytes: unattributed,
+          attributed_bytes: 0,
+          unattributed_bytes: unattributed,
+          confidence: "exact",
+          destination_confidence: "none",
+        },
+      },
+    },
+    app_flows: [{
+      client: "lan-host-01",
+      destination: "video.example.invalid",
+      route: "VPS",
+      bytes: attributed,
+      confidence: "exact",
+      bytes_confidence: "exact",
+      destination_evidence: "domain_or_sni",
+    }],
+    destinations: [{
+      client: "Home Wi-Fi/LAN",
+      channel: "Home Wi-Fi/LAN",
+      destination: "Unknown/Unattributed LAN-Wi-Fi",
+      route: "VPS",
+      total_bytes: unattributed,
+      via_vps_bytes: unattributed,
+      direct_bytes: 0,
+      confidence: "exact",
+      accounting_bucket: true,
+      allocation_basis: "unattributed_bucket",
+      bytes_confidence: "exact-counter",
+      destination_evidence: "none",
+    }],
+  });
+  assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 2);
+  const bucket = db.prepare("select bytes, raw_json from normalized_flows where destination = 'Unknown/Unattributed LAN-Wi-Fi'").get();
+  assert.equal(bucket.bytes, unattributed);
+  assert.equal(JSON.parse(bucket.raw_json).accounting_bucket, true);
+  assert.equal(trafficClassFor(JSON.parse(bucket.raw_json)), "unclassified");
+  assert.equal(displayDestination(JSON.parse(bucket.raw_json)), "Unknown/Unattributed LAN-Wi-Fi");
+  rebuildObservabilityReadModels(db);
+  assert.equal(db.prepare("select bytes from flow_sessions where destination = 'Unknown/Unattributed LAN-Wi-Fi'").get().bytes, unattributed);
+  const total = db.prepare("select sum(bytes) as total from flow_sessions").get().total;
+  assert.equal(total, observed);
+  db.close();
+});
+
 test("traffic class separates client, service background and attribution gaps", () => {
   assert.equal(trafficClassFor({ destination: "Google/YouTube", bytes: 1024, confidence: "estimated" }), "client");
   assert.equal(trafficClassFor({ destination: "Apple/iCloud", bytes: 1024, confidence: "estimated" }), "service_background");
@@ -274,6 +337,7 @@ test("traffic class separates client, service background and attribution gaps", 
   assert.equal(displayDestination({ destination: "Other", bytes: 1024, confidence: "estimated" }), "Unclassified domain");
   assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
   assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
+  assert.equal(trafficClassFor({ destination: "Unknown/Unattributed LAN-Wi-Fi", bytes: 1024, accounting_bucket: true }), "unclassified");
 });
 
 test("traffic window keeps stale today snapshots out of current-day views", () => {

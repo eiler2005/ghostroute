@@ -76,6 +76,14 @@ Important accounting rule:
 - Traffic volume is the primary signal. Always read the MiB/GiB value first.
   Percentages are reference context only: they help compare rows quickly, but
   they are not the accounting base.
+- JSON reports expose destination accounting coverage explicitly through
+  `destination_attribution_coverage`. Concrete destination rows plus synthetic
+  `Unknown/Unattributed ...` rows describe the observed total, while unknown
+  rows use `destination_evidence=none` and
+  `allocation_basis=unattributed_bucket` to avoid false per-site precision.
+- DNS-interest families are investigation hints only. They may explain which
+  families are likely active, but they do not become byte attribution unless a
+  byte source proves that destination.
 - `WAN total` is the physical ISP-interface volume. It includes everything that
   crossed `wan0`.
 - `LAN/Wi-Fi observed + Home Reality ingress + WAN remainder/unattributed`

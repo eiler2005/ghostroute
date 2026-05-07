@@ -1738,6 +1738,9 @@ if [ "$JSON_MODE" = "1" ]; then
   TRAFFIC_WAN_BYTES="$WAN_TOTAL" \
   TRAFFIC_LAN_BYTES="$DEVICE_TOTAL_BYTES" \
   TRAFFIC_HOME_REALITY_BYTES="$MOBILE_BYTE_TOTAL" \
+  TRAFFIC_LAN_VPS_BYTES="$DEVICE_REALITY_BYTES" \
+  TRAFFIC_LAN_DIRECT_BYTES="$DEVICE_WAN_BYTES" \
+  TRAFFIC_LAN_UNKNOWN_BYTES="$DEVICE_OTHER_BYTES" \
   TRAFFIC_CLIENT_OBSERVED_BYTES="$CLIENT_OBSERVED_TOTAL" \
   TRAFFIC_VIA_VPS_BYTES="$TOTAL_VPS_EST" \
   TRAFFIC_DIRECT_BYTES="$TOTAL_HOME_DIRECT_EST" \
@@ -1747,6 +1750,15 @@ if [ "$JSON_MODE" = "1" ]; then
   TRAFFIC_MOBILE_REALITY="$MOBILE_REALITY" \
   TRAFFIC_MOBILE_DIRECT="$MOBILE_DIRECT" \
   TRAFFIC_MOBILE_UNRESOLVED="$MOBILE_UNRESOLVED" \
+  TRAFFIC_CHANNEL_A_BYTES="$MOBILE_CHANNEL_A_BYTE_TOTAL" \
+  TRAFFIC_CHANNEL_A_VPS_BYTES="$MOBILE_CHANNEL_A_BYTE_VPS" \
+  TRAFFIC_CHANNEL_A_DIRECT_BYTES="$MOBILE_CHANNEL_A_BYTE_DIRECT" \
+  TRAFFIC_CHANNEL_B_BYTES="$MOBILE_CHANNEL_B_BYTE_TOTAL" \
+  TRAFFIC_CHANNEL_B_VPS_BYTES="$MOBILE_CHANNEL_B_BYTE_VPS" \
+  TRAFFIC_CHANNEL_B_DIRECT_BYTES="$MOBILE_CHANNEL_B_BYTE_DIRECT" \
+  TRAFFIC_CHANNEL_C_BYTES="$MOBILE_CHANNEL_C_BYTE_TOTAL" \
+  TRAFFIC_CHANNEL_C_VPS_BYTES="$MOBILE_CHANNEL_C_BYTE_VPS" \
+  TRAFFIC_CHANNEL_C_DIRECT_BYTES="$MOBILE_CHANNEL_C_BYTE_DIRECT" \
   TRAFFIC_CHANNEL_B_CONN="$CHANNEL_B_RELAY_CONN" \
   TRAFFIC_CHANNEL_B_REALITY="$CHANNEL_B_RELAY_REALITY" \
   TRAFFIC_CHANNEL_B_DIRECT="$CHANNEL_B_RELAY_DIRECT" \
@@ -1771,6 +1783,12 @@ lan_user_apps_path, user_channel_totals_path, user_channel_apps_path, mobile_des
 
 def int_env(key)
   ENV.fetch(key, '0').to_i
+end
+
+def estimate_bytes(total_bytes, part, total)
+  total = total.to_i
+  return 0 if total <= 0 || total_bytes.to_i <= 0
+  (total_bytes.to_f * part.to_i / total).round
 end
 
 def read_rows(path)
@@ -1829,7 +1847,7 @@ def identity_evidence(profile, client)
 end
 
 def bytes_evidence(channel, confidence)
-  estimated = channel == 'A/Home Reality'
+  estimated = channel == 'A/Home Reality' || channel.to_s.match?(/Channel [BC]|C1/)
   {
     bytes_confidence: estimated ? 'allocated' : (confidence.to_s.empty? ? 'unknown' : confidence.to_s),
     allocation_basis: estimated ? 'connection_share' : 'counter',
@@ -1841,10 +1859,11 @@ end
 def destination_evidence(destination, destination_class)
   concrete = destination.to_s
   ip_only = concrete.match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+  unknown_bucket = concrete.start_with?('Unknown/Unattributed')
   generic = ['AI services', 'Dev/Productivity', 'Other', 'Other/IP', 'AWS/CDN', 'DNS/Resolver'].include?(concrete)
   {
     destination_class: destination_class.to_s,
-    destination_evidence: ip_only ? 'ip' : (generic ? 'app_family' : 'domain_or_sni')
+    destination_evidence: unknown_bucket ? 'none' : (ip_only ? 'ip' : (generic ? 'app_family' : 'domain_or_sni'))
   }
 end
 
@@ -1905,7 +1924,7 @@ end
 
 def flow_contract(row)
   destination = row[:destination] || row[:family] || row[:app_family]
-  row.merge(
+  contracted = row.merge(
     identity_evidence(row[:profile], row[:client] || row[:label])
   ).merge(
     bytes_evidence(row[:channel], row[:confidence])
@@ -1914,6 +1933,73 @@ def flow_contract(row)
   ).merge({
     flow_group_key: Digest::SHA1.hexdigest([row[:channel], row[:profile], row[:client] || row[:label], destination, row[:route], row[:confidence]].join('|'))[0, 20]
   })
+  if row[:accounting_bucket]
+    contracted.merge(
+      accounting_bucket: true,
+      allocation_basis: 'unattributed_bucket',
+      bytes_confidence: row[:bytes_confidence],
+      destination_evidence: 'none',
+      destination_class: 'Unknown/Unattributed',
+      unattributed_reason: row[:unattributed_reason]
+    )
+  else
+    contracted
+  end
+end
+
+def split_bytes(total, vps, direct)
+  total = total.to_i
+  vps = vps.to_i
+  direct = direct.to_i
+  unknown = [total - vps - direct, 0].max
+  [total, vps, direct, unknown]
+end
+
+def accounting_bucket(label:, channel:, client:, total:, vps:, direct:, confidence:, reason:)
+  total, vps, direct, unknown = split_bytes(total, vps, direct)
+  return nil if total <= 0
+
+  flow_contract({
+    channel: channel,
+    client: client,
+    client_ip: '',
+    profile: client,
+    destination: label,
+    family: 'Unknown/Unattributed',
+    total_bytes: total,
+    via_vps_bytes: vps,
+    direct_bytes: direct,
+    unknown_bytes: unknown,
+    connections: 0,
+    vps_connections: vps > 0 ? 1 : 0,
+    direct_connections: direct > 0 ? 1 : 0,
+    unresolved_connections: unknown > 0 ? 1 : 0,
+    route: route_from_split(vps, direct, unknown),
+    confidence: confidence,
+    evidence: [reason],
+    accounting_bucket: true,
+    allocation_basis: 'unattributed_bucket',
+    bytes_confidence: channel == 'Home Wi-Fi/LAN' ? 'exact-counter' : 'allocated',
+    destination_evidence: 'none',
+    destination_class: 'Unknown/Unattributed',
+    unattributed_reason: reason
+  })
+end
+
+def coverage_source(observed:, attributed:, vps:, direct:, confidence:, destination_confidence:, reason:)
+  observed = observed.to_i
+  attributed = [attributed.to_i, observed].min
+  unattributed = [observed - attributed, 0].max
+  {
+    observed_bytes: observed,
+    attributed_bytes: attributed,
+    unattributed_bytes: unattributed,
+    via_vps_bytes: vps.to_i,
+    direct_bytes: direct.to_i,
+    confidence: confidence,
+    destination_confidence: destination_confidence,
+    reason: reason
+  }
 end
 
 def device_contract(row)
@@ -1988,6 +2074,12 @@ app_rows = read_rows(user_channel_apps_path).map do |line|
     evidence: ['sing-box log connection attribution']
   })
 end
+
+channel_a_attributed = app_rows
+  .select { |row| row[:channel] == 'A/Home Reality' }
+  .sum { |row| row[:total_bytes].to_i }
+channel_a_observed = int_env('TRAFFIC_CHANNEL_A_BYTES')
+channel_a_unattributed = [channel_a_observed - channel_a_attributed, 0].max
 
 mobile_destinations = read_rows(mobile_dests_path).map do |line|
   dest, total, vps, direct = line.split('|', -1)
@@ -2076,10 +2168,102 @@ read_rows(warn_catalog_ru_path).each do |domain|
   }
 end
 
-destination_rows = mobile_destinations + relay_destinations + channel_c_destinations
+accounting_buckets = [
+  accounting_bucket(
+    label: 'Unknown/Unattributed LAN-Wi-Fi',
+    channel: 'Home Wi-Fi/LAN',
+    client: 'Home Wi-Fi/LAN',
+    total: int_env('TRAFFIC_LAN_BYTES'),
+    vps: int_env('TRAFFIC_LAN_VPS_BYTES'),
+    direct: int_env('TRAFFIC_LAN_DIRECT_BYTES'),
+    confidence: 'exact',
+    reason: 'exact LAN/Wi-Fi client counters without per-destination byte attribution'
+  ),
+  accounting_bucket(
+    label: 'Unknown/Unattributed Channel A',
+    channel: 'A/Home Reality',
+    client: 'A/Home Reality',
+    total: channel_a_unattributed,
+    vps: estimate_bytes(channel_a_unattributed, int_env('TRAFFIC_CHANNEL_A_VPS_BYTES'), channel_a_observed),
+    direct: estimate_bytes(channel_a_unattributed, int_env('TRAFFIC_CHANNEL_A_DIRECT_BYTES'), channel_a_observed),
+    confidence: 'estimated',
+    reason: 'Home Reality ingress bytes not linked to an attributed destination row'
+  ),
+  accounting_bucket(
+    label: 'Unknown/Unattributed Channel B',
+    channel: 'B/XHTTP relay',
+    client: 'B/XHTTP relay',
+    total: int_env('TRAFFIC_CHANNEL_B_BYTES'),
+    vps: int_env('TRAFFIC_CHANNEL_B_VPS_BYTES'),
+    direct: int_env('TRAFFIC_CHANNEL_B_DIRECT_BYTES'),
+    confidence: 'estimated',
+    reason: 'Channel B destination byte attribution is not available yet'
+  ),
+  accounting_bucket(
+    label: 'Unknown/Unattributed Channel C',
+    channel: 'C1',
+    client: 'C1',
+    total: int_env('TRAFFIC_CHANNEL_C_BYTES'),
+    vps: int_env('TRAFFIC_CHANNEL_C_VPS_BYTES'),
+    direct: int_env('TRAFFIC_CHANNEL_C_DIRECT_BYTES'),
+    confidence: 'estimated',
+    reason: 'Channel C destination byte attribution is not available yet'
+  )
+].compact
+
+destination_rows = mobile_destinations + relay_destinations + channel_c_destinations + accounting_buckets
 route_events = []
 app_rows.each { |row| route_events << route_event(row, 'traffic-report app_flows') }
-destination_rows.each { |row| route_events << route_event(row, 'traffic-report destinations') }
+destination_rows.reject { |row| row[:accounting_bucket] }.each { |row| route_events << route_event(row, 'traffic-report destinations') }
+
+coverage_sources = {
+  lan_wifi: coverage_source(
+    observed: int_env('TRAFFIC_LAN_BYTES'),
+    attributed: 0,
+    vps: int_env('TRAFFIC_LAN_VPS_BYTES'),
+    direct: int_env('TRAFFIC_LAN_DIRECT_BYTES'),
+    confidence: 'exact',
+    destination_confidence: 'none',
+    reason: 'LAN/Wi-Fi has exact client byte counters, but no per-destination byte attribution'
+  ),
+  channel_a_home_reality: coverage_source(
+    observed: channel_a_observed,
+    attributed: channel_a_attributed,
+    vps: int_env('TRAFFIC_CHANNEL_A_VPS_BYTES'),
+    direct: int_env('TRAFFIC_CHANNEL_A_DIRECT_BYTES'),
+    confidence: 'estimated',
+    destination_confidence: 'app_family',
+    reason: 'Channel A destination bytes are estimated from Home Reality connection share'
+  ),
+  channel_b: coverage_source(
+    observed: int_env('TRAFFIC_CHANNEL_B_BYTES'),
+    attributed: 0,
+    vps: int_env('TRAFFIC_CHANNEL_B_VPS_BYTES'),
+    direct: int_env('TRAFFIC_CHANNEL_B_DIRECT_BYTES'),
+    confidence: 'estimated',
+    destination_confidence: 'none',
+    reason: 'Channel B destination byte attribution is not available yet'
+  ),
+  channel_c: coverage_source(
+    observed: int_env('TRAFFIC_CHANNEL_C_BYTES'),
+    attributed: 0,
+    vps: int_env('TRAFFIC_CHANNEL_C_VPS_BYTES'),
+    direct: int_env('TRAFFIC_CHANNEL_C_DIRECT_BYTES'),
+    confidence: 'estimated',
+    destination_confidence: 'none',
+    reason: 'Channel C destination byte attribution is not available yet'
+  )
+}
+coverage_observed = int_env('TRAFFIC_CLIENT_OBSERVED_BYTES')
+coverage_attributed = coverage_sources.values.sum { |row| row[:attributed_bytes].to_i }
+coverage_unattributed = [coverage_observed - coverage_attributed, 0].max
+destination_attribution_coverage = {
+  observed_bytes: coverage_observed,
+  attributed_bytes: coverage_attributed,
+  unattributed_bytes: coverage_unattributed,
+  coverage_pct: coverage_observed > 0 ? ((coverage_attributed.to_f / coverage_observed) * 100).round(1) : 0.0,
+  sources: coverage_sources
+}
 
 puts JSON.pretty_generate({
   schema_version: 1,
@@ -2119,6 +2303,7 @@ puts JSON.pretty_generate({
     channel_c_direct: int_env('TRAFFIC_CHANNEL_C_DIRECT'),
     channel_c_unresolved: int_env('TRAFFIC_CHANNEL_C_UNRESOLVED')
   },
+  destination_attribution_coverage: destination_attribution_coverage,
   devices: devices,
   home_reality_clients: home_reality_clients,
   app_flows: app_rows,

@@ -19,7 +19,7 @@ function isDnsOnly(row) {
 
 function isUnclassifiedDestination(value) {
   const d = value.toLowerCase();
-  return d === "other" || d === "other/ip" || d === "unknown" || d === "ip-only / no dns match" || d === "unclassified domain";
+  return d.startsWith("unknown/unattributed") || d === "other" || d === "other/ip" || d === "unknown" || d === "ip-only / no dns match" || d === "unclassified domain";
 }
 
 function isServiceDestination(value) {
@@ -53,6 +53,7 @@ export const trafficClassLabels = {
 };
 
 export function trafficClassFor(row) {
+  if (row?.accounting_bucket || row?.raw?.accounting_bucket) return "unclassified";
   const destination = rawDestination(row);
   if (isDnsOnly(row)) return "service_background";
   if (!destination) return "service_background";
@@ -70,6 +71,7 @@ export function displayDestination(row) {
   if (!destination) return "n/a";
   const lower = destination.toLowerCase();
   if (lower === "other/ip") return "IP-only / no DNS match";
+  if (lower.startsWith("unknown/unattributed")) return destination;
   if (lower === "other") {
     if (isDnsOnly(row)) return "DNS-only interest";
     if (usefulText(row.destination_ip)) return "IP-only / no DNS match";
