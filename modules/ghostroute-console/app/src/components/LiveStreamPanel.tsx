@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Download, Pause, Play } from "lucide-react";
 import { RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 
@@ -13,14 +13,28 @@ type LivePayload = {
   alerts: Array<Record<string, any>>;
 };
 
-export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: LivePayload; visibleCount?: number }) {
+export function LiveStreamPanel({
+  initial,
+  visibleCount = 150,
+  streamHref = "/api/live/stream",
+  footer,
+}: {
+  initial: LivePayload;
+  visibleCount?: number;
+  streamHref?: string;
+  footer?: ReactNode;
+}) {
   const [payload, setPayload] = useState(initial);
   const [mode, setMode] = useState("SSE connecting");
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
 
   useEffect(() => {
-    const source = new EventSource("/api/live/stream");
+    setPayload(initial);
+  }, [initial]);
+
+  useEffect(() => {
+    const source = new EventSource(streamHref);
     source.addEventListener("snapshot", (event) => {
       if (!pausedRef.current) {
         setPayload(JSON.parse((event as MessageEvent).data));
@@ -31,7 +45,7 @@ export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: Live
       setMode("SSE connecting");
     };
     return () => source.close();
-  }, []);
+  }, [streamHref]);
 
   const togglePaused = () => {
     setPaused((value) => {
@@ -93,7 +107,7 @@ export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: Live
               const statusSlug = String(status).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
               return (
                 <tr key={`${eventType}-${row.event_id || row.id || idx}`}>
-                  <td className="live-col-time">{timeWithMillis(row.occurred_at || payload.generated_at, true)}</td>
+                  <td className="live-col-time">{timeWithMillis(row.occurred_at || payload.generated_at)}</td>
                   <td className="live-col-event">
                     <span className={`event-dot event-${String(eventType).split(".")[0]}`} />
                     <strong>{eventType}</strong>
@@ -112,6 +126,7 @@ export function LiveStreamPanel({ initial, visibleCount = 150 }: { initial: Live
           </tbody>
         </table>
       </div>
+      {footer ? <div className="live-card-footer">{footer}</div> : null}
     </section>
   );
 }

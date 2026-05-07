@@ -693,6 +693,15 @@ iptables-save -t mangle -c | grep RC_LAN_BYTES
 
 Use these when report totals look surprising.
 
+`live-events-report --json` emits millisecond ISO timestamps for every live
+event. Native fractional seconds from source logs are preserved with
+`ts_precision=millisecond`; second-only router logs receive deterministic
+in-second ordering with `ts_precision=second_ordered`; timestamp-less local
+activity lines use the collector timestamp with `ts_precision=collector_time`.
+Console SQLite stores this value as text in `events.occurred_at` and
+`route_decisions.occurred_at`, so no schema migration is required for
+millisecond display.
+
 ---
 
 ## LLM-Safe Reporting

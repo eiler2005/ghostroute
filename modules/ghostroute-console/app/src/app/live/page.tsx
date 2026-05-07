@@ -9,6 +9,15 @@ function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function hrefWithParams(path: string, params: Record<string, string | number | undefined>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const suffix = search.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
 export default async function LivePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
@@ -50,6 +59,29 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
     eventsPageSize,
     servicePageSize,
   };
+  const liveStreamHref = hrefWithParams("/api/live/stream", {
+    period: filters.period,
+    route: filters.route !== "all" ? filters.route : undefined,
+    channel: filters.channel !== "all" ? filters.channel : undefined,
+    confidence: filters.confidence !== "all" ? filters.confidence : undefined,
+    trafficClass: filters.trafficClass || "client",
+    client: filters.client !== "all" ? filters.client : undefined,
+    search: filters.search,
+    page: liveEvents.page,
+    pageSize: liveEvents.pageSize,
+  });
+  const liveEventsPagination = (
+    <Pagination
+      basePath="/live"
+      page={liveEvents.page}
+      pageParam="eventsPage"
+      pageSizeParam="eventsPageSize"
+      pageSize={liveEvents.pageSize}
+      total={liveEvents.total}
+      totalPages={liveEvents.totalPages}
+      extraParams={{ ...filterParams, activityPage: trafficPage.page, servicePage }}
+    />
+  );
 
   return (
     <ConsoleShell active="/live" model={model} filters={filters}>
@@ -74,16 +106,8 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             alerts: model.alerts.slice(0, 20).map(({ raw, ...row }) => row),
           }}
           visibleCount={eventsPageSize}
-        />
-        <Pagination
-          basePath="/live"
-          page={liveEvents.page}
-          pageParam="eventsPage"
-          pageSizeParam="eventsPageSize"
-          pageSize={liveEvents.pageSize}
-          total={liveEvents.total}
-          totalPages={liveEvents.totalPages}
-          extraParams={{ ...filterParams, activityPage: trafficPage.page, servicePage }}
+          streamHref={liveStreamHref}
+          footer={liveEventsPagination}
         />
       </div>
 
@@ -118,7 +142,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
                   const clientIp = (row as Record<string, any>).client_ip;
                   return (
                     <tr key={`${eventType}-${row.id || idx}`}>
-                      <td className="live-col-time">{timeWithMillis(row.occurred_at, true)}</td>
+                      <td className="live-col-time">{timeWithMillis(row.occurred_at)}</td>
                       <td className="live-col-event">
                         <span className={`event-dot event-${String(eventType).split(".")[0]}`} />
                         <strong>{eventType}</strong>
@@ -141,16 +165,18 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             </table>
           </div>
         )}
-        <Pagination
-          basePath="/live"
-          page={servicePage}
-          pageParam="servicePage"
-          pageSizeParam="servicePageSize"
-          pageSize={servicePageSize}
-          total={serviceTotal}
-          totalPages={Math.max(1, Math.ceil(serviceTotal / servicePageSize))}
-          extraParams={{ ...filterParams, eventsPage: liveEvents.page, activityPage: trafficPage.page }}
-        />
+        <div className="live-card-footer">
+          <Pagination
+            basePath="/live"
+            page={servicePage}
+            pageParam="servicePage"
+            pageSizeParam="servicePageSize"
+            pageSize={servicePageSize}
+            total={serviceTotal}
+            totalPages={Math.max(1, Math.ceil(serviceTotal / servicePageSize))}
+            extraParams={{ ...filterParams, eventsPage: liveEvents.page, activityPage: trafficPage.page }}
+          />
+        </div>
       </section>
 
       <div className="grid two" style={{ marginTop: 14 }}>
