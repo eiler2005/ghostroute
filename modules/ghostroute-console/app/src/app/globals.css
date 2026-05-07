@@ -181,11 +181,47 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .dns-table { min-width: 1120px; }
 .catalog-table { min-width: 980px; }
 .dns-table-card, .alarm-table { overflow-x: auto; }
+.dns-kpis { grid-template-columns: repeat(6, minmax(128px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.dns-kpis .metric { min-height: 92px; padding: 12px 14px; }
+.dns-kpis .metric span { font-size: 13px; }
+.dns-kpis .metric strong { margin-top: 5px; font-size: 22px; line-height: 1.1; }
+.dns-kpis .metric small { line-height: 1.3; }
+.dns-log-card { margin-top: 0; }
+.dns-table-wrap { max-height: clamp(360px, calc(100vh - 430px), 720px); }
+.dns-events-table { min-width: 1240px; }
+.dns-events-table th:nth-child(1), .dns-events-table .live-col-time { width: 132px; }
+.dns-events-table th:nth-child(2), .dns-events-table .dns-col-client { width: 220px; }
+.dns-events-table th:nth-child(3), .dns-events-table .dns-col-domain { width: 36%; }
+.dns-events-table th:nth-child(4), .dns-events-table .dns-col-type { width: 82px; }
+.dns-events-table th:nth-child(5), .dns-events-table .dns-col-answer { width: 190px; }
+.dns-events-table th:nth-child(6), .dns-events-table .live-col-route { width: 112px; }
+.dns-events-table th:nth-child(7), .dns-events-table .dns-col-catalog { width: 128px; }
+.dns-events-table th:nth-child(8), .dns-events-table .live-col-status { width: 86px; }
+.dns-events-table td a { color: #dbe8f8; font-weight: 700; }
+.dns-events-table .dns-col-domain a, .dns-events-table .dns-col-answer, .dns-events-table .dns-col-client { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dns-events-table .dns-col-domain small { margin-left: 6px; color: #8da2bb; font-size: 11px; }
+.dns-events-table .badge { min-height: 22px; padding: 1px 8px; }
+.dns-empty-wrap { padding: 14px; }
+.dns-flow-button { min-height: 34px; }
+.dns-insights { margin-top: 12px; }
+.dns-insights .card { padding: 14px; }
+.dns-insights h2 { font-size: 16px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: #a9bad0; flex-wrap: wrap; }
 .pagination > div { display: flex; align-items: center; gap: 10px; }
 .pagination strong { color: #e6edf7; }
-.clients-card { overflow-x: auto; }
-.clients-table { min-width: 1260px; }
+.traffic-stream-card { margin-top: 12px; overflow: hidden; }
+.traffic-table-wrap { max-height: clamp(360px, calc(100vh - 500px), 720px); }
+.traffic-stream-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.traffic-mode-button { min-height: 34px; padding: 0 12px; }
+.flow-events-table { min-width: 1620px; }
+.flow-events-table .col-client, .flow-events-table .col-destination, .flow-events-table .col-policy, .flow-events-table .col-traffic { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-events-table .col-port span { color: #8da2bb; font-size: 11px; }
+.flow-events-table .inline-badges { margin-left: 8px; }
+.flow-events-table .badge { min-height: 22px; padding: 1px 8px; }
+.flow-events-table td a { color: #dbe8f8; font-weight: 700; }
+.clients-card { overflow: hidden; }
+.clients-table-scroll { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+.clients-table { min-width: 1480px; }
 .clients-table .col-client { width: 21%; }
 .clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 210px; }
 .clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 136px; }

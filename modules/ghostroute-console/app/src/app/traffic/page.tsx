@@ -29,7 +29,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(5, Number.parseInt(scalar(params.pageSize) || "10", 10) || 10));
+  const pageSize = Math.min(100, Math.max(25, Number.parseInt(scalar(params.pageSize) || "100", 10) || 100));
   const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
@@ -53,6 +53,17 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
+  const flowHref = (idx: number) => {
+    const next = new URLSearchParams();
+    Object.entries(filterParams).forEach(([key, value]) => {
+      if (value) next.set(key, String(value));
+    });
+    if (diagnostics) next.set("diagnostics", "1");
+    next.set("page", String(trafficPage.page));
+    next.set("pageSize", String(trafficPage.pageSize));
+    next.set("flow", String(idx));
+    return `/traffic?${next.toString()}`;
+  };
 
   return (
     <ConsoleShell active="/traffic" model={model} filters={filters}>
@@ -69,74 +80,81 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
       ) : (
         <>
           {evidence ? <RouteExplanation evidence={evidence} all={evidences} /> : null}
-          <section className="card route-table-card">
-            <div className="toolbar">
-              <div>
+          <section className="card live-stream-card route-table-card traffic-stream-card">
+            <div className="live-stream-toolbar">
+              <div className="live-stream-title">
                 <h2>Flow Explorer</h2>
-                <p>
-                  {diagnostics
-                    ? "Diagnostics mode: technical DNS and route events are visible."
-                    : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} flows by volume with policy, route and risk context.`}
-                </p>
+                <span>{trafficPage.total} rows · shown {rows.length}</span>
               </div>
-              <span className="subtle">{trafficPage.total} rows</span>
+              <div className="live-stream-actions">
+                {diagnostics ? (
+                  <Link className="muted-button traffic-mode-button" href="/traffic">Traffic only</Link>
+                ) : (
+                  <Link className="muted-button traffic-mode-button" href="/traffic?diagnostics=1">Diagnostics</Link>
+                )}
+              </div>
             </div>
-            <div className="page-note">
-              Detailed traffic: последний тяжелый snapshot, обновляется реже. `estimated` - оценка по counters/log summaries; `dns-interest` - DNS-запрос, не доказательство переданного трафика.
+            <div className="live-stream-meta traffic-stream-meta">
+              {diagnostics
+                ? "Diagnostics mode: technical DNS and route events are visible."
+                : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : "Client"} flows by volume with policy, route and risk context.`}
             </div>
-            <div className="page-note">
-              {diagnostics ? (
-                <>Diagnostics visible · includes no-byte/live evidence · <Link href="/traffic">Hide diagnostics</Link></>
-              ) : (
-                <>Showing traffic rows only · {trafficPage.hiddenCount} system/no-byte evidence hidden · <Link href="/traffic?diagnostics=1">Show diagnostics</Link></>
-              )}
+            <div className="live-stream-meta traffic-stream-meta">
+              Detailed traffic: последний тяжелый snapshot, обновляется реже · estimated - counters/log summaries · hidden system/no-byte evidence: {trafficPage.hiddenCount}
             </div>
-            <table className="table traffic-table">
-              <thead>
-                <tr>
-                  <th className="col-time">Time</th>
-                  <th className="col-client">Client</th>
-                  <th className="col-destination">Destination</th>
-                  <th className="col-port">Port</th>
-                  <th className="col-route">Route</th>
-                  <th className="col-policy">Policy / Rule</th>
-                  <th className="col-traffic">Traffic</th>
-                  <th className="col-duration">Duration</th>
-                  <th className="col-risk">Risk</th>
-                  <th className="col-confidence">Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => (
-                  <tr key={row.id} className={idx === selectedIndex ? "selected" : ""}>
-                    <td className="col-time"><Link href={`/traffic?flow=${idx}`}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
-                    <td><Link href={`/traffic?flow=${idx}`}>{row.client}</Link></td>
-                    <td>
-                      <Link href={`/traffic/${encodeURIComponent(row.id)}`}>{trafficDisplayDestination(row)}</Link>
-                      <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
-                    </td>
-                    <td className="col-port">{row.destination_port || "n/a"}<small className="subtle block-detail">{row.protocol || "TCP"}</small></td>
-                    <td><RouteBadge value={row.route} /></td>
-                    <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
-                      <span className="truncate-text">{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</span>
-                      <small className="subtle block-detail truncate-text">{row.matched_rule || row.outbound || "no matching rule evidence"}</small>
-                    </td>
-                    <td>{bytes(row.bytes || row.total_bytes || 0)}<small className="subtle block-detail">{row.connections || 0} sessions</small></td>
-                    <td className="col-duration">{durationLabel(row.duration_seconds)}</td>
-                    <td className="col-risk">{riskBadge(row.risk)}</td>
-                    <td><ConfidenceBadge value={row.confidence} /></td>
+            <div className="live-table-wrap traffic-table-wrap">
+              <table className="live-events-table traffic-table flow-events-table">
+                <thead>
+                  <tr>
+                    <th className="col-time">Time</th>
+                    <th className="col-client">Client</th>
+                    <th className="col-destination">Destination</th>
+                    <th className="col-port">Port</th>
+                    <th className="col-route">Route</th>
+                    <th className="col-policy">Policy / Rule</th>
+                    <th className="col-traffic">Traffic</th>
+                    <th className="col-duration">Duration</th>
+                    <th className="col-risk">Risk</th>
+                    <th className="col-confidence">Confidence</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination
-              basePath="/traffic"
-              page={trafficPage.page}
-              pageSize={trafficPage.pageSize}
-              total={trafficPage.total}
-              totalPages={trafficPage.totalPages}
-              extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
-            />
+                </thead>
+                <tbody>
+                  {rows.map((row, idx) => {
+                    const href = flowHref(idx);
+                    const destination = trafficDisplayDestination(row);
+                    return (
+                      <tr key={row.id} className={hasSelectedFlow && idx === selectedIndex ? "selected" : ""}>
+                        <td className="col-time"><Link href={href}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
+                        <td className="col-client" title={row.client}><Link href={href}>{row.client}</Link></td>
+                        <td className="col-destination" title={destination}>
+                          <Link href={`/traffic/${encodeURIComponent(row.id)}`}>{destination}</Link>
+                          <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
+                        </td>
+                        <td className="col-port">{row.destination_port || "n/a"} <span>{row.protocol || "TCP"}</span></td>
+                        <td className="col-route"><RouteBadge value={row.route} /></td>
+                        <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
+                          {row.policy || row.rule_set || row.matched_rule || "DEFAULT"}
+                        </td>
+                        <td className="col-traffic">{bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions</td>
+                        <td className="col-duration">{durationLabel(row.duration_seconds)}</td>
+                        <td className="col-risk">{riskBadge(row.risk)}</td>
+                        <td className="col-confidence"><ConfidenceBadge value={row.confidence} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="live-card-footer">
+              <Pagination
+                basePath="/traffic"
+                page={trafficPage.page}
+                pageSize={trafficPage.pageSize}
+                total={trafficPage.total}
+                totalPages={trafficPage.totalPages}
+                extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
+              />
+            </div>
           </section>
         </>
       )}

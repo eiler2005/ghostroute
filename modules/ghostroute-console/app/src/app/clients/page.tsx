@@ -147,66 +147,70 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <EmptyState title="Нет фактической инвентаризации" />
           ) : (
             <>
-              <table className="table clients-table">
-                <thead>
-                  <tr>
-                    <th className="col-client">Device</th>
-                    <th>Owner/Profile</th>
-                    <th>Type</th>
-                    <th>Last seen</th>
-                    <th>Status</th>
-                    <th>Channel</th>
-                    <th className="col-route">Route</th>
-                    <th className="col-traffic">Window traffic</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {primaryRows.map((row) => (
-                    <tr
-                      key={row.id || row.label}
-                      className={(row.id || row.label) === selectedName ? "selected" : ""}
-                    >
-                      <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.device_label || row.label || row.id}</Link></td>
-                      <td>{row.owner || row.client_label || "Inventory"}</td>
-                      <td>{row.device_type || row.role || "Unknown device"}</td>
-                      <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
-                      <td><StatusBadge value={row.status || "Inactive"} /></td>
-                      <td><ChannelBadge value={row.channel} /></td>
-                      <td><RouteBadge value={routeFromBytes(row)} /></td>
-                      <td>{bytes(row.total_bytes || 0)}</td>
+              <div className="clients-table-scroll">
+                <table className="table clients-table">
+                  <thead>
+                    <tr>
+                      <th className="col-client">Device</th>
+                      <th>Owner/Profile</th>
+                      <th>Type</th>
+                      <th>Last seen</th>
+                      <th>Status</th>
+                      <th>Channel</th>
+                      <th className="col-route">Route</th>
+                      <th className="col-traffic">Window traffic</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {primaryRows.map((row) => (
+                      <tr
+                        key={row.id || row.label}
+                        className={(row.id || row.label) === selectedName ? "selected" : ""}
+                      >
+                        <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.device_label || row.label || row.id}</Link></td>
+                        <td>{row.owner || row.client_label || "Inventory"}</td>
+                        <td>{row.device_type || row.role || "Unknown device"}</td>
+                        <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
+                        <td><StatusBadge value={row.status || "Inactive"} /></td>
+                        <td><ChannelBadge value={row.channel} /></td>
+                        <td><RouteBadge value={routeFromBytes(row)} /></td>
+                        <td>{bytes(row.total_bytes || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {unattributedRows.length > 0 ? (
                 <>
                   <h3 style={{ marginTop: 16 }}>Unattributed ingress / low-signal sources</h3>
-                  <table className="table clients-table">
-                    <thead>
-                      <tr>
-                        <th className="col-client">Device</th>
-                        <th>Role</th>
-                        <th>Last seen</th>
-                        <th>Status</th>
-                        <th>Channel</th>
-                        <th className="col-route">Route</th>
-                        <th className="col-traffic">Window traffic</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {unattributedRows.map((row) => (
-                        <tr key={row.id || row.label} className={(row.id || row.label) === selectedName ? "selected" : ""}>
-                          <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
-                          <td>{row.role || "Unknown device"}</td>
-                          <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
-                          <td><StatusBadge value={row.status || "Inactive"} /></td>
-                          <td><ChannelBadge value={row.channel} /></td>
-                          <td><RouteBadge value={routeFromBytes(row)} /></td>
-                          <td>{bytes(row.total_bytes || 0)}</td>
+                  <div className="clients-table-scroll">
+                    <table className="table clients-table">
+                      <thead>
+                        <tr>
+                          <th className="col-client">Device</th>
+                          <th>Role</th>
+                          <th>Last seen</th>
+                          <th>Status</th>
+                          <th>Channel</th>
+                          <th className="col-route">Route</th>
+                          <th className="col-traffic">Window traffic</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {unattributedRows.map((row) => (
+                          <tr key={row.id || row.label} className={(row.id || row.label) === selectedName ? "selected" : ""}>
+                            <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
+                            <td>{row.role || "Unknown device"}</td>
+                            <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
+                            <td><StatusBadge value={row.status || "Inactive"} /></td>
+                            <td><ChannelBadge value={row.channel} /></td>
+                            <td><RouteBadge value={routeFromBytes(row)} /></td>
+                            <td>{bytes(row.total_bytes || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               ) : null}
               <Pagination

@@ -1448,6 +1448,7 @@ function mapDnsFallbackRow(row: any) {
 export function listDnsQueryLog(args: DnsPageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 100, 1000);
+  const maxRows = 1000;
   const filters = args.filters || {};
   const status = args.status || "all";
   const catalogStatus = args.catalogStatus || "all";
@@ -1459,7 +1460,8 @@ export function listDnsQueryLog(args: DnsPageArgs = {}) {
       .filter((row) => route === "all" || row.route === route)
       .filter((row) => catalogStatus === "all" || row.catalog_status === catalogStatus)
       .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
-      .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
+      .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0)
+      .slice(0, maxRows);
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     const effectivePage = Math.min(page, totalPages);
     const offset = (effectivePage - 1) * pageSize;
@@ -1500,11 +1502,7 @@ export function listDnsQueryLog(args: DnsPageArgs = {}) {
     params.push(needle, needle, needle, needle, needle, needle);
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
-  const offset = (page - 1) * pageSize;
-  const hasRegistryFilter = Boolean(filters.client && filters.client !== "all");
-  const fetchLimit = hasRegistryFilter ? Math.max(offset + pageSize * 8, 1000) : offset + pageSize;
   const db = getDb();
-  const sqlTotal = Number((db.prepare(`select count(*) as count from dns_query_log where ${whereSql}`).get(...params) as any)?.count || 0);
   const rows = db
     .prepare(
       `select id, snapshot_id, collected_at, event_ts, client, client_ip, device_key, domain,
@@ -1514,16 +1512,19 @@ export function listDnsQueryLog(args: DnsPageArgs = {}) {
         order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
         limit ?`
     )
-    .all(...params, fetchLimit)
+    .all(...params, maxRows)
     .map(mapDnsReadModelRow)
     .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
-  const total = hasRegistryFilter ? Math.max(rows.length, rows.length >= fetchLimit ? sqlTotal : rows.length) : sqlTotal;
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const offset = (effectivePage - 1) * pageSize;
   return {
     rows: rows.slice(offset, offset + pageSize),
     total,
-    page,
+    page: effectivePage,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    totalPages,
   };
 }
 
