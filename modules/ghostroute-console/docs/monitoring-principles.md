@@ -53,14 +53,19 @@ attribution later.
 - The browser does not prefetch heavy sidebar views. Plain document navigation
   and server-side read-model selectors keep Safari/iOS predictable; correctness
   still comes from factual snapshots and read models.
-- `test:perf` covers both individual page/API budgets and rapid sidebar
-  navigation so regressions show up before deploy.
+- Functional GUI/API smoke tests must verify behavior and contracts only:
+  rendering, filters, row selection, redirects, mobile compact pages and JSON
+  shape. They must not assert elapsed time.
+- `test:perf` is the only local Playwright suite with timing budgets. It covers
+  individual page/API budgets and rapid sidebar navigation so read-model/cache
+  regressions show up before deploy.
 
 ## GUI Development Workflow
 
 - GUI changes must be checked on a local seeded Console before deploy. Use
-  `cd modules/ghostroute-console/app && npm run dev:gui` for visual review and
-  `npm run test:e2e:gui` for browser coverage against the same synthetic data.
+  `cd modules/ghostroute-console/app && npm run dev:gui` for visual review,
+  `npm run test:e2e:gui` for functional browser coverage and `npm run test:perf`
+  for local performance budgets against the same synthetic data.
 - Refresh the seeded GUI data layer before local checks whenever page models,
   selectors, cache keys or read-model rendering change: run
   `npm run seed:gui` from `modules/ghostroute-console/app`.

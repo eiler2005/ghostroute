@@ -362,7 +362,7 @@ cd modules/ghostroute-console/app
 npm run dev:gui
 ```
 
-For automated browser checks against the same seeded database:
+For automated checks against the same seeded database:
 
 ```bash
 cd modules/ghostroute-console/app
@@ -372,22 +372,34 @@ npm run test:e2e:gui
 npm run test:perf
 ```
 
-`test:perf` warms the local Playwright dev server, then checks that the main
-Console pages render within 2.5 seconds and key JSON APIs respond within 1.5
-seconds. It also clicks through the sidebar quickly to catch regressions where
-one page rebuilds the full Console evidence model during navigation.
+`test:e2e:gui` is the functional desktop+mobile GUI/API smoke suite. It verifies
+rendered content, filters, row selection, mobile redirects, compact mobile pages
+and JSON contracts, but it must not contain elapsed-time assertions.
+
+`test:perf` is the only local Playwright suite with timing budgets. It runs on
+the seeded GUI database, checks that main Console pages render within 2.5
+seconds, key JSON APIs such as `/api/health` and `/api/live?pageSize=5` respond
+within 1.5 seconds, and rapid sidebar navigation stays responsive. Public
+operator-network or VPN curl timings are deployment diagnostics, not deterministic
+Playwright performance gates.
+
+For a single pre-deploy local gate:
+
+```bash
+cd modules/ghostroute-console/app
+npm run test:gui:all
+```
 
 Release hardening:
 
-- PR smoke uses the seeded GUI database across desktop and mobile Playwright
-  projects; performance remains a manual/release gate.
+- PR/functional smoke uses the seeded GUI database across desktop and mobile
+  Playwright projects; performance remains a separate release gate.
 - Collectors validate incoming JSON snapshots against tolerant versioned
   contracts. Unknown fields are preserved, but missing core fields are recorded
   as collector errors instead of being inserted as broken snapshots.
-- Read-only derived selectors use a short in-process cache keyed by latest
-  snapshot version, filters and pagination. The cache covers the heavy sidebar
-  pages and is paired with browser-side route/API warmup after the first page
-  loads.
+- Read-only derived selectors use a short in-process cache keyed by lightweight
+  snapshot metadata, filters and pagination. The cache covers the heavy sidebar
+  pages; browser-side prefetch is intentionally avoided for those pages.
 - The source strip and `/api/health` expose both build commit and UTC build
   timestamp so operators can confirm which deployed container is serving the UI.
 - The VPS read-only deploy builds the new Console image before replacing the
