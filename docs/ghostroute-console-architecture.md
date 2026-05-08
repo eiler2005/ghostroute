@@ -198,12 +198,14 @@ Explorer, DNS Query Log, Clients, Health, Catalog, Budget, Live, Reports and
 Settings load only the data each view renders.
 
 Mobile browsers, especially iPhone Safari behind the Console auth/proxy path,
-receive an additional compact SSR profile based on mobile request headers. The
-profile keeps the same route URLs and filters but caps first-page rows and
-omits heavy secondary panels on Flow Explorer, DNS Query Log, Clients, Live and
-Catalog. Desktop browsers keep the full workbench and side panels. Sidebar
-navigation deliberately uses plain document links rather than Next client-side
-navigation so taps on mobile behave the same as opening the path directly.
+use a separate `/m` surface rather than the desktop workbench shell. Middleware
+redirects mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/live` and
+`/catalog` to matching `/m` pages, while `desktop=1`, `/api/*`, `/_next/*`,
+`/m/*` and shared route-detail URLs bypass the redirect. The mobile pages use
+the same read-only selectors but render one compact list per page, cap page
+size to 25 rows, omit side panels/raw evidence/charts and keep navigation as
+plain document links. No `m.` subdomain is used in v1, so public nginx/TLS and
+Basic Auth configuration stay unchanged.
 
 Read-only derived selectors use a short in-process cache inside the Console
 Node process. The default TTL is 60 seconds and can be disabled with
