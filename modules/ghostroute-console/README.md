@@ -311,15 +311,25 @@ from the public Console URL.
   readiness are shown without exposing real endpoints, ports, users, keys or
   local device identifiers.
 
+Mobile Safari/iPhone gets a compact server-rendered version of the heaviest
+views. `/traffic`, `/dns`, `/clients`, `/live` and `/catalog` keep the same
+URLs, filters and pagination, but cap first-page rows more aggressively and omit
+secondary side panels such as Flow detail, DNS insights, selected-client
+drilldowns, Live service/background tables and Catalog review detail. The
+desktop Console keeps the full workbench layout. Sidebar navigation uses plain
+document links instead of client-side prefetch navigation so a tap behaves like
+typing the target path into the browser address bar.
+
 ## Local Checks
 
 GUI changes should be reviewed on a local seeded Console before any deploy. The
 seeded database is synthetic, lives under the gitignored
 `modules/ghostroute-console/data/gui-test/`, and gives Flow Explorer, DNS Query
 Log, Dashboard analytics, Clients and Live enough rows to verify compact
-tables, charts, filters, horizontal scroll and pagination without waiting for
-real snapshots. `dev:gui` and `test:e2e:gui` also provide local-only default
-VPS/LTE quota env values unless the operator has already set them.
+tables, charts, filters, horizontal scroll, pagination and mobile-light
+rendering without waiting for real snapshots. `dev:gui` and `test:e2e:gui` also
+provide local-only default VPS/LTE quota env values unless the operator has
+already set them.
 
 Refresh that seeded data layer before local checks whenever GUI selectors,
 read models, cache keys or page rendering change:
