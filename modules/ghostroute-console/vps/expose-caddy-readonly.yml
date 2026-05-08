@@ -268,6 +268,29 @@
                   add_header X-Robots-Tag "noindex, nofollow" always;
                   add_header Referrer-Policy "no-referrer" always;
 
+                  location ^~ /_next/static/ {
+                      auth_basic off;
+                      add_header Cache-Control "public, max-age=31536000, immutable" always;
+                      add_header X-Robots-Tag "noindex, nofollow" always;
+                      add_header Referrer-Policy "no-referrer" always;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
+                      proxy_set_header Host $http_host;
+                      proxy_set_header X-Forwarded-Host $http_host;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header X-Forwarded-Port $server_port;
+                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Connection close;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_buffering on;
+                      proxy_buffer_size 16k;
+                      proxy_buffers 16 64k;
+                      proxy_busy_buffers_size 128k;
+                      proxy_read_timeout 60s;
+                      proxy_send_timeout 60s;
+                  }
+
                   location / {
                       proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
                       proxy_http_version 1.0;
@@ -357,6 +380,12 @@
       ansible.builtin.uri:
         url: "{{ console_public_url }}/api/health"
         status_code: 401
+        validate_certs: true
+
+    - name: Check Console static assets bypass Basic Auth
+      ansible.builtin.uri:
+        url: "{{ console_public_url }}/_next/static/__ghostroute_auth_probe__.js"
+        status_code: 404
         validate_certs: true
 
     - name: Check Console public route with auth
