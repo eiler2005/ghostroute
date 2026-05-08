@@ -1,6 +1,7 @@
 import { MobileShell } from "@/components/MobileShell";
 import { shortDateTime } from "@/components/Widgets";
-import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors/health";
+import { getConsolePageSummary } from "@/lib/server/selectors/health";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { Pagination, scalar, mobilePageSize } from "../mobile-ui";
 
@@ -54,24 +55,43 @@ function compactText(value: unknown, limit = 260) {
   return `${text.slice(0, limit - 1)}…`;
 }
 
+function alarmMatchesStatus(row: Record<string, any>, status: string) {
+  const normalized = String(status || "active").toLowerCase();
+  const rowStatus = String(row.status || "open").toLowerCase();
+  if (normalized === "all") return true;
+  if (normalized === "active") return ["open", "active", "warn", "warning", "critical", "review"].includes(rowStatus);
+  return rowStatus === normalized;
+}
+
 export default async function MobileHealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const status = scalar(params.status) || "active";
-  const alarms = listAlarmEvents({ page, pageSize, filters, status });
-  const model = buildHealthModel(filters);
-  const critical = model.alerts.filter((row) => row.severity === "critical").length;
-  const warning = model.alerts.filter((row) => row.severity === "warning").length;
-  const checks = [
-    ...(model.snapshots.health?.payload?.checks || []),
-    ...(model.snapshots.leaks?.payload?.checks || []),
-  ];
-  const deployGateSnapshot = model.snapshots.deploy_gate?.payload;
+  const summaryRecord = getConsolePageSummary("health_mobile");
+  const summary = summaryRecord?.payload || null;
+  const summaryAlarms = Array.isArray(summary?.alarms) ? summary.alarms : [];
+  const filteredAlarms: Array<Record<string, any>> = summaryAlarms.filter((row: Record<string, any>) => alarmMatchesStatus(row, status));
+  const alarmStart = (page - 1) * pageSize;
+  const alarms = {
+    rows: filteredAlarms.slice(alarmStart, alarmStart + pageSize),
+    total: filteredAlarms.length,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(filteredAlarms.length / pageSize)),
+  };
+  const model = buildLightweightShellModel(filters, {
+    alerts: summaryAlarms,
+    statusCards: Array.isArray(summary?.statusCards) ? summary.statusCards : undefined,
+  });
+  const critical = Number(summary?.alarmCounts?.critical || summaryAlarms.filter((row: Record<string, any>) => row.severity === "critical").length);
+  const warning = Number(summary?.alarmCounts?.warning || summaryAlarms.filter((row: Record<string, any>) => row.severity === "warning").length);
+  const checks = Array.isArray(summary?.health?.checks) ? summary.health.checks : [];
+  const deployGateSnapshot = summary?.deployGate || null;
   const deployGateChecks = (deployGateSnapshot?.checks || []).map(displayDeployGateCheck);
-  const deployStatus = deployGateStatus(deployGateChecks, deployGateSnapshot?.overall_status || "UNKNOWN");
-  const leakSnapshot = model.snapshots.leaks?.payload;
+  const deployStatus = deployGateStatus(deployGateChecks, deployGateSnapshot?.status || "UNKNOWN");
+  const leakSnapshot = summary?.leaks || null;
   const overall = model.statusCards.some((row) => statusTone(row.status) === "critical")
     ? "Attention"
     : model.alerts.length > 0
@@ -91,9 +111,15 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
       <section className="mobile-health-summary">
         <span>Critical <b>{critical}</b></span>
         <span>Warnings <b>{warning}</b></span>
-        <span>Open signals <b>{model.alerts.length}</b></span>
+        <span>Open signals <b>{summary?.alarmCounts?.active ?? model.alerts.length}</b></span>
         <span>Freshness <b>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</b></span>
       </section>
+
+      {!summary ? (
+        <section className="mobile-flat-card">
+          <div className="mobile-empty">No prepared health summary yet.</div>
+        </section>
+      ) : null}
 
       <section className="mobile-status-card-grid" aria-label="Health status summary">
         {model.statusCards.map((card) => (
@@ -208,8 +234,8 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
         ) : (
           <>
             <div className="mobile-compact-meta">
-              <span>signals <b>{(leakSnapshot.leaks || []).length}</b></span>
-              <span>evidence <b>{(leakSnapshot.evidence || []).length}</b></span>
+              <span>signals <b>{leakSnapshot.leakSignals || 0}</b></span>
+              <span>evidence <b>{leakSnapshot.evidenceRows || (leakSnapshot.evidence || []).length}</b></span>
               <span>confidence <b>{leakSnapshot.confidence || "unknown"}</b></span>
             </div>
             <div className="mobile-health-list">
@@ -233,6 +259,7 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
         </div>
         <div className="mobile-compact-meta">
           <span>latest <b>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m ago`}</b></span>
+          <span>summary <b>{summaryRecord?.rebuilt_at ? shortDateTime(summaryRecord.rebuilt_at) : "n/a"}</b></span>
           <span>threshold <b>{model.staleThresholdMinutes || 75}m</b></span>
           <span>open signals <b>{model.alerts.length}</b></span>
         </div>

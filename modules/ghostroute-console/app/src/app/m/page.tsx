@@ -3,21 +3,25 @@ import { bytes } from "@/components/Widgets";
 import { listClientInventory } from "@/lib/server/selectors/clients";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
-import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listLiveEvents } from "@/lib/server/selectors/live";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel, getConsolePageSummary } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { MobileAlarmList, MobileClientList, MobileDnsList, MobileFlowList, MobileLiveList, MobileSection } from "./mobile-ui";
 
 export default async function MobileHomePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
-  const model = buildShellModel(filters);
+  const healthSummary = getConsolePageSummary("health_mobile")?.payload || {};
+  const summaryAlarms = Array.isArray(healthSummary.alarms) ? healthSummary.alarms : [];
+  const model = buildLightweightShellModel(filters, {
+    alerts: summaryAlarms,
+    statusCards: Array.isArray(healthSummary.statusCards) ? healthSummary.statusCards : undefined,
+  });
   const flows = listFlowSessions({ page: 1, pageSize: 5, filters }).rows;
   const dnsRows = listDnsQueryLog({ page: 1, pageSize: 5, filters: { ...filters, trafficClass: "all" } }).rows;
   const clients = listClientInventory({ page: 1, pageSize: 5, filters }).rows;
   const live = listLiveEvents({ page: 1, pageSize: 5, filters }).rows;
-  const alarms = listAlarmEvents({ page: 1, pageSize: 5, filters, status: "open" }).rows;
+  const alarms = summaryAlarms.slice(0, 5);
   return (
     <MobileShell active="/m" model={model} filters={filters} desktopPath="/">
       <section className="mobile-hero">

@@ -113,6 +113,14 @@ bounded `flow_sessions` read model as well: `dns_qname`, `dns_answer_ip`, `sni`,
 uses those fields for its inline detail panel and still shows `not observed`
 when an upstream report did not prove a value.
 
+Schema v7 adds `console_page_summaries`, a page-scoped prepared summary table
+for operational shells that should never rebuild the full desktop model on the
+request path. The collector/read-model rebuild writes `health_mobile`,
+`health_shell` and `live_mobile` summaries with capped arrays for status cards,
+active alarms, Deploy Gate checks, health probes and leak evidence. Mobile
+Health reads that single prepared JSON row; if it is absent, it renders a
+minimal fallback instead of parsing raw snapshots.
+
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.
 
@@ -218,11 +226,10 @@ Node process. The default TTL is 60 seconds and can be disabled with
 `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys use lightweight snapshot
 metadata (`type` + `collected_at`) rather than parsing every latest snapshot
 payload. Request-path shells for Health, Live, mobile pages and JSON APIs then
-load only the small payloads they render, usually `traffic_summary`, `health`,
-`leaks` and `deploy_gate`, while traffic/DNS/client tables come from prepared
-SQLite read models. New collected data naturally changes the metadata version and
-moves the UI to a new cache key without making ordinary navigation parse the full
-traffic report.
+load prepared SQLite rows: traffic/DNS/client tables from their bounded read
+models and Health/Live chrome from `console_page_summaries`. New collected data
+naturally changes the metadata version and moves the UI to a new cache key
+without making ordinary navigation parse the full traffic report.
 
 Cached selectors cover heavy flow, DNS, alarm, client, client activity and
 live-event lists, plus the page models for every sidebar view. Action/write

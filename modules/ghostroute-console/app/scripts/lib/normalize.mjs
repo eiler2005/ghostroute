@@ -1,4 +1,6 @@
-const MIGRATION_VERSION = 6;
+import crypto from "node:crypto";
+
+const MIGRATION_VERSION = 7;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -457,6 +459,12 @@ export function ensureConsoleSchema(db) {
         value_json text not null,
         updated_at text not null
       );
+      create table if not exists console_page_summaries (
+        page text primary key,
+        source_version text not null default '',
+        rebuilt_at text not null,
+        payload_json text not null
+      );
   `);
   addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -573,6 +581,12 @@ function readModelSourceVersion(db) {
     .join("|") || "empty";
 }
 
+function compactSourceVersion(value) {
+  const sourceVersion = text(value);
+  if (sourceVersion.length <= 512) return sourceVersion;
+  return `sha256:${crypto.createHash("sha256").update(sourceVersion).digest("hex")}`;
+}
+
 function writeReadModelState(db, model, sourceVersion, rowCount, startedAt, status = "ok", detail = "") {
   db.prepare(`
     insert into read_model_state(model, source_version, rebuilt_at, row_count, duration_ms, status, detail)
@@ -590,6 +604,162 @@ function writeReadModelState(db, model, sourceVersion, rowCount, startedAt, stat
 function readModelLimit(name, fallback) {
   const parsed = Number(process.env[name] || fallback);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function latestSnapshotPayloads(db, types) {
+  if (types.length === 0) return {};
+  const placeholders = types.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `select s.id, s.type, s.collected_at, s.source, s.payload_json
+         from snapshots s
+         join (
+           select type, max(collected_at) as collected_at
+             from snapshots
+            where type in (${placeholders})
+            group by type
+         ) latest on latest.type = s.type and latest.collected_at = s.collected_at
+        order by s.collected_at desc, s.id desc`
+    )
+    .all(...types);
+  const result = {};
+  for (const row of rows) {
+    if (result[row.type]) continue;
+    result[row.type] = {
+      id: row.id,
+      type: row.type,
+      collected_at: row.collected_at,
+      source: row.source,
+      payload: parseJson(row.payload_json, {}),
+    };
+  }
+  return result;
+}
+
+function preparedStatus(value, fallback = "UNKNOWN") {
+  return text(value || fallback, fallback).toUpperCase();
+}
+
+function preparedDetail(value, fallback = "not observed") {
+  const detail = text(value || "").trim();
+  return detail || fallback;
+}
+
+function compactPreparedCheck(row) {
+  return {
+    id: text(row.id || row.name || row.check || row.label || row.probe),
+    label: text(row.label || row.name || row.check || row.probe || row.id || "check"),
+    probe: text(row.probe || row.check || row.name || row.id || ""),
+    component: text(row.component || ""),
+    status: preparedStatus(row.status),
+    summary: preparedDetail(row.summary || row.message || row.detail || row.evidence, ""),
+    message: preparedDetail(row.message || row.detail || row.summary || row.evidence, ""),
+    evidence: preparedDetail(row.evidence || row.detail || row.message || "", ""),
+    suggested_action: text(row.suggested_action || row.suggestedAction || ""),
+    confidence: confidence(row.confidence, "unknown"),
+  };
+}
+
+function buildPreparedHealthSummary(db, rebuiltAt) {
+  const snapshots = latestSnapshotPayloads(db, ["traffic_summary", "health", "leaks", "deploy_gate"]);
+  const health = snapshots.health?.payload || {};
+  const leaks = snapshots.leaks?.payload || {};
+  const deployGate = snapshots.deploy_gate?.payload || null;
+  const leakSignals = Array.isArray(leaks.leaks) ? leaks.leaks : [];
+  const leakEvidence = Array.isArray(leaks.evidence) ? leaks.evidence : [];
+  const deployChecks = Array.isArray(deployGate?.checks) ? deployGate.checks.map(compactPreparedCheck).slice(0, 10) : [];
+  const healthChecks = [
+    ...(Array.isArray(health.checks) ? health.checks : []),
+    ...(Array.isArray(leaks.checks) ? leaks.checks : []),
+  ].map(compactPreparedCheck).slice(0, 20);
+  const alarms = db
+    .prepare(
+      `select id, collected_at, severity, source, title, status, evidence, suggested_action, confidence, risk, evidence_json
+         from alarm_events
+        order by case lower(severity)
+          when 'critical' then 0
+          when 'crit' then 0
+          when 'error' then 0
+          when 'warning' then 1
+          when 'warn' then 1
+          when 'review' then 1
+          else 2
+        end, collected_at desc
+        limit 10`
+    )
+    .all()
+    .map((row) => ({
+      id: text(row.id),
+      collected_at: text(row.collected_at),
+      severity: text(row.severity || "warning"),
+      source: text(row.source || "snapshot"),
+      title: text(row.title || "alarm"),
+      status: text(row.status || "open"),
+      evidence: text(row.evidence || ""),
+      suggested_action: text(row.suggested_action || ""),
+      confidence: confidence(row.confidence, "unknown"),
+      risk: text(row.risk || "medium"),
+    }));
+  const alarmStats = db.prepare(`
+    select count(*) as total,
+           sum(case when lower(status) in ('open','active','warn','warning','critical','review') then 1 else 0 end) as active,
+           sum(case when lower(severity) in ('critical','crit','error') then 1 else 0 end) as critical,
+           sum(case when lower(severity) in ('warning','warn','review') then 1 else 0 end) as warning,
+           sum(case when lower(severity) = 'info' then 1 else 0 end) as info
+      from alarm_events
+  `).get();
+  const statusCards = [
+    { label: "Router", status: preparedStatus(health.services?.router || health.overall), detail: preparedDetail(health.router?.product) },
+    { label: "Reality", status: preparedStatus(health.services?.reality), detail: "home ingress / reality-out" },
+    { label: "DNS", status: preparedStatus(health.services?.dns), detail: "dnscrypt + policy" },
+    { label: "IPv6", status: preparedStatus(health.services?.ipv6), detail: "not in routing scope" },
+    { label: "Rule-set", status: preparedStatus(health.services?.rule_set_sync), detail: "catalog mirror" },
+    { label: "Leaks", status: preparedStatus(leaks.overall), detail: `${leakSignals.length} signals` },
+  ];
+  const traffic = snapshots.traffic_summary?.payload || {};
+  const totals = traffic.totals || {};
+  return {
+    rebuiltAt,
+    snapshotTimes: Object.fromEntries(
+      Object.entries(snapshots).map(([type, row]) => [type, row.collected_at || ""])
+    ),
+    statusCards,
+    alarmCounts: {
+      total: number(alarmStats?.total),
+      active: number(alarmStats?.active),
+      critical: number(alarmStats?.critical),
+      warning: number(alarmStats?.warning),
+      info: number(alarmStats?.info),
+    },
+    alarms,
+    deployGate: deployGate
+      ? {
+          status: preparedStatus(deployGate.overall_status || deployGate.status),
+          mode: text(deployGate.mode || ""),
+          estimated_duration: text(deployGate.estimated_duration || ""),
+          generated_at: text(deployGate.generated_at || snapshots.deploy_gate?.collected_at || ""),
+          checks: deployChecks,
+        }
+      : null,
+    health: {
+      overall: preparedStatus(health.overall),
+      checks: healthChecks,
+    },
+    leaks: {
+      overall: preparedStatus(leaks.overall),
+      confidence: confidence(leaks.confidence, "unknown"),
+      leakSignals: leakSignals.length,
+      evidenceRows: leakEvidence.length,
+      checks: (Array.isArray(leaks.checks) ? leaks.checks : []).map(compactPreparedCheck).slice(0, 10),
+      evidence: leakEvidence.map(compactPreparedCheck).slice(0, 10),
+    },
+    totals: {
+      observedBytes: number(totals.client_observed_bytes),
+      viaVpsBytes: number(totals.via_vps_bytes),
+      directBytes: number(totals.direct_bytes),
+      unknownBytes: number(totals.unknown_bytes),
+    },
+  };
 }
 
 function buildCatalogMatcher(catalogRows) {
@@ -760,6 +930,7 @@ export function rebuildObservabilityReadModels(db) {
   let dnsCount = 0;
   let deviceCount = 0;
   let alarmCount = 0;
+  let summaryCount = 0;
   const flowLimit = readModelLimit("GHOSTROUTE_READ_MODEL_FLOW_LIMIT", 5000);
   const dnsLimit = readModelLimit("GHOSTROUTE_READ_MODEL_DNS_LIMIT", 20000);
   const liveDnsLimit = readModelLimit("GHOSTROUTE_READ_MODEL_LIVE_DNS_LIMIT", 10000);
@@ -771,6 +942,7 @@ export function rebuildObservabilityReadModels(db) {
     db.prepare("delete from dns_query_log").run();
     db.prepare("delete from device_inventory").run();
     db.prepare("delete from alarm_events").run();
+    db.prepare("delete from console_page_summaries").run();
 
     const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
     const catalogMatch = buildCatalogMatcher(catalogRows);
@@ -998,13 +1170,31 @@ export function rebuildObservabilityReadModels(db) {
       JSON.stringify(15000),
       now
     );
+
+    const summarySourceVersion = compactSourceVersion(sourceVersion);
+    const healthSummary = buildPreparedHealthSummary(db, now);
+    const summaryInsert = db.prepare(`
+      insert or replace into console_page_summaries(page, source_version, rebuilt_at, payload_json)
+      values (?, ?, ?, ?)
+    `);
+    summaryInsert.run("health_mobile", summarySourceVersion, now, json(healthSummary));
+    summaryInsert.run("health_shell", summarySourceVersion, now, json(healthSummary));
+    summaryInsert.run("live_mobile", summarySourceVersion, now, json({
+      rebuiltAt: now,
+      snapshotTimes: healthSummary.snapshotTimes,
+      statusCards: healthSummary.statusCards,
+      alarmCounts: healthSummary.alarmCounts,
+      totals: healthSummary.totals,
+    }));
+    summaryCount = 3;
   })();
 
   writeReadModelState(db, "flow_sessions", sourceVersion, flowCount, startedAt);
   writeReadModelState(db, "dns_query_log", sourceVersion, dnsCount, startedAt);
   writeReadModelState(db, "device_inventory", sourceVersion, deviceCount, startedAt);
   writeReadModelState(db, "alarm_events", sourceVersion, alarmCount, startedAt);
-  return { flowCount, dnsCount, deviceCount, alarmCount, sourceVersion };
+  writeReadModelState(db, "console_page_summaries", sourceVersion, summaryCount, startedAt);
+  return { flowCount, dnsCount, deviceCount, alarmCount, summaryCount, sourceVersion };
 }
 
 function usefulDeviceLabel(row) {

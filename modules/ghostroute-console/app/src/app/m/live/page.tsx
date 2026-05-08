@@ -2,7 +2,7 @@ import { MobileShell } from "@/components/MobileShell";
 import { Pagination } from "@/components/Widgets";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { listLiveEvents } from "@/lib/server/selectors/live";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { mobilePageSize, MobileFlowList, MobileLiveList, MobileSection, routeFilterForm, scalar } from "../mobile-ui";
 
@@ -15,7 +15,7 @@ export default async function MobileLivePage({ searchParams }: { searchParams?: 
   const activityPageSize = mobilePageSize(scalar(params.activityPageSize));
   const livePage = listLiveEvents({ page, pageSize, filters });
   const activity = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 25, filters });
-  const model = buildShellModel(filters, { events: livePage.rows, flows: activity.rows });
+  const model = buildLightweightShellModel(filters, { events: livePage.rows, flows: activity.rows });
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
     trafficClass: filters.trafficClass !== "all" ? filters.trafficClass : undefined,

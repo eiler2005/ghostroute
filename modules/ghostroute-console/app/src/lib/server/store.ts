@@ -375,6 +375,12 @@ export function getDb() {
         value_json text not null,
         updated_at text not null
       );
+      create table if not exists console_page_summaries (
+        page text primary key,
+        source_version text not null default '',
+        rebuilt_at text not null,
+        payload_json text not null
+      );
     `);
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -460,6 +466,10 @@ export function getDb() {
     `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       6,
+      new Date().toISOString()
+    );
+    db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
+      7,
       new Date().toISOString()
     );
   }

@@ -221,6 +221,12 @@ function createSchema(db) {
       risk text not null default 'medium',
       evidence_json text not null default '{}'
     );
+    create table if not exists console_page_summaries (
+      page text primary key,
+      source_version text not null default '',
+      rebuilt_at text not null,
+      payload_json text not null
+    );
   `);
 }
 
@@ -501,6 +507,82 @@ function seed(db) {
     });
   }
 
+  const healthSummary = {
+    rebuiltAt: iso(now),
+    snapshotTimes: {
+      traffic_summary: iso(now, 500),
+      health: iso(now, 1100),
+      leaks: iso(now, 1200),
+      deploy_gate: iso(now, 1300),
+    },
+    statusCards: [
+      { label: "Router", status: "OK", detail: "RT-AX88U_PRO" },
+      { label: "Reality", status: "OK", detail: "home ingress / reality-out" },
+      { label: "DNS", status: "OK", detail: "dnscrypt + policy" },
+      { label: "IPv6", status: "OK", detail: "not in routing scope" },
+      { label: "Rule-set", status: "UNKNOWN", detail: "catalog mirror" },
+      { label: "Leaks", status: "WARN", detail: "1 signals" },
+    ],
+    alarmCounts: { total: 4, active: 4, critical: 0, warning: 1, info: 3 },
+    alarms: Array.from({ length: 4 }, (_, i) => ({
+      id: `test-seed:alarm:${i + 1}`,
+      collected_at: iso(now, i * 30000),
+      severity: i === 0 ? "warning" : "info",
+      source: "test-seed",
+      title: i === 0 ? "Synthetic DNS review signal" : `Synthetic ops signal ${i + 1}`,
+      status: "open",
+      evidence: "Local synthetic data for UI verification only.",
+      suggested_action: "Verify dense table paging and filters.",
+      confidence: "synthetic",
+      risk: i === 0 ? "medium" : "low",
+      evidence_json: { synthetic: true },
+    })),
+    deployGate: {
+      status: "OK",
+      mode: "readonly",
+      estimated_duration: "synthetic",
+      generated_at: iso(now, 1300),
+      checks: [
+        { id: "router_split", label: "router_split", component: "router", status: "OK", summary: "Synthetic split route canary passed.", message: "Synthetic split route canary passed.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+        { id: "vps_edge", label: "vps_edge", component: "vps", status: "OK", summary: "Synthetic VPS edge canary passed.", message: "Synthetic VPS edge canary passed.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+      ],
+    },
+    health: {
+      overall: "OK",
+      checks: [
+        { id: "router", label: "Router", probe: "router", status: "OK", summary: "Synthetic router probe.", message: "Synthetic router probe.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+        { id: "dns", label: "DNS", probe: "dns", status: "OK", summary: "Synthetic DNS probe.", message: "Synthetic DNS probe.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+      ],
+    },
+    leaks: {
+      overall: "WARN",
+      confidence: "synthetic",
+      leakSignals: 1,
+      evidenceRows: 2,
+      checks: [{ id: "dns_leak", label: "DNS leak", probe: "dns_leak", status: "WARN", summary: "Synthetic leak probe.", message: "Synthetic leak probe.", evidence: "seeded", suggested_action: "", confidence: "synthetic" }],
+      evidence: [
+        { id: "resolver", label: "Resolver", probe: "resolver", status: "UNKNOWN", summary: "Synthetic resolver evidence.", message: "Synthetic resolver evidence.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+        { id: "visible_ip", label: "Visible IP", probe: "visible_ip", status: "UNKNOWN", summary: "Synthetic visible IP evidence.", message: "Synthetic visible IP evidence.", evidence: "seeded", suggested_action: "", confidence: "synthetic" },
+      ],
+    },
+    totals: {
+      observedBytes: 734003200,
+      viaVpsBytes: 356515840,
+      directBytes: 251658240,
+      unknownBytes: 125829120,
+    },
+  };
+  const summaryStmt = db.prepare("insert into console_page_summaries(page, source_version, rebuilt_at, payload_json) values (?, ?, ?, ?)");
+  summaryStmt.run("health_mobile", "test-seed", iso(now), JSON.stringify(healthSummary));
+  summaryStmt.run("health_shell", "test-seed", iso(now), JSON.stringify(healthSummary));
+  summaryStmt.run("live_mobile", "test-seed", iso(now), JSON.stringify({
+    rebuiltAt: iso(now),
+    snapshotTimes: healthSummary.snapshotTimes,
+    statusCards: healthSummary.statusCards,
+    alarmCounts: healthSummary.alarmCounts,
+    totals: healthSummary.totals,
+  }));
+
   const stateStmt = db.prepare(
     "insert into read_model_state(model, source_version, rebuilt_at, row_count, duration_ms, status, detail) values (?, ?, ?, ?, ?, ?, ?)"
   );
@@ -508,6 +590,7 @@ function seed(db) {
   stateStmt.run("dns_query_log", "test-seed", iso(now), 260, 1, "ok", "local synthetic rows");
   stateStmt.run("device_inventory", "test-seed", iso(now), 12, 1, "ok", "local synthetic rows");
   stateStmt.run("alarm_events", "test-seed", iso(now), 4, 1, "ok", "local synthetic rows");
+  stateStmt.run("console_page_summaries", "test-seed", iso(now), 3, 1, "ok", "local synthetic rows");
 }
 
 resetDataDir();
@@ -519,4 +602,4 @@ db.transaction(() => seed(db))();
 db.close();
 
 console.log(`seeded GUI test DB: ${dbFile}`);
-console.log("rows: flow_sessions=320 dns_query_log=260 events=360 route_decisions=180 device_inventory=12 alarm_events=4");
+console.log("rows: flow_sessions=320 dns_query_log=260 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3");

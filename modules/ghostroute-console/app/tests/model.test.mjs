@@ -290,13 +290,59 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
-  assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 7").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
+  db.close();
+});
+
+test("observability rebuild writes capped prepared health summaries", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-summary-"));
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  ensureConsoleSchema(db);
+  const insertSnapshot = (type, collectedAt, payload) => {
+    const result = db
+      .prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)")
+      .run(type, collectedAt, "test", `${type}.json`, JSON.stringify(payload));
+    normalizeSnapshot(db, Number(result.lastInsertRowid), type, collectedAt, payload);
+  };
+  insertSnapshot("health", "2026-05-08T10:00:00Z", {
+    generated_at: "2026-05-08T10:00:00Z",
+    source: { command: "health" },
+    services: { router: "OK", reality: "OK", dns: "OK", ipv6: "OK", rule_set_sync: "WARN" },
+    router: { product: "RT-AX88U_PRO" },
+    checks: Array.from({ length: 25 }, (_, i) => ({ name: `health-${i}`, status: "OK", message: `probe ${i}` })),
+  });
+  insertSnapshot("leaks", "2026-05-08T10:01:00Z", {
+    generated_at: "2026-05-08T10:01:00Z",
+    source: { command: "leak-check" },
+    overall: "WARN",
+    confidence: "exact",
+    leaks: Array.from({ length: 12 }, (_, i) => ({ label: `leak-${i}`, status: "WARN", evidence: `signal ${i}` })),
+    checks: Array.from({ length: 12 }, (_, i) => ({ probe: `leak-check-${i}`, status: "WARN", message: `leak probe ${i}` })),
+    evidence: Array.from({ length: 12 }, (_, i) => ({ probe: `evidence-${i}`, evidence: `row ${i}` })),
+  });
+  insertSnapshot("deploy_gate", "2026-05-08T10:02:00Z", {
+    generated_at: "2026-05-08T10:02:00Z",
+    source: { command: "deploy-gate" },
+    overall_status: "WARN",
+    mode: "readonly",
+    checks: Array.from({ length: 12 }, (_, i) => ({ id: `deploy-${i}`, component: "test", status: "WARN", summary: `deploy check ${i}` })),
+  });
+  const result = rebuildObservabilityReadModels(db);
+  assert.equal(result.summaryCount, 3);
+  const row = db.prepare("select payload_json from console_page_summaries where page = 'health_mobile'").get();
+  assert.ok(row);
+  const summary = JSON.parse(row.payload_json);
+  assert.equal(summary.alarms.length, 10);
+  assert.equal(summary.deployGate.checks.length, 10);
+  assert.equal(summary.health.checks.length, 20);
+  assert.equal(summary.leaks.evidence.length, 10);
+  assert.ok(db.prepare("select 1 from read_model_state where model = 'console_page_summaries'").get());
   db.close();
 });
 
