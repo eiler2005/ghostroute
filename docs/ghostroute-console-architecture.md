@@ -244,8 +244,10 @@ The source strip renders them together as `build <commit> · <date>`, and
 `/api/health` exposes the same `runtime.buildCommit` and `runtime.buildAt`
 values. This makes it possible to confirm from the UI that the browser is
 seeing the freshly deployed container rather than a stale image or cached page.
-Playwright performance checks cover the main pages and JSON APIs with local
-budgets of 2.5 seconds for page content and 1.5 seconds for API responses.
+Playwright functional checks cover content, redirects, row selection and JSON
+contracts without timing assertions. Playwright performance checks are a separate
+local seeded-GUI suite that owns timing budgets: 2.5 seconds for page content and
+1.5 seconds for API responses.
 
 Snapshot ingestion has a small runtime contract gate before data reaches the
 UI read models. JSON reports must carry the common machine-contract fields
@@ -272,6 +274,8 @@ point toward static asset/auth/cache handling; hanging `?_rsc` requests point
 toward App Router navigation. Do not change Channel A/B/C, managed DNS,
 sing-box, dnsmasq or router firewall while investigating Console-only browser
 loading.
+Public/VPN curl checks are deploy diagnostics for the operator network path; they
+are not deterministic Playwright performance gates.
 
 The restricted SSH surface is `ghostroute_readonly` with forced-command
 whitelisting. Whitelisted commands must require `--json` and must remain
