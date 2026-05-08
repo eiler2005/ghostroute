@@ -3,13 +3,15 @@ import { ConfidenceBadge, EmptyState, Pagination, RawEvidence } from "@/componen
 import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
 import { buildCatalogModel } from "@/lib/server/selectors/catalog";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 
 export default async function CatalogPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
+  const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const model = buildCatalogModel(filters);
   const page = Math.max(1, Number.parseInt(Array.isArray(params.page) ? params.page[0] : params.page || "1", 10) || 1);
-  const pageSize = Math.min(1000, Math.max(50, Number.parseInt(Array.isArray(params.pageSize) ? params.pageSize[0] : params.pageSize || "100", 10) || 100));
+  const pageSize = boundedPageSize(Array.isArray(params.pageSize) ? params.pageSize[0] : params.pageSize, { desktop: 100, mobile: 25, min: 25, desktopMax: 1000, mobileMax: 25 }, mobile);
   const totalPages = Math.max(1, Math.ceil(model.catalog.length / pageSize));
   const effectivePage = Math.min(page, totalPages);
   const offset = (effectivePage - 1) * pageSize;
@@ -61,7 +63,7 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
             </>
           )}
         </section>
-        <aside className="card side-panel">
+        {mobile ? null : <aside className="card side-panel">
           <h2>Diff preview</h2>
           <div className="detail-list">
             {Object.entries(counts).map(([key, value]) => (
@@ -87,7 +89,7 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
             {model.catalogReviews.length === 0 ? <div className="subtle">No review actions yet.</div> : null}
           </div>
           <RawEvidence value={{ counts, candidates: preview, catalog: model.catalog.slice(0, 25) }} />
-        </aside>
+        </aside>}
       </div>
     </ConsoleShell>
   );

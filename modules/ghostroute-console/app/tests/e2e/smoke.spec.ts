@@ -33,13 +33,21 @@ test("dashboard shows traffic analytics in English", async ({ page }) => {
   await expect(page.locator("body")).not.toContainText("Трафик");
 });
 
-test("flow workbench exposes inline detail and gated evidence", async ({ page }) => {
+test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {
   await page.goto("/traffic");
   if (await page.getByText("No traffic rows").isVisible().catch(() => false)) {
     await expect(page.getByText("No traffic rows")).toBeVisible();
     return;
   }
   await expect(page.locator(".traffic-workbench")).toBeVisible();
+  if (isMobile) {
+    await expect(page.locator(".flow-detail-panel")).toHaveCount(0);
+    const secondRowLink = page.locator(".route-table-card tbody tr").nth(1).locator("a").first();
+    await secondRowLink.click();
+    await expect(page).toHaveURL(/flow=/);
+    await expect(page.locator(".route-table-card tbody tr.selected")).toHaveCount(1);
+    return;
+  }
   await expect(page.locator(".flow-detail-panel")).toBeVisible();
   await expect(page.locator(".flow-detail-panel")).toContainText("Why this route?");
   await expect(page.locator(".flow-detail-panel")).toContainText("Site / Operator view");
@@ -83,7 +91,7 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
   }
 });
 
-test("traffic classes and live cadence are explicit", async ({ page }) => {
+test("traffic classes and live cadence are explicit", async ({ page, isMobile }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Service/background traffic" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attribution" })).toBeVisible();
@@ -99,15 +107,15 @@ test("traffic classes and live cadence are explicit", async ({ page }) => {
   }
   await page.goto("/live");
   await expect(page.getByText("Автообновление около 10 минут")).toBeVisible();
-  await expect(page.getByText("Service/background live events")).toBeVisible();
+  if (!isMobile) await expect(page.getByText("Service/background live events")).toBeVisible();
 });
 
-test("live filters keep event pagination scoped", async ({ page }) => {
+test("live filters keep event pagination scoped", async ({ page, isMobile }) => {
   await page.goto("/live?client=__no_such_client__");
   await expect(page.getByRole("heading", { name: "Live event stream" })).toBeVisible();
   await expect(page.locator(".live-primary .dense-top-pager .pagination")).toContainText("Showing 0-0 of 0");
   await expect(page.locator(".live-primary-footer .pagination")).toContainText("Showing 0-0 of 0");
-  await expect(page.locator(".service-events-card .pagination")).toContainText("Showing 0-0 of 0");
+  if (!isMobile) await expect(page.locator(".service-events-card .pagination")).toContainText("Showing 0-0 of 0");
   await page.waitForTimeout(1200);
   await expect(page.locator(".live-primary .dense-top-pager .pagination")).toContainText("Showing 0-0 of 0");
   await expect(page.locator(".live-primary-footer .pagination")).toContainText("Showing 0-0 of 0");

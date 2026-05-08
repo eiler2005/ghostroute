@@ -5,6 +5,7 @@ import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, timeWithMillis
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -21,13 +22,14 @@ function hrefWithParams(path: string, params: Record<string, string | number | u
 
 export default async function LivePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
+  const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const eventsPage = Math.max(1, Number.parseInt(scalar(params.eventsPage) || "1", 10) || 1);
-  const eventsPageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.eventsPageSize) || "50", 10) || 50));
+  const eventsPageSize = boundedPageSize(scalar(params.eventsPageSize), { desktop: 50, mobile: 10, min: 10, desktopMax: 500, mobileMax: 10 }, mobile);
   const servicePage = Math.max(1, Number.parseInt(scalar(params.servicePage) || "1", 10) || 1);
-  const servicePageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.servicePageSize) || "50", 10) || 50));
+  const servicePageSize = boundedPageSize(scalar(params.servicePageSize), { desktop: 50, mobile: 10, min: 10, desktopMax: 500, mobileMax: 10 }, mobile);
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
-  const activityPageSize = Math.min(150, Math.max(25, Number.parseInt(scalar(params.activityPageSize) || "50", 10) || 50));
+  const activityPageSize = boundedPageSize(scalar(params.activityPageSize), { desktop: 50, mobile: 10, min: 10, desktopMax: 150, mobileMax: 10 }, mobile);
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: eventsPageSize, filters });
   const serviceEvents = listLiveEvents({ page: servicePage, pageSize: servicePageSize, filters: { ...filters, trafficClass: "service_background" } });
   const trafficPage = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 150, maxRows: 4500, filters });
@@ -117,7 +119,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         </div>
       </div>
 
-      <section className="card live-stream-card service-events-card">
+      {mobile ? null : <section className="card live-stream-card service-events-card">
         <div className="live-stream-toolbar">
           <div className="live-stream-title">
             <h2>Service/background live events</h2>
@@ -183,9 +185,9 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             extraParams={{ ...filterParams, eventsPage: liveEvents.page, activityPage: trafficPage.page }}
           />
         </div>
-      </section>
+      </section>}
 
-      <div className="grid two live-secondary-grid">
+      {mobile ? null : <div className="grid two live-secondary-grid">
         <section className="card live-stream-card client-activity-card">
           <div className="live-stream-toolbar">
             <div className="live-stream-title">
@@ -258,9 +260,9 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             </div>
           )}
         </aside>
-      </div>
+      </div>}
 
-      <div className="grid three" style={{ marginTop: 14 }}>
+      {mobile ? null : <div className="grid three" style={{ marginTop: 14 }}>
         <section className="card">
           <h2>Topology</h2>
           <div className="live-topology">
@@ -301,7 +303,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
             </div>
           )}
         </section>
-      </div>
+      </div>}
     </ConsoleShell>
   );
 }
