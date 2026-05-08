@@ -312,12 +312,14 @@ from the public Console URL.
   local device identifiers.
 
 Mobile Safari/iPhone gets a separate ultra-light Console surface under `/m`.
-Mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/live` and `/catalog`
-redirect to `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/live` and
-`/m/catalog` unless `desktop=1` is present. The `/m` pages use the same
-read-only snapshots and selectors, but render a single compact list per page,
-cap page size to 25 rows, omit side panels/raw evidence/charts, and use plain
-document links. Each mobile page includes a `Desktop version` link back to the
+Mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`, `/live` and
+`/catalog` redirect to `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`,
+`/m/live` and `/m/catalog` unless `desktop=1` is present. The `/m` pages use the
+same read-only snapshots and selectors, cap page size to 25 rows, omit side
+panels/raw evidence/charts, and use plain document links. `/m/health` exposes a
+compact Health Center plus Alarm Center, and `/m/live` includes a compact Client
+activity summary next to the live event stream. Each mobile page includes a
+`Desktop version` link back to the
 full workbench with `desktop=1`. No `m.` subdomain is used in v1, so nginx/TLS
 and Basic Auth remain unchanged. The VPS proxy forwards the external host and
 port through `X-Forwarded-*` headers; mobile redirects use those headers so they

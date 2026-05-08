@@ -202,13 +202,15 @@ Settings load only the data each view renders.
 
 Mobile browsers, especially iPhone Safari behind the Console auth/proxy path,
 use a separate `/m` surface rather than the desktop workbench shell. Middleware
-redirects mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/live` and
-`/catalog` to matching `/m` pages, while `desktop=1`, `/api/*`, `/_next/*`,
-`/m/*` and shared route-detail URLs bypass the redirect. The mobile pages use
-the same read-only selectors but render one compact list per page, cap page
-size to 25 rows, omit side panels/raw evidence/charts and keep navigation as
-plain document links. No `m.` subdomain is used in v1, so public nginx/TLS and
-Basic Auth configuration stay unchanged.
+redirects mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`,
+`/live` and `/catalog` to matching `/m` pages, while `desktop=1`, `/api/*`,
+`/_next/*`, `/m/*` and shared route-detail URLs bypass the redirect. The mobile
+pages use the same read-only selectors, cap page size to 25 rows, omit side
+panels/raw evidence/charts and keep navigation as plain document links. Mobile
+Health Center renders status cards and Alarm Center from the same health/alarm
+read models; mobile Live renders the event stream plus a compact Client activity
+summary from `flow_sessions`. No `m.` subdomain is used in v1, so public
+nginx/TLS and Basic Auth configuration stay unchanged.
 
 Read-only derived selectors use a short in-process cache inside the Console
 Node process. The default TTL is 60 seconds and can be disabled with

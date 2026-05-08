@@ -3,10 +3,11 @@ import { bytes } from "@/components/Widgets";
 import { listClientInventory } from "@/lib/server/selectors/clients";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listLiveEvents } from "@/lib/server/selectors/live";
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
-import { MobileClientList, MobileDnsList, MobileFlowList, MobileLiveList, MobileSection } from "./mobile-ui";
+import { MobileAlarmList, MobileClientList, MobileDnsList, MobileFlowList, MobileLiveList, MobileSection } from "./mobile-ui";
 
 export default async function MobileHomePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
@@ -16,6 +17,7 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
   const dnsRows = listDnsQueryLog({ page: 1, pageSize: 5, filters: { ...filters, trafficClass: "all" } }).rows;
   const clients = listClientInventory({ page: 1, pageSize: 5, filters }).rows;
   const live = listLiveEvents({ page: 1, pageSize: 5, filters }).rows;
+  const alarms = listAlarmEvents({ page: 1, pageSize: 5, filters, status: "open" }).rows;
   return (
     <MobileShell active="/m" model={model} filters={filters} desktopPath="/">
       <section className="mobile-hero">
@@ -30,6 +32,7 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
       <MobileSection title="Recent flows" href="/m/traffic"><MobileFlowList rows={flows} /></MobileSection>
       <MobileSection title="DNS interest" href="/m/dns"><MobileDnsList rows={dnsRows} /></MobileSection>
       <MobileSection title="Top clients" href="/m/clients"><MobileClientList rows={clients} /></MobileSection>
+      <MobileSection title="Health Center" href="/m/health"><MobileAlarmList rows={alarms} /></MobileSection>
       <MobileSection title="Live events" href="/m/live"><MobileLiveList rows={live} /></MobileSection>
     </MobileShell>
   );

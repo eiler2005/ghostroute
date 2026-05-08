@@ -6,6 +6,7 @@ const mobileRedirects: Record<string, string> = {
   "/traffic": "/m/traffic",
   "/dns": "/m/dns",
   "/clients": "/m/clients",
+  "/health": "/m/health",
   "/live": "/m/live",
   "/catalog": "/m/catalog",
 };
@@ -179,8 +180,15 @@ test("mobile serves compact heavy console pages", async ({ page, isMobile }) => 
   await page.goto("/live");
   await expect(page).toHaveURL(/\/m\/live/);
   await expect(page.getByRole("heading", { name: "Live event stream" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Client activity summary" })).toBeVisible();
   await expect(page.locator(".service-events-card")).toHaveCount(0);
   await expect(page.locator(".live-secondary-grid")).toHaveCount(0);
+
+  await page.goto("/health");
+  await expect(page).toHaveURL(/\/m\/health/);
+  await expect(page.getByRole("heading", { name: "Health Center" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Alarm Center" })).toBeVisible();
+  await expect(page.locator(".health-layout > .side-panel")).toHaveCount(0);
 
   await page.goto("/catalog");
   await expect(page).toHaveURL(/\/m\/catalog/);
@@ -229,6 +237,9 @@ test("mobile redirect preserves bypass and safe routes", async ({ page, request,
 
   await page.goto("/m/live");
   await expect(page).toHaveURL(/\/m\/live/);
+
+  await page.goto("/health");
+  await expect(page).toHaveURL(/\/m\/health/);
 });
 
 test("api smoke endpoints respond", async ({ request }) => {
