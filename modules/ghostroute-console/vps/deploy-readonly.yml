@@ -299,8 +299,8 @@
           GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS=45
           GHOSTROUTE_HOURLY_RETENTION_DAYS=30
           GHOSTROUTE_DB_BACKUP_MODE=daily
-          GHOSTROUTE_BACKUP_RETENTION_DAYS=2
-          GHOSTROUTE_DB_BACKUP_MAX_FILES=2
+          GHOSTROUTE_BACKUP_RETENTION_DAYS=1
+          GHOSTROUTE_DB_BACKUP_MAX_FILES=1
           GHOSTROUTE_COLLECTOR_WRITER_LOCK_WAIT_SECONDS=120
           GHOSTROUTE_READ_MODEL_FLOW_LIMIT=5000
           GHOSTROUTE_READ_MODEL_DNS_LIMIT=20000
@@ -414,6 +414,42 @@
         - name: Fail after Console rollback attempt
           ansible.builtin.fail:
             msg: "Console start or smoke failed; rollback to {{ console_rollback_tag }} was attempted."
+
+    - name: Remove stale Console rollback and commit image tags after successful smoke
+      ansible.builtin.shell: |
+        set -eu
+        active_ids="$(docker ps --filter name=ghostroute-console --format '{% raw %}{{ .ID }}{% endraw %}' \
+          | xargs -r docker inspect --format '{% raw %}{{ .Image }}{% endraw %}' \
+          | sed 's/^sha256://' \
+          | sort -u)"
+        tmp_refs="$(mktemp)"
+        docker image ls ghostroute-console --format '{% raw %}{{ .ID }}	{{ .Repository }}:{{ .Tag }}{% endraw %}' \
+          | while IFS="$(printf '\t')" read -r image_id image_ref; do
+              case "$image_ref" in
+                ghostroute-console:latest|"{{ console_rollback_tag }}")
+                  continue
+                  ;;
+                ghostroute-console:rollback-*|ghostroute-console:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+                  ;;
+                *)
+                  continue
+                  ;;
+              esac
+              if printf '%s\n' "$active_ids" | grep -qx "$image_id"; then
+                continue
+              fi
+              printf '%s\n' "$image_ref" >> "$tmp_refs"
+            done
+        if [ -s "$tmp_refs" ]; then
+          xargs -r docker image rm < "$tmp_refs"
+        fi
+        rm -f "$tmp_refs"
+      changed_when: false
+
+    - name: Prune unused Console Docker build cache after successful smoke
+      ansible.builtin.command:
+        cmd: docker builder prune -af
+      changed_when: false
 
     - name: Show Console local status
       ansible.builtin.debug:
