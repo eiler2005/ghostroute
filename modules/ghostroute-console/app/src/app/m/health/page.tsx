@@ -48,6 +48,12 @@ function compactJson(value: unknown) {
   }
 }
 
+function compactText(value: unknown, limit = 260) {
+  const text = compactJson(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1)}…`;
+}
+
 export default async function MobileHealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
@@ -129,8 +135,8 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
                   <span>{row.source || "console"}</span>
                   <span>{row.status || "open"}</span>
                 </div>
-                <p>{row.evidence || "no evidence attached"}</p>
-                {row.suggested_action ? <small>{row.suggested_action}</small> : null}
+                <p>{compactText(row.evidence || "no evidence attached")}</p>
+                {row.suggested_action ? <small>{compactText(row.suggested_action, 220)}</small> : null}
               </div>
             ))}
           </div>
@@ -159,9 +165,9 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
                     <strong>{row.component ? `${row.component} / ${row.id}` : row.id || "deploy check"}</strong>
                     <span>{row.status || "UNKNOWN"}</span>
                   </div>
-                  <p>{row.summary || "no summary"}</p>
-                  {row.evidence ? <small>{row.evidence}</small> : null}
-                  {row.suggested_action ? <small>{row.suggested_action}</small> : null}
+                  <p>{compactText(row.summary || "no summary", 220)}</p>
+                  {row.evidence ? <small>{compactText(row.evidence, 220)}</small> : null}
+                  {row.suggested_action ? <small>{compactText(row.suggested_action, 220)}</small> : null}
                 </div>
               ))}
             </div>
@@ -182,8 +188,8 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
               <div className={`mobile-health-row mobile-health-${statusTone(row.status)}`} key={`${row.label || row.probe || "check"}-${idx}`}>
                 <div className="mobile-health-main">
                   <strong>{row.label || row.probe || "probe"}</strong>
-                  <small>{row.message || compactJson(row.evidence_json || row.evidence) || "not observed"}</small>
-                  {row.evidence ? <em>{compactJson(row.evidence)}</em> : null}
+                  <small>{compactText(row.message || row.evidence_json || row.evidence || "not observed", 220)}</small>
+                  {row.evidence ? <em>{compactText(row.evidence, 260)}</em> : null}
                 </div>
                 <span>{row.status || "UNKNOWN"}</span>
               </div>
@@ -206,10 +212,16 @@ export default async function MobileHealthPage({ searchParams }: { searchParams?
               <span>evidence <b>{(leakSnapshot.evidence || []).length}</b></span>
               <span>confidence <b>{leakSnapshot.confidence || "unknown"}</b></span>
             </div>
-            <details className="mobile-details">
-              <summary>Raw leak evidence</summary>
-              <pre>{JSON.stringify({ checks: model.snapshots.leaks?.payload?.checks || [], leakSnapshot }, null, 2)}</pre>
-            </details>
+            <div className="mobile-health-list">
+              {(leakSnapshot.evidence || []).map((row: Record<string, any>, idx: number) => (
+                <div className="mobile-health-row mobile-health-unknown" key={`${row.probe || "evidence"}-${idx}`}>
+                  <div className="mobile-health-main">
+                    <strong>{row.probe || "evidence"}</strong>
+                    <small>{compactText(row.evidence || row.message || "not observed", 240)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </section>
