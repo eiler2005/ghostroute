@@ -152,6 +152,34 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
   await expect(page.getByText("Device Inventory")).toBeVisible();
 });
 
+test("mobile serves compact heavy console pages", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "mobile-only compact SSR smoke");
+
+  await page.goto("/traffic");
+  await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
+  await expect(page.locator(".flow-detail-panel")).toHaveCount(0);
+  expect(await page.locator(".route-table-card tbody tr").count()).toBeLessThanOrEqual(25);
+
+  await page.goto("/dns");
+  await expect(page.getByRole("heading", { name: "DNS Query Log" })).toBeVisible();
+  await expect(page.locator(".dns-insights")).toHaveCount(0);
+  expect(await page.locator(".dns-events-table tbody tr").count()).toBeLessThanOrEqual(25);
+
+  await page.goto("/clients");
+  await expect(page.getByRole("heading", { name: "Device Inventory" })).toBeVisible();
+  await expect(page.locator(".clients-layout > .side-panel")).toHaveCount(0);
+  await expect(page.locator(".clients-table tbody tr").first()).toBeVisible();
+
+  await page.goto("/live");
+  await expect(page.getByRole("heading", { name: "Live event stream" })).toBeVisible();
+  await expect(page.locator(".service-events-card")).toHaveCount(0);
+  await expect(page.locator(".live-secondary-grid")).toHaveCount(0);
+
+  await page.goto("/catalog");
+  await expect(page.getByRole("heading", { name: "Catalog" })).toBeVisible();
+  await expect(page.locator(".side-panel")).toHaveCount(0);
+});
+
 test("api smoke endpoints respond", async ({ request }) => {
   for (const path of ["/api/dashboard", "/api/flows", "/api/dns", "/api/alarms", "/api/clients", "/api/health", "/api/catalog", "/api/live", "/api/budget", "/api/settings", "/api/reports/llm-safe?format=json", "/api/notifications", "/api/notifications/settings", "/api/audit"]) {
     const response = await request.get(path);

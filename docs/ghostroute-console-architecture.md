@@ -197,6 +197,14 @@ use scoped read models rather than the full report model: Dashboard, Flow
 Explorer, DNS Query Log, Clients, Health, Catalog, Budget, Live, Reports and
 Settings load only the data each view renders.
 
+Mobile browsers, especially iPhone Safari behind the Console auth/proxy path,
+receive an additional compact SSR profile based on mobile request headers. The
+profile keeps the same route URLs and filters but caps first-page rows and
+omits heavy secondary panels on Flow Explorer, DNS Query Log, Clients, Live and
+Catalog. Desktop browsers keep the full workbench and side panels. Sidebar
+navigation deliberately uses plain document links rather than Next client-side
+navigation so taps on mobile behave the same as opening the path directly.
+
 Read-only derived selectors use a short in-process cache inside the Console
 Node process. The default TTL is 60 seconds and can be disabled with
 `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys include the latest
@@ -205,10 +213,9 @@ identity where needed, so new collected data naturally moves the UI to a new
 cache key. Cached selectors cover heavy flow, DNS, alarm, client, client
 activity and live-event lists, plus the page models for every sidebar view.
 Action/write endpoints either bypass this cache or clear it after a state
-change. The browser also runs a small idle warmup after the first Console page:
-it prefetches the main sidebar routes and warms the matching JSON APIs, so the
-next navigation commonly hits both browser prefetch and server-side derived
-cache.
+change. Console intentionally avoids browser prefetch for the heavy sidebar
+views; warmup made mobile Safari less predictable and could leave the operator
+staring at a navigation fallback even though direct URLs worked.
 
 Each deployed build carries both a short git commit and a UTC build timestamp.
 The source strip renders them together as `build <commit> · <date>`, and
