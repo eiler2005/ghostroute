@@ -1,35 +1,230 @@
 import { MobileShell } from "@/components/MobileShell";
+import { shortDateTime } from "@/components/Widgets";
 import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors/health";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
-import { MobileAlarmList, MobileHealthStatusList, MobileSection, Pagination, scalar, mobilePageSize } from "../mobile-ui";
+import { Pagination, scalar, mobilePageSize } from "../mobile-ui";
+
+function statusTone(status?: string) {
+  const normalized = String(status || "unknown").toLowerCase();
+  if (["ok", "healthy", "pass", "passed", "fresh"].includes(normalized)) return "ok";
+  if (["critical", "crit", "fail", "failed", "down"].includes(normalized)) return "critical";
+  if (["warning", "warn", "stale", "degraded", "attention", "review"].includes(normalized)) return "warning";
+  return "unknown";
+}
+
+function alarmTone(row: Record<string, any>) {
+  return statusTone(row.severity || row.status || row.risk);
+}
+
+function isControlMachineOnlyGate(row: Record<string, any>) {
+  return String(row.id || "").startsWith("vps_edge_") && String(row.evidence || "").includes("ansible_or_vault=missing");
+}
+
+function displayDeployGateCheck(row: Record<string, any>) {
+  if (!isControlMachineOnlyGate(row)) return row;
+  return {
+    ...row,
+    status: "N/A",
+    summary: String(row.summary || "").replace(/^Deploy gate failed:\s*/i, "") || "Control-machine-only check not available inside Console collector",
+    suggested_action: "Run the deploy gate from the GhostRoute control machine with Vault access.",
+  };
+}
+
+function deployGateStatus(rows: Array<Record<string, any>>, fallback?: string) {
+  const visibleRows = rows.map(displayDeployGateCheck);
+  if (visibleRows.some((row) => row.status === "CRIT")) return "CRIT";
+  if (visibleRows.some((row) => row.status === "WARN")) return "WARN";
+  if (visibleRows.some((row) => row.status === "OK")) return "OK";
+  return fallback || "UNKNOWN";
+}
+
+function compactJson(value: unknown) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
 
 export default async function MobileHealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
-  const status = scalar(params.status) || "open";
+  const status = scalar(params.status) || "active";
   const alarms = listAlarmEvents({ page, pageSize, filters, status });
   const model = buildHealthModel(filters);
-  const critical = alarms.rows.filter((row) => row.severity === "critical").length;
-  const warning = alarms.rows.filter((row) => row.severity === "warning").length;
+  const critical = model.alerts.filter((row) => row.severity === "critical").length;
+  const warning = model.alerts.filter((row) => row.severity === "warning").length;
+  const checks = [
+    ...(model.snapshots.health?.payload?.checks || []),
+    ...(model.snapshots.leaks?.payload?.checks || []),
+  ];
+  const deployGateSnapshot = model.snapshots.deploy_gate?.payload;
+  const deployGateChecks = (deployGateSnapshot?.checks || []).map(displayDeployGateCheck);
+  const deployStatus = deployGateStatus(deployGateChecks, deployGateSnapshot?.overall_status || "UNKNOWN");
+  const leakSnapshot = model.snapshots.leaks?.payload;
+  const overall = model.statusCards.some((row) => statusTone(row.status) === "critical")
+    ? "Attention"
+    : model.alerts.length > 0
+      ? "Review"
+      : "OK";
 
   return (
     <MobileShell active="/m/health" model={model} filters={filters} desktopPath="/health">
-      <section className="mobile-kpis">
-        <div><span>Health</span><strong>{model.statusCards.some((row) => row.status === "critical" || row.status === "fail") ? "Attention" : "OK"}</strong></div>
-        <div><span>Critical</span><strong>{critical}</strong></div>
-        <div><span>Warnings</span><strong>{warning}</strong></div>
+      <section className={`mobile-health-hero mobile-health-${statusTone(overall)}`}>
+        <div>
+          <h1>Health Center</h1>
+          <p>Remote triage view for system status, collector freshness and actionable alarms.</p>
+        </div>
+        <strong>{overall}</strong>
       </section>
 
-      <MobileSection title="Health Center" detail={`${model.statusCards.length} checks`}>
-        <MobileHealthStatusList rows={model.statusCards} />
-      </MobileSection>
+      <section className="mobile-health-summary">
+        <span>Critical <b>{critical}</b></span>
+        <span>Warnings <b>{warning}</b></span>
+        <span>Open signals <b>{model.alerts.length}</b></span>
+        <span>Freshness <b>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m`}</b></span>
+      </section>
 
-      <MobileSection title="Alarm Center" detail={`${alarms.total} ${status} alarms`}>
-        <MobileAlarmList rows={alarms.rows} />
+      <section className="mobile-status-card-grid" aria-label="Health status summary">
+        {model.statusCards.map((card) => (
+          <div className={`mobile-status-card mobile-health-${statusTone(card.status)}`} key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.status || "UNKNOWN"}</strong>
+            <small>{card.detail || "not observed"}</small>
+          </div>
+        ))}
+      </section>
+
+      <section className="mobile-flat-card">
+        <div className="mobile-flat-title">
+          <h2>Alarm Center</h2>
+          <span>{alarms.total} {status} alarms</span>
+        </div>
+        <form className="mobile-filter mobile-filter-grid" action="/m/health">
+          <input name="search" defaultValue={filters.search || ""} placeholder="Search alarms" />
+          <select name="status" defaultValue={status}>
+            <option value="active">Active</option>
+            <option value="open">Open</option>
+            <option value="acknowledged">Acked</option>
+            <option value="snoozed">Snoozed</option>
+            <option value="all">All</option>
+          </select>
+          <button type="submit">Apply</button>
+        </form>
+        {alarms.rows.length === 0 ? (
+          <div className="mobile-empty">No alarm rows.</div>
+        ) : (
+          <div className="mobile-health-list">
+            {alarms.rows.map((row) => (
+              <div className={`mobile-alarm-row mobile-health-${alarmTone(row)}`} key={row.id || `${row.source}-${row.title}`}>
+                <div className="mobile-alarm-head">
+                  <strong>{row.title || "Alarm"}</strong>
+                  <span>{row.severity || row.status || "info"}</span>
+                </div>
+                <div className="mobile-alarm-meta">
+                  <span>{row.source || "console"}</span>
+                  <span>{row.status || "open"}</span>
+                </div>
+                <p>{row.evidence || "no evidence attached"}</p>
+                {row.suggested_action ? <small>{row.suggested_action}</small> : null}
+              </div>
+            ))}
+          </div>
+        )}
         <Pagination basePath="/m/health" page={alarms.page} pageSize={alarms.pageSize} total={alarms.total} totalPages={alarms.totalPages} extraParams={{ status }} />
-      </MobileSection>
+      </section>
+
+      <section className="mobile-flat-card">
+        <div className="mobile-flat-title">
+          <h2>Deploy Gate</h2>
+          <span className={`mobile-inline-status mobile-health-${statusTone(deployStatus)}`}>{deployStatus}</span>
+        </div>
+        {!deployGateSnapshot ? (
+          <div className="mobile-empty">No deploy-gate snapshot.</div>
+        ) : (
+          <>
+            <div className="mobile-compact-meta">
+              <span>mode <b>{deployGateSnapshot.mode || "unknown"}</b></span>
+              <span>duration <b>{deployGateSnapshot.estimated_duration || "n/a"}</b></span>
+              <span>generated <b>{deployGateSnapshot.generated_at ? shortDateTime(deployGateSnapshot.generated_at) : "n/a"}</b></span>
+            </div>
+            <div className="mobile-health-list">
+              {deployGateChecks.map((row: Record<string, any>) => (
+                <div className={`mobile-alarm-row mobile-health-${statusTone(row.status)}`} key={row.id || row.summary}>
+                  <div className="mobile-alarm-head">
+                    <strong>{row.component ? `${row.component} / ${row.id}` : row.id || "deploy check"}</strong>
+                    <span>{row.status || "UNKNOWN"}</span>
+                  </div>
+                  <p>{row.summary || "no summary"}</p>
+                  {row.evidence ? <small>{row.evidence}</small> : null}
+                  {row.suggested_action ? <small>{row.suggested_action}</small> : null}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="mobile-flat-card">
+        <div className="mobile-flat-title">
+          <h2>Health Center</h2>
+          <span>{checks.length} probes</span>
+        </div>
+        {checks.length === 0 ? (
+          <div className="mobile-empty">No factual health checks.</div>
+        ) : (
+          <div className="mobile-health-list">
+            {checks.map((row: Record<string, any>, idx: number) => (
+              <div className={`mobile-health-row mobile-health-${statusTone(row.status)}`} key={`${row.label || row.probe || "check"}-${idx}`}>
+                <div className="mobile-health-main">
+                  <strong>{row.label || row.probe || "probe"}</strong>
+                  <small>{row.message || compactJson(row.evidence_json || row.evidence) || "not observed"}</small>
+                  {row.evidence ? <em>{compactJson(row.evidence)}</em> : null}
+                </div>
+                <span>{row.status || "UNKNOWN"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mobile-flat-card">
+        <div className="mobile-flat-title">
+          <h2>Leak-check evidence</h2>
+          <span className={`mobile-inline-status mobile-health-${statusTone(leakSnapshot?.overall)}`}>{leakSnapshot?.overall || "UNKNOWN"}</span>
+        </div>
+        {!leakSnapshot ? (
+          <div className="mobile-empty">No leak-check snapshot.</div>
+        ) : (
+          <>
+            <div className="mobile-compact-meta">
+              <span>signals <b>{(leakSnapshot.leaks || []).length}</b></span>
+              <span>evidence <b>{(leakSnapshot.evidence || []).length}</b></span>
+              <span>confidence <b>{leakSnapshot.confidence || "unknown"}</b></span>
+            </div>
+            <details className="mobile-details">
+              <summary>Raw leak evidence</summary>
+              <pre>{JSON.stringify({ checks: model.snapshots.leaks?.payload?.checks || [], leakSnapshot }, null, 2)}</pre>
+            </details>
+          </>
+        )}
+      </section>
+
+      <section className="mobile-flat-card">
+        <div className="mobile-flat-title">
+          <h2>Freshness</h2>
+          <span>{model.freshnessStatus}</span>
+        </div>
+        <div className="mobile-compact-meta">
+          <span>latest <b>{model.freshnessMinutes === null ? "n/a" : `${model.freshnessMinutes}m ago`}</b></span>
+          <span>threshold <b>{model.staleThresholdMinutes || 75}m</b></span>
+          <span>open signals <b>{model.alerts.length}</b></span>
+        </div>
+      </section>
     </MobileShell>
   );
 }
