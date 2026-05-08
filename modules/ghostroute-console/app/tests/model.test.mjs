@@ -25,7 +25,7 @@ const {
   trafficDisplayDestination,
 } = trafficWindowModule;
 const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
-const { buildDashboardAnalyticsFromRows, isMobileTrafficRow } = dashboardAnalyticsModule;
+const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
@@ -425,6 +425,7 @@ test("traffic class separates client, service background and attribution gaps", 
 test("dashboard analytics derives traffic charts quotas and mobile LTE usage from flows", () => {
   const rows = [
     { client: "Laptop", channel: "Home Wi-Fi/LAN", destination: "telegram.org", route: "VPS", bytes: 100, last_seen: "2026-05-07T09:00:00Z" },
+    { client: "Laptop", channel: "Home Wi-Fi/LAN", destination: "ai.test", route: "Mixed", bytes: 1000, evidence_json: JSON.stringify({ via_vps_bytes: 700, direct_bytes: 250 }), last_seen: "2026-05-07T09:30:00Z" },
     { client: "Phone", channel: "C/Mobile LTE", destination: "youtube.test", route: "Direct", bytes: 50, last_seen: "2026-05-07T10:00:00Z" },
     { client: "Phone", channel: "Channel B", destination: "telegram.org", route: "VPS", bytes: 25, last_seen: "2026-05-06T10:00:00Z" },
     { client: "Tablet", channel: "Home Wi-Fi/LAN", destination: "unknown destination", route: "Unknown", bytes: 10, last_seen: "2026-05-07T11:00:00Z" },
@@ -437,13 +438,17 @@ test("dashboard analytics derives traffic charts quotas and mobile LTE usage fro
     lteQuotaGb: 1,
     resetDay: 1,
   });
-  assert.equal(analytics.trafficToday.totalBytes, 160);
-  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 100);
-  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.directBytes, 0), 50);
-  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.unknownBytes, 0), 10);
+  assert.deepEqual(routeByteSplit(rows[1]), { totalBytes: 1000, viaVpsBytes: 700, directBytes: 250, unknownBytes: 50 });
+  assert.equal(analytics.trafficToday.totalBytes, 1160);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 800);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.directBytes, 0), 300);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.unknownBytes, 0), 60);
   assert.equal(analytics.topClients[0].label, "Laptop");
-  assert.equal(analytics.topDestinations[0].label, "telegram.org");
-  assert.equal(analytics.quota.vps.usedBytes, 125);
+  assert.equal(analytics.topClients[0].viaVpsBytes, 800);
+  assert.equal(analytics.topClients[0].directBytes, 250);
+  assert.equal(analytics.topClients[0].unknownBytes, 50);
+  assert.equal(analytics.topDestinations[0].label, "ai.test");
+  assert.equal(analytics.quota.vps.usedBytes, 825);
   assert.equal(analytics.quota.lte.usedBytes, 75);
   assert.equal(analytics.usage.points.at(-1).vpsForecastBytes > analytics.quota.vps.usedBytes, true);
   assert.equal(isMobileTrafficRow({ channel: "A/Home Reality", client: "mobile-client-04" }), true);

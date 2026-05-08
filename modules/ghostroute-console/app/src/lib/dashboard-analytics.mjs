@@ -1,5 +1,3 @@
-const ROUTE_ORDER = ["VPS", "Direct", "Mixed", "Unknown"];
-
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;
   return String(value);
@@ -12,6 +10,77 @@ function number(value) {
 
 function rowBytes(row) {
   return number(row?.bytes || row?.total_bytes);
+}
+
+function hasNumber(value) {
+  return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    if (hasNumber(value)) return number(value);
+  }
+  return 0;
+}
+
+function parseObject(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function rowEvidence(row) {
+  return {
+    ...parseObject(row?.raw),
+    ...parseObject(row?.evidence),
+    ...parseObject(row?.evidence_json),
+  };
+}
+
+export function routeByteSplit(row) {
+  const evidence = rowEvidence(row);
+  const totalBytes = rowBytes(row);
+  const explicitVps = hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes)
+    || hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes);
+  const explicitDirect = hasNumber(row?.direct_bytes) || hasNumber(row?.wan_bytes)
+    || hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes);
+  const explicitUnknown = hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes)
+    || hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes);
+  let viaVpsBytes = firstNumber(row?.via_vps_bytes, row?.reality_bytes, evidence.via_vps_bytes, evidence.reality_bytes);
+  let directBytes = firstNumber(row?.direct_bytes, row?.wan_bytes, evidence.direct_bytes, evidence.wan_bytes);
+  let unknownBytes = firstNumber(row?.unknown_bytes, row?.unresolved_bytes, evidence.unknown_bytes, evidence.unresolved_bytes);
+
+  if (!explicitVps && !explicitDirect && !explicitUnknown) {
+    const route = text(row?.route, "Unknown").toLowerCase();
+    if (route === "vps") viaVpsBytes = totalBytes;
+    else if (route === "direct") directBytes = totalBytes;
+    else unknownBytes = totalBytes;
+  } else if (!explicitUnknown) {
+    unknownBytes = Math.max(0, totalBytes - viaVpsBytes - directBytes);
+  }
+
+  let splitSum = viaVpsBytes + directBytes + unknownBytes;
+  if (splitSum < totalBytes) {
+    unknownBytes += totalBytes - splitSum;
+    splitSum = totalBytes;
+  }
+  if (splitSum > totalBytes && unknownBytes > 0) {
+    const overflow = Math.min(unknownBytes, splitSum - totalBytes);
+    unknownBytes -= overflow;
+  }
+
+  return {
+    totalBytes,
+    viaVpsBytes,
+    directBytes,
+    unknownBytes,
+  };
 }
 
 function rowTime(row) {
@@ -53,23 +122,32 @@ function hourKey(value, now = new Date()) {
   return parts ? `${parts.hour}:00` : "";
 }
 
-function addRouteBytes(target, route, bytes) {
-  target.totalBytes += bytes;
-  if (route === "VPS") target.viaVpsBytes += bytes;
-  else if (route === "Direct") target.directBytes += bytes;
-  else target.unknownBytes += bytes;
-}
-
-function routeRank(value) {
-  const idx = ROUTE_ORDER.indexOf(value);
-  return idx >= 0 ? idx : ROUTE_ORDER.length;
+function addRouteBytes(target, row) {
+  const split = routeByteSplit(row);
+  target.totalBytes += split.totalBytes;
+  target.viaVpsBytes += split.viaVpsBytes;
+  target.directBytes += split.directBytes;
+  target.unknownBytes += split.unknownBytes;
 }
 
 function dominantRoute(routes) {
   const clean = Array.from(routes).filter(Boolean);
   if (clean.length === 0) return "Unknown";
   if (clean.length === 1) return clean[0];
-  return clean.sort((a, b) => routeRank(a) - routeRank(b))[0] || "Mixed";
+  return "Mixed";
+}
+
+function routeFromSplit(row) {
+  const split = routeByteSplit(row);
+  const hasVps = split.viaVpsBytes > 0;
+  const hasDirect = split.directBytes > 0;
+  const hasUnknown = split.unknownBytes > 0;
+  const count = [hasVps, hasDirect, hasUnknown].filter(Boolean).length;
+  if (count > 1) return "Mixed";
+  if (hasVps) return "VPS";
+  if (hasDirect) return "Direct";
+  if (hasUnknown) return "Unknown";
+  return text(row?.route, "Unknown");
 }
 
 function destinationLabel(row) {
@@ -129,7 +207,7 @@ function trafficToday(rows, now) {
     const key = hourKey(ts, now);
     const point = byHour.get(key);
     if (!point) continue;
-    addRouteBytes(point, text(row.route, "Unknown"), rowBytes(row));
+    addRouteBytes(point, row);
   }
   return Array.from(byHour.values());
 }
@@ -144,11 +222,18 @@ function topClients(rows, limit = 5) {
       label,
       channel: text(row.channel, "Unknown"),
       bytes: 0,
+      viaVpsBytes: 0,
+      directBytes: 0,
+      unknownBytes: 0,
       routes: new Set(),
       risks: new Set(),
     };
-    current.bytes += rowBytes(row);
-    current.routes.add(text(row.route, "Unknown"));
+    const split = routeByteSplit(row);
+    current.bytes += split.totalBytes;
+    current.viaVpsBytes += split.viaVpsBytes;
+    current.directBytes += split.directBytes;
+    current.unknownBytes += split.unknownBytes;
+    current.routes.add(routeFromSplit(row));
     if (row.risk) current.risks.add(text(row.risk));
     if (label.length > current.label.length && !label.toLowerCase().includes("unknown")) current.label = label;
     if (row.channel && current.channel === "Unknown") current.channel = row.channel;
@@ -164,6 +249,9 @@ function topClients(rows, limit = 5) {
       label: row.label,
       channel: row.channel,
       bytes: row.bytes,
+      viaVpsBytes: row.viaVpsBytes,
+      directBytes: row.directBytes,
+      unknownBytes: row.unknownBytes,
       sharePct: Math.round((row.bytes / total) * 100),
       route: dominantRoute(row.routes),
       status: row.risks.has("high") ? "Review" : "OK",
@@ -176,9 +264,22 @@ function topDestinations(rows, limit = 5) {
     const label = destinationLabel(row);
     if (!label || label === "unknown destination") continue;
     const key = label.toLowerCase();
-    const current = grouped.get(key) || { key, label, bytes: 0, routes: new Set(), clients: new Set() };
-    current.bytes += rowBytes(row);
-    current.routes.add(text(row.route, "Unknown"));
+    const current = grouped.get(key) || {
+      key,
+      label,
+      bytes: 0,
+      viaVpsBytes: 0,
+      directBytes: 0,
+      unknownBytes: 0,
+      routes: new Set(),
+      clients: new Set(),
+    };
+    const split = routeByteSplit(row);
+    current.bytes += split.totalBytes;
+    current.viaVpsBytes += split.viaVpsBytes;
+    current.directBytes += split.directBytes;
+    current.unknownBytes += split.unknownBytes;
+    current.routes.add(routeFromSplit(row));
     if (row.client) current.clients.add(text(row.client));
     grouped.set(key, current);
   }
@@ -192,6 +293,9 @@ function topDestinations(rows, limit = 5) {
       label: row.label,
       route: dominantRoute(row.routes),
       bytes: row.bytes,
+      viaVpsBytes: row.viaVpsBytes,
+      directBytes: row.directBytes,
+      unknownBytes: row.unknownBytes,
       sharePct: Math.round((row.bytes / total) * 100),
       detail: `${row.clients.size} client${row.clients.size === 1 ? "" : "s"}`,
     }));
@@ -232,9 +336,9 @@ function trafficUsage(rows, now) {
     const key = dateKey(ts, now);
     const point = byDay.get(key);
     if (!point) continue;
-    const bytes = rowBytes(row);
-    if (row.route === "VPS") point.vpsBytes += bytes;
-    if (isMobileTrafficRow(row)) point.lteBytes += bytes;
+    const split = routeByteSplit(row);
+    if (split.viaVpsBytes > 0) point.vpsBytes += split.viaVpsBytes;
+    if (isMobileTrafficRow(row)) point.lteBytes += split.totalBytes;
   }
   const today = dateKey("", now);
   const ordered = Array.from(byDay.values()).sort((a, b) => a.day.localeCompare(b.day));

@@ -51,6 +51,7 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .route-layout-wide { grid-template-columns: minmax(0, 1fr) minmax(360px, 430px); }
 .route-main { display: grid; gap: 14px; min-width: 0; }
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card { min-width: 0; border: 1px solid #243954; border-radius: 8px; background: linear-gradient(180deg, rgba(16, 35, 57, .96), rgba(9, 22, 38, .96)); padding: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
 .compact-kpi { min-height: 92px; padding: 12px 14px; display: grid; align-content: start; gap: 5px; }
 .compact-kpi h3 { margin: 0; color: #dce8f8; font-size: 14px; line-height: 1.15; }
@@ -553,6 +554,7 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .rank-meter { min-width: 0; display: grid; grid-template-columns: 1fr 42px; gap: 6px 10px; align-items: center; }
 .rank-meter strong { color: #f2f6fb; }
 .rank-meter span { color: #a9bad0; text-align: right; font-size: 12px; }
+.rank-meter small { grid-column: 1 / -1; color: #8da2bb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank-meter i { grid-column: 1 / -1; display: block; height: 7px; border-radius: 999px; background: #17283d; overflow: hidden; }
 .rank-meter b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5ca8ff, #65e89b); }
 .rank-status { justify-self: end; min-width: 58px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid rgba(88,214,141,.38); background: rgba(88,214,141,.1); color: #65e89b; font-weight: 800; }
@@ -562,7 +564,7 @@ p { margin: 5px 0 0; color: #a9bad0; }
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: relative; height: auto; }
   .system-pill { position: static; margin-top: 18px; }
-  .grid.cards, .grid.two, .grid.three, .route-layout, .live-kpis { grid-template-columns: 1fr; }
+  .grid.cards, .grid.two, .grid.three, .grid.four, .route-layout, .live-kpis { grid-template-columns: 1fr; }
   .clients-layout, .compact-warnings .detail-list { grid-template-columns: 1fr; }
   .topbar { display: grid; }
   .filters { justify-content: stretch; }
