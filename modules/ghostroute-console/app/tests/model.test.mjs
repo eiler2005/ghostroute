@@ -15,6 +15,7 @@ const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, reso
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
+  aggregateDnsInterest,
   dedupeAlerts,
   groupAttributionRows,
   groupDestinationRows,
@@ -431,6 +432,20 @@ test("traffic presentation prefers concrete destinations over generic categories
   assert.equal(rows[0].destinationLabel, "chat.example.invalid");
   assert.equal(trafficDisplayDestination(rows[0]), "chat.example.invalid");
   assert.equal(concreteTrafficDestination({ destination: "AI services" }), "");
+});
+
+test("dns interest aggregation groups duplicate domains", () => {
+  const rows = aggregateDnsInterest([
+    { domain: "www.google.com", count: 1, collected_at: "2026-05-08T10:00:00Z" },
+    { qname: "www.google.com", count: 3, collected_at: "2026-05-08T10:01:00Z" },
+    { dns_qname: "setup.fe2.apple-dns.net", collected_at: "2026-05-08T10:02:00Z" },
+    { domain: "www.google.com", collected_at: "2026-05-08T10:03:00Z" },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].domain, "www.google.com");
+  assert.equal(rows[0].count, 5);
+  assert.equal(rows[1].domain, "setup.fe2.apple-dns.net");
+  assert.equal(rows[1].count, 1);
 });
 
 test("traffic rows reconcile cumulative source totals to authoritative current-day KPI", () => {

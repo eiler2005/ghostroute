@@ -72,31 +72,31 @@ export function LiveStreamPanel({
       <div className="live-stream-toolbar">
         <div className="live-stream-title">
           <h2>Live event stream</h2>
-          <span>Всего событий: {new Intl.NumberFormat("ru-RU").format(payload.total_events || (payload.events || []).length)}</span>
+          <span>Total events: {new Intl.NumberFormat("en-US").format(payload.total_events || (payload.events || []).length)}</span>
         </div>
         <div className="live-stream-actions">
           {topPagination ? <div className="dense-top-pager">{topPagination}</div> : null}
           <span className={`badge sse-badge status-${mode.includes("connected") ? "ok" : "warn"}`}>{mode}</span>
-          <button className="icon-button" type="button" onClick={togglePaused} title={paused ? "Продолжить live updates" : "Пауза live updates"} aria-label={paused ? "Продолжить live updates" : "Пауза live updates"}>
+          <button className="icon-button" type="button" onClick={togglePaused} title={paused ? "Resume live updates" : "Pause live updates"} aria-label={paused ? "Resume live updates" : "Pause live updates"}>
             {paused ? <Play size={15} /> : <Pause size={15} />}
           </button>
           <button className="muted-button live-export-button" type="button" onClick={exportPayload}>
             <Download size={15} />
-            <span>Экспорт</span>
+            <span>Export</span>
           </button>
         </div>
       </div>
-      <div className="live-stream-meta">Автообновление около 10 минут · последнее: {shortDateTime(payload.generated_at)} · показано {rows.length}</div>
+      <div className="live-stream-meta">Auto-refresh around 10 minutes · latest: {shortDateTime(payload.generated_at)} · showing {rows.length}</div>
       <div className="live-table-wrap live-main-table-wrap">
         <table className="live-events-table">
           <thead>
             <tr>
-              <th>Время</th>
-              <th>Событие</th>
-              <th>Маршрут / Назначение</th>
-              <th>Клиент</th>
-              <th>Канал / Route</th>
-              <th>Статус</th>
+              <th>Time</th>
+              <th>Event</th>
+              <th>Route / Destination</th>
+              <th>Client</th>
+              <th>Channel / Route</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>

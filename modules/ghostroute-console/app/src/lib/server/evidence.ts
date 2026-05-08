@@ -497,6 +497,11 @@ export function buildRouteEvidenceSet(model: ConsoleModel, options: { includeDia
   };
 }
 
+export function buildRouteEvidenceForRow(model: ConsoleModel, row: Record<string, any>, index = 0) {
+  const input = { ...flowToEvidenceInput(row), rowType: classifyEvidenceRow(flowToEvidenceInput(row), model) };
+  return buildRouteEvidenceFromInput(model, input, index);
+}
+
 export function buildRouteEvidence(model: ConsoleModel, index: number) {
   const set = buildRouteEvidenceSet(model, { includeDiagnostics: false, limit: Math.max(index + 1, 100), fallbackToDiagnostics: true });
   return set.evidences[Math.max(0, Math.min(index, Math.max(set.evidences.length - 1, 0)))] || null;

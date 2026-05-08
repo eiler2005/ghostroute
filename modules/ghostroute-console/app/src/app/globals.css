@@ -309,8 +309,9 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .dense-top-pager .pagination > div { gap: 6px; }
 .dense-top-pager .muted-button { min-height: 30px; padding: 0 8px; }
 .traffic-stream-card { margin-top: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: clamp(300px, calc(100vh - 390px), 520px); }
+.traffic-stream-card .live-stream-toolbar, .traffic-stream-card .traffic-stream-meta, .traffic-stream-card .live-card-footer { flex: 0 0 auto; }
 .traffic-table-wrap { flex: 1 1 auto; min-height: 140px; max-height: none !important; }
-.traffic-stream-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.traffic-stream-meta { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 .traffic-mode-button { min-height: 34px; padding: 0 12px; }
 .flow-events-table { min-width: 1620px; }
 .flow-events-table .col-client, .flow-events-table .col-destination, .flow-events-table .col-policy, .flow-events-table .col-traffic { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -330,7 +331,8 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .flow-kpi-wide > div:first-child { min-width: 0; }
 .flow-vps-breakdown { min-width: 0; display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 9px; align-items: center; }
 .flow-vps-breakdown div { display: grid; gap: 4px; min-width: 0; }
-.flow-vps-breakdown small { display: flex; justify-content: space-between; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-vps-breakdown small { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.flow-vps-breakdown small span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .flow-vps-breakdown b { color: #65e89b; }
 .flow-sparkline { width: calc(100% + 28px); height: 42px; margin: 8px -14px -14px; opacity: .95; }
 .flow-sparkline polyline { fill: none; stroke: #65e89b; stroke-width: 3; vector-effect: non-scaling-stroke; }
@@ -373,15 +375,20 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .clients-table-scroll::-webkit-scrollbar-track { background: #0b1a2d; border-radius: 999px; }
 .clients-table-scroll::-webkit-scrollbar-thumb { background: #355f8f; border-radius: 999px; border: 2px solid #0b1a2d; }
 .clients-table-scroll::-webkit-scrollbar-thumb:hover { background: #5ca8ff; }
-.clients-table { min-width: 1480px; }
-.clients-table .col-client { width: 21%; }
-.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 210px; }
-.clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 136px; }
-.clients-table th:nth-child(4), .clients-table td:nth-child(4) { width: 128px; }
-.clients-table th:nth-child(5), .clients-table td:nth-child(5) { width: 128px; }
-.clients-table th:nth-child(6), .clients-table td:nth-child(6) { width: 170px; }
-.clients-table th:nth-child(7), .clients-table td:nth-child(7) { width: 104px; }
-.clients-table th:nth-child(8), .clients-table td:nth-child(8) { width: 112px; }
+.clickable-row { cursor: pointer; }
+.row-link { display: block; min-width: 0; color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-link:hover { color: #8db6ff; }
+.row-link-with-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; overflow: visible; white-space: normal; }
+.row-link-with-badges > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clients-table { min-width: 1380px; }
+.clients-table .col-client { width: 240px; }
+.clients-table th:nth-child(2), .clients-table td:nth-child(2) { width: 170px; }
+.clients-table th:nth-child(3), .clients-table td:nth-child(3) { width: 128px; }
+.clients-table th:nth-child(4), .clients-table td:nth-child(4) { width: 210px; }
+.clients-table th:nth-child(5), .clients-table td:nth-child(5) { width: 170px; }
+.clients-table th:nth-child(6), .clients-table td:nth-child(6) { width: 150px; }
+.clients-table th:nth-child(7), .clients-table td:nth-child(7) { width: 140px; }
+.clients-table th:nth-child(8), .clients-table td:nth-child(8) { width: 110px; }
 .info-card { border-color: rgba(92,168,255,.35); background: linear-gradient(180deg, rgba(21, 55, 98, .75), rgba(11, 30, 55, .9)); }
 .timeline { display: grid; gap: 9px; }
 .timeline-row { display: grid; grid-template-columns: 24px 1fr; gap: 9px; align-items: start; }
