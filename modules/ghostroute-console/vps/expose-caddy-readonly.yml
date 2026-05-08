@@ -268,6 +268,51 @@
                   add_header X-Robots-Tag "noindex, nofollow" always;
                   add_header Referrer-Policy "no-referrer" always;
 
+                  location = /favicon.ico {
+                      auth_basic off;
+                      add_header Cache-Control "public, max-age=86400" always;
+                      add_header X-Robots-Tag "noindex, nofollow" always;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
+                      proxy_set_header Host $http_host;
+                      proxy_set_header X-Forwarded-Host $http_host;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header X-Forwarded-Port $server_port;
+                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Connection close;
+                      proxy_buffering on;
+                  }
+
+                  location ^~ /apple-touch-icon {
+                      auth_basic off;
+                      add_header Cache-Control "public, max-age=86400" always;
+                      add_header X-Robots-Tag "noindex, nofollow" always;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
+                      proxy_set_header Host $http_host;
+                      proxy_set_header X-Forwarded-Host $http_host;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header X-Forwarded-Port $server_port;
+                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Connection close;
+                      proxy_buffering on;
+                  }
+
+                  location ~ ^/(manifest\.json|site\.webmanifest|robots\.txt)$ {
+                      auth_basic off;
+                      add_header Cache-Control "public, max-age=86400" always;
+                      add_header X-Robots-Tag "noindex, nofollow" always;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
+                      proxy_set_header Host $http_host;
+                      proxy_set_header X-Forwarded-Host $http_host;
+                      proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header X-Forwarded-Port $server_port;
+                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Connection close;
+                      proxy_buffering on;
+                  }
+
                   location ^~ /_next/static/ {
                       auth_basic off;
                       add_header Cache-Control "public, max-age=31536000, immutable" always;
@@ -387,6 +432,16 @@
         url: "{{ console_public_url }}/_next/static/__ghostroute_auth_probe__.js"
         status_code: 404
         validate_certs: true
+
+    - name: Check Console metadata assets bypass Basic Auth
+      ansible.builtin.uri:
+        url: "{{ console_public_url }}{{ item }}"
+        status_code: 404
+        validate_certs: true
+      loop:
+        - /favicon.ico
+        - /apple-touch-icon.png
+        - /manifest.json
 
     - name: Check Console public route with auth
       ansible.builtin.uri:

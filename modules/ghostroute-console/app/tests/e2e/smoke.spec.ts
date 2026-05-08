@@ -257,14 +257,26 @@ test("mobile serves compact heavy console pages", async ({ page, isMobile }) => 
   await expect(page.getByRole("heading", { name: "Alarm Center" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Deploy Gate" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Leak-check evidence" })).toBeVisible();
-  await expect(page.locator(".mobile-status-card").first()).toBeVisible();
+  await expect(page.locator(".cards .card").first()).toBeVisible();
   await expect(page.locator(".health-layout > .side-panel")).toHaveCount(0);
+  await expect(page.locator("script[src*='/_next/']")).toHaveCount(0);
 
   await page.goto("/catalog");
   await expect(page).toHaveURL(/\/m\/catalog/);
   await expect(page.getByRole("heading", { name: "Catalog" })).toBeVisible();
   await expect(page.locator(".side-panel")).toHaveCount(0);
   await expect(page.getByText("Desktop version").first()).toBeVisible();
+});
+
+test("mobile health is raw HTML without Next hydration scripts", async ({ request }) => {
+  const response = await request.get("/m/health");
+  expect(response.ok()).toBeTruthy();
+  const body = await response.text();
+  expect(response.headers()["content-type"]).toContain("text/html");
+  expect(body).toContain("Health Center");
+  expect(body).toContain("Alarm Center");
+  expect(body).not.toContain("/_next/static/chunks");
+  expect(body).not.toContain("self.__next_f");
 });
 
 test("mobile redirect preserves bypass and safe routes", async ({ page, request, isMobile }) => {
