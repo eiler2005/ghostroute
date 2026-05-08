@@ -63,7 +63,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
         <div className="toolbar">
           <div>
             <h2>Alarm Center</h2>
-            <p>Critical, Warning и Info события с evidence и suggested action.</p>
+            <p>Critical, Warning and Info events with evidence and suggested action.</p>
           </div>
           <div className="button-row">
             {["active", "open", "acknowledged", "snoozed", "all"].map((value) => (
@@ -78,7 +78,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           <section><span>Info</span><strong>{info.length}</strong></section>
         </div>
         {alarms.length === 0 ? (
-          <EmptyState title="Нет активных alarm events" />
+          <EmptyState title="No active alarm events" />
         ) : (
           <table className="table alarm-table">
             <thead>
@@ -123,7 +123,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           <StatusBadge value={displayDeployGateStatus(deployGateChecks, deployGateSnapshot?.overall_status || "UNKNOWN")} />
         </div>
         {!deployGateSnapshot ? (
-          <EmptyState title="Нет deploy-gate snapshot" />
+          <EmptyState title="No deploy-gate snapshot" />
         ) : (
           <>
             <p className="subtle">
@@ -160,7 +160,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           <span className="subtle">Router / VPS / Reality / DNS / leaks</span>
         </div>
         {checks.length === 0 ? (
-          <EmptyState title="Нет фактических health checks" />
+          <EmptyState title="No factual health checks" />
         ) : (
           <table className="table">
             <thead>
@@ -188,7 +188,7 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
         <section className="card">
           <h2>Leak-check evidence</h2>
           {!leakSnapshot ? (
-            <EmptyState title="Нет leak-check snapshot" />
+            <EmptyState title="No leak-check snapshot" />
           ) : (
             <div className="detail-list">
               <div className="detail-row"><span>Overall</span><strong>{leakSnapshot.overall || "UNKNOWN"}</strong></div>

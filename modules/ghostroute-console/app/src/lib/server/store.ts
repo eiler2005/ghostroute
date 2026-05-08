@@ -485,6 +485,17 @@ function rowToSnapshot(row: any): SnapshotRecord {
   };
 }
 
+function rowToSnapshotMeta(row: any): SnapshotRecord {
+  return {
+    id: row.id,
+    type: row.type,
+    collectedAt: row.collected_at,
+    source: row.source,
+    path: row.path,
+    payload: {},
+  };
+}
+
 export function latestSnapshotsFromDb(): SnapshotRecord[] {
   try {
     const rows = getDb()
@@ -499,6 +510,42 @@ export function latestSnapshotsFromDb(): SnapshotRecord[] {
   } catch {
     return [];
   }
+}
+
+export function latestSnapshotMetasFromDb(): SnapshotRecord[] {
+  try {
+    const rows = getDb()
+      .prepare(
+        `select s.id, s.type, s.collected_at, s.source, s.path from snapshots s
+         join (select type, max(collected_at) as collected_at from snapshots group by type) latest
+           on latest.type = s.type and latest.collected_at = s.collected_at
+         order by s.collected_at desc`
+      )
+      .all();
+    return rows.map(rowToSnapshotMeta);
+  } catch {
+    return [];
+  }
+}
+
+export function latestSnapshotsForTypes(types: SnapshotType[]): SnapshotRecord[] {
+  const uniqueTypes = Array.from(new Set(types)).filter(Boolean);
+  if (uniqueTypes.length === 0) return [];
+  try {
+    const placeholders = uniqueTypes.map(() => "?").join(",");
+    const rows = getDb()
+      .prepare(
+        `select s.* from snapshots s
+         join (select type, max(collected_at) as collected_at from snapshots where type in (${placeholders}) group by type) latest
+           on latest.type = s.type and latest.collected_at = s.collected_at
+         order by s.collected_at desc`
+      )
+      .all(...uniqueTypes);
+    if (rows.length > 0) return rows.map(rowToSnapshot);
+  } catch {
+    // Fall through to disk snapshots for local/dev setups without DB rows.
+  }
+  return latestSnapshotsFromDisk().filter((row) => uniqueTypes.includes(row.type));
 }
 
 function inferType(payload: any, fileName: string): SnapshotType | null {
@@ -552,6 +599,12 @@ export function latestSnapshots() {
   const merged = new Map<SnapshotType, SnapshotRecord>();
   for (const row of latestSnapshotsFromDisk()) merged.set(row.type, row);
   return Array.from(merged.values());
+}
+
+export function latestSnapshotMetas() {
+  const fromDb = latestSnapshotMetasFromDb();
+  if (fromDb.length > 0) return fromDb;
+  return latestSnapshotsFromDisk().map((row) => ({ ...row, payload: {} }));
 }
 
 function latestSnapshotIdsByType() {

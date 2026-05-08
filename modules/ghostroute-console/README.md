@@ -158,6 +158,11 @@ Log and Alarm Center while preserving the normalized source tables as the
 fallback contract. The `flow_sessions` read model includes the safe DNS/SNI and
 egress evidence fields needed by the Flow Explorer inline detail panel; missing
 source evidence is rendered as `not observed`, not inferred.
+GUI request paths should read these prepared tables and small snapshot payloads
+only. Health, Live, mobile pages and JSON APIs use snapshot metadata for cache
+versioning and load compact `traffic_summary`, `health`, `leaks` and
+`deploy_gate` payloads as needed; they must not parse the full latest traffic
+report just to render the shell, freshness strip or navigation chrome.
 For selected-client details, Console derives an activity series from sequential
 current-window device snapshots. Multiple snapshots become hourly deltas; if a
 client only appears in one current snapshot, the chart shows that hour as a
@@ -274,7 +279,9 @@ from the public Console URL.
   DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
 - `/traffic` keeps wide flow tables horizontally scrollable and treats
   category-only rows as aggregates in the route explanation instead of implying
-  a concrete site saw the category label.
+  a concrete site saw the category label. The table's `Destination` cell labels
+  evidence as `DNS`, `SNI`, `IP`, `category`, `counter` or `not observed` so
+  exact visited-site evidence stays separate from aggregate traffic groups.
 - `/dns` shows DNS Query Log rows with the resolved Console client label,
   observed client IP, millisecond event time, domain, answer IP, route decision,
   catalog status, status and risk context. It defaults to a compact first page;
@@ -291,7 +298,10 @@ from the public Console URL.
   block a mutating deploy.
 - `/clients` shows all known devices with `Online`, `Recently seen` or
   `Inactive` state and last-seen timestamps, so devices do not disappear just
-  because they are absent from today's latest snapshot.
+  because they are absent from today's latest snapshot. Device Inventory keeps
+  row selection in `?client=<device-or-client-id>` without filtering the table,
+  and each row uses plain document links so the detail panel follows the
+  selected device even when browser-side navigation is unreliable.
 - `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
   client and service/background live events separately, with millisecond event
   times and page sizes up to 500 rows.

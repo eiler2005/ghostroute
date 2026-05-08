@@ -39,16 +39,20 @@ attribution later.
   current sidebar set is Dashboard, Flow Explorer, DNS Query Log, Clients,
   Health Center, Catalog, Budget, Live, Reports and Settings.
 - Read-only derived snapshot data uses a short in-process TTL cache keyed by
-  the latest snapshot version, active filters and pagination args. The default
+  lightweight snapshot metadata, active filters and pagination args. The default
   TTL is 60 seconds and can be disabled with
   `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`.
+- Health, Live, mobile pages and JSON APIs must build their chrome from
+  prepared read models and compact `traffic_summary`, `health`, `leaks` and
+  `deploy_gate` payloads. They must not parse the full latest traffic report just
+  to render freshness, nav, cards or small lists.
 - The cache covers heavy flow, DNS, alarm, client, client-activity and live
   selectors, plus page models for all sidebar views. Action/write endpoints and
   private credential material must not use that cache; narrow operator-state
   actions clear derived cache after a successful change.
-- The browser runs an idle warmup after the first Console render: it prefetches
-  the main sidebar routes and warms their JSON APIs. This is a convenience
-  layer only; correctness still comes from factual snapshots and read models.
+- The browser does not prefetch heavy sidebar views. Plain document navigation
+  and server-side read-model selectors keep Safari/iOS predictable; correctness
+  still comes from factual snapshots and read models.
 - `test:perf` covers both individual page/API budgets and rapid sidebar
   navigation so regressions show up before deploy.
 

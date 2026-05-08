@@ -19,12 +19,12 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
         <div className="toolbar">
           <div>
             <h2>Privacy / Redaction Mode</h2>
-            <p>Безопасный экспорт для ревью: реальные имена, адреса и сырые идентификаторы уходят через sanitizer.</p>
+            <p>Safe review export: real names, addresses and raw identifiers pass through the sanitizer.</p>
           </div>
           <StatusBadge value="OK" />
         </div>
         {snapshotCount === 0 ? (
-          <EmptyState title="Нет snapshots для отчёта" />
+          <EmptyState title="No snapshots for this report" />
         ) : (
           <div className="redaction-grid">
             <section>

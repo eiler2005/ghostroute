@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import {
   bytes,
@@ -34,7 +33,7 @@ function normalizeToken(value: unknown) {
 }
 
 function selectedClientValue(client?: Record<string, any>) {
-  return client?.client_key || client?.id || client?.label || client?.device_key || client?.client_label || client?.device_label || "";
+  return client?.id || client?.device_key || client?.label || client?.client_key || client?.client_label || client?.device_label || "";
 }
 
 function matchesClientFilter(client: Record<string, any>, value?: string) {
@@ -99,9 +98,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const selectedClientParam = scalar(params.client) || "";
+  const listFilters = { ...filters, client: "all" };
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
-  const clientsPage = listClientInventory({ page, pageSize, filters });
+  const clientsPage = listClientInventory({ page, pageSize, filters: listFilters });
   const isUnattributed = (row: Record<string, any>) =>
     row.role === "Unattributed mobile ingress source" ||
     (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
@@ -110,11 +111,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const activeRows = clientsPage.rows.filter((row) => Number(row.total_bytes || 0) > 0 || ["Online", "Recently seen"].includes(String(row.status || "")));
   const knownRows = primaryRows.filter((row) => !String(row.role || row.label || "").toLowerCase().includes("unknown"));
   const selected =
-    clientsPage.rows.find((row) => filters.client !== "all" && matchesClientFilter(row, filters.client)) ||
+    clientsPage.rows.find((row) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
     primaryRows[0] ||
     clientsPage.rows[0];
   const selectedClientId = selectedClientValue(selected);
-  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...filters, client: selectedClientId } }).rows : [];
+  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...listFilters, client: selectedClientId } }).rows : [];
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
   const tokens = clientTokens(selected);
   const allSelectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)) : [];
@@ -143,7 +144,6 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
     trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
-    client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
   const clientHref = (row: Record<string, any>) => {
@@ -156,7 +156,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     next.set("client", String(selectedClientValue(row)));
     return `/clients?${next.toString()}`;
   };
-  const isSelectedRow = (row: Record<string, any>) => selectedClientId ? matchesClientFilter(row, selectedClientId) : false;
+  const isSelectedRow = (row: Record<string, any>) => selectedClientId ? selectedClientValue(row) === selectedClientId || matchesClientFilter(row, selectedClientId) : false;
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
       <div className="grid cards" style={{ marginBottom: 14 }}>
@@ -192,14 +192,14 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   <tbody>
                     {primaryRows.map((row) => (
                       <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
-                        <td><Link className="row-link" href={clientHref(row)}>{row.device_label || row.label || row.id}</Link></td>
-                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></Link></td>
-                        <td><Link className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</Link></td>
-                        <td><Link className="row-link" href={clientHref(row)}>{row.owner || row.client_label || "Inventory"}</Link></td>
-                        <td><Link className="row-link" href={clientHref(row)}>{row.device_type || row.role || "Unknown device"}</Link></td>
-                        <td><Link className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</Link></td>
-                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></Link></td>
-                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></Link></td>
+                        <td><a className="row-link" href={clientHref(row)}>{row.device_label || row.label || row.id}</a></td>
+                        <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{row.owner || row.client_label || "Inventory"}</a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{row.device_type || row.role || "Unknown device"}</a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</a></td>
+                        <td><a className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></a></td>
+                        <td><a className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></a></td>
                       </tr>
                     ))}
                   </tbody>
@@ -224,13 +224,13 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                       <tbody>
                         {unattributedRows.map((row) => (
                           <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
-                            <td><Link className="row-link" href={clientHref(row)}>{row.label || row.id}</Link></td>
-                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></Link></td>
-                            <td><Link className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</Link></td>
-                            <td><Link className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</Link></td>
-                            <td><Link className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</Link></td>
-                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></Link></td>
-                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></Link></td>
+                            <td><a className="row-link" href={clientHref(row)}>{row.label || row.id}</a></td>
+                            <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
+                            <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
+                            <td><a className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</a></td>
+                            <td><a className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</a></td>
+                            <td><a className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></a></td>
+                            <td><a className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></a></td>
                           </tr>
                         ))}
                       </tbody>

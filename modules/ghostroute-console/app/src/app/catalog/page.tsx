@@ -34,7 +34,7 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
             <button className="muted-button disabled-action" disabled>Runtime deploy disabled</button>
           </div>
           {model.catalog.length === 0 ? (
-            <EmptyState title="Нет фактического catalog snapshot" />
+            <EmptyState title="No factual catalog snapshot" />
           ) : (
             <>
               <table className="table catalog-table">

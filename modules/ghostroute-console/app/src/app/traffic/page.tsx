@@ -6,7 +6,7 @@ import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/ev
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { destinationEvidence, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -208,8 +208,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   <tr>
                     <th className="col-time">Time</th>
                     <th className="col-client">Client</th>
-                    <th className="col-destination">Destination</th>
-                    <th className="col-port">Port</th>
+                    <th className="col-destination">Site / group</th>
                     <th className="col-route">Route</th>
                     <th className="col-policy">Policy / Rule</th>
                     <th className="col-traffic">Traffic</th>
@@ -221,18 +220,17 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 <tbody>
                   {rows.map((row) => {
                     const href = flowHref(row.id);
-                    const destination = trafficDisplayDestination(row);
+                    const destination = destinationEvidence(row);
                     return (
                       <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>
                         <td className="col-time"><Link className="row-link" href={href}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
                         <td className="col-client" title={row.client}><Link className="row-link" href={href}>{row.client}</Link></td>
-                        <td className="col-destination" title={destination}>
-                          <Link className="row-link row-link-with-badges" href={href}>
-                            <span>{destination}</span>
-                            <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
+                        <td className="col-destination" title={`${destination.label} · ${destination.kind}`}>
+                          <Link className="row-link row-link-with-badges destination-cell" href={href}>
+                            <span>{destination.label}</span>
+                            <span className={`badge evidence-kind evidence-${String(destination.kind).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{destination.kind}</span>
                           </Link>
                         </td>
-                        <td className="col-port"><Link className="row-link" href={href}>{row.destination_port || "n/a"} <span>{row.protocol || "TCP"}</span></Link></td>
                         <td className="col-route"><Link className="row-link row-link-with-badges" href={href}><RouteBadge value={row.route} /></Link></td>
                         <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
                           <Link className="row-link" href={href}>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</Link>

@@ -53,6 +53,7 @@ test("flow workbench exposes inline detail and gated evidence", async ({ page, i
   await expect(page.locator(".traffic-workbench")).toBeVisible();
   await expect(page.locator(".flow-detail-panel")).toBeVisible();
   await expect(page.locator(".flow-detail-panel")).toContainText("Why this route?");
+  await expect(page.locator(".flow-detail-panel")).toContainText("Destination evidence");
   await expect(page.locator(".flow-detail-panel")).toContainText("Site / Operator view");
   const secondRow = page.locator(".route-table-card tbody tr").nth(1);
   const secondHref = await secondRow.locator("a").first().getAttribute("href");
@@ -82,6 +83,9 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
   await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
   await expect(page.getByText("Read-only analysis of prepared flows")).toBeVisible();
   await expect(page.getByText("flows by volume with policy, route and risk context")).toBeVisible();
+  await expect(page.locator(".flow-events-table th.col-destination")).toHaveText("Site / group");
+  await expect(page.locator(".flow-events-table thead")).not.toContainText("Port");
+  await expect(page.locator(".flow-events-table tbody tr .col-destination .evidence-kind").first()).toBeVisible();
   await expect(page.locator(".traffic-stream-meta").nth(1)).toContainText("hidden system/no-byte evidence");
   const firstRow = page.locator(".route-table-card tbody tr").first();
   if (await firstRow.count()) {
@@ -192,10 +196,9 @@ test("clients row selection updates the detail panel", async ({ page, isMobile }
   const deviceName = (await secondRow.locator("td").first().innerText()).trim();
   const secondHref = await secondRow.locator("a").first().getAttribute("href");
   const selectedClient = secondHref ? new URL(secondHref, "http://localhost").searchParams.get("client") : "";
-  await secondRow.locator("td").nth(2).locator("a").click();
+  await secondRow.locator("td").nth(1).click();
   await expect(page).toHaveURL(/client=/);
-  const encodedClient = selectedClient ? encodeURIComponent(selectedClient).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
-  if (encodedClient) await expect(page).toHaveURL(new RegExp(`client=${encodedClient}`));
+  if (selectedClient) expect(new URL(page.url()).searchParams.get("client")).toBe(selectedClient);
   await expect(page.locator(".clients-card tbody tr.selected")).toHaveCount(1);
   await expect(page.locator(".side-panel")).toContainText(deviceName);
 });

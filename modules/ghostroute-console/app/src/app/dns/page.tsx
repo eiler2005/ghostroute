@@ -70,7 +70,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
         <div className="live-stream-toolbar">
           <div className="live-stream-title">
             <h2>DNS Query Log</h2>
-            <span>Показано {dnsPage.rows.length} из {dnsPage.total} последних DNS rows</span>
+            <span>Showing {dnsPage.rows.length} of {dnsPage.total} latest DNS rows</span>
           </div>
           <div className="live-stream-actions">
             <div className="dense-top-pager">
@@ -80,23 +80,23 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
           </div>
         </div>
         <div className="live-stream-meta">
-          Кто спросил домен, какой ответ получил, какой маршрут и что решил catalog · pageSize до 1000
+          Client, domain answer, route decision and catalog status · pageSize up to 1000
         </div>
         {dnsPage.rows.length === 0 ? (
-          <div className="dns-empty-wrap"><EmptyState title="Нет DNS query rows" /></div>
+          <div className="dns-empty-wrap"><EmptyState title="No DNS query rows" /></div>
         ) : (
           <div className="live-table-wrap dns-table-wrap">
             <table className="live-events-table dns-events-table">
                 <thead>
                   <tr>
-                    <th>Время</th>
-                    <th>Клиент</th>
-                    <th>Домен</th>
-                    <th>Тип</th>
-                    <th>Ответ</th>
+                    <th>Time</th>
+                    <th>Client</th>
+                    <th>Domain</th>
+                    <th>Type</th>
+                    <th>Answer</th>
                     <th>Route</th>
                     <th>Catalog</th>
-                    <th>Статус</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
