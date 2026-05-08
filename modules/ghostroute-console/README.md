@@ -165,7 +165,7 @@ snapshot total rather than pretending to know the earlier peak time.
 
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
 snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
-for 30 days, and SQLite safety backups are daily with at most 2 recent files.
+for 30 days, and SQLite safety backups are daily with at most 1 recent file.
 The live collector stores normalized events in SQLite; the per-poll raw JSON is
 only short-term troubleshooting material. Live views show event snapshots and
 client activity summaries, not a continuous per-second stream.
@@ -383,4 +383,7 @@ Release hardening:
 - The VPS read-only deploy builds the new Console image before replacing the
   running container, tags the prepared image with the build commit, passes the
   build timestamp into the app, and attempts rollback to the previous image if
-  local health/UI/API smoke fails.
+  local health/UI/API smoke fails. After successful smoke, deploy keeps the
+  active image plus the current rollback tag, removes stale Console rollback and
+  commit tags, and prunes unused Docker build cache so repeated deploys do not
+  refill the VPS disk.
