@@ -209,6 +209,8 @@
         argv:
           - rsync
           - -az
+          - -e
+          - ssh -o ControlMaster=no -o ControlPath=none -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=30
           - --delete
           - --rsync-path=sudo rsync
           - --exclude=.git/
@@ -217,6 +219,8 @@
           - --exclude=modules/ghostroute-console/data/
           - --exclude=modules/ghostroute-console/app/node_modules/
           - --exclude=modules/ghostroute-console/app/.next/
+          - --exclude=modules/ghostroute-console/app/test-results/
+          - --exclude=modules/ghostroute-console/app/playwright-report/
           - --exclude=ghostroute-console-handoff/
           - --exclude=*.db
           - --exclude=*.db-shm
@@ -232,6 +236,8 @@
         argv:
           - rsync
           - -az
+          - -e
+          - ssh -o ControlMaster=no -o ControlPath=none -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=30
           - --rsync-path=sudo rsync
           - --exclude=console-basic-auth.txt
           - --exclude=backups/
