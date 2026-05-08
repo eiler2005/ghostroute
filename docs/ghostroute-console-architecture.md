@@ -175,6 +175,9 @@ thresholds: stale after 75 minutes during the day and 210 minutes overnight.
 The deployed Console app runs as a single Docker container on
 `127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 nginx HTTPS
 listener with Basic Auth and a small local buffering proxy in front of the app.
+The proxy preserves the external `Host`, `X-Forwarded-Host`, `X-Forwarded-Proto`
+and `X-Forwarded-Port` headers so server-side mobile redirects never leak the
+internal `localhost:3000` upstream address.
 This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
 a second owner for the Reality surface. Caddy still owns certificate storage and
 the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may

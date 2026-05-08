@@ -32,9 +32,26 @@ export function middleware(request: NextRequest) {
   }
   const target = mobileRoutes[pathname];
   if (!target) return NextResponse.next();
-  const nextUrl = request.nextUrl.clone();
-  nextUrl.pathname = target;
-  return NextResponse.redirect(nextUrl);
+  return NextResponse.redirect(mobileRedirectUrl(request, target));
+}
+
+function firstHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || "";
+}
+
+function mobileRedirectUrl(request: NextRequest, target: string) {
+  const forwardedHost = firstHeaderValue(request.headers.get("x-forwarded-host"));
+  const forwardedProto = firstHeaderValue(request.headers.get("x-forwarded-proto"));
+  const forwardedPort = firstHeaderValue(request.headers.get("x-forwarded-port"));
+  const host = forwardedHost || request.headers.get("host") || request.nextUrl.host;
+  const protocol = (forwardedProto || request.nextUrl.protocol.replace(":", "") || "https").replace(/:$/, "");
+  const hasPort = host.includes(":");
+  const defaultPort = (protocol === "https" && forwardedPort === "443") || (protocol === "http" && forwardedPort === "80");
+  const authority = forwardedPort && !hasPort && !defaultPort ? `${host}:${forwardedPort}` : host;
+  const url = new URL(`${protocol}://${authority}`);
+  url.pathname = target;
+  url.search = request.nextUrl.search;
+  return url;
 }
 
 export const config = {
