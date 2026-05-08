@@ -87,6 +87,29 @@ function cachedLatestByTypes(types: Array<SnapshotRecord["type"]>) {
   return cacheGet(`latest-by-types:${latestSnapshotMetaVersion()}:${keyTypes.join(",")}`, () => latestByType(latestSnapshotsForTypes(keyTypes)));
 }
 
+function definedOverrides<T extends Record<string, any>>(overrides: T): Partial<T> {
+  return Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
+export function getConsolePageSummary(page: "health_mobile" | "health_shell" | "live_mobile" | string) {
+  return cacheGet(`console-page-summary:${page}`, () => {
+    try {
+      const row = getDb()
+        .prepare("select page, source_version, rebuilt_at, payload_json from console_page_summaries where page = ?")
+        .get(page) as { page: string; source_version: string; rebuilt_at: string; payload_json: string } | undefined;
+      if (!row) return null;
+      return {
+        page: row.page,
+        source_version: row.source_version,
+        rebuilt_at: row.rebuilt_at,
+        payload: JSON.parse(row.payload_json || "{}"),
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
 function filtersKey(filters: ConsoleFilters = {}) {
   return JSON.stringify({
     period: filters.period || "today",
@@ -1878,7 +1901,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     alerts: dedupeAlerts([...staleAlert, ...normalizedAlerts, ...leakAlerts]),
     catalog: [],
   };
-  return { ...model, ...overrides };
+  return { ...model, ...definedOverrides(overrides) };
 }
 
 export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
@@ -1969,7 +1992,73 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
     }))]),
     catalog: [],
   };
-  return { ...model, ...overrides };
+  return { ...model, ...definedOverrides(overrides) };
+}
+
+export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
+  const snapshotMetas = latestByType(latestSnapshotMetaRecords());
+  const snapshots = cachedLatestByTypes(["traffic_summary"]);
+  const period = filters.period || "today";
+  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
+  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : {};
+  const shellSummary = getConsolePageSummary("health_shell")?.payload || getConsolePageSummary("health_mobile")?.payload || {};
+  const newest = Object.values(snapshotMetas)
+    .filter(Boolean)
+    .map((row) => row?.collectedAt)
+    .sort()
+    .pop();
+  const staleMinutes = minutesSince(newest);
+  const staleThreshold = staleThresholdMinutes();
+  const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
+  const collectorErrors = collectorDisabled ? [] : (latestCollectorErrors(2) as Array<Record<string, any>>);
+  const totals = dashboardTraffic.totals || shellSummary.totals || {};
+  const statusCards = Array.isArray(shellSummary.statusCards) && shellSummary.statusCards.length > 0
+    ? shellSummary.statusCards
+    : [
+        { label: "Router", status: "UNKNOWN", detail: "not observed" },
+        { label: "Reality", status: "UNKNOWN", detail: "home ingress / reality-out" },
+        { label: "DNS", status: "UNKNOWN", detail: "dnscrypt + policy" },
+        { label: "IPv6", status: "UNKNOWN", detail: "not in routing scope" },
+        { label: "Rule-set", status: "UNKNOWN", detail: "catalog mirror" },
+        { label: "Leaks", status: "UNKNOWN", detail: "0 signals" },
+      ];
+  const summaryAlerts = Array.isArray(shellSummary.alarms) ? shellSummary.alarms : [];
+  const model: ConsoleModel = {
+    generatedAt: new Date().toISOString(),
+    freshnessMinutes: staleMinutes,
+    freshnessStatus: staleMinutes === null ? "empty" : staleMinutes > staleThreshold || collectorErrors.length > 0 ? "stale" : "fresh",
+    freshnessLabel: newest || "",
+    nextExpectedCollection: nextExpectedCollection(newest),
+    staleThresholdMinutes: staleThreshold,
+    runtime: runtimeInfo(snapshotMetas),
+    collectorErrors,
+    collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
+    hourlyTraffic: [],
+    events: [],
+    routeDecisions: [],
+    catalogReviews: [],
+    notifications: [],
+    notificationSettings: {},
+    auditLog: [],
+    opsRuns: [],
+    snapshots,
+    statusCards,
+    totals: {
+      observedBytes: Number(totals.client_observed_bytes || totals.observedBytes || 0),
+      viaVpsBytes: Number(totals.via_vps_bytes || totals.viaVpsBytes || 0),
+      directBytes: Number(totals.direct_bytes || totals.directBytes || 0),
+      unknownBytes: Number(totals.unknown_bytes || totals.unknownBytes || 0),
+      periodLabel: trafficPeriodLabel(dashboardTraffic),
+      windowLabel: trafficWindowLabel(dashboardTraffic),
+    },
+    destinationAttributionCoverage: undefined,
+    devices: [],
+    flows: [],
+    dnsQueries: [],
+    alerts: summaryAlerts,
+    catalog: [],
+  };
+  return { ...model, ...definedOverrides(overrides) };
 }
 
 export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel {
@@ -2014,7 +2103,7 @@ function buildClientsModelUncached(filters: ConsoleFilters = {}, devices: Array<
 }
 
 export function buildHealthModel(filters: ConsoleFilters = {}) {
-  return cacheGet(`build-health-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildShellModel(filters));
+  return cacheGet(`build-health-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildLightweightShellModel(filters));
 }
 
 export function buildCatalogModel(filters: ConsoleFilters = {}) {

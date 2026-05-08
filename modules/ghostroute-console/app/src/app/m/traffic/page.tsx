@@ -1,7 +1,7 @@
 import { MobileShell } from "@/components/MobileShell";
 import { Pagination } from "@/components/Widgets";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { mobilePageSize, MobileFlowList, MobileSection, routeFilterForm, scalar } from "../mobile-ui";
 
@@ -11,7 +11,7 @@ export default async function MobileTrafficPage({ searchParams }: { searchParams
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const trafficPage = listFlowSessions({ page, pageSize, filters });
-  const model = buildShellModel(filters, { flows: trafficPage.rows });
+  const model = buildLightweightShellModel(filters, { flows: trafficPage.rows });
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
     trafficClass: filters.trafficClass !== "all" ? filters.trafficClass : undefined,

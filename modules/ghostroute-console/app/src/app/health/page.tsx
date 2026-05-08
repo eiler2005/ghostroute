@@ -1,7 +1,8 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { AlarmActions } from "@/components/AlarmActions";
 import { EmptyState, RawEvidence, shortDateTime, StatusBadge } from "@/components/Widgets";
-import { buildHealthModel, listAlarmEvents } from "@/lib/server/selectors/health";
+import { getConsolePageSummary, listAlarmEvents } from "@/lib/server/selectors/health";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 function scalar(value: string | string[] | undefined) {
@@ -33,7 +34,12 @@ function displayDeployGateStatus(rows: Array<Record<string, any>>, fallback?: st
 export default async function HealthPage({ searchParams }: { searchParams?: SearchParams }) {
   const rawParams: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildHealthModel(filters);
+  const summaryRecord = getConsolePageSummary("health_shell");
+  const healthSummary = summaryRecord?.payload || null;
+  const model = buildLightweightShellModel(filters, {
+    statusCards: Array.isArray(healthSummary?.statusCards) ? healthSummary.statusCards : undefined,
+    alerts: Array.isArray(healthSummary?.alarms) ? healthSummary.alarms : undefined,
+  });
   const alarmStatus = scalar(rawParams.status) || "active";
   const alarmPage = listAlarmEvents({ page: 1, pageSize: 50, filters, status: alarmStatus });
   const alarms = alarmPage.rows;
@@ -41,13 +47,10 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
   const warnings = alarms.filter((row) => row.severity === "warning" || row.severity === "review");
   const info = alarms.filter((row) => row.severity === "info");
   const stateWarning = alarms.find((row) => row.state_warning)?.state_warning || "";
-  const checks = [
-    ...(model.snapshots.health?.payload?.checks || []),
-    ...(model.snapshots.leaks?.payload?.checks || []),
-  ];
-  const deployGateSnapshot = model.snapshots.deploy_gate?.payload;
+  const checks = Array.isArray(healthSummary?.health?.checks) ? healthSummary.health.checks : [];
+  const deployGateSnapshot = healthSummary?.deployGate || null;
   const deployGateChecks = (deployGateSnapshot?.checks || []).map(displayDeployGateCheck);
-  const leakSnapshot = model.snapshots.leaks?.payload;
+  const leakSnapshot = healthSummary?.leaks || null;
   return (
     <ConsoleShell active="/health" model={model} filters={filters}>
       <div className="grid cards" style={{ marginBottom: 14 }}>
@@ -120,14 +123,14 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
             <h2>Deploy Gate</h2>
             <p>Pre-deploy canary for managed Wi-Fi, VPS edge and Channel A/B/C.</p>
           </div>
-          <StatusBadge value={displayDeployGateStatus(deployGateChecks, deployGateSnapshot?.overall_status || "UNKNOWN")} />
+          <StatusBadge value={displayDeployGateStatus(deployGateChecks, deployGateSnapshot?.status || "UNKNOWN")} />
         </div>
         {!deployGateSnapshot ? (
           <EmptyState title="No deploy-gate snapshot" />
         ) : (
           <>
             <p className="subtle">
-              mode: {deployGateSnapshot.mode || "unknown"}; estimated: {deployGateSnapshot.estimated_duration || "n/a"}; generated: {shortDateTime(deployGateSnapshot.generated_at)}
+               mode: {deployGateSnapshot.mode || "unknown"}; estimated: {deployGateSnapshot.estimated_duration || "n/a"}; generated: {shortDateTime(deployGateSnapshot.generated_at)}
             </p>
             <table className="table">
               <thead>
@@ -192,12 +195,12 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           ) : (
             <div className="detail-list">
               <div className="detail-row"><span>Overall</span><strong>{leakSnapshot.overall || "UNKNOWN"}</strong></div>
-              <div className="detail-row"><span>Leak signals</span><strong>{(leakSnapshot.leaks || []).length}</strong></div>
-              <div className="detail-row"><span>Evidence rows</span><strong>{(leakSnapshot.evidence || []).length}</strong></div>
+               <div className="detail-row"><span>Leak signals</span><strong>{leakSnapshot.leakSignals || 0}</strong></div>
+               <div className="detail-row"><span>Evidence rows</span><strong>{leakSnapshot.evidenceRows || (leakSnapshot.evidence || []).length}</strong></div>
               <div className="detail-row"><span>Confidence</span><strong>{leakSnapshot.confidence || "unknown"}</strong></div>
             </div>
           )}
-          <RawEvidence value={{ checks, leakSnapshot }} />
+          <RawEvidence value={{ summaryRebuiltAt: summaryRecord?.rebuilt_at || "", checks, leakSnapshot }} />
         </section>
         <aside className="card">
           <h2>Freshness</h2>

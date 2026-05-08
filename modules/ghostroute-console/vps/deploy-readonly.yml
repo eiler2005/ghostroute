@@ -21,9 +21,13 @@
     console_rollback_tag: "ghostroute-console:rollback-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
     console_ui_smoke_routes:
       - { path: "/", contains: "GhostRoute Console" }
+      - { path: "/health", contains: "Health Center" }
+      - { path: "/health", contains: "Deploy Gate" }
       - { path: "/live", contains: "Live event stream" }
       - { path: "/live", contains: "Showing" }
       - { path: "/live?activityPageSize=150", contains: "Client activity summary" }
+      - { path: "/m/health", contains: "Alarm Center" }
+      - { path: "/m/live", contains: "Client activity summary" }
       - { path: "/dns", contains: "DNS Query Log" }
       - { path: "/dns", contains: "Showing" }
       - { path: "/traffic", contains: "Flow Explorer" }

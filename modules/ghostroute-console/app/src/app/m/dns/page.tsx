@@ -1,7 +1,7 @@
 import { MobileShell } from "@/components/MobileShell";
 import { Pagination } from "@/components/Widgets";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { mobilePageSize, MobileDnsList, MobileSection, routeFilterForm, scalar } from "../mobile-ui";
 
@@ -11,7 +11,7 @@ export default async function MobileDnsPage({ searchParams }: { searchParams?: S
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const dnsPage = listDnsQueryLog({ page, pageSize, filters: { ...filters, trafficClass: "all" } });
-  const model = buildShellModel(filters, { dnsQueries: dnsPage.rows });
+  const model = buildLightweightShellModel(filters, { dnsQueries: dnsPage.rows });
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
     search: filters.search || undefined,

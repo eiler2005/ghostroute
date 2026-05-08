@@ -43,9 +43,11 @@ attribution later.
   TTL is 60 seconds and can be disabled with
   `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`.
 - Health, Live, mobile pages and JSON APIs must build their chrome from
-  prepared read models and compact `traffic_summary`, `health`, `leaks` and
-  `deploy_gate` payloads. They must not parse the full latest traffic report just
-  to render freshness, nav, cards or small lists.
+  prepared read models. Mobile Health reads `console_page_summaries.health_mobile`
+  for status cards, capped alarms, Deploy Gate, health probes and leak evidence;
+  mobile Live uses bounded `events`/`flow_sessions` selectors plus the lightweight
+  shell summary. They must not parse the full latest traffic report or rebuild
+  desktop Health just to render freshness, nav, cards or small lists.
 - The cache covers heavy flow, DNS, alarm, client, client-activity and live
   selectors, plus page models for all sidebar views. Action/write endpoints and
   private credential material must not use that cache; narrow operator-state

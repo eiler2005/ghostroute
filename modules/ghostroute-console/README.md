@@ -152,17 +152,20 @@ attribution gap is visible consistently instead of disappearing on one page and
 looking like a mismatch on another.
 Observability v2 also rebuilds additive SQLite read models after each
 collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
-`alarm_events`, `read_model_state` and non-secret `console_settings`. These
-tables feed `/api/flows`, `/api/dns`, `/api/alarms`, Flow Explorer, DNS Query
-Log and Alarm Center while preserving the normalized source tables as the
-fallback contract. The `flow_sessions` read model includes the safe DNS/SNI and
-egress evidence fields needed by the Flow Explorer inline detail panel; missing
-source evidence is rendered as `not observed`, not inferred.
+`alarm_events`, `console_page_summaries`, `read_model_state` and non-secret
+`console_settings`. These tables feed `/api/flows`, `/api/dns`, `/api/alarms`,
+Flow Explorer, DNS Query Log, Alarm Center and the compact mobile Health/Live
+shells while preserving the normalized source tables as the fallback contract.
+The `flow_sessions` read model includes the safe DNS/SNI and egress evidence
+fields needed by the Flow Explorer inline detail panel; missing source evidence
+is rendered as `not observed`, not inferred.
 GUI request paths should read these prepared tables and small snapshot payloads
 only. Health, Live, mobile pages and JSON APIs use snapshot metadata for cache
-versioning and load compact `traffic_summary`, `health`, `leaks` and
-`deploy_gate` payloads as needed; they must not parse the full latest traffic
-report just to render the shell, freshness strip or navigation chrome.
+versioning and the prepared `health_mobile` / `health_shell` /
+`live_mobile` summaries for status cards, capped alarms, Deploy Gate, leak
+evidence and freshness. They must not parse the full latest traffic report or
+rebuild the desktop Health model just to render the shell, freshness strip or
+navigation chrome.
 For selected-client details, Console derives an activity series from sequential
 current-window device snapshots. Multiple snapshots become hourly deltas; if a
 client only appears in one current snapshot, the chart shows that hour as a
