@@ -9,6 +9,10 @@ function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
+function unknownBytes(row: Record<string, any>) {
+  return Math.max(0, Number(row.total_bytes || row.bytes || 0) - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0));
+}
+
 function groupDestinationFallback(rows: Array<Record<string, any>>, limit = 8) {
   const grouped = new Map<string, Record<string, any>>();
   for (const row of rows) {
@@ -162,7 +166,11 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
             <div className="dashboard-rank-row" key={row.key || row.label}>
               <span className="rank-index">{row.rank}</span>
               <div className="rank-title"><strong>{row.label}</strong><small>{row.channel || "not observed"}</small></div>
-              <div className="rank-meter"><strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span><i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i></div>
+              <div className="rank-meter">
+                <strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span>
+                <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
+                <i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i>
+              </div>
               <span className={`rank-status status-${String(row.status || "OK").toLowerCase()}`}>{row.status || "OK"}</span>
             </div>
           ))}
@@ -187,7 +195,11 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
               <span className="rank-index">{row.rank}</span>
               <div className="rank-title"><strong>{row.label}</strong><small>{row.detail || "not observed"}</small></div>
               <RouteBadge value={row.route} />
-              <div className="rank-meter"><strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span><i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i></div>
+              <div className="rank-meter">
+                <strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span>
+                <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
+                <i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i>
+              </div>
             </div>
           ))}
         </div>
@@ -280,10 +292,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         ))}
       </div>
 
-      <div className="grid three" style={{ marginTop: 14 }}>
+      <div className="grid four" style={{ marginTop: 14 }}>
         <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Data for ${trafficWindowText} · refresh about 5 minutes`} />
         <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed · current-day KPI`} />
         <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
+        <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
       </div>
 
       <section className="card" style={{ marginTop: 14 }}>
@@ -328,7 +341,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
           ) : (
             <table className="table">
               <thead>
-                <tr><th>Client</th><th>Total</th><th>VPS</th><th>Direct</th><th>Confidence</th></tr>
+                <tr><th>Client</th><th>Total</th><th>VPS</th><th>Direct</th><th>Unknown</th><th>Confidence</th></tr>
               </thead>
               <tbody>
                 {inventoryTopClients.map((row) => (
@@ -337,6 +350,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
                     <td>{bytes(row.total_bytes || 0)}</td>
                     <td>{bytes(row.via_vps_bytes || 0)}</td>
                     <td>{bytes(row.direct_bytes || 0)}</td>
+                    <td>{bytes(unknownBytes(row))}</td>
                     <td><ConfidenceBadge value={row.confidence} /></td>
                   </tr>
                 ))}

@@ -278,7 +278,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
               </div>
-              <SplitBars vps={selected.via_vps_bytes || 0} direct={selected.direct_bytes || 0} />
+              <SplitBars
+                vps={selected.via_vps_bytes || 0}
+                direct={selected.direct_bytes || 0}
+                unknown={Math.max(0, Number(selected.total_bytes || 0) - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0))}
+              />
               <h3>Client activity</h3>
               <ClientActivityChart rows={selectedActivity} />
               <h3>Top domains</h3>

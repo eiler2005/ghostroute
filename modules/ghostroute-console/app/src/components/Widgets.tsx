@@ -145,8 +145,8 @@ export function routeFromBytes(row: Record<string, any>) {
   return row.route || "Unknown";
 }
 
-export function SplitBars({ vps, direct }: { vps: number; direct: number }) {
-  const total = Math.max(vps + direct, 1);
+export function SplitBars({ vps, direct, unknown = 0 }: { vps: number; direct: number; unknown?: number }) {
+  const total = Math.max(vps + direct + unknown, 1);
   return (
     <div className="split">
       <div className="split-line">
@@ -159,6 +159,13 @@ export function SplitBars({ vps, direct }: { vps: number; direct: number }) {
         <div className="bar"><span style={{ width: `${Math.round((direct / total) * 100)}%` }} /></div>
         <strong>{bytes(direct)}</strong>
       </div>
+      {unknown > 0 ? (
+        <div className="split-line">
+          <span>Unknown</span>
+          <div className="bar"><span style={{ width: `${Math.round((unknown / total) * 100)}%` }} /></div>
+          <strong>{bytes(unknown)}</strong>
+        </div>
+      ) : null}
     </div>
   );
 }

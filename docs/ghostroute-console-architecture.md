@@ -87,6 +87,9 @@ hints prove per-site bytes.
 Traffic UI must also explain operator-facing terms in-product:
 
 - `VPS`, `Direct`, `Mixed` and `Unknown` describe the final route decision.
+  Dashboard accounting still renders `Mixed` rows as a byte split: total traffic
+  must equal the sum of proved VPS bytes, proved Direct bytes and residual
+  Unknown bytes.
 - `Home Wi-Fi/LAN`, `Channel A`, `Channel B` and `Channel C` describe the
   access/client lane.
 - `exact`, `estimated`, `dns-interest`, `mixed` and `unknown` describe source
@@ -204,7 +207,10 @@ before host UFW or nginx can receive traffic. The data directory is
 The operator UI intentionally keeps first-page HTML small. Dashboard analytics
 are derived from bounded `flow_sessions` rows and render SVG/CSS charts for
 today's route split, monthly VPS usage, mobile/selected-client LTE reserve and
-forecasted cumulative usage without adding a browser chart dependency. Large evidence
+forecasted cumulative usage without adding a browser chart dependency. The route
+series use explicit read-model split evidence, so `Total` is always the sum of
+`Via VPS`, `Direct` and `Unknown`, including rows whose route badge is `Mixed`.
+Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and
 allow larger page sizes only when the operator asks for them. First-render pages

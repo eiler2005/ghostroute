@@ -153,6 +153,10 @@ investigation hints and are not converted into byte accounting. Dashboard, Flow
 Explorer, Clients and Live all read the same normalized accounting rows, so an
 attribution gap is visible consistently instead of disappearing on one page and
 looking like a mismatch on another.
+Dashboard route analytics keep the same accounting invariant: `Total` equals
+`Via VPS + Direct + Unknown`. `Mixed` rows are split with explicit VPS/direct
+evidence from the read model; only the remaining unproven bytes become
+`Unknown`.
 Observability v2 also rebuilds additive SQLite read models after each
 collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
 `alarm_events`, `console_page_summaries`, `read_model_state` and non-secret
@@ -275,7 +279,8 @@ from the public Console URL.
   analytics above it: Traffic today, Top clients, Top destinations, monthly VPS
   usage, LTE reserve for mobile/selected-client traffic and a cumulative usage
   chart with VPS forecast. These cards are derived from `flow_sessions`; quota
-  bars use `GHOSTROUTE_CONSOLE_VPS_QUOTA_*`,
+  bars use the same VPS/direct/unknown split evidence as Clients and
+  `GHOSTROUTE_CONSOLE_VPS_QUOTA_*`,
   `GHOSTROUTE_CONSOLE_LTE_QUOTA_*` and
   `GHOSTROUTE_CONSOLE_BILLING_RESET_DAY`.
 - `/traffic` is a read-only Flow Explorer workbench with KPI cards, a dense
