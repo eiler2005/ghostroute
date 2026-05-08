@@ -15,6 +15,7 @@ const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, reso
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
+  destinationEvidence,
   aggregateDnsInterest,
   dedupeAlerts,
   groupAttributionRows,
@@ -432,6 +433,16 @@ test("traffic presentation prefers concrete destinations over generic categories
   assert.equal(rows[0].destinationLabel, "chat.example.invalid");
   assert.equal(trafficDisplayDestination(rows[0]), "chat.example.invalid");
   assert.equal(concreteTrafficDestination({ destination: "AI services" }), "");
+  assert.deepEqual(destinationEvidence({ dns_qname: "chat.example.invalid", destination: "AI services" }), {
+    label: "chat.example.invalid",
+    kind: "DNS",
+    exact: true,
+  });
+  assert.deepEqual(destinationEvidence({ destination: "Apple/iCloud" }), {
+    label: "Apple/iCloud",
+    kind: "category",
+    exact: false,
+  });
 });
 
 test("dns interest aggregation groups duplicate domains", () => {

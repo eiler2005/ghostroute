@@ -65,9 +65,9 @@ export default async function BudgetPage({ searchParams }: { searchParams?: Sear
 
       <div className="grid two">
         <section className="card">
-          <h2>Потребление по устройствам</h2>
+          <h2>Device usage</h2>
           {model.devices.length === 0 ? (
-            <EmptyState title="Нет фактических traffic snapshots" />
+            <EmptyState title="No factual traffic snapshots" />
           ) : (
             <table className="table">
               <thead>
@@ -92,7 +92,7 @@ export default async function BudgetPage({ searchParams }: { searchParams?: Sear
         </section>
 
         <aside className="card side-panel">
-          <h2>Пороги и прогноз</h2>
+          <h2>Thresholds and forecast</h2>
           <div className="detail-list">
             <div className="detail-row"><span>VPS quota</span><strong>{vpsQuota ? bytes(vpsQuota) : "not set"}</strong></div>
             {vpsQuota ? <ProgressBar value={vpsPct} tone={tone(vpsPct)} /> : null}

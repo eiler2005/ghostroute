@@ -6,14 +6,24 @@ const API_BUDGET_MS = 1500;
 const pages = [
   { path: "/", nav: "Dashboard", markers: ["Observed traffic"] },
   { path: "/traffic", nav: "Flow Explorer", markers: ["Flow Explorer", "No traffic rows"] },
-  { path: "/dns", nav: "DNS Query Log", markers: ["DNS Query Log", "Нет DNS query rows"] },
+  { path: "/dns", nav: "DNS Query Log", markers: ["DNS Query Log", "No DNS query rows"] },
   { path: "/clients", nav: "Clients", markers: ["Device Inventory"] },
   { path: "/health", nav: "Health Center", markers: ["Health Center"] },
   { path: "/catalog", nav: "Catalog", markers: ["Diff preview"] },
-  { path: "/budget", nav: "Budget", markers: ["Потребление по устройствам"] },
+  { path: "/budget", nav: "Budget", markers: ["Device usage"] },
   { path: "/live", nav: "Live", markers: ["Client activity summary"] },
   { path: "/reports", nav: "Reports", markers: ["Privacy / Redaction Mode"] },
   { path: "/settings", nav: "Settings", markers: ["Settings"] },
+];
+
+const mobilePages = [
+  { path: "/m", markers: ["GhostRoute Mobile"] },
+  { path: "/m/traffic", markers: ["Flow Explorer"] },
+  { path: "/m/dns", markers: ["DNS Query Log"] },
+  { path: "/m/clients", markers: ["Clients"] },
+  { path: "/m/health", markers: ["Health Center", "Alarm Center"] },
+  { path: "/m/live", markers: ["Live event stream", "Client activity summary"] },
+  { path: "/m/catalog", markers: ["Catalog"] },
 ];
 
 const apiPaths = [
@@ -24,7 +34,7 @@ const apiPaths = [
   "/api/clients?pageSize=25",
   "/api/health",
   "/api/catalog",
-  "/api/live",
+  "/api/live?pageSize=5",
   "/api/budget",
   "/api/reports/llm-safe?format=json",
   "/api/notifications",
@@ -49,6 +59,22 @@ for (const item of pages) {
     await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
     const elapsed = performance.now() - started;
     expect(elapsed, `${item.path} rendered in ${Math.round(elapsed)}ms`).toBeLessThan(PAGE_BUDGET_MS);
+  });
+}
+
+for (const item of mobilePages) {
+  test(`mobile page performance ${item.path}`, async ({ browser }) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    });
+    const started = performance.now();
+    await page.goto(item.path);
+    await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
+    const elapsed = performance.now() - started;
+    expect(elapsed, `${item.path} rendered in ${Math.round(elapsed)}ms`).toBeLessThan(PAGE_BUDGET_MS);
+    await page.close();
   });
 }
 

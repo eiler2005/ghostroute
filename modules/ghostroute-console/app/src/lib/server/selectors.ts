@@ -14,7 +14,9 @@ import {
   latestCollectorRun,
   latestEvents,
   latestRouteDecisions,
+  latestSnapshotMetas,
   latestSnapshots,
+  latestSnapshotsForTypes,
   normalizedRows,
   notificationSettings,
   notifications,
@@ -59,17 +61,30 @@ export function clearDerivedCache() {
   derivedCache.clear();
 }
 
-function latestSnapshotRecords() {
-  return cacheGet("latest-snapshots", () => latestSnapshots());
+function latestSnapshotMetaRecords() {
+  return cacheGet("latest-snapshot-metas", () => latestSnapshotMetas());
 }
 
-function latestSnapshotVersion(records = latestSnapshotRecords()) {
+function latestSnapshotMetaVersion(records = latestSnapshotMetaRecords()) {
+  return records.map((row) => `${row.type}:${row.collectedAt}`).sort().join("|") || "empty";
+}
+
+function latestSnapshotRecords() {
+  return cacheGet(`latest-snapshots:${latestSnapshotMetaVersion()}`, () => latestSnapshots());
+}
+
+function latestSnapshotVersion(records = latestSnapshotMetaRecords()) {
   return records.map((row) => `${row.type}:${row.collectedAt}`).sort().join("|") || "empty";
 }
 
 function cachedLatestByType() {
   const records = latestSnapshotRecords();
   return cacheGet(`latest-by-type:${latestSnapshotVersion(records)}`, () => latestByType(records));
+}
+
+function cachedLatestByTypes(types: Array<SnapshotRecord["type"]>) {
+  const keyTypes = Array.from(new Set(types)).sort();
+  return cacheGet(`latest-by-types:${latestSnapshotMetaVersion()}:${keyTypes.join(",")}`, () => latestByType(latestSnapshotsForTypes(keyTypes)));
 }
 
 function filtersKey(filters: ConsoleFilters = {}) {
@@ -564,7 +579,14 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
 function snapshotRecordsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
   const now = new Date();
   const key = `snapshot-records:${latestSnapshotVersion()}:${period}:${Array.from(types).sort().join(",")}`;
-  return cacheGet(key, () => latestSnapshotRecords().filter((row) => types.has(row.type) && snapshotMatchesPeriod(row, period || "today", now)));
+  return cacheGet(key, () => {
+    const records = (period || "today") === "today" ? latestSnapshotMetaRecords() : latestSnapshotRecords();
+    return records.filter((row) => {
+      if (!types.has(row.type)) return false;
+      if ((period || "today") === "today") return moscowDateKey(row.collectedAt) === moscowDateKey(now);
+      return snapshotMatchesPeriod(row, period || "today", now);
+    });
+  });
 }
 
 function snapshotIdsForWindow(period = "today", types = new Set<string>(["traffic", "traffic_summary"])) {
@@ -1764,13 +1786,12 @@ function listAlarmEventsUncached(args: AlarmPageArgs = {}) {
 }
 
 function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
-  const snapshots = cachedLatestByType();
+  const snapshotMetas = latestByType(latestSnapshotMetaRecords());
+  const snapshots = cachedLatestByTypes(["traffic_summary", "health", "leaks", "deploy_gate"]);
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
-  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
   const trafficSummary = trafficSummarySnapshot?.payload || {};
-  const traffic = trafficSnapshot?.payload || {};
-  const dashboardTraffic = trafficSummary.totals ? trafficSummary : traffic;
+  const dashboardTraffic = trafficSummary;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
   const newest = Object.values(snapshots)
@@ -1829,7 +1850,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
     freshnessLabel: newest || "",
     nextExpectedCollection: nextExpectedCollection(newest),
     staleThresholdMinutes: staleThreshold,
-    runtime: runtimeInfo(snapshots),
+    runtime: runtimeInfo(snapshotMetas),
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
     hourlyTraffic: [],
@@ -1861,14 +1882,14 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
 }
 
 export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial<ConsoleModel> = {}): ConsoleModel {
-  const snapshots = cachedLatestByType();
+  const snapshotMetas = latestByType(latestSnapshotMetaRecords());
+  const snapshots = cachedLatestByTypes(["traffic_summary", "health", "leaks", "deploy_gate"]);
   const period = filters.period || "today";
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
-  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
-  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : trafficSnapshot?.payload || {};
+  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : {};
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
-  const newest = Object.values(snapshots)
+  const newest = Object.values(snapshotMetas)
     .filter(Boolean)
     .map((row) => row?.collectedAt)
     .sort()
@@ -1913,7 +1934,7 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
     freshnessLabel: newest || "",
     nextExpectedCollection: nextExpectedCollection(newest),
     staleThresholdMinutes: staleThreshold,
-    runtime: runtimeInfo(snapshots),
+    runtime: runtimeInfo(snapshotMetas),
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
     hourlyTraffic: [],
@@ -2520,20 +2541,27 @@ function listLiveEventsUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 150, 1000);
   const offset = (page - 1) * pageSize;
-  const fetchLimit = Math.max(offset + pageSize * 2, pageSize * 30);
+  const filter = { ...(args.filters || {}), trafficClass: args.filters?.trafficClass || "client" };
+  const hasPostFilter = Boolean(filter.client && filter.client !== "all") || Boolean(filter.trafficClass && filter.trafficClass !== "all");
+  const fetchLimit = Math.max(offset + pageSize * (hasPostFilter ? 8 : 2), pageSize * (hasPostFilter ? 20 : 4));
+  const where: string[] = [];
+  const params: any[] = [];
+  addCommonFilters(where, params, filter);
+  const whereSql = where.length ? `where ${where.map((item) => `(${item})`).join(" and ")}` : "";
   const eventSelect = `
     select 'event' as kind, id, event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
       from events
+     ${whereSql}
      order by occurred_at desc, id desc
      limit ?`;
   const decisionSelect = `
     select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, '' as summary, source_log
       from route_decisions
+     ${whereSql}
      order by occurred_at desc, id desc
      limit ?`;
-  const filter = { ...(args.filters || {}), trafficClass: args.filters?.trafficClass || "client" };
-  const eventRows = getDb().prepare(eventSelect).all(fetchLimit);
-  const decisionRows = getDb().prepare(decisionSelect).all(fetchLimit);
+  const eventRows = getDb().prepare(eventSelect).all(...params, fetchLimit);
+  const decisionRows = getDb().prepare(decisionSelect).all(...params, fetchLimit);
   const candidates = [...eventRows, ...decisionRows]
     .sort((a: any, b: any) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || Number(b.id || 0) - Number(a.id || 0))
     .slice(0, fetchLimit)

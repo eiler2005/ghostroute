@@ -215,15 +215,29 @@ nginx/TLS and Basic Auth configuration stay unchanged.
 
 Read-only derived selectors use a short in-process cache inside the Console
 Node process. The default TTL is 60 seconds and can be disabled with
-`GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys include the latest
-snapshot version, active filters, pagination args and view-specific row
-identity where needed, so new collected data naturally moves the UI to a new
-cache key. Cached selectors cover heavy flow, DNS, alarm, client, client
-activity and live-event lists, plus the page models for every sidebar view.
-Action/write endpoints either bypass this cache or clear it after a state
-change. Console intentionally avoids browser prefetch for the heavy sidebar
-views; warmup made mobile Safari less predictable and could leave the operator
-staring at a navigation fallback even though direct URLs worked.
+`GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys use lightweight snapshot
+metadata (`type` + `collected_at`) rather than parsing every latest snapshot
+payload. Request-path shells for Health, Live, mobile pages and JSON APIs then
+load only the small payloads they render, usually `traffic_summary`, `health`,
+`leaks` and `deploy_gate`, while traffic/DNS/client tables come from prepared
+SQLite read models. New collected data naturally changes the metadata version and
+moves the UI to a new cache key without making ordinary navigation parse the full
+traffic report.
+
+Cached selectors cover heavy flow, DNS, alarm, client, client activity and
+live-event lists, plus the page models for every sidebar view. Action/write
+endpoints either bypass this cache or clear it after a state change. Console
+intentionally avoids browser prefetch for the heavy sidebar views; warmup made
+mobile Safari less predictable and could leave the operator staring at a
+navigation fallback even though direct URLs worked.
+
+Flow Explorer and Clients keep row inspection as URL-addressable state rather
+than hidden browser state. Flow rows use `?flow=<flow_sessions.id>` and render
+destination evidence as `DNS`, `SNI`, `IP`, `category`, `counter` or
+`not observed`, so exact site evidence is not confused with aggregate traffic
+groups. Device Inventory uses `?client=<device-or-client-id>` for the right
+detail panel while the table itself remains an inventory list; row cells are
+plain document links to keep selection reliable over Safari/proxy paths.
 
 Each deployed build carries both a short git commit and a UTC build timestamp.
 The source strip renders them together as `build <commit> · <date>`, and

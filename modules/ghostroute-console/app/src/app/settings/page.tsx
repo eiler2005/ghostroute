@@ -81,8 +81,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Se
       </section>
       <section className="card terms-card" style={{ marginTop: 14 }}>
         <div>
-          <h2>Что означают термины</h2>
-          <p>Короткая справка по входам, выходам, правилам и confidence labels.</p>
+          <h2>What the terms mean</h2>
+          <p>Short reference for ingress, egress, rules and confidence labels.</p>
         </div>
         <TrafficTermsHelp />
       </section>

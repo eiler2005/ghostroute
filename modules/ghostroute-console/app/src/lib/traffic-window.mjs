@@ -93,6 +93,24 @@ export function trafficDisplayDestination(row) {
   return concreteTrafficDestination(row) || text(row?.destinationLabel || row?.destination || row?.family || row?.domain, "n/a");
 }
 
+export function destinationEvidence(row) {
+  const dns = text(row?.dns_qname || row?.raw?.dns_qname).trim();
+  if (dns) return { label: dns, kind: "DNS", exact: true };
+  const sni = text(row?.sni || row?.raw?.sni).trim();
+  if (sni && !isGenericTrafficDestination(sni)) return { label: sni, kind: "SNI", exact: true };
+  const ip = text(row?.destination_ip || row?.raw?.destination_ip).trim();
+  if (ip) return { label: ip, kind: "IP", exact: true };
+  const destination = text(row?.destinationLabel || row?.destination || row?.family || row?.domain).trim();
+  if (destination && destination !== "unknown destination") {
+    return {
+      label: destination,
+      kind: isGenericTrafficDestination(destination) ? "category" : "counter",
+      exact: false,
+    };
+  }
+  return { label: "not observed", kind: "not observed", exact: false };
+}
+
 function dnsCount(row) {
   const parsed = number(row?.count || row?.query_count || row?.total || row?.rows);
   return parsed > 0 ? parsed : 1;
