@@ -172,4 +172,44 @@ export function MobileCatalogList({ rows }: { rows: Array<Record<string, any>> }
   );
 }
 
+export function MobileHealthStatusList({ rows }: { rows: Array<Record<string, any>> }) {
+  if (rows.length === 0) return <div className="mobile-empty">No health checks.</div>;
+  return (
+    <div className="mobile-list">
+      {rows.map((row) => (
+        <div className="mobile-row" key={row.label || row.title}>
+          <span>
+            <strong>{row.label || row.title}</strong>
+            <small>{row.detail || row.source || "health check"}</small>
+          </span>
+          <span className="mobile-row-meta">
+            <ConfidenceBadge value={row.status || "unknown"} />
+            <b>{row.status || "unknown"}</b>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function MobileAlarmList({ rows }: { rows: Array<Record<string, any>> }) {
+  if (rows.length === 0) return <div className="mobile-empty">No alarm rows.</div>;
+  return (
+    <div className="mobile-list">
+      {rows.map((row) => (
+        <div className="mobile-row" key={row.id || `${row.source}-${row.title}`}>
+          <span>
+            <strong>{row.title || "alarm"}</strong>
+            <small>{row.source || "console"} · {shortDateTime(row.created_at || row.collected_at)}</small>
+          </span>
+          <span className="mobile-row-meta">
+            <ConfidenceBadge value={row.severity || "info"} />
+            <b>{row.status || "open"}</b>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export { Pagination };
