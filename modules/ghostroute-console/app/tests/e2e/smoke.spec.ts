@@ -186,8 +186,12 @@ test("mobile serves compact heavy console pages", async ({ page, isMobile }) => 
 
   await page.goto("/health");
   await expect(page).toHaveURL(/\/m\/health/);
-  await expect(page.getByRole("heading", { name: "Health Center" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Health Center" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Health Center" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Alarm Center" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Deploy Gate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Leak-check evidence" })).toBeVisible();
+  await expect(page.locator(".mobile-status-card").first()).toBeVisible();
   await expect(page.locator(".health-layout > .side-panel")).toHaveCount(0);
 
   await page.goto("/catalog");

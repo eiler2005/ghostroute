@@ -249,6 +249,54 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .mobile-row-meta { flex: 0 0 116px; text-align: right; display: grid; justify-items: end; gap: 5px; }
 .mobile-row-meta b { max-width: 116px; color: #cfe0f5; font-size: 12px; }
 .mobile-empty { color: #9fb1c7; padding: 12px 0; }
+.mobile-health-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; border: 1px solid #263b55; border-radius: 8px; background: #0d1b2e; padding: 14px; margin-bottom: 10px; }
+.mobile-health-hero h1 { margin: 0; font-size: 22px; }
+.mobile-health-hero p { margin: 4px 0 0; color: #9fb1c7; font-size: 13px; line-height: 1.35; }
+.mobile-health-hero > strong { flex: 0 0 auto; border: 1px solid #2f4664; border-radius: 999px; padding: 5px 10px; font-size: 12px; text-transform: uppercase; }
+.mobile-health-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 10px; }
+.mobile-health-summary span { min-width: 0; display: flex; justify-content: space-between; gap: 8px; border: 1px solid #1f3148; border-radius: 8px; background: rgba(7,17,31,.6); padding: 9px 10px; color: #9fb1c7; font-size: 12px; }
+.mobile-health-summary b { color: #f2f6fb; }
+.mobile-status-card-grid { display: grid; gap: 7px; margin-bottom: 10px; }
+.mobile-status-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; align-items: center; border: 1px solid #243954; border-radius: 8px; background: rgba(10,25,43,.92); padding: 10px 11px; }
+.mobile-status-card span { color: #e6edf7; font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-status-card strong, .mobile-inline-status { border: 1px solid #2f4664; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.mobile-status-card small { grid-column: 1 / -1; color: #9fb1c7; font-size: 12px; overflow-wrap: anywhere; }
+.mobile-flat-card { border: 1px solid #243954; border-radius: 8px; background: rgba(12,27,46,.92); margin-bottom: 10px; overflow: hidden; }
+.mobile-flat-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #1f3148; padding: 11px 12px; }
+.mobile-flat-title h2 { margin: 0; font-size: 18px; }
+.mobile-flat-title span { color: #9fb1c7; font-size: 12px; white-space: nowrap; }
+.mobile-compact-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-bottom: 1px solid #1f3148; }
+.mobile-compact-meta span { min-width: 0; border-right: 1px solid #1f3148; border-bottom: 1px solid #1f3148; padding: 9px 10px; color: #9fb1c7; font-size: 12px; overflow-wrap: anywhere; }
+.mobile-compact-meta span:nth-child(2n), .mobile-compact-meta span:last-child { border-right: 0; }
+.mobile-compact-meta b { display: block; margin-top: 2px; color: #e6edf7; font-size: 13px; }
+.mobile-health-list { display: grid; }
+.mobile-health-row, .mobile-alarm-row { border-bottom: 1px solid #1f3148; background: rgba(7,17,31,.28); }
+.mobile-health-row:last-child, .mobile-alarm-row:last-child { border-bottom: 0; }
+.mobile-health-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; }
+.mobile-health-main { min-width: 0; }
+.mobile-health-main strong { display: block; color: #e6edf7; font-size: 15px; }
+.mobile-health-main small { display: block; margin-top: 3px; color: #9fb1c7; font-size: 12px; white-space: normal; }
+.mobile-health-main em { display: block; margin-top: 5px; color: #8db6ff; font-size: 11px; font-style: normal; overflow-wrap: anywhere; }
+.mobile-health-row > span { flex: 0 0 auto; border: 1px solid #2f4664; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.mobile-alarm-row { padding: 12px; }
+.mobile-alarm-head, .mobile-alarm-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mobile-alarm-head strong { min-width: 0; color: #e6edf7; font-size: 15px; overflow-wrap: anywhere; }
+.mobile-alarm-head span { flex: 0 0 auto; border: 1px solid #2f4664; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.mobile-alarm-meta { margin-top: 6px; color: #8da2bb; font-size: 12px; }
+.mobile-alarm-row p { margin: 8px 0 0; color: #c9d6e6; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.mobile-alarm-row small { display: block; margin-top: 7px; color: #8db6ff; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.mobile-health-ok > strong, .mobile-health-ok.mobile-health-row > span, .mobile-health-ok .mobile-alarm-head span { color: #65e89b; border-color: rgba(101,232,155,.45); background: rgba(38,166,91,.12); }
+.mobile-health-warning > strong, .mobile-health-warning.mobile-health-row > span, .mobile-health-warning .mobile-alarm-head span { color: #ffc85a; border-color: rgba(255,200,90,.48); background: rgba(255,200,90,.12); }
+.mobile-health-critical > strong, .mobile-health-critical.mobile-health-row > span, .mobile-health-critical .mobile-alarm-head span { color: #ff7a7a; border-color: rgba(255,122,122,.52); background: rgba(255,86,86,.13); }
+.mobile-health-unknown > strong, .mobile-health-unknown.mobile-health-row > span, .mobile-health-unknown .mobile-alarm-head span { color: #9fb1c7; border-color: #2f4664; background: rgba(159,177,199,.08); }
+.mobile-inline-status.mobile-health-ok { color: #65e89b; border-color: rgba(101,232,155,.45); background: rgba(38,166,91,.12); }
+.mobile-inline-status.mobile-health-warning { color: #ffc85a; border-color: rgba(255,200,90,.48); background: rgba(255,200,90,.12); }
+.mobile-inline-status.mobile-health-critical { color: #ff7a7a; border-color: rgba(255,122,122,.52); background: rgba(255,86,86,.13); }
+.mobile-inline-status.mobile-health-unknown { color: #9fb1c7; border-color: #2f4664; background: rgba(159,177,199,.08); }
+.mobile-flat-card .mobile-filter { padding: 10px 12px; border-bottom: 1px solid #1f3148; margin-bottom: 0; }
+.mobile-details { padding: 11px 12px; }
+.mobile-details summary { color: #8db6ff; font-size: 13px; font-weight: 800; cursor: pointer; }
+.mobile-details pre { max-height: 260px; overflow: auto; margin: 10px 0 0; border: 1px solid #1f3148; border-radius: 8px; background: rgba(4,12,23,.78); padding: 10px; color: #c9d6e6; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mobile-shell .pagination { font-size: 12px; gap: 8px; }
 .mobile-shell .pagination .muted-button { min-height: 30px; padding: 4px 8px; }
 .mobile-shell .badge { min-height: 21px; padding: 1px 7px; font-size: 11px; }

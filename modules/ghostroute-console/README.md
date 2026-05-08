@@ -316,8 +316,10 @@ Mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`, `/live` and
 `/catalog` redirect to `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`,
 `/m/live` and `/m/catalog` unless `desktop=1` is present. The `/m` pages use the
 same read-only snapshots and selectors, cap page size to 25 rows, omit side
-panels/raw evidence/charts, and use plain document links. `/m/health` exposes a
-compact Health Center plus Alarm Center, and `/m/live` includes a compact Client
+panels and desktop charts, and use plain document links. `/m/health` exposes
+compact status cards, Alarm Center, Deploy Gate, Health Center probes,
+Leak-check evidence and freshness so remote triage can happen from an iPhone
+without loading the desktop workbench. `/m/live` includes a compact Client
 activity summary next to the live event stream. Each mobile page includes a
 `Desktop version` link back to the
 full workbench with `desktop=1`. No `m.` subdomain is used in v1, so nginx/TLS

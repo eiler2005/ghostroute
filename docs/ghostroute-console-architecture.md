@@ -206,9 +206,10 @@ redirects mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`,
 `/live` and `/catalog` to matching `/m` pages, while `desktop=1`, `/api/*`,
 `/_next/*`, `/m/*` and shared route-detail URLs bypass the redirect. The mobile
 pages use the same read-only selectors, cap page size to 25 rows, omit side
-panels/raw evidence/charts and keep navigation as plain document links. Mobile
-Health Center renders status cards and Alarm Center from the same health/alarm
-read models; mobile Live renders the event stream plus a compact Client activity
+panels and desktop charts, and keep navigation as plain document links. Mobile
+Health Center renders status cards, Alarm Center, Deploy Gate, Health Center
+probes, Leak-check evidence and freshness from the same health/alarm read
+models; mobile Live renders the event stream plus a compact Client activity
 summary from `flow_sessions`. No `m.` subdomain is used in v1, so public
 nginx/TLS and Basic Auth configuration stay unchanged.
 
