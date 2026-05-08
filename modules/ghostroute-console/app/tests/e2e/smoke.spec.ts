@@ -195,6 +195,21 @@ test("mobile redirect preserves bypass and safe routes", async ({ page, request,
   await page.goto("/traffic");
   await expect(page).toHaveURL(/\/m\/traffic/);
 
+  const forwardedRedirect = await request.get("/traffic", {
+    headers: {
+      host: "127.0.0.1:3000",
+      "sec-ch-ua-mobile": "?1",
+      "user-agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "x-forwarded-host": "console.example.invalid:2087",
+      "x-forwarded-port": "2087",
+      "x-forwarded-proto": "https",
+    },
+    maxRedirects: 0,
+  });
+  expect(forwardedRedirect.status()).toBe(307);
+  expect(forwardedRedirect.headers().location).toBe("https://console.example.invalid:2087/m/traffic");
+
   await page.goto("/traffic?desktop=1");
   await expect(page).toHaveURL(/\/traffic\?desktop=1/);
   await expect(page.locator(".mobile-shell")).toHaveCount(0);

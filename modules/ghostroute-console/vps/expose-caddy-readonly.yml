@@ -131,6 +131,10 @@
               header Referrer-Policy "no-referrer"
               header -Alt-Svc
               reverse_proxy 127.0.0.1:3000 {
+                  header_up Host {http.request.host}
+                  header_up X-Forwarded-Host {http.request.host}
+                  header_up X-Forwarded-Proto https
+                  header_up X-Forwarded-Port {{ console_public_port }}
                   transport http {
                       versions 1.1
                       keepalive off
@@ -267,9 +271,10 @@
                   location / {
                       proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
                       proxy_http_version 1.0;
-                      proxy_set_header Host $host;
-                      proxy_set_header X-Forwarded-Host $host;
+                      proxy_set_header Host $http_host;
+                      proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
+                      proxy_set_header X-Forwarded-Port $server_port;
                       proxy_set_header Accept-Encoding "";
                       proxy_set_header Connection close;
                       proxy_set_header X-Real-IP $remote_addr;

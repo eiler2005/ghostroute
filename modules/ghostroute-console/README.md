@@ -319,7 +319,10 @@ read-only snapshots and selectors, but render a single compact list per page,
 cap page size to 25 rows, omit side panels/raw evidence/charts, and use plain
 document links. Each mobile page includes a `Desktop version` link back to the
 full workbench with `desktop=1`. No `m.` subdomain is used in v1, so nginx/TLS
-and Basic Auth remain unchanged.
+and Basic Auth remain unchanged. The VPS proxy forwards the external host and
+port through `X-Forwarded-*` headers; mobile redirects use those headers so they
+stay on the public Console URL instead of the internal `localhost:3000`
+container upstream.
 
 ## Local Checks
 
