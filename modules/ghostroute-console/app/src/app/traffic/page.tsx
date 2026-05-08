@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { FlowDetailPanel } from "@/components/RouteExplanation";
-import { buildRouteEvidenceSet } from "@/lib/server/evidence";
+import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
@@ -73,8 +73,11 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const evidences = evidenceSet.evidences;
   const rows = trafficPage.rows;
   const selectedFlowId = scalar(params.flow) || rows[0]?.id || "";
-  const evidence = evidences.find((item) => item.id === selectedFlowId) || evidences[0] || null;
-  const selectedId = evidence?.id || selectedFlowId;
+  const selectedRow = rows.find((row) => row.id === selectedFlowId) || rows[0] || null;
+  const selectedRowIndex = selectedRow ? rows.indexOf(selectedRow) : 0;
+  const selectedRowEvidence = selectedRow ? buildRouteEvidenceForRow(model, selectedRow, selectedRowIndex) : null;
+  const evidence = evidences.find((item) => item.id === selectedFlowId) || selectedRowEvidence || evidences[0] || null;
+  const selectedId = selectedRow?.id || evidence?.id || selectedFlowId;
   const vpsRows = rows.filter((row) => row.route === "VPS");
   const suspiciousRows = rows.filter((row) => row.route === "Direct" && ["medium", "high"].includes(String(row.risk || ""))).length;
   const unknownRows = rows.filter((row) => !row.destination || row.destination === "unknown destination" || row.route === "Unknown" || row.accounting_bucket).length;
@@ -144,7 +147,10 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
             <Donut value={vpsShare} />
             <div>
               {topVps.length ? topVps.map((row) => (
-                <small key={row.id}>{trafficDisplayDestination(row)} <b>{Math.round((rowBytes(row) / Math.max(vpsBytes, 1)) * 100)}%</b></small>
+                <small key={row.id} title={trafficDisplayDestination(row)}>
+                  <span>{trafficDisplayDestination(row)}</span>
+                  <b>{Math.round((rowBytes(row) / Math.max(vpsBytes, 1)) * 100)}%</b>
+                </small>
               )) : <small>No VPS rows on this page</small>}
             </div>
           </div>
@@ -163,7 +169,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
         </section>
       </div>
 
-      {evidences.length === 0 ? (
+      {rows.length === 0 ? (
         <section className="card">
           <EmptyState title="No traffic rows" />
         </section>
@@ -217,22 +223,24 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     const href = flowHref(row.id);
                     const destination = trafficDisplayDestination(row);
                     return (
-                      <tr key={row.id} className={row.id === selectedId ? "selected" : ""}>
-                        <td className="col-time"><Link href={href}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
-                        <td className="col-client" title={row.client}><Link href={href}>{row.client}</Link></td>
+                      <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>
+                        <td className="col-time"><Link className="row-link" href={href}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
+                        <td className="col-client" title={row.client}><Link className="row-link" href={href}>{row.client}</Link></td>
                         <td className="col-destination" title={destination}>
-                          <Link href={href}>{destination}</Link>
-                          <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
+                          <Link className="row-link row-link-with-badges" href={href}>
+                            <span>{destination}</span>
+                            <span className="inline-badges"><ChannelBadge value={row.channel} /></span>
+                          </Link>
                         </td>
-                        <td className="col-port">{row.destination_port || "n/a"} <span>{row.protocol || "TCP"}</span></td>
-                        <td className="col-route"><RouteBadge value={row.route} /></td>
+                        <td className="col-port"><Link className="row-link" href={href}>{row.destination_port || "n/a"} <span>{row.protocol || "TCP"}</span></Link></td>
+                        <td className="col-route"><Link className="row-link row-link-with-badges" href={href}><RouteBadge value={row.route} /></Link></td>
                         <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
-                          {row.policy || row.rule_set || row.matched_rule || "DEFAULT"}
+                          <Link className="row-link" href={href}>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</Link>
                         </td>
-                        <td className="col-traffic">{bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions</td>
-                        <td className="col-duration">{durationLabel(row.duration_seconds)}</td>
-                        <td className="col-risk">{riskBadge(row.risk)}</td>
-                        <td className="col-confidence"><ConfidenceBadge value={row.confidence} /></td>
+                        <td className="col-traffic"><Link className="row-link" href={href}>{bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions</Link></td>
+                        <td className="col-duration"><Link className="row-link" href={href}>{durationLabel(row.duration_seconds)}</Link></td>
+                        <td className="col-risk"><Link className="row-link row-link-with-badges" href={href}>{riskBadge(row.risk)}</Link></td>
+                        <td className="col-confidence"><Link className="row-link row-link-with-badges" href={href}><ConfidenceBadge value={row.confidence} /></Link></td>
                       </tr>
                     );
                   })}

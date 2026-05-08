@@ -54,10 +54,15 @@ test("flow workbench exposes inline detail and gated evidence", async ({ page, i
   await expect(page.locator(".flow-detail-panel")).toBeVisible();
   await expect(page.locator(".flow-detail-panel")).toContainText("Why this route?");
   await expect(page.locator(".flow-detail-panel")).toContainText("Site / Operator view");
-  const secondRowLink = page.locator(".route-table-card tbody tr").nth(1).locator("a").first();
-  await secondRowLink.click();
+  const secondRow = page.locator(".route-table-card tbody tr").nth(1);
+  const secondHref = await secondRow.locator("a").first().getAttribute("href");
+  const selectedFlow = secondHref ? new URL(secondHref, "http://localhost").searchParams.get("flow") : "";
+  await secondRow.locator(".col-route a").click();
   await expect(page).toHaveURL(/flow=/);
+  const encodedFlow = selectedFlow ? encodeURIComponent(selectedFlow).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  if (encodedFlow) await expect(page).toHaveURL(new RegExp(`flow=${encodedFlow}`));
   await expect(page.locator(".route-table-card tbody tr.selected")).toHaveCount(1);
+  await expect(page.locator(".route-table-card tbody tr.selected a").first()).toHaveAttribute("href", new RegExp(`flow=${encodedFlow}`));
   await page.locator(".flow-detail-panel .evidence-details summary").first().click({ force: true });
   await expect(page.locator(".flow-detail-panel .codebox").first()).toBeVisible();
 });
@@ -109,8 +114,35 @@ test("traffic classes and live cadence are explicit", async ({ page, isMobile })
     await expect(page.getByText("Needs attribution flows by volume")).toBeVisible();
   }
   await page.goto(isMobile ? "/live?desktop=1" : "/live");
-  await expect(page.getByText("Автообновление около 10 минут")).toBeVisible();
+  await expect(page.getByText("Auto-refresh around 10 minutes")).toBeVisible();
   if (!isMobile) await expect(page.getByText("Service/background live events")).toBeVisible();
+});
+
+test("flow layout and row selection stay stable on desktop", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only flow layout smoke");
+  await page.setViewportSize({ width: 2048, height: 900 });
+  await page.goto("/traffic");
+  if (await page.getByText("No traffic rows").isVisible().catch(() => false)) return;
+
+  const meta = page.locator(".traffic-stream-meta").nth(1);
+  const header = page.locator(".flow-events-table thead").first();
+  await expect(meta).toBeVisible();
+  await expect(header).toBeVisible();
+  const metaBox = await meta.boundingBox();
+  const headerBox = await header.boundingBox();
+  expect((headerBox?.y || 0)).toBeGreaterThan((metaBox?.y || 0) + (metaBox?.height || 0) - 1);
+
+  const kpiBox = await page.locator(".flow-kpi-wide").boundingBox();
+  const labelBoxes = await page.locator(".flow-kpi-wide .flow-vps-breakdown small").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, right: rect.right };
+    })
+  );
+  for (const box of labelBoxes) {
+    expect(box.left).toBeGreaterThanOrEqual((kpiBox?.x || 0) - 1);
+    expect(box.right).toBeLessThanOrEqual((kpiBox?.x || 0) + (kpiBox?.width || 0) + 1);
+  }
 });
 
 test("live filters keep event pagination scoped", async ({ page, isMobile }) => {
@@ -144,8 +176,39 @@ test("clients separate inventory from selected-window traffic", async ({ page, i
   await page.goto(isMobile ? "/clients?desktop=1" : "/clients");
   await expect(page.getByRole("heading", { name: "Device Inventory" })).toBeVisible();
   await expect(page.getByText("traffic for selected window")).toBeVisible();
+  const headers = page.locator(".clients-table").first().locator("th");
+  await expect(headers.nth(0)).toHaveText("Device");
+  await expect(headers.nth(1)).toHaveText("Channel");
+  await expect(headers.nth(2)).toHaveText("Window traffic");
   await expect(page.locator(".clients-table th").filter({ hasText: "Window traffic" }).first()).toBeAttached();
   await expect(page.locator(".clients-table-scroll").first()).toBeVisible();
+});
+
+test("clients row selection updates the detail panel", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only client detail panel");
+  await page.goto("/clients");
+  const secondRow = page.locator(".clients-card tbody tr").nth(1);
+  if ((await secondRow.count()) === 0) return;
+  const deviceName = (await secondRow.locator("td").first().innerText()).trim();
+  const secondHref = await secondRow.locator("a").first().getAttribute("href");
+  const selectedClient = secondHref ? new URL(secondHref, "http://localhost").searchParams.get("client") : "";
+  await secondRow.locator("td").nth(2).locator("a").click();
+  await expect(page).toHaveURL(/client=/);
+  const encodedClient = selectedClient ? encodeURIComponent(selectedClient).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  if (encodedClient) await expect(page).toHaveURL(new RegExp(`client=${encodedClient}`));
+  await expect(page.locator(".clients-card tbody tr.selected")).toHaveCount(1);
+  await expect(page.locator(".side-panel")).toContainText(deviceName);
+});
+
+test("live summary shows milliseconds and aggregated DNS interest", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only live summary panels");
+  await page.goto("/live");
+  const firstTime = page.locator(".client-activity-table tbody tr .live-col-time").first();
+  if (await firstTime.count()) await expect(firstTime).toHaveText(/\d{2}:\d{2}:\d{2}\.\d{3}/);
+
+  const dnsSection = page.locator(".grid.three section").filter({ has: page.getByRole("heading", { name: "DNS interest" }) });
+  const domains = (await dnsSection.locator(".detail-row span").allTextContents()).map((value) => value.trim()).filter(Boolean);
+  expect(new Set(domains).size).toBe(domains.length);
 });
 
 test("mobile keeps controls and content reachable", async ({ page, isMobile }) => {

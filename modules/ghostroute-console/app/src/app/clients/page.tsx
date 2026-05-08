@@ -19,7 +19,7 @@ import { buildClientsModel, listClientActivity, listClientInventory } from "@/li
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -29,12 +29,26 @@ function clientTokens(client?: Record<string, any>) {
   return [client?.client_key, client?.client_label, client?.device_key, client?.device_label, client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || []), ...(client?.observed_identities || [])].filter(Boolean).map(String);
 }
 
+function normalizeToken(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function selectedClientValue(client?: Record<string, any>) {
+  return client?.client_key || client?.id || client?.label || client?.device_key || client?.client_label || client?.device_label || "";
+}
+
+function matchesClientFilter(client: Record<string, any>, value?: string) {
+  const target = normalizeToken(value);
+  return Boolean(target) && clientTokens(client).some((token) => normalizeToken(token) === target);
+}
+
 function belongsToClient(row: Record<string, any>, tokens: string[]) {
   if (tokens.length === 0) return false;
-  const clientFields = [row.client, row.label, row.device_id, row.id, row.ip, row.source_ip].filter(Boolean).map(String);
-  if (clientFields.some((value) => tokens.includes(value))) return true;
-  const raw = JSON.stringify(row);
-  return tokens.some((token) => token.length > 2 && raw.includes(token));
+  const normalizedTokens = tokens.map(normalizeToken);
+  const clientFields = [row.client, row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.device_id, row.id, row.ip, row.source_ip].filter(Boolean).map(String);
+  if (clientFields.some((value) => normalizedTokens.includes(normalizeToken(value)))) return true;
+  const raw = normalizeToken(JSON.stringify(row));
+  return tokens.some((token) => token.length > 2 && raw.includes(normalizeToken(token)));
 }
 
 function hourLabel(value?: string) {
@@ -45,7 +59,7 @@ function hourLabel(value?: string) {
 }
 
 function ClientActivityChart({ rows }: { rows: Array<Record<string, any>> }) {
-  if (rows.length === 0) return <EmptyState title="Нет истории активности клиента" />;
+  if (rows.length === 0) return <EmptyState title="No client activity history" />;
   const max = Math.max(...rows.map((row) => Number(row.bytes || 0)), 1);
   const width = 360;
   const height = 136;
@@ -96,16 +110,16 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const activeRows = clientsPage.rows.filter((row) => Number(row.total_bytes || 0) > 0 || ["Online", "Recently seen"].includes(String(row.status || "")));
   const knownRows = primaryRows.filter((row) => !String(row.role || row.label || "").toLowerCase().includes("unknown"));
   const selected =
-    clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(row.observed_identities || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
+    clientsPage.rows.find((row) => filters.client !== "all" && matchesClientFilter(row, filters.client)) ||
     primaryRows[0] ||
     clientsPage.rows[0];
-  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
+  const selectedClientId = selectedClientValue(selected);
+  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...filters, client: selectedClientId } }).rows : [];
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
-  const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
   const allSelectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)) : [];
   const selectedFlows = allSelectedFlows.slice(0, 8);
-  const selectedDns = selected ? model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 8) : [];
+  const selectedDns = selected ? aggregateDnsInterest(model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)), 8) : [];
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
@@ -132,6 +146,17 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     client: filters.client !== "all" ? filters.client : undefined,
     search: filters.search,
   };
+  const clientHref = (row: Record<string, any>) => {
+    const next = new URLSearchParams();
+    Object.entries(filterParams).forEach(([key, value]) => {
+      if (value) next.set(key, String(value));
+    });
+    next.set("page", String(clientsPage.page));
+    next.set("pageSize", String(clientsPage.pageSize));
+    next.set("client", String(selectedClientValue(row)));
+    return `/clients?${next.toString()}`;
+  };
+  const isSelectedRow = (row: Record<string, any>) => selectedClientId ? matchesClientFilter(row, selectedClientId) : false;
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
       <div className="grid cards" style={{ marginBottom: 14 }}>
@@ -147,7 +172,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <span className="subtle">{clientsPage.total} devices · traffic for selected window</span>
           </div>
           {clientsPage.rows.length === 0 ? (
-            <EmptyState title="Нет фактической инвентаризации" />
+            <EmptyState title="No factual inventory" />
           ) : (
             <>
               <div className="clients-table-scroll">
@@ -155,29 +180,26 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   <thead>
                     <tr>
                       <th className="col-client">Device</th>
+                      <th>Channel</th>
+                      <th className="col-traffic">Window traffic</th>
                       <th>Owner/Profile</th>
                       <th>Type</th>
                       <th>Last seen</th>
                       <th>Status</th>
-                      <th>Channel</th>
                       <th className="col-route">Route</th>
-                      <th className="col-traffic">Window traffic</th>
                     </tr>
                   </thead>
                   <tbody>
                     {primaryRows.map((row) => (
-                      <tr
-                        key={row.id || row.label}
-                        className={(row.id || row.label) === selectedName ? "selected" : ""}
-                      >
-                        <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.device_label || row.label || row.id}</Link></td>
-                        <td>{row.owner || row.client_label || "Inventory"}</td>
-                        <td>{row.device_type || row.role || "Unknown device"}</td>
-                        <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
-                        <td><StatusBadge value={row.status || "Inactive"} /></td>
-                        <td><ChannelBadge value={row.channel} /></td>
-                        <td><RouteBadge value={routeFromBytes(row)} /></td>
-                        <td>{bytes(row.total_bytes || 0)}</td>
+                      <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
+                        <td><Link className="row-link" href={clientHref(row)}>{row.device_label || row.label || row.id}</Link></td>
+                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></Link></td>
+                        <td><Link className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</Link></td>
+                        <td><Link className="row-link" href={clientHref(row)}>{row.owner || row.client_label || "Inventory"}</Link></td>
+                        <td><Link className="row-link" href={clientHref(row)}>{row.device_type || row.role || "Unknown device"}</Link></td>
+                        <td><Link className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</Link></td>
+                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></Link></td>
+                        <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></Link></td>
                       </tr>
                     ))}
                   </tbody>
@@ -191,24 +213,24 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                       <thead>
                         <tr>
                           <th className="col-client">Device</th>
+                          <th>Channel</th>
+                          <th className="col-traffic">Window traffic</th>
                           <th>Role</th>
                           <th>Last seen</th>
                           <th>Status</th>
-                          <th>Channel</th>
                           <th className="col-route">Route</th>
-                          <th className="col-traffic">Window traffic</th>
                         </tr>
                       </thead>
                       <tbody>
                         {unattributedRows.map((row) => (
-                          <tr key={row.id || row.label} className={(row.id || row.label) === selectedName ? "selected" : ""}>
-                            <td><Link href={`/clients?client=${encodeURIComponent(row.id || row.label)}`}>{row.label || row.id}</Link></td>
-                            <td>{row.role || "Unknown device"}</td>
-                            <td>{shortDateTime(row.last_seen || row.collected_at)}</td>
-                            <td><StatusBadge value={row.status || "Inactive"} /></td>
-                            <td><ChannelBadge value={row.channel} /></td>
-                            <td><RouteBadge value={routeFromBytes(row)} /></td>
-                            <td>{bytes(row.total_bytes || 0)}</td>
+                          <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
+                            <td><Link className="row-link" href={clientHref(row)}>{row.label || row.id}</Link></td>
+                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></Link></td>
+                            <td><Link className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</Link></td>
+                            <td><Link className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</Link></td>
+                            <td><Link className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</Link></td>
+                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></Link></td>
+                            <td><Link className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></Link></td>
                           </tr>
                         ))}
                       </tbody>
@@ -233,7 +255,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <ConfidenceBadge value={selected?.confidence} />
           </div>
           {!selected ? (
-            <EmptyState title="Выберите устройство после появления snapshots" />
+            <EmptyState title="Select a device after snapshots appear" />
           ) : (
             <>
               <div className="detail-list">
@@ -261,7 +283,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               <ClientActivityChart rows={selectedActivity} />
               <h3>Top domains</h3>
               {selectedDomainRows.length === 0 ? (
-                <EmptyState title="Нет доменов для выбранного клиента" />
+                <EmptyState title="No domains for selected client" />
               ) : (
                 <div className="detail-list">
                   {selectedDomainRows.map((row: Record<string, any>, idx: number) => (
@@ -279,8 +301,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-list">
                   {selectedDns.map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
-                      <span>{row.domain || row.qname || "n/a"}</span>
-                      <strong>{row.count || row.qtype || "seen"}</strong>
+                      <span>{row.domain}</span>
+                      <strong>{row.count}</strong>
                     </div>
                   ))}
                 </div>

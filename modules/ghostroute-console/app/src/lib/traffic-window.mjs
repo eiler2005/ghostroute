@@ -93,6 +93,37 @@ export function trafficDisplayDestination(row) {
   return concreteTrafficDestination(row) || text(row?.destinationLabel || row?.destination || row?.family || row?.domain, "n/a");
 }
 
+function dnsCount(row) {
+  const parsed = number(row?.count || row?.query_count || row?.total || row?.rows);
+  return parsed > 0 ? parsed : 1;
+}
+
+function timestampMs(value) {
+  const parsed = Date.parse(text(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function aggregateDnsInterest(rows, limit = 8) {
+  const grouped = new Map();
+  for (const row of rows || []) {
+    const domain = text(row?.domain || row?.qname || row?.dns_qname || row?.query || row?.destination || row?.answer_ip).trim();
+    if (!domain || domain === "n/a") continue;
+    const key = domain.toLowerCase();
+    const latest = text(row?.event_ts || row?.occurred_at || row?.collected_at);
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, { domain, count: dnsCount(row), latest, rows: [row] });
+      continue;
+    }
+    current.count += dnsCount(row);
+    current.rows.push(row);
+    if (timestampMs(latest) > timestampMs(current.latest)) current.latest = latest;
+  }
+  return [...grouped.values()]
+    .sort((a, b) => b.count - a.count || timestampMs(b.latest) - timestampMs(a.latest) || a.domain.localeCompare(b.domain))
+    .slice(0, Math.max(1, number(limit) || 8));
+}
+
 function routeValue(row) {
   return text(row?.route, "Unknown");
 }

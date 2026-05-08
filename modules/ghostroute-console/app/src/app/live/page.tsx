@@ -6,6 +6,7 @@ import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
+import { aggregateDnsInterest } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -36,7 +37,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const model = buildLiveModel(filters, trafficPage.rows);
   const activeFlows = trafficPage.rows;
   const activeClients = model.devices;
-  const dnsRows = model.dnsQueries.slice(0, 8);
+  const dnsRows = aggregateDnsInterest(model.dnsQueries, 8);
   const serviceRows = serviceEvents.rows.length > 0
     ? serviceEvents.rows
     : model.dnsQueries.slice((servicePage - 1) * servicePageSize, servicePage * servicePageSize).map((row, idx) => ({
@@ -123,23 +124,23 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         <div className="live-stream-toolbar">
           <div className="live-stream-title">
             <h2>Service/background live events</h2>
-            <span>показано {serviceRows.length} из {serviceTotal}</span>
+            <span>showing {serviceRows.length} of {serviceTotal}</span>
           </div>
         </div>
-        <div className="live-stream-meta">Служебные DNS/CDN/Apple/system события отдельно, чтобы не забивать клиентский live.</div>
+        <div className="live-stream-meta">Service DNS/CDN/Apple/system events are separated so the client live stream stays readable.</div>
         {serviceRows.length === 0 ? (
-          <EmptyState title="Нет service/background events" />
+          <EmptyState title="No service/background events" />
         ) : (
           <div className="live-table-wrap service-table-wrap">
             <table className="live-events-table service-events-table">
               <thead>
                 <tr>
-                  <th>Время</th>
-                  <th>Событие</th>
-                  <th>Маршрут / Назначение</th>
-                  <th>Клиент</th>
-                  <th>Канал / Route</th>
-                  <th>Статус</th>
+                  <th>Time</th>
+                  <th>Event</th>
+                  <th>Route / Destination</th>
+                  <th>Client</th>
+                  <th>Channel / Route</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,13 +193,13 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
           <div className="live-stream-toolbar">
             <div className="live-stream-title">
               <h2>Client activity summary</h2>
-              <span>показано {activeFlows.length} из {trafficPage.total}</span>
+              <span>showing {activeFlows.length} of {trafficPage.total}</span>
             </div>
-            <span className="subtle">последнее обновление {model.freshnessLabel || "n/a"}</span>
+            <span className="subtle">last update {model.freshnessLabel || "n/a"}</span>
           </div>
-          <div className="live-stream-meta">Свежая выжимка по клиентам и трафику из последних snapshots; bytes зависят от confidence.</div>
+          <div className="live-stream-meta">Recent client and traffic summary from the latest snapshots; bytes depend on confidence.</div>
           {activeFlows.length === 0 ? (
-            <EmptyState title="Нет activity snapshot" />
+            <EmptyState title="No activity snapshot" />
           ) : (
             <div className="live-table-wrap client-activity-table-wrap">
               <table className="live-events-table client-activity-table">
@@ -216,7 +217,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
                 <tbody>
                   {activeFlows.map((row, idx) => (
                     <tr key={row.id || idx}>
-                      <td className="live-col-time">{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</td>
+                      <td className="live-col-time">{timeWithMillis(row.last_seen || row.event_ts || row.collected_at, true)}</td>
                       <td className="live-col-client" title={row.client}>{row.client}</td>
                       <td className="activity-col-channel"><ChannelBadge value={row.channel} /></td>
                       <td className="live-col-destination" title={row.destinationLabel || row.destination}>
@@ -248,7 +249,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         <aside className="card side-panel">
           <h2>Active clients</h2>
           {activeClients.length === 0 ? (
-            <EmptyState title="Нет активных клиентов" />
+            <EmptyState title="No active clients" />
           ) : (
             <div className="detail-list">
               {activeClients.map((row) => (
@@ -282,11 +283,11 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         <section className="card">
           <h2>DNS interest</h2>
           {dnsRows.length === 0 ? (
-            <EmptyState title="Нет DNS rows" />
+            <EmptyState title="No DNS rows" />
           ) : (
             <div className="detail-list">
               {dnsRows.map((row, idx) => (
-                <div className="detail-row" key={idx}><span>{row.domain}</span><strong>{row.count || 1}</strong></div>
+                <div className="detail-row" key={idx}><span>{row.domain}</span><strong>{row.count}</strong></div>
               ))}
             </div>
           )}
@@ -294,7 +295,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
         <section className="card">
           <h2>Warnings</h2>
           {model.alerts.length === 0 ? (
-            <EmptyState title="Нет предупреждений" />
+            <EmptyState title="No warnings" />
           ) : (
             <div className="detail-list">
               {model.alerts.slice(0, 5).map((row, idx) => (
