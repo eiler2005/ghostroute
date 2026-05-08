@@ -192,9 +192,10 @@ the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may
 remain only as rollback configuration and must be disabled while nginx owns the
 Console port. The nginx listener uses response compression plus an explicit
 small TLS buffer so larger HTML/JSON pages stay reliable over the operator
-network path. Immutable Next.js assets under `/_next/static/` are served without
-Basic Auth because they contain no operator snapshot data and iOS Safari may
-otherwise re-challenge each chunk; HTML, API and read-model routes stay behind
+network path. Immutable Next.js assets under `/_next/static/` and browser
+metadata probes such as `/favicon.ico` are served without Basic Auth because
+they contain no operator snapshot data and iOS Safari may otherwise
+re-challenge those subresources; HTML, API and read-model routes stay behind
 Basic Auth. Provider-level firewalls must allow the configured Console TCP port
 before host UFW or nginx can receive traffic. The data directory is
 `/opt/ghostroute-console/data`; repo sources are mounted read-only at
@@ -220,10 +221,13 @@ pages use the same read-only selectors, cap page size to 25 rows, omit side
 panels and desktop charts, and keep navigation as plain document links. Mobile
 Health Center renders status cards, Alarm Center, Deploy Gate, Health Center
 probes, Leak-check evidence and freshness from the same health/alarm read
-models; mobile Live renders the event stream plus a compact Client activity
-summary from `flow_sessions`. No `m.` subdomain is used in v1, so public
-nginx/TLS stays on the same listener; only immutable `/_next/static/` chunks
-bypass Basic Auth to keep iOS Safari navigation reliable.
+models. `/m/health` is intentionally a raw no-JS HTML route instead of a React
+page so iOS Safari can show the triage state from one authenticated document
+without depending on hydration chunks. Mobile Live renders the event stream plus
+a compact Client activity summary from `flow_sessions`. No `m.` subdomain is
+used in v1, so public nginx/TLS stays on the same listener; only immutable
+`/_next/static/` chunks and browser metadata probes bypass Basic Auth to keep
+iOS Safari navigation reliable.
 
 Read-only derived selectors use a short in-process cache inside the Console
 Node process. The default TTL is 60 seconds and can be disabled with

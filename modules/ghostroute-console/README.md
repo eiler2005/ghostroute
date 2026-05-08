@@ -45,11 +45,11 @@ It still does not mutate router runtime or deploy catalog changes implicitly.
 - Runtime access is protected by Basic Auth. The public read-only deployment
   uses a dedicated nginx HTTPS listener on a non-443 port, backed by a tiny
   local buffering proxy, so Console does not share the Reality/layer4 `:443`
-  listener. Immutable Next.js static assets under `/_next/static/` bypass Basic
-  Auth so iOS Safari can reuse cached chunks without re-challenging; HTML, API
-  and operator data routes remain authenticated. Tailnet-only access through
-  `tailscale serve` remains a valid hardening option, but it is not required for
-  the MVP.
+  listener. Immutable Next.js static assets under `/_next/static/` and browser
+  metadata probes such as `/favicon.ico` bypass Basic Auth so iOS Safari can
+  reuse cached chunks without re-challenging; HTML, API and operator data routes
+  remain authenticated. Tailnet-only access through `tailscale serve` remains a
+  valid hardening option, but it is not required for the MVP.
 
 ## Data Directory
 
@@ -335,16 +335,18 @@ same read-only snapshots and selectors, cap page size to 25 rows, omit side
 panels and desktop charts, and use plain document links. `/m/health` exposes
 compact status cards, Alarm Center, Deploy Gate, Health Center probes,
 Leak-check evidence and freshness so remote triage can happen from an iPhone
-without loading the desktop workbench. `/m/live` includes a compact Client
-activity summary next to the live event stream. Each mobile page includes a
-`Desktop version` link back to the
+without loading the desktop workbench. It is served as a raw no-JS HTML route,
+so Safari does not need to hydrate a React page or fetch page-specific chunks
+before the operator can read the health state. `/m/live` includes a compact
+Client activity summary next to the live event stream. Each mobile page includes
+a `Desktop version` link back to the
 full workbench with `desktop=1`. No `m.` subdomain is used in v1, so the same
 public nginx/TLS listener is used. Basic Auth still protects HTML, API and
-operator data routes; immutable `/_next/static/` chunks are public cacheable
-assets to avoid iOS Safari auth loops. The VPS proxy forwards the external host
-and port through `X-Forwarded-*` headers; mobile redirects use those headers so
-they stay on the public Console URL instead of the internal `localhost:3000`
-container upstream.
+operator data routes; immutable `/_next/static/` chunks and browser metadata
+probes are public cacheable assets to avoid iOS Safari auth loops. The VPS proxy
+forwards the external host and port through `X-Forwarded-*` headers; mobile
+redirects use those headers so they stay on the public Console URL instead of
+the internal `localhost:3000` container upstream.
 
 ## Local Checks
 
