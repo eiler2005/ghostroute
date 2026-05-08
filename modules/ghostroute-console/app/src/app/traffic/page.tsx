@@ -5,6 +5,7 @@ import { FlowDetailPanel } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -61,10 +62,11 @@ function Donut({ value }: { value: number }) {
 
 export default async function TrafficPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
+  const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(25, Number.parseInt(scalar(params.pageSize) || "50", 10) || 50));
+  const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
   const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
@@ -248,7 +250,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
               />
             </div>
           </section>
-          <FlowDetailPanel evidence={evidence} />
+          {mobile ? null : <FlowDetailPanel evidence={evidence} />}
         </div>
       )}
     </ConsoleShell>

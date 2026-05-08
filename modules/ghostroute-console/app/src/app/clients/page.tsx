@@ -18,6 +18,7 @@ import {
 import { buildClientsModel, listClientActivity, listClientInventory } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -82,9 +83,10 @@ function ClientActivityChart({ rows }: { rows: Array<Record<string, any>> }) {
 
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
+  const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
+  const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
   const clientsPage = listClientInventory({ page, pageSize, filters });
   const isUnattributed = (row: Record<string, any>) =>
     row.role === "Unattributed mobile ingress source" ||
@@ -97,7 +99,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     clientsPage.rows.find((row) => filters.client !== "all" && [row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.id, ...(row.aliases || []), ...(row.observed_aliases || []), ...(row.observed_identities || [])].filter(Boolean).map(String).includes(filters.client || "")) ||
     primaryRows[0] ||
     clientsPage.rows[0];
-  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
+  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...filters, client: selected.id || selected.label } }).rows : [];
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
   const selectedName = selected?.id || selected?.label || "";
   const tokens = clientTokens(selected);
@@ -225,7 +227,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             </>
           )}
         </section>
-        <aside className="card side-panel">
+        {mobile ? null : <aside className="card side-panel">
           <div className="panel-title">
             <h2>{selected?.label || "Client details"}</h2>
             <ConfidenceBadge value={selected?.confidence} />
@@ -303,7 +305,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               <RawEvidence value={{ client: selected, activity: selectedActivity, flows: selectedFlows, dns: selectedDns, alerts: selectedAlerts }} />
             </>
           )}
-        </aside>
+        </aside>}
       </div>
     </ConsoleShell>
   );

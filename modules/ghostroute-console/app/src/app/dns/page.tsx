@@ -5,6 +5,7 @@ import { buildShellModel } from "@/lib/server/selectors/shell";
 import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -28,9 +29,10 @@ function grouped(rows: Array<Record<string, any>>, key: string, limit = 6) {
 
 export default async function DnsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
+  const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = Math.min(500, Math.max(25, Number.parseInt(scalar(params.pageSize) || "50", 10) || 50));
+  const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 500, mobileMax: 25 }, mobile);
   const status = scalar(params.status) || "all";
   const catalogStatus = scalar(params.catalogStatus) || "all";
   const dnsPage = listDnsQueryLog({ page, pageSize, status, catalogStatus, filters: { ...filters, trafficClass: "all" } });
@@ -133,7 +135,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
         </div>
       </section>
 
-      <div className="grid three dns-insights">
+      {mobile ? null : <div className="grid three dns-insights">
         <aside className="card">
           <div className="panel-title">
             <h2>Top clients</h2>
@@ -168,7 +170,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
             ))}
           </div>
         </aside>
-      </div>
+      </div>}
     </ConsoleShell>
   );
 }
