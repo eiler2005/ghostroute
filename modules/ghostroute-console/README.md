@@ -311,14 +311,15 @@ from the public Console URL.
   readiness are shown without exposing real endpoints, ports, users, keys or
   local device identifiers.
 
-Mobile Safari/iPhone gets a compact server-rendered version of the heaviest
-views. `/traffic`, `/dns`, `/clients`, `/live` and `/catalog` keep the same
-URLs, filters and pagination, but cap first-page rows more aggressively and omit
-secondary side panels such as Flow detail, DNS insights, selected-client
-drilldowns, Live service/background tables and Catalog review detail. The
-desktop Console keeps the full workbench layout. Sidebar navigation uses plain
-document links instead of client-side prefetch navigation so a tap behaves like
-typing the target path into the browser address bar.
+Mobile Safari/iPhone gets a separate ultra-light Console surface under `/m`.
+Mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/live` and `/catalog`
+redirect to `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/live` and
+`/m/catalog` unless `desktop=1` is present. The `/m` pages use the same
+read-only snapshots and selectors, but render a single compact list per page,
+cap page size to 25 rows, omit side panels/raw evidence/charts, and use plain
+document links. Each mobile page includes a `Desktop version` link back to the
+full workbench with `desktop=1`. No `m.` subdomain is used in v1, so nginx/TLS
+and Basic Auth remain unchanged.
 
 ## Local Checks
 

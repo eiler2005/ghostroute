@@ -214,6 +214,44 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .dns-insights { margin-top: 12px; }
 .dns-insights .card { padding: 14px; }
 .dns-insights h2 { font-size: 16px; }
+.mobile-shell { min-height: 100vh; width: min(100%, 720px); margin: 0 auto; padding: 12px 12px 72px; background: #07111f; color: #f2f6fb; }
+.mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.mobile-header strong { display: block; font-size: 20px; line-height: 1.05; }
+.mobile-header span, .mobile-header a { color: #9fb1c7; font-size: 13px; }
+.mobile-header a { border: 1px solid #2a405c; border-radius: 8px; padding: 7px 9px; white-space: nowrap; }
+.mobile-nav { display: flex; gap: 7px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 10px; }
+.mobile-nav a { flex: 0 0 auto; min-height: 34px; display: inline-flex; align-items: center; border: 1px solid #243954; border-radius: 999px; padding: 0 12px; color: #c5d2e4; background: #0d1b2e; }
+.mobile-nav a.active { color: #5ca8ff; border-color: rgba(92,168,255,.55); background: rgba(54,132,255,.12); }
+.mobile-status, .mobile-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.mobile-status div, .mobile-kpis div { min-width: 0; border: 1px solid #243954; border-radius: 8px; background: #0d1b2e; padding: 10px; }
+.mobile-status span, .mobile-kpis span { display: block; color: #8da2bb; font-size: 11px; }
+.mobile-status strong, .mobile-kpis strong { display: block; margin-top: 4px; color: #f2f6fb; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-freshness-fresh { color: #65e89b !important; }
+.mobile-freshness-stale { color: #ffc85a !important; }
+.mobile-hero { margin-bottom: 10px; }
+.mobile-hero h1 { font-size: 24px; }
+.mobile-hero p { font-size: 14px; line-height: 1.35; }
+.mobile-filter { display: flex; gap: 8px; margin-bottom: 10px; }
+.mobile-filter-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(92px, .6fr); }
+.mobile-filter input, .mobile-filter select, .mobile-filter button { min-width: 0; min-height: 38px; border-radius: 8px; border: 1px solid #2a405c; background: #0d1b2e; color: #f2f6fb; padding: 0 10px; }
+.mobile-filter button { border-color: #2563eb; background: #123d75; font-weight: 800; }
+.mobile-card { border: 1px solid #243954; border-radius: 8px; background: linear-gradient(180deg, rgba(16,35,57,.96), rgba(9,22,38,.96)); padding: 12px; margin-bottom: 10px; }
+.mobile-card-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.mobile-card-title h2 { margin: 0; font-size: 18px; }
+.mobile-card-title p { margin: 2px 0 0; font-size: 12px; }
+.mobile-card-title a { color: #8db6ff; font-weight: 800; font-size: 13px; white-space: nowrap; }
+.mobile-list { display: grid; gap: 7px; }
+.mobile-row { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #1f3148; border-radius: 8px; background: rgba(7,17,31,.55); padding: 10px; }
+.mobile-row span { min-width: 0; }
+.mobile-row strong, .mobile-row small, .mobile-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-row strong { color: #e6edf7; font-size: 14px; }
+.mobile-row small { color: #9fb1c7; font-size: 12px; margin-top: 3px; }
+.mobile-row-meta { flex: 0 0 116px; text-align: right; display: grid; justify-items: end; gap: 5px; }
+.mobile-row-meta b { max-width: 116px; color: #cfe0f5; font-size: 12px; }
+.mobile-empty { color: #9fb1c7; padding: 12px 0; }
+.mobile-shell .pagination { font-size: 12px; gap: 8px; }
+.mobile-shell .pagination .muted-button { min-height: 30px; padding: 4px 8px; }
+.mobile-shell .badge { min-height: 21px; padding: 1px 7px; font-size: 11px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: #a9bad0; flex-wrap: wrap; }
 .pagination > div { display: flex; align-items: center; gap: 10px; }
 .pagination strong { color: #e6edf7; }
