@@ -27,7 +27,7 @@
       - { path: "/dns", contains: "DNS Query Log" }
       - { path: "/dns", contains: "Showing" }
       - { path: "/traffic", contains: "Flow Explorer" }
-      - { path: "/traffic", contains: "Showing" }
+      - { path: "/traffic", contains: "Read-only analysis" }
       - { path: "/traffic?trafficClass=all", contains: "All traffic" }
       - { path: "/clients", contains: "Device Inventory" }
       - { path: "/clients", contains: "Showing" }
