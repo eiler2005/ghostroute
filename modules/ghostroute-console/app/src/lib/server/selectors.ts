@@ -49,6 +49,31 @@ const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE
 const derivedCache = new Map<string, { expiresAt: number; value: any }>();
 const USE_PREPARED_WINDOWS = process.env.GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS !== "0";
 
+function dbContentVersion() {
+  try {
+    const db = getDb();
+    const snapshots = db
+      .prepare("select count(*) as count, max(collected_at) as max_collected from snapshots")
+      .get() as { count?: number; max_collected?: string } | undefined;
+    const collectors = db
+      .prepare("select count(*) as count, max(coalesce(finished_at, started_at)) as max_run from collector_runs")
+      .get() as { count?: number; max_run?: string } | undefined;
+    const prepared = db
+      .prepare("select count(*) as count, max(computed_at_utc) as max_computed from traffic_window_snapshots")
+      .get() as { count?: number; max_computed?: string } | undefined;
+    return [
+      snapshots?.count || 0,
+      snapshots?.max_collected || "",
+      collectors?.count || 0,
+      collectors?.max_run || "",
+      prepared?.count || 0,
+      prepared?.max_computed || "",
+    ].join(":");
+  } catch {
+    return "unknown";
+  }
+}
+
 function cacheGet<T>(key: string, build: () => T): T {
   if (DERIVED_CACHE_TTL_MS <= 0) return build();
   const now = Date.now();
@@ -64,7 +89,7 @@ export function clearDerivedCache() {
 }
 
 function latestSnapshotMetaRecords() {
-  return cacheGet("latest-snapshot-metas", () => latestSnapshotMetas());
+  return cacheGet(`latest-snapshot-metas:${dbContentVersion()}`, () => latestSnapshotMetas());
 }
 
 function latestSnapshotMetaVersion(records = latestSnapshotMetaRecords()) {
@@ -112,10 +137,28 @@ export function getConsolePageSummary(page: "health_mobile" | "health_shell" | "
   });
 }
 
+function preparedWindowVersion(kind: string, period = "today", trafficClass = "client") {
+  if (!USE_PREPARED_WINDOWS) return "disabled";
+  const window = ["today", "week", "month"].includes(period || "today") ? period || "today" : "today";
+  try {
+    const row = getDb()
+      .prepare(
+        `select source_version, computed_at_utc
+           from traffic_window_snapshots
+          where kind = ? and window = ? and traffic_class = ?
+          limit 1`
+      )
+      .get(kind, window, trafficClass) as { source_version?: string; computed_at_utc?: string } | undefined;
+    return row ? `${row.source_version || ""}:${row.computed_at_utc || ""}` : "missing";
+  } catch {
+    return "missing";
+  }
+}
+
 function getPreparedWindowSnapshot(kind: string, period = "today", trafficClass = "client") {
   if (!USE_PREPARED_WINDOWS) return null;
   const window = ["today", "week", "month"].includes(period || "today") ? period || "today" : "today";
-  return cacheGet(`prepared-window:${kind}:${window}:${trafficClass}`, () => {
+  return cacheGet(`prepared-window:${kind}:${window}:${trafficClass}:${preparedWindowVersion(kind, window, trafficClass)}`, () => {
     try {
       const row = getDb()
         .prepare(
@@ -496,7 +539,55 @@ function operatorTrafficRow(row: Record<string, any>, options: { allowAccounting
 }
 
 function operatorClientRow(row: Record<string, any>): Record<string, any> | null {
-  return operatorTrafficRow({ ...row, trafficClass: "client", traffic_class: "client" }, { allowAccountingBucket: true });
+  const total = Number(row.total_bytes || row.bytes || 0);
+  if (total <= 0) return null;
+  if (String(row.confidence || "").toLowerCase() === "dns-interest") return null;
+  if (pseudoClientLabel(row)) return null;
+  const resolved = registeredClientResolution({
+    ...row,
+    trafficClass: "client",
+    traffic_class: "client",
+    client_key: row.client_key || row.device_key || row.client || row.id || "",
+    client_label: row.client_label || row.label || row.client || "",
+  });
+  if (!resolved) return null;
+  const canonicalLabel = resolved.client_label || row.client_label || row.label || row.client || row.id || "";
+  if (pseudoClientLabel({ ...row, label: canonicalLabel })) return null;
+  const viaVpsBytes = Number(row.via_vps_bytes || row.vps_bytes || row.reality_bytes || 0);
+  const directBytes = Number(row.direct_bytes || row.wan_bytes || 0);
+  const unknownBytes = Number(row.unknown_bytes || Math.max(0, total - viaVpsBytes - directBytes));
+  const route = row.route && row.route !== "Unknown"
+    ? row.route
+    : routeFromCounters({ ...row, total_bytes: total, via_vps_bytes: viaVpsBytes, direct_bytes: directBytes });
+  return {
+    ...row,
+    id: resolved.device_key || resolved.client_key || row.id || row.device_key,
+    label: canonicalLabel,
+    client: canonicalLabel,
+    client_key: resolved.client_key,
+    client_label: canonicalLabel,
+    device_key: resolved.device_key || row.device_key || resolved.client_key,
+    device_label: resolved.device_label || row.device_label || canonicalLabel,
+    client_role: resolved.client_role || row.client_role || row.role || "",
+    owner: resolved.client_owner || row.owner || "",
+    device_type: resolved.device_type || row.device_type || "",
+    client_channel: resolved.client_channel || row.client_channel || "",
+    channel: resolved.client_channel || row.channel || "Unknown",
+    matched_by: resolved.matched_by || row.matched_by,
+    attribution_confidence: resolved.attribution_confidence || row.attribution_confidence,
+    confidence: row.confidence || resolved.attribution_confidence || "operator-local",
+    trafficClass: "client",
+    traffic_class: "client",
+    total_bytes: total,
+    bytes: total,
+    via_vps_bytes: viaVpsBytes,
+    direct_bytes: directBytes,
+    unknown_bytes: unknownBytes,
+    route,
+    traffic_window_active: true,
+    status: row.status || statusFromLastSeen(row.last_seen || row.collected_at || row.traffic_collected_at),
+    observed_aliases: Array.from(new Set([...(row.observed_aliases || []), ...(resolved.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16),
+  };
 }
 
 function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
@@ -514,6 +605,31 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
     client_label: resolved.client_label || row.client_label,
     device_key: resolved.device_key || row.device_key,
     device_label: resolved.device_label || row.device_label,
+  };
+}
+
+function operatorLiveRow(row: Record<string, any>): Record<string, any> | null {
+  if (pseudoClientLabel(row)) return null;
+  const resolved = registeredClientResolution({
+    ...row,
+    client_key: row.client_key || row.device_key || row.client || row.id || "",
+    client_label: row.client_label || row.label || row.client || "",
+  });
+  if (!resolved) return null;
+  const canonicalLabel = resolved.client_label || row.client_label || row.label || row.client || "";
+  if (pseudoClientLabel({ ...row, label: canonicalLabel })) return null;
+  return {
+    ...row,
+    client: canonicalLabel,
+    client_key: resolved.client_key,
+    client_label: canonicalLabel,
+    device_key: resolved.device_key || row.device_key,
+    device_label: resolved.device_label || row.device_label || canonicalLabel,
+    label: canonicalLabel,
+    channel: resolved.client_channel || row.channel,
+    matched_by: resolved.matched_by || row.matched_by,
+    trafficClass: "client",
+    traffic_class: "client",
   };
 }
 
@@ -2907,6 +3023,8 @@ function listLiveEventsUncached(args: PageArgs = {}) {
     .sort((a: any, b: any) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || Number(b.id || 0) - Number(a.id || 0))
     .slice(0, fetchLimit)
     .map(mapLiveRow)
+    .map((row) => filter.trafficClass === "client" ? operatorLiveRow(row) : row)
+    .filter((row): row is Record<string, any> => Boolean(row))
     .filter((row) => filterRows([row], filter).length > 0);
   const total = candidates.length >= fetchLimit ? fetchLimit : candidates.length;
   const rows = candidates.slice(offset, offset + pageSize);

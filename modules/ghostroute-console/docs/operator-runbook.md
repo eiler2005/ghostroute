@@ -174,6 +174,11 @@ directory, with public shape documented by
 selectors may use inventory-derived IP/MAC/hostname hints only to resolve a row
 to an explicit registry client; unresolved `lan-host-*`, channel labels,
 DNS-interest rows and zero-byte buckets must stay out of Top clients.
+LAN/Wi-Fi identity depends on the router-side Traffic Observatory scripts as
+well as the Console container. When `traffic-report` or
+`lan-device-counters-snapshot` changes, deploy the router runtime first so new
+snapshots carry `client_ip`, `mac`, `hostname` and `observed_label`; then deploy
+Console with a DB reset if older snapshots were grouped without that identity.
 
 The Console VPS deploy playbook syncs only `device-attribution.json`,
 `device-attribution.local.json`, and `device-aliases.json` from the local
