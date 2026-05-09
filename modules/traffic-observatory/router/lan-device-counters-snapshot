@@ -16,6 +16,7 @@ awk '
       host = $4
       if (host == "" || host == "*") host = "?"
       hosts[$3] = host
+      macs[$3] = $2
       ips[$3] = 1
     }
     next
@@ -72,7 +73,9 @@ awk '
       wan_down = counters[ip, "down", "wan"]; if (wan_down == "") wan_down = "0"
       other_up = counters[ip, "up", "other"]; if (other_up == "") other_up = "0"
       other_down = counters[ip, "down", "other"]; if (other_down == "") other_down = "0"
-      printf "%s|%s|%s|%s|%s|%s|%s|%s\n",
+      mac = macs[ip]
+      if (mac == "") mac = "?"
+      printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n",
         ip,
         host,
         vpn_up,
@@ -80,7 +83,9 @@ awk '
         wan_up,
         wan_down,
         other_up,
-        other_down
+        other_down,
+        mac,
+        host
     }
   }
 ' "$LEASES_FILE" "$TMP_RULES" | sort -t'|' -k1,1

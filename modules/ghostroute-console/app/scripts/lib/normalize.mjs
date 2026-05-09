@@ -295,7 +295,6 @@ function resolveOperatorClient(row, registry = loadDeviceAttributions(), network
 function isOperatorTrafficRow(row, registry = loadDeviceAttributions()) {
   if (number(row?.bytes || row?.total_bytes) <= 0) return false;
   if (row?.traffic_class !== "client") return false;
-  if (row?.accounting_bucket) return false;
   if (String(row?.confidence || "").toLowerCase() === "dns-interest") return false;
   return registryHasClient(registry, row?.client_key);
 }
@@ -1078,6 +1077,52 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         raw,
       };
     });
+  const deviceRows = db
+    .prepare(
+      `select rowid, * from normalized_devices
+        where collected_at >= ? and collected_at < ?
+        order by collected_at asc, rowid asc`
+    )
+    .all(startUtc, endUtc)
+    .map((row) => {
+      const raw = parseJson(row.raw_json, {});
+      const channel = text(row.channel || inferChannel(raw), "Unknown");
+      if (channel !== "Home Wi-Fi/LAN") return null;
+      const resolved = resolveOperatorClient({
+        ...row,
+        raw,
+        client_key: row.device_id || raw.profile || raw.observed_label || raw.label || row.ip || "",
+        client_label: row.label || raw.observed_label || row.device_id || row.ip || "",
+        device_key: row.device_id || raw.device_key || raw.device_id || "",
+        client_ip: row.ip || raw.client_ip || raw.ip || "",
+        ip: row.ip || raw.ip || raw.client_ip || "",
+        mac: raw.mac || raw.mac_address || "",
+      }, registry, networkHints);
+      const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.total_bytes));
+      return {
+        rowid: `device:${row.rowid}`,
+        snapshot_id: row.snapshot_id,
+        collected_at: parseSourceTimestamp(row.collected_at),
+        last_seen: parseSourceTimestamp(row.collected_at),
+        client_key: resolved.client_key,
+        client_label: resolved.client_label,
+        channel: resolved.channel || channel,
+        destination: "",
+        destination_key: "",
+        route: text(row.route || routeFromTraffic(raw), "Unknown"),
+        confidence: confidence(row.confidence, "exact"),
+        traffic_class: "client",
+        bytes: split.totalBytes,
+        via_vps_bytes: split.viaVpsBytes,
+        direct_bytes: split.directBytes,
+        unknown_bytes: split.unknownBytes,
+        connections: 0,
+        accounting_bucket: true,
+        raw: { ...raw, device_counter: true, profile: row.device_id || raw.profile || "", client: row.label || raw.observed_label || "" },
+      };
+    })
+    .filter(Boolean);
+  rows.push(...deviceRows);
   const grouped = new Map();
   for (const row of rows) {
     const key = flowRollupKey(row);
@@ -2508,7 +2553,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       collectedAt,
       text(row.id || row.ip || row.profile || row.label, "unknown-device"),
       usefulDeviceLabel(row),
-      text(row.ip || ""),
+      text(row.ip || row.client_ip || ""),
       inferChannel(row),
       text(row.route || "Unknown"),
       confidence(row.confidence, "estimated"),

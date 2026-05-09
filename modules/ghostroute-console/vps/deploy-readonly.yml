@@ -235,6 +235,23 @@
       become: false
       changed_when: true
 
+    - name: Sync private Console attribution registry files
+      ansible.builtin.shell: |
+        set -eu
+        src="{{ playbook_dir }}/../data"
+        [ -d "$src" ] || exit 0
+        rsync -az \
+          -e "ssh -o ControlMaster=no -o ControlPath=none -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=30" \
+          --rsync-path="sudo rsync" \
+          --include='device-attribution.json' \
+          --include='device-attribution.local.json' \
+          --include='device-aliases.json' \
+          --exclude='*' \
+          "$src/" "{{ ansible_user }}@{{ ansible_host }}:{{ console_root }}/data/"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+
     - name: Seed factual Console data snapshot without secrets
       ansible.builtin.command:
         argv:

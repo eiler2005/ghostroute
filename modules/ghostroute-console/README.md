@@ -264,6 +264,25 @@ rendering. The registry may include `lan-host-*`, profile aliases, hostnames,
 `ip_aliases` and `mac_aliases`; use the `.local.json` file for real household
 addresses so private LAN/MAC data does not enter git.
 
+LAN/Wi-Fi attribution is registry-first end to end. Router
+`lan-device-counters-snapshot` emits the historical eight counter columns plus
+optional MAC/hostname columns; `traffic-report --json` preserves those as
+`client_ip`, `mac`, `hostname`, and `observed_label`. Console prepared windows
+use those hints only to resolve rows to explicit registry clients. Pseudo
+channels, DNS-interest rows, accounting buckets without a registry client, and
+zero-byte rows are excluded from client rankings and client APIs.
+
+For Console-only deployment use the Console playbook, not root `./deploy.sh`.
+When changing attribution collection or deliberately discarding polluted
+snapshots, run from `ansible/`:
+
+```bash
+ansible-playbook ../modules/ghostroute-console/vps/deploy-readonly.yml -e ghostroute_console_reset_db=true
+```
+
+The reset quarantines old SQLite files under the VPS Console data backups
+directory and starts fresh collection from the new registry/collector contract.
+
 More detail: [operator-runbook.md](/modules/ghostroute-console/docs/operator-runbook.md).
 
 ## Local Development
