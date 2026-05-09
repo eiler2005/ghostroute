@@ -175,6 +175,14 @@ selectors may use inventory-derived IP/MAC/hostname hints only to resolve a row
 to an explicit registry client; unresolved `lan-host-*`, channel labels,
 DNS-interest rows and zero-byte buckets must stay out of Top clients.
 
+The Console VPS deploy playbook syncs only `device-attribution.json`,
+`device-attribution.local.json`, and `device-aliases.json` from the local
+gitignored Console data directory into the VPS Console data directory. It does
+not sync SQLite databases, auth files, backups or generated artifacts. After a
+collector contract change, deploy Console from `ansible/` with
+`ansible-playbook ../modules/ghostroute-console/vps/deploy-readonly.yml -e ghostroute_console_reset_db=true`
+so polluted snapshots are quarantined and fresh prepared windows are collected.
+
 Because detailed snapshots can be cumulative, Console derives current-window
 client rows from positive deltas between same-day samples per observed source,
 then aggregates those sources into the canonical registry client and reconciles

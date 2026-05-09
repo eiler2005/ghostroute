@@ -665,7 +665,7 @@ WIFI_TOTAL=$(( WIFI_RX_TOTAL + WIFI_TX_TOTAL ))
 
 if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
   awk -F'|' -v ts="$LAN_BYTES_START" '
-    $1 == ts { print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 }
+    $1 == ts { print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 "|" $10 "|" $11 }
   ' "$LAN_BYTES_HISTORY" > "$LAN_BYTES_BASE"
 
   awk -F'|' '
@@ -1696,12 +1696,12 @@ end
 File.open(lan_user_apps_path, 'w') do |file|
   if File.file?(lan_bytes_path)
     File.foreach(lan_bytes_path, chomp: true) do |line|
-      ip, label, reality, wan, other, _upload, _download, total = line.split('|', -1)
+      ip, label, reality, wan, other, _upload, _download, total, mac, hostname = line.split('|', -1)
       next if ip.to_s.empty?
 
       families = dns_families[ip].sort_by { |_family, count| -count }.first(5)
       family_text = families.empty? ? 'n/a' : families.map { |family, count| "#{family}:#{count}" }.join(', ')
-      file.puts [label, total.to_i, reality.to_i, wan.to_i, other.to_i, family_text].join('|')
+      file.puts [label, total.to_i, reality.to_i, wan.to_i, other.to_i, family_text, ip, mac, hostname].join('|')
     end
   end
 end
@@ -2019,10 +2019,15 @@ def source_diagnostic(row)
 end
 
 devices = read_rows(lan_user_apps_path).map do |line|
-  label, total, vps, direct, other, families = line.split('|', -1)
+  label, total, vps, direct, other, families, ip, mac, hostname = line.split('|', -1)
   device_contract({
     id: label,
     label: label,
+    observed_label: label,
+    client_ip: ip.to_s,
+    ip: ip.to_s,
+    mac: mac.to_s == '?' ? '' : mac.to_s,
+    hostname: hostname.to_s == '?' ? '' : hostname.to_s,
     profile: label,
     total_bytes: total.to_i,
     via_vps_bytes: vps.to_i,

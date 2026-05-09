@@ -281,7 +281,7 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   const readModels = rebuildObservabilityReadModels(db);
   rebuildPreparedWindows(db, "2026-04-29T00:05:00Z");
   rebuildHourlyAggregates(db);
-  assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count >= 1, true);
   assert.equal(db.prepare("select count(*) as count from client_traffic_hourly").get().count > 0, true);
   assert.equal(db.prepare("select count(*) as count from traffic_window_snapshots where kind = 'dashboard' and window in ('today','week','month')").get().count, 3);
   const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);

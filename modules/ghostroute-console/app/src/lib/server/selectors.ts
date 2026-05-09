@@ -472,13 +472,14 @@ function pseudoClientLabel(row: Record<string, any>) {
   return /^(a\/home reality|b\/xhttp relay|c\d?\b|dns-interest|service|accounting)/i.test(label);
 }
 
-function operatorTrafficRow(row: Record<string, any>): Record<string, any> | null {
+function operatorTrafficRow(row: Record<string, any>, options: { allowAccountingBucket?: boolean } = {}): Record<string, any> | null {
   const decorated = decorateTrafficRow(row);
   const total = Number(decorated.bytes || decorated.total_bytes || 0);
   if (total <= 0) return null;
-  if (decorated.accounting_bucket) return null;
+  if (!options.allowAccountingBucket && decorated.accounting_bucket) return null;
   if (String(decorated.confidence || "").toLowerCase() === "dns-interest") return null;
   if ((decorated.trafficClass || decorated.traffic_class || trafficClassFor(decorated)) !== "client") return null;
+  if (pseudoClientLabel(decorated)) return null;
   const resolved = registeredClientResolution(decorated);
   if (!resolved) return null;
   return {
@@ -491,6 +492,28 @@ function operatorTrafficRow(row: Record<string, any>): Record<string, any> | nul
     label: resolved.client_label || decorated.label,
     channel: resolved.client_channel || decorated.channel,
     matched_by: resolved.matched_by || decorated.matched_by,
+  };
+}
+
+function operatorClientRow(row: Record<string, any>): Record<string, any> | null {
+  return operatorTrafficRow({ ...row, trafficClass: "client", traffic_class: "client" }, { allowAccountingBucket: true });
+}
+
+function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
+  if (pseudoClientLabel(row)) return null;
+  const resolved = registeredClientResolution({
+    ...row,
+    client_key: row.device_key || row.client_key || row.client || "",
+    client_label: row.client_label || row.client || "",
+  });
+  if (!resolved) return null;
+  return {
+    ...row,
+    client: resolved.client_label || row.client,
+    client_key: resolved.client_key,
+    client_label: resolved.client_label || row.client_label,
+    device_key: resolved.device_key || row.device_key,
+    device_label: resolved.device_label || row.device_label,
   };
 }
 
@@ -1584,11 +1607,13 @@ export function listTrafficRows(args: PageArgs = {}) {
         where ${whereSql}
         order by bytes desc, coalesce(nullif(event_ts, ''), collected_at) desc, rowid desc
         limit ?`
-    )
-    .all(...params, fetchLimit)
-    .map(mapFlowRow)
-    .filter((row) => filterRows([row], args.filters || {}).length > 0)
-    .filter((row) => matchesTrafficClass(row, trafficClass))
+     )
+     .all(...params, fetchLimit)
+     .map(mapFlowRow)
+     .map((row) => trafficClass === "client" ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+     .filter((row): row is Record<string, any> => Boolean(row))
+     .filter((row) => filterRows([row], args.filters || {}).length > 0)
+     .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
@@ -1661,11 +1686,13 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
         where ${whereSql}
         order by bytes desc, coalesce(nullif(last_seen, ''), collected_at) desc, id desc
         limit ?`
-    )
-    .all(...params, fetchLimit)
-    .map(mapFlowSessionRow)
-    .filter((row) => filterRows([row], filters).length > 0)
-    .filter((row) => matchesTrafficClass(row, trafficClass))
+     )
+     .all(...params, fetchLimit)
+     .map(mapFlowSessionRow)
+     .map((row) => trafficClass === "client" ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+     .filter((row): row is Record<string, any> => Boolean(row))
+     .filter((row) => filterRows([row], filters).length > 0)
+     .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
@@ -1780,6 +1807,8 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
         confidence: row.confidence || "dns-interest",
         evidence_json: "{}",
       }))
+      .map(operatorDnsRow)
+      .filter((row): row is Record<string, any> => Boolean(row))
       .filter((row) => route === "all" || row.route === route)
       .filter((row) => catalogStatus === "all" || row.catalog_status === catalogStatus)
       .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
@@ -1801,6 +1830,8 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   if (!readModelHasRows("dns_query_log")) {
     const rows = normalizedRowsForIds("normalized_dns", snapshotIdsForWindow(period, new Set(["dns", "traffic"])))
       .map(mapDnsFallbackRow)
+      .map(operatorDnsRow)
+      .filter((row): row is Record<string, any> => Boolean(row))
       .filter((row) => route === "all" || row.route === route)
       .filter((row) => catalogStatus === "all" || row.catalog_status === catalogStatus)
       .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
@@ -1858,6 +1889,8 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
     )
     .all(...params, maxRows)
     .map(mapDnsReadModelRow)
+    .map(operatorDnsRow)
+    .filter((row): row is Record<string, any> => Boolean(row))
     .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -2607,12 +2640,12 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
   return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}`, () => {
   const prepared = getPreparedWindowSnapshot("clients", period, "client")?.payload;
   if (prepared?.rows) {
-    return (prepared.rows as Array<Record<string, any>>).map((row) => decorateTrafficRow({
+    return (prepared.rows as Array<Record<string, any>>).map((row) => operatorClientRow({
       ...row,
       bytes: Number(row.total_bytes || row.bytes || 0),
       total_bytes: Number(row.total_bytes || row.bytes || 0),
       traffic_window_active: Number(row.total_bytes || row.bytes || 0) > 0,
-    }));
+    })).filter((row): row is Record<string, any> => Boolean(row));
   }
   if (USE_PREPARED_WINDOWS && period !== "today") return [];
   const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
@@ -2645,7 +2678,10 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       traffic_collected_at: row.last_seen || row.collected_at || "",
     });
   }
-  return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period)) as Array<Record<string, any>>).sort((a, b) => {
+   return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period)) as Array<Record<string, any>>)
+    .map((row) => operatorClientRow(row))
+    .filter((row): row is Record<string, any> => Boolean(row))
+    .sort((a, b) => {
     const trafficDelta = Number(b.total_bytes || 0) - Number(a.total_bytes || 0);
     if (trafficDelta !== 0) return trafficDelta;
     const aSeen = Date.parse(a.last_seen || "");
