@@ -95,8 +95,8 @@ ansible/out/shadowrocket-proof/ghostroute-shadowrocket-daily-template.conf
 
 Use the strict proof config for BrowserLeaks and channel proof. Use the daily
 template for normal phone use where banking apps or corporate services need
-local/system DNS and narrow direct exceptions. Gmail stays managed in the router
-catalog for LAN and non-Shadowrocket clients, but the daily Shadowrocket template
+local/system DNS and narrow direct exceptions. Gmail SMTP/IMAP is intentionally
+not managed in the router catalog, and the daily Shadowrocket template also
 forces `smtp.gmail.com` and `imap.gmail.com` to `DIRECT` because iOS Mail
 SMTP/IMAP ports can time out through the VPS/Reality egress.
 

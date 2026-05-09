@@ -64,11 +64,16 @@ assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "dns-d
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "hijack-dns = :53"
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "udp-policy-not-supported-behaviour = REJECT"
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "dns-server = system"
-assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/gmail.com/STEALTH_DOMAINS"
-assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/googlemail.com/STEALTH_DOMAINS"
+if rg -n -F -- "ipset=/gmail.com/STEALTH_DOMAINS" "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" >/dev/null ||
+   rg -n -F -- "ipset=/googlemail.com/STEALTH_DOMAINS" "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" >/dev/null ||
+   rg -n -F -- "ipset=/smtp.gmail.com/STEALTH_DOMAINS" "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" >/dev/null ||
+   rg -n -F -- "ipset=/imap.gmail.com/STEALTH_DOMAINS" "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" >/dev/null; then
+  echo "Gmail SMTP/IMAP must stay out of the router managed catalog" >&2
+  exit 1
+fi
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "DOMAIN,smtp.gmail.com,DIRECT"
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "DOMAIN,imap.gmail.com,DIRECT"
-assert_contains_fixed "docs/dns-policy.md" "Gmail stays managed by the router catalog for LAN"
+assert_contains_fixed "docs/dns-policy.md" "must stay out of the router managed catalog"
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "DOMAIN-SUFFIX,corp.example.invalid,DIRECT"
 assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "the home WAN; it cannot produce the cellular provider IP"
 assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "Shadowrocket Proof Config For Channels A/B/C"
@@ -81,7 +86,7 @@ assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "
 assert_contains_fixed "docs/dns-policy.md" "https://api64.ipify.org   -> must not show LTE/mobile-provider IP"
 assert_contains_fixed "docs/dns-policy.md" "explicit DNS server"
 assert_contains_fixed "docs/dns-policy.md" "DOMAIN-SUFFIX,sslip.io,DIRECT"
-assert_contains_fixed "docs/dns-policy.md" "Gmail SMTP/IMAP ports can time out through the VPS/Reality egress"
+assert_contains_fixed "docs/dns-policy.md" "Gmail SMTP/IMAP ports can time out"
 assert_contains_fixed "docs/troubleshooting.md" "Channel A api64 показывает LTE IP"
 
 # Channel A LAN/Wi-Fi path: DNS-populated STEALTH_DOMAINS must enter the local
