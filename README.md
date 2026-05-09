@@ -140,6 +140,9 @@ diagnostic.
 - Health, traffic and catalog reports suitable for humans and LLM handoff.
 - Local GhostRoute health monitor with router-side `STATUS_OK` / `STATUS_FAIL`,
   `summary-latest.md`, and internal alert ledgers on router storage.
+- Read-only GhostRoute Console with full desktop workbenches and compact mobile
+  `/m` pages over prepared route, traffic, client, health, live and catalog
+  evidence.
 
 ---
 
@@ -161,6 +164,13 @@ core, not just a set of firewall scripts:
   Home Reality QR clients, popular destinations and split-routing mistakes.
   It is designed for day-to-day inspection and safe LLM handoff with redacted
   device labels by default.
+- **GhostRoute Console** — a read-only web Console over prepared route, traffic,
+  client, health, live and catalog evidence. It renders full desktop
+  workbenches plus compact mobile `/m` triage pages, while remaining a
+  read-model consumer rather than a router/VPS runtime owner. See
+  [modules/ghostroute-console/README.md](/modules/ghostroute-console/README.md)
+  and
+  [docs/ghostroute-console-architecture.md](/docs/ghostroute-console-architecture.md).
 - **DNS & Catalog Intelligence** — DNS lookup observation, domain discovery
   and managed-catalog maintenance. It helps identify which domains a service
   uses, keeps manual and auto-discovered rules separated, and feeds
@@ -433,6 +443,7 @@ modules/
   routing-core/
   ghostroute-health-monitor/
   traffic-observatory/
+  ghostroute-console/
   dns-catalog-intelligence/
   performance-diagnostics/
   reality-sni-rotation/
