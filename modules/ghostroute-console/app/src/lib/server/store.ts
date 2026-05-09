@@ -381,6 +381,121 @@ export function getDb() {
         rebuilt_at text not null,
         payload_json text not null
       );
+      create table if not exists client_traffic_5min (
+        bucket_start_utc text not null,
+        bucket_msk_key text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        connections integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (bucket_start_utc, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
+      create table if not exists client_traffic_hourly (
+        hour_msk_key text not null,
+        hour_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_daily (
+        day_msk_key text not null,
+        day_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists dns_log_5min (
+        bucket_start_utc text not null,
+        bucket_msk_key text not null,
+        client_key text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (bucket_start_utc, client_key, domain, qtype, catalog_status, route)
+      );
+      create table if not exists top_clients_window (
+        window text not null,
+        traffic_class text not null default 'client',
+        rank integer not null,
+        client_key text not null default '',
+        label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        computed_at_utc text not null,
+        primary key (window, traffic_class, rank)
+      );
+      create table if not exists top_destinations_window (
+        window text not null,
+        traffic_class text not null default 'client',
+        rank integer not null,
+        destination text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        bytes integer not null default 0,
+        flows integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        computed_at_utc text not null,
+        primary key (window, traffic_class, rank)
+      );
+      create table if not exists traffic_window_snapshots (
+        kind text not null,
+        window text not null,
+        traffic_class text not null default 'client',
+        window_start_utc text not null,
+        window_end_utc text not null,
+        source_version text not null default '',
+        computed_at_utc text not null,
+        payload_json text not null,
+        primary key (kind, window, traffic_class)
+      );
     `);
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -401,6 +516,10 @@ export function getDb() {
         event_ts: "text not null default ''",
         ts_confidence: "text not null default ''",
         source_log: "text not null default ''",
+        traffic_class: "text not null default 'client'",
+        via_vps_bytes: "integer not null default 0",
+        direct_bytes: "integer not null default 0",
+        unknown_bytes: "integer not null default 0",
       },
       normalized_dns: {
         answer_ip: "text not null default ''",
@@ -415,6 +534,10 @@ export function getDb() {
         egress_asn: "text not null default ''",
         egress_country: "text not null default ''",
         ts_confidence: "text not null default ''",
+        traffic_class: "text not null default 'client'",
+        via_vps_bytes: "integer not null default 0",
+        direct_bytes: "integer not null default 0",
+        unknown_bytes: "integer not null default 0",
       },
       events: {
         event_id: "text not null default ''",
@@ -463,6 +586,15 @@ export function getDb() {
       create index if not exists idx_dns_query_log_filters on dns_query_log(route, catalog_status, status, client, domain);
       create index if not exists idx_device_inventory_activity on device_inventory(last_seen desc, total_bytes desc, route);
       create index if not exists idx_alarm_events_status on alarm_events(status, severity, collected_at desc);
+      create index if not exists idx_ct5_msk on client_traffic_5min(bucket_msk_key desc);
+      create index if not exists idx_ct5_class_msk on client_traffic_5min(traffic_class, bucket_msk_key desc);
+      create index if not exists idx_ct5_client_msk on client_traffic_5min(client_key, bucket_msk_key desc);
+      create index if not exists idx_cth_msk on client_traffic_hourly(hour_msk_key desc);
+      create index if not exists idx_cth_class_msk on client_traffic_hourly(traffic_class, hour_msk_key desc);
+      create index if not exists idx_ctd_msk on client_traffic_daily(day_msk_key desc);
+      create index if not exists idx_dl5_msk on dns_log_5min(bucket_msk_key desc);
+      create index if not exists idx_dl5_domain on dns_log_5min(domain, bucket_msk_key desc);
+      create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
     `);
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       6,
@@ -470,6 +602,10 @@ export function getDb() {
     );
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       7,
+      new Date().toISOString()
+    );
+    db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
+      8,
       new Date().toISOString()
     );
   }
@@ -485,13 +621,19 @@ export function insertSnapshot(type: SnapshotType, filePath: string, payload: an
 }
 
 function rowToSnapshot(row: any): SnapshotRecord {
+  let payload = {};
+  try {
+    payload = row.payload_json ? JSON.parse(row.payload_json) : {};
+  } catch {
+    payload = {};
+  }
   return {
     id: row.id,
     type: row.type,
     collectedAt: row.collected_at,
     source: row.source,
     path: row.path,
-    payload: JSON.parse(row.payload_json),
+    payload,
   };
 }
 

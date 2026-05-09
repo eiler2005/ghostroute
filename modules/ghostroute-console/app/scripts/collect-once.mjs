@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
+import { ensureConsoleSchema, normalizeSnapshot, pruneOperationalTables, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 import { validateSnapshotPayload } from "./lib/snapshot-contracts.mjs";
 
@@ -234,8 +234,9 @@ try {
     console.log(`stored ${entry.type}: ${entry.file}`);
   }
 
-  rebuildHourlyAggregates(db);
+  pruneOperationalTables(db);
   rebuildObservabilityReadModels(db);
+  rebuildHourlyAggregates(db);
   applyRetention();
 
   db.prepare("update collector_runs set finished_at = ?, ok_count = ?, error_count = ? where id = ?").run(

@@ -44,8 +44,9 @@ import {
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
-const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 60_000);
+const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 300_000);
 const derivedCache = new Map<string, { expiresAt: number; value: any }>();
+const USE_PREPARED_WINDOWS = process.env.GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS !== "0";
 
 function cacheGet<T>(key: string, build: () => T): T {
   if (DERIVED_CACHE_TTL_MS <= 0) return build();
@@ -108,6 +109,41 @@ export function getConsolePageSummary(page: "health_mobile" | "health_shell" | "
       return null;
     }
   });
+}
+
+function getPreparedWindowSnapshot(kind: string, period = "today", trafficClass = "client") {
+  if (!USE_PREPARED_WINDOWS) return null;
+  const window = ["today", "week", "month"].includes(period || "today") ? period || "today" : "today";
+  return cacheGet(`prepared-window:${kind}:${window}:${trafficClass}`, () => {
+    try {
+      const row = getDb()
+        .prepare(
+          `select kind, window, traffic_class, window_start_utc, window_end_utc, source_version,
+                  computed_at_utc, payload_json
+             from traffic_window_snapshots
+            where kind = ? and window = ? and traffic_class = ?
+            limit 1`
+        )
+        .get(kind, window, trafficClass) as Record<string, any> | undefined;
+      if (!row) return null;
+      return {
+        kind: row.kind,
+        window: row.window,
+        trafficClass: row.traffic_class,
+        windowStartUtc: row.window_start_utc,
+        windowEndUtc: row.window_end_utc,
+        sourceVersion: row.source_version,
+        computedAtUtc: row.computed_at_utc,
+        payload: JSON.parse(row.payload_json || "{}"),
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
+function preparedDashboard(period = "today") {
+  return getPreparedWindowSnapshot("dashboard", period, "client")?.payload || null;
 }
 
 function filtersKey(filters: ConsoleFilters = {}) {
@@ -341,7 +377,7 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
 }
 
 function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
-  const trafficClass = trafficClassFor(row);
+  const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
   const rawClient = row.client;
   const rawProfile = row.profile || row.raw?.profile || "";
   const resolved = resolveClient({ ...row, profile: rawProfile });
@@ -646,6 +682,16 @@ function snapshotIdsForDeviceWindow(period = "today", types = new Set<string>(["
 
 function authoritativeTotalsForPeriod(period = "today") {
   return cacheGet(`authoritative-totals:${latestSnapshotVersion()}:${period}`, () => {
+  const prepared = preparedDashboard(period);
+  if (prepared?.totals) {
+    return {
+      observed: Number(prepared.totals.observedBytes || 0),
+      vps: Number(prepared.totals.viaVpsBytes || 0),
+      direct: Number(prepared.totals.directBytes || 0),
+      unknown: Number(prepared.totals.unknownBytes || 0),
+    };
+  }
+  if (USE_PREPARED_WINDOWS && period !== "today") return { observed: 0, vps: 0, direct: 0, unknown: 0 };
   const latestPayload = (type: string) => {
     const rows = getDb()
       .prepare("select collected_at, payload_json from snapshots where type = ? order by collected_at desc limit 50")
@@ -671,6 +717,9 @@ function authoritativeTotalsForPeriod(period = "today") {
 
 function destinationAttributionCoverageForPeriod(period = "today") {
   return cacheGet(`destination-coverage:${latestSnapshotVersion()}:${period}`, () => {
+    const prepared = preparedDashboard(period);
+    if (prepared?.destinationAttributionCoverage) return prepared.destinationAttributionCoverage;
+    if (USE_PREPARED_WINDOWS && period !== "today") return null;
     const rows = getDb()
       .prepare("select collected_at, payload_json from snapshots where type = 'traffic' order by collected_at desc limit 50")
       .all() as Array<Record<string, any>>;
@@ -1280,7 +1329,8 @@ function flowSelect() {
   return `rowid as rowid, 'flow:' || rowid as id, snapshot_id, snapshot_type, collected_at,
     client, client_ip, channel, destination, destination_ip, destination_port, route, confidence,
     bytes, connections, protocol, dns_qname, dns_answer_ip, sni, outbound, matched_rule,
-    rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log, raw_json`;
+    rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log,
+    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json`;
 }
 
 function mapFlowRow(row: any) {
@@ -1310,6 +1360,10 @@ function mapFlowRow(row: any) {
     event_ts: row.event_ts,
     ts_confidence: row.ts_confidence,
     source_log: row.source_log,
+    traffic_class: row.traffic_class,
+    via_vps_bytes: Number(row.via_vps_bytes || 0),
+    direct_bytes: Number(row.direct_bytes || 0),
+    unknown_bytes: Number(row.unknown_bytes || 0),
     collected_at: row.collected_at,
     raw: rawJson(row),
   });
@@ -1319,7 +1373,7 @@ function flowSessionSelect() {
   return `id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip, device_key,
     channel, destination, destination_ip, destination_port, protocol, route, policy, matched_rule,
     outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence,
-    bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
+    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
     confidence, source_kind, evidence_json`;
 }
 
@@ -1356,6 +1410,10 @@ function mapFlowSessionRow(row: any) {
     egress_asn: row.egress_asn,
     egress_country: row.egress_country,
     ts_confidence: row.ts_confidence,
+    traffic_class: row.traffic_class,
+    via_vps_bytes: Number(row.via_vps_bytes || 0),
+    direct_bytes: Number(row.direct_bytes || 0),
+    unknown_bytes: Number(row.unknown_bytes || 0),
     policy: row.policy,
     risk: row.risk,
     risk_reason: row.risk_reason,
@@ -1612,6 +1670,46 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const catalogStatus = args.catalogStatus || "all";
   const route = filters.route || "all";
   const period = filters.period || "today";
+  const prepared = getPreparedWindowSnapshot("dns_counts", period, "all")?.payload;
+  if (prepared?.rows) {
+    const rows = (prepared.rows as Array<Record<string, any>>)
+      .map((row: any) => mapDnsReadModelRow({
+        id: `dns:prepared:${period}:${row.client || ""}:${row.domain}:${row.qtype}:${row.route}`,
+        snapshot_id: 0,
+        collected_at: row.event_ts || prepared.generatedAt || "",
+        event_ts: row.event_ts || "",
+        client: row.client || "",
+        client_ip: "",
+        device_key: row.client || "",
+        domain: row.domain || "",
+        qtype: row.qtype || "",
+        answer_ip: "",
+        route: row.route || "Unknown",
+        catalog_status: row.catalog_status || "unknown",
+        status: "OK",
+        count: Number(row.count || 0),
+        risk: "low",
+        confidence: row.confidence || "dns-interest",
+        evidence_json: "{}",
+      }))
+      .filter((row) => route === "all" || row.route === route)
+      .filter((row) => catalogStatus === "all" || row.catalog_status === catalogStatus)
+      .filter((row) => status === "all" || String(row.status || "").toLowerCase() === status.toLowerCase())
+      .filter((row) => filterRows([row], { ...filters, trafficClass: "all" }).length > 0);
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const offset = (effectivePage - 1) * pageSize;
+    return {
+      rows: rows.slice(offset, offset + pageSize),
+      total: rows.length,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  }
+  if (USE_PREPARED_WINDOWS && period !== "today") {
+    return { rows: [], total: 0, page: 1, pageSize, totalPages: 1 };
+  }
   if (!readModelHasRows("dns_query_log")) {
     const rows = normalizedRowsForIds("normalized_dns", snapshotIdsForWindow(period, new Set(["dns", "traffic"])))
       .map(mapDnsFallbackRow)
@@ -2066,6 +2164,26 @@ export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel 
 }
 
 function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
+  const period = filters.period || "today";
+  const prepared = preparedDashboard(period);
+  if (prepared) {
+    const shell = buildShellModel(filters, {
+      devices: (prepared.devices || []).map((row: any) => decorateTrafficRow(row)),
+      flows: (prepared.flows || []).map((row: any) => decorateTrafficRow(row)),
+      totals: prepared.totals || undefined,
+      destinationAttributionCoverage: prepared.destinationAttributionCoverage || undefined,
+    });
+    return {
+      ...shell,
+      generatedAt: prepared.generatedAt || shell.generatedAt,
+      totals: prepared.totals || shell.totals,
+      destinationAttributionCoverage: prepared.destinationAttributionCoverage || shell.destinationAttributionCoverage,
+      dashboardAnalytics: prepared.dashboardAnalytics || {},
+    };
+  }
+  if (USE_PREPARED_WINDOWS && period !== "today") {
+    return { ...buildShellModel(filters), dashboardAnalytics: {} };
+  }
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 100, filters }).rows;
@@ -2237,7 +2355,7 @@ function buildSettingsInventory(model: ConsoleModel) {
       ["Live raw snapshots", `${envNumber("GHOSTROUTE_LIVE_RAW_RETENTION_HOURS", 6)}h`],
       ["Hourly aggregates", `${envNumber("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30)}d`],
       ["DB backups", `${envNumber("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2)}d / max ${envNumber("GHOSTROUTE_DB_BACKUP_MAX_FILES", 2)}`],
-      ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 60000)}ms`],
+      ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 300000)}ms`],
       ["Latest retention run", latestRetentionRun()?.ran_at || "n/a"],
     ],
     access: [
@@ -2399,6 +2517,16 @@ function clientSearch(row: Record<string, any>, search?: string) {
 function clientInventoryRows(filters: ConsoleFilters = {}) {
   const period = filters.period || "today";
   return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}`, () => {
+  const prepared = getPreparedWindowSnapshot("clients", period, "client")?.payload;
+  if (prepared?.rows) {
+    return (prepared.rows as Array<Record<string, any>>).map((row) => decorateTrafficRow({
+      ...row,
+      bytes: Number(row.total_bytes || row.bytes || 0),
+      total_bytes: Number(row.total_bytes || row.bytes || 0),
+      traffic_window_active: Number(row.total_bytes || row.bytes || 0) > 0,
+    }));
+  }
+  if (USE_PREPARED_WINDOWS && period !== "today") return [];
   const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
   const currentRows = deviceDeltaRowsForPeriod(period);
   const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));

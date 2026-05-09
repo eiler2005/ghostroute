@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { clearDerivedCache } from "@/lib/server/selectors/shell";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;
+  if (search.get("fresh") === "1") clearDerivedCache();
   const page = Math.max(1, Number(search.get("page") || 1));
   const pageSize = Math.min(Number(search.get("pageSize") || search.get("limit") || 25), 100);
   const result = listFlowSessions({

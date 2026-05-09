@@ -94,9 +94,13 @@ run several read-only reports in one pass.
 
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
 snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
-for 30 days, and SQLite safety backups are daily with at most 1 recent file. The
-live collector stores normalized events in SQLite; the per-poll raw JSON is only
-short-term troubleshooting material.
+for 30 days, and SQLite safety backups are daily with at most 1 recent file. Raw
+normalized traffic, DNS, event and route-decision rows are bounded by the raw
+retention window; service/background traffic can be pruned sooner than client
+traffic. Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
+troubleshooting window may be stripped once a newer payload of the same type
+exists. The live collector stores normalized events in SQLite; the per-poll raw
+JSON is only short-term troubleshooting material.
 
 ## Read Models And Accounting
 
@@ -107,10 +111,13 @@ the normal retention policy.
 
 Observability v2 rebuilds additive SQLite read models after each collection:
 `flow_sessions`, `dns_query_log`, `device_inventory`, `alarm_events`,
-`console_page_summaries`, `read_model_state` and non-secret `console_settings`.
-These tables feed `/api/flows`, `/api/dns`, `/api/alarms`, Flow Explorer, DNS
-Query Log, Alarm Center and the compact mobile Health/Live shells while
-preserving the normalized source tables as the fallback contract.
+`client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily`,
+`dns_log_5min`, `top_clients_window`, `top_destinations_window`,
+`traffic_window_snapshots`, `console_page_summaries`, `read_model_state` and
+non-secret `console_settings`. These tables feed `/api/flows`, `/api/dns`,
+`/api/alarms`, Flow Explorer, DNS Query Log, Alarm Center, Dashboard, Clients and
+the compact mobile Health/Live shells while preserving the normalized source
+tables as the collection contract.
 
 The `flow_sessions` read model includes the safe DNS/SNI and egress evidence
 fields needed by the Flow Explorer inline detail panel. Missing source evidence
@@ -123,6 +130,16 @@ summaries for status cards, capped alarms, Deploy Gate, leak evidence and
 freshness. They must not parse the full latest traffic report or rebuild the
 desktop Health model just to render the shell, freshness strip or navigation
 chrome.
+
+Traffic windows are prepared after each collector pass. Source timestamps stay in
+UTC in SQLite, while `today`, `week` and `month` are keyed by Moscow local time.
+Dashboard, Clients, DNS and safe report APIs should use
+`traffic_window_snapshots` plus the aggregate tables for all three windows.
+Week/month must not scan `normalized_flows`, `normalized_dns`, `events` or raw
+snapshot payloads on the request path. If a prepared historical window is
+missing, render a bounded empty/fallback state until collection rebuilds it. The
+diagnostic rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`; it is
+not the production data path for large databases.
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
@@ -302,12 +319,19 @@ container upstream.
 
 - PR/functional smoke uses the seeded GUI database across desktop and mobile
   Playwright projects; performance remains a separate release gate.
+- Data-layer releases also run timezone, aggregate consistency, dashboard
+  benchmark and DB-size checks against the seeded GUI database:
+  `npm run verify:timezone`,
+  `GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run verify:aggregates`,
+  `GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run bench:dashboard` and
+  `GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run report:db-size`.
 - Collectors validate incoming JSON snapshots against tolerant versioned
   contracts. Unknown fields are preserved, but missing core fields are recorded
   as collector errors instead of being inserted as broken snapshots.
 - Read-only derived selectors use a short in-process cache keyed by lightweight
-  snapshot metadata, filters and pagination. The cache covers the heavy sidebar
-  pages; browser-side prefetch is intentionally avoided for those pages.
+  snapshot metadata, filters and pagination. The default TTL is 300 seconds. The
+  cache covers the heavy sidebar pages; browser-side prefetch is intentionally
+  avoided for those pages.
 - The source strip and `/api/health` expose both build commit and UTC build
   timestamp so operators can confirm which deployed container is serving the UI.
 - The VPS read-only deploy builds the new Console image before replacing the

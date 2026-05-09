@@ -36,6 +36,8 @@ Layer 1 collector
     -> stores raw JSON snapshots under data/snapshots/
     -> records collector errors instead of publishing invalid snapshots
     -> rebuilds bounded SQLite read models
+    -> rebuilds prepared today/week/month traffic windows
+    -> prunes short-lived operational raw rows after prepared data exists
 
   ghostroute-console collect-light
     -> refreshes frequent current-day traffic summary cards
@@ -82,6 +84,21 @@ Layer 3 UI read models
     -> Alarm Center
     -> ack/snooze/open state overlay
 
+  client_traffic_5min / client_traffic_hourly / client_traffic_daily
+    -> prepared client-first traffic aggregates
+    -> Dashboard, Clients, Budget and historical traffic windows
+
+  dns_log_5min
+    -> prepared DNS query aggregates
+    -> DNS Query Log and DNS-interest counts
+
+  top_clients_window / top_destinations_window
+    -> pre-ranked today/week/month lists
+
+  traffic_window_snapshots
+    -> prepared dashboard, client, DNS and report payloads
+    -> no raw scans for week/month request paths
+
   console_page_summaries
     -> health_shell
     -> health_mobile
@@ -96,7 +113,7 @@ Layer 3 UI read models
 Layer 4 request-time cache
   in-process derived selector cache
     -> keyed by read_model_state / lightweight snapshot metadata
-    -> short TTL, default 60 seconds
+    -> short TTL, default 300 seconds
     -> bypassed or cleared for action/state-changing endpoints
     -> disabled with GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0
 
@@ -200,12 +217,15 @@ primary UI object when they only prove `rule/outbound/time/destination IP` and
 do not prove client traffic or bytes.
 
 Dashboard, Traffic Explorer and Clients share the same selected traffic window.
-For the default `today` period, that window is the operator-local Moscow day:
-from `00:00` to the latest collected traffic snapshot. Historical known-device
-rows may enrich inventory labels and roles, but they must not contribute traffic
-totals, top clients, selected-client domains or route split values for the
-current window. If no current-day traffic snapshot exists, traffic views should
-show an empty state instead of presenting stale bytes as today's data.
+Source timestamps are stored in UTC, while UI windows are keyed by the
+operator-local Moscow day. For the default `today` period, the window runs from
+Moscow `00:00` to the latest collected traffic snapshot; `week` covers the
+current Moscow day plus the previous six days; `month` starts at the first
+Moscow day of the month. Historical known-device rows may enrich inventory labels
+and roles, but they must not contribute traffic totals, top clients,
+selected-client domains or route split values outside the selected window. If no
+prepared current-window traffic exists, traffic views should show an empty state
+instead of presenting stale bytes as today's data.
 
 Traffic report snapshots can contain cumulative counters. Console therefore
 does not sum multiple same-day snapshots as independent traffic rows. Current
@@ -263,6 +283,16 @@ active alarms, Deploy Gate checks, health probes and leak evidence. Mobile
 Health reads that single prepared JSON row; if it is absent, it renders a
 minimal fallback instead of parsing raw snapshots.
 
+Schema v8 adds the prepared traffic-window layer:
+`client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily`,
+`dns_log_5min`, `top_clients_window`, `top_destinations_window` and
+`traffic_window_snapshots`. These tables are rebuilt by the collector from
+normalized evidence and then read by Dashboard, Clients, DNS and safe report
+APIs for `today`, `week` and `month`. Week/month request paths must not scan
+`normalized_flows`, `normalized_dns`, `events` or raw snapshot payloads. The
+temporary rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`, but
+the steady-state large-database contract is prepared-window reads only.
+
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.
 
@@ -304,6 +334,13 @@ durable contract is the normalized SQLite event tables, while raw live payloads
 are short-term troubleshooting evidence. SQLite backups are daily by default
 and capped by retention/count settings so a small VPS disk is not filled by
 collector safety copies.
+
+Operational pruning keeps `normalized_flows`, `normalized_dns`, `events`,
+`route_decisions` and `collector_errors` inside their retention windows.
+Service/background traffic may be pruned sooner than client traffic. Heavy
+`traffic`, `dns` and `live` snapshot payloads can be stripped after the short
+troubleshooting window once a newer payload of the same type exists; the UI
+history then lives in aggregate/read-model tables.
 
 Runtime switches:
 
@@ -375,7 +412,7 @@ used in v1, so public nginx/TLS stays on the same listener; only immutable
 iOS Safari navigation reliable.
 
 Read-only derived selectors use a short in-process cache inside the Console
-Node process. The default TTL is 60 seconds and can be disabled with
+Node process. The default TTL is 300 seconds and can be disabled with
 `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`. Cache keys use lightweight snapshot
 metadata (`type` + `collected_at`) rather than parsing every latest snapshot
 payload. Request-path shells for Health, Live, mobile pages and JSON APIs then
@@ -407,7 +444,11 @@ seeing the freshly deployed container rather than a stale image or cached page.
 Playwright functional checks cover content, redirects, row selection and JSON
 contracts without timing assertions. Playwright performance checks are a separate
 local seeded-GUI suite that owns timing budgets: 2.5 seconds for page content and
-1.5 seconds for API responses.
+1.5 seconds for API responses. Data-layer releases also run
+`npm run verify:timezone`,
+`GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run verify:aggregates`,
+`GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run bench:dashboard` and
+`GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run report:db-size`.
 
 Snapshot ingestion has a small runtime contract gate before data reaches the
 UI read models. JSON reports must carry the common machine-contract fields
