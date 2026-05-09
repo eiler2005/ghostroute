@@ -97,10 +97,12 @@ not proof-mode evidence because arbitrary DNS test names can fall back before
 the router sees them.
 
 For everyday Shadowrocket use, a separate daily template may intentionally use
-`dns-server = system` and narrow `DIRECT` rules for domestic banking, SMTP/IMAP,
-or corporate services. That daily profile is not a BrowserLeaks proof profile.
-Keep real corporate domains and private hostnames in local imported configs,
-not in tracked docs.
+`dns-server = system` and narrow `DIRECT` rules for domestic banking or
+corporate services. Gmail SMTP/IMAP stays managed by the router catalog; do not
+add `smtp.gmail.com` or `imap.gmail.com` as endpoint-side `DIRECT` rules unless
+the explicit goal is to bypass GhostRoute for mail. That daily profile is not a
+BrowserLeaks proof profile. Keep real corporate domains and private hostnames in
+local imported configs, not in tracked docs.
 
 ## Channel A
 
