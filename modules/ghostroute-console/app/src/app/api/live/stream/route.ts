@@ -12,7 +12,7 @@ function numberParam(value: string | null, fallback: number, max?: number) {
 function eventPayload(request: NextRequest) {
   const search = request.nextUrl.searchParams;
   const filters = {
-    period: search.get("period") || "today",
+    period: "today",
     route: search.get("route") || "all",
     channel: search.get("channel") || "all",
     confidence: search.get("confidence") || "all",

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     pageSize,
     diagnostics: search.get("diagnostics") === "1",
     filters: {
-      period: search.get("period") || "today",
+      period: "today",
       route: search.get("route") || "all",
       channel: search.get("channel") || "all",
       confidence: search.get("confidence") || "all",

@@ -30,6 +30,28 @@ test("filters are visible and stable", async ({ page, isMobile }) => {
   await expect(page.locator("input[name='search']")).toBeVisible();
 });
 
+test("today-only pages ignore stale month period filters", async ({ page, isMobile }) => {
+  const cases = isMobile
+    ? [
+        { path: "/m/traffic?period=month", heading: "Flow Explorer", rows: ".mobile-list .mobile-row" },
+        { path: "/m/dns?period=month", heading: "DNS Query Log", rows: ".mobile-list .mobile-row" },
+        { path: "/m/live?period=month", heading: "Live event stream", rows: ".mobile-list .mobile-row" },
+      ]
+    : [
+        { path: "/traffic?period=month", heading: "Flow Explorer", rows: ".flow-events-table tbody tr" },
+        { path: "/dns?period=month", heading: "DNS Query Log", rows: ".dns-events-table tbody tr" },
+        { path: "/live?period=month", heading: "Live event stream", rows: ".client-activity-table tbody tr" },
+      ];
+
+  for (const item of cases) {
+    await page.goto(item.path);
+    await expect(page.getByRole("heading", { name: item.heading }).first()).toBeVisible();
+    await expect(page.locator(item.rows).first()).toBeVisible();
+    await expect(page.locator("a[href*='period=month']")).toHaveCount(0);
+    if (!isMobile) await expect(page.locator("select[name='period']")).toHaveValue("today");
+  }
+});
+
 test("dashboard shows traffic analytics in English", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/?desktop=1" : "/");
   await expect(page.getByRole("heading", { name: "Traffic today" })).toBeVisible();

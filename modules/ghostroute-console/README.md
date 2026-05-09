@@ -181,6 +181,7 @@ overlays; router/VPS runtime changes remain separate explicit actions.
 ./modules/ghostroute-console/bin/ghostroute-console build
 ./modules/ghostroute-console/bin/ghostroute-console collect-once
 ./modules/ghostroute-console/bin/ghostroute-console collect-light
+./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from 2026-05-07 --to 2026-05-08 --dry-run
 ./modules/ghostroute-console/bin/ghostroute-console alarm-state --json get
 ./modules/ghostroute-console/bin/ghostroute-console doctor
 ./modules/traffic-observatory/bin/traffic-summary --json today
@@ -215,9 +216,18 @@ Core read models are rebuilt from factual snapshots:
 | `dns_log_5min` | Prepared DNS query aggregate for DNS Query Log and DNS-interest counts. |
 | `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector. |
 | `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads. |
+| `aggregate_state` | Watermarks/status for prepared aggregate layers and dashboard windows. |
 | `console_page_summaries` | Prepared Health/Live/mobile summaries for fast request paths. |
 | `read_model_state` | Rebuild freshness, source version and cache keys. |
 | `console_settings` | Non-secret settings and runtime posture. |
+
+Prepared traffic rankings are intentionally registry-first. Top clients contain
+only non-zero client traffic that resolves through the private operator device
+attribution registry; service channel labels, DNS-interest rows and accounting
+buckets stay available for diagnostics but are not ranked as clients. Detail
+workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
+force the current Moscow day, while Dashboard/Clients/Reports use the prepared
+`today`, `week` and `month` aggregate windows.
 
 Traffic-driven surfaces use one selected traffic window at a time. Dashboard
 route analytics preserve the accounting invariant:

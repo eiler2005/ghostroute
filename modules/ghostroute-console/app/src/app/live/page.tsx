@@ -4,7 +4,7 @@ import { LiveStreamPanel } from "@/components/LiveStreamPanel";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { aggregateDnsInterest } from "@/lib/traffic-window.mjs";
 
@@ -24,7 +24,7 @@ function hrefWithParams(path: string, params: Record<string, string | number | u
 export default async function LivePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const eventsPage = Math.max(1, Number.parseInt(scalar(params.eventsPage) || "1", 10) || 1);
   const eventsPageSize = boundedPageSize(scalar(params.eventsPageSize), { desktop: 50, mobile: 10, min: 10, desktopMax: 500, mobileMax: 10 }, mobile);
   const servicePage = Math.max(1, Number.parseInt(scalar(params.servicePage) || "1", 10) || 1);
@@ -54,7 +54,6 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
       }));
   const serviceTotal = serviceEvents.rows.length > 0 ? serviceEvents.total : model.dnsQueries.length;
   const filterParams = {
-    period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
@@ -66,7 +65,6 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
     activityPageSize,
   };
   const liveStreamHref = hrefWithParams("/api/live/stream", {
-    period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,

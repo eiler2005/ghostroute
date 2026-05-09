@@ -20,6 +20,7 @@
     "collector:once": "node scripts/collect-once.mjs",
     "collector:light": "node scripts/collect-light-once.mjs",
     "collector:live": "node scripts/collect-live-once.mjs",
+    "repair:aggregates": "node scripts/repair-aggregates.mjs",
     "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {

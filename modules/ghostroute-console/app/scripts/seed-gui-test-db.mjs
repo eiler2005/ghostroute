@@ -10,6 +10,8 @@ const dataDir = path.resolve(process.env.GHOSTROUTE_CONSOLE_DATA_DIR || defaultD
 const dbFile = path.join(dataDir, "ghostroute.db");
 const snapshotsDir = path.join(dataDir, "snapshots");
 
+process.env.GHOSTROUTE_CONSOLE_DATA_DIR = dataDir;
+
 function iso(now, offsetMs = 0) {
   return new Date(now.getTime() - offsetMs).toISOString();
 }
@@ -257,6 +259,21 @@ function seed(db) {
     { key: "test-mobile-lte", label: "Test/Mobile LTE", ip: "10.10.0.31", channel: "C/Mobile LTE", type: "iPhone" },
     { key: "test-home-console", label: "Test/Home Console", ip: "10.10.0.41", channel: "A/Home Reality", type: "Windows PC" },
   ];
+  fs.writeFileSync(
+    path.join(dataDir, "device-attribution.json"),
+    `${JSON.stringify({
+      schema_version: 2,
+      clients: Object.fromEntries(clients.map((client) => [client.key, {
+        label: client.label,
+        device_key: client.key,
+        device_label: client.label,
+        device_type: client.type,
+        primary_channel: client.channel,
+        aliases: [client.label, client.key],
+        ip_aliases: [client.ip],
+      }])),
+    }, null, 2)}\n`
+  );
   const destinations = [
     ["Apple/iCloud", "icloud.test.invalid", "203.0.113.10"],
     ["Google/YouTube", "youtube.test.invalid", "203.0.113.20"],

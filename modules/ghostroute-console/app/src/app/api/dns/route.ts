@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     status: search.get("status") || "all",
     catalogStatus: search.get("catalogStatus") || "all",
     filters: {
-      period: search.get("period") || "today",
+      period: "today",
       route: search.get("route") || "all",
       channel: search.get("channel") || "all",
       confidence: search.get("confidence") || "all",

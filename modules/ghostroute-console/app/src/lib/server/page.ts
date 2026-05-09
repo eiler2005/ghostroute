@@ -18,3 +18,8 @@ export async function filtersFromSearchParams(searchParams: SearchParams): Promi
     search: scalar(params.search) || "",
   };
 }
+
+export async function todayOnlyFiltersFromSearchParams(searchParams: SearchParams): Promise<ConsoleFilters> {
+  const filters = await filtersFromSearchParams(searchParams);
+  return { ...filters, period: "today" };
+}

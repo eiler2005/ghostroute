@@ -5,12 +5,12 @@ import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { listLiveEvents } from "@/lib/server/selectors/live";
 import { buildLightweightShellModel, getConsolePageSummary } from "@/lib/server/selectors/shell";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { MobileAlarmList, MobileClientList, MobileDnsList, MobileFlowList, MobileLiveList, MobileSection } from "./mobile-ui";
 
 export default async function MobileHomePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const healthSummary = getConsolePageSummary("health_mobile")?.payload || {};
   const summaryAlarms = Array.isArray(healthSummary.alarms) ? healthSummary.alarms : [];
   const model = buildLightweightShellModel(filters, {

@@ -57,6 +57,24 @@ The UI and API must not fall back to `normalized_flows`, `normalized_dns`,
 `events` or raw snapshot payloads for `week`/`month`. If a prepared window is
 missing, render a bounded fallback and let the collector repair it.
 
+`Flow Explorer`, `DNS Query Log` and `Live` are detail workbenches, not
+historical aggregate surfaces. They always force the `today` window on the
+server, including mobile pages and `/api/flows`, `/api/dns`, `/api/live` and
+`/api/live/stream`. `week` and `month` are Dashboard/Clients/Reports aggregate
+windows only.
+
+Top-client prepared rows are operator-client rows only: non-zero
+`traffic_class=client` traffic that resolves through the private
+`device-attribution.json` registry. Service channels, DNS-interest rows,
+accounting buckets and pseudo clients such as channel labels are retained for
+diagnostics, but they are not ranked as clients. Observed aliases such as
+`lan-host-*` must be canonicalized to the registry client before the
+`client_traffic_*` chunks are grouped.
+
+Destination rankings are built from destination-bearing client chunks. Unknown
+or accounting-only traffic contributes to destination attribution coverage, but
+does not crowd concrete destinations out of the top-destination list.
+
 ## Collector Contract
 
 Normal collection has two separate jobs:
@@ -79,6 +97,23 @@ aggregate_state(model, window_key, source_snapshot_id, built_until_utc, status)
 
 Deploy/startup should check those watermarks, catch up small gaps, and keep
 serving the last good prepared snapshot while a large backfill runs separately.
+The current collector writes `aggregate_state` rows for the 5-minute, hourly,
+daily, DNS and dashboard window layers after every prepared-window rebuild.
+Repair jobs additionally write range keys such as
+`2026-05-07T00:00:00.000Z..2026-05-08T00:00:00.000Z`. Status values are:
+`ok`, `partial`, `missing_source`, `repairing` and `error`.
+
+Historical correction is explicit:
+
+```bash
+./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from 2026-05-07 --to 2026-05-08 --dry-run
+./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from 2026-05-07 --to 2026-05-08
+```
+
+Date-only arguments are Moscow-day boundaries; `--to` is exclusive. The repair
+job only uses retained `normalized_*` / read-model source rows. If retention has
+already removed the source facts, it records `missing_source` and keeps existing
+aggregates instead of erasing historical chunks.
 
 ## Night Mode
 

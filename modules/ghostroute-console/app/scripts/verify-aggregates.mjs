@@ -2,12 +2,37 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { loadDeviceAttributions } from "../src/lib/device-attribution.mjs";
+import { bucketStartUtc, mskWindowBounds } from "../src/lib/time/window.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const moduleDir = path.resolve(appDir, "..");
 const dataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR || path.resolve(moduleDir, "data");
 const dbFile = path.join(dataDir, "ghostroute.db");
 const db = new Database(dbFile, { readonly: true, fileMustExist: true });
+const registry = loadDeviceAttributions(dataDir);
+
+function number(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isoMinusHours(iso, hours) {
+  return new Date(Date.parse(iso) - hours * 3600000).toISOString();
+}
+
+function isoPlusMs(iso, ms) {
+  return new Date(Date.parse(iso) + ms).toISOString();
+}
+
+function maxIso(...values) {
+  return values.filter(Boolean).sort((a, b) => Date.parse(b) - Date.parse(a))[0] || "";
+}
+
+function concreteDestination(value) {
+  const text = String(value || "").toLowerCase();
+  return Boolean(text && text !== "unknown" && text !== "unknown destination" && text !== "n/a");
+}
 
 function payload(kind, window) {
   const row = db
@@ -16,24 +41,88 @@ function payload(kind, window) {
   return row ? JSON.parse(row.payload_json || "{}") : null;
 }
 
+function aggregateSegments(window, now) {
+  const bounds = mskWindowBounds(window, now);
+  const todayStart = mskWindowBounds("today", now).startUtc;
+  const freshHours = Math.max(1, number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
+  const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(now, freshHours), "hour"));
+  const endExclusive = isoPlusMs(bounds.endUtc, 1);
+  const segments = [];
+  if (window !== "today" && Date.parse(bounds.startUtc) < Date.parse(todayStart)) {
+    segments.push({ layer: "daily", start: bounds.startUtc, end: todayStart });
+  }
+  const hourlyStart = maxIso(bounds.startUtc, todayStart);
+  if (Date.parse(hourlyStart) < Date.parse(freshStart)) segments.push({ layer: "hourly", start: hourlyStart, end: freshStart });
+  if (Date.parse(freshStart) < Date.parse(endExclusive)) segments.push({ layer: "5min", start: freshStart, end: endExclusive });
+  return segments;
+}
+
+function segmentRows(segment) {
+  const table = segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
+  const timeColumn = segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+  return db.prepare(`
+    select client_key, destination_key, traffic_class, bytes, attributed_bytes
+      from ${table}
+     where ${timeColumn} >= ?
+       and ${timeColumn} < ?
+       and traffic_class = 'client'
+  `).all(segment.start, segment.end);
+}
+
+function composedRows(window, now) {
+  return aggregateSegments(window, now).flatMap(segmentRows);
+}
+
+function repairHint(window, dashboard) {
+  return `./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from ${dashboard.windowStartUtc} --to ${dashboard.windowEndUtc}`;
+}
+
 for (const window of ["today", "week", "month"]) {
   const dashboard = payload("dashboard", window);
   assert.ok(dashboard, `missing prepared dashboard ${window}`);
-  const source = window === "today" ? "client_traffic_hourly" : "client_traffic_daily";
-  const keyColumn = window === "today" ? "hour_start_utc" : "day_start_utc";
-  const row = db
-    .prepare(
-      `select sum(bytes) as bytes, sum(via_vps_bytes) as via_vps_bytes, sum(direct_bytes) as direct_bytes
-         from ${source}
-        where traffic_class = 'client'
-          and ${keyColumn} >= ?
-          and ${keyColumn} <= ?`
-    )
-    .get(dashboard.windowStartUtc, dashboard.windowEndUtc);
-  const aggregateBytes = Number(row?.bytes || 0);
-  const preparedBytes = Number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes || 0);
+  const rows = composedRows(window, dashboard.windowEndUtc);
+  const aggregateBytes = rows.reduce((sum, row) => sum + number(row.bytes), 0);
+  const preparedBytes = number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes);
   const allowed = Math.max(1, aggregateBytes * 0.01);
-  assert.ok(Math.abs(aggregateBytes - preparedBytes) <= allowed, `${window} aggregate drift: aggregate=${aggregateBytes} prepared=${preparedBytes}`);
+  assert.ok(
+    Math.abs(aggregateBytes - preparedBytes) <= allowed,
+    `${window} aggregate drift: aggregate=${aggregateBytes} prepared=${preparedBytes}; repair: ${repairHint(window, dashboard)}`
+  );
+
+  const state = db
+    .prepare("select status, detail_json from aggregate_state where model = 'dashboard' and window_key = ?")
+    .get(window);
+  assert.ok(state, `missing aggregate_state dashboard/${window}; repair: ${repairHint(window, dashboard)}`);
+  assert.ok(["ok", "partial"].includes(state.status), `aggregate_state dashboard/${window} status=${state.status}; repair: ${repairHint(window, dashboard)}`);
+
+  const concreteOperatorBytes = rows
+    .filter((row) => registry.clients[row.client_key] && concreteDestination(row.destination_key) && number(row.attributed_bytes) > 0)
+    .reduce((sum, row) => sum + number(row.attributed_bytes), 0);
+  const topDestinations = dashboard.dashboardAnalytics?.topDestinations || [];
+  assert.ok(
+    concreteOperatorBytes <= 0 || topDestinations.length > 0,
+    `${window} has concrete destination bytes but no top destinations; repair: ${repairHint(window, dashboard)}`
+  );
+}
+
+const topClients = db.prepare("select window, rank, client_key, label, bytes from top_clients_window where traffic_class = 'client'").all();
+const pseudoClient = /^(A\/Home Reality|B\/XHTTP relay|C1?\b|Channel [BC]|Home Reality)$/i;
+const badClients = topClients.filter((row) => number(row.bytes) <= 0 || pseudoClient.test(String(row.label || "")) || !registry.clients[row.client_key]);
+assert.equal(
+  badClients.length,
+  0,
+  `bad prepared top clients: ${badClients.slice(0, 5).map((row) => `${row.window}#${row.rank}:${row.label || row.client_key}`).join(", ")}`
+);
+
+const badStates = db.prepare("select model, window_key, status from aggregate_state where status = 'error'").all();
+assert.equal(
+  badStates.length,
+  0,
+  `aggregate gaps require repair: ${badStates.slice(0, 5).map((row) => `${row.model}/${row.window_key}=${row.status}`).join(", ")}`
+);
+const missingSourceStates = db.prepare("select model, window_key from aggregate_state where status = 'missing_source'").all();
+if (missingSourceStates.length > 0) {
+  console.warn(`aggregate missing source warnings: ${missingSourceStates.slice(0, 5).map((row) => `${row.model}/${row.window_key}`).join(", ")}`);
 }
 
 db.close();

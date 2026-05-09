@@ -151,6 +151,11 @@ those into hourly/daily aggregates, and then rewrites the small prepared
 the aggregate pyramid, not from a fresh raw scan on every deploy or restart. If
 an older day needs correction, run an explicit backfill/repair job rather than
 making startup collection rescan old raw rows.
+Use `ghostroute-console repair-aggregates --from <YYYY-MM-DD> --to <YYYY-MM-DD>`
+for that repair path; date-only arguments are Moscow-day boundaries and `--to`
+is exclusive. Run `--dry-run` first on live data. If the retained source rows are
+already gone, the command records `missing_source` in `aggregate_state` and does
+not delete existing historical aggregate chunks.
 The detailed data-pyramid contract is documented in
 [data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
 

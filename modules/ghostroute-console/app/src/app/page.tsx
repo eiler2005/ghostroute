@@ -371,7 +371,10 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
               : " destination attribution covers the observed client total."}
           </p>
           {topDestinations.length === 0 ? (
-            <EmptyState title="No concrete or category destination snapshots" />
+            <EmptyState
+              title="No concrete or category destination snapshots"
+              detail="Observed traffic is present, but current prepared rows do not yet carry concrete destination attribution."
+            />
           ) : (
             <div className="detail-list">
               {topDestinations.map((row, idx) => (
