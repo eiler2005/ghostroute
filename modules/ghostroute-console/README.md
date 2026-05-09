@@ -1,24 +1,134 @@
 # GhostRoute Console
 
-Factual web console for the existing GhostRoute operational modules.
+### Read-only operational workbench for GhostRoute routes, clients and health
 
-This module lives inside `router_configuration` on purpose: Console is a
-consumer of module-owned reports, not a second source of truth. It reads JSON
-snapshots from Traffic Observatory, Health Monitor and DNS/Catalog Intelligence,
-stores them locally, and renders a factual dashboard. The live slice also reads
-real router log tails through a restricted `live-events-report --json` command
-and appends the resulting DNS/flow/route events to SQLite.
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()
+[![Mode](https://img.shields.io/badge/Mode-Read--only-2F80ED)]()
+[![Mobile](https://img.shields.io/badge/Mobile-%2Fm%20no--JS%20health-5B5FC7)]()
+[![Tests](https://img.shields.io/badge/Tests-Functional%20%2B%20Performance-18A058)]()
+[![Safety](https://img.shields.io/badge/Safety-No%20runtime%20deploys-F2B84B)]()
+
+Documentation policy: English docs are the developer-facing ground truth. The
+Console UI and module docs should describe factual read-only evidence, not imply
+live control-plane authority.
 
 Architecture details live in
 [`docs/ghostroute-console-architecture.md`](/docs/ghostroute-console-architecture.md).
 Monitoring semantics live in
-[`docs/monitoring-principles.md`](docs/monitoring-principles.md).
+[`monitoring-principles.md`](/modules/ghostroute-console/docs/monitoring-principles.md).
+Operational details live in
+[`operator-runbook.md`](/modules/ghostroute-console/docs/operator-runbook.md).
 
-The current observability v2 slice adds Flow Explorer read models, DNS Query
-Log, Alarm Center, route explanation, channel attribution, known-device history,
-scheduled read-only collection, append-only live events, controlled catalog
-review actions, notifications settings, budget history and audited ops actions.
-It still does not mutate router runtime or deploy catalog changes implicitly.
+---
+
+## TL;DR
+
+GhostRoute Console is the read-only GUI for the existing GhostRoute operational
+modules. It consumes JSON snapshots from Traffic Observatory, Health Monitor and
+DNS/Catalog Intelligence, rebuilds bounded SQLite read models, and renders
+Dashboard, Flow Explorer, DNS, Clients, Health, Live, Catalog, Budget, Reports
+and Settings surfaces. The module is intentionally a consumer of evidence, not a
+second source of truth or a hidden deploy mechanism.
+
+```text
+Module-owned JSON snapshots
+  Traffic Observatory     Health Monitor     DNS/Catalog Intelligence
+             |                 |                       |
+             +-----------------+-----------------------+
+                               |
+                               v
+SQLite read models and prepared summaries
+  flow_sessions / dns_query_log / device_inventory / alarm_events
+  console_page_summaries / read_model_state / console_settings
+                               |
+             +-----------------+------------------+
+             v                                    v
+Full Console workbenches                    Mobile Console /m
+  wide tables, charts, panels                 capped rows, plain links,
+  and deeper evidence                         no-JS mobile health
+```
+
+## Surface Status
+
+Console has two operator surfaces over the same prepared data:
+
+| Edition | Routes | Intended use | Shape |
+|---|---|---|---|
+| Full Console | `/`, `/traffic`, `/dns`, `/clients`, `/health`, `/live`, `/catalog`, `/budget`, `/reports`, `/settings` | Desktop/laptop investigations, wide tables, charts and evidence panels. | Next.js workbench with sidebar, filters, selected-row panels and deeper raw evidence where appropriate. |
+| Mobile Console | `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`, `/m/live`, `/m/catalog` | Remote triage from iPhone/Safari or constrained networks. | Capped rows, plain document links, compact cards and raw no-JS `/m/health`; every page links back to the full desktop route with `desktop=1`. |
+
+| Surface | Status | Evidence source | Notes |
+|---|---|---|---|
+| Dashboard `/` | Active | `flow_sessions`, traffic summaries, quotas | Read-only traffic analytics, top clients and top destinations. |
+| Flow Explorer `/traffic` | Active | `flow_sessions` | Dense flow workbench with URL-selected detail panel. |
+| DNS Query Log `/dns` | Active | `dns_query_log` | Paged DNS evidence with client and catalog context. |
+| Clients `/clients` | Active | `device_inventory`, flow rows | Physical-device inventory with channel and traffic evidence. |
+| Health Center `/health` | Active | prepared health summaries, alarms, probes | Desktop triage with Deploy Gate, leaks and Alarm Center. |
+| Live `/live` | Active | append-only live events and bounded summaries | Event snapshots and client activity, not a continuous per-second stream. |
+| Catalog `/catalog` | Active | catalog snapshot read models | Review surface; runtime deploy remains separate. |
+| Budget `/budget` | Active | traffic quota settings and summaries | VPS/LTE usage and quota posture. |
+| Reports `/reports` | Active | stored snapshots and summaries | Read-only reporting surface. |
+| Settings `/settings` | Active | non-secret runtime inventory | Shows posture without exposing endpoints or secrets. |
+| Mobile `/m/*` | Active | same read models, capped pages | Ultra-light iPhone/Safari surface with no-JS `/m/health`. |
+
+```text
+Full Console
+  /              Dashboard analytics and status overview
+  /traffic       Flow Explorer workbench
+  /dns           DNS Query Log
+  /clients       Device Inventory
+  /health        Health Center, Alarm Center, Deploy Gate and leaks
+  /live          Event snapshots and client activity
+  /catalog       Read-only catalog review
+  /budget        Quota posture
+  /reports       Stored reports
+  /settings      Runtime inventory and safety gates
+
+Mobile Console
+  /m             Compact ops summary
+  /m/traffic     Lightweight flow list
+  /m/dns         Lightweight DNS list
+  /m/clients     Lightweight clients list
+  /m/health      Raw no-JS triage page
+  /m/live        Compact event stream
+  /m/catalog     Lightweight catalog list
+```
+
+## Why This Exists
+
+GhostRoute already has module-owned CLI reports for routing, health, DNS,
+catalog and traffic. Console exists to make those prepared facts easier to
+inspect from a browser without creating a second operational authority. It keeps
+the operator loop compact: confirm freshness, inspect flows, explain routing
+decisions, verify client attribution, review alarms and decide whether a
+separate deploy action is safe.
+
+The design favors boring boundaries over convenience magic:
+
+- JSON reports and SQLite read models are the machine contracts.
+- Router/VPS runtime changes stay outside the GUI unless an explicit controlled
+  action prepares an audited operator artifact.
+- Empty or missing evidence renders as `not observed` or an empty state.
+- Mobile pages are intentionally lighter than desktop workbenches.
+
+## Overview
+
+Console reads raw snapshots into `modules/ghostroute-console/data/` during local
+development and into `/opt/ghostroute-console/data` on the VPS. The collector
+stores raw JSON under `snapshots/` and an embedded SQLite database at
+`ghostroute.db`. After each collection it rebuilds additive read models for the
+GUI and APIs.
+
+The current observability slice includes:
+
+- Flow Explorer read models and route explanation evidence.
+- DNS Query Log with route, catalog, risk and client context.
+- Alarm Center, Deploy Gate, Health Center probes and leak-check evidence.
+- Dashboard traffic analytics, quota posture and top clients/destinations.
+- Client/device attribution with private operator-local registry support.
+- Append-only live DNS/flow/route events and client activity summaries.
+- Controlled catalog review, notification settings and audited ops actions.
+- Mobile `/m` pages for reliable remote triage from iPhone/Safari.
 
 ## Public Commands
 
@@ -35,349 +145,73 @@ It still does not mutate router runtime or deploy catalog changes implicitly.
 
 ## Safety Boundaries
 
-- Runtime-safe by default: no router deploy, no hidden service restart, no
-  direct catalog deploy.
+- Runtime-safe by default: no router deploy, hidden service restart or direct
+  catalog deploy.
 - Controlled actions require explicit confirmation and write audit records.
-- Catalog apply prepares a local patch/rollback reference; router deploy remains
+- Catalog apply prepares local patch/rollback references; router deploy remains
   a separate operator action.
-- No seed data in production UI. Empty snapshots render as empty states.
-- JSON reports are the machine contract; Markdown remains for humans and LLMs.
-- Runtime access is protected by Basic Auth. The public read-only deployment
-  uses a dedicated nginx HTTPS listener on a non-443 port, backed by a tiny
-  local buffering proxy, so Console does not share the Reality/layer4 `:443`
-  listener. Immutable Next.js static assets under `/_next/static/` and browser
-  metadata probes such as `/favicon.ico` bypass Basic Auth so iOS Safari can
-  reuse cached chunks without re-challenging; HTML, API and operator data routes
-  remain authenticated. Tailnet-only access through `tailscale serve` remains a
-  valid hardening option, but it is not required for the MVP.
+- No seed data appears in production UI.
+- Basic Auth protects HTML, API and operator data routes in public deployment.
+- Immutable Next.js assets and browser metadata probes may bypass Basic Auth to
+  avoid iOS Safari static-asset auth loops.
+- The public Console listener is separate from the Reality/layer4 `:443`
+  surface.
 
-## Data Directory
+## Data And Read Models
 
-Local development defaults to:
+Core read models are rebuilt from factual snapshots:
+
+| Read model | Purpose |
+|---|---|
+| `flow_sessions` | Flow Explorer, Dashboard route analytics, client traffic, safe DNS/SNI/egress evidence. |
+| `dns_query_log` | DNS Query Log and DNS-interest context. |
+| `device_inventory` | Clients inventory, attribution and selected-device detail. |
+| `alarm_events` | Alarm Center evidence and operator state overlay. |
+| `console_page_summaries` | Prepared Health/Live/mobile summaries for fast request paths. |
+| `read_model_state` | Rebuild freshness, source version and cache keys. |
+| `console_settings` | Non-secret settings and runtime posture. |
+
+Traffic-driven surfaces use one selected traffic window at a time. Dashboard
+route analytics preserve the accounting invariant:
 
 ```text
-modules/ghostroute-console/data/
+Total = Via VPS + Direct + Unknown
 ```
 
-VPS runtime uses:
+`Mixed` rows are split only when explicit VPS/direct evidence exists; remaining
+unproven bytes stay `Unknown`. Destination views keep concrete destination rows
+separate from explicit unattributed buckets, so attribution gaps remain visible
+instead of being silently converted into invented sites.
 
-```text
-/opt/ghostroute-console/data
-```
+Private client identity lives in gitignored
+`modules/ghostroute-console/data/device-attribution.json` or the VPS runtime
+data directory. Raw evidence keeps observed labels separately; Console resolves
+stable display names through that private registry before grouping and rendering.
 
-The collector writes raw JSON snapshots under `snapshots/` and an embedded
-SQLite database at `ghostroute.db`.
-The dedicated public listener defaults to nginx and proxies to
-`/usr/local/bin/ghostroute-console-buffer-proxy` on the VPS. Caddy still owns
-certificate storage and the separate Reality/layer4 surface. Legacy dedicated
-Caddy Console blocks may remain only as rollback configuration and should be
-removed or disabled while nginx owns the Console port. The dedicated Console
-port is TCP/TLS only and uses nginx response compression plus a small TLS buffer
-so larger HTML/JSON responses stay reliable over the operator network path;
-browsers must not depend on HTTP/3/QUIC for Console access. Provider-level
-firewalls must allow the configured public TCP port; host UFW alone is not
-enough if the cloud firewall drops packets before they reach the VPS.
+More detail: [operator-runbook.md](/modules/ghostroute-console/docs/operator-runbook.md).
 
-Operator-local client identity is stored in the same data directory as
-`device-attribution.json`. It is intentionally gitignored runtime data: Console
-uses it as the private authoritative client registry for stable labels, roles,
-primary channel and explicit Channel A/B/C/LAN aliases. Dashboard, Traffic
-Explorer, DNS Query Log, Clients, Live, Budget, Reports, Settings and JSON endpoints all pass
-raw rows through the same resolver before grouping or rendering client names.
-Raw evidence still keeps the observed labels separately. New or unmatched
-`mobile-source-*` counters remain diagnostics until the operator adds an
-explicit profile, MAC or IP alias.
-Registry entries may also define a physical `device_key`, `device_label`,
-`owner` and `device_type`. The Clients page renders that physical Device
-Inventory first, then lists observed identities such as Channel A/B/C profiles,
-LAN host ids, MAC/IP aliases and report-local redacted labels as evidence for
-the selected device.
-Home Reality report-local aliases such as `mobile-client-N` or
-`report-mobile-profile-N` are not stable client identities. When a row carries a
-stable `profile` such as `iphone-N`, Console resolves and aggregates by that
-profile/registry entry and keeps the redacted report alias only as evidence.
-`traffic-report` JSON rows carry evidence-contract fields such as
-`canonical_hint`, `observed_label`, `redacted_label`, `identity_type`,
-`matched_by`, `bytes_confidence`, `allocation_basis`, `counter_scope`,
-`destination_class`, `destination_evidence` and `flow_group_key`. Console treats
-these fields as evidence hints, while private ownership and physical-device
-grouping remain in the operator-local registry.
-
-Real live tail collection is enabled with `GHOSTROUTE_LIVE_MODE=poll` plus
-`GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh|local`. If the live collector mode remains
-`disabled`, `/api/live/stream` still serves the stored append-only events from
-snapshots.
-
-The VPS deployment defaults to read-only SSH collection through the generated
-`ghostroute_readonly` forced-command key:
-
-- lightweight current-day traffic summaries every 5 minutes for Dashboard KPI
-  cards;
-- full snapshots every 30 minutes during 07:00-23:59 Moscow time;
-- full snapshots every 3 hours during 00:00-06:59 Moscow time;
-- live event polling every 10 minutes by default.
-- deploy-gate snapshots with the full pass. CRIT output is stored even when the
-  command exits non-zero, so Health Center can show the exact deploy blocker.
-
-Collectors keep per-job locks to avoid duplicate runs and a short shared SQLite
-writer lock only while storing snapshots and rebuilding read models. Stale locks
-are recovered by PID; writer contention waits for up to 120 seconds before a
-collector skips; startup light/live collection is serialized after the full
-startup pass. The full snapshot timeout defaults to 15 minutes because it may
-run several read-only reports in one pass. The observability read models are
-bounded caches for the Console UI: by default they keep the most recent 5,000
-flow rows, 20,000 DNS rows, 10,000 live DNS rows, 5,000 device rows and 2,000
-alarm rows while raw snapshots remain under the normal retention policy.
-
-Traffic-driven UI surfaces use one selected traffic window at a time. The
-default `today` window means the operator-local day, from Moscow midnight to the
-latest collected traffic window. Dashboard, Flow Explorer and Clients do not
-borrow stale historical traffic totals when the current-day window is empty.
-Clients still keeps historical inventory metadata for names, roles, aliases and
-last-seen state, but the displayed traffic totals, route split and selected
-client domains come from the selected window only. Because detailed snapshots
-can be cumulative, Console derives current-window client rows from positive
-deltas between same-day samples per observed source, then aggregates those
-sources into the canonical registry client and reconciles them to the
-authoritative `traffic-summary`/`traffic` KPI totals before rendering Dashboard,
-Traffic Explorer and Clients. This prevents several cumulative snapshots or
-Channel A/B/C aliases from being summed into impossible Top clients or Top
-destination totals.
-Destination views share the `traffic-report --json`
-`destination_attribution_coverage` contract. Concrete destination rows plus
-explicit `Unknown/Unattributed ...` accounting buckets must add back to the
-observed client/channel total for the selected window. The unknown buckets carry
-real counter bytes, `destination_evidence=none` and
-`allocation_basis=unattributed_bucket`; DNS-interest families remain
-investigation hints and are not converted into byte accounting. Dashboard, Flow
-Explorer, Clients and Live all read the same normalized accounting rows, so an
-attribution gap is visible consistently instead of disappearing on one page and
-looking like a mismatch on another.
-Dashboard route analytics keep the same accounting invariant: `Total` equals
-`Via VPS + Direct + Unknown`. `Mixed` rows are split with explicit VPS/direct
-evidence from the read model; only the remaining unproven bytes become
-`Unknown`.
-Observability v2 also rebuilds additive SQLite read models after each
-collection: `flow_sessions`, `dns_query_log`, `device_inventory`,
-`alarm_events`, `console_page_summaries`, `read_model_state` and non-secret
-`console_settings`. These tables feed `/api/flows`, `/api/dns`, `/api/alarms`,
-Flow Explorer, DNS Query Log, Alarm Center and the compact mobile Health/Live
-shells while preserving the normalized source tables as the fallback contract.
-The `flow_sessions` read model includes the safe DNS/SNI and egress evidence
-fields needed by the Flow Explorer inline detail panel; missing source evidence
-is rendered as `not observed`, not inferred.
-GUI request paths should read these prepared tables and small snapshot payloads
-only. Health, Live, mobile pages and JSON APIs use snapshot metadata for cache
-versioning and the prepared `health_mobile` / `health_shell` /
-`live_mobile` summaries for status cards, capped alarms, Deploy Gate, leak
-evidence and freshness. They must not parse the full latest traffic report or
-rebuild the desktop Health model just to render the shell, freshness strip or
-navigation chrome.
-For selected-client details, Console derives an activity series from sequential
-current-window device snapshots. Multiple snapshots become hourly deltas; if a
-client only appears in one current snapshot, the chart shows that hour as a
-snapshot total rather than pretending to know the earlier peak time.
-
-Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
-snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
-for 30 days, and SQLite safety backups are daily with at most 1 recent file.
-The live collector stores normalized events in SQLite; the per-poll raw JSON is
-only short-term troubleshooting material. Live views show event snapshots and
-client activity summaries, not a continuous per-second stream.
-
-The Console header shows the runtime/data source and build marker on every page:
-`local dev data` or `VPS/runtime data`, the short build commit, and the latest
-`traffic` / `traffic_summary` snapshot timestamps. `/api/health` exposes the
-same metadata under `runtime` so deploy-vs-data differences can be checked
-without opening the GUI.
-
-Freshness uses the same cadence: stale after 75 minutes during the day and
-after 210 minutes overnight.
-
-The public Console URL uses the configured dedicated HTTPS port, not bare
-`:443`; bare `:443` remains reserved for the existing Reality/layer4 surface
-and may intentionally return 404 for the Console hostname.
-The dedicated public listener defaults to nginx on the non-443 Console port and
-proxies through the local Python buffering proxy to the Next.js container on
-`127.0.0.1:3000`; Caddy still owns certificate storage and the separate
-Reality/layer4 surface.
-
-## Browser Loading Diagnostics
-
-If `/health` or another Console page appears blank or takes much longer than
-the usual first render, do not tune nginx, Caddy, Next.js or router runtime
-blindly. First collect browser evidence, then compare it with the server-side
-baseline. If the page is currently fast, leave runtime unchanged and treat the
-existing `nginx -> buffer proxy -> Next.js` path as healthy.
-
-Browser evidence:
-
-- Chrome: open DevTools, use the Network panel, enable Preserve log and Disable
-  cache, hard reload the page, then inspect the `Document`, `?_rsc`, JS chunks,
-  CSS and API rows. Save a HAR/export if available; otherwise keep a waterfall
-  screenshot and the names of stalled requests.
-- Safari on macOS or iOS: use Web Inspector Network, reload the same page and
-  compare whether the stalled resource is the HTML document, an RSC request,
-  a static chunk or an API call. For iPhone, use Safari remote Web Inspector
-  from the Mac before changing server config.
-
-Classify the failure before changing anything:
-
-- slow TTFB on the HTML document means a Console server/render/SQLite/snapshot
-  issue is more likely.
-- fast TTFB with slow download or a mid-body stall points to proxy, TLS,
-  transport, MTU or client-path behavior.
-- JS or CSS chunk failures point to static asset, auth, proxy or browser cache
-  handling.
-- hanging `?_rsc` requests point to Next.js App Router navigation/RSC behavior.
-- fast API responses with stuck HTML point to HTML streaming, proxy buffering or
-  client transport, not to the collector itself.
-
-Server-side baseline:
-
-```bash
-# From the VPS:
-curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
-  http://127.0.0.1:3000/health
-
-curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
-  https://<console-host>:<console-port>/health
-
-# From the operator workstation, with Basic Auth configured locally:
-curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
-  -u '<console-user>:<console-password>' \
-  https://<console-host>:<console-port>/api/health
-```
-
-Use the browser waterfall and these timings together: server-local fast plus
-operator-browser slow means the next change belongs in the Console public
-listener/proxy/client path, not in Channel A/B/C, managed DNS, sing-box or
-router firewall.
-
-References for this runbook: Chrome DevTools Network
-(`https://developer.chrome.com/docs/devtools/network/overview`),
-Safari/WebKit Web Inspector Network (`https://webkit.org/web-inspector/network-tab/`),
-nginx proxy buffering (`https://nginx.org/en/docs/http/ngx_http_proxy_module.html`)
-and Next.js App Router streaming
-(`https://nextjs.org/learn/dashboard-app/streaming`) docs.
-
-Router access for this collector is runtime-secret only. Clean deploys should
-store `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
-`ghostroute_router_remote_user` and `ghostroute_router_remote_private_key` in
-`ansible/secrets/stealth.yml` (Ansible Vault). Operator workstations may use the
-gitignored fallback key under `secrets/router-remote-ssh/`, but the key is never
-tracked and is copied only to `/opt/ghostroute-console/router-ssh/` on the VPS.
-
-VPS egress identity is configured explicitly with
-`GHOSTROUTE_VPS_EGRESS_IP`, `GHOSTROUTE_VPS_EGRESS_ASN` and
-`GHOSTROUTE_VPS_EGRESS_COUNTRY`. Console does not infer egress IP/ASN/country
-from the public Console URL.
-
-## Post-MVP Interfaces
-
-- `/` keeps the existing read-only operator overview and adds Dashboard traffic
-  analytics above it: Traffic today, Top clients, Top destinations, monthly VPS
-  usage, LTE reserve for mobile/selected-client traffic and a cumulative usage
-  chart with VPS forecast. These cards are derived from `flow_sessions`; quota
-  bars use the same VPS/direct/unknown split evidence as Clients and
-  `GHOSTROUTE_CONSOLE_VPS_QUOTA_*`,
-  `GHOSTROUTE_CONSOLE_LTE_QUOTA_*` and
-  `GHOSTROUTE_CONSOLE_BILLING_RESET_DAY`.
-- `/traffic` is a read-only Flow Explorer workbench with KPI cards, a dense
-  paged flow table and a right-side selected-flow detail panel keyed by
-  `?flow=<flow-id>`. `/traffic/[id]` remains the share/export route
-  explanation with client, destination, port, policy, route, duration, risk,
-  DNS/catalog/sing-box evidence, site/operator views and gated raw evidence.
-- `/traffic` keeps wide flow tables horizontally scrollable and treats
-  category-only rows as aggregates in the route explanation instead of implying
-  a concrete site saw the category label. The table's `Destination` cell labels
-  evidence as `DNS`, `SNI`, `IP`, `category`, `counter` or `not observed` so
-  exact visited-site evidence stays separate from aggregate traffic groups.
-- `/dns` shows DNS Query Log rows with the resolved Console client label,
-  observed client IP, millisecond event time, domain, answer IP, route decision,
-  catalog status, status and risk context. It defaults to a compact first page;
-  `/dns?page=&pageSize=` can page up to 500 rows for larger troubleshooting
-  windows.
-- `/catalog?page=&pageSize=` pages the read-only catalog snapshot up to 1,000
-  rows per page; catalog review actions remain separate from runtime deploy.
-- `/health` includes Alarm Center rows with severity, source, evidence,
-  suggested action and status. Ack/snooze/reopen is stored as a narrow operator
-  state overlay on the router at the Console alarm-state JSON path; it does not
-  change routing, services or catalog runtime.
-- `/health` also renders the latest deploy-gate snapshot. It is informational:
-  Console does not run deploys, but it shows whether the current canary would
-  block a mutating deploy.
-- `/clients` shows all known devices with `Online`, `Recently seen` or
-  `Inactive` state and last-seen timestamps, so devices do not disappear just
-  because they are absent from today's latest snapshot. Device Inventory keeps
-  row selection in `?client=<device-or-client-id>` without filtering the table,
-  and each row uses plain document links so the detail panel follows the
-  selected device even when browser-side navigation is unreliable.
-- `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
-  client and service/background live events separately, with millisecond event
-  times and page sizes up to 500 rows.
-- `/api/live/stream` exposes Server-Sent Events for live DNS/flow/route/alert
-  updates from append-only real log events, with polling fallback in the UI.
-- `/api/actions/catalog/*` implements review, dry-run, apply preparation and
-  rollback recording.
-- `/api/notifications/*` stores notification settings and supports ack/snooze
-  actions without storing delivery secrets.
-- `/api/actions/ops` records controlled ops actions such as collect/report
-  refresh and collector restart requests.
-- `/api/alarms/:id/(ack|snooze|open)` updates only the router-backed alarm
-  state overlay and keeps derived `alarm_events` as factual snapshot evidence.
-  It never mutates DNS, sing-box, dnsmasq or router firewall.
-- `/settings` is a readonly runtime inventory: collectors, retention, read
-  models, access posture, router profile status, safety gates and notification
-  readiness are shown without exposing real endpoints, ports, users, keys or
-  local device identifiers.
-
-Mobile Safari/iPhone gets a separate ultra-light Console surface under `/m`.
-Mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`, `/live` and
-`/catalog` redirect to `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`,
-`/m/live` and `/m/catalog` unless `desktop=1` is present. The `/m` pages use the
-same read-only snapshots and selectors, cap page size to 25 rows, omit side
-panels and desktop charts, and use plain document links. `/m/health` exposes
-compact status cards, Alarm Center, Deploy Gate, Health Center probes,
-Leak-check evidence and freshness so remote triage can happen from an iPhone
-without loading the desktop workbench. It is served as a raw no-JS HTML route,
-so Safari does not need to hydrate a React page or fetch page-specific chunks
-before the operator can read the health state. `/m/live` includes a compact
-Client activity summary next to the live event stream. Each mobile page includes
-a `Desktop version` link back to the
-full workbench with `desktop=1`. No `m.` subdomain is used in v1, so the same
-public nginx/TLS listener is used. Basic Auth still protects HTML, API and
-operator data routes; immutable `/_next/static/` chunks and browser metadata
-probes are public cacheable assets to avoid iOS Safari auth loops. The VPS proxy
-forwards the external host and port through `X-Forwarded-*` headers; mobile
-redirects use those headers so they stay on the public Console URL instead of
-the internal `localhost:3000` container upstream.
-
-## Local Checks
+## Local Development
 
 GUI changes should be reviewed on a local seeded Console before any deploy. The
-seeded database is synthetic, lives under the gitignored
-`modules/ghostroute-console/data/gui-test/`, and gives Flow Explorer, DNS Query
-Log, Dashboard analytics, Clients and Live enough rows to verify compact
-tables, charts, filters, horizontal scroll, pagination and mobile-light
-rendering without waiting for real snapshots. `dev:gui` and `test:e2e:gui` also
-provide local-only default VPS/LTE quota env values unless the operator has
-already set them.
-
-Refresh that seeded data layer before local checks whenever GUI selectors,
-read models, cache keys or page rendering change:
+seeded database is synthetic, gitignored and lives under
+`modules/ghostroute-console/data/gui-test/`.
 
 ```bash
 cd modules/ghostroute-console/app
 npm run seed:gui
-```
-
-```bash
-cd modules/ghostroute-console/app
 npm run dev:gui
 ```
 
-For automated checks against the same seeded database:
+Use the local UI to inspect desktop wide, laptop and mobile layouts. The seeded
+data includes enough flows, DNS rows, clients, live events and dashboard
+analytics to test pagination, filters, charts, horizontal scroll and mobile
+pages without waiting for real snapshots.
+
+## Testing
+
+Module-owned checks live under `modules/ghostroute-console/app`. The root
+`tests/` layer orchestrates them through
+[`tests/run-console.sh`](/tests/run-console.sh) without owning Console internals.
 
 ```bash
 cd modules/ghostroute-console/app
@@ -387,40 +221,71 @@ npm run test:e2e:gui
 npm run test:perf
 ```
 
-`test:e2e:gui` is the functional desktop+mobile GUI/API smoke suite. It verifies
+Root bridge commands:
+
+```bash
+./tests/run-console.sh --fast
+./tests/run-console.sh --smoke
+./tests/run-console.sh --perf
+./tests/run-console.sh --all
+```
+
+`test:e2e:gui` is the functional desktop+mobile GUI/API smoke suite. It checks
 rendered content, filters, row selection, mobile redirects, compact mobile pages
-and JSON contracts, but it must not contain elapsed-time assertions.
+and JSON contracts. It must not contain timing assertions.
 
-`test:perf` is the only local Playwright suite with timing budgets. It runs on
-the seeded GUI database, checks that main Console pages render within 2.5
-seconds, key JSON APIs such as `/api/health` and `/api/live?pageSize=5` respond
-within 1.5 seconds, and rapid sidebar navigation stays responsive. Public
-operator-network or VPN curl timings are deployment diagnostics, not deterministic
-Playwright performance gates.
+`test:perf` is the only local Playwright suite with timing budgets. Public
+operator-network or VPN curl timings are deployment diagnostics, not
+deterministic Playwright gates.
 
-For a single pre-deploy local gate:
+For one local pre-deploy gate:
 
 ```bash
 cd modules/ghostroute-console/app
 npm run test:gui:all
 ```
 
-Release hardening:
+## Deployment Notes
 
-- PR/functional smoke uses the seeded GUI database across desktop and mobile
-  Playwright projects; performance remains a separate release gate.
-- Collectors validate incoming JSON snapshots against tolerant versioned
-  contracts. Unknown fields are preserved, but missing core fields are recorded
-  as collector errors instead of being inserted as broken snapshots.
-- Read-only derived selectors use a short in-process cache keyed by lightweight
-  snapshot metadata, filters and pagination. The cache covers the heavy sidebar
-  pages; browser-side prefetch is intentionally avoided for those pages.
-- The source strip and `/api/health` expose both build commit and UTC build
-  timestamp so operators can confirm which deployed container is serving the UI.
-- The VPS read-only deploy builds the new Console image before replacing the
-  running container, tags the prepared image with the build commit, passes the
-  build timestamp into the app, and attempts rollback to the previous image if
-  local health/UI/API smoke fails. After successful smoke, deploy keeps the
-  active image plus the current rollback tag, removes stale Console rollback and
-  commit tags, and prunes unused Docker build cache so repeated deploys do not
-  refill the VPS disk.
+The VPS deployment is still read-only from the Console perspective. It builds a
+new Console image before replacing the running container, tags the prepared
+image with the build commit, passes build metadata into the app, runs local
+health/UI/API smoke and attempts rollback if smoke fails.
+
+The dedicated public listener defaults to nginx on the configured non-443
+Console port and proxies through a local buffering proxy to the Next.js
+container. Caddy still owns certificate storage and the separate Reality/layer4
+surface. Provider firewalls must allow the configured public TCP port; host UFW
+alone is not enough if the cloud firewall drops packets before they reach the
+VPS.
+
+## Troubleshooting
+
+If a page appears blank or much slower than usual, classify the failure before
+changing runtime:
+
+- slow TTFB on HTML suggests Console render, SQLite or snapshot path.
+- fast TTFB with slow download suggests proxy, TLS, transport, MTU or client
+  path.
+- JS/CSS chunk failures suggest static asset, auth, proxy or browser cache
+  handling.
+- hanging `?_rsc` requests suggest Next.js App Router navigation/RSC behavior.
+- fast API responses with stuck HTML suggest HTML streaming, proxy buffering or
+  client transport.
+
+Use the browser waterfall together with server-side curl baselines. If
+server-local checks are fast but the operator browser is slow, change the public
+listener/proxy/client path first, not Channel A/B/C, managed DNS, sing-box or
+router firewall.
+
+Detailed runbook:
+[`operator-runbook.md`](/modules/ghostroute-console/docs/operator-runbook.md).
+
+## Further Reading
+
+- [Root GhostRoute README](/README.md)
+- [GhostRoute Console architecture](/docs/ghostroute-console-architecture.md)
+- [Monitoring principles](/modules/ghostroute-console/docs/monitoring-principles.md)
+- [Operator runbook](/modules/ghostroute-console/docs/operator-runbook.md)
+- [Root test orchestration](/tests/README.md)
+- [Console post-MVP roadmap](/docs/ghostroute-console-post-mvp-roadmap.md)

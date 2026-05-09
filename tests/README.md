@@ -27,6 +27,16 @@ This is the default local and CI gate. It runs shell syntax checks, the
 repo secret scan, fixture/static tests, Console JSON contracts, Console unit
 tests, and a production build. It does not run Playwright.
 
+Console checks are connected through the root bridge:
+
+```bash
+./tests/run-console.sh --fast
+```
+
+The bridge keeps the root test layer as the orchestrator while
+`modules/ghostroute-console/app` remains the owner of npm scripts, Playwright
+configuration, seeded GUI data and Console fixtures.
+
 ### Console smoke
 
 ```bash
@@ -35,6 +45,24 @@ tests, and a production build. It does not run Playwright.
 
 This runs a small Playwright subset for the Console first screen and API smoke.
 Use it for UI-facing changes without paying for the full e2e suite.
+
+Equivalent explicit bridge command:
+
+```bash
+./tests/run-console.sh --smoke
+```
+
+### Performance checks
+
+```bash
+./tests/run-performance.sh
+```
+
+This runs Console performance budget checks through
+`./tests/run-console.sh --perf`. Performance assertions live only in the
+Console performance suite; they are not part of default `run-all.sh`, because
+timing budgets are useful diagnostics but less deterministic than functional
+checks.
 
 ### Compatibility wrapper
 
@@ -45,6 +73,12 @@ Use it for UI-facing changes without paying for the full e2e suite.
 
 `run-all.sh` runs fast checks plus Console smoke by default. `--full` runs the
 full Playwright e2e suite after fast checks.
+
+For the complete module-owned Console local gate, use:
+
+```bash
+./tests/run-console.sh --all
+```
 
 ### Fixture tests
 
@@ -78,7 +112,7 @@ They do not connect to the router.
 ### Syntax checks
 
 ```bash
-bash -n verify.sh tests/check-shell-syntax.sh tests/run-fast.sh tests/run-smoke.sh tests/run-all.sh tests/test-module-entrypoints.sh
+bash -n verify.sh tests/check-shell-syntax.sh tests/run-console.sh tests/run-fast.sh tests/run-smoke.sh tests/run-performance.sh tests/run-all.sh tests/test-module-entrypoints.sh
 bash -n modules/recovery-verification/bin/verify.sh modules/ghostroute-health-monitor/bin/router-health-report modules/traffic-observatory/bin/traffic-report modules/traffic-observatory/bin/traffic-daily-report modules/traffic-observatory/bin/traffic-summary modules/shared/lib/router-health-common.sh modules/recovery-verification/tests/test-router-health.sh
 bash -n modules/dns-catalog-intelligence/bin/catalog-review-report modules/dns-catalog-intelligence/bin/dns-forensics-report modules/dns-catalog-intelligence/tests/test-catalog-review.sh modules/dns-catalog-intelligence/tests/test-dns-forensics.sh modules/secrets-management/bin/cleanup-vault-backups
 sh -n modules/routing-core/router/firewall-start modules/routing-core/router/nat-start modules/dns-catalog-intelligence/router/domain-auto-add.sh modules/ghostroute-health-monitor/router/lib.sh modules/ghostroute-health-monitor/router/run-probes modules/ghostroute-health-monitor/router/aggregate modules/ghostroute-health-monitor/router/daily-digest modules/ghostroute-health-monitor/router/run-once modules/ghostroute-health-monitor/vps/lib.sh modules/ghostroute-health-monitor/vps/run-probes modules/ghostroute-health-monitor/tests/test-health-monitor.sh
