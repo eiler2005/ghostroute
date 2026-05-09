@@ -33,6 +33,7 @@ import {
   applyDeviceAttribution,
   canonicalDeviceKey,
   displayDeviceLabel,
+  loadDeviceAttributions,
   resolveClient,
 } from "../device-attribution.mjs";
 import {
@@ -405,6 +406,91 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     destinationLabel: displayDestination(row),
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
+  };
+}
+
+function normalizedNetworkHint(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/-/g, ":");
+}
+
+let inventoryHintCacheKey = "";
+let inventoryHintCache = new Map<string, string>();
+
+function inventoryNetworkHints(registry = loadDeviceAttributions()) {
+  const cacheKey = `${latestSnapshotVersion()}:${registry.sourcePath || ""}`;
+  if (inventoryHintCacheKey === cacheKey) return inventoryHintCache;
+  const hints = new Map<string, string>();
+  const clients = registry.clients as Record<string, Record<string, any>>;
+  try {
+    for (const row of knownDeviceRows(2000) as Array<Record<string, any>>) {
+      const resolved = resolveClient({ ...row, raw: { profile: row.profile, ip: row.ip, mac: row.mac } }, registry);
+      if (!clients[String(resolved.client_key || "")]) continue;
+      const aliases = Array.isArray(row.aliases) ? row.aliases : [];
+      for (const candidate of [row.ip, row.mac, row.hostname, row.device_key, row.id, row.label, row.profile, ...aliases]) {
+        const key = normalizedNetworkHint(candidate);
+        if (key) hints.set(key, resolved.client_key);
+      }
+    }
+  } catch {
+    // Keep fallback attribution best-effort; prepared windows remain authoritative.
+  }
+  inventoryHintCacheKey = cacheKey;
+  inventoryHintCache = hints;
+  return inventoryHintCache;
+}
+
+function registeredClientResolution(row: Record<string, any>) {
+  const registry = loadDeviceAttributions();
+  const clients = registry.clients as Record<string, Record<string, any>>;
+  const rawProfile = row.profile || row.raw_profile || row.raw?.profile || "";
+  const resolved = resolveClient({ ...row, profile: rawProfile }, registry);
+  if (clients[String(resolved.client_key || "")]) return resolved;
+  const hints = inventoryNetworkHints(registry);
+  for (const candidate of [row.client_ip, row.ip, row.source_ip, row.mac, row.device_key, row.id, row.raw?.client_ip, row.raw?.ip, row.raw?.source_ip, row.raw?.mac]) {
+    const key = hints.get(normalizedNetworkHint(candidate));
+    if (!key || !clients[key]) continue;
+    const entry = clients[key];
+    return {
+      client_key: key,
+      client_label: entry.label,
+      device_key: entry.device_key || key,
+      device_label: entry.device_label || entry.label,
+      client_role: entry.role,
+      client_owner: entry.owner,
+      device_type: entry.device_type || entry.profile_type,
+      client_channel: entry.primary_channel || entry.channel,
+      matched_by: "device_inventory_network_hint",
+      attribution_confidence: entry.confidence || "operator-local",
+      observed_aliases: [String(candidate || "")].filter(Boolean),
+    };
+  }
+  return null;
+}
+
+function pseudoClientLabel(row: Record<string, any>) {
+  const label = String(row.label || row.client_label || row.client || row.id || "").trim().toLowerCase();
+  return /^(a\/home reality|b\/xhttp relay|c\d?\b|dns-interest|service|accounting)/i.test(label);
+}
+
+function operatorTrafficRow(row: Record<string, any>): Record<string, any> | null {
+  const decorated = decorateTrafficRow(row);
+  const total = Number(decorated.bytes || decorated.total_bytes || 0);
+  if (total <= 0) return null;
+  if (decorated.accounting_bucket) return null;
+  if (String(decorated.confidence || "").toLowerCase() === "dns-interest") return null;
+  if ((decorated.trafficClass || decorated.traffic_class || trafficClassFor(decorated)) !== "client") return null;
+  const resolved = registeredClientResolution(decorated);
+  if (!resolved) return null;
+  return {
+    ...decorated,
+    client: resolved.client_label || decorated.client,
+    client_key: resolved.client_key,
+    client_label: resolved.client_label || decorated.client_label,
+    device_key: resolved.device_key || decorated.device_key,
+    device_label: resolved.device_label || decorated.device_label,
+    label: resolved.client_label || decorated.label,
+    channel: resolved.client_channel || decorated.channel,
+    matched_by: resolved.matched_by || decorated.matched_by,
   };
 }
 
@@ -1465,6 +1551,8 @@ function dashboardAnalyticsRows(filters: ConsoleFilters = {}) {
     )
     .all(...params)
     .map(mapFlowSessionRow)
+    .map((row) => operatorTrafficRow(row))
+    .filter((row): row is Record<string, any> => Boolean(row))
     .filter((row) => filterRows([row], effectiveFilters).length > 0)
     .filter((row) => matchesTrafficClass(row, trafficClass));
 }

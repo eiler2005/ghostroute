@@ -221,19 +221,67 @@ function registryHasClient(registry, key) {
   return Boolean(key && registry?.clients?.[key]);
 }
 
-function resolveOperatorClient(row, registry = loadDeviceAttributions()) {
+function normalizedHint(value) {
+  return lower(value).replace(/-/g, ":");
+}
+
+function registeredClientResult(registry, key, row, matchedBy = "runtime_hint") {
+  const entry = registry?.clients?.[key];
+  if (!entry) return null;
+  return {
+    registered: true,
+    client_key: key,
+    client_label: entry.label || text(row?.client_label || row?.label || key, key),
+    device_key: entry.device_key || key,
+    channel: text(entry.primary_channel || entry.channel || row?.channel || inferChannel(row?.raw || row), "Unknown"),
+    matched_by: matchedBy,
+  };
+}
+
+function buildInventoryNetworkHints(db, registry = loadDeviceAttributions()) {
+  const hints = new Map();
+  try {
+    const rows = db.prepare("select device_key, label, ip, hostname, mac, aliases_json, profile, channel from device_inventory").all();
+    for (const row of rows) {
+      const aliases = parseJson(row.aliases_json, []);
+      const resolved = resolveClient({
+        ...row,
+        client: row.device_key || row.label || row.profile || "",
+        raw: { profile: row.profile, client: row.device_key, ip: row.ip, mac: row.mac },
+        aliases,
+      }, registry);
+      if (!registryHasClient(registry, resolved.client_key)) continue;
+      for (const candidate of [row.ip, row.mac, row.hostname, row.device_key, row.label, row.profile, ...aliases]) {
+        const key = normalizedHint(candidate);
+        if (key) hints.set(key, resolved.client_key);
+      }
+    }
+  } catch {
+    return hints;
+  }
+  return hints;
+}
+
+function resolveOperatorClient(row, registry = loadDeviceAttributions(), networkHints = new Map()) {
   const raw = row?.raw || {};
   const resolved = resolveClient({
     ...row,
     raw,
-    client: row?.client_key || row?.client || raw.client || "",
+    client: row?.client_key || row?.device_key || row?.client || raw.client || "",
     label: row?.client_label || row?.label || raw.label || raw.client || "",
-    profile: raw.profile || row?.profile || "",
+    profile: raw.profile || row?.profile || row?.device_key || "",
     client_ip: row?.client_ip || raw.client_ip || raw.ip || "",
     ip: row?.client_ip || raw.client_ip || raw.ip || "",
     mac: row?.mac || raw.mac || raw.mac_address || "",
   }, registry);
   const registered = registryHasClient(registry, resolved.client_key);
+  if (!registered) {
+    for (const candidate of [row?.client_ip, row?.ip, row?.source_ip, row?.mac, row?.device_key, raw.client_ip, raw.ip, raw.source_ip, raw.mac, raw.mac_address]) {
+      const key = networkHints.get(normalizedHint(candidate));
+      const hinted = registeredClientResult(registry, key, row, "device_inventory_network_hint");
+      if (hinted) return hinted;
+    }
+  }
   return {
     registered,
     client_key: registered ? resolved.client_key : text(row?.client_key || row?.client || raw.profile || raw.client || row?.client_ip || "Unknown client"),
@@ -970,6 +1018,7 @@ function aggregateDirtyStart(db, now) {
 
 function flowFactsFromNormalized(db, startUtc, endUtc) {
   const registry = loadDeviceAttributions();
+  const networkHints = buildInventoryNetworkHints(db, registry);
   let sourceRows = db
     .prepare(
       `select rowid, *
@@ -981,7 +1030,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
   if (sourceRows.length === 0) {
     sourceRows = db
       .prepare(
-        `select rowid, snapshot_id, 'traffic' as snapshot_type, collected_at, client, client_ip, channel,
+        `select rowid, snapshot_id, 'traffic' as snapshot_type, collected_at, client, client_ip, device_key, channel,
                 destination, destination_ip, destination_port, route, confidence, bytes, connections,
                 protocol, dns_qname, dns_answer_ip, sni, outbound, matched_rule, policy as rule_set,
                 egress_ip, egress_asn, egress_country, last_seen as event_ts, ts_confidence,
@@ -998,14 +1047,15 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
-      const clientKey = text(row.client || raw.profile || raw.client || row.client_ip || "Unknown client");
+      const clientKey = text(row.device_key || row.client || raw.profile || raw.client || row.client_ip || "Unknown client");
       const resolved = resolveOperatorClient({
         ...row,
         raw,
         client_key: clientKey,
         client_label: clientKey,
+        device_key: row.device_key || raw.device_key || raw.device_id || "",
         client_ip: row.client_ip || raw.client_ip || "",
-      }, registry);
+      }, registry, networkHints);
       return {
         rowid: row.rowid,
         snapshot_id: row.snapshot_id,

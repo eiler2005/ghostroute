@@ -256,9 +256,13 @@ troubleshooting window may be stripped once a newer payload of the same type is
 available.
 
 Private client identity lives in gitignored
-`modules/ghostroute-console/data/device-attribution.json` or the VPS runtime
-data directory. Raw evidence keeps observed labels separately; Console resolves
-stable display names through that private registry before grouping and rendering.
+`modules/ghostroute-console/data/device-attribution.json`,
+`modules/ghostroute-console/data/device-attribution.local.json` or the VPS
+runtime data directory. Raw evidence keeps observed labels separately; Console
+resolves stable display names through that private registry before grouping and
+rendering. The registry may include `lan-host-*`, profile aliases, hostnames,
+`ip_aliases` and `mac_aliases`; use the `.local.json` file for real household
+addresses so private LAN/MAC data does not enter git.
 
 More detail: [operator-runbook.md](/modules/ghostroute-console/docs/operator-runbook.md).
 

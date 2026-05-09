@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const ATTRIBUTION_FILENAMES = ["device-attribution.json", "device-aliases.json"];
+const ATTRIBUTION_FILENAMES = ["device-attribution.json", "device-aliases.json", "device-attribution.local.json"];
 
 let cachedDir = "";
 let cachedMtime = "";
@@ -128,53 +128,89 @@ function addClient(registry, rawKey, rawValue) {
   const entry = normalizeEntry(key, rawValue);
   if (!key || !entry) return;
   const clientKey = entry.client_key || key;
-  registry.clients[clientKey] = entry;
-  registry.devices[clientKey] = entry;
+  const existing = registry.clients[clientKey] || {};
+  const explicitIdentity = rawValue && typeof rawValue === "object" && [
+    "label",
+    "display_name",
+    "name",
+    "owner",
+    "device_label",
+    "physical_device_label",
+    "kind",
+    "profile_type",
+    "device_type",
+    "role",
+    "channel",
+    "primary_channel",
+  ].some((field) => clean(rawValue[field]));
+  const merged = {
+    ...existing,
+    ...Object.fromEntries(Object.entries(entry).filter(([field, value]) => {
+      if (Object.keys(existing).length > 0 && !explicitIdentity && [
+        "label",
+        "display_name",
+        "device_label",
+        "role",
+        "owner",
+        "device_type",
+        "profile_type",
+        "primary_channel",
+        "channel",
+      ].includes(field)) return false;
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== "";
+    })),
+    aliases: Array.from(new Set([...(existing.aliases || []), ...(entry.aliases || [])])),
+    mac_aliases: Array.from(new Set([...(existing.mac_aliases || []), ...(entry.mac_aliases || [])])),
+    ip_aliases: Array.from(new Set([...(existing.ip_aliases || []), ...(entry.ip_aliases || [])])),
+  };
+  registry.clients[clientKey] = merged;
+  registry.devices[clientKey] = merged;
   for (const alias of [
     rawKey,
     key,
     clientKey,
-    entry.label,
-    entry.display_name,
-    entry.owner,
-    ...(entry.aliases || []),
+    merged.label,
+    merged.display_name,
+    merged.owner,
+    ...(merged.aliases || []),
   ]) {
     addAlias(registry, alias, clientKey, false);
   }
-  for (const alias of [...(entry.mac_aliases || []), ...(entry.ip_aliases || [])]) {
+  for (const alias of [...(merged.mac_aliases || []), ...(merged.ip_aliases || [])]) {
     addAlias(registry, alias, clientKey, true);
   }
 }
 
 export function loadDeviceAttributions(dataDir = consoleDataDir()) {
   const files = ATTRIBUTION_FILENAMES.map((name) => path.join(dataDir, name));
-  const existing = files.find((file) => fs.existsSync(file));
-  const mtime = existing ? String(fs.statSync(existing).mtimeMs) : "missing";
+  const existingFiles = files.filter((file) => fs.existsSync(file));
+  const mtime = existingFiles.length ? existingFiles.map((file) => `${path.basename(file)}:${fs.statSync(file).mtimeMs}`).join("|") : "missing";
   if (cachedDir === dataDir && cachedMtime === mtime) return cachedRegistry;
   cachedDir = dataDir;
   cachedMtime = mtime;
-  const registry = { clients: {}, devices: {}, aliases: {}, networkAliases: {}, sourcePath: existing || "" };
-  if (!existing) {
+  const registry = { clients: {}, devices: {}, aliases: {}, networkAliases: {}, sourcePath: existingFiles.join(":") };
+  if (existingFiles.length === 0) {
     cachedRegistry = registry;
     return cachedRegistry;
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(existing, "utf8"));
-    if (parsed.clients && typeof parsed.clients === "object") {
-      for (const [rawKey, rawValue] of Object.entries(parsed.clients)) addClient(registry, rawKey, rawValue);
-    }
-    const rawDevices = parsed.devices && typeof parsed.devices === "object"
-      ? parsed.devices
-      : parsed.clients ? {} : parsed;
-    for (const [rawKey, rawValue] of Object.entries(rawDevices || {})) {
-      if (rawKey === "schema_version" || rawKey === "updated_at" || rawKey === "notes" || rawKey === "clients") continue;
-      const key = canonicalDeviceKey(rawKey) || literalKey(rawKey);
-      if (registry.clients[key]) continue;
-      addClient(registry, rawKey, rawValue);
+    for (const file of existingFiles) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (parsed.clients && typeof parsed.clients === "object") {
+        for (const [rawKey, rawValue] of Object.entries(parsed.clients)) addClient(registry, rawKey, rawValue);
+      }
+      const rawDevices = parsed.devices && typeof parsed.devices === "object"
+        ? parsed.devices
+        : parsed.clients ? {} : parsed;
+      for (const [rawKey, rawValue] of Object.entries(rawDevices || {})) {
+        if (rawKey === "schema_version" || rawKey === "updated_at" || rawKey === "notes" || rawKey === "clients") continue;
+        addClient(registry, rawKey, rawValue);
+      }
     }
     cachedRegistry = registry;
   } catch {
-    cachedRegistry = { clients: {}, devices: {}, aliases: {}, networkAliases: {}, sourcePath: existing || "" };
+    cachedRegistry = { clients: {}, devices: {}, aliases: {}, networkAliases: {}, sourcePath: existingFiles.join(":") };
   }
   return cachedRegistry;
 }

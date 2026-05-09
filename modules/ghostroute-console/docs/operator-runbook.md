@@ -167,6 +167,14 @@ Clients still keeps historical inventory metadata for names, roles, aliases and
 last-seen state, but displayed traffic totals, route split and selected client
 domains come from the selected window only.
 
+Operator client attribution is registry-first. Keep real household MAC/IP/host
+aliases in gitignored `device-attribution.local.json` in the Console data
+directory, with public shape documented by
+`docs/device-attribution.example.json`. The collector and bounded fallback
+selectors may use inventory-derived IP/MAC/hostname hints only to resolve a row
+to an explicit registry client; unresolved `lan-host-*`, channel labels,
+DNS-interest rows and zero-byte buckets must stay out of Top clients.
+
 Because detailed snapshots can be cumulative, Console derives current-window
 client rows from positive deltas between same-day samples per observed source,
 then aggregates those sources into the canonical registry client and reconciles
