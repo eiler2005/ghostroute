@@ -24,6 +24,7 @@ COPY --from=prod-deps --chown=ghostroute:ghostroute /app/node_modules ./node_mod
 COPY --from=builder --chown=ghostroute:ghostroute /app/.next/static ./.next/static
 COPY --from=builder --chown=ghostroute:ghostroute /app/public ./public
 COPY --from=builder --chown=ghostroute:ghostroute /app/scripts ./scripts
+COPY --from=builder --chown=ghostroute:ghostroute /app/src/lib ./src/lib
 USER ghostroute
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
