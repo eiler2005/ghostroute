@@ -826,9 +826,10 @@ function aggregateDirtyStart(db, now) {
   const monthStart = mskWindowBounds("month", now).startUtc;
   const hasAggregates = db.prepare("select 1 from client_traffic_5min limit 1").get();
   if (!hasAggregates) return monthStart;
-  const hours = Math.max(1, number(process.env.GHOSTROUTE_ROLLUP_REBUILD_HOURS || 48));
+  const todayStart = mskWindowBounds("today", now).startUtc;
+  const hours = Math.max(1, number(process.env.GHOSTROUTE_ROLLUP_REBUILD_HOURS || 6));
   const rollingStart = isoMinusHours(now, hours);
-  return Date.parse(rollingStart) > Date.parse(monthStart) ? rollingStart : monthStart;
+  return Date.parse(rollingStart) > Date.parse(todayStart) ? rollingStart : todayStart;
 }
 
 function flowFactsFromNormalized(db, startUtc, endUtc) {

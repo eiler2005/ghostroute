@@ -144,11 +144,13 @@ diagnostic rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`; it is
 not the production data path for large databases.
 
 The rollup path is incremental: after the first backfill, each collector rebuilds
-only the dirty overlap window (`GHOSTROUTE_ROLLUP_REBUILD_HOURS`, default 48h),
-updates 5-minute buckets, rolls those into hourly/daily aggregates, and then
-rewrites the small prepared `today`/`week`/`month` payloads. Historical month
-views therefore come from the aggregate pyramid, not from a fresh 7-day raw scan
-on every deploy or restart.
+only the current Moscow day plus a small dirty overlap
+(`GHOSTROUTE_ROLLUP_REBUILD_HOURS`, default 6h), updates 5-minute buckets, rolls
+those into hourly/daily aggregates, and then rewrites the small prepared
+`today`/`week`/`month` payloads. Historical week/month views therefore come from
+the aggregate pyramid, not from a fresh raw scan on every deploy or restart. If
+an older day needs correction, run an explicit backfill/repair job rather than
+making startup collection rescan old raw rows.
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
