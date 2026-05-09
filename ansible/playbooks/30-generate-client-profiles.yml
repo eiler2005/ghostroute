@@ -346,9 +346,12 @@
           For everyday use, start from
           `ghostroute-shadowrocket-daily-template.conf` instead. It keeps system
           DNS for domestic/banking compatibility and has narrow direct rules for
-          banking and local/private services. Gmail SMTP/IMAP stays managed by
-          the router catalog. Add real corporate/private direct exceptions only in
-          your local imported Config, not in tracked repository docs.
+          banking, Gmail SMTP/IMAP, and local/private services. The router catalog
+          still keeps Gmail managed for LAN and non-Shadowrocket clients, but
+          iOS Mail needs endpoint-side DIRECT because Gmail mail ports can time
+          out through the VPS/Reality egress. Add real corporate/private direct
+          exceptions only in your local imported Config, not in tracked
+          repository docs.
       tags:
         - shadowrocket_proof
 
@@ -378,6 +381,9 @@
           DOMAIN-SUFFIX,app-site-association.cdn-apple.com,DIRECT
           DOMAIN-SUFFIX,mzstorekit.itunes.apple.com,DIRECT
           DOMAIN-SUFFIX,iosapps.itunes.apple.com,DIRECT
+
+          DOMAIN,smtp.gmail.com,DIRECT
+          DOMAIN,imap.gmail.com,DIRECT
 
           # Keep real corporate/private direct exceptions in the local imported
           # Shadowrocket config only. Do not commit them to tracked docs.

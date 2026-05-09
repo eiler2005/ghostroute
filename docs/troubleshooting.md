@@ -169,10 +169,11 @@ off и unsupported UDP reject. Geo/RU templates, `sslip.io DIRECT`,
 произвольные probe names к hotel/LTE/system resolver до входа в Channel A/B/C.
 
 Для everyday-режима используйте отдельный daily Config с `dns-server = system`
-и узкими `DIRECT` исключениями для банков и корпоративных сервисов. Gmail
-SMTP/IMAP должен оставаться managed; правила `DOMAIN,smtp.gmail.com,DIRECT` и
-`DOMAIN,imap.gmail.com,DIRECT` заставят почту обходить GhostRoute ещё на
-устройстве.
+и узкими `DIRECT` исключениями для банков, Gmail SMTP/IMAP и корпоративных
+сервисов. Gmail остаётся managed в router catalog для LAN и клиентов без
+Shadowrocket, но daily Shadowrocket Config отправляет `smtp.gmail.com` и
+`imap.gmail.com` напрямую, потому что эти mail-порты могут timeout'иться через
+VPS/Reality egress.
 Такой daily Config не является BrowserLeaks proof. Реальные corporate domains и
 private hostnames держите только в локально импортированном Shadowrocket Config,
 не в tracked docs.

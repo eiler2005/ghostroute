@@ -95,9 +95,10 @@ ansible/out/shadowrocket-proof/ghostroute-shadowrocket-daily-template.conf
 
 Use the strict proof config for BrowserLeaks and channel proof. Use the daily
 template for normal phone use where banking apps or corporate services need
-local/system DNS and narrow direct exceptions. Gmail SMTP/IMAP is managed in the
-router catalog, so the daily template must not force `smtp.gmail.com` or
-`imap.gmail.com` to `DIRECT`.
+local/system DNS and narrow direct exceptions. Gmail stays managed in the router
+catalog for LAN and non-Shadowrocket clients, but the daily Shadowrocket template
+forces `smtp.gmail.com` and `imap.gmail.com` to `DIRECT` because iOS Mail
+SMTP/IMAP ports can time out through the VPS/Reality egress.
 
 The proof config is shared because the Shadowrocket layer should only own the
 first hop:
@@ -214,6 +215,9 @@ DOMAIN-SUFFIX,sentry.io,DIRECT
 DOMAIN-SUFFIX,app-site-association.cdn-apple.com,DIRECT
 DOMAIN-SUFFIX,mzstorekit.itunes.apple.com,DIRECT
 DOMAIN-SUFFIX,iosapps.itunes.apple.com,DIRECT
+
+DOMAIN,smtp.gmail.com,DIRECT
+DOMAIN,imap.gmail.com,DIRECT
 
 # Keep real corporate/private direct exceptions local.
 # DOMAIN-SUFFIX,corp.example.invalid,DIRECT

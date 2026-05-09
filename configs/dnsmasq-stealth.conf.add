@@ -32,8 +32,10 @@ ipset=/bitbucket.org/STEALTH_DOMAINS
 ipset=/dev.azure.com/STEALTH_DOMAINS
 ipset=/visualstudio.com/STEALTH_DOMAINS
 ipset=/google.com/STEALTH_DOMAINS
-# Google Mail. Keep mail protocols managed so iOS Mail SMTP/IMAP does not
-# bypass GhostRoute through endpoint-side DIRECT rules.
+# Google Mail. Keep Gmail managed in the router catalog for LAN and
+# non-Shadowrocket clients. The Shadowrocket daily template has explicit
+# DIRECT exceptions for smtp.gmail.com/imap.gmail.com because iOS Mail
+# SMTP/IMAP ports can time out through the VPS/Reality egress.
 ipset=/gmail.com/STEALTH_DOMAINS
 ipset=/googlemail.com/STEALTH_DOMAINS
 ipset=/linkedin.com/STEALTH_DOMAINS
