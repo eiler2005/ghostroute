@@ -359,6 +359,7 @@ Detailed runbook:
 - [Root GhostRoute README](/README.md)
 - [GhostRoute Console architecture](/docs/ghostroute-console-architecture.md)
 - [Monitoring principles](/modules/ghostroute-console/docs/monitoring-principles.md)
+- [Data pyramid](/modules/ghostroute-console/docs/data-pyramid.md)
 - [Operator runbook](/modules/ghostroute-console/docs/operator-runbook.md)
 - [Root test orchestration](/tests/README.md)
 - [Console post-MVP roadmap](/docs/ghostroute-console-post-mvp-roadmap.md)

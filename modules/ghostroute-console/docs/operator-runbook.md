@@ -151,6 +151,8 @@ those into hourly/daily aggregates, and then rewrites the small prepared
 the aggregate pyramid, not from a fresh raw scan on every deploy or restart. If
 an older day needs correction, run an explicit backfill/repair job rather than
 making startup collection rescan old raw rows.
+The detailed data-pyramid contract is documented in
+[data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
