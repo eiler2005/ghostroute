@@ -996,14 +996,15 @@ export function rebuildHourlyAggregates(db) {
 }
 
 function flowRollupKey(row) {
+  const accountingBucket = row.raw?.accounting_bucket || row.raw?.device_counter || row.accounting_bucket;
   return [
-    row.raw?.flow_group_key,
-    row.raw?.accounting_bucket ? "bucket" : "",
+    accountingBucket ? "" : row.raw?.flow_group_key,
+    accountingBucket ? "bucket" : "",
     row.channel,
     row.raw?.profile,
     row.raw?.client || row.client,
-    row.destination,
-    row.route,
+    accountingBucket ? "" : row.destination,
+    accountingBucket ? "" : row.route,
     row.confidence,
     row.traffic_class,
   ].filter(Boolean).join("|").toLowerCase();
