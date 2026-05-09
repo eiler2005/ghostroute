@@ -11,6 +11,11 @@ function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
+function normalizeClockHour(value) {
+  const hour = number(value);
+  return hour === 24 ? 0 : hour;
+}
+
 function dateFrom(value) {
   const date = value instanceof Date ? value : new Date(value || Date.now());
   return Number.isNaN(date.getTime()) ? new Date() : date;
@@ -33,7 +38,7 @@ function mskDateParts(value = new Date()) {
     year: number(pick("year")),
     month: number(pick("month")),
     day: number(pick("day")),
-    hour: number(pick("hour")),
+    hour: normalizeClockHour(pick("hour")),
     minute: number(pick("minute")),
     second: number(pick("second")),
   };
@@ -91,7 +96,7 @@ export function toUtcIsoFromMskKey(mskKey, granularity = "day") {
     year: number(year),
     month: number(month),
     day: number(day),
-    hour: granularity === "day" ? 0 : number(hour),
+    hour: granularity === "day" ? 0 : normalizeClockHour(hour),
     minute: granularity === "5min" ? Math.floor(number(minute) / 5) * 5 : 0,
     second: 0,
   });

@@ -493,6 +493,7 @@ test("time helper produces stable MSK windows over UTC storage", () => {
   assert.equal(toMskKey("2026-05-09T10:17:42.000Z", "5min"), "2026-05-09T13:15");
   assert.equal(bucketStartUtc("2026-05-09T10:17:42.000Z", "5min"), "2026-05-09T10:15:00.000Z");
   assert.equal(toUtcIsoFromMskKey("2026-05-09", "day"), "2026-05-08T21:00:00.000Z");
+  assert.equal(toUtcIsoFromMskKey("2026-05-10T24:40", "5min"), "2026-05-09T21:40:00.000Z");
   assert.deepEqual(mskWindowBounds("week", "2026-05-09T10:17:42.000Z").startMskKey, "2026-05-03");
 });
 
