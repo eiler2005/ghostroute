@@ -452,6 +452,7 @@ redact_report_tables() {
       printf "%s|lan-host-%02d%s\n", $1, ++idx, suffix
     }
   ' "$DEVICE_METADATA_MAP" "$LAN_BYTES_PARSED" > "$LAN_ALIAS_MAP"
+  [ -s "$LAN_ALIAS_MAP" ] || return 0
 
   awk -F'|' '
     BEGIN { OFS="|" }
