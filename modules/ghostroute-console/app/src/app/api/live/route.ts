@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;
   if (search.get("fresh") === "1") clearDerivedCache();
   const filters = {
+    period: "today",
     route: search.get("route") || "all",
     channel: search.get("channel") || "all",
     confidence: search.get("confidence") || "all",

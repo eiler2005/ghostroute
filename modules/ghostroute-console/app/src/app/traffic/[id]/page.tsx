@@ -3,7 +3,7 @@ import { ConsoleShell } from "@/components/ConsoleShell";
 import { RouteExplanation } from "@/components/RouteExplanation";
 import { buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, getTrafficRowById, listFlowSessions } from "@/lib/server/selectors/traffic";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
 export default async function RouteDetailPage({
   params,
@@ -12,7 +12,7 @@ export default async function RouteDetailPage({
   params: Promise<{ id: string }>;
   searchParams?: SearchParams;
 }) {
-  const filters = await filtersFromSearchParams(searchParams);
+  const filters = await todayOnlyFiltersFromSearchParams(searchParams);
   const { id } = await params;
   const decodedId = decodeURIComponent(id);
   const index = Number.parseInt(decodedId, 10);

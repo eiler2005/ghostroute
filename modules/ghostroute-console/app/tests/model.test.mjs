@@ -11,6 +11,7 @@ const {
   ensureConsoleSchema,
   normalizeSnapshot,
   pruneOperationalTables,
+  repairAggregateRange,
   rebuildHourlyAggregates,
   rebuildObservabilityReadModels,
   rebuildPreparedWindows,
@@ -305,14 +306,17 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "dns_log_5min", "top_clients_window", "top_destinations_window", "traffic_window_snapshots"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "dns_log_5min", "top_clients_window", "top_destinations_window", "traffic_window_snapshots", "aggregate_state"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
   assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 7").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 8").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 9").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_hourly') where name = 'destination_key'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_daily') where name = 'destination_key'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'unknown_bytes'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
@@ -528,6 +532,65 @@ test("dashboard analytics derives traffic charts quotas and mobile LTE usage fro
   assert.equal(analytics.usage.points.at(-1).vpsForecastBytes > analytics.quota.vps.usedBytes, true);
   assert.equal(isMobileTrafficRow({ channel: "A/Home Reality", client: "mobile-client-04" }), true);
   assert.equal(isMobileTrafficRow({ channel: "Home Wi-Fi/LAN", client: "Laptop" }), false);
+});
+
+test("prepared traffic windows use operator clients and preserve destination tops", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-prepared-clients-"));
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.json"),
+    JSON.stringify({
+      schema_version: 2,
+      clients: {
+        macbook: {
+          label: "macbook (Operator MacBook)",
+          device_key: "operator-macbook",
+          device_label: "Operator MacBook",
+          aliases: { lan_wifi: ["lan-host-13"] },
+        },
+        "operator-phone": {
+          label: "operator-phone (Operator iPhone)",
+          aliases: { channel_a: ["iphone-1"] },
+        },
+      },
+    })
+  );
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    const insert = db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (?, 'traffic', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, ?, ?, ?, ?)
+    `);
+    insert.run(1, "2026-05-07T08:00:00Z", "lan-host-13", "Home Wi-Fi/LAN", "torrent.example", "Direct", "exact", 1200, 8, "client", 0, 1200, 0, JSON.stringify({ client: "lan-host-13" }));
+    insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "client", 0, 0, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
+    insert.run(1, "2026-05-07T08:10:00Z", "A/Home Reality", "A/Home Reality", "internal.example", "Unknown", "estimated", 6, 1, "client", 0, 0, 6, JSON.stringify({ client: "A/Home Reality" }));
+    insert.run(1, "2026-05-07T08:15:00Z", "lan-host-99", "Home Wi-Fi/LAN", "unregistered.example", "Direct", "exact", 900, 5, "client", 0, 900, 0, JSON.stringify({ client: "lan-host-99" }));
+    insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
+
+    rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
+    const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);
+    const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
+    assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
+    assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
+    assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "torrent.example");
+    assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");
+    assert.equal(db.prepare("select count(*) as count from top_clients_window where bytes <= 0 or label in ('A/Home Reality', 'B/XHTTP relay')").get().count, 0);
+    assert.ok(db.prepare("select 1 from aggregate_state where model = 'dashboard' and window_key = 'today'").get());
+    const dryRun = repairAggregateRange(db, { fromUtc: "2026-05-07T08:00:00Z", toUtc: "2026-05-07T10:00:00Z", dryRun: true });
+    assert.equal(dryRun.dryRun, true);
+    assert.equal(dryRun.status, "ok");
+    const missing = repairAggregateRange(db, { fromUtc: "2026-05-01T00:00:00Z", toUtc: "2026-05-01T01:00:00Z" });
+    assert.equal(missing.status, "missing_source");
+    assert.ok(db.prepare("select 1 from aggregate_state where model = 'repair_aggregates' and status = 'missing_source'").get());
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
 });
 
 test("traffic window keeps stale today snapshots out of current-day views", () => {

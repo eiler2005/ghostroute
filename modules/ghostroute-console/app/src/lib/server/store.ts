@@ -18,6 +18,81 @@ function addColumnIfMissing(db: Database.Database, table: string, column: string
   }
 }
 
+function tableHasColumn(db: Database.Database, table: string, column: string) {
+  return (db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>).some((row) => row.name === column);
+}
+
+function migrateAggregateDestinationKeys(db: Database.Database) {
+  if (!tableHasColumn(db, "client_traffic_hourly", "destination_key")) {
+    db.exec(`
+      drop table if exists client_traffic_hourly_legacy_v9;
+      alter table client_traffic_hourly rename to client_traffic_hourly_legacy_v9;
+      create table client_traffic_hourly (
+        hour_msk_key text not null,
+        hour_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
+      insert or ignore into client_traffic_hourly(hour_msk_key, hour_start_utc, client_key, client_label, channel, route,
+        confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+        attributed_bytes, flows, clients, updated_at_utc)
+      select hour_msk_key, hour_start_utc, client_key, client_label, channel, route, confidence, traffic_class, '',
+        bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes, attributed_bytes, flows, clients, updated_at_utc
+        from client_traffic_hourly_legacy_v9;
+      drop table client_traffic_hourly_legacy_v9;
+    `);
+  }
+  if (!tableHasColumn(db, "client_traffic_daily", "destination_key")) {
+    db.exec(`
+      drop table if exists client_traffic_daily_legacy_v9;
+      alter table client_traffic_daily rename to client_traffic_daily_legacy_v9;
+      create table client_traffic_daily (
+        day_msk_key text not null,
+        day_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
+      insert or ignore into client_traffic_daily(day_msk_key, day_start_utc, client_key, client_label, channel, route,
+        confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+        attributed_bytes, flows, clients, updated_at_utc)
+      select day_msk_key, day_start_utc, client_key, client_label, channel, route, confidence, traffic_class, '',
+        bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes, attributed_bytes, flows, clients, updated_at_utc
+        from client_traffic_daily_legacy_v9;
+      drop table client_traffic_daily_legacy_v9;
+    `);
+  }
+}
+
 export function getDb() {
   ensureDirs();
   if (!db) {
@@ -411,6 +486,7 @@ export function getDb() {
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         traffic_class text not null default 'client',
+        destination_key text not null default '',
         bytes integer not null default 0,
         via_vps_bytes integer not null default 0,
         direct_bytes integer not null default 0,
@@ -420,7 +496,7 @@ export function getDb() {
         flows integer not null default 0,
         clients integer not null default 0,
         updated_at_utc text not null,
-        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class)
+        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
       );
       create table if not exists client_traffic_daily (
         day_msk_key text not null,
@@ -431,6 +507,7 @@ export function getDb() {
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         traffic_class text not null default 'client',
+        destination_key text not null default '',
         bytes integer not null default 0,
         via_vps_bytes integer not null default 0,
         direct_bytes integer not null default 0,
@@ -440,7 +517,7 @@ export function getDb() {
         flows integer not null default 0,
         clients integer not null default 0,
         updated_at_utc text not null,
-        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class)
+        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
       );
       create table if not exists dns_log_5min (
         bucket_start_utc text not null,
@@ -496,7 +573,18 @@ export function getDb() {
         payload_json text not null,
         primary key (kind, window, traffic_class)
       );
+      create table if not exists aggregate_state (
+        model text not null,
+        window_key text not null,
+        source_snapshot_id text not null default '',
+        built_until_utc text not null default '',
+        status text not null default 'ok',
+        detail_json text not null default '{}',
+        updated_at_utc text not null,
+        primary key (model, window_key)
+      );
     `);
+    migrateAggregateDestinationKeys(db);
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
     for (const [table, columns] of Object.entries({
@@ -606,6 +694,10 @@ export function getDb() {
     );
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       8,
+      new Date().toISOString()
+    );
+    db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
+      9,
       new Date().toISOString()
     );
   }

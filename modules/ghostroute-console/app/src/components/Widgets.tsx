@@ -65,11 +65,11 @@ export function ChannelBadge({ value }: { value?: string }) {
   return <span className={`badge channel-badge channel-${slug}`}>{channel}</span>;
 }
 
-export function EmptyState({ title }: { title: string }) {
+export function EmptyState({ title, detail = "No rows match the current prepared data window and filters." }: { title: string; detail?: string }) {
   return (
     <div className="empty">
       <strong>{title}</strong>
-      <span>Run `./modules/ghostroute-console/bin/ghostroute-console collect-once` to collect a factual snapshot.</span>
+      <span>{detail}</span>
     </div>
   );
 }

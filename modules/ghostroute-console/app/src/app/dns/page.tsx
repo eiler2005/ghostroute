@@ -4,7 +4,7 @@ import { ConfidenceBadge, EmptyState, MetricCard, Pagination, RouteBadge, Status
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 
 function scalar(value: string | string[] | undefined) {
@@ -30,7 +30,7 @@ function grouped(rows: Array<Record<string, any>>, key: string, limit = 6) {
 export default async function DnsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 500, mobileMax: 25 }, mobile);
   const status = scalar(params.status) || "all";
@@ -45,7 +45,6 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const topDomains = grouped(dnsPage.rows, "domain", 7);
   const topClients = grouped(dnsPage.rows, "client", 7);
   const filterParams = {
-    period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,

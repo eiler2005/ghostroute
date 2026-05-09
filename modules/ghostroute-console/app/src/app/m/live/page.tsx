@@ -3,12 +3,12 @@ import { Pagination } from "@/components/Widgets";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { listLiveEvents } from "@/lib/server/selectors/live";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { mobilePageSize, MobileFlowList, MobileLiveList, MobileSection, routeFilterForm, scalar } from "../mobile-ui";
 
 export default async function MobileLivePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);

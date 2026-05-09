@@ -2,12 +2,12 @@ import { MobileShell } from "@/components/MobileShell";
 import { Pagination } from "@/components/Widgets";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { mobilePageSize, MobileDnsList, MobileSection, routeFilterForm, scalar } from "../mobile-ui";
 
 export default async function MobileDnsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const dnsPage = listDnsQueryLog({ page, pageSize, filters: { ...filters, trafficClass: "all" } });

@@ -4,7 +4,7 @@ import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadg
 import { FlowDetailPanel } from "@/components/RouteExplanation";
 import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
-import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
+import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { destinationEvidence, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
@@ -63,7 +63,7 @@ function Donut({ value }: { value: number }) {
 export default async function TrafficPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
-  const filters = await filtersFromSearchParams(Promise.resolve(params));
+  const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
@@ -87,7 +87,6 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const topVps = [...vpsRows].sort((a, b) => rowBytes(b) - rowBytes(a)).slice(0, 3);
   const spark = rows.slice(0, 18).map(rowBytes).reverse();
   const filterParams = {
-    period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
@@ -171,7 +170,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
 
       {rows.length === 0 ? (
         <section className="card">
-          <EmptyState title="No traffic rows" />
+          <EmptyState title="No traffic rows" detail="No today's traffic rows match the current filters." />
         </section>
       ) : (
         <div className="traffic-workbench">
