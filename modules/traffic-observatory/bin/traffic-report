@@ -663,10 +663,16 @@ WIFI_RX_TOTAL=$(( WIFI24_RX + WIFI5_RX ))
 WIFI_TX_TOTAL=$(( WIFI24_TX + WIFI5_TX ))
 WIFI_TOTAL=$(( WIFI_RX_TOTAL + WIFI_TX_TOTAL ))
 
-if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
-  awk -F'|' -v ts="$LAN_BYTES_START" '
-    $1 == ts { print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 "|" $10 "|" $11 }
-  ' "$LAN_BYTES_HISTORY" > "$LAN_BYTES_BASE"
+if [ -s "$LAN_BYTES_CURRENT" ]; then
+  if [ -n "$LAN_BYTES_START" ]; then
+    awk -F'|' -v ts="$LAN_BYTES_START" '
+      $1 == ts { print $2 "|" $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 "|" $10 "|" $11 }
+    ' "$LAN_BYTES_HISTORY" > "$LAN_BYTES_BASE"
+  else
+    awk -F'|' '
+      { print $1 "|" $2 "|0|0|0|0|0|0|" $9 "|" $10 }
+    ' "$LAN_BYTES_CURRENT" > "$LAN_BYTES_BASE"
+  fi
 
   awk -F'|' '
     function delta(current, base) {
