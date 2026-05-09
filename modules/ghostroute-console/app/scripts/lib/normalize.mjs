@@ -1480,14 +1480,57 @@ function topClientAnalyticsFromRows(rows, limit = 5) {
     }));
 }
 
-function buildPreparedWindowPayload(db, window, facts, now) {
-  const bounds = mskWindowBounds(window, now);
-  const registry = loadDeviceAttributions();
-  const rows = facts;
-  const classRows = preparedRowsForWindow(rows, "client").filter((row) => number(row.bytes || row.total_bytes) > 0);
-  const operatorRows = classRows.filter((row) => isOperatorTrafficRow(row, registry));
-  const clientRows = groupRows(
-    operatorRows,
+function clientChannelObservedRows(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = [row.client_key, row.channel || "Unknown"].join("|");
+    const current = groups.get(key) || {
+      id: `${row.client_key}:${row.channel || "Unknown"}`,
+      device_id: row.client_key,
+      client_key: row.client_key,
+      client_label: row.client_label,
+      label: row.client_label,
+      channel: row.channel || "Unknown",
+      confidence: row.confidence,
+      last_seen: row.last_seen || row.collected_at,
+      traffic_window_active: true,
+      traffic_collected_at: row.last_seen || row.collected_at,
+      accounting: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
+      detail: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
+    };
+    const target = row.accounting_bucket || !text(row.destination_key) ? current.accounting : current.detail;
+    target.bytes += number(row.bytes);
+    target.via_vps_bytes += number(row.via_vps_bytes);
+    target.direct_bytes += number(row.direct_bytes);
+    target.unknown_bytes += number(row.unknown_bytes);
+    target.flows += number(row.flows || 1);
+    target.connections += number(row.connections);
+    if (Date.parse(row.last_seen || row.collected_at || "") > Date.parse(current.last_seen || "")) {
+      current.last_seen = row.last_seen || row.collected_at;
+      current.traffic_collected_at = row.last_seen || row.collected_at;
+    }
+    groups.set(key, current);
+  }
+  return Array.from(groups.values()).map((row) => {
+    const source = row.accounting.bytes > 0 ? row.accounting : row.detail;
+    return {
+      ...row,
+      bytes: source.bytes,
+      total_bytes: source.bytes,
+      via_vps_bytes: source.via_vps_bytes,
+      direct_bytes: source.direct_bytes,
+      unknown_bytes: source.unknown_bytes,
+      flows: source.flows,
+      connections: source.connections,
+      route: routeFromAggregate(source),
+      accounting_bucket: row.accounting.bytes > 0,
+    };
+  }).filter((row) => number(row.bytes) > 0);
+}
+
+function clientObservedRows(rows) {
+  return groupRows(
+    clientChannelObservedRows(rows),
     (row) => row.client_key,
     (row) => ({
       id: row.client_key,
@@ -1501,7 +1544,16 @@ function buildPreparedWindowPayload(db, window, facts, now) {
       traffic_window_active: true,
       traffic_collected_at: row.last_seen || row.collected_at,
     })
-  ).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
+  );
+}
+
+function buildPreparedWindowPayload(db, window, facts, now) {
+  const bounds = mskWindowBounds(window, now);
+  const registry = loadDeviceAttributions();
+  const rows = facts;
+  const classRows = preparedRowsForWindow(rows, "client").filter((row) => number(row.bytes || row.total_bytes) > 0);
+  const operatorRows = classRows.filter((row) => isOperatorTrafficRow(row, registry));
+  const clientRows = clientObservedRows(operatorRows).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
   const groupedFlowRows = groupRows(
     operatorRows,
     (row) => [row.client_key, row.destination_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"),
@@ -1532,8 +1584,8 @@ function buildPreparedWindowPayload(db, window, facts, now) {
     periodLabel: authoritative?.periodLabel || window,
     windowLabel: authoritative?.windowLabel || mskWindowLabel(window, bounds),
   };
-  const destinationObserved = classRows.reduce((sum, row) => sum + number(row.bytes), 0);
-  const destinationAttributed = classRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + number(row.bytes), 0);
+  const destinationObserved = clientRows.reduce((sum, row) => sum + number(row.bytes), 0);
+  const destinationAttributed = operatorRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + number(row.bytes), 0);
   const dashboardRows = flowRows.map((row) => ({
     ...row,
     bytes: number(row.bytes),
