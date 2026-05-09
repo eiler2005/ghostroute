@@ -682,6 +682,8 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
       wan_down[$1] = $6 + 0
       other_up[$1] = $7 + 0
       other_down[$1] = $8 + 0
+      mac[$1] = $9
+      hostname[$1] = $10
       seen[$1] = 1
       next
     }
@@ -694,6 +696,8 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
       cwan_down[ip] = $6 + 0
       cother_up[ip] = $7 + 0
       cother_down[ip] = $8 + 0
+      current_mac[ip] = $9
+      current_hostname[ip] = $10
       seen[ip] = 1
     }
     END {
@@ -715,9 +719,13 @@ if [ -n "$LAN_BYTES_START" ] && [ -s "$LAN_BYTES_CURRENT" ]; then
         upload = rup + wup + oup
         download = rdown + wdown + odown
         total = upload + download
+        device_mac = current_mac[ip]
+        if (device_mac == "" || device_mac == "?") device_mac = mac[ip]
+        device_hostname = current_hostname[ip]
+        if (device_hostname == "" || device_hostname == "?") device_hostname = hostname[ip]
 
-        printf "%s|%s|%d|%d|%d|%d|%d|%d\n",
-          ip, label, rtotal, wtotal, ototal, upload, download, total
+        printf "%s|%s|%d|%d|%d|%d|%d|%d|%s|%s\n",
+          ip, label, rtotal, wtotal, ototal, upload, download, total, device_mac, device_hostname
       }
     }' "$LAN_BYTES_BASE" "$LAN_BYTES_CURRENT" | sort -t'|' -k8,8nr -k1,1V > "$LAN_BYTES_PARSED"
 else
