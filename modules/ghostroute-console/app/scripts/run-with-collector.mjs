@@ -6,14 +6,16 @@ const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const dayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || 1800));
 const nightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 10800));
 const collectTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 900) * 1000);
-const lightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || 300));
+const lightDayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || 300));
+const lightNightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_NIGHT_INTERVAL_SECONDS || 1800));
 const lightTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS || 45) * 1000);
 const liveTimeoutMs = Math.max(10000, Number(process.env.GHOSTROUTE_LIVE_TIMEOUT_SECONDS || 30) * 1000);
 const collectorMode = process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled";
 const lightCollectorMode = process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE || collectorMode;
 const liveMode = process.env.GHOSTROUTE_LIVE_MODE || "disabled";
 const liveCollectorMode = process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || collectorMode;
-const liveIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIVE_POLL_SECONDS || 600));
+const liveDayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIVE_DAY_POLL_SECONDS || process.env.GHOSTROUTE_LIVE_POLL_SECONDS || 600));
+const liveNightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIVE_NIGHT_POLL_SECONDS || 1800));
 
 let shuttingDown = false;
 let collecting = false;
@@ -26,16 +28,29 @@ let startupFullCollect = Promise.resolve();
 let startupFastCollectors = false;
 
 function moscowHour() {
-  return Number(new Intl.DateTimeFormat("en-GB", {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Moscow",
     hour: "2-digit",
     hour12: false,
   }).format(new Date()));
+  return hour === 24 ? 0 : hour;
+}
+
+function isMoscowNight() {
+  const hour = moscowHour();
+  return hour >= 23 || hour < 6;
 }
 
 function collectIntervalSeconds() {
-  const hour = moscowHour();
-  return hour >= 7 && hour <= 23 ? dayIntervalSeconds : nightIntervalSeconds;
+  return isMoscowNight() ? nightIntervalSeconds : dayIntervalSeconds;
+}
+
+function lightIntervalSeconds() {
+  return isMoscowNight() ? lightNightIntervalSeconds : lightDayIntervalSeconds;
+}
+
+function liveIntervalSeconds() {
+  return isMoscowNight() ? liveNightIntervalSeconds : liveDayIntervalSeconds;
 }
 
 function spawnScript(script, timeoutMs, onExit) {
@@ -110,19 +125,22 @@ function scheduleCollect() {
 
 function scheduleLightCollect() {
   if (shuttingDown || lightCollectorMode === "disabled") return;
+  const delay = lightIntervalSeconds();
   lightTimer = setTimeout(async () => {
     await collectLightOnce("periodic");
     scheduleLightCollect();
-  }, lightIntervalSeconds * 1000);
-  console.log(`[light-collector] next light collect in ${lightIntervalSeconds}s`);
+  }, delay * 1000);
+  console.log(`[light-collector] next light collect in ${delay}s`);
 }
 
 function scheduleLiveCollect() {
   if (shuttingDown || liveMode === "disabled" || liveCollectorMode === "disabled") return;
+  const delay = liveIntervalSeconds();
   liveTimer = setTimeout(async () => {
     await collectLiveOnce("poll");
     scheduleLiveCollect();
-  }, liveIntervalSeconds * 1000);
+  }, delay * 1000);
+  console.log(`[live-collector] next live collect in ${delay}s`);
 }
 
 async function collectStartupFastOnce() {

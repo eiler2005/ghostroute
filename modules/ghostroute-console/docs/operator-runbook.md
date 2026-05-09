@@ -75,11 +75,12 @@ snapshots.
 The VPS deployment defaults to read-only SSH collection through the generated
 `ghostroute_readonly` forced-command key:
 
-- lightweight current-day traffic summaries every 5 minutes for Dashboard KPI
-  cards;
-- full snapshots every 30 minutes during 07:00-23:59 Moscow time;
-- full snapshots every 3 hours during 00:00-06:59 Moscow time;
-- live event polling every 10 minutes by default;
+- lightweight current-day traffic summaries every 5 minutes during the day and
+  every 30 minutes during 23:00-06:00 Moscow time;
+- full snapshots every 30 minutes during 06:00-22:59 Moscow time;
+- full snapshots every 3 hours during 23:00-05:59 Moscow time;
+- live event polling every 10 minutes during the day and every 30 minutes during
+  23:00-06:00 Moscow time by default;
 - deploy-gate snapshots with the full pass.
 
 Deploy-gate CRIT output is stored even when the command exits non-zero, so
@@ -93,11 +94,12 @@ startup pass. The full snapshot timeout defaults to 15 minutes because it may
 run several read-only reports in one pass.
 
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
-snapshots are kept for 7 days, live raw snapshots for 6 hours, hourly aggregates
-for 30 days, and SQLite safety backups are daily with at most 1 recent file. Raw
-normalized traffic, DNS, event and route-decision rows are bounded by the raw
-retention window; service/background traffic can be pruned sooner than client
-traffic. Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
+snapshots are kept for 7 days, fine traffic buckets for 8 days, hourly/daily
+traffic and DNS aggregates for about 35 days, live raw snapshots for 6 hours,
+and SQLite safety backups are daily with at most 1 recent file. Raw normalized
+traffic, DNS, event and route-decision rows are bounded by the raw retention
+window; service/background traffic can be pruned sooner than client traffic.
+Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
 troubleshooting window may be stripped once a newer payload of the same type
 exists. The live collector stores normalized events in SQLite; the per-poll raw
 JSON is only short-term troubleshooting material.
@@ -140,6 +142,13 @@ snapshot payloads on the request path. If a prepared historical window is
 missing, render a bounded empty/fallback state until collection rebuilds it. The
 diagnostic rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`; it is
 not the production data path for large databases.
+
+The rollup path is incremental: after the first backfill, each collector rebuilds
+only the dirty overlap window (`GHOSTROUTE_ROLLUP_REBUILD_HOURS`, default 48h),
+updates 5-minute buckets, rolls those into hourly/daily aggregates, and then
+rewrites the small prepared `today`/`week`/`month` payloads. Historical month
+views therefore come from the aggregate pyramid, not from a fresh 7-day raw scan
+on every deploy or restart.
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
