@@ -137,6 +137,8 @@ export function getDb() {
         device_id text not null,
         label text not null,
         ip text not null default '',
+        hostname text not null default '',
+        mac text not null default '',
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         total_bytes integer not null default 0,
@@ -585,6 +587,8 @@ export function getDb() {
       );
     `);
     migrateAggregateDestinationKeys(db);
+    addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
+    addColumnIfMissing(db, "normalized_devices", "mac", "text not null default ''");
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
     addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
     for (const [table, columns] of Object.entries({
@@ -896,7 +900,7 @@ export function knownDeviceRows(limit = 1000) {
   try {
     return getDb()
       .prepare(
-        `select snapshot_id, snapshot_type, collected_at, device_id, label, ip, channel, route,
+        `select snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, channel, route,
                 confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json
            from normalized_devices
           order by collected_at desc

@@ -152,6 +152,9 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
       {
         id: "lan-host-01",
         label: "lan-host-01",
+        ip: "192.168.1.24",
+        mac: "02:00:00:00:00:24",
+        hostname: "operator-laptop.local",
         total_bytes: 100,
         via_vps_bytes: 70,
         direct_bytes: 30,
@@ -197,6 +200,14 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   };
   normalizeSnapshot(db, 1, "traffic", traffic.generated_at, traffic);
   assert.equal(db.prepare("select count(*) as count from normalized_devices").get().count, 3);
+  assert.deepEqual(
+    db.prepare("select ip, hostname, mac from normalized_devices where device_id = 'lan-host-01'").get(),
+    {
+      ip: "192.168.1.24",
+      hostname: "operator-laptop.local",
+      mac: "02:00:00:00:00:24",
+    }
+  );
   assert.equal(
     db.prepare("select channel from normalized_devices where label = 'mobile-client-04 (Mamulia)'").get().channel,
     "A/Home Reality"
@@ -315,6 +326,8 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 9").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'hostname'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'mac'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_hourly') where name = 'destination_key'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_daily') where name = 'destination_key'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'unknown_bytes'").get());

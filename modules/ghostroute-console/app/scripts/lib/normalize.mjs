@@ -360,6 +360,8 @@ export function ensureConsoleSchema(db) {
         device_id text not null,
         label text not null,
         ip text not null default '',
+        hostname text not null default '',
+        mac text not null default '',
         channel text not null default 'Unknown',
         route text not null default 'Unknown',
       confidence text not null default 'unknown',
@@ -817,7 +819,9 @@ export function ensureConsoleSchema(db) {
       );
     `);
   migrateAggregateDestinationKeys(db);
-  addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
+    addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
+    addColumnIfMissing(db, "normalized_devices", "mac", "text not null default ''");
+    addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
   for (const [table, columns] of Object.entries({
     normalized_flows: {
@@ -2543,8 +2547,8 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
 
 function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   const deviceInsert = db.prepare(`
-    insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, channel, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, channel, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of [...(payload.devices || []), ...(payload.home_reality_clients || [])]) {
     deviceInsert.run(
@@ -2554,6 +2558,8 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       text(row.id || row.ip || row.profile || row.label, "unknown-device"),
       usefulDeviceLabel(row),
       text(row.ip || row.client_ip || ""),
+      text(row.hostname || row.host || ""),
+      text(row.mac || row.mac_address || ""),
       inferChannel(row),
       text(row.route || "Unknown"),
       confidence(row.confidence, "estimated"),
