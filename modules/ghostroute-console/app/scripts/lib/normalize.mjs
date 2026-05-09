@@ -2348,6 +2348,7 @@ export function rebuildObservabilityReadModels(db) {
     const flowTopDomains = new Map();
     for (const row of flowRows) {
       const raw = parseJson(row.raw_json, {});
+      if (raw.accounting_bucket || raw.device_counter) continue;
       const seen = primaryTime(row) || row.collected_at;
       const risk = riskForFlow(row);
       const key = identityKey(row);

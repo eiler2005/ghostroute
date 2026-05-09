@@ -1584,6 +1584,11 @@ function notSystemDestinationSql(destination = "destination", dns = "dns_qname")
     and lower(${destination}) not like '%sslip.io%'`;
 }
 
+function notSyntheticAccountingBucketSql(evidenceColumn = "evidence_json") {
+  return `coalesce(${evidenceColumn}, '') not like '%"accounting_bucket":true%'
+    and coalesce(${evidenceColumn}, '') not like '%"device_counter":true%'`;
+}
+
 function flowSelect() {
   return `rowid as rowid, 'flow:' || rowid as id, snapshot_id, snapshot_type, collected_at,
     client, client_ip, channel, destination, destination_ip, destination_port, route, confidence,
@@ -1742,6 +1747,7 @@ export function listTrafficRows(args: PageArgs = {}) {
     where.push(isUsefulClientSql());
     where.push("(bytes > 0 or connections > 1)");
     where.push(notSystemDestinationSql());
+    where.push(notSyntheticAccountingBucketSql("raw_json"));
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;
@@ -1820,6 +1826,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
     where.push(isUsefulClientSql());
     where.push("(bytes > 0 or connections > 1)");
     where.push(notSystemDestinationSql("destination", "destination"));
+    where.push(notSyntheticAccountingBucketSql("evidence_json"));
   }
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;

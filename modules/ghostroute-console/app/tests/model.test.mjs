@@ -455,9 +455,9 @@ test("destination attribution coverage keeps unattributed accounting buckets", (
   assert.equal(trafficClassFor(JSON.parse(bucket.raw_json)), "unclassified");
   assert.equal(displayDestination(JSON.parse(bucket.raw_json)), "Unknown/Unattributed LAN-Wi-Fi");
   rebuildObservabilityReadModels(db);
-  assert.equal(db.prepare("select bytes from flow_sessions where destination = 'Unknown/Unattributed LAN-Wi-Fi'").get().bytes, unattributed);
+  assert.equal(db.prepare("select count(*) as count from flow_sessions where destination = 'Unknown/Unattributed LAN-Wi-Fi'").get().count, 0);
   const total = db.prepare("select sum(bytes) as total from flow_sessions").get().total;
-  assert.equal(total, observed);
+  assert.equal(total, attributed);
   db.close();
 });
 
