@@ -34,7 +34,7 @@
       - { path: "/traffic", contains: "Read-only analysis" }
       - { path: "/traffic?trafficClass=all", contains: "All traffic" }
       - { path: "/clients", contains: "Device Inventory" }
-      - { path: "/clients", contains: "Showing" }
+      - { path: "/clients", contains: "traffic for selected window" }
     console_api_smoke_routes:
       - /api/health
       - /api/dashboard
