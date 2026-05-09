@@ -130,6 +130,50 @@ The current observability slice includes:
 - Controlled catalog review, notification settings and audited ops actions.
 - Mobile `/m` pages for reliable remote triage from iPhone/Safari.
 
+## How It Works
+
+Console is a read-only evidence pipeline with two browser editions on top of the
+same prepared data.
+
+```text
+1. Source modules produce JSON
+     traffic-summary / traffic-report / traffic-daily-report
+     router-health-report / leak-check / deploy-gate evidence
+     domain-report / dns-forensics-report
+     live-events-report for bounded router log-tail events
+
+2. The collector stores facts
+     raw JSON snapshots -> data/snapshots/
+     normalized rows    -> SQLite source tables
+     append-only live   -> events / route_decisions / live_cursors
+
+3. Read-model rebuild prepares UI data
+     flow_sessions          -> Dashboard, Flow Explorer, Clients, Live activity
+     dns_query_log          -> DNS Query Log and DNS-interest evidence
+     device_inventory       -> Clients physical inventory and attribution
+     alarm_events           -> Alarm Center and operator state overlay
+     console_page_summaries -> fast Health, Live and mobile shells
+     read_model_state       -> freshness, source versions and cache keys
+
+4. Request-time selectors stay bounded
+     pages read prepared rows, not full raw reports
+     missing evidence renders as not observed
+     route accounting keeps Total = Via VPS + Direct + Unknown
+     short in-process cache follows read_model_state and snapshot metadata
+
+5. Full Console serves investigations
+     /traffic, /dns, /clients, /health and /live keep wide tables,
+     filters, selected-row panels, charts and deeper evidence where useful.
+
+6. Mobile Console serves remote triage
+     /m/* uses the same read models with capped rows and plain links.
+     /m/health is raw no-JS HTML so iPhone/Safari can read health state from one
+     authenticated document without waiting for React hydration.
+```
+
+The key boundary is simple: Console renders prepared facts and operator state
+overlays; router/VPS runtime changes remain separate explicit actions.
+
 ## Public Commands
 
 ```bash

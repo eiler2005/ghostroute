@@ -5,6 +5,145 @@ GhostRoute Console is a factual read-only observability surface inside the
 router log-tail evidence; it is not a routing engine and must not become a
 second source of truth for router runtime state.
 
+## Architecture At A Glance
+
+This is the current Console v1 data path. It is intentionally documented as a
+plain text model because the read-model and cache layer will continue to evolve.
+
+```text
+Layer 0 source modules
+  Traffic Observatory
+    -> traffic-summary --json today
+    -> traffic-report --json
+    -> traffic-daily-report --json
+
+  Health Monitor
+    -> router-health-report --json
+    -> leak-check --json
+    -> deploy-gate snapshot evidence
+
+  DNS / Catalog Intelligence
+    -> domain-report --json
+    -> dns-forensics-report --json
+
+  Router log-tail evidence
+    -> live-events-report --json --since <cursor> --limit N
+    -> sing-box / dnsmasq / domain-activity event rows
+
+Layer 1 collector
+  ghostroute-console collect-once
+    -> runs read-only module commands
+    -> stores raw JSON snapshots under data/snapshots/
+    -> records collector errors instead of publishing invalid snapshots
+    -> rebuilds bounded SQLite read models
+
+  ghostroute-console collect-light
+    -> refreshes frequent current-day traffic summary cards
+    -> avoids the full detailed report cost
+
+  collect-live-once
+    -> ingests recent read-only log-tail events
+    -> advances live_cursors
+    -> keeps raw live payloads short-lived
+
+Layer 2 normalized storage
+  raw snapshots
+    -> factual source payloads with retention
+
+  normalized source tables
+    -> normalized_flows
+    -> normalized_dns
+    -> normalized_events
+    -> normalized_health
+    -> normalized_catalog / settings / metadata
+
+  append-only live tables
+    -> events
+    -> route_decisions
+    -> live_cursors
+
+Layer 3 UI read models
+  flow_sessions
+    -> Dashboard route accounting
+    -> Flow Explorer rows and selected-flow detail
+    -> Clients traffic windows
+    -> Live client activity summary
+
+  dns_query_log
+    -> DNS Query Log
+    -> DNS-interest evidence
+
+  device_inventory
+    -> Clients physical inventory
+    -> owner/profile/channel attribution
+    -> selected-device detail
+
+  alarm_events
+    -> Alarm Center
+    -> ack/snooze/open state overlay
+
+  console_page_summaries
+    -> health_shell
+    -> health_mobile
+    -> live_mobile
+    -> capped prepared payloads for fast Health/Live/mobile request paths
+
+  read_model_state
+    -> source versions
+    -> rebuild timestamps
+    -> cache keys
+
+Layer 4 request-time cache
+  in-process derived selector cache
+    -> keyed by read_model_state / lightweight snapshot metadata
+    -> short TTL, default 60 seconds
+    -> bypassed or cleared for action/state-changing endpoints
+    -> disabled with GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0
+
+Layer 5 public interfaces
+  Full Console
+    -> / dashboard analytics and status overview
+    -> /traffic Flow Explorer workbench
+    -> /dns DNS Query Log
+    -> /clients Device Inventory
+    -> /health Health Center, Alarm Center, Deploy Gate, leaks
+    -> /live event snapshots and client activity
+    -> /catalog read-only catalog review
+    -> /budget quota posture
+    -> /reports stored reports
+    -> /settings runtime inventory and safety gates
+
+  Mobile Console
+    -> /m compact ops summary
+    -> /m/traffic lightweight flow list
+    -> /m/dns lightweight DNS list
+    -> /m/clients lightweight clients list
+    -> /m/health raw no-JS health triage
+    -> /m/live compact event stream
+    -> /m/catalog lightweight catalog list
+
+  JSON APIs
+    -> /api/health
+    -> /api/flows
+    -> /api/dns
+    -> /api/clients
+    -> /api/live
+    -> /api/alarms
+
+Layer 6 deployment/access
+  Browser
+    -> dedicated Console HTTPS port with Basic Auth
+    -> nginx listener
+    -> local buffering proxy
+    -> Next.js container on 127.0.0.1:3000
+    -> SQLite data directory
+
+  Safety invariant
+    -> Console renders prepared facts
+    -> Console does not deploy router/VPS runtime
+    -> controlled actions prepare audited operator artifacts only
+```
+
 ## Data Sources
 
 Console reads machine-readable JSON from existing operational modules:
@@ -261,7 +400,7 @@ detail panel while the table itself remains an inventory list; row cells are
 plain document links to keep selection reliable over Safari/proxy paths.
 
 Each deployed build carries both a short git commit and a UTC build timestamp.
-The source strip renders them together as `build <commit> · <date>`, and
+The source strip renders them together as `build <commit> - <date>`, and
 `/api/health` exposes the same `runtime.buildCommit` and `runtime.buildAt`
 values. This makes it possible to confirm from the UI that the browser is
 seeing the freshly deployed container rather than a stale image or cached page.
