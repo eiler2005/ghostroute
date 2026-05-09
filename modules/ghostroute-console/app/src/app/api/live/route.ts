@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
+import { clearDerivedCache } from "@/lib/server/selectors/shell";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 function compact({ raw, evidence, evidence_json, ...row }: Record<string, any>) {
   return row;
@@ -8,6 +12,7 @@ function compact({ raw, evidence, evidence_json, ...row }: Record<string, any>) 
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams;
+  if (search.get("fresh") === "1") clearDerivedCache();
   const filters = {
     route: search.get("route") || "all",
     channel: search.get("channel") || "all",

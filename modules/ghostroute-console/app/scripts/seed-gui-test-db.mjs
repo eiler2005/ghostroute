@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { ensureConsoleSchema, rebuildPreparedWindows } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const defaultDataDir = path.resolve(appDir, "..", "data", "gui-test");
@@ -598,8 +599,10 @@ const db = new Database(dbFile);
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 10000");
 createSchema(db);
+ensureConsoleSchema(db);
 db.transaction(() => seed(db))();
+rebuildPreparedWindows(db);
 db.close();
 
 console.log(`seeded GUI test DB: ${dbFile}`);
-console.log("rows: flow_sessions=320 dns_query_log=260 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3");
+console.log("rows: flow_sessions=320 dns_query_log=260 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3 prepared_windows=today/week/month");

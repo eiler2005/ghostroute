@@ -211,6 +211,10 @@ Core read models are rebuilt from factual snapshots:
 | `dns_query_log` | DNS Query Log and DNS-interest context. |
 | `device_inventory` | Clients inventory, attribution and selected-device detail. |
 | `alarm_events` | Alarm Center evidence and operator state overlay. |
+| `client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily` | Prepared client-first traffic aggregates for Dashboard, Clients, Budget and week/month windows. |
+| `dns_log_5min` | Prepared DNS query aggregate for DNS Query Log and DNS-interest counts. |
+| `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector. |
+| `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads. |
 | `console_page_summaries` | Prepared Health/Live/mobile summaries for fast request paths. |
 | `read_model_state` | Rebuild freshness, source version and cache keys. |
 | `console_settings` | Non-secret settings and runtime posture. |
@@ -226,6 +230,20 @@ Total = Via VPS + Direct + Unknown
 unproven bytes stay `Unknown`. Destination views keep concrete destination rows
 separate from explicit unattributed buckets, so attribution gaps remain visible
 instead of being silently converted into invented sites.
+
+The collector stores timestamps in UTC and derives UI windows in Moscow local
+time. `today`, `week` and `month` are rebuilt into prepared aggregate tables and
+`traffic_window_snapshots` after each collection. Week/month request paths must
+read those prepared entities and must not scan raw `normalized_flows`,
+`normalized_dns`, `events` or snapshot payloads. If a prepared historical window
+is absent, the UI should render a bounded empty/fallback state until the next
+collector rebuild rather than doing heavy request-time work.
+
+Operational pruning keeps raw normalized traffic/DNS/live rows bounded by
+retention defaults while the aggregate/read-model tables carry the UI history.
+Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
+troubleshooting window may be stripped once a newer payload of the same type is
+available.
 
 Private client identity lives in gitignored
 `modules/ghostroute-console/data/device-attribution.json` or the VPS runtime
@@ -249,7 +267,8 @@ npm run dev:gui
 Use the local UI to inspect desktop wide, laptop and mobile layouts. The seeded
 data includes enough flows, DNS rows, clients, live events and dashboard
 analytics to test pagination, filters, charts, horizontal scroll and mobile
-pages without waiting for real snapshots.
+pages without waiting for real snapshots. Seeding also rebuilds prepared
+today/week/month traffic windows.
 
 ## Testing
 
@@ -261,6 +280,10 @@ Module-owned checks live under `modules/ghostroute-console/app`. The root
 cd modules/ghostroute-console/app
 npm test
 npm run build
+npm run verify:timezone
+GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run verify:aggregates
+GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run bench:dashboard
+GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run report:db-size
 npm run test:e2e:gui
 npm run test:perf
 ```
@@ -281,6 +304,12 @@ and JSON contracts. It must not contain timing assertions.
 `test:perf` is the only local Playwright suite with timing budgets. Public
 operator-network or VPN curl timings are deployment diagnostics, not
 deterministic Playwright gates.
+
+`verify:timezone` protects UTC-storage/MSK-window math. `verify:aggregates`
+checks that prepared windows exist and reconcile to dashboard attribution
+coverage. `bench:dashboard` reads Dashboard from prepared windows repeatedly and
+fails if request-time reads regress. `report:db-size` prints SQLite table sizes
+for retention review.
 
 For one local pre-deploy gate:
 

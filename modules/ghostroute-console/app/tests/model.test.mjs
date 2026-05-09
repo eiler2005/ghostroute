@@ -7,7 +7,14 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 const normalizeModule = await import(new URL("../scr" + "ipts/lib/normalize.mjs", import.meta.url));
-const { ensureConsoleSchema, normalizeSnapshot, rebuildHourlyAggregates, rebuildObservabilityReadModels } = normalizeModule;
+const {
+  ensureConsoleSchema,
+  normalizeSnapshot,
+  pruneOperationalTables,
+  rebuildHourlyAggregates,
+  rebuildObservabilityReadModels,
+  rebuildPreparedWindows,
+} = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
 const { deviceRole, displayDestination, trafficClassFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
@@ -26,6 +33,8 @@ const {
 } = trafficWindowModule;
 const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
 const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
+const timeWindowModule = await import(new URL("../src/lib/time/window.mjs", import.meta.url));
+const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
@@ -268,9 +277,15 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
     }],
   });
   assert.equal(db.prepare("select count(*) as count from normalized_catalog").get().count, 2);
-  rebuildHourlyAggregates(db);
   const readModels = rebuildObservabilityReadModels(db);
+  rebuildPreparedWindows(db, "2026-04-29T00:05:00Z");
+  rebuildHourlyAggregates(db);
   assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from client_traffic_hourly").get().count > 0, true);
+  assert.equal(db.prepare("select count(*) as count from traffic_window_snapshots where kind = 'dashboard' and window in ('today','week','month')").get().count, 3);
+  const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);
+  assert.equal(preparedDashboard.prepared, true);
+  assert.equal(preparedDashboard.window, "today");
   assert.equal(readModels.flowCount, 1);
   assert.equal(db.prepare("select policy from flow_sessions where destination = 'telegram.org'").get().policy, "STEALTH_DOMAINS");
   const sessionFlow = db.prepare("select dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence from flow_sessions where destination = 'telegram.org'").get();
@@ -290,13 +305,18 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "dns_log_5min", "top_clients_window", "top_destinations_window", "traffic_window_snapshots"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
+  assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 7").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 8").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'unknown_bytes'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'traffic_class'").get());
   db.close();
 });
 
@@ -420,6 +440,60 @@ test("traffic class separates client, service background and attribution gaps", 
   assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
   assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
   assert.equal(trafficClassFor({ destination: "Unknown/Unattributed LAN-Wi-Fi", bytes: 1024, accounting_bucket: true }), "unclassified");
+});
+
+test("normalization keeps signed unknown bytes and records counter drift", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-drift-"));
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  ensureConsoleSchema(db);
+  normalizeSnapshot(db, 1, "traffic", "2026-05-09T10:00:00Z", {
+    generated_at: "2026-05-09T10:00:00Z",
+    source: { command: "traffic-report", period: "today" },
+    app_flows: [{
+      client: "client-a",
+      destination: "drift.example.invalid",
+      route: "Mixed",
+      bytes: 100,
+      via_vps_bytes: 80,
+      direct_bytes: 40,
+      confidence: "exact",
+    }],
+  });
+  const row = db.prepare("select traffic_class, via_vps_bytes, direct_bytes, unknown_bytes from normalized_flows").get();
+  assert.equal(row.traffic_class, "client");
+  assert.equal(row.via_vps_bytes, 80);
+  assert.equal(row.direct_bytes, 40);
+  assert.equal(row.unknown_bytes, -20);
+  assert.ok(db.prepare("select 1 from collector_errors where type = 'counter_drift'").get());
+  db.close();
+});
+
+test("operational pruning keeps raw tables bounded after prepared windows exist", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-prune-"));
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  ensureConsoleSchema(db);
+  normalizeSnapshot(db, 1, "traffic", "2026-04-01T10:00:00Z", {
+    generated_at: "2026-04-01T10:00:00Z",
+    source: { command: "traffic-report", period: "today" },
+    app_flows: [{ client: "old-client", destination: "old.example.invalid", route: "VPS", bytes: 100 }],
+  });
+  normalizeSnapshot(db, 2, "traffic", "2026-05-09T10:00:00Z", {
+    generated_at: "2026-05-09T10:00:00Z",
+    source: { command: "traffic-report", period: "today" },
+    app_flows: [{ client: "new-client", destination: "new.example.invalid", route: "VPS", bytes: 100 }],
+  });
+  const pruned = pruneOperationalTables(db, "2026-05-09T12:00:00Z");
+  assert.equal(pruned.normalized_flows > 0, true);
+  assert.equal(db.prepare("select count(*) as count from normalized_flows where client = 'old-client'").get().count, 0);
+  assert.equal(db.prepare("select count(*) as count from normalized_flows where client = 'new-client'").get().count, 1);
+  db.close();
+});
+
+test("time helper produces stable MSK windows over UTC storage", () => {
+  assert.equal(toMskKey("2026-05-09T10:17:42.000Z", "5min"), "2026-05-09T13:15");
+  assert.equal(bucketStartUtc("2026-05-09T10:17:42.000Z", "5min"), "2026-05-09T10:15:00.000Z");
+  assert.equal(toUtcIsoFromMskKey("2026-05-09", "day"), "2026-05-08T21:00:00.000Z");
+  assert.deepEqual(mskWindowBounds("week", "2026-05-09T10:17:42.000Z").startMskKey, "2026-05-03");
 });
 
 test("dashboard analytics derives traffic charts quotas and mobile LTE usage from flows", () => {

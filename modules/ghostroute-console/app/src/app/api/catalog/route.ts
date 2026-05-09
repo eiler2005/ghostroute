@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { buildCatalogModel } from "@/lib/server/selectors/catalog";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 300;
+
 export async function GET() {
   const model = buildCatalogModel();
   const catalog = model.catalog;

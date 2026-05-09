@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { buildBudgetModel } from "@/lib/server/selectors/budget";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 300;
+
 function quotaBytes(bytesEnv: string, gbEnv: string) {
   const rawBytes = Number(process.env[bytesEnv] || 0);
   if (Number.isFinite(rawBytes) && rawBytes > 0) return rawBytes;

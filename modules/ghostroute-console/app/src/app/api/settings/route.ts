@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { buildSettingsModel } from "@/lib/server/selectors/settings";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 300;
+
 export async function GET() {
   const model = buildSettingsModel();
   return NextResponse.json({

@@ -29,8 +29,27 @@ attribution later.
   hours overnight.
 - Live events are event snapshots, not a continuous per-second stream. The UI and
   collector default to about 10 minutes to keep the small VPS calm.
-- Week/month views must read saved snapshots or aggregates. They must not launch
-  heavy on-demand full reports.
+- Week/month views must read prepared aggregate tables and
+  `traffic_window_snapshots`. They must not launch heavy on-demand full reports
+  or scan raw normalized rows on the request path.
+
+## Prepared Traffic Windows
+
+- Source timestamps are stored in UTC; UI windows are keyed in Moscow local time.
+  `today` starts at Moscow midnight, `week` covers the current Moscow day plus
+  the previous six days, and `month` starts at the first Moscow day of the month.
+- After each collection, Console rebuilds `client_traffic_5min`,
+  `client_traffic_hourly`, `client_traffic_daily`, `dns_log_5min`,
+  `top_clients_window`, `top_destinations_window` and
+  `traffic_window_snapshots` for `today`, `week` and `month`.
+- Dashboard, Clients, DNS and report JSON should read prepared windows first.
+  Missing historical prepared data should produce a bounded empty/fallback state,
+  not a raw-table scan.
+- The rollback switch for diagnosis is
+  `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`. It is a temporary compatibility
+  path, not the steady-state architecture for large databases.
+- Raw operational rows remain short-lived troubleshooting data. Client traffic
+  history for the UI belongs in the aggregate/read-model tables.
 
 ## Navigation Performance
 
@@ -40,7 +59,7 @@ attribution later.
   Health Center, Catalog, Budget, Live, Reports and Settings.
 - Read-only derived snapshot data uses a short in-process TTL cache keyed by
   lightweight snapshot metadata, active filters and pagination args. The default
-  TTL is 60 seconds and can be disabled with
+  TTL is 300 seconds and can be disabled with
   `GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS=0`.
 - Health, Live, mobile pages and JSON APIs must build their chrome from
   prepared read models. Mobile Health reads `console_page_summaries.health_mobile`
@@ -70,7 +89,8 @@ attribution later.
   for local performance budgets against the same synthetic data.
 - Refresh the seeded GUI data layer before local checks whenever page models,
   selectors, cache keys or read-model rendering change: run
-  `npm run seed:gui` from `modules/ghostroute-console/app`.
+  `npm run seed:gui` from `modules/ghostroute-console/app`. The seed step also
+  rebuilds the prepared today/week/month windows used by GUI/API tests.
 - The seeded database lives under the gitignored
   `modules/ghostroute-console/data/gui-test/` path. It should contain enough
   Flow Explorer, DNS Query Log, Clients and Live rows to verify dense tables,
@@ -78,6 +98,9 @@ attribution later.
 - Deploy comes after local visual checks and tests pass. The deployment playbook
   must continue to smoke more than `/api/health`: it should cover the key UI and
   API routes that changed.
+- Data-layer changes should also pass `npm run verify:timezone`,
+  `GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run verify:aggregates` and
+  `GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run bench:dashboard`.
 - Every deployed image carries both `GHOSTROUTE_CONSOLE_BUILD_COMMIT` and
   `GHOSTROUTE_CONSOLE_BUILD_AT`. The source strip shows `build <commit> ·
   <date>` so browser checks can confirm the newly deployed container is serving

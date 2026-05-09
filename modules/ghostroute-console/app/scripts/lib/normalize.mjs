@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
+import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
+import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
+import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey } from "../../src/lib/time/window.mjs";
 
-const MIGRATION_VERSION = 7;
+const MIGRATION_VERSION = 8;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -91,7 +94,64 @@ function destinationIp(row) {
 }
 
 function eventTimestamp(row, collectedAt) {
-  return text(row.ts || row.timestamp || row.occurred_at || collectedAt);
+  return parseSourceTimestamp(row.ts || row.timestamp || row.occurred_at || collectedAt);
+}
+
+function hasNumber(value) {
+  return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    if (hasNumber(value)) return number(value);
+  }
+  return 0;
+}
+
+function signedByteSplit(row, route = row?.route, totalBytes = number(row?.bytes || row?.total_bytes)) {
+  const evidence = row?.evidence_json ? parseJson(row.evidence_json, {}) : row?.raw || row || {};
+  let explicitVps = hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes) || hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes);
+  let explicitDirect = hasNumber(row?.direct_bytes) || hasNumber(row?.wan_bytes) || hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes);
+  let explicitUnknown = hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes) || hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes);
+  let viaVpsBytes = firstNumber(row?.via_vps_bytes, row?.reality_bytes, evidence.via_vps_bytes, evidence.reality_bytes);
+  let directBytes = firstNumber(row?.direct_bytes, row?.wan_bytes, evidence.direct_bytes, evidence.wan_bytes);
+  let unknownBytes = firstNumber(row?.unknown_bytes, row?.unresolved_bytes, evidence.unknown_bytes, evidence.unresolved_bytes);
+  if (totalBytes > 0 && viaVpsBytes === 0 && directBytes === 0 && unknownBytes === 0) {
+    explicitVps = hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes) || hasNumber(row?.reality_bytes);
+    explicitDirect = hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes) || hasNumber(row?.wan_bytes);
+    explicitUnknown = hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes) || hasNumber(row?.unresolved_bytes);
+  }
+  const routeValue = text(route || row?.route, "Unknown").toLowerCase();
+  if (!explicitVps && !explicitDirect && !explicitUnknown) {
+    if (routeValue === "vps") viaVpsBytes = totalBytes;
+    else if (routeValue === "direct") directBytes = totalBytes;
+    else unknownBytes = totalBytes;
+  } else if (!explicitUnknown) {
+    unknownBytes = totalBytes - viaVpsBytes - directBytes;
+  }
+  return { totalBytes, viaVpsBytes, directBytes, unknownBytes };
+}
+
+function flowTrafficClass(row) {
+  return trafficClassFor({ ...row, raw: row?.raw || row });
+}
+
+function insertCollectorWarning(db, type, collectedAt, message, evidence = {}) {
+  db.prepare(
+    "insert into collector_errors(run_id, type, collected_at, command, message, output_sample) values (?, ?, ?, ?, ?, ?)"
+  ).run(null, type, collectedAt || new Date().toISOString(), "normalize", message, JSON.stringify(evidence).slice(0, 1000));
+}
+
+function maybeLogCounterDrift(db, collectedAt, row, split) {
+  if (split.unknownBytes >= 0) return;
+  insertCollectorWarning(db, "counter_drift", collectedAt, "traffic counters exceed total bytes", {
+    client: row.client || row.label || "",
+    destination: row.destination || row.domain || row.app || "",
+    total_bytes: split.totalBytes,
+    via_vps_bytes: split.viaVpsBytes,
+    direct_bytes: split.directBytes,
+    unknown_bytes: split.unknownBytes,
+  });
 }
 
 export function ensureConsoleSchema(db) {
@@ -465,6 +525,121 @@ export function ensureConsoleSchema(db) {
         rebuilt_at text not null,
         payload_json text not null
       );
+      create table if not exists client_traffic_5min (
+        bucket_start_utc text not null,
+        bucket_msk_key text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        connections integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (bucket_start_utc, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
+      create table if not exists client_traffic_hourly (
+        hour_msk_key text not null,
+        hour_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_daily (
+        day_msk_key text not null,
+        day_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists dns_log_5min (
+        bucket_start_utc text not null,
+        bucket_msk_key text not null,
+        client_key text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (bucket_start_utc, client_key, domain, qtype, catalog_status, route)
+      );
+      create table if not exists top_clients_window (
+        window text not null,
+        traffic_class text not null default 'client',
+        rank integer not null,
+        client_key text not null default '',
+        label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        computed_at_utc text not null,
+        primary key (window, traffic_class, rank)
+      );
+      create table if not exists top_destinations_window (
+        window text not null,
+        traffic_class text not null default 'client',
+        rank integer not null,
+        destination text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        bytes integer not null default 0,
+        flows integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        computed_at_utc text not null,
+        primary key (window, traffic_class, rank)
+      );
+      create table if not exists traffic_window_snapshots (
+        kind text not null,
+        window text not null,
+        traffic_class text not null default 'client',
+        window_start_utc text not null,
+        window_end_utc text not null,
+        source_version text not null default '',
+        computed_at_utc text not null,
+        payload_json text not null,
+        primary key (kind, window, traffic_class)
+      );
   `);
   addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -485,6 +660,10 @@ export function ensureConsoleSchema(db) {
       event_ts: "text not null default ''",
       ts_confidence: "text not null default ''",
       source_log: "text not null default ''",
+      traffic_class: "text not null default 'client'",
+      via_vps_bytes: "integer not null default 0",
+      direct_bytes: "integer not null default 0",
+      unknown_bytes: "integer not null default 0",
     },
     normalized_dns: {
       answer_ip: "text not null default ''",
@@ -499,6 +678,10 @@ export function ensureConsoleSchema(db) {
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
       ts_confidence: "text not null default ''",
+      traffic_class: "text not null default 'client'",
+      via_vps_bytes: "integer not null default 0",
+      direct_bytes: "integer not null default 0",
+      unknown_bytes: "integer not null default 0",
     },
     events: {
       event_id: "text not null default ''",
@@ -542,16 +725,52 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_dns_query_log_filters on dns_query_log(route, catalog_status, status, client, domain);
     create index if not exists idx_device_inventory_activity on device_inventory(last_seen desc, total_bytes desc, route);
     create index if not exists idx_alarm_events_status on alarm_events(status, severity, collected_at desc);
+    create index if not exists idx_normalized_flows_fast on normalized_flows(snapshot_id, collected_at desc, event_ts desc, client, route, channel, confidence);
+    create index if not exists idx_normalized_flows_destination on normalized_flows(snapshot_id, destination, destination_ip, dns_qname);
+    create index if not exists idx_normalized_devices_fast on normalized_devices(collected_at desc, label, device_id, channel, route);
+    create index if not exists idx_ct5_msk on client_traffic_5min(bucket_msk_key desc);
+    create index if not exists idx_ct5_class_msk on client_traffic_5min(traffic_class, bucket_msk_key desc);
+    create index if not exists idx_ct5_client_msk on client_traffic_5min(client_key, bucket_msk_key desc);
+    create index if not exists idx_cth_msk on client_traffic_hourly(hour_msk_key desc);
+    create index if not exists idx_cth_class_msk on client_traffic_hourly(traffic_class, hour_msk_key desc);
+    create index if not exists idx_ctd_msk on client_traffic_daily(day_msk_key desc);
+    create index if not exists idx_dl5_msk on dns_log_5min(bucket_msk_key desc);
+    create index if not exists idx_dl5_domain on dns_log_5min(domain, bucket_msk_key desc);
+    create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
   `);
 
-  db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-    MIGRATION_VERSION,
-    new Date().toISOString()
-  );
+  for (const version of [6, 7, MIGRATION_VERSION]) {
+    db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
+      version,
+      new Date().toISOString()
+    );
+  }
 }
 
 export function rebuildHourlyAggregates(db) {
   db.prepare("delete from hourly_traffic").run();
+  const preparedRows = db
+    .prepare(
+      `select hour_start_utc as hour_key,
+              coalesce(nullif(route, ''), 'Unknown') as route,
+              sum(bytes) as bytes,
+              sum(flows) as flows,
+              count(distinct nullif(client_key, '')) as clients
+         from client_traffic_hourly
+        group by hour_key, route`
+    )
+    .all();
+  if (preparedRows.length > 0) {
+    const insert = db.prepare(
+      `insert into hourly_traffic(hour_key, route, bytes, flows, clients, updated_at)
+       values (?, ?, ?, ?, ?, ?)`
+    );
+    const now = new Date().toISOString();
+    for (const row of preparedRows) {
+      insert.run(row.hour_key, row.route || "Unknown", number(row.bytes), number(row.flows), number(row.clients), now);
+    }
+    return;
+  }
   const rows = db
     .prepare(
       `select substr(collected_at, 1, 13) || ':00:00Z' as hour_key,
@@ -571,6 +790,517 @@ export function rebuildHourlyAggregates(db) {
   for (const row of rows) {
     insert.run(row.hour_key, row.route || "Unknown", number(row.bytes), number(row.flows), number(row.clients), now);
   }
+}
+
+function flowRollupKey(row) {
+  return [
+    row.raw?.flow_group_key,
+    row.raw?.accounting_bucket ? "bucket" : "",
+    row.channel,
+    row.raw?.profile,
+    row.raw?.client || row.client,
+    row.destination,
+    row.route,
+    row.confidence,
+    row.traffic_class,
+  ].filter(Boolean).join("|").toLowerCase();
+}
+
+function routeFromAggregate(row) {
+  const vps = number(row.via_vps_bytes);
+  const direct = number(row.direct_bytes);
+  const unknown = number(row.unknown_bytes);
+  const count = [vps > 0, direct > 0, unknown > 0].filter(Boolean).length;
+  if (count > 1) return "Mixed";
+  if (vps > 0) return "VPS";
+  if (direct > 0) return "Direct";
+  if (unknown > 0) return "Unknown";
+  return text(row.route, "Unknown");
+}
+
+function flowFactsFromNormalized(db, startUtc, endUtc) {
+  let sourceRows = db
+    .prepare(
+      `select rowid, *
+         from normalized_flows
+        where collected_at >= ? and collected_at <= ?
+        order by collected_at asc, rowid asc`
+    )
+    .all(startUtc, endUtc);
+  if (sourceRows.length === 0) {
+    sourceRows = db
+      .prepare(
+        `select rowid, snapshot_id, 'traffic' as snapshot_type, collected_at, client, client_ip, channel,
+                destination, destination_ip, destination_port, route, confidence, bytes, connections,
+                protocol, dns_qname, dns_answer_ip, sni, outbound, matched_rule, policy as rule_set,
+                egress_ip, egress_asn, egress_country, last_seen as event_ts, ts_confidence,
+                source_kind as source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes,
+                evidence_json as raw_json
+           from flow_sessions
+          where collected_at >= ? and collected_at <= ?
+          order by collected_at asc, rowid asc`
+      )
+      .all(startUtc, endUtc);
+  }
+  const rows = sourceRows.map((row) => {
+      const raw = parseJson(row.raw_json, {});
+      const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
+      const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
+      const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
+      const clientKey = text(row.client || raw.profile || raw.client || row.client_ip || "Unknown client");
+      return {
+        rowid: row.rowid,
+        snapshot_id: row.snapshot_id,
+        collected_at: parseSourceTimestamp(row.collected_at),
+        last_seen: parseSourceTimestamp(row.event_ts || row.collected_at),
+        client_key: clientKey,
+        client_label: clientKey,
+        channel: text(row.channel || inferChannel(raw), "Unknown"),
+        destination,
+        destination_key: destination,
+        route: text(row.route || routeFromTraffic(raw), "Unknown"),
+        confidence: confidence(row.confidence),
+        traffic_class: trafficClass,
+        bytes: split.totalBytes,
+        via_vps_bytes: split.viaVpsBytes,
+        direct_bytes: split.directBytes,
+        unknown_bytes: split.unknownBytes,
+        connections: number(row.connections),
+        accounting_bucket: Boolean(raw.accounting_bucket),
+        raw,
+      };
+    });
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = flowRollupKey(row);
+    const list = grouped.get(key) || [];
+    list.push(row);
+    grouped.set(key, list);
+  }
+  const facts = [];
+  for (const list of grouped.values()) {
+    const ordered = list.sort((a, b) => Date.parse(a.collected_at) - Date.parse(b.collected_at));
+    let previous = null;
+    for (const sample of ordered) {
+      const first = !previous;
+      const bytes = first ? sample.bytes : Math.max(0, sample.bytes - previous.bytes);
+      const viaVps = first ? sample.via_vps_bytes : Math.max(0, sample.via_vps_bytes - previous.via_vps_bytes);
+      const direct = first ? sample.direct_bytes : Math.max(0, sample.direct_bytes - previous.direct_bytes);
+      const unknown = first ? sample.unknown_bytes : bytes - viaVps - direct;
+      previous = sample;
+      if (bytes <= 0 && viaVps <= 0 && direct <= 0 && unknown <= 0 && sample.connections <= 0) continue;
+      facts.push({
+        ...sample,
+        bytes,
+        total_bytes: bytes,
+        via_vps_bytes: viaVps,
+        direct_bytes: direct,
+        unknown_bytes: unknown,
+        route: routeFromAggregate({ ...sample, via_vps_bytes: viaVps, direct_bytes: direct, unknown_bytes: unknown }),
+      });
+    }
+  }
+  return facts;
+}
+
+function addToGroup(map, key, seed, row) {
+  const current = map.get(key) || { ...seed, bytes: 0, total_bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, observed_bytes: 0, attributed_bytes: 0, flows: 0, connections: 0 };
+  current.bytes += number(row.bytes);
+  current.total_bytes += number(row.bytes);
+  current.via_vps_bytes += number(row.via_vps_bytes);
+  current.direct_bytes += number(row.direct_bytes);
+  current.unknown_bytes += number(row.unknown_bytes);
+  current.observed_bytes += number(row.observed_bytes ?? (row.traffic_class === "client" ? row.bytes : 0));
+  current.attributed_bytes += number(row.attributed_bytes ?? (row.accounting_bucket ? 0 : row.bytes));
+  current.flows += number(row.flows || 1);
+  current.connections += number(row.connections);
+  current.route = routeFromAggregate(current);
+  map.set(key, current);
+  return current;
+}
+
+function rebuildTrafficAggregates(db, facts, now) {
+  db.prepare("delete from client_traffic_5min").run();
+  db.prepare("delete from client_traffic_hourly").run();
+  db.prepare("delete from client_traffic_daily").run();
+  const insert5 = db.prepare(`
+    insert into client_traffic_5min(bucket_start_utc, bucket_msk_key, client_key, client_label, channel, route,
+      confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, flows,
+      connections, observed_bytes, attributed_bytes, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const buckets = new Map();
+  for (const row of facts) {
+    const bucket = bucketStartUtc(row.collected_at, "5min");
+    const key = [bucket, row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key].join("|");
+    addToGroup(buckets, key, {
+      bucket_start_utc: bucket,
+      bucket_msk_key: toMskKey(bucket, "5min"),
+      client_key: row.client_key,
+      client_label: row.client_label,
+      channel: row.channel,
+      route: row.route,
+      confidence: row.confidence,
+      traffic_class: row.traffic_class,
+      destination_key: row.destination_key,
+      observed_bytes: 0,
+      attributed_bytes: 0,
+    }, row);
+  }
+  for (const row of buckets.values()) {
+    insert5.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, row.bytes, row.via_vps_bytes, row.direct_bytes, row.unknown_bytes, row.flows, row.connections, row.observed_bytes, row.attributed_bytes, now);
+  }
+
+  const insertHour = db.prepare(`
+    insert into client_traffic_hourly(hour_msk_key, hour_start_utc, client_key, client_label, channel, route,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+      attributed_bytes, flows, clients, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const hourly = db.prepare(`
+    select substr(bucket_msk_key, 1, 13) as hour_msk_key,
+           min(bucket_start_utc) as hour_start_utc,
+           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class,
+           sum(bytes) as bytes, sum(via_vps_bytes) as via_vps_bytes, sum(direct_bytes) as direct_bytes,
+           sum(unknown_bytes) as unknown_bytes, sum(observed_bytes) as observed_bytes,
+           sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
+           count(distinct client_key) as clients
+      from client_traffic_5min
+     group by hour_msk_key, client_key, channel, route, confidence, traffic_class
+  `).all();
+  for (const row of hourly) {
+    insertHour.run(row.hour_msk_key, row.hour_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
+  }
+
+  const insertDay = db.prepare(`
+    insert into client_traffic_daily(day_msk_key, day_start_utc, client_key, client_label, channel, route,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+      attributed_bytes, flows, clients, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const daily = db.prepare(`
+    select substr(hour_msk_key, 1, 10) as day_msk_key,
+           min(hour_start_utc) as day_start_utc,
+           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class,
+           sum(bytes) as bytes, sum(via_vps_bytes) as via_vps_bytes, sum(direct_bytes) as direct_bytes,
+           sum(unknown_bytes) as unknown_bytes, sum(observed_bytes) as observed_bytes,
+           sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
+           count(distinct client_key) as clients
+      from client_traffic_hourly
+     group by day_msk_key, client_key, channel, route, confidence, traffic_class
+  `).all();
+  for (const row of daily) {
+    insertDay.run(row.day_msk_key, row.day_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
+  }
+}
+
+function rebuildDnsAggregates(db, now) {
+  db.prepare("delete from dns_log_5min").run();
+  const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
+  const catalogMatch = buildCatalogMatcher(catalogRows);
+  const rows = db.prepare("select rowid, * from normalized_dns order by collected_at asc, rowid asc").all();
+  const grouped = new Map();
+  for (const row of rows) {
+    const bucket = bucketStartUtc(row.event_ts || row.collected_at, "5min");
+    const match = catalogMatchFor(row.domain, catalogMatch);
+    const catalogStatusValue = catalogStatus(match);
+    const route = routeForDns(match, row);
+    const key = [bucket, row.client || "", row.domain || "", row.qtype || "", catalogStatusValue, route].join("|");
+    const current = grouped.get(key) || {
+      bucket_start_utc: bucket,
+      bucket_msk_key: toMskKey(bucket, "5min"),
+      client_key: text(row.client),
+      domain: text(row.domain),
+      qtype: text(row.qtype),
+      catalog_status: catalogStatusValue,
+      route,
+      confidence: confidence(row.confidence, "dns-interest"),
+      query_count: 0,
+    };
+    current.query_count += number(row.count || 1);
+    grouped.set(key, current);
+  }
+  const insert = db.prepare(`
+    insert into dns_log_5min(bucket_start_utc, bucket_msk_key, client_key, domain, qtype, catalog_status,
+      route, confidence, query_count, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of grouped.values()) {
+    insert.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
+  }
+}
+
+function factsForWindow(facts, window, now) {
+  const bounds = mskWindowBounds(window, now);
+  const start = Date.parse(bounds.startUtc);
+  const end = Date.parse(bounds.endUtc);
+  return facts.filter((row) => {
+    const ts = Date.parse(row.collected_at || row.last_seen || "");
+    return Number.isFinite(ts) && ts >= start && ts <= end;
+  });
+}
+
+function totalsForFacts(facts) {
+  return facts.reduce((acc, row) => {
+    acc.observedBytes += number(row.bytes);
+    acc.viaVpsBytes += number(row.via_vps_bytes);
+    acc.directBytes += number(row.direct_bytes);
+    acc.unknownBytes += number(row.unknown_bytes);
+    return acc;
+  }, { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 });
+}
+
+function latestAuthoritativeTotals(db, window, now) {
+  if (window !== "today") return null;
+  const today = toMskKey(now, "day");
+  const rows = db
+    .prepare("select collected_at, payload_json from snapshots where type in ('traffic_summary','traffic') order by collected_at desc limit 50")
+    .all();
+  for (const row of rows) {
+    if (toMskKey(row.collected_at, "day") !== today) continue;
+    const payload = parseJson(row.payload_json, {});
+    const totals = payload.totals || {};
+    if (!totals.client_observed_bytes && !totals.via_vps_bytes && !totals.direct_bytes) continue;
+    return {
+      observedBytes: number(totals.client_observed_bytes),
+      viaVpsBytes: number(totals.via_vps_bytes),
+      directBytes: number(totals.direct_bytes),
+      unknownBytes: hasNumber(totals.unknown_bytes)
+        ? number(totals.unknown_bytes)
+        : number(totals.client_observed_bytes) - number(totals.via_vps_bytes) - number(totals.direct_bytes),
+      periodLabel: trafficPeriodLabelForPayload(payload, window),
+      windowLabel: trafficWindowLabelForPayload(payload, window),
+    };
+  }
+  return null;
+}
+
+function trafficPeriodLabelForPayload(payload, window) {
+  return text(payload?.period_label || payload?.source?.period || payload?.period || window, window);
+}
+
+function trafficWindowLabelForPayload(payload, window) {
+  return text(payload?.window_label || payload?.traffic_window || payload?.source?.window || "", window);
+}
+
+function groupRows(rows, keyFor, seedFor) {
+  const grouped = new Map();
+  for (const row of rows) addToGroup(grouped, keyFor(row), seedFor(row), row);
+  return Array.from(grouped.values()).map((row) => ({ ...row, route: routeFromAggregate(row) }));
+}
+
+function preparedRowsForWindow(rows, trafficClass = "client") {
+  return rows.filter((row) => {
+    if (!trafficClass || trafficClass === "all") return true;
+    if (row.traffic_class === trafficClass) return true;
+    return trafficClass === "client" && row.accounting_bucket;
+  });
+}
+
+function buildPreparedWindowPayload(db, window, facts, now) {
+  const bounds = mskWindowBounds(window, now);
+  const rows = factsForWindow(facts, window, now);
+  const classRows = preparedRowsForWindow(rows, "client");
+  const allRows = preparedRowsForWindow(rows, "all");
+  const clientRows = groupRows(
+    classRows,
+    (row) => row.client_key,
+    (row) => ({
+      id: row.client_key,
+      device_id: row.client_key,
+      client_key: row.client_key,
+      client_label: row.client_label,
+      label: row.client_label,
+      channel: row.channel,
+      confidence: row.confidence,
+      last_seen: row.last_seen || row.collected_at,
+      traffic_window_active: true,
+      traffic_collected_at: row.last_seen || row.collected_at,
+    })
+  ).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
+  const flowRows = groupRows(
+    allRows,
+    (row) => [row.client_key, row.destination_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"),
+    (row) => ({
+      id: `prepared:${window}:${row.client_key}:${row.destination_key}:${row.route}:${row.traffic_class}`,
+      client: row.client_label,
+      client_key: row.client_key,
+      client_label: row.client_label,
+      channel: row.channel,
+      destination: row.destination_key,
+      destinationLabel: row.destination_key,
+      route: row.route,
+      confidence: row.confidence,
+      trafficClass: row.traffic_class,
+      traffic_class: row.traffic_class,
+      accounting_bucket: row.accounting_bucket,
+      last_seen: row.last_seen || row.collected_at,
+      collected_at: row.collected_at,
+    })
+  ).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 250);
+  const factTotals = totalsForFacts(classRows);
+  const authoritative = latestAuthoritativeTotals(db, window, now);
+  const totals = {
+    ...(authoritative || factTotals),
+    periodLabel: authoritative?.periodLabel || window,
+    windowLabel: authoritative?.windowLabel || mskWindowLabel(window, bounds),
+  };
+  const destinationObserved = classRows.reduce((sum, row) => sum + number(row.bytes), 0);
+  const destinationAttributed = classRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + number(row.bytes), 0);
+  const dashboardRows = flowRows.map((row) => ({
+    ...row,
+    bytes: number(row.bytes),
+    total_bytes: number(row.total_bytes || row.bytes),
+    via_vps_bytes: number(row.via_vps_bytes),
+    direct_bytes: number(row.direct_bytes),
+    unknown_bytes: number(row.unknown_bytes),
+    last_seen: row.last_seen || row.collected_at,
+  }));
+  return {
+    generatedAt: now,
+    prepared: true,
+    window,
+    windowStartUtc: bounds.startUtc,
+    windowEndUtc: bounds.endUtc,
+    totals,
+    destinationAttributionCoverage: {
+      observed_bytes: destinationObserved,
+      attributed_bytes: destinationAttributed,
+      unattributed_bytes: Math.max(0, destinationObserved - destinationAttributed),
+      coverage_pct: destinationObserved > 0 ? Math.round((destinationAttributed / destinationObserved) * 1000) / 10 : 0,
+      denominator: "observed_client",
+    },
+    devices: clientRows.map((row) => ({
+      ...row,
+      total_bytes: number(row.bytes),
+      bytes: number(row.bytes),
+      route: routeFromAggregate(row),
+    })),
+    flows: dashboardRows,
+    dashboardAnalytics: buildDashboardAnalyticsFromRows(dashboardRows, {
+      now,
+      period: window,
+      vpsQuotaBytes: process.env.GHOSTROUTE_CONSOLE_VPS_QUOTA_BYTES,
+      vpsQuotaGb: process.env.GHOSTROUTE_CONSOLE_VPS_QUOTA_GB,
+      lteQuotaBytes: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_BYTES,
+      lteQuotaGb: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_GB,
+      resetDay: process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY,
+    }),
+  };
+}
+
+function writePreparedWindow(db, kind, window, trafficClass, bounds, sourceVersion, computedAt, payload) {
+  db.prepare(`
+    insert into traffic_window_snapshots(kind, window, traffic_class, window_start_utc, window_end_utc,
+      source_version, computed_at_utc, payload_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict(kind, window, traffic_class) do update set
+      window_start_utc = excluded.window_start_utc,
+      window_end_utc = excluded.window_end_utc,
+      source_version = excluded.source_version,
+      computed_at_utc = excluded.computed_at_utc,
+      payload_json = excluded.payload_json
+  `).run(kind, window, trafficClass, bounds.startUtc, bounds.endUtc, sourceVersion, computedAt, json(payload));
+}
+
+function rebuildTopWindows(db, window, payload, computedAt) {
+  db.prepare("delete from top_clients_window where window = ?").run(window);
+  db.prepare("delete from top_destinations_window where window = ?").run(window);
+  const insertClient = db.prepare(`
+    insert into top_clients_window(window, traffic_class, rank, client_key, label, channel, route, bytes,
+      via_vps_bytes, direct_bytes, unknown_bytes, flows, computed_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  (payload.devices || []).slice(0, 50).forEach((row, idx) => {
+    insertClient.run(window, "client", idx + 1, row.client_key || row.id || row.label || "", row.label || row.client_label || "", row.channel || "Unknown", row.route || "Unknown", number(row.total_bytes || row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.flows || 1), computedAt);
+  });
+  const insertDestination = db.prepare(`
+    insert into top_destinations_window(window, traffic_class, rank, destination, channel, route, bytes,
+      flows, observed_bytes, attributed_bytes, computed_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  (payload.dashboardAnalytics?.topDestinations || []).slice(0, 50).forEach((row, idx) => {
+    insertDestination.run(window, "client", idx + 1, row.label || row.destination || "", row.channel || "Unknown", row.route || "Unknown", number(row.bytes), number(row.flows || 1), number(row.bytes), row.accounting_bucket ? 0 : number(row.bytes), computedAt);
+  });
+}
+
+function rebuildDnsPreparedWindows(db, sourceVersion, computedAt) {
+  for (const window of ["today", "week", "month"]) {
+    const bounds = mskWindowBounds(window, computedAt);
+    const rows = db.prepare(`
+      select client_key as client, domain, qtype, catalog_status, route, confidence, sum(query_count) as count,
+             max(bucket_start_utc) as event_ts
+        from dns_log_5min
+       where bucket_start_utc >= ? and bucket_start_utc <= ?
+       group by client_key, domain, qtype, catalog_status, route, confidence
+       order by count desc, event_ts desc
+       limit 500
+    `).all(bounds.startUtc, bounds.endUtc);
+    writePreparedWindow(db, "dns_counts", window, "all", bounds, sourceVersion, computedAt, {
+      generatedAt: computedAt,
+      prepared: true,
+      window,
+      rows,
+      total: rows.length,
+    });
+  }
+}
+
+export function rebuildPreparedWindows(db, computedAt = new Date().toISOString()) {
+  const sourceVersion = compactSourceVersion(readModelSourceVersion(db));
+  const minBounds = mskWindowBounds("month", computedAt);
+  const facts = flowFactsFromNormalized(db, minBounds.startUtc, computedAt);
+  rebuildTrafficAggregates(db, facts, computedAt);
+  rebuildDnsAggregates(db, computedAt);
+  for (const window of ["today", "week", "month"]) {
+    const bounds = mskWindowBounds(window, computedAt);
+    const payload = buildPreparedWindowPayload(db, window, facts, computedAt);
+    writePreparedWindow(db, "dashboard", window, "client", bounds, sourceVersion, computedAt, payload);
+    writePreparedWindow(db, "clients", window, "client", bounds, sourceVersion, computedAt, {
+      generatedAt: computedAt,
+      prepared: true,
+      window,
+      rows: payload.devices,
+      total: payload.devices.length,
+    });
+    writePreparedWindow(db, "reports_llm_safe", window, "all", bounds, sourceVersion, computedAt, payload);
+    rebuildTopWindows(db, window, payload, computedAt);
+  }
+  rebuildDnsPreparedWindows(db, sourceVersion, computedAt);
+  return { factCount: facts.length, sourceVersion };
+}
+
+export function pruneOperationalTables(db, now = new Date().toISOString()) {
+  const rawDays = Math.max(1, number(process.env.GHOSTROUTE_RAW_RETENTION_DAYS || 7));
+  const serviceHours = Math.max(1, number(process.env.GHOSTROUTE_SERVICE_RAW_RETENTION_HOURS || 24));
+  const errorDays = Math.max(1, number(process.env.GHOSTROUTE_COLLECTOR_ERROR_RETENTION_DAYS || 14));
+  const cutoff = (days) => new Date(Date.parse(now) - days * 86400000).toISOString();
+  const cutoffHours = (hours) => new Date(Date.parse(now) - hours * 3600000).toISOString();
+  const rawCutoff = cutoff(rawDays);
+  const serviceCutoff = cutoffHours(serviceHours);
+  const result = {
+    normalized_flows: 0,
+    normalized_dns: 0,
+    events: 0,
+    route_decisions: 0,
+    collector_errors: 0,
+    payloads_stripped: 0,
+  };
+  result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
+  result.normalized_flows += db.prepare("delete from normalized_flows where traffic_class != 'client' and collected_at < ?").run(serviceCutoff).changes;
+  result.normalized_dns += db.prepare("delete from normalized_dns where collected_at < ?").run(rawCutoff).changes;
+  result.events += db.prepare("delete from events where occurred_at < ?").run(rawCutoff).changes;
+  result.route_decisions += db.prepare("delete from route_decisions where occurred_at < ?").run(rawCutoff).changes;
+  result.collector_errors += db.prepare("delete from collector_errors where collected_at < ?").run(cutoff(errorDays)).changes;
+  result.payloads_stripped += db.prepare(`
+    update snapshots
+       set payload_json = ''
+     where payload_json != ''
+       and type in ('traffic', 'dns', 'live')
+       and collected_at < ?
+       and id not in (select max(id) from snapshots group by type)
+  `).run(cutoffHours(24)).changes;
+  return result;
 }
 
 function readModelSourceVersion(db) {
@@ -950,9 +1680,9 @@ export function rebuildObservabilityReadModels(db) {
       insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip,
         device_key, channel, destination, destination_ip, destination_port, protocol, route, policy,
         matched_rule, outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country,
-        ts_confidence, bytes, connections, duration_seconds, duration_confidence, risk,
-        risk_reason, confidence, source_kind, evidence_json)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ts_confidence, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections,
+        duration_seconds, duration_confidence, risk, risk_reason, confidence, source_kind, evidence_json)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc limit ?").all(flowLimit);
     const flowTopDomains = new Map();
@@ -962,6 +1692,8 @@ export function rebuildObservabilityReadModels(db) {
       const risk = riskForFlow(row);
       const key = identityKey(row);
       const destination = text(row.destination || row.dns_qname || row.destination_ip, "unknown destination");
+      const rawSplit = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
+      const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       flowInsert.run(
         `flow:${row.rowid}`,
         row.snapshot_id,
@@ -987,6 +1719,10 @@ export function rebuildObservabilityReadModels(db) {
         text(row.egress_asn),
         text(row.egress_country),
         text(row.ts_confidence),
+        trafficClass,
+        rawSplit.viaVpsBytes,
+        rawSplit.directBytes,
+        rawSplit.unknownBytes,
         number(row.bytes),
         number(row.connections),
         durationSeconds(row),
@@ -1171,6 +1907,7 @@ export function rebuildObservabilityReadModels(db) {
       now
     );
 
+    rebuildPreparedWindows(db, now);
     const summarySourceVersion = compactSourceVersion(sourceVersion);
     const healthSummary = buildPreparedHealthSummary(db, now);
     const summaryInsert = db.prepare(`
@@ -1254,8 +1991,8 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   }
 
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of [...(payload.app_flows || []), ...(payload.destinations || []), ...(payload.route_events || [])]) {
     const route = text(row.route || routeFromTraffic(row));
@@ -1265,6 +2002,10 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
     const rowConfidence = confidence(row.confidence, "estimated");
     const eventTs = eventTimestamp(row, collectedAt);
     const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
+    const bytes = number(row.bytes || row.total_bytes);
+    const split = signedByteSplit(row, route, bytes);
+    const trafficClass = flowTrafficClass(row);
+    maybeLogCounterDrift(db, collectedAt, { ...row, client, destination }, split);
     flowInsert.run(
       snapshotId,
       type,
@@ -1274,7 +2015,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       destination,
       route,
       rowConfidence,
-      number(row.bytes || row.total_bytes),
+      bytes,
       number(row.connections || row.total_connections),
       text(row.protocol || ""),
       text(row.client_ip || row.ip || ""),
@@ -1292,6 +2033,10 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       eventTs,
       text(row.ts_confidence || ""),
       text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
+      trafficClass,
+      split.viaVpsBytes,
+      split.directBytes,
+      split.unknownBytes,
       json(row)
     );
     insertEvent(db, snapshotId, "flow.observed", eventTs, {
