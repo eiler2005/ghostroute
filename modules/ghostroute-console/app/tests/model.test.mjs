@@ -605,6 +605,7 @@ test("prepared traffic windows use operator clients and preserve destination top
     insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "", "client", 0, 0, 1234, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
     insert.run(1, "2026-05-07T08:06:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Direct", "estimated", 1000, 0, "", "client", 0, 1000, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
     insert.run(1, "2026-05-07T08:07:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Mixed", "estimated", 1200, 0, "", "client", 200, 1000, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
+    insert.run(1, "2026-05-07T08:08:00Z", "192.0.2.44", "Home Wi-Fi/LAN", "unknown destination", "Mixed", "estimated", 1300, 0, "192.0.2.44", "client", 300, 1000, 0, JSON.stringify({ client: "192.0.2.44", client_ip: "192.0.2.44", accounting_bucket: true }));
     insert.run(1, "2026-05-07T08:10:00Z", "A/Home Reality", "A/Home Reality", "internal.example", "Unknown", "estimated", 6, 1, "", "client", 0, 0, 6, JSON.stringify({ client: "A/Home Reality" }));
     insert.run(1, "2026-05-07T08:15:00Z", "lan-host-99", "Home Wi-Fi/LAN", "unregistered.example", "Direct", "exact", 900, 5, "", "client", 0, 900, 0, JSON.stringify({ client: "lan-host-99" }));
     insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "", "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
@@ -614,8 +615,8 @@ test("prepared traffic windows use operator clients and preserve destination top
     const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
     assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
-    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 1434);
-    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 1434);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 1534);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 1534);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].unknownBytes, 1234);
     assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
     assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "large-download.example");
