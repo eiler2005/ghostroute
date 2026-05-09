@@ -1,23 +1,49 @@
 {
-  "schema_version": 1,
-  "updated_at": "2026-05-02T00:00:00Z",
-  "devices": {
-    "mobile-client-01": {
-      "label": "mobile-client-01 (Owner A)",
-      "role": "Home Reality profile",
-      "kind": "Phone"
-    },
-    "lan-host-08": {
-      "label": "lan-host-08 (Phone)",
+  "schema_version": 2,
+  "updated_at": "2026-05-09T00:00:00Z",
+  "clients": {
+    "operator-phone": {
+      "label": "operator-phone (Owner)",
+      "device_key": "owner-phone",
+      "device_label": "Owner phone",
       "role": "iPhone",
-      "kind": "iPhone",
-      "channel": "Home Wi-Fi/LAN"
+      "device_type": "iPhone",
+      "primary_channel": "A/Home Reality",
+      "aliases": {
+        "channel_a": ["iphone-1"],
+        "channel_b": ["iphone-b-1"],
+        "channel_c": ["c1_iphone_1", "1-SR"],
+        "lan_wifi": ["lan-host-08"],
+        "hostnames": ["owner-phone.local"]
+      },
+      "ip_aliases": ["192.0.2.10"],
+      "mac_aliases": ["02:00:00:00:00:01"]
     },
-    "lan-host-10": {
-      "label": "lan-host-10 (Windows laptop)",
-      "role": "Windows laptop",
-      "kind": "Windows laptop",
-      "channel": "Home Wi-Fi/LAN"
+    "operator-laptop": {
+      "label": "operator-laptop (Owner)",
+      "device_key": "owner-laptop",
+      "device_label": "Owner laptop",
+      "role": "MacBook",
+      "device_type": "MacBook",
+      "primary_channel": "Home Wi-Fi/LAN",
+      "aliases": {
+        "home_wifi": ["lan-host-13", "owner-laptop.local"]
+      },
+      "ip_aliases": ["192.0.2.20"],
+      "mac_aliases": ["02:00:00:00:00:20"]
+    },
+    "family-tablet": {
+      "label": "family-tablet (Owner)",
+      "device_key": "family-tablet",
+      "device_label": "Family tablet",
+      "role": "iPad",
+      "device_type": "iPad",
+      "primary_channel": "Home Wi-Fi/LAN",
+      "aliases": {
+        "home_wifi": ["lan-host-04", "family-tablet.local"]
+      },
+      "ip_aliases": ["192.0.2.30"],
+      "mac_aliases": ["02:00:00:00:00:30"]
     }
   }
 }

@@ -65,6 +65,19 @@ test("dashboard shows traffic analytics in English", async ({ page, isMobile }) 
   await expect(page.locator("body")).not.toContainText("Трафик");
 });
 
+test("dashboard rankings hide pseudo clients and keep destinations populated", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/?desktop=1" : "/");
+  const topClients = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top clients" }) });
+  const topDestinations = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top destinations" }) });
+  await expect(topClients.locator(".dashboard-rank-row").first()).toBeVisible();
+  const clientLabels = await topClients.locator(".rank-title strong").allTextContents();
+  expect(clientLabels.map((value) => value.trim())).not.toContain("A/Home Reality");
+  expect(clientLabels.map((value) => value.trim())).not.toContain("B/XHTTP relay");
+  expect(clientLabels.map((value) => value.trim().toLowerCase())).not.toContain("dns-interest");
+  await expect(topDestinations.locator(".dashboard-rank-row").first()).toBeVisible();
+  await expect(topDestinations).not.toContainText(/No destination traffic observed|No concrete/i);
+});
+
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop-only flow detail workbench; mobile uses the compact /m surface");
   await page.goto("/traffic");

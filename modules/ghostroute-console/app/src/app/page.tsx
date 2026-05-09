@@ -245,7 +245,10 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "today, window not observed";
   const analytics = model.dashboardAnalytics || {};
-  const inventoryTopClients = [...model.devices].sort((a, b) => (b.total_bytes || 0) - (a.total_bytes || 0)).slice(0, 8);
+  const inventoryTopClients = [...(analytics.topClients || [])]
+    .filter((row) => Number(row.bytes || row.total_bytes || 0) > 0)
+    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0))
+    .slice(0, 8);
   const coverage = model.destinationAttributionCoverage || {};
   const clientTrafficRows = [...model.flows]
     .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && Number(row.bytes || row.total_bytes || 0) > 0)
@@ -254,9 +257,10 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
   const concreteDestinations = groupDestinationRows(clientTrafficRows.filter((row) => !row.accounting_bucket), 8);
   const bucketDestinations = groupDestinationFallback(clientTrafficRows.filter((row) => row.accounting_bucket), 4);
-  const topDestinations = [...concreteDestinations, ...bucketDestinations]
+  const fallbackTopDestinations = [...concreteDestinations, ...bucketDestinations]
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0))
     .slice(0, 8);
+  const topDestinations: Array<Record<string, any>> = (analytics.topDestinations || []).length ? analytics.topDestinations : fallbackTopDestinations;
   const serviceTraffic = [...model.flows]
     .filter((row) => row.trafficClass === "service_background" && Number(row.bytes || row.total_bytes || 0) > 0)
     .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))

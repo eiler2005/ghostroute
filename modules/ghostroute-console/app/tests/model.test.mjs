@@ -557,18 +557,25 @@ test("prepared traffic windows use operator clients and preserve destination top
   const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
   process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
   const db = new Database(path.join(tmp, "ghostroute.db"));
-  try {
+    try {
     ensureConsoleSchema(db);
+    db.prepare(`
+      insert into device_inventory(device_key, label, ip, hostname, mac, aliases_json, profile, trust_state, device_type,
+        channel, route, confidence, last_seen, total_bytes, via_vps_bytes, direct_bytes, unknown_bytes, top_domains_json,
+        health_status, risk, evidence_json)
+      values (?, ?, ?, ?, ?, ?, ?, 'trusted', 'MacBook', 'Home Wi-Fi/LAN', 'Direct', 'exact', ?, 0, 0, 0, 0, '[]', 'OK', 'low', '{}')
+    `).run("lan-host-13", "lan-host-13 (Unknown device)", "192.0.2.44", "operator-macbook.local", "02:00:00:00:13:13", JSON.stringify(["lan-host-13"]), "lan-host-13", "2026-05-07T08:00:00Z");
     const insert = db.prepare(`
       insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
-        bytes, connections, protocol, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
-      values (?, 'traffic', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, ?, ?, ?, ?)
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (?, 'traffic', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, ?, ?, ?, ?, ?)
     `);
-    insert.run(1, "2026-05-07T08:00:00Z", "lan-host-13", "Home Wi-Fi/LAN", "torrent.example", "Direct", "exact", 1200, 8, "client", 0, 1200, 0, JSON.stringify({ client: "lan-host-13" }));
-    insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "client", 0, 0, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
-    insert.run(1, "2026-05-07T08:10:00Z", "A/Home Reality", "A/Home Reality", "internal.example", "Unknown", "estimated", 6, 1, "client", 0, 0, 6, JSON.stringify({ client: "A/Home Reality" }));
-    insert.run(1, "2026-05-07T08:15:00Z", "lan-host-99", "Home Wi-Fi/LAN", "unregistered.example", "Direct", "exact", 900, 5, "client", 0, 900, 0, JSON.stringify({ client: "lan-host-99" }));
-    insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
+    insert.run(1, "2026-05-07T08:00:00Z", "lan-host-13", "Home Wi-Fi/LAN", "torrent.example", "Direct", "exact", 1200, 8, "", "client", 0, 1200, 0, JSON.stringify({ client: "lan-host-13" }));
+    insert.run(1, "2026-05-07T08:02:00Z", "192.0.2.44", "Home Wi-Fi/LAN", "large-download.example", "Direct", "exact", 2200, 10, "192.0.2.44", "client", 0, 2200, 0, JSON.stringify({ client_ip: "192.0.2.44" }));
+    insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "", "client", 0, 0, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
+    insert.run(1, "2026-05-07T08:10:00Z", "A/Home Reality", "A/Home Reality", "internal.example", "Unknown", "estimated", 6, 1, "", "client", 0, 0, 6, JSON.stringify({ client: "A/Home Reality" }));
+    insert.run(1, "2026-05-07T08:15:00Z", "lan-host-99", "Home Wi-Fi/LAN", "unregistered.example", "Direct", "exact", 900, 5, "", "client", 0, 900, 0, JSON.stringify({ client: "lan-host-99" }));
+    insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "", "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
 
     rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
     const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);
@@ -576,8 +583,9 @@ test("prepared traffic windows use operator clients and preserve destination top
     assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
     assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
-    assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "torrent.example");
+    assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "large-download.example");
     assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");
+    assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'large-download.example'").get().client_key, "macbook");
     assert.equal(db.prepare("select count(*) as count from top_clients_window where bytes <= 0 or label in ('A/Home Reality', 'B/XHTTP relay')").get().count, 0);
     assert.ok(db.prepare("select 1 from aggregate_state where model = 'dashboard' and window_key = 'today'").get());
     const dryRun = repairAggregateRange(db, { fromUtc: "2026-05-07T08:00:00Z", toUtc: "2026-05-07T10:00:00Z", dryRun: true });
@@ -771,6 +779,19 @@ test("unified client registry resolves A/B/C aliases and keeps source counters d
       },
     })
   );
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.local.json"),
+    JSON.stringify({
+      schema_version: 2,
+      clients: {
+        "client-beta": {
+          ip_aliases: ["192.0.2.20"],
+          mac_aliases: ["02:00:00:00:00:20"],
+          aliases: { hostnames: ["operator-laptop.local"] },
+        },
+      },
+    })
+  );
   const registry = loadDeviceAttributions(tmp);
   for (const alias of ["iphone-1", "iphone-b-1", "c1_iphone_1", "1-SR", "lan-host-01"]) {
     assert.equal(resolveClient(alias, registry).client_key, "client-alpha", alias);
@@ -787,6 +808,9 @@ test("unified client registry resolves A/B/C aliases and keeps source counters d
   assert.equal(resolveClient("iphone-b-1", registry).client_owner, "Operator");
   assert.equal(resolveClient("iphone-b-1", registry).device_type, "iPhone");
   assert.equal(resolveClient({ client_ip: "192.0.2.10" }, registry).matched_by, "explicit_ip_alias");
+  assert.equal(resolveClient({ client_ip: "192.0.2.20" }, registry).client_key, "client-beta");
+  assert.equal(resolveClient({ mac: "02-00-00-00-00-20" }, registry).client_label, "client-beta (Laptop)");
+  assert.equal(resolveClient("operator-laptop.local", registry).client_key, "client-beta");
   assert.equal(resolveClient({ mac: "02:00:00:00:00:02" }, registry).client_key, "");
   assert.equal(resolveClient("mobile-source-15", registry).client_key, "mobile-source-15");
   assert.equal(resolveClient("mobile-source-15", registry).attribution_confidence, "unattributed");
