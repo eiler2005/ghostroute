@@ -818,6 +818,19 @@ function routeFromAggregate(row) {
   return text(row.route, "Unknown");
 }
 
+function isoMinusHours(iso, hours) {
+  return new Date(Date.parse(iso) - hours * 3600000).toISOString();
+}
+
+function aggregateDirtyStart(db, now) {
+  const monthStart = mskWindowBounds("month", now).startUtc;
+  const hasAggregates = db.prepare("select 1 from client_traffic_5min limit 1").get();
+  if (!hasAggregates) return monthStart;
+  const hours = Math.max(1, number(process.env.GHOSTROUTE_ROLLUP_REBUILD_HOURS || 48));
+  const rollingStart = isoMinusHours(now, hours);
+  return Date.parse(rollingStart) > Date.parse(monthStart) ? rollingStart : monthStart;
+}
+
 function flowFactsFromNormalized(db, startUtc, endUtc) {
   let sourceRows = db
     .prepare(
@@ -919,10 +932,12 @@ function addToGroup(map, key, seed, row) {
   return current;
 }
 
-function rebuildTrafficAggregates(db, facts, now) {
-  db.prepare("delete from client_traffic_5min").run();
-  db.prepare("delete from client_traffic_hourly").run();
-  db.prepare("delete from client_traffic_daily").run();
+function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc) {
+  const dirtyHourStart = bucketStartUtc(dirtyStartUtc, "hour");
+  const dirtyDayStart = bucketStartUtc(dirtyStartUtc, "day");
+  db.prepare("delete from client_traffic_5min where bucket_start_utc >= ?").run(dirtyStartUtc);
+  db.prepare("delete from client_traffic_hourly where hour_start_utc >= ?").run(dirtyHourStart);
+  db.prepare("delete from client_traffic_daily where day_start_utc >= ?").run(dirtyDayStart);
   const insert5 = db.prepare(`
     insert into client_traffic_5min(bucket_start_utc, bucket_msk_key, client_key, client_label, channel, route,
       confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, flows,
@@ -966,8 +981,9 @@ function rebuildTrafficAggregates(db, facts, now) {
            sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
            count(distinct client_key) as clients
       from client_traffic_5min
+     where bucket_start_utc >= ?
      group by hour_msk_key, client_key, channel, route, confidence, traffic_class
-  `).all();
+  `).all(dirtyHourStart);
   for (const row of hourly) {
     insertHour.run(row.hour_msk_key, row.hour_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
   }
@@ -987,18 +1003,19 @@ function rebuildTrafficAggregates(db, facts, now) {
            sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
            count(distinct client_key) as clients
       from client_traffic_hourly
+     where hour_start_utc >= ?
      group by day_msk_key, client_key, channel, route, confidence, traffic_class
-  `).all();
+  `).all(dirtyDayStart);
   for (const row of daily) {
     insertDay.run(row.day_msk_key, row.day_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
   }
 }
 
-function rebuildDnsAggregates(db, now) {
-  db.prepare("delete from dns_log_5min").run();
+function rebuildDnsAggregates(db, now, dirtyStartUtc) {
+  db.prepare("delete from dns_log_5min where bucket_start_utc >= ?").run(dirtyStartUtc);
   const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
   const catalogMatch = buildCatalogMatcher(catalogRows);
-  const rows = db.prepare("select rowid, * from normalized_dns order by collected_at asc, rowid asc").all();
+  const rows = db.prepare("select rowid, * from normalized_dns where collected_at >= ? order by collected_at asc, rowid asc").all(dirtyStartUtc);
   const grouped = new Map();
   for (const row of rows) {
     const bucket = bucketStartUtc(row.event_ts || row.collected_at, "5min");
@@ -1050,6 +1067,35 @@ function totalsForFacts(facts) {
   }, { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 });
 }
 
+function aggregateRowsForWindow(db, window, now) {
+  const bounds = mskWindowBounds(window, now);
+  return db.prepare(`
+    select client_key,
+           max(client_label) as client_label,
+           channel,
+           route,
+           confidence,
+           traffic_class,
+           destination_key,
+           sum(bytes) as bytes,
+           sum(bytes) as total_bytes,
+           sum(via_vps_bytes) as via_vps_bytes,
+           sum(direct_bytes) as direct_bytes,
+           sum(unknown_bytes) as unknown_bytes,
+           sum(flows) as flows,
+           sum(connections) as connections,
+           sum(observed_bytes) as observed_bytes,
+           sum(attributed_bytes) as attributed_bytes,
+           max(bucket_start_utc) as collected_at,
+           max(bucket_start_utc) as last_seen,
+           0 as accounting_bucket
+      from client_traffic_5min
+     where bucket_start_utc >= ?
+       and bucket_start_utc <= ?
+     group by client_key, channel, route, confidence, traffic_class, destination_key
+  `).all(bounds.startUtc, bounds.endUtc);
+}
+
 function latestAuthoritativeTotals(db, window, now) {
   if (window !== "today") return null;
   const today = toMskKey(now, "day");
@@ -1099,7 +1145,7 @@ function preparedRowsForWindow(rows, trafficClass = "client") {
 
 function buildPreparedWindowPayload(db, window, facts, now) {
   const bounds = mskWindowBounds(window, now);
-  const rows = factsForWindow(facts, window, now);
+  const rows = facts;
   const classRows = preparedRowsForWindow(rows, "client");
   const allRows = preparedRowsForWindow(rows, "all");
   const clientRows = groupRows(
@@ -1248,13 +1294,13 @@ function rebuildDnsPreparedWindows(db, sourceVersion, computedAt) {
 
 export function rebuildPreparedWindows(db, computedAt = new Date().toISOString()) {
   const sourceVersion = compactSourceVersion(readModelSourceVersion(db));
-  const minBounds = mskWindowBounds("month", computedAt);
-  const facts = flowFactsFromNormalized(db, minBounds.startUtc, computedAt);
-  rebuildTrafficAggregates(db, facts, computedAt);
-  rebuildDnsAggregates(db, computedAt);
+  const dirtyStart = aggregateDirtyStart(db, computedAt);
+  const facts = flowFactsFromNormalized(db, dirtyStart, computedAt);
+  rebuildTrafficAggregates(db, facts, computedAt, dirtyStart);
+  rebuildDnsAggregates(db, computedAt, dirtyStart);
   for (const window of ["today", "week", "month"]) {
     const bounds = mskWindowBounds(window, computedAt);
-    const payload = buildPreparedWindowPayload(db, window, facts, computedAt);
+    const payload = buildPreparedWindowPayload(db, window, aggregateRowsForWindow(db, window, computedAt), computedAt);
     writePreparedWindow(db, "dashboard", window, "client", bounds, sourceVersion, computedAt, payload);
     writePreparedWindow(db, "clients", window, "client", bounds, sourceVersion, computedAt, {
       generatedAt: computedAt,
@@ -1272,6 +1318,8 @@ export function rebuildPreparedWindows(db, computedAt = new Date().toISOString()
 
 export function pruneOperationalTables(db, now = new Date().toISOString()) {
   const rawDays = Math.max(1, number(process.env.GHOSTROUTE_RAW_RETENTION_DAYS || 7));
+  const fineAggregateDays = Math.max(1, number(process.env.GHOSTROUTE_FINE_AGGREGATE_RETENTION_DAYS || 8));
+  const aggregateDays = Math.max(31, number(process.env.GHOSTROUTE_AGGREGATE_RETENTION_DAYS || 35));
   const serviceHours = Math.max(1, number(process.env.GHOSTROUTE_SERVICE_RAW_RETENTION_HOURS || 24));
   const errorDays = Math.max(1, number(process.env.GHOSTROUTE_COLLECTOR_ERROR_RETENTION_DAYS || 14));
   const cutoff = (days) => new Date(Date.parse(now) - days * 86400000).toISOString();
@@ -1284,6 +1332,10 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
     events: 0,
     route_decisions: 0,
     collector_errors: 0,
+    client_traffic_5min: 0,
+    client_traffic_hourly: 0,
+    client_traffic_daily: 0,
+    dns_log_5min: 0,
     payloads_stripped: 0,
   };
   result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
@@ -1292,6 +1344,10 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   result.events += db.prepare("delete from events where occurred_at < ?").run(rawCutoff).changes;
   result.route_decisions += db.prepare("delete from route_decisions where occurred_at < ?").run(rawCutoff).changes;
   result.collector_errors += db.prepare("delete from collector_errors where collected_at < ?").run(cutoff(errorDays)).changes;
+  result.client_traffic_5min += db.prepare("delete from client_traffic_5min where bucket_start_utc < ?").run(cutoff(fineAggregateDays)).changes;
+  result.dns_log_5min += db.prepare("delete from dns_log_5min where bucket_start_utc < ?").run(cutoff(aggregateDays)).changes;
+  result.client_traffic_hourly += db.prepare("delete from client_traffic_hourly where hour_start_utc < ?").run(cutoff(aggregateDays)).changes;
+  result.client_traffic_daily += db.prepare("delete from client_traffic_daily where day_start_utc < ?").run(cutoff(aggregateDays)).changes;
   result.payloads_stripped += db.prepare(`
     update snapshots
        set payload_json = ''

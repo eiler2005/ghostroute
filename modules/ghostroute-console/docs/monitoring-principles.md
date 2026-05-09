@@ -29,6 +29,9 @@ attribution later.
   hours overnight.
 - Live events are event snapshots, not a continuous per-second stream. The UI and
   collector default to about 10 minutes to keep the small VPS calm.
+- During 23:00-06:00 Moscow time, lightweight and live collectors default to
+  wider 30-minute intervals. Full collection already uses the wider overnight
+  interval. This trades nighttime freshness for lower VPS/router/SQLite pressure.
 - Week/month views must read prepared aggregate tables and
   `traffic_window_snapshots`. They must not launch heavy on-demand full reports
   or scan raw normalized rows on the request path.
@@ -42,9 +45,16 @@ attribution later.
   `client_traffic_hourly`, `client_traffic_daily`, `dns_log_5min`,
   `top_clients_window`, `top_destinations_window` and
   `traffic_window_snapshots` for `today`, `week` and `month`.
+- The aggregate pyramid is incremental after the initial backfill. New raw rows
+  update only a dirty overlap window, then roll up from 5-minute buckets to
+  hourly/daily buckets. Week/month request paths read those prepared aggregates
+  instead of rescanning raw rows.
 - Dashboard, Clients, DNS and report JSON should read prepared windows first.
   Missing historical prepared data should produce a bounded empty/fallback state,
   not a raw-table scan.
+- Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
+  aggregates around the monthly window. Raw operational rows remain bounded
+  troubleshooting data.
 - The rollback switch for diagnosis is
   `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`. It is a temporary compatibility
   path, not the steady-state architecture for large databases.

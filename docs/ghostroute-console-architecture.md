@@ -87,6 +87,7 @@ Layer 3 UI read models
   client_traffic_5min / client_traffic_hourly / client_traffic_daily
     -> prepared client-first traffic aggregates
     -> Dashboard, Clients, Budget and historical traffic windows
+    -> incremental dirty-window rollup after initial backfill
 
   dns_log_5min
     -> prepared DNS query aggregates
@@ -337,10 +338,12 @@ collector safety copies.
 
 Operational pruning keeps `normalized_flows`, `normalized_dns`, `events`,
 `route_decisions` and `collector_errors` inside their retention windows.
-Service/background traffic may be pruned sooner than client traffic. Heavy
-`traffic`, `dns` and `live` snapshot payloads can be stripped after the short
-troubleshooting window once a newer payload of the same type exists; the UI
-history then lives in aggregate/read-model tables.
+Service/background traffic may be pruned sooner than client traffic. Fine
+5-minute traffic buckets are short-lived; hourly/daily traffic aggregates and DNS
+aggregates are retained around the monthly UI window. Heavy `traffic`, `dns` and
+`live` snapshot payloads can be stripped after the short troubleshooting window
+once a newer payload of the same type exists; the UI history then lives in
+aggregate/read-model tables.
 
 Runtime switches:
 
@@ -352,10 +355,12 @@ Runtime switches:
 - `GHOSTROUTE_LIVE_POLL_SECONDS=15` is the default production poll interval.
 
 Light traffic summary collection is intended for frequent Dashboard refreshes
-and defaults to every 5 minutes when enabled. Full snapshot collection is
-scheduled to avoid router load: every 30 minutes from 07:00 to 23:59 Moscow
-time, and every 3 hours from 00:00 to 06:59. The UI uses matching freshness
-thresholds: stale after 75 minutes during the day and 210 minutes overnight.
+and defaults to every 5 minutes during the day and every 30 minutes during
+23:00-06:00 Moscow time. Full snapshot collection is scheduled to avoid router
+load: every 30 minutes from 06:00 to 22:59 Moscow time, and every 3 hours from
+23:00 to 05:59. Live polling defaults to 10 minutes during the day and 30 minutes
+overnight. The UI uses matching freshness thresholds: stale after 75 minutes
+during the day and 210 minutes overnight.
 
 ## Deployment And Access
 
