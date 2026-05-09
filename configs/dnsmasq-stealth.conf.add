@@ -32,12 +32,9 @@ ipset=/bitbucket.org/STEALTH_DOMAINS
 ipset=/dev.azure.com/STEALTH_DOMAINS
 ipset=/visualstudio.com/STEALTH_DOMAINS
 ipset=/google.com/STEALTH_DOMAINS
-# Google Mail. Keep Gmail managed in the router catalog for LAN and
-# non-Shadowrocket clients. The Shadowrocket daily template has explicit
-# DIRECT exceptions for smtp.gmail.com/imap.gmail.com because iOS Mail
-# SMTP/IMAP ports can time out through the VPS/Reality egress.
-ipset=/gmail.com/STEALTH_DOMAINS
-ipset=/googlemail.com/STEALTH_DOMAINS
+# Gmail SMTP/IMAP is intentionally not in the managed router catalog: iOS Mail
+# ports can time out through the VPS/Reality egress. Keep smtp.gmail.com and
+# imap.gmail.com direct in endpoint configs and on LAN/Wi-Fi.
 ipset=/linkedin.com/STEALTH_DOMAINS
 ipset=/twitter.com/STEALTH_DOMAINS
 ipset=/x.com/STEALTH_DOMAINS
