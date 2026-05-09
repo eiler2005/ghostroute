@@ -43,7 +43,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const directCount = sumCounts(dnsPage.rows.filter((row) => row.route === "Direct"));
   const suspiciousCount = sumCounts(dnsPage.rows.filter((row) => ["medium", "high"].includes(String(row.risk || "")) || ["Blocked", "Review"].includes(String(row.status || ""))));
   const topDomains = grouped(dnsPage.rows, "domain", 7);
-  const topClients = grouped(dnsPage.rows, "client", 7);
+  const topClients = grouped(dnsPage.rows.filter((row) => row.client_attributed && row.client_key), "client", 7);
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
     channel: filters.channel !== "all" ? filters.channel : undefined,

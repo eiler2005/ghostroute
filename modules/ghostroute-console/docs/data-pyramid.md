@@ -69,7 +69,14 @@ Top-client prepared rows are operator-client rows only: non-zero
 accounting buckets and pseudo clients such as channel labels are retained for
 diagnostics, but they are not ranked as clients. Observed aliases such as
 `lan-host-*` must be canonicalized to the registry client before the
-`client_traffic_*` chunks are grouped.
+`client_traffic_*` chunks are grouped. If route-specific counters are present
+but the total byte field is zero or missing, the prepared row total is recovered
+from `via_vps_bytes + direct_bytes + unknown_bytes`; `Unknown` route bytes are
+still real observed client traffic.
+
+DNS Query Log is a factual evidence surface. DNS rows may be visible even when
+the client source is not yet registry-attributed, but only registry-backed
+clients participate in DNS top-client grouping or client inventory rows.
 
 Destination rankings are built from destination-bearing client chunks. Unknown
 or accounting-only traffic contributes to destination attribution coverage, but

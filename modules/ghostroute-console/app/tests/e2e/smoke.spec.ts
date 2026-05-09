@@ -71,9 +71,11 @@ test("dashboard rankings hide pseudo clients and keep destinations populated", a
   const topDestinations = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top destinations" }) });
   await expect(topClients.locator(".dashboard-rank-row").first()).toBeVisible();
   const clientLabels = await topClients.locator(".rank-title strong").allTextContents();
+  const clientTotals = await topClients.locator(".rank-meter > strong").allTextContents();
   expect(clientLabels.map((value) => value.trim())).not.toContain("A/Home Reality");
   expect(clientLabels.map((value) => value.trim())).not.toContain("B/XHTTP relay");
   expect(clientLabels.map((value) => value.trim().toLowerCase())).not.toContain("dns-interest");
+  expect(clientTotals.map((value) => value.trim())).not.toContain("0 B");
   await expect(topDestinations.locator(".dashboard-rank-row").first()).toBeVisible();
   await expect(topDestinations).not.toContainText(/No destination traffic observed|No concrete/i);
 });

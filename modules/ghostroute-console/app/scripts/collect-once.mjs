@@ -5,7 +5,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, pruneOperationalTables, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
-import { validateSnapshotPayload } from "./lib/snapshot-contracts.mjs";
+import { validateSnapshotPayload, withSnapshotContractDefaults } from "./lib/snapshot-contracts.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -34,8 +34,8 @@ let db = null;
 const commands = [
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
   ["traffic", "modules/traffic-observatory/bin/traffic-report", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
-  ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"]],
-  ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate", "--no-log"], { allowFailure: true }],
+  ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"], { allowFailure: true, retries: 1 }],
+  ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate", "--no-log"], { allowFailure: true, retries: 1 }],
   ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"]],
   ["domains", "modules/dns-catalog-intelligence/bin/domain-report", ["--json", "--all"]],
   ["dns", "modules/dns-catalog-intelligence/bin/dns-forensics-report", ["--json"]],
@@ -43,7 +43,11 @@ const commands = [
 
 const allowedCommands = new Set(commands.map(([, command]) => command));
 
-function runReadOnlyCommand(command, args, options = {}) {
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function runReadOnlyCommandOnce(command, args, options = {}) {
   if (!allowedCommands.has(command)) {
     throw new Error(`collector command is not whitelisted: ${command}`);
   }
@@ -93,6 +97,24 @@ function runReadOnlyCommand(command, args, options = {}) {
     if (options.allowFailure && error.stdout) return String(error.stdout);
     throw error;
   }
+}
+
+function runReadOnlyCommand(command, args, options = {}) {
+  const attempts = Math.max(1, 1 + Number(options.retries || 0));
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return runReadOnlyCommandOnce(command, args, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) sleepMs(Math.min(5000, 750 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+function normalizePayloadContract(type, command, args, payload) {
+  return withSnapshotContractDefaults(type, payload, { command, mode: (args || []).join(" ") });
 }
 
 function days(name, fallback) {
@@ -177,7 +199,7 @@ const collected = [];
 for (const [type, command, args, options = {}] of commands) {
   try {
     const stdout = runReadOnlyCommand(command, args, options);
-    const payload = JSON.parse(stdout);
+    const payload = normalizePayloadContract(type, command, args, JSON.parse(stdout));
     validateSnapshotPayload(type, payload);
     const collectedAt = payload.generated_at || new Date().toISOString();
     const file = path.join(snapshotDir, `${type}-${collectedAt.replace(/[:.]/g, "-")}.json`);

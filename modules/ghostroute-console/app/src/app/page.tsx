@@ -9,8 +9,18 @@ function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
+function observedBytes(row: Record<string, any>) {
+  const explicit = [row.bytes, row.total_bytes, row.totalBytes, row.observed_bytes]
+    .map((value) => Number(value || 0))
+    .find((value) => Number.isFinite(value) && value > 0);
+  if (explicit) return explicit;
+  return Number(row.via_vps_bytes || row.viaVpsBytes || 0)
+    + Number(row.direct_bytes || row.directBytes || 0)
+    + Number(row.unknown_bytes || row.unknownBytes || 0);
+}
+
 function unknownBytes(row: Record<string, any>) {
-  return Math.max(0, Number(row.total_bytes || row.bytes || 0) - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0));
+  return Math.max(0, observedBytes(row) - Number(row.via_vps_bytes || row.viaVpsBytes || 0) - Number(row.direct_bytes || row.directBytes || 0));
 }
 
 function groupDestinationFallback(rows: Array<Record<string, any>>, limit = 8) {
@@ -29,7 +39,7 @@ function groupDestinationFallback(rows: Array<Record<string, any>>, limit = 8) {
       routes: new Set<string>(),
       categoryFallback: true,
     };
-    const rowBytes = Number(row.bytes || row.total_bytes || 0);
+    const rowBytes = observedBytes(row);
     current.bytes += rowBytes;
     current.total_bytes += rowBytes;
     current.connections += Number(row.connections || 0);
@@ -153,7 +163,7 @@ function QuotaCard({ title, data, tone }: { title: string; data: Record<string, 
 }
 
 function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
-  const max = Math.max(1, ...rows.map((row) => Number(row.bytes || 0)));
+  const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
   return (
     <section className="card dashboard-rank-card">
       <div className="dashboard-card-head">
@@ -167,9 +177,9 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
               <span className="rank-index">{row.rank}</span>
               <div className="rank-title"><strong>{row.label}</strong><small>{row.channel || "not observed"}</small></div>
               <div className="rank-meter">
-                <strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span>
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || 0}%</span>
                 <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
-                <i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i>
+                <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
               </div>
               <span className={`rank-status status-${String(row.status || "OK").toLowerCase()}`}>{row.status || "OK"}</span>
             </div>
@@ -181,7 +191,7 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
 }
 
 function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
-  const max = Math.max(1, ...rows.map((row) => Number(row.bytes || 0)));
+  const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
   return (
     <section className="card dashboard-rank-card">
       <div className="dashboard-card-head">
@@ -196,9 +206,9 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
               <div className="rank-title"><strong>{row.label}</strong><small>{row.detail || "not observed"}</small></div>
               <RouteBadge value={row.route} />
               <div className="rank-meter">
-                <strong>{compactBytes(row.bytes || 0)}</strong><span>{row.sharePct || 0}%</span>
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || 0}%</span>
                 <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
-                <i><b style={{ width: `${pct(row.bytes || 0, max)}%` }} /></i>
+                <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
               </div>
             </div>
           ))}
@@ -246,14 +256,14 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const trafficWindowText = trafficWindow || "today, window not observed";
   const analytics = model.dashboardAnalytics || {};
   const inventoryTopClients = [...(analytics.topClients || [])]
-    .filter((row) => Number(row.bytes || row.total_bytes || 0) > 0)
-    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0))
+    .filter((row) => observedBytes(row) > 0)
+    .sort((a, b) => observedBytes(b) - observedBytes(a))
     .slice(0, 8);
   const coverage = model.destinationAttributionCoverage || {};
   const clientTrafficRows = [...model.flows]
-    .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && Number(row.bytes || row.total_bytes || 0) > 0)
-    .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0));
-  const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0));
+    .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && observedBytes(row) > 0)
+    .sort((a, b) => observedBytes(b) - observedBytes(a));
+  const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + observedBytes(row), 0));
   const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
   const concreteDestinations = groupDestinationRows(clientTrafficRows.filter((row) => !row.accounting_bucket), 8);
   const bucketDestinations = groupDestinationFallback(clientTrafficRows.filter((row) => row.accounting_bucket), 4);
@@ -262,11 +272,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     .slice(0, 8);
   const topDestinations: Array<Record<string, any>> = (analytics.topDestinations || []).length ? analytics.topDestinations : fallbackTopDestinations;
   const serviceTraffic = [...model.flows]
-    .filter((row) => row.trafficClass === "service_background" && Number(row.bytes || row.total_bytes || 0) > 0)
-    .sort((a, b) => (b.bytes || b.total_bytes || 0) - (a.bytes || a.total_bytes || 0))
+    .filter((row) => row.trafficClass === "service_background" && observedBytes(row) > 0)
+    .sort((a, b) => observedBytes(b) - observedBytes(a))
     .slice(0, 5);
   const needsAttribution = groupAttributionRows(
-    model.flows.filter((row) => row.trafficClass === "unclassified" && Number(row.bytes || row.total_bytes || 0) > 0),
+    model.flows.filter((row) => row.trafficClass === "unclassified" && observedBytes(row) > 0),
     10
   );
   const latestDecisions = clientTrafficRows.slice(0, 8);
@@ -387,7 +397,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
                     {trafficDisplayDestination(row)}
                     {row.detail ? <small className="subtle block-detail">{row.detail}</small> : null}
                   </span>
-                  <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                  <strong>{bytes(observedBytes(row))} <RouteBadge value={row.route} /></strong>
                 </div>
               ))}
             </div>
@@ -413,7 +423,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
                   <td>{row.client || row.channel || "n/a"}</td>
                   <td><Link href={`/traffic?flow=${idx}`}>{trafficDisplayDestination(row)}</Link></td>
                   <td><RouteBadge value={row.route} /></td>
-                  <td>{bytes(row.bytes || row.total_bytes || 0)}<small className="subtle block-detail">{row.connections || 0} sessions</small></td>
+                  <td>{bytes(observedBytes(row))}<small className="subtle block-detail">{row.connections || 0} sessions</small></td>
                   <td>{trafficWindowText}</td>
                   <td><ConfidenceBadge value={row.confidence} /></td>
                 </tr>
@@ -436,7 +446,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
               {serviceTraffic.map((row, idx) => (
                 <div className="detail-row" key={idx}>
                   <span>{trafficDisplayDestination(row)}</span>
-                  <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                  <strong>{bytes(observedBytes(row))} <RouteBadge value={row.route} /></strong>
                 </div>
               ))}
             </div>
@@ -457,7 +467,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
                     {trafficDisplayDestination(row)}
                     {row.attributionDetail ? <small className="subtle block-detail">{row.attributionDetail}</small> : null}
                   </span>
-                  <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                  <strong>{bytes(observedBytes(row))} <RouteBadge value={row.route} /></strong>
                 </div>
               ))}
             </div>

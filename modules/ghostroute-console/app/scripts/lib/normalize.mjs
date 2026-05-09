@@ -184,28 +184,51 @@ function firstNumber(...values) {
   return 0;
 }
 
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    if (!hasNumber(value)) continue;
+    const parsed = number(value);
+    if (parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function splitByteTotal(row) {
+  return number(row?.via_vps_bytes || row?.reality_bytes)
+    + number(row?.direct_bytes || row?.wan_bytes)
+    + number(row?.unknown_bytes || row?.unresolved_bytes);
+}
+
+function aggregateTotalBytes(row) {
+  return firstPositiveNumber(row?.bytes, row?.total_bytes, row?.observed_bytes) || splitByteTotal(row);
+}
+
 function signedByteSplit(row, route = row?.route, totalBytes = number(row?.bytes || row?.total_bytes)) {
   const evidence = row?.evidence_json ? parseJson(row.evidence_json, {}) : row?.raw || row || {};
+  let total = number(totalBytes);
   let explicitVps = hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes) || hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes);
   let explicitDirect = hasNumber(row?.direct_bytes) || hasNumber(row?.wan_bytes) || hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes);
   let explicitUnknown = hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes) || hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes);
   let viaVpsBytes = firstNumber(row?.via_vps_bytes, row?.reality_bytes, evidence.via_vps_bytes, evidence.reality_bytes);
   let directBytes = firstNumber(row?.direct_bytes, row?.wan_bytes, evidence.direct_bytes, evidence.wan_bytes);
   let unknownBytes = firstNumber(row?.unknown_bytes, row?.unresolved_bytes, evidence.unknown_bytes, evidence.unresolved_bytes);
-  if (totalBytes > 0 && viaVpsBytes === 0 && directBytes === 0 && unknownBytes === 0) {
+  if (total <= 0 && viaVpsBytes + directBytes + unknownBytes > 0) {
+    total = viaVpsBytes + directBytes + unknownBytes;
+  }
+  if (total > 0 && viaVpsBytes === 0 && directBytes === 0 && unknownBytes === 0) {
     explicitVps = hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes) || hasNumber(row?.reality_bytes);
     explicitDirect = hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes) || hasNumber(row?.wan_bytes);
     explicitUnknown = hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes) || hasNumber(row?.unresolved_bytes);
   }
   const routeValue = text(route || row?.route, "Unknown").toLowerCase();
   if (!explicitVps && !explicitDirect && !explicitUnknown) {
-    if (routeValue === "vps") viaVpsBytes = totalBytes;
-    else if (routeValue === "direct") directBytes = totalBytes;
-    else unknownBytes = totalBytes;
+    if (routeValue === "vps") viaVpsBytes = total;
+    else if (routeValue === "direct") directBytes = total;
+    else unknownBytes = total;
   } else if (!explicitUnknown) {
-    unknownBytes = totalBytes - viaVpsBytes - directBytes;
+    unknownBytes = total - viaVpsBytes - directBytes;
   }
-  return { totalBytes, viaVpsBytes, directBytes, unknownBytes };
+  return { totalBytes: total, viaVpsBytes, directBytes, unknownBytes };
 }
 
 function flowTrafficClass(row) {
@@ -1162,13 +1185,14 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
 
 function addToGroup(map, key, seed, row) {
   const current = map.get(key) || { ...seed, bytes: 0, total_bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, observed_bytes: 0, attributed_bytes: 0, flows: 0, connections: 0 };
-  current.bytes += number(row.bytes);
-  current.total_bytes += number(row.bytes);
+  const rowTotal = aggregateTotalBytes(row);
+  current.bytes += rowTotal;
+  current.total_bytes += rowTotal;
   current.via_vps_bytes += number(row.via_vps_bytes);
   current.direct_bytes += number(row.direct_bytes);
   current.unknown_bytes += number(row.unknown_bytes);
-  current.observed_bytes += number(row.observed_bytes ?? (row.traffic_class === "client" ? row.bytes : 0));
-  current.attributed_bytes += number(row.attributed_bytes ?? (row.accounting_bucket ? 0 : row.bytes));
+  current.observed_bytes += number(row.observed_bytes ?? (row.traffic_class === "client" ? rowTotal : 0));
+  current.attributed_bytes += number(row.attributed_bytes ?? (row.accounting_bucket ? 0 : rowTotal));
   current.flows += number(row.flows || 1);
   current.connections += number(row.connections);
   current.route = routeFromAggregate(current);
@@ -1460,24 +1484,29 @@ function preparedRowsForWindow(rows, trafficClass = "client") {
 }
 
 function topClientAnalyticsFromRows(rows, limit = 5) {
-  const total = rows.reduce((sum, row) => sum + number(row.bytes || row.total_bytes), 0) || 1;
+  const total = rows.reduce((sum, row) => sum + aggregateTotalBytes(row), 0) || 1;
   return rows
-    .filter((row) => number(row.bytes || row.total_bytes) > 0)
-    .sort((a, b) => number(b.bytes || b.total_bytes) - number(a.bytes || a.total_bytes))
+    .filter((row) => aggregateTotalBytes(row) > 0)
+    .sort((a, b) => aggregateTotalBytes(b) - aggregateTotalBytes(a))
     .slice(0, limit)
-    .map((row, idx) => ({
-      rank: idx + 1,
-      key: row.client_key || row.id || row.label || "",
-      label: row.label || row.client_label || row.client_key || "Unknown client",
-      channel: row.channel || "Unknown",
-      bytes: number(row.bytes || row.total_bytes),
-      viaVpsBytes: number(row.via_vps_bytes),
-      directBytes: number(row.direct_bytes),
-      unknownBytes: number(row.unknown_bytes),
-      sharePct: Math.round((number(row.bytes || row.total_bytes) / total) * 100),
-      route: routeFromAggregate(row),
-      status: "OK",
-    }));
+    .map((row, idx) => {
+      const rowTotal = aggregateTotalBytes(row);
+      return {
+        rank: idx + 1,
+        key: row.client_key || row.id || row.label || "",
+        label: row.label || row.client_label || row.client_key || "Unknown client",
+        channel: row.channel || "Unknown",
+        bytes: rowTotal,
+        totalBytes: rowTotal,
+        total_bytes: rowTotal,
+        viaVpsBytes: number(row.via_vps_bytes),
+        directBytes: number(row.direct_bytes),
+        unknownBytes: number(row.unknown_bytes),
+        sharePct: Math.round((rowTotal / total) * 100),
+        route: routeFromAggregate(row),
+        status: "OK",
+      };
+    });
 }
 
 function clientChannelObservedRows(rows) {
@@ -1499,7 +1528,7 @@ function clientChannelObservedRows(rows) {
       detail: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
     };
     const target = row.accounting_bucket || !text(row.destination_key) ? current.accounting : current.detail;
-    target.bytes += number(row.bytes);
+    target.bytes += aggregateTotalBytes(row);
     target.via_vps_bytes += number(row.via_vps_bytes);
     target.direct_bytes += number(row.direct_bytes);
     target.unknown_bytes += number(row.unknown_bytes);
@@ -1551,7 +1580,7 @@ function buildPreparedWindowPayload(db, window, facts, now) {
   const bounds = mskWindowBounds(window, now);
   const registry = loadDeviceAttributions();
   const rows = facts;
-  const classRows = preparedRowsForWindow(rows, "client").filter((row) => number(row.bytes || row.total_bytes) > 0);
+  const classRows = preparedRowsForWindow(rows, "client").filter((row) => aggregateTotalBytes(row) > 0);
   const operatorRows = classRows.filter((row) => isOperatorTrafficRow(row, registry));
   const clientRows = clientObservedRows(operatorRows).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
   const groupedFlowRows = groupRows(
@@ -1588,8 +1617,8 @@ function buildPreparedWindowPayload(db, window, facts, now) {
   const destinationAttributed = operatorRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + number(row.bytes), 0);
   const dashboardRows = flowRows.map((row) => ({
     ...row,
-    bytes: number(row.bytes),
-    total_bytes: number(row.total_bytes || row.bytes),
+    bytes: aggregateTotalBytes(row),
+    total_bytes: aggregateTotalBytes(row),
     via_vps_bytes: number(row.via_vps_bytes),
     direct_bytes: number(row.direct_bytes),
     unknown_bytes: number(row.unknown_bytes),
@@ -1597,8 +1626,8 @@ function buildPreparedWindowPayload(db, window, facts, now) {
   }));
   const destinationRows = groupedFlowRows.map((row) => ({
     ...row,
-    bytes: number(row.bytes),
-    total_bytes: number(row.total_bytes || row.bytes),
+    bytes: aggregateTotalBytes(row),
+    total_bytes: aggregateTotalBytes(row),
     via_vps_bytes: number(row.via_vps_bytes),
     direct_bytes: number(row.direct_bytes),
     unknown_bytes: number(row.unknown_bytes),
@@ -1634,8 +1663,8 @@ function buildPreparedWindowPayload(db, window, facts, now) {
     },
     devices: clientRows.map((row) => ({
       ...row,
-      total_bytes: number(row.bytes),
-      bytes: number(row.bytes),
+      total_bytes: aggregateTotalBytes(row),
+      bytes: aggregateTotalBytes(row),
       route: routeFromAggregate(row),
     })),
     flows: dashboardRows,
@@ -1757,7 +1786,7 @@ function rebuildTopWindows(db, window, payload, computedAt) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   (payload.devices || []).slice(0, 50).forEach((row, idx) => {
-    insertClient.run(window, "client", idx + 1, row.client_key || row.id || row.label || "", row.label || row.client_label || "", row.channel || "Unknown", row.route || "Unknown", number(row.total_bytes || row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.flows || 1), computedAt);
+    insertClient.run(window, "client", idx + 1, row.client_key || row.id || row.label || "", row.label || row.client_label || "", row.channel || "Unknown", row.route || "Unknown", aggregateTotalBytes(row), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.flows || 1), computedAt);
   });
   const insertDestination = db.prepare(`
     insert into top_destinations_window(window, traffic_class, rank, destination, channel, route, bytes,
@@ -2177,7 +2206,7 @@ function policyForFlow(row) {
 function riskForFlow(row) {
   const raw = `${JSON.stringify(row)} ${text(row.destination)} ${text(row.matched_rule)} ${text(row.rule_set)}`.toLowerCase();
   const route = text(row.route);
-  const bytes = number(row.bytes || row.total_bytes);
+  const bytes = aggregateTotalBytes(row);
   if (raw.includes("leak") || raw.includes("suspicious") || raw.includes("blocked")) {
     return { risk: "high", reason: "source evidence marks this flow as suspicious" };
   }
@@ -2634,7 +2663,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
     const rowConfidence = confidence(row.confidence, "estimated");
     const eventTs = eventTimestamp(row, collectedAt);
     const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
-    const bytes = number(row.bytes || row.total_bytes);
+    const bytes = aggregateTotalBytes(row);
     const split = signedByteSplit(row, route, bytes);
     const trafficClass = flowTrafficClass(row);
     maybeLogCounterDrift(db, collectedAt, { ...row, client, destination }, split);

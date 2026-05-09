@@ -497,6 +497,12 @@ payload = {
   schema_version: 1,
   command: "ghostroute-health-monitor live-check",
   generated_at: generated_at,
+  source: {
+    command: "ghostroute-health-monitor live-check",
+    mode: deploy_gate ? "deploy-gate" : active_probe ? "active-probe" : "default",
+    active_probe: active_probe,
+    deploy_gate: deploy_gate
+  },
   mode: deploy_gate ? "deploy-gate" : active_probe ? "active-probe" : "default",
   deploy_gate: deploy_gate,
   channel: channel,

@@ -39,7 +39,7 @@ const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWi
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
-const { validateSnapshotPayload } = snapshotContractsModule;
+const { validateSnapshotPayload, withSnapshotContractDefaults } = snapshotContractsModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -78,6 +78,21 @@ test("snapshot contracts keep unknown fields and reject missing core fields", ()
     }),
     /generated_at/
   );
+});
+
+test("deploy gate contract defaults preserve legacy live-check payloads", () => {
+  const payload = withSnapshotContractDefaults("deploy_gate", {
+    schema_version: 1,
+    command: "ghostroute-health-monitor live-check",
+    generated_at: "2026-05-09T10:00:00Z",
+    mode: "deploy-gate",
+    deploy_gate: true,
+    overall_status: "WARN",
+    checks: [],
+  });
+  const validated = validateSnapshotPayload("deploy_gate", payload);
+  assert.equal(validated.source.command, "ghostroute-health-monitor live-check");
+  assert.equal(validated.source.mode, "deploy-gate");
 });
 
 test("collector lock replaces stale locks and preserves active peer locks", async () => {
@@ -521,6 +536,7 @@ test("dashboard analytics derives traffic charts quotas and mobile LTE usage fro
     { client: "Phone", channel: "C/Mobile LTE", destination: "youtube.test", route: "Direct", bytes: 50, last_seen: "2026-05-07T10:00:00Z" },
     { client: "Phone", channel: "Channel B", destination: "telegram.org", route: "VPS", bytes: 25, last_seen: "2026-05-06T10:00:00Z" },
     { client: "Tablet", channel: "Home Wi-Fi/LAN", destination: "unknown destination", route: "Unknown", bytes: 10, last_seen: "2026-05-07T11:00:00Z" },
+    { client: "Tablet", channel: "Home Wi-Fi/LAN", destination: "IP-only / no DNS match", route: "Unknown", bytes: 0, unknown_bytes: 40, last_seen: "2026-05-07T11:30:00Z" },
     { client: "Old", channel: "Home Wi-Fi/LAN", destination: "old.test", route: "VPS", bytes: 20, last_seen: "2026-04-30T11:00:00Z" },
   ];
   const analytics = buildDashboardAnalyticsFromRows(rows, {
@@ -531,10 +547,11 @@ test("dashboard analytics derives traffic charts quotas and mobile LTE usage fro
     resetDay: 1,
   });
   assert.deepEqual(routeByteSplit(rows[1]), { totalBytes: 1000, viaVpsBytes: 700, directBytes: 250, unknownBytes: 50 });
-  assert.equal(analytics.trafficToday.totalBytes, 1160);
+  assert.deepEqual(routeByteSplit(rows[5]), { totalBytes: 40, viaVpsBytes: 0, directBytes: 0, unknownBytes: 40 });
+  assert.equal(analytics.trafficToday.totalBytes, 1200);
   assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 800);
   assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.directBytes, 0), 300);
-  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.unknownBytes, 0), 60);
+  assert.equal(analytics.trafficToday.points.reduce((sum, row) => sum + row.unknownBytes, 0), 100);
   assert.equal(analytics.topClients[0].label, "Laptop");
   assert.equal(analytics.topClients[0].viaVpsBytes, 800);
   assert.equal(analytics.topClients[0].directBytes, 250);
@@ -585,7 +602,7 @@ test("prepared traffic windows use operator clients and preserve destination top
     `);
     insert.run(1, "2026-05-07T08:00:00Z", "lan-host-13", "Home Wi-Fi/LAN", "torrent.example", "Direct", "exact", 1200, 8, "", "client", 0, 1200, 0, JSON.stringify({ client: "lan-host-13" }));
     insert.run(1, "2026-05-07T08:02:00Z", "192.0.2.44", "Home Wi-Fi/LAN", "large-download.example", "Direct", "exact", 2200, 10, "192.0.2.44", "client", 0, 2200, 0, JSON.stringify({ client_ip: "192.0.2.44" }));
-    insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "", "client", 0, 0, 0, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
+    insert.run(1, "2026-05-07T08:05:00Z", "lan-host-13", "Home Wi-Fi/LAN", "unknown destination", "Unknown", "estimated", 0, 0, "", "client", 0, 0, 1234, JSON.stringify({ client: "lan-host-13", accounting_bucket: true }));
     insert.run(1, "2026-05-07T08:10:00Z", "A/Home Reality", "A/Home Reality", "internal.example", "Unknown", "estimated", 6, 1, "", "client", 0, 0, 6, JSON.stringify({ client: "A/Home Reality" }));
     insert.run(1, "2026-05-07T08:15:00Z", "lan-host-99", "Home Wi-Fi/LAN", "unregistered.example", "Direct", "exact", 900, 5, "", "client", 0, 900, 0, JSON.stringify({ client: "lan-host-99" }));
     insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "", "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
@@ -595,6 +612,9 @@ test("prepared traffic windows use operator clients and preserve destination top
     const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
     assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 1234);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 1234);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].unknownBytes, 1234);
     assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
     assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "large-download.example");
     assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");

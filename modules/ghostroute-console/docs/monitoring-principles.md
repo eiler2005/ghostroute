@@ -20,6 +20,10 @@ Unclassified traffic is not discarded. If it has bytes, it is counted, sorted by
 volume and shown with route, channel and confidence so the operator can improve
 attribution later.
 
+Traffic totals are computed from the route split when needed. If a row carries
+`unknown_bytes` but a zero total, Console still treats those unknown bytes as
+observed client traffic instead of rendering `0 B`.
+
 ## Freshness
 
 - Dashboard traffic KPI uses lightweight `traffic-summary today`: current local
@@ -52,6 +56,9 @@ attribution later.
 - Dashboard, Clients, DNS and report JSON should read prepared windows first.
   Missing historical prepared data should produce a bounded empty/fallback state,
   not a raw-table scan.
+- DNS Query Log may show factual DNS rows that do not yet resolve to a private
+  registry client. Those rows are attribution diagnostics; they are excluded
+  from DNS top-client grouping until a registry alias exists.
 - Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
   aggregates around the monthly window. Raw operational rows remain bounded
   troubleshooting data.

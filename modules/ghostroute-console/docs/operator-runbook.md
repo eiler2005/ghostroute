@@ -47,6 +47,11 @@ Raw evidence still keeps the observed labels separately. New or unmatched
 `mobile-source-*` counters remain diagnostics until the operator adds an
 explicit profile, MAC or IP alias.
 
+Observed LAN labels may be renamed in this private registry without changing the
+router report format. For example, a stable `lan-host-*` alias can carry a
+human device/owner label while the raw snapshot still preserves the original
+observed id for audit.
+
 Registry entries may also define a physical `device_key`, `device_label`,
 `owner` and `device_type`. The Clients page renders that physical Device
 Inventory first, then lists observed identities such as Channel A/B/C profiles,
@@ -84,7 +89,9 @@ The VPS deployment defaults to read-only SSH collection through the generated
 - deploy-gate snapshots with the full pass.
 
 Deploy-gate CRIT output is stored even when the command exits non-zero, so
-Health Center can show the exact deploy blocker.
+Health Center can show the exact deploy blocker. Deploy-gate JSON must carry a
+`source.command`; the Console collector also applies a narrow compatibility
+default for older live-check payloads that omitted `source`.
 
 Collectors keep per-job locks to avoid duplicate runs and a short shared SQLite
 writer lock only while storing snapshots and rebuilding read models. Stale locks

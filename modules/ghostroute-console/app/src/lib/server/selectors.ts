@@ -515,9 +515,25 @@ function pseudoClientLabel(row: Record<string, any>) {
   return /^(a\/home reality|b\/xhttp relay|c\d?\b|dns-interest|service|accounting)/i.test(label);
 }
 
+function positiveNumber(...values: Array<unknown>) {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function observedByteValue(row: Record<string, any>) {
+  return positiveNumber(row.total_bytes, row.bytes, row.observed_bytes)
+    || Number(row.via_vps_bytes || row.vps_bytes || row.reality_bytes || 0)
+      + Number(row.direct_bytes || row.wan_bytes || 0)
+      + Number(row.unknown_bytes || row.unresolved_bytes || 0);
+}
+
 function operatorTrafficRow(row: Record<string, any>, options: { allowAccountingBucket?: boolean } = {}): Record<string, any> | null {
   const decorated = decorateTrafficRow(row);
-  const total = Number(decorated.bytes || decorated.total_bytes || 0);
+  const total = observedByteValue(decorated);
   if (total <= 0) return null;
   if (!options.allowAccountingBucket && decorated.accounting_bucket) return null;
   if (String(decorated.confidence || "").toLowerCase() === "dns-interest") return null;
@@ -527,6 +543,8 @@ function operatorTrafficRow(row: Record<string, any>, options: { allowAccounting
   if (!resolved) return null;
   return {
     ...decorated,
+    bytes: total,
+    total_bytes: total,
     client: resolved.client_label || decorated.client,
     client_key: resolved.client_key,
     client_label: resolved.client_label || decorated.client_label,
@@ -539,7 +557,7 @@ function operatorTrafficRow(row: Record<string, any>, options: { allowAccounting
 }
 
 function operatorClientRow(row: Record<string, any>): Record<string, any> | null {
-  const total = Number(row.total_bytes || row.bytes || 0);
+  const total = observedByteValue(row);
   if (total <= 0) return null;
   if (String(row.confidence || "").toLowerCase() === "dns-interest") return null;
   if (pseudoClientLabel(row)) return null;
@@ -591,13 +609,24 @@ function operatorClientRow(row: Record<string, any>): Record<string, any> | null
 }
 
 function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
-  if (pseudoClientLabel(row)) return null;
+  if (!row.domain && !row.dns_qname && !row.destination) return null;
   const resolved = registeredClientResolution({
     ...row,
     client_key: row.device_key || row.client_key || row.client || "",
     client_label: row.client_label || row.client || "",
   });
-  if (!resolved) return null;
+  if (!resolved || pseudoClientLabel(row)) {
+    return {
+      ...row,
+      raw_client: row.raw_client || row.client || row.client_label || row.device_key || "",
+      client: "",
+      client_key: "",
+      client_label: "",
+      device_key: "",
+      device_label: "Unattributed DNS source",
+      client_attributed: false,
+    };
+  }
   return {
     ...row,
     client: resolved.client_label || row.client,
@@ -605,6 +634,7 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
     client_label: resolved.client_label || row.client_label,
     device_key: resolved.device_key || row.device_key,
     device_label: resolved.device_label || row.device_label,
+    client_attributed: true,
   };
 }
 
@@ -765,9 +795,10 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
     const label = deviceLabel(row);
     const role = row.role || deviceRole(row);
     const rowTotals = {
-      total_bytes: Number(row.total_bytes || 0),
+      total_bytes: observedByteValue(row),
       via_vps_bytes: Number(row.via_vps_bytes || row.reality_bytes || 0),
       direct_bytes: Number(row.direct_bytes || row.wan_bytes || 0),
+      unknown_bytes: Number(row.unknown_bytes || row.unresolved_bytes || 0),
     };
     const sourceId = `${collected}|${rawDeviceKey(row)}|${preservedChannel(row)}`;
     if (!current) {
@@ -809,18 +840,21 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       current.total_bytes = rowTotals.total_bytes;
       current.via_vps_bytes = rowTotals.via_vps_bytes;
       current.direct_bytes = rowTotals.direct_bytes;
+      current.unknown_bytes = rowTotals.unknown_bytes;
     } else if (sameTime) {
       const sourceIds = new Set([...(current.source_ids || [])]);
       if (!sourceIds.has(sourceId)) {
         current.total_bytes = Number(current.total_bytes || 0) + rowTotals.total_bytes;
         current.via_vps_bytes = Number(current.via_vps_bytes || 0) + rowTotals.via_vps_bytes;
         current.direct_bytes = Number(current.direct_bytes || 0) + rowTotals.direct_bytes;
+        current.unknown_bytes = Number(current.unknown_bytes || 0) + rowTotals.unknown_bytes;
         sourceIds.add(sourceId);
         current.source_ids = Array.from(sourceIds).slice(0, 32);
       } else {
         current.total_bytes = Math.max(Number(current.total_bytes || 0), rowTotals.total_bytes);
         current.via_vps_bytes = Math.max(Number(current.via_vps_bytes || 0), rowTotals.via_vps_bytes);
         current.direct_bytes = Math.max(Number(current.direct_bytes || 0), rowTotals.direct_bytes);
+        current.unknown_bytes = Math.max(Number(current.unknown_bytes || 0), rowTotals.unknown_bytes);
       }
     }
     if (labelScore(label) > labelScore(current.label)) {
@@ -960,7 +994,7 @@ function destinationAttributionCoverageForPeriod(period = "today") {
 }
 
 function flowByteValue(row: Record<string, any>) {
-  return Number(row.bytes || row.total_bytes || 0);
+  return observedByteValue(row);
 }
 
 function flowGroupKey(row: Record<string, any>) {
@@ -2756,12 +2790,15 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
   return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}`, () => {
   const prepared = getPreparedWindowSnapshot("clients", period, "client")?.payload;
   if (prepared?.rows) {
-    return (prepared.rows as Array<Record<string, any>>).map((row) => operatorClientRow({
+    return (prepared.rows as Array<Record<string, any>>).map((row) => {
+      const total = observedByteValue(row);
+      return operatorClientRow({
       ...row,
-      bytes: Number(row.total_bytes || row.bytes || 0),
-      total_bytes: Number(row.total_bytes || row.bytes || 0),
-      traffic_window_active: Number(row.total_bytes || row.bytes || 0) > 0,
-    })).filter((row): row is Record<string, any> => Boolean(row));
+      bytes: total,
+      total_bytes: total,
+      traffic_window_active: total > 0,
+      });
+    }).filter((row): row is Record<string, any> => Boolean(row));
   }
   if (USE_PREPARED_WINDOWS && period !== "today") return [];
   const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
@@ -2780,9 +2817,10 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       total_bytes: current ? Number(current.total_bytes || 0) : 0,
       via_vps_bytes: current ? Number(current.via_vps_bytes || 0) : 0,
       direct_bytes: current ? Number(current.direct_bytes || 0) : 0,
+      unknown_bytes: current ? Number(current.unknown_bytes || 0) : 0,
       route: current ? deviceRoute(current) : "Unknown",
       confidence: current?.confidence || "unknown",
-      traffic_window_active: Boolean(current && Number(current.total_bytes || 0) > 0),
+      traffic_window_active: Boolean(current && observedByteValue(current) > 0),
       traffic_collected_at: current?.last_seen || current?.collected_at || "",
     };
   });
@@ -2790,7 +2828,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
     if (seen.has(key)) continue;
     rows.push({
       ...row,
-      traffic_window_active: Number(row.total_bytes || 0) > 0,
+      traffic_window_active: observedByteValue(row) > 0,
       traffic_collected_at: row.last_seen || row.collected_at || "",
     });
   }
