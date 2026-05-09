@@ -67,6 +67,18 @@ export function validateSnapshotPayload(type, payload) {
   throw new Error(`invalid ${type} snapshot contract: ${detail}`);
 }
 
+export function withSnapshotContractDefaults(type, payload, defaults = {}) {
+  if (type !== "deploy_gate" || payload?.source) return payload;
+  return {
+    ...payload,
+    source: {
+      command: payload?.command || defaults.command || "deploy_gate",
+      mode: payload?.mode || defaults.mode || "",
+      deploy_gate: Boolean(payload?.deploy_gate),
+    },
+  };
+}
+
 export function snapshotContractVersion(type) {
   return schemas[type] ? 1 : 0;
 }

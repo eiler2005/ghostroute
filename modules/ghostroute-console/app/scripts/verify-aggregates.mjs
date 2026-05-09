@@ -61,7 +61,9 @@ function segmentRows(segment) {
   const table = segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
   const timeColumn = segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
   return db.prepare(`
-    select client_key, channel, destination_key, traffic_class, bytes, attributed_bytes
+    select client_key, channel, destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
+           attributed_bytes,
+           case when attributed_bytes <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end as accounting_bucket
       from ${table}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
@@ -78,13 +80,22 @@ function observedBytes(rows, allowedClientKeys = null) {
   for (const row of rows) {
     if (!registry.clients[row.client_key]) continue;
     if (allowedClientKeys && !allowedClientKeys.has(row.client_key)) continue;
+    if (String(row.confidence || "").toLowerCase() === "dns-interest") continue;
     const key = [row.client_key, row.channel || ""].join("|");
     const current = groups.get(key) || { accounting: 0, detail: 0 };
-    if (String(row.destination_key || "") === "") current.accounting += number(row.bytes);
+    if (row.accounting_bucket) current.accounting += number(row.bytes);
     else current.detail += number(row.bytes);
     groups.set(key, current);
   }
   return Array.from(groups.values()).reduce((sum, row) => sum + (row.accounting > 0 ? row.accounting : row.detail), 0);
+}
+
+function rowTotalBytes(row) {
+  const explicit = number(row.bytes || row.total_bytes);
+  if (explicit > 0) return explicit;
+  return number(row.via_vps_bytes || row.viaVpsBytes)
+    + number(row.direct_bytes || row.directBytes)
+    + number(row.unknown_bytes || row.unknownBytes);
 }
 
 function repairHint(window, dashboard) {
@@ -98,7 +109,7 @@ for (const window of ["today", "week", "month"]) {
   const preparedDevices = dashboard.devices || [];
   const preparedClientKeys = new Set(preparedDevices.map((row) => row.client_key).filter(Boolean));
   const aggregateBytes = observedBytes(rows, preparedClientKeys);
-  const preparedBytes = preparedDevices.reduce((sum, row) => sum + number(row.bytes || row.total_bytes), 0)
+  const preparedBytes = preparedDevices.reduce((sum, row) => sum + rowTotalBytes(row), 0)
     || number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes);
   const allowed = Math.max(1, aggregateBytes * 0.01);
   if (Math.abs(aggregateBytes - preparedBytes) > allowed) {

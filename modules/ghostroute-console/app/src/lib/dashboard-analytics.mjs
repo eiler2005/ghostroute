@@ -8,8 +8,20 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 function rowBytes(row) {
-  return number(row?.bytes || row?.total_bytes);
+  return firstPositiveNumber(row?.bytes, row?.total_bytes, row?.observed_bytes)
+    || number(row?.via_vps_bytes || row?.reality_bytes)
+      + number(row?.direct_bytes || row?.wan_bytes)
+      + number(row?.unknown_bytes || row?.unresolved_bytes);
 }
 
 function hasNumber(value) {
@@ -45,7 +57,7 @@ function rowEvidence(row) {
 
 export function routeByteSplit(row) {
   const evidence = rowEvidence(row);
-  const totalBytes = rowBytes(row);
+  let totalBytes = rowBytes(row);
   const explicitVps = hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes)
     || hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes);
   const explicitDirect = hasNumber(row?.direct_bytes) || hasNumber(row?.wan_bytes)
@@ -55,6 +67,9 @@ export function routeByteSplit(row) {
   let viaVpsBytes = firstNumber(row?.via_vps_bytes, row?.reality_bytes, evidence.via_vps_bytes, evidence.reality_bytes);
   let directBytes = firstNumber(row?.direct_bytes, row?.wan_bytes, evidence.direct_bytes, evidence.wan_bytes);
   let unknownBytes = firstNumber(row?.unknown_bytes, row?.unresolved_bytes, evidence.unknown_bytes, evidence.unresolved_bytes);
+  if (totalBytes <= 0 && viaVpsBytes + directBytes + unknownBytes > 0) {
+    totalBytes = viaVpsBytes + directBytes + unknownBytes;
+  }
 
   if (!explicitVps && !explicitDirect && !explicitUnknown) {
     const route = text(row?.route, "Unknown").toLowerCase();
