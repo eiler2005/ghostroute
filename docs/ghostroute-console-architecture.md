@@ -293,6 +293,8 @@ APIs for `today`, `week` and `month`. Week/month request paths must not scan
 `normalized_flows`, `normalized_dns`, `events` or raw snapshot payloads. The
 temporary rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`, but
 the steady-state large-database contract is prepared-window reads only.
+The detailed anti-warehouse-rebuild contract is documented in
+[data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.
