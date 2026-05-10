@@ -20,6 +20,14 @@ Control-machine reports pull those counters through the shared router SSH helper
 combine them with local metadata and render safe Markdown/text output for humans
 and LLM handoff.
 
+For Console accounting, the router also writes a bounded bottom layer of LAN
+flow facts: `lan-flow-facts-snapshot` samples conntrack byte deltas as
+`client_ip -> destination_ip -> route -> bytes` and stores them in
+`lan-flow-facts.tsv`. It is asynchronous, guarded by lock/load/row limits, and
+does not change Channels A/B/C, managed domains, iptables routing rules or
+sing-box policy. Higher-level aggregation, DNS/domain correlation and prepared
+windows remain on the VPS/Console side.
+
 ## Architecture
 
 - `bin/` contains local reporting commands.
@@ -29,7 +37,9 @@ and LLM handoff.
 ## Read-only / Mutating Contract
 
 The module is read-only for routing policy. It mutates only its own accounting
-counters and snapshot files on the router.
+counters and snapshot files on the router. The LAN flow collector may enable
+`nf_conntrack_acct` for byte visibility; it stores the previous value and ships a
+rollback script.
 
 ## Public Commands
 

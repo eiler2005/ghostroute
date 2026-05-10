@@ -14,6 +14,16 @@ timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 [ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
 [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && /jffs/scripts/mobile-reality-accounting-refresh >/dev/null 2>&1 || true
 
+if [ -x /jffs/scripts/lan-flow-facts-snapshot ]; then
+  (
+    if command -v nice >/dev/null 2>&1; then
+      nice -n 10 /jffs/scripts/lan-flow-facts-snapshot >/dev/null 2>&1
+    else
+      /jffs/scripts/lan-flow-facts-snapshot >/dev/null 2>&1
+    fi
+  ) &
+fi
+
 for iface in wan0 br0 eth6 eth7; do
   [ -d "/sys/class/net/$iface" ] || continue
   rx="$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null || echo 0)"

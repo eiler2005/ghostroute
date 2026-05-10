@@ -1,0 +1,225 @@
+#!/bin/sh
+
+# Best-effort LAN flow byte sampler for GhostRoute Console.
+# This script observes conntrack counters only. It must not change routing,
+# NAT, sing-box, dnsmasq, ipset membership, or Channel A/B/C ownership.
+
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+
+FACTS_FILE="$STATE_DIR/lan-flow-facts.tsv"
+PREV_FILE="$STATE_DIR/lan-flow-facts.prev"
+STATUS_FILE="$STATE_DIR/lan-flow-facts.status"
+LOCK_DIR="$STATE_DIR/lan-flow-facts.lock"
+ACCT_SYSCTL="/proc/sys/net/netfilter/nf_conntrack_acct"
+ACCT_PREVIOUS_FILE="$STATE_DIR/lan-flow-facts-acct.previous"
+
+MAX_ROWS="${GHOSTROUTE_LAN_FLOW_MAX_ROWS:-6000}"
+MAX_FACTS="${GHOSTROUTE_LAN_FLOW_MAX_FACTS:-1200}"
+MAX_LOAD_X100="${GHOSTROUTE_LAN_FLOW_MAX_LOAD_X100:-600}"
+
+mkdir -p "$STATE_DIR"
+
+timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+start_epoch="$(date '+%s')"
+
+status() {
+  state="$1"
+  reason="$2"
+  rows="${3:-0}"
+  facts="${4:-0}"
+  acct="${5:-unknown}"
+  end_epoch="$(date '+%s')"
+  duration_ms=$(( (end_epoch - start_epoch) * 1000 ))
+  printf '%s|%s|reason=%s|rows=%s|facts=%s|duration_ms=%s|acct=%s|source=conntrack\n' \
+    "$timestamp" "$state" "$reason" "$rows" "$facts" "$duration_ms" "$acct" > "$STATUS_FILE"
+}
+
+case "$MAX_ROWS" in ''|*[!0-9]*) MAX_ROWS=6000 ;; esac
+case "$MAX_FACTS" in ''|*[!0-9]*) MAX_FACTS=1200 ;; esac
+case "$MAX_LOAD_X100" in ''|*[!0-9]*) MAX_LOAD_X100=600 ;; esac
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  status "partial" "lock_busy" 0 0 "unknown"
+  exit 0
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_CONNTRACK" "$TMP_LAN" "$TMP_CURRENT" "$TMP_DELTA"' EXIT
+
+load_x100="$(awk '
+  {
+    split($1, parts, ".")
+    frac = parts[2]
+    while (length(frac) < 2) frac = frac "0"
+    printf "%d\n", (parts[1] * 100) + substr(frac, 1, 2)
+  }' /proc/loadavg 2>/dev/null || printf '0\n')"
+case "$load_x100" in ''|*[!0-9]*) load_x100=0 ;; esac
+if [ "$load_x100" -gt "$MAX_LOAD_X100" ]; then
+  status "partial" "load_high_${load_x100}" 0 0 "unknown"
+  exit 0
+fi
+
+acct_state="missing"
+if [ -f "$ACCT_SYSCTL" ]; then
+  acct_state="$(cat "$ACCT_SYSCTL" 2>/dev/null || printf 'unknown')"
+  if [ ! -f "$ACCT_PREVIOUS_FILE" ]; then
+    printf '%s\n' "$acct_state" > "$ACCT_PREVIOUS_FILE"
+  fi
+  if [ "$acct_state" != "1" ]; then
+    echo 1 > "$ACCT_SYSCTL" 2>/dev/null || true
+    acct_state="$(cat "$ACCT_SYSCTL" 2>/dev/null || printf 'unknown')"
+  fi
+fi
+
+TMP_CONNTRACK="/tmp/lan-flow-facts.conntrack.$$"
+TMP_LAN="/tmp/lan-flow-facts.lan.$$"
+TMP_CURRENT="/tmp/lan-flow-facts.current.$$"
+TMP_DELTA="/tmp/lan-flow-facts.delta.$$"
+
+: > "$TMP_LAN"
+if [ -f /var/lib/misc/dnsmasq.leases ]; then
+  awk 'NF >= 3 && $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $3 }' /var/lib/misc/dnsmasq.leases > "$TMP_LAN"
+fi
+if [ ! -s "$TMP_LAN" ]; then
+  ip -4 neigh show dev br0 2>/dev/null | awk '$1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $1 }' > "$TMP_LAN"
+fi
+if [ ! -s "$TMP_LAN" ]; then
+  status "partial" "no_lan_clients" 0 0 "$acct_state"
+  exit 0
+fi
+
+if command -v conntrack >/dev/null 2>&1; then
+  conntrack -L 2>/dev/null | head -n "$MAX_ROWS" > "$TMP_CONNTRACK" || : > "$TMP_CONNTRACK"
+elif [ -r /proc/net/nf_conntrack ]; then
+  head -n "$MAX_ROWS" /proc/net/nf_conntrack > "$TMP_CONNTRACK"
+elif [ -r /proc/net/ip_conntrack ]; then
+  head -n "$MAX_ROWS" /proc/net/ip_conntrack > "$TMP_CONNTRACK"
+else
+  status "partial" "conntrack_unavailable" 0 0 "$acct_state"
+  exit 0
+fi
+
+rows_seen="$(wc -l < "$TMP_CONNTRACK" 2>/dev/null | tr -d ' ')"
+case "$rows_seen" in ''|*[!0-9]*) rows_seen=0 ;; esac
+if [ "$rows_seen" -eq 0 ]; then
+  status "partial" "conntrack_empty" 0 0 "$acct_state"
+  exit 0
+fi
+
+awk -v max_facts="$MAX_FACTS" '
+  BEGIN { OFS = "|" }
+  NR == FNR {
+    lan[$1] = 1
+    next
+  }
+  function clean(value) {
+    sub(/^[^=]+=/, "", value)
+    return value
+  }
+  function local_ip(ip, oct) {
+    split(ip, oct, ".")
+    return ip == "" ||
+      oct[1] == 0 || oct[1] == 10 || oct[1] == 127 ||
+      (oct[1] == 169 && oct[2] == 254) ||
+      (oct[1] == 172 && oct[2] >= 16 && oct[2] <= 31) ||
+      (oct[1] == 192 && oct[2] == 168) ||
+      oct[1] >= 224
+  }
+  {
+    proto = $1
+    src_count = dst_count = sport_count = dport_count = bytes_count = 0
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^src=/) src[++src_count] = clean($i)
+      else if ($i ~ /^dst=/) dst[++dst_count] = clean($i)
+      else if ($i ~ /^sport=/) sport[++sport_count] = clean($i)
+      else if ($i ~ /^dport=/) dport[++dport_count] = clean($i)
+      else if ($i ~ /^bytes=/) bytes[++bytes_count] = clean($i) + 0
+    }
+    if (src_count < 1 || dst_count < 1 || bytes_count < 1) next
+
+    client = remote = port = ""
+    out_bytes = in_bytes = 0
+    if (src[1] in lan) {
+      client = src[1]
+      remote = dst[1]
+      port = dport[1]
+      out_bytes = bytes[1] + 0
+      in_bytes = bytes[2] + 0
+    } else if (dst[1] in lan) {
+      client = dst[1]
+      remote = src[1]
+      port = sport[1]
+      in_bytes = bytes[1] + 0
+      out_bytes = bytes[2] + 0
+    } else {
+      next
+    }
+    if (local_ip(remote)) next
+    key = client "|" remote "|" port "|" proto
+    out[key] += out_bytes
+    inb[key] += in_bytes
+    conn[key] += 1
+  }
+  END {
+    for (key in out) {
+      split(key, parts, "|")
+      printf "%s|%s|%s|%s|%d|%d|%d\n", parts[1], parts[2], parts[3], parts[4], out[key], inb[key], conn[key]
+      emitted++
+      if (emitted >= max_facts) break
+    }
+  }
+' "$TMP_LAN" "$TMP_CONNTRACK" > "$TMP_CURRENT"
+
+if [ ! -s "$PREV_FILE" ]; then
+  cp "$TMP_CURRENT" "$PREV_FILE"
+  status "partial" "baseline_initialized" "$rows_seen" 0 "$acct_state"
+  exit 0
+fi
+
+awk -F'|' '
+  BEGIN { OFS = "|" }
+  NR == FNR {
+    prev_out[$1 "|" $2 "|" $3 "|" $4] = $5 + 0
+    prev_in[$1 "|" $2 "|" $3 "|" $4] = $6 + 0
+    next
+  }
+  {
+    key = $1 "|" $2 "|" $3 "|" $4
+    out_delta = ($5 + 0) >= prev_out[key] ? ($5 + 0) - prev_out[key] : ($5 + 0)
+    in_delta = ($6 + 0) >= prev_in[key] ? ($6 + 0) - prev_in[key] : ($6 + 0)
+    total = out_delta + in_delta
+    if (total > 0) print $1, $2, $3, $4, out_delta, in_delta, total, $7
+  }
+' "$PREV_FILE" "$TMP_CURRENT" > "$TMP_DELTA"
+
+route_for_ip() {
+  ip="$1"
+  if command -v ipset >/dev/null 2>&1; then
+    if ipset test STEALTH_DOMAINS "$ip" >/dev/null 2>&1 || ipset test VPN_STATIC_NETS "$ip" >/dev/null 2>&1; then
+      printf 'VPS'
+      return 0
+    fi
+    printf 'Direct'
+    return 0
+  fi
+  printf 'Unknown'
+}
+
+facts_written=0
+while IFS='|' read -r client remote port proto out_delta in_delta total conns; do
+  [ -n "$client" ] || continue
+  route="$(route_for_ip "$remote")"
+  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|conntrack_snapshot_delta|observed_delta|ip|ok\n' \
+    "$timestamp" "$client" "$remote" "$port" "$proto" "$route" \
+    "$out_delta" "$in_delta" "$total" "${conns:-1}" >> "$FACTS_FILE"
+  facts_written=$((facts_written + 1))
+  [ "$facts_written" -ge "$MAX_FACTS" ] && break
+done < "$TMP_DELTA"
+
+cp "$TMP_CURRENT" "$PREV_FILE"
+[ -f "$FACTS_FILE" ] && tail -n 50000 "$FACTS_FILE" > "$FACTS_FILE.tmp" && mv "$FACTS_FILE.tmp" "$FACTS_FILE"
+
+if [ "$facts_written" -gt 0 ]; then
+  status "ok" "sampled" "$rows_seen" "$facts_written" "$acct_state"
+else
+  status "partial" "no_new_deltas" "$rows_seen" 0 "$acct_state"
+fi

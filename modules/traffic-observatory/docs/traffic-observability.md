@@ -180,9 +180,13 @@ Console should consume `traffic-facts --json`, not scrape the human
 Every fact carries evidence fields: identity confidence, byte confidence,
 destination confidence, allocation basis, evidence level and source list. DNS
 family allocation is allowed for ranking and investigation, but it remains
-marked as allocated/estimated. Exact per-domain billing should only be claimed
-when a future source provides destination byte evidence, such as cheap
-per-client conntrack byte counters.
+marked as allocated/estimated. LAN/Wi-Fi destination bytes now prefer the
+asynchronous router `lan-flow-facts.tsv` layer when available: it records bounded
+conntrack deltas as `client_ip -> destination_ip -> route -> bytes`, with
+`allocation_basis=conntrack_snapshot_delta` and
+`byte_confidence=observed_delta`. Domain naming/correlation remains a VPS/Console
+read-model responsibility; the router only writes the bottom fact layer and
+status/gap evidence.
 
 `traffic-report --json` remains a compatibility output for older consumers, and
 human `traffic-report today/week/month/check` keeps its operator-facing text.
@@ -407,6 +411,8 @@ The saved snapshot backend builds period deltas from:
 
 - `interface-counters.tsv` for WAN/LAN bridge/Wi-Fi totals
 - `lan-device-counters.tsv` for LAN `Reality` / direct `WAN` / `Other`
+- `lan-flow-facts.tsv` for asynchronous LAN `client_ip -> destination_ip`
+  conntrack byte deltas, when router load and source limits allow it
 - `mobile-reality-counters.tsv` for Home Reality upload/download bytes
 
 The script takes a fresh snapshot first, then computes first-to-last deltas
@@ -418,6 +424,10 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
+- `lan-flow-facts-snapshot` is a non-routing observer. It may enable
+  `nf_conntrack_acct`, saves the previous value, uses a lock, max-row/fact and
+  load guards, and writes only Traffic Observatory state files. Rollback is
+  `/jffs/scripts/lan-flow-facts-rollback`.
 - `HOME REALITY INGRESS CLIENTS` combines two signals:
   - byte totals from router-side TCP/<home-reality-port> counters
     (`RC_MOBILE_REALITY_IN/OUT`)
