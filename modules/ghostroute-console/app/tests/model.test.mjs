@@ -180,6 +180,69 @@ test("traffic facts v2 normalize facts, clients and gaps without synthetic flow 
   db.close();
 });
 
+test("traffic facts v2 resolves LAN IP facts through private device registry", () => {
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-attribution-"));
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  fs.writeFileSync(path.join(tmp, "device-attribution.local.json"), JSON.stringify({
+    clients: {
+      "operator-laptop": {
+        label: "Operator Laptop",
+        device_key: "operator-laptop",
+        primary_channel: "Home Wi-Fi/LAN",
+        ip_aliases: ["192.0.2.44"],
+      },
+    },
+  }));
+  const db = new Database(":memory:");
+  try {
+    ensureConsoleSchema(db);
+    const payload = {
+      schema_version: 2,
+      generated_at: "2026-05-10T08:00:00.123Z",
+      source: { command: "traffic-facts", period: "today" },
+      window: { period: "today" },
+      traffic_facts: [{
+        fact_id: "lan-fact-1",
+        client_ip: "192.0.2.44",
+        client_label: "192.0.2.44",
+        channel: "Home Wi-Fi/LAN",
+        route: "VPS",
+        traffic_class: "client",
+        destination: "198.51.100.10",
+        destination_kind: "ip",
+        destination_ip: "198.51.100.10",
+        bytes: 4096,
+        via_vps_bytes: 4096,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        connections: 1,
+        identity_confidence: "exact",
+        byte_confidence: "observed_delta",
+        destination_confidence: "ip",
+        allocation_basis: "conntrack_snapshot_delta",
+        evidence_level: "conntrack",
+        confidence: "exact",
+        display_ts_utc: "2026-05-10T08:00:00.123Z",
+        time_precision: "event_ms",
+      }],
+    };
+    normalizeSnapshot(db, 1, "traffic_facts", payload.generated_at, payload);
+    const fact = db.prepare("select client_key, client_label, channel from traffic_facts where fact_id = ?").get("lan-fact-1");
+    assert.deepEqual(fact, {
+      client_key: "operator-laptop",
+      client_label: "Operator Laptop",
+      channel: "Home Wi-Fi/LAN",
+    });
+    assert.equal(db.prepare("select client from normalized_flows where destination_ip = ?").get("198.51.100.10").client, "Operator Laptop");
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test("deploy gate contract defaults preserve legacy live-check payloads", () => {
   const payload = withSnapshotContractDefaults("deploy_gate", {
     schema_version: 1,
