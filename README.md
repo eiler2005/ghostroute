@@ -725,7 +725,11 @@ directories. See [SECURITY.md](/SECURITY.md) and
 ## Detailed Documentation
 
 - [README-ru.md](README-ru.md) - localized documentation
+- [CONTRIBUTING.md](/CONTRIBUTING.md) - developer setup, commit/PR conventions, safety boundaries
 - [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and recovery boundaries
+- [docs/glossary.md](/docs/glossary.md) - definitions for managed domain, split routing, channels, Reality terms
+- [docs/deployment-and-rollback.md](/docs/deployment-and-rollback.md) - pre-deploy checklist, per-component rollback, hard rules
+- [docs/operational-slos.md](/docs/operational-slos.md) - availability/latency/correctness targets and how to measure them
 - [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
 - [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
 - [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
@@ -744,7 +748,9 @@ directories. See [SECURITY.md](/SECURITY.md) and
 - [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md) - vault, local secrets and pre-push scan
 - [modules/secrets-management/docs/vault-offsite-backup.md](/modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill
 - [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
-- [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics
+- [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics (RU primary; English equivalents in module runbooks such as `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`)
+- [docs/future-improvements-backlog.md](/docs/future-improvements-backlog.md) - long-running improvement backlog (RU primary; EN summary at the top)
+- [docs/repo-review-2026-05-10.md](/docs/repo-review-2026-05-10.md) - latest repository quality audit and prioritized fixlist
 
 ---
 

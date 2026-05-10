@@ -254,17 +254,18 @@ If a setting is absent in the installed OneXray version, record `not exposed` in
 the checklist and verify the equivalent behavior with the LTE DNS leak test and
 router logs below. Do not guess by enabling nearby experimental toggles.
 
-Per-device checklist:
+Per-device checklist (operator-local — keep filled-in copies outside git):
+
+The completed device matrix lives in the operator's local notes, not in the
+public repo. Use this template (in a gitignored or vault-stored copy) and fill
+each row after applying the values above on the real device:
 
 | Device | Profile | Mux | Fragment | TFO | Sniffing | Fake/System DNS | Domain strategy | Checked by | Date | Result / notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `iphone-1` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `iphone-2` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `iphone-3` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `iphone-4` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `iphone-5` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `iphone-6` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| `macbook` | Home Reality | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| `<device-id>` | `<profile-name>` | OFF | OFF | OFF | ON | ON / ON | AsIs | `<operator>` | `<YYYY-MM-DD>` | OK / followups |
+
+Real device labels, owners and per-device dates are operator-local data and
+must not be committed to public docs.
 
 ## iOS OneXray Direct Exceptions For Mercury/VTB
 

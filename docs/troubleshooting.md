@@ -1,5 +1,9 @@
 # Диагностика проблем
 
+> **`[RU primary]`** — этот документ ведётся на русском как основной операторский
+> runbook. Краткие EN-эквиваленты для каждой crisis-сценарии живут в
+> module-specific runbooks: главный — `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`.
+
 Для скорости LTE/Home Reality, MTU/MSS, TCP buffer и `connlimit` диагностики см.
 [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md).
 Для DNS leak / BrowserLeaks интерпретации по Channel A/B/C см.

@@ -1,5 +1,49 @@
 # Future Improvements Backlog
 
+> **`[RU primary]`** — этот файл ведётся на русском. English summary at the top
+> mirrors the structure for non-RU readers.
+>
+> See also: [`docs/repo-review-2026-05-10.md`](repo-review-2026-05-10.md) for
+> the latest audit and prioritized fixlist.
+
+## English summary
+
+This document is the long-running improvement backlog for `ghostroute` /
+`router_configuration`, kept primarily in Russian for the operator. Each
+section below is annotated with a phase marker:
+
+- `✓ done` — implemented, kept as historical context only.
+- `◐ in progress` — actively being worked on.
+- `○ deferred` — accepted but not scheduled.
+
+Top-level sections:
+
+1. **Tighten domain auto-discovery** (`◐`) — `STEALTH_DOMAINS` curation rigor.
+2. **Manual / static coverage review** (`○`) — periodic audit of static catalog.
+   - 2.1 STEALTH_DOMAINS curation scoring (`○`).
+3. **Compact health summary + drift detection** (`✓` partial) — short status
+   line and structured drift alarms.
+4. **Better observability and report shape** (`✓` partial) — Console v2 covers
+   most of this; remaining items are export polish.
+5. **Explicit IPv6 policy** (`○`) — currently disabled; needs a documented
+   long-term position.
+6. **Fallback sources, retention and rotation** (`○`) — log/report rotation,
+   backup egress sources.
+7. **Catalog capacity monitoring and growth trends** (`✓` partial) — health
+   monitor surfaces growth; alerts still local-only.
+8. **Reduce public `wgs1` to backup, later remove WAN ingress** (`✓`) —
+   WireGuard is cold-fallback only per ADR-0004.
+9. **Mature Channel C and maintain Channel B/C device-client lanes** (`◐`) —
+   C1-Shadowrocket live-proven; C1-sing-box server-ready, client-blocked.
+10. **Policy-based DNS / own resolver strategy** (`✓`) — implemented via
+    dnscrypt-proxy + sing-box SOCKS per ADR-0009.
+11. **Semi-auto backup managed egress** (`○`) — failover egress design only.
+
+Detailed prose for each section is in Russian below. For new findings, see the
+2026-05-10 audit linked above.
+
+---
+
 Этот документ фиксирует **отложенные улучшения** для `ghostroute` / `router_configuration`.
 
 Главная идея: текущая конфигурация считается рабочей и стабильной, поэтому этот backlog нужен не для немедленного внедрения, а как **готовый контекст для будущей LLM-сессии или аккуратной рефакторинговой работы**.
@@ -100,7 +144,7 @@ before implementation:
   pieces without changing report output, then review brittle grep-style static
   tests and replace the riskiest ones with contract checks.
 
-### 1. Ужесточить auto-discovery доменов
+### 1. Ужесточить auto-discovery доменов `◐ in progress`
 
 Проблема:
 
@@ -119,7 +163,7 @@ before implementation:
 
 - auto-каталог остаётся полезным, но становится заметно более чистым и предсказуемым
 
-### 2. Ревизия manual/static coverage
+### 2. Ревизия manual/static coverage `○ deferred`
 
 Проблема:
 
@@ -148,7 +192,7 @@ before implementation:
 
 - routing catalog становится уже и понятнее, без потери нужного покрытия
 
-### 2.1. STEALTH_DOMAINS curation scoring
+### 2.1. STEALTH_DOMAINS curation scoring `○ deferred`
 
 Проблема:
 
@@ -176,7 +220,7 @@ before implementation:
 
 - можно безопасно сужать managed catalog по evidence, снижая CPU/egress нагрузку без внезапных regressions
 
-### 3. Компактный health-summary и drift detection
+### 3. Компактный health-summary и drift detection `✓ done` (partial — local only)
 
 Проблема:
 
@@ -204,7 +248,7 @@ before implementation:
 
 - типовая проверка после deploy или при проблеме занимает минуты, а не ручной разбор большого вывода
 
-### 4. Улучшить observability и форму отчётов
+### 4. Улучшить observability и форму отчётов `✓ done` (Console v2; export polish remaining)
 
 Проблема:
 
@@ -259,7 +303,7 @@ before implementation:
   ingress attribution, Channel C ingress evidence, а не исторические имена
   конкретных демонов
 
-### 5. Явная политика по IPv6
+### 5. Явная политика по IPv6 `○ deferred`
 
 Проблема:
 
@@ -275,7 +319,7 @@ before implementation:
 
 - нет ложных ожиданий и случайных regressions из-за полу-поддержанного dual-stack поведения
 
-### 6. Fallback-источники и retention/rotation
+### 6. Fallback-источники и retention/rotation `○ deferred`
 
 Проблема:
 
@@ -291,7 +335,7 @@ before implementation:
 
 - система лучше переносит внешние сбои и меньше зависит от удачного стечения operational условий
 
-### 7. Мониторинг ёмкости каталога и growth trends
+### 7. Мониторинг ёмкости каталога и growth trends `✓ done` (partial — local alerts only)
 
 Проблема:
 
@@ -335,7 +379,7 @@ before implementation:
 
 - даже при текущем комфортном уровне заполнения можно быстро видеть тренд, headroom и момент, когда каталог действительно начинает требовать cleanup или пересмотра правил
 
-### 8. Свести публичный `wgs1` к backup и позже убрать WAN ingress
+### 8. Свести публичный `wgs1` к backup и позже убрать WAN ingress `✓ done` (per ADR-0004)
 
 Статус:
 
@@ -367,7 +411,7 @@ before implementation:
 - старые `wgs1` клиенты мигрированы на Reality QR или будущий overlay по назначению
 - внешний surface роутера становится меньше без слома текущего routing catalog
 
-### 9. Довести Channel C и поддерживать Channel B/C device-client lanes
+### 9. Довести Channel C и поддерживать Channel B/C device-client lanes `◐ in progress`
 
 Текущий статус:
 
@@ -440,7 +484,7 @@ Future Caddy forward_proxy@naive / forwardproxy experiment:
     client fingerprint; Shadowrocket + forward_proxy не равен official
     NaiveProxy client с Chromium network stack.
 
-### 10. Policy-Based DNS / Own Resolver Strategy
+### 10. Policy-Based DNS / Own Resolver Strategy `✓ done` (per ADR-0009)
 
 Текущий вывод:
 
@@ -525,7 +569,7 @@ Channel A RF-like profile
 - Не открывать DNS endpoint наружу.
 - Не менять DNS runtime без rollback и external proof.
 
-### 11. Semi-auto backup managed egress для managed domains
+### 11. Semi-auto backup managed egress для managed domains `○ deferred`
 
 Отдельный future-roadmap зафиксирован в
 [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).

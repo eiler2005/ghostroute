@@ -11,6 +11,10 @@
 > belongs to focused ops follow-ups such as compact status, active leak checks
 > and Channel C proof in its own change set.
 >
+> Successor audit: [`docs/repo-review-2026-05-10.md`](/docs/repo-review-2026-05-10.md)
+> is the current snapshot; the live backlog is
+> [`docs/future-improvements-backlog.md`](/docs/future-improvements-backlog.md).
+>
 > The body below intentionally keeps the original findings, including now-stale
 > notes about missing CI, B/C wording, backup cleanup and older connection-limit
 > assumptions, so it can be used for before/after audit.
