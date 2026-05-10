@@ -61,6 +61,7 @@ extract_stealth_domains() {
   awk -v target_set="STEALTH_DOMAINS" '
     /^ipset=\// {
       line = $0
+      gsub(/\r/, "", line)
       sub(/[[:space:]]*#.*/, "", line)
       n = split(line, parts, "/")
       if (n < 3) next
@@ -81,6 +82,7 @@ extract_stealth_domains() {
 extract_static_cidrs() {
   awk '
     {
+      gsub(/\r/, "", $0)
       sub(/[[:space:]]*#.*/, "", $0)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
       if ($0 ~ /^[0-9A-Fa-f:.]+\/[0-9]+$/) print $0
@@ -91,6 +93,7 @@ extract_static_cidrs() {
 extract_direct_domains() {
   awk '
     {
+      gsub(/\r/, "", $0)
       sub(/[[:space:]]*#.*/, "", $0)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
       if ($0 == "") next
