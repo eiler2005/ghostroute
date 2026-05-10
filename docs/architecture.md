@@ -281,8 +281,42 @@ During a WAN incident where `wan0` reports `carrier=0`, the router has no
 physical/provider link. That condition is below GhostRoute and does not change
 the architectural status of Channel A.
 
-Legacy `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
-only as a cold fallback through `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
+### Cold fallback: manual WireGuard recovery only
+
+WireGuard (`wgs1` + `wgc1`) is **not** active in steady state. The runtime
+invariants in [`SECURITY.md`](/SECURITY.md) and `AGENTS.md` require
+`wgs1_enable=0`, `wgc1_enable=0`, no `RC_VPN_ROUTE` and no `0x1000` outside the
+fallback script. The preserved `wgc1_*` NVRAM exists for one purpose only:
+manual recovery during a catastrophic Reality outage.
+
+Activation rules:
+
+- Manual only — there is **no automatic failover** from Channel A/B/C to
+  WireGuard. Auto-promotion is intentionally not implemented (see
+  [ADR-0004](/docs/adr/0004-deprecated-wireguard-cold-fallback.md) and
+  [ADR-0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md)).
+- Single entry point:
+
+  ```bash
+  ssh admin@<router_lan_ip> '/jffs/scripts/emergency-enable-wgc1.sh --dry-run'
+  ```
+
+  Run with `--dry-run` first to inspect the planned changes; drop `--dry-run`
+  only after confirming Channel A/B/C cannot recover via the documented
+  runbooks. The script is the only sanctioned path that touches `wgc1_*`,
+  `RC_VPN_ROUTE` or the legacy `0x1000` mark.
+- Exit criterion: after Reality is restored, run `./verify.sh --verbose` and
+  confirm the invariants above are green again before considering the incident
+  closed.
+
+Anything that automatically toggles `wgc1_*` NVRAM, reintroduces `VPN_DOMAINS`
+or routes managed traffic through `wgc1` violates the architecture and must be
+removed.
+
+### Legacy
+
+Legacy `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is
+preserved only as the cold fallback documented above.
 
 ## Components
 
