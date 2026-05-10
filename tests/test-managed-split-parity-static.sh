@@ -143,6 +143,8 @@ EOF_MANUAL
 cat > "$TMPDIR/auto.conf" <<'EOF_AUTO'
 ipset=/auto-managed.example/STEALTH_DOMAINS
 EOF_AUTO
+awk '{ printf "%s\r\n", $0 }' "$TMPDIR/manual.conf" > "$TMPDIR/manual.conf.crlf" && mv "$TMPDIR/manual.conf.crlf" "$TMPDIR/manual.conf"
+awk '{ printf "%s\r\n", $0 }' "$TMPDIR/auto.conf" > "$TMPDIR/auto.conf.crlf" && mv "$TMPDIR/auto.conf.crlf" "$TMPDIR/auto.conf"
 cat > "$TMPDIR/static.txt" <<'EOF_STATIC'
 203.0.113.0/24
 EOF_STATIC
