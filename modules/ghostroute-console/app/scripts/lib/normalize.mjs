@@ -2886,6 +2886,8 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
 }
 
 function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
+  const registry = loadDeviceAttributions();
+  const networkHints = buildInventoryNetworkHints(db, registry);
   const deviceInsert = db.prepare(`
     insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, channel, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2895,9 +2897,11 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.clients || []) {
+    const resolved = resolveOperatorClient({ ...row, raw: row }, registry, networkHints);
     const split = signedByteSplit(row, row.route, aggregateTotalBytes(row));
-    const key = text(row.client_key || row.device_key || row.client_label || row.client_ip, "unknown-client");
-    const label = text(row.client_label || row.label || key, key);
+    const key = resolved.client_key;
+    const label = resolved.client_label;
+    const channel = resolved.channel;
     clientInsert.run(
       snapshotId,
       collectedAt,
@@ -2906,7 +2910,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.client_ip || row.ip || ""),
       text(row.hostname || row.host || ""),
       text(row.mac_hash || ""),
-      text(row.channel || inferChannel(row), "Unknown"),
+      channel,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
       text(row.traffic_class || flowTrafficClass(row), "client"),
       split.totalBytes,
@@ -2925,7 +2929,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.client_ip || row.ip || ""),
       text(row.hostname || row.host || ""),
       "",
-      text(row.channel || inferChannel(row), "Unknown"),
+      channel,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
       confidence(row.identity_confidence || row.confidence, "unknown"),
       split.totalBytes,
@@ -2951,8 +2955,10 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     const timing = timestampContract(row, collectedAt);
     const eventTs = eventTimestamp(row, collectedAt);
     const split = signedByteSplit(row, row.route, aggregateTotalBytes(row));
-    const key = text(row.client_key || row.device_key || row.client_label || row.client_ip, "unknown-client");
-    const label = text(row.client_label || row.client || row.label || key, key);
+    const resolved = resolveOperatorClient({ ...row, raw: row }, registry, networkHints);
+    const key = resolved.client_key;
+    const label = resolved.client_label;
+    const channel = resolved.channel;
     const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || "", "unknown destination");
     const rowConfidence = confidence(row.confidence || row.byte_confidence, "estimated");
     const trafficClass = text(row.traffic_class || flowTrafficClass(row), "client");
@@ -2968,8 +2974,8 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       key,
       label,
       text(row.client_ip || row.ip || ""),
-      text(row.device_key || ""),
-      text(row.channel || inferChannel(row), "Unknown"),
+      resolved.device_key || text(row.device_key || ""),
+      channel,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
       trafficClass,
       destination,
@@ -3000,7 +3006,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       type,
       collectedAt,
       label,
-      text(row.channel || inferChannel(row), "Unknown"),
+      channel,
       destination,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
       rowConfidence,
@@ -3049,7 +3055,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     insertEvent(db, snapshotId, "traffic.fact", eventTs, {
       event_id: factId,
       client: label,
-      channel: text(row.channel || inferChannel(row), "Unknown"),
+      channel,
       destination,
       route: text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
       confidence: rowConfidence,
