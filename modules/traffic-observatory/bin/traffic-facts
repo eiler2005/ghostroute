@@ -164,6 +164,9 @@ def event_ts(report, row)
 end
 
 def fact_id(row, source_name, index, generated_at)
+  explicit = text(row['fact_id'])
+  return explicit unless explicit.empty?
+
   Digest::SHA256.hexdigest([
     source_name,
     index,

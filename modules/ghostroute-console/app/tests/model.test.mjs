@@ -168,6 +168,15 @@ test("traffic facts v2 normalize facts, clients and gaps without synthetic flow 
     traffic_class: "client",
     via_vps_bytes: 1500,
   });
+  const duplicatePayload = structuredClone(payload);
+  duplicatePayload.generated_at = "2026-05-10T08:01:00.456Z";
+  normalizeSnapshot(db, 2, "traffic_facts", duplicatePayload.generated_at, duplicatePayload);
+  assert.equal(db.prepare("select count(*) as count from traffic_facts where fact_id = 'fact-1'").get().count, 1);
+  rebuildPreparedWindows(db, "2026-05-10T08:10:00.000Z");
+  assert.equal(
+    db.prepare("select sum(bytes) as bytes from client_traffic_5min where client_key = 'operator-phone'").get().bytes,
+    1500
+  );
   db.close();
 });
 

@@ -2115,8 +2115,14 @@ if File.file?(lan_flow_facts_path)
     lan_flow_totals[:total] += total
     lan_flow_totals[:vps] += vps_bytes
     lan_flow_totals[:direct] += direct_bytes
+    begin
+      display_ts = Time.parse(ts.to_s).utc.iso8601(3)
+    rescue ArgumentError, TypeError
+      display_ts = Time.now.utc.iso8601(3)
+    end
 
     lan_flow_destinations << flow_contract({
+      fact_id: Digest::SHA256.hexdigest(['lan-flow', ts, ip, dst_ip, port, proto, route, total].join('|'))[0, 24],
       channel: 'Home Wi-Fi/LAN',
       client: label,
       client_ip: ip.to_s,
@@ -2140,7 +2146,11 @@ if File.file?(lan_flow_facts_path)
       allocation_basis: allocation_basis.to_s.empty? ? 'conntrack_snapshot_delta' : allocation_basis,
       bytes_confidence: byte_confidence.to_s.empty? ? 'observed_delta' : byte_confidence,
       destination_evidence: destination_conf.to_s.empty? ? 'ip' : destination_conf,
-      destination_class: family(dst_ip)
+      destination_class: family(dst_ip),
+      event_ts_utc: display_ts,
+      observed_at_utc: display_ts,
+      display_ts_utc: display_ts,
+      time_precision: 'event_second'
     })
   end
 end
