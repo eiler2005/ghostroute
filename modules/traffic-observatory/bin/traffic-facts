@@ -192,9 +192,12 @@ duration_ms = number(ENV['TRAFFIC_FACTS_DURATION_MS'])
 deep = ENV.fetch('TRAFFIC_FACTS_DEEP', '0') == '1'
 generated_at = text(report['generated_at'], Time.now.utc.iso8601(3))
 source_rows = []
-%w[app_flows destinations route_events].each do |key|
+%w[app_flows destinations].each do |key|
   next unless report[key].is_a?(Array)
   report[key].each { |row| source_rows << [key, row] if row.is_a?(Hash) }
+end
+if source_rows.empty? && report['route_events'].is_a?(Array)
+  report['route_events'].each { |row| source_rows << ['route_events', row] if row.is_a?(Hash) }
 end
 
 clients_by_key = {}
