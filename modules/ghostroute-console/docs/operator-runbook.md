@@ -194,6 +194,12 @@ not sync SQLite databases, auth files, backups or generated artifacts. After a
 collector contract change, deploy Console from `ansible/` with
 `ansible-playbook ../modules/ghostroute-console/vps/deploy-readonly.yml -e ghostroute_console_reset_db=true`
 so polluted snapshots are quarantined and fresh prepared windows are collected.
+For Traffic Accounting v2 rollouts, verify that `/api/health` lists a
+`traffic_facts` latest snapshot after the first standard collector run. If
+`traffic_facts` is missing while legacy `traffic` is present, check the
+read-only forced-command shell whitelist before debugging the Console
+normalizer: the collector fetches router/VPS facts through that constrained SSH
+path.
 
 Because detailed snapshots can be cumulative, Console derives current-window
 client rows from positive deltas between same-day samples per observed source,
