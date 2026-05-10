@@ -18,7 +18,7 @@ with small watermarked chunks.
 ## Layers
 
 ```text
-raw snapshots / normalized rows
+traffic_facts snapshots / normalized rows
   -> short troubleshooting retention
   -> source for new or repaired chunks only
 
@@ -98,12 +98,17 @@ CDN infrastructure stay separate, and true
 unclassified traffic remains explicit instead of becoming a misleading
 90-percent residual.
 
-Schema v10 is intentionally a clean accounting boundary. New facts carry
+Schema v11 is the `traffic_facts` accounting boundary. Console no longer treats
+synthetic accounting buckets as normal flow rows. The machine contract is:
+`clients[]`, `traffic_facts[]`, `attribution_gaps[]`, `coverage` and
+`collector_metrics`. Normal facts carry
 `event_ts_utc`, `observed_at_utc`, `display_ts_utc` and `time_precision`, and the
 traffic-class contract is `client`, `personal_cloud`, `service_background` and
-`unclassified`. A reset rollout quarantines old Console SQLite/snapshot data and
-rebuilds chunks only from newly collected facts; old snapshots are kept for
-manual audit but must not seed week/month v10 aggregates.
+`unclassified`. `attribution_gaps` are attribution debt only: they may appear in
+Needs attribution and coverage diagnostics, but not in Top clients or normal
+destination rankings. A reset rollout quarantines old Console SQLite/snapshot
+data and rebuilds chunks only from newly collected facts; old snapshots are kept
+for manual audit but must not seed week/month v11 aggregates.
 
 ## Collector Contract
 

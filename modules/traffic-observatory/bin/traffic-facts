@@ -1,0 +1,336 @@
+#!/bin/bash
+# Machine-readable traffic facts for GhostRoute Console.
+#
+# This command is intentionally separate from traffic-report: traffic-report is
+# the operator-facing report, while traffic-facts is the stable data contract
+# consumed by read models.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+JSON_MODE=0
+DEEP_MODE=0
+PERIOD_ARG="today"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    --deep)
+      DEEP_MODE=1
+      shift
+      ;;
+    today|current|current-day|yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+      PERIOD_ARG="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-facts --json [today|yesterday|week|month|YYYY-MM-DD] [--deep]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$JSON_MODE" -ne 1 ]; then
+  echo "traffic-facts is a machine-readable command; use --json." >&2
+  exit 1
+fi
+
+START_MS="$(ruby -e 'puts (Time.now.to_f * 1000).to_i')"
+REPORT_JSON="$("${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" --json "$PERIOD_ARG")"
+END_MS="$(ruby -e 'puts (Time.now.to_f * 1000).to_i')"
+TMP_JSON="$(mktemp)"
+trap 'rm -f "$TMP_JSON"' EXIT
+printf '%s\n' "$REPORT_JSON" > "$TMP_JSON"
+
+TRAFFIC_FACTS_PERIOD="$PERIOD_ARG" \
+TRAFFIC_FACTS_DEEP="$DEEP_MODE" \
+TRAFFIC_FACTS_DURATION_MS="$((END_MS - START_MS))" \
+ruby -rjson -rdigest -rtime - "$TMP_JSON" <<'RUBY'
+def text(value, fallback = '')
+  value.nil? ? fallback : value.to_s
+end
+
+def number(value)
+  Integer(value || 0)
+rescue ArgumentError, TypeError
+  0
+end
+
+def first_present(*values)
+  values.find { |value| !value.nil? && value.to_s != '' }
+end
+
+def route_from_split(vps, direct, unknown)
+  vps = number(vps)
+  direct = number(direct)
+  unknown = number(unknown)
+  return 'Mixed' if [vps > 0, direct > 0, unknown > 0].count(true) > 1
+  return 'VPS' if vps > 0
+  return 'Direct' if direct > 0
+  return 'Unknown' if unknown > 0
+  'Unknown'
+end
+
+def route_for(row)
+  route = text(row['route'] || row['route_decision'])
+  return route unless route.empty?
+  route_from_split(row['via_vps_bytes'] || row['reality_bytes'], row['direct_bytes'] || row['wan_bytes'], row['unknown_bytes'] || row['unresolved_bytes'])
+end
+
+def total_bytes(row)
+  explicit = number(row['bytes'])
+  explicit = number(row['total_bytes']) if explicit <= 0
+  explicit = number(row['observed_bytes']) if explicit <= 0
+  return explicit if explicit > 0
+  number(row['via_vps_bytes'] || row['reality_bytes']) + number(row['direct_bytes'] || row['wan_bytes']) + number(row['unknown_bytes'] || row['unresolved_bytes'])
+end
+
+def split_bytes(row)
+  total = total_bytes(row)
+  vps = number(row['via_vps_bytes'] || row['reality_bytes'])
+  direct = number(row['direct_bytes'] || row['wan_bytes'])
+  unknown = number(row['unknown_bytes'] || row['unresolved_bytes'])
+  if total > 0 && vps == 0 && direct == 0 && unknown == 0
+    case route_for(row).downcase
+    when 'vps'
+      vps = total
+    when 'direct'
+      direct = total
+    else
+      unknown = total
+    end
+  elsif total > 0 && unknown == 0
+    unknown = [total - vps - direct, 0].max
+  end
+  [total, vps, direct, unknown]
+end
+
+def infer_channel(row)
+  raw = JSON.generate(row).downcase
+  return 'Home Wi-Fi/LAN' if raw.include?('home wi-fi') || raw.include?('home wifi') || raw.include?('lan-host') || raw.include?('192.168.')
+  return 'A/Home Reality' if raw.include?('home reality') || raw.include?('mobile-client') || raw.include?('reality-in')
+  return 'Channel B' if raw.include?('channel-b') || raw.include?('xhttp') || raw.include?('selected-client')
+  return 'Channel C' if raw.include?('channel-c') || raw.include?('shadowrocket') || raw.include?('naive')
+  text(row['channel'], 'Unknown')
+end
+
+def client_key(row)
+  text(first_present(row['client_key'], row['device_key'], row['profile'], row['client'], row['label'], row['client_ip'], row['ip']), 'unknown-client')
+end
+
+def client_label(row)
+  text(first_present(row['client_label'], row['client'], row['label'], row['profile'], row['observed_label'], row['client_ip'], row['ip']), 'Unknown client')
+end
+
+def destination_for(row)
+  text(first_present(row['destination'], row['domain'], row['dns_qname'], row['sni'], row['app'], row['family'], row['destination_ip']), 'unknown destination')
+end
+
+def destination_kind(row)
+  return 'dns_qname' if text(row['dns_qname'] || row['domain']) != ''
+  return 'sni' if text(row['sni']) != ''
+  return 'ip' if text(row['destination_ip']) != ''
+  text(row['destination_kind'] || row['destination_class'] || 'category')
+end
+
+def traffic_class(row)
+  klass = text(row['traffic_class'] || row['trafficClass'])
+  return klass unless klass.empty?
+  destination = destination_for(row).downcase
+  return 'personal_cloud' if destination.match?(/icloud|google (drive|photos)|google\/photos|drive|dropbox|onedrive|backup/)
+  return 'service_background' if destination.match?(/dns|resolver|ocsp|crash|analytics|app-measurement|connectivity|gvt|gstatic|ntp|telemetry/)
+  return 'unclassified' if row['accounting_bucket'] || destination.include?('unknown/unattributed')
+  'client'
+end
+
+def byte_confidence(row)
+  text(row['byte_confidence'] || row['bytes_confidence'] || row['confidence'], 'estimated')
+end
+
+def destination_confidence(row)
+  text(row['destination_confidence'] || row['destination_evidence'] || row['confidence'], 'unknown')
+end
+
+def identity_confidence(row)
+  text(row['identity_confidence'] || row['client_identity_confidence'] || row['confidence'], 'estimated')
+end
+
+def event_ts(report, row)
+  text(first_present(row['display_ts_utc'], row['event_ts_utc'], row['ts'], row['timestamp'], report['generated_at']), report['generated_at'])
+end
+
+def fact_id(row, source_name, index, generated_at)
+  Digest::SHA256.hexdigest([
+    source_name,
+    index,
+    generated_at,
+    client_key(row),
+    text(row['client_ip'] || row['ip']),
+    infer_channel(row),
+    destination_for(row),
+    route_for(row),
+    total_bytes(row),
+    text(row['allocation_basis'])
+  ].join('|'))[0, 24]
+end
+
+def sources(row, source_name)
+  refs = row['raw_refs'].is_a?(Array) ? row['raw_refs'] : []
+  values = refs.map { |ref| ref.is_a?(Hash) ? text(ref['source'] || ref['source_log']) : text(ref) }.reject(&:empty?)
+  values << source_name if values.empty?
+  values.uniq
+end
+
+input = File.read(ARGV.fetch(0))
+report = JSON.parse(input)
+period = ENV.fetch('TRAFFIC_FACTS_PERIOD', 'today')
+duration_ms = number(ENV['TRAFFIC_FACTS_DURATION_MS'])
+deep = ENV.fetch('TRAFFIC_FACTS_DEEP', '0') == '1'
+generated_at = text(report['generated_at'], Time.now.utc.iso8601(3))
+source_rows = []
+%w[app_flows destinations route_events].each do |key|
+  next unless report[key].is_a?(Array)
+  report[key].each { |row| source_rows << [key, row] if row.is_a?(Hash) }
+end
+
+clients_by_key = {}
+((report['devices'] || []) + (report['home_reality_clients'] || [])).each_with_index do |row, index|
+  next unless row.is_a?(Hash)
+  key = client_key(row)
+  total, vps, direct, unknown = split_bytes(row)
+  mac = text(row['mac'] || row['mac_address']).downcase
+  clients_by_key[key] = {
+    'client_key' => key,
+    'client_label' => client_label(row),
+    'client_ip' => text(row['client_ip'] || row['ip']),
+    'hostname' => text(row['hostname'] || row['host']),
+    'mac' => '',
+    'mac_hash' => mac.empty? ? '' : Digest::SHA256.hexdigest(mac)[0, 16],
+    'channel' => infer_channel(row),
+    'route' => route_from_split(vps, direct, unknown),
+    'traffic_class' => traffic_class(row),
+    'total_bytes' => total,
+    'via_vps_bytes' => vps,
+    'direct_bytes' => direct,
+    'unknown_bytes' => unknown,
+    'identity_confidence' => identity_confidence(row),
+    'sources' => sources(row, "traffic-report devices/#{index}")
+  }
+end
+
+facts = []
+gaps = []
+source_rows.each_with_index do |(source_name, row), index|
+  total, vps, direct, unknown = split_bytes(row)
+  next if total <= 0 && number(row['connections'] || row['total_connections']) <= 0
+  base = {
+    'client_key' => client_key(row),
+    'client_label' => client_label(row),
+    'client_ip' => text(row['client_ip'] || row['ip']),
+    'channel' => infer_channel(row),
+    'route' => route_from_split(vps, direct, unknown),
+    'destination' => destination_for(row),
+    'destination_kind' => destination_kind(row),
+    'dns_qname' => text(row['dns_qname'] || row['qname'] || row['domain']),
+    'sni' => text(row['sni']),
+    'destination_ip' => text(row['destination_ip']),
+    'bytes' => total,
+    'via_vps_bytes' => vps,
+    'direct_bytes' => direct,
+    'unknown_bytes' => unknown,
+    'connections' => number(row['connections'] || row['total_connections']),
+    'identity_confidence' => identity_confidence(row),
+    'byte_confidence' => byte_confidence(row),
+    'destination_confidence' => destination_confidence(row),
+    'allocation_basis' => text(row['allocation_basis'], source_name == 'route_events' ? 'event_observation' : 'reported_summary'),
+    'evidence_level' => text(row['evidence_level'] || row['destination_evidence'] || row['destination_confidence'], 'summary'),
+    'sources' => sources(row, "traffic-report #{source_name}"),
+    'confidence' => text(row['confidence'], 'estimated'),
+    'event_ts' => event_ts(report, row),
+    'display_ts_utc' => event_ts(report, row),
+    'time_precision' => text(row['time_precision'] || row['ts_precision'], 'collector_ms')
+  }
+  if row['accounting_bucket']
+    gaps << base.merge(
+      'gap_id' => Digest::SHA256.hexdigest(['gap', generated_at, index, base['client_key'], base['destination'], base['bytes']].join('|'))[0, 24],
+      'scope' => text(row['scope'] || row['channel'] || base['channel'], 'traffic'),
+      'reason' => text(row['unattributed_reason'] || row['reason'] || 'unattributed accounting bucket'),
+      'allocation_basis' => 'unattributed_bucket',
+      'evidence_level' => 'gap'
+    )
+    next
+  end
+  facts << base.merge(
+    'fact_id' => fact_id(row, source_name, index, generated_at),
+    'traffic_class' => traffic_class(row),
+    'policy' => text(row['policy']),
+    'matched_rule' => text(row['matched_rule'] || row['rule'] || row['rule_name'] || row['catalog_rule']),
+    'outbound' => text(row['sing_box_outbound'] || row['outbound'])
+  )
+  unless clients_by_key.key?(base['client_key'])
+    clients_by_key[base['client_key']] = {
+      'client_key' => base['client_key'],
+      'client_label' => base['client_label'],
+      'client_ip' => base['client_ip'],
+      'hostname' => text(row['hostname'] || row['host']),
+      'mac' => '',
+      'mac_hash' => '',
+      'channel' => base['channel'],
+      'route' => base['route'],
+      'traffic_class' => traffic_class(row),
+      'total_bytes' => 0,
+      'via_vps_bytes' => 0,
+      'direct_bytes' => 0,
+      'unknown_bytes' => 0,
+      'identity_confidence' => identity_confidence(row),
+      'sources' => sources(row, "traffic-report #{source_name}")
+    }
+  end
+end
+
+coverage = report['destination_attribution_coverage'].is_a?(Hash) ? report['destination_attribution_coverage'] : {}
+coverage = coverage.merge(
+  'scope' => 'traffic_facts',
+  'traffic_fact_bytes' => facts.sum { |row| number(row['bytes']) },
+  'gap_bytes' => gaps.sum { |row| number(row['bytes']) },
+  'facts' => facts.length,
+  'gaps' => gaps.length
+)
+
+output = {
+  'schema_version' => 2,
+  'generated_at' => generated_at,
+  'window' => report['window'] || { 'period' => period },
+  'source' => {
+    'command' => 'traffic-facts',
+    'period' => period,
+    'source_report' => 'traffic-report',
+    'deep' => deep,
+    'schema' => 'traffic-facts-v2'
+  },
+  'collector_metrics' => {
+    'duration_ms' => duration_ms,
+    'source_command_timings' => { 'traffic-report' => duration_ms },
+    'source_row_counts' => {
+      'app_flows' => (report['app_flows'] || []).length,
+      'destinations' => (report['destinations'] || []).length,
+      'route_events' => (report['route_events'] || []).length,
+      'traffic_facts' => facts.length,
+      'attribution_gaps' => gaps.length
+    },
+    'deep' => deep,
+    'warnings' => []
+  },
+  'confidence' => text(report['confidence'], 'mixed'),
+  'clients' => clients_by_key.values,
+  'traffic_facts' => facts,
+  'attribution_gaps' => gaps,
+  'coverage' => coverage
+}
+
+puts JSON.pretty_generate(output)
+RUBY

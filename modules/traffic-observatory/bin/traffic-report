@@ -1811,6 +1811,33 @@ def read_rows(path)
   File.readlines(path, chomp: true).reject { |line| line.strip.empty? }
 end
 
+def parse_family_counts(value)
+  value.to_s.split(/\s*,\s*/).each_with_object([]) do |part, result|
+    family, count = part.split(':', 2).map { |item| item.to_s.strip }
+    next if family.to_s.empty? || family == 'n/a' || count.to_i <= 0
+
+    result << [family, count.to_i]
+  end
+end
+
+def proportional_allocations(total, weighted_parts)
+  total = total.to_i
+  weight_total = weighted_parts.sum { |_label, weight| weight.to_i }
+  remaining = total
+  weighted_parts.each_with_index.map do |(_label, weight), index|
+    value =
+      if index == weighted_parts.length - 1
+        remaining
+      elsif total <= 0 || weight_total <= 0
+        0
+      else
+        (total.to_f * weight.to_i / weight_total).round
+      end
+    remaining -= value
+    value
+  end
+end
+
 def route_from_split(vps, direct, unresolved)
   return 'Unknown' if unresolved.to_i > 0 && vps.to_i == 0 && direct.to_i == 0
   return 'VPS' if vps.to_i > 0 && direct.to_i == 0
@@ -1934,7 +1961,7 @@ def route_event(row, source_ref)
     destination_evidence(destination, row[:family] || row[:app_family])
   ).merge({
     flow_group_key: Digest::SHA1.hexdigest([source_ref, row[:channel], row[:profile], row[:client], destination, route, row[:confidence]].join('|'))[0, 20]
-  })
+  }).merge(row.slice(:allocation_basis, :bytes_confidence, :destination_evidence, :destination_class).compact)
 end
 
 def flow_contract(row)
@@ -1958,7 +1985,7 @@ def flow_contract(row)
       unattributed_reason: row[:unattributed_reason]
     )
   else
-    contracted
+    contracted.merge(row.slice(:allocation_basis, :bytes_confidence, :destination_evidence, :destination_class).compact)
   end
 end
 
@@ -2032,6 +2059,57 @@ def source_diagnostic(row)
     matched_by: 'source_counter'
   )
 end
+
+lan_destinations = []
+if File.file?(lan_user_apps_path)
+  read_rows(lan_user_apps_path).each do |line|
+    label, total, vps, direct, other, family_text, ip, = line.split('|', -1)
+    families = parse_family_counts(family_text)
+    next if label.to_s.empty? || total.to_i <= 0 || families.empty?
+
+    total_allocations = proportional_allocations(total.to_i, families)
+    vps_allocations = proportional_allocations(vps.to_i, families)
+    direct_allocations = proportional_allocations(direct.to_i, families)
+    other_allocations = proportional_allocations(other.to_i, families)
+
+    families.each_with_index do |(family_name, query_count), index|
+      bytes = total_allocations[index].to_i
+      next if bytes <= 0
+
+      vps_bytes = vps_allocations[index].to_i
+      direct_bytes = direct_allocations[index].to_i
+      other_bytes = other_allocations[index].to_i
+      lan_destinations << flow_contract({
+        channel: 'Home Wi-Fi/LAN',
+        client: label,
+        client_ip: ip.to_s,
+        profile: label,
+        destination: family_name,
+        family: family_name,
+        total_bytes: bytes,
+        via_vps_bytes: vps_bytes,
+        direct_bytes: direct_bytes,
+        unknown_bytes: other_bytes,
+        connections: query_count,
+        vps_connections: vps_bytes > 0 ? 1 : 0,
+        direct_connections: direct_bytes > 0 ? 1 : 0,
+        unresolved_connections: other_bytes > 0 ? 1 : 0,
+        route: route_from_split(vps_bytes, direct_bytes, other_bytes),
+        confidence: 'estimated',
+        evidence: ['lan-device-counters.tsv', 'dns-forensics family share'],
+        allocation_basis: 'dns_family_share',
+        bytes_confidence: 'allocated',
+        destination_evidence: 'dns_family',
+        destination_class: family_name
+      })
+    end
+  end
+end
+lan_destination_totals = {
+  total: lan_destinations.sum { |row| row[:total_bytes].to_i },
+  vps: lan_destinations.sum { |row| row[:via_vps_bytes].to_i },
+  direct: lan_destinations.sum { |row| row[:direct_bytes].to_i }
+}
 
 devices = read_rows(lan_user_apps_path).map do |line|
   label, total, vps, direct, other, families, ip, mac, hostname = line.split('|', -1)
@@ -2193,9 +2271,9 @@ accounting_buckets = [
     label: 'Unknown/Unattributed LAN-Wi-Fi',
     channel: 'Home Wi-Fi/LAN',
     client: 'Home Wi-Fi/LAN',
-    total: int_env('TRAFFIC_LAN_BYTES'),
-    vps: int_env('TRAFFIC_LAN_VPS_BYTES'),
-    direct: int_env('TRAFFIC_LAN_DIRECT_BYTES'),
+    total: [int_env('TRAFFIC_LAN_BYTES') - lan_destination_totals[:total], 0].max,
+    vps: [int_env('TRAFFIC_LAN_VPS_BYTES') - lan_destination_totals[:vps], 0].max,
+    direct: [int_env('TRAFFIC_LAN_DIRECT_BYTES') - lan_destination_totals[:direct], 0].max,
     confidence: 'exact',
     reason: 'exact LAN/Wi-Fi client counters without per-destination byte attribution'
   ),
@@ -2231,7 +2309,7 @@ accounting_buckets = [
   )
 ].compact
 
-destination_rows = mobile_destinations + relay_destinations + channel_c_destinations + accounting_buckets
+destination_rows = lan_destinations + mobile_destinations + relay_destinations + channel_c_destinations + accounting_buckets
 route_events = []
 app_rows.each { |row| route_events << route_event(row, 'traffic-report app_flows') }
 destination_rows.reject { |row| row[:accounting_bucket] }.each { |row| route_events << route_event(row, 'traffic-report destinations') }
@@ -2239,12 +2317,12 @@ destination_rows.reject { |row| row[:accounting_bucket] }.each { |row| route_eve
 coverage_sources = {
   lan_wifi: coverage_source(
     observed: int_env('TRAFFIC_LAN_BYTES'),
-    attributed: 0,
+    attributed: lan_destination_totals[:total],
     vps: int_env('TRAFFIC_LAN_VPS_BYTES'),
     direct: int_env('TRAFFIC_LAN_DIRECT_BYTES'),
     confidence: 'exact',
-    destination_confidence: 'none',
-    reason: 'LAN/Wi-Fi has exact client byte counters, but no per-destination byte attribution'
+    destination_confidence: lan_destination_totals[:total] > 0 ? 'dns_family_share' : 'none',
+    reason: lan_destination_totals[:total] > 0 ? 'LAN/Wi-Fi destination bytes are allocated from per-device DNS family share' : 'LAN/Wi-Fi has exact client byte counters, but no per-destination byte attribution'
   ),
   channel_a_home_reality: coverage_source(
     observed: channel_a_observed,

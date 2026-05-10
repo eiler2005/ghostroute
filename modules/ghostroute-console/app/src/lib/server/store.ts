@@ -181,6 +181,100 @@ export function getDb() {
         raw_json text not null
       );
       create index if not exists idx_normalized_flows_snapshot on normalized_flows(snapshot_id);
+      create table if not exists traffic_facts (
+        fact_id text primary key,
+        snapshot_id integer not null,
+        collected_at text not null,
+        event_ts_utc text not null default '',
+        observed_at_utc text not null default '',
+        display_ts_utc text not null default '',
+        time_precision text not null default 'collector_ms',
+        client_key text not null default '',
+        client_label text not null default '',
+        client_ip text not null default '',
+        device_key text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        traffic_class text not null default 'client',
+        destination text not null default '',
+        destination_kind text not null default '',
+        destination_ip text not null default '',
+        destination_port text not null default '',
+        dns_qname text not null default '',
+        dns_answer_ip text not null default '',
+        sni text not null default '',
+        policy text not null default '',
+        matched_rule text not null default '',
+        outbound text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        connections integer not null default 0,
+        identity_confidence text not null default 'unknown',
+        byte_confidence text not null default 'unknown',
+        destination_confidence text not null default 'unknown',
+        allocation_basis text not null default '',
+        evidence_level text not null default '',
+        confidence text not null default 'unknown',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_traffic_facts_collected on traffic_facts(collected_at desc);
+      create index if not exists idx_traffic_facts_client on traffic_facts(client_key, collected_at desc);
+      create index if not exists idx_traffic_facts_destination on traffic_facts(destination, dns_qname, destination_ip);
+      create table if not exists traffic_clients (
+        snapshot_id integer not null,
+        collected_at text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        client_ip text not null default '',
+        hostname text not null default '',
+        mac_hash text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        traffic_class text not null default 'client',
+        total_bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        identity_confidence text not null default 'unknown',
+        evidence_json text not null default '{}',
+        primary key (snapshot_id, client_key, channel)
+      );
+      create index if not exists idx_traffic_clients_collected on traffic_clients(collected_at desc);
+      create table if not exists traffic_dns_links (
+        snapshot_id integer not null,
+        collected_at text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        domain text not null default '',
+        destination text not null default '',
+        link_type text not null default '',
+        confidence text not null default 'unknown',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_traffic_dns_links_domain on traffic_dns_links(domain, collected_at desc);
+      create table if not exists traffic_attribution_gaps (
+        gap_id text primary key,
+        snapshot_id integer not null,
+        collected_at text not null,
+        scope text not null default '',
+        client_key text not null default '',
+        client_label text not null default '',
+        client_ip text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        destination text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        reason text not null default '',
+        allocation_basis text not null default '',
+        evidence_level text not null default 'gap',
+        evidence_json text not null default '{}'
+      );
+      create index if not exists idx_traffic_gaps_collected on traffic_attribution_gaps(collected_at desc);
       create table if not exists normalized_dns (
         snapshot_id integer not null,
         collected_at text not null,
@@ -764,6 +858,10 @@ export function getDb() {
       10,
       new Date().toISOString()
     );
+    db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
+      11,
+      new Date().toISOString()
+    );
   }
   return db;
 }
@@ -859,6 +957,7 @@ export function latestSnapshotsForTypes(types: SnapshotType[]): SnapshotRecord[]
 function inferType(payload: any, fileName: string): SnapshotType | null {
   const command = String(payload?.source?.command || fileName);
   if (command.includes("traffic-summary")) return "traffic_summary";
+  if (command.includes("traffic-facts")) return "traffic_facts";
   if (command.includes("traffic")) return "traffic";
   if (command.includes("router-health")) return "health";
   if (command.includes("leak")) return "leaks";

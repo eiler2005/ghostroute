@@ -81,9 +81,13 @@ Important accounting rule:
   `Unknown/Unattributed ...` rows describe the observed total, while unknown
   rows use `destination_evidence=none` and
   `allocation_basis=unattributed_bucket` to avoid false per-site precision.
-- DNS-interest families are investigation hints only. They may explain which
-  families are likely active, but they do not become byte attribution unless a
-  byte source proves that destination.
+- LAN/Wi-Fi destination rows may use `allocation_basis=dns_family_share`.
+  Those rows combine exact per-device byte counters with per-device DNS family
+  shares. They are useful for operator attribution and UI ranking, but remain
+  estimated per-destination bytes rather than billing-grade domain counters.
+- DNS-interest families without a device byte source are investigation hints
+  only. They may explain which families are likely active, but they do not
+  become byte attribution unless a byte source proves the client/device total.
 - `WAN total` is the physical ISP-interface volume. It includes everything that
   crossed `wan0`.
 - `LAN/Wi-Fi observed + Home Reality ingress + WAN remainder/unattributed`
@@ -139,6 +143,7 @@ For the full end-to-end workflow and observer table, see
 | `./modules/ghostroute-health-monitor/bin/live-check` | canonical short live A/B/C health check for humans and LLMs; text/JSON, logs to `reports/live-check/`, optional `--active-probe` |
 | `./modules/traffic-observatory/bin/traffic-report check` | compatibility lightweight A/B/C channel check; prefer Health Monitor `live-check` for health decisions |
 | `./modules/traffic-observatory/bin/traffic-summary --json today` | lightweight current-day counter summary for frequent Console Dashboard collection |
+| `./modules/traffic-observatory/bin/traffic-facts --json today` | machine-readable Console contract: clients, traffic facts, attribution gaps, coverage and evidence |
 | `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./modules/traffic-observatory/bin/traffic-report channel-a|channel-b|channel-c` | filtered variant of the lightweight live channel check |
 | `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
@@ -149,12 +154,39 @@ Use `traffic-report` as the main entrypoint:
 
 ```bash
 ./modules/traffic-observatory/bin/traffic-summary --json today
+./modules/traffic-observatory/bin/traffic-facts --json today
 ./modules/traffic-observatory/bin/traffic-report today
 ./modules/traffic-observatory/bin/traffic-report yesterday
 ./modules/traffic-observatory/bin/traffic-report week
 ./modules/traffic-observatory/bin/traffic-report month
 ./modules/traffic-observatory/bin/traffic-report 2026-04-25
 ```
+
+### Traffic Facts v2
+
+Console should consume `traffic-facts --json`, not scrape the human
+`traffic-report` sections. The v2 contract separates:
+
+- `clients[]`: observed client/device identity and exact route byte totals where
+  counters exist.
+- `traffic_facts[]`: normal rows shaped as
+  `client/device -> ip -> destination -> route -> bytes -> evidence`.
+- `attribution_gaps[]`: accounting debt such as unattributed LAN buckets. These
+  rows are not normal client traffic facts and must not appear in Top clients.
+- `coverage`: observed, attributed and unattributed byte coverage by scope.
+- `collector_metrics`: command timing and source row counts for watchdogs and
+  Console freshness diagnostics.
+
+Every fact carries evidence fields: identity confidence, byte confidence,
+destination confidence, allocation basis, evidence level and source list. DNS
+family allocation is allowed for ranking and investigation, but it remains
+marked as allocated/estimated. Exact per-domain billing should only be claimed
+when a future source provides destination byte evidence, such as cheap
+per-client conntrack byte counters.
+
+`traffic-report --json` remains a compatibility output for older consumers, and
+human `traffic-report today/week/month/check` keeps its operator-facing text.
+New read models should prefer `traffic-facts`.
 
 Use the lightweight channel check when the question is only “does the current
 path work?”:
