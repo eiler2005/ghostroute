@@ -14,10 +14,11 @@ import {
   SplitBars,
   StatusBadge,
 } from "@/components/Widgets";
-import { buildClientsModel, listClientActivity, listClientInventory } from "@/lib/server/selectors/clients";
+import { buildClientsModel, listClientActivity, listClientDomainBreakdown, listClientInventory } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
+import { normalizeDomainBreakdown } from "@/lib/domain-attribution.mjs";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -124,11 +125,17 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
-  const selectedAttributedBytes = allSelectedFlows.reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0);
-  const selectedUnattributedBytes = Math.max(0, Number(selected?.total_bytes || 0) - selectedAttributedBytes);
+  const selectedDomainBreakdown = selected
+    ? normalizeDomainBreakdown(
+        listClientDomainBreakdown(selected, filters.period || "today", { limit: 24 }),
+        Number(selected.total_bytes || 0),
+        { limit: 8, minimumCoverageRatio: 0.5 },
+      )
+    : { rows: [], unattributedBytes: 0 };
+  const selectedUnattributedBytes = Number(selectedDomainBreakdown.unattributedBytes || 0);
   const selectedDomainRows = selectedUnattributedBytes > 0
     ? [
-        ...selectedFlows,
+        ...selectedDomainBreakdown.rows,
         {
           destination: "Unknown/Unattributed client traffic",
           destinationLabel: "Unknown/Unattributed client traffic",
@@ -137,7 +144,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
           accounting_bucket: true,
         },
       ]
-    : selectedFlows;
+    : selectedDomainBreakdown.rows;
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,

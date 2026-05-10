@@ -430,6 +430,7 @@ export function ensureConsoleSchema(db) {
       snapshot_id integer not null,
       collected_at text not null,
       client text not null default '',
+      client_ip text not null default '',
       domain text not null default '',
       qtype text not null default '',
       count integer not null default 0,
@@ -780,6 +781,7 @@ export function ensureConsoleSchema(db) {
         bucket_start_utc text not null,
         bucket_msk_key text not null,
         client_key text not null default '',
+        client_ip text not null default '',
         domain text not null default '',
         qtype text not null default '',
         catalog_status text not null default 'unknown',
@@ -787,7 +789,7 @@ export function ensureConsoleSchema(db) {
         confidence text not null default 'dns-interest',
         query_count integer not null default 0,
         updated_at_utc text not null default '',
-        primary key (bucket_start_utc, client_key, domain, qtype, catalog_status, route)
+        primary key (bucket_start_utc, client_key, client_ip, domain, qtype, catalog_status, route)
       );
       create table if not exists top_clients_window (
         window text not null,
@@ -869,6 +871,7 @@ export function ensureConsoleSchema(db) {
       unknown_bytes: "integer not null default 0",
     },
     normalized_dns: {
+      client_ip: "text not null default ''",
       answer_ip: "text not null default ''",
       event_ts: "text not null default ''",
       ts_confidence: "text not null default ''",
@@ -914,6 +917,9 @@ export function ensureConsoleSchema(db) {
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
       source_log: "text not null default ''",
+    },
+    dns_log_5min: {
+      client_ip: "text not null default ''",
     },
   })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
@@ -1312,11 +1318,16 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
     const match = catalogMatchFor(row.domain, catalogMatch);
     const catalogStatusValue = text(row.catalog_status) || catalogStatus(match);
     const route = text(row.route) || routeForDns(match, row);
-    const key = [bucket, row.client || "", row.domain || "", row.qtype || "", catalogStatusValue, route].join("|");
+    const raw = parseJson(row.raw_json, {});
+    const clientIp = text(row.client_ip || row.ip || raw.client_ip || raw.ip || "");
+    const rawClient = text(row.client || "");
+    const clientKey = rawClient.toLowerCase().startsWith("unattributed") && clientIp ? clientIp : text(rawClient || clientIp);
+    const key = [bucket, clientKey, clientIp, row.domain || "", row.qtype || "", catalogStatusValue, route].join("|");
     const current = grouped.get(key) || {
       bucket_start_utc: bucket,
       bucket_msk_key: toMskKey(bucket, "5min"),
-      client_key: text(row.client),
+      client_key: clientKey,
+      client_ip: clientIp,
       domain: text(row.domain),
       qtype: text(row.qtype),
       catalog_status: catalogStatusValue,
@@ -1328,12 +1339,12 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
     grouped.set(key, current);
   }
   const insert = db.prepare(`
-    insert into dns_log_5min(bucket_start_utc, bucket_msk_key, client_key, domain, qtype, catalog_status,
+    insert into dns_log_5min(bucket_start_utc, bucket_msk_key, client_key, client_ip, domain, qtype, catalog_status,
       route, confidence, query_count, updated_at_utc)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of grouped.values()) {
-    insert.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
+    insert.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
   }
 }
 
@@ -1803,11 +1814,11 @@ function rebuildDnsPreparedWindows(db, sourceVersion, computedAt) {
   for (const window of ["today", "week", "month"]) {
     const bounds = mskWindowBounds(window, computedAt);
     const rows = db.prepare(`
-      select client_key as client, domain, qtype, catalog_status, route, confidence, sum(query_count) as count,
+      select client_key as client, client_ip, domain, qtype, catalog_status, route, confidence, sum(query_count) as count,
              max(bucket_start_utc) as event_ts
         from dns_log_5min
        where bucket_start_utc >= ? and bucket_start_utc <= ?
-       group by client_key, domain, qtype, catalog_status, route, confidence
+       group by client_key, client_ip, domain, qtype, catalog_status, route, confidence
        order by count desc, event_ts desc
        limit 500
     `).all(bounds.startUtc, bounds.endUtc);
@@ -2858,11 +2869,12 @@ function normalizeDomains(db, snapshotId, type, collectedAt, payload) {
 
 function normalizeDns(db, snapshotId, collectedAt, payload) {
   const insert = db.prepare(`
-    insert into normalized_dns(snapshot_id, collected_at, client, domain, qtype, count, answer_ip, event_ts, ts_confidence, confidence, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_dns(snapshot_id, collected_at, client, client_ip, domain, qtype, count, answer_ip, event_ts, ts_confidence, confidence, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.queries || []) {
     const client = text(row.client || row.client_ip || row.ip || "");
+    const clientIp = text(row.client_ip || row.ip || "");
     const domain = text(row.domain || row.qname || row.query || "");
     const rowConfidence = confidence(row.confidence, "dns-interest");
     const eventTs = eventTimestamp(row, collectedAt);
@@ -2870,6 +2882,7 @@ function normalizeDns(db, snapshotId, collectedAt, payload) {
       snapshotId,
       collectedAt,
       client,
+      clientIp,
       domain,
       text(row.qtype || row.query_type || row.type || ""),
       number(row.count || row.queries || 1),
