@@ -132,6 +132,8 @@ require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traf
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-daily-close"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-accounting-refresh"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh"
@@ -173,6 +175,8 @@ upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-sna
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/cron-traffic-daily-close" "${REMOTE_STAGE}/scripts/cron-traffic-daily-close"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-accounting-refresh" "${REMOTE_STAGE}/scripts/lan-traffic-accounting-refresh"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot" "${REMOTE_STAGE}/scripts/lan-flow-facts-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback" "${REMOTE_STAGE}/scripts/lan-flow-facts-rollback"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh" "${REMOTE_STAGE}/scripts/mobile-reality-accounting-refresh"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot" "${REMOTE_STAGE}/scripts/mobile-reality-counters-snapshot"
 upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh" "${REMOTE_STAGE}/scripts/health-monitor/lib.sh"
@@ -387,6 +391,14 @@ install_fully_managed_script \
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/lan-device-counters-snapshot" \
   /jffs/scripts/lan-device-counters-snapshot
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/lan-flow-facts-snapshot" \
+  /jffs/scripts/lan-flow-facts-snapshot
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/lan-flow-facts-rollback" \
+  /jffs/scripts/lan-flow-facts-rollback
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/mobile-reality-accounting-refresh" \

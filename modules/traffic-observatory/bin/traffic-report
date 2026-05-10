@@ -318,6 +318,8 @@ LAN_BYTES_HISTORY="$TMPDIR/lan-device-counters.tsv"
 LAN_BYTES_CURRENT="$TMPDIR/lan-device-counters-current.tsv"
 LAN_BYTES_BASE="$TMPDIR/lan-device-counters-base.tsv"
 LAN_BYTES_PARSED="$TMPDIR/lan-device-bytes.txt"
+LAN_FLOW_FACTS_HISTORY="$TMPDIR/lan-flow-facts.tsv"
+LAN_FLOW_FACTS_STATUS="$TMPDIR/lan-flow-facts.status"
 LAN_ALIAS_MAP="$TMPDIR/lan-alias-map.txt"
 DEVICE_METADATA_MAP="$TMPDIR/device-metadata-map.txt"
 DEVICE_MIX_TOTALS="$TMPDIR/device-mix-totals.txt"
@@ -614,6 +616,16 @@ router_ssh '/opt/bin/tailscale status --json 2>/dev/null || printf "{}\n"' > "$C
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); SNAP=\$(ls \"\$STATE_DIR/tailscale\"/${TODAY}T*.json 2>/dev/null | sort | head -1); [ -n \"\$SNAP\" ] && cat \"\$SNAP\" || printf '{}\n'" > "$BASE_TAILSCALE"
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/lan-device-counters.tsv\" ] && cat \"\$STATE_DIR/lan-device-counters.tsv\" || true" > "$LAN_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' > "$LAN_BYTES_CURRENT"
+if [ -n "${TRAFFIC_LAN_FLOW_FACTS_FILE:-}" ]; then
+  cp "$TRAFFIC_LAN_FLOW_FACTS_FILE" "$LAN_FLOW_FACTS_HISTORY"
+else
+  router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/lan-flow-facts.tsv\" ] && cat \"\$STATE_DIR/lan-flow-facts.tsv\" || true" > "$LAN_FLOW_FACTS_HISTORY"
+fi
+if [ -n "${TRAFFIC_LAN_FLOW_FACTS_STATUS_FILE:-}" ]; then
+  cp "$TRAFFIC_LAN_FLOW_FACTS_STATUS_FILE" "$LAN_FLOW_FACTS_STATUS"
+else
+  router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/lan-flow-facts.status\" ] && cat \"\$STATE_DIR/lan-flow-facts.status\" || true" > "$LAN_FLOW_FACTS_STATUS"
+fi
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/mobile-reality-counters.tsv\" ] && cat \"\$STATE_DIR/mobile-reality-counters.tsv\" || true" > "$MOBILE_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/mobile-reality-counters-snapshot ] && /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null || true' > "$MOBILE_BYTES_CURRENT"
 router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
@@ -1791,10 +1803,12 @@ if [ "$JSON_MODE" = "1" ]; then
     "$CHANNEL_C_DESTS" \
     "$ROUTING_WARN_RU_VPS" \
     "$ROUTING_WARN_MANAGED_DIRECT" \
-    "$ROUTING_WARN_CATALOG_RU" <<'RUBY'
+    "$ROUTING_WARN_CATALOG_RU" \
+    "$LAN_FLOW_FACTS_HISTORY" \
+    "$LAN_FLOW_FACTS_STATUS" <<'RUBY'
 lan_user_apps_path, user_channel_totals_path, user_channel_apps_path, mobile_dests_path,
   channel_b_dests_path, channel_c_dests_path, warn_ru_vps_path, warn_managed_direct_path,
-  warn_catalog_ru_path = ARGV
+  warn_catalog_ru_path, lan_flow_facts_path, lan_flow_status_path = ARGV
 
 def int_env(key)
   ENV.fetch(key, '0').to_i
@@ -2060,11 +2074,83 @@ def source_diagnostic(row)
   )
 end
 
-lan_destinations = []
+lan_devices_by_ip = {}
+read_rows(lan_user_apps_path).each do |line|
+  label, total, vps, direct, other, families, ip, mac, hostname = line.split('|', -1)
+  next if ip.to_s.empty?
+
+  lan_devices_by_ip[ip.to_s] = {
+    label: label.to_s,
+    total: total.to_i,
+    vps: vps.to_i,
+    direct: direct.to_i,
+    other: other.to_i,
+    families: families.to_s,
+    mac: mac.to_s,
+    hostname: hostname.to_s
+  }
+end
+
+report_day = Time.now.getlocal.strftime('%Y-%m-%d')
+lan_flow_ips = {}
+lan_flow_totals = Hash.new(0)
+lan_flow_destinations = []
+if File.file?(lan_flow_facts_path)
+  read_rows(lan_flow_facts_path).each do |line|
+    ts, ip, dst_ip, port, proto, route, out_bytes, in_bytes, total_bytes, connections,
+      allocation_basis, byte_confidence, destination_conf, _status = line.split('|', -1)
+    next unless ts.to_s.start_with?(report_day)
+
+    total = total_bytes.to_i
+    next if ip.to_s.empty? || dst_ip.to_s.empty? || total <= 0
+
+    device = lan_devices_by_ip[ip.to_s] || {}
+    label = device[:label].to_s.empty? ? ip.to_s : device[:label]
+    route = route.to_s.empty? ? 'Unknown' : route.to_s
+    vps_bytes = route == 'VPS' ? total : 0
+    direct_bytes = route == 'Direct' ? total : 0
+    unknown_bytes = (route == 'VPS' || route == 'Direct') ? 0 : total
+
+    lan_flow_ips[ip.to_s] = true
+    lan_flow_totals[:total] += total
+    lan_flow_totals[:vps] += vps_bytes
+    lan_flow_totals[:direct] += direct_bytes
+
+    lan_flow_destinations << flow_contract({
+      channel: 'Home Wi-Fi/LAN',
+      client: label,
+      client_ip: ip.to_s,
+      profile: label,
+      destination: dst_ip.to_s,
+      destination_ip: dst_ip.to_s,
+      destination_port: port.to_s,
+      protocol: proto.to_s.upcase,
+      family: family(dst_ip),
+      total_bytes: total,
+      via_vps_bytes: vps_bytes,
+      direct_bytes: direct_bytes,
+      unknown_bytes: unknown_bytes,
+      connections: connections.to_i,
+      vps_connections: vps_bytes > 0 ? connections.to_i : 0,
+      direct_connections: direct_bytes > 0 ? connections.to_i : 0,
+      unresolved_connections: unknown_bytes > 0 ? connections.to_i : 0,
+      route: route,
+      confidence: 'exact',
+      evidence: ['lan-flow-facts.tsv', 'conntrack byte accounting'],
+      allocation_basis: allocation_basis.to_s.empty? ? 'conntrack_snapshot_delta' : allocation_basis,
+      bytes_confidence: byte_confidence.to_s.empty? ? 'observed_delta' : byte_confidence,
+      destination_evidence: destination_conf.to_s.empty? ? 'ip' : destination_conf,
+      destination_class: family(dst_ip)
+    })
+  end
+end
+
+lan_destinations = lan_flow_destinations
 if File.file?(lan_user_apps_path)
   read_rows(lan_user_apps_path).each do |line|
     label, total, vps, direct, other, family_text, ip, = line.split('|', -1)
     families = parse_family_counts(family_text)
+    next if lan_flow_ips[ip.to_s]
     next if label.to_s.empty? || total.to_i <= 0 || families.empty?
 
     total_allocations = proportional_allocations(total.to_i, families)
@@ -2111,21 +2197,28 @@ lan_destination_totals = {
   direct: lan_destinations.sum { |row| row[:direct_bytes].to_i }
 }
 
-devices = read_rows(lan_user_apps_path).map do |line|
-  label, total, vps, direct, other, families, ip, mac, hostname = line.split('|', -1)
+devices = lan_devices_by_ip.map do |ip, device|
+  label = device[:label]
+  total = device[:total]
+  vps = device[:vps]
+  direct = device[:direct]
+  other = device[:other]
+  families = device[:families]
+  mac = device[:mac]
+  hostname = device[:hostname]
   device_contract({
     id: label,
     label: label,
     observed_label: label,
-    client_ip: ip.to_s,
-    ip: ip.to_s,
+    client_ip: ip,
+    ip: ip,
     mac: mac.to_s == '?' ? '' : mac.to_s,
     hostname: hostname.to_s == '?' ? '' : hostname.to_s,
     profile: label,
-    total_bytes: total.to_i,
-    via_vps_bytes: vps.to_i,
-    direct_bytes: direct.to_i,
-    unknown_bytes: other.to_i,
+    total_bytes: total,
+    via_vps_bytes: vps,
+    direct_bytes: direct,
+    unknown_bytes: other,
     top_dns_families: families.to_s,
     confidence: 'exact',
     evidence: ['lan-device-counters.tsv', 'dns-forensics hourly snapshot']
@@ -2266,6 +2359,20 @@ read_rows(warn_catalog_ru_path).each do |domain|
   }
 end
 
+lan_flow_status = {}
+if File.file?(lan_flow_status_path)
+  status_line = read_rows(lan_flow_status_path).last.to_s
+  unless status_line.empty?
+    ts, state, *parts = status_line.split('|', -1)
+    lan_flow_status[:timestamp] = ts
+    lan_flow_status[:status] = state
+    parts.each do |part|
+      key, value = part.split('=', 2)
+      lan_flow_status[key.to_sym] = value if key && value
+    end
+  end
+end
+
 accounting_buckets = [
   accounting_bucket(
     label: 'Unknown/Unattributed LAN-Wi-Fi',
@@ -2321,8 +2428,14 @@ coverage_sources = {
     vps: int_env('TRAFFIC_LAN_VPS_BYTES'),
     direct: int_env('TRAFFIC_LAN_DIRECT_BYTES'),
     confidence: 'exact',
-    destination_confidence: lan_destination_totals[:total] > 0 ? 'dns_family_share' : 'none',
-    reason: lan_destination_totals[:total] > 0 ? 'LAN/Wi-Fi destination bytes are allocated from per-device DNS family share' : 'LAN/Wi-Fi has exact client byte counters, but no per-destination byte attribution'
+    destination_confidence: lan_flow_destinations.any? ? 'conntrack_ip' : (lan_destination_totals[:total] > 0 ? 'dns_family_share' : 'none'),
+    reason: if lan_flow_destinations.any?
+              'LAN/Wi-Fi destination bytes use asynchronous conntrack flow deltas; residual bytes remain an attribution gap'
+            elsif lan_destination_totals[:total] > 0
+              'LAN/Wi-Fi destination bytes are allocated from per-device DNS family share'
+            else
+              'LAN/Wi-Fi has exact client byte counters, but no per-destination byte attribution'
+            end
   ),
   channel_a_home_reality: coverage_source(
     observed: channel_a_observed,
@@ -2402,6 +2515,9 @@ puts JSON.pretty_generate({
     channel_c_unresolved: int_env('TRAFFIC_CHANNEL_C_UNRESOLVED')
   },
   destination_attribution_coverage: destination_attribution_coverage,
+  collector_metrics: {
+    lan_flow_facts: lan_flow_status
+  },
   devices: devices,
   home_reality_clients: home_reality_clients,
   app_flows: app_rows,
@@ -2410,6 +2526,7 @@ puts JSON.pretty_generate({
   routing_mistakes: warnings,
   notes: [
     'LAN/Wi-Fi bytes are exact mangle byte counters.',
+    'LAN/Wi-Fi per-destination rows prefer async conntrack flow deltas when available.',
     'Home Reality per-destination bytes are estimated from connection share.',
     'Channel B/C destination byte attribution is not available yet.'
   ]

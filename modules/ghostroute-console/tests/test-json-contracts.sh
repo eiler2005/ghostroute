@@ -47,11 +47,19 @@ cat > "$TMPDIR/mobile.tsv" <<EOF
 ${TEST_DAY}T00:00:00+0300|iphone-1|iPhone|10|20
 ${TEST_DAY}T01:00:00+0300|iphone-1|iPhone|110|220
 EOF
+cat > "$TMPDIR/lan-flow-facts.tsv" <<EOF
+${TEST_DAY}T01:00:00+0300|192.168.50.10|198.51.100.34|443|tcp|Direct|1000|2000|3000|2|conntrack_snapshot_delta|observed_delta|ip|ok
+EOF
+cat > "$TMPDIR/lan-flow-facts.status" <<EOF
+${TEST_DAY}T01:00:00+0300|ok|reason=sampled|rows=10|facts=1|duration_ms=100|acct=1|source=conntrack
+EOF
 
 TRAFFIC_OUT="$TMPDIR/traffic.json"
 TRAFFIC_REPORT_SKIP_REFRESH=1 \
   TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
   TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
+  TRAFFIC_LAN_FLOW_FACTS_FILE="$TMPDIR/lan-flow-facts.tsv" \
+  TRAFFIC_LAN_FLOW_FACTS_STATUS_FILE="$TMPDIR/lan-flow-facts.status" \
   TRAFFIC_MOBILE_COUNTERS_FILE="$TMPDIR/mobile.tsv" \
   "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-report" --json today > "$TRAFFIC_OUT"
 assert_json_valid "$TRAFFIC_OUT"
@@ -63,11 +71,15 @@ ruby -rjson -e '
   abort("missing coverage sources") unless coverage.fetch("sources").key?("lan_wifi")
   lan_source=coverage.fetch("sources").fetch("lan_wifi")
   abort("bad LAN attribution coverage") if lan_source["attributed_bytes"].to_i > lan_source["observed_bytes"].to_i
+  conntrack_rows=j.fetch("destinations").select { |row| row["channel"] == "Home Wi-Fi/LAN" && row["allocation_basis"] == "conntrack_snapshot_delta" }
+  abort("missing LAN conntrack rows") if conntrack_rows.empty?
+  abort("bad LAN conntrack byte confidence") unless conntrack_rows.all? { |row| row["bytes_confidence"] == "observed_delta" }
+  abort("bad LAN conntrack destination evidence") unless conntrack_rows.all? { |row| row["destination_evidence"] == "ip" }
   lan_rows=j.fetch("destinations").select { |row| row["channel"] == "Home Wi-Fi/LAN" && row["allocation_basis"] == "dns_family_share" }
   if lan_rows.any?
     abort("bad LAN DNS family evidence") unless lan_rows.all? { |row| row["destination_evidence"] == "dns_family" }
     abort("bad LAN DNS family confidence") unless lan_rows.all? { |row| row["bytes_confidence"] == "allocated" }
-    abort("bad LAN coverage confidence") unless lan_source["destination_confidence"] == "dns_family_share"
+    abort("bad LAN coverage confidence") unless conntrack_rows.any? || lan_source["destination_confidence"] == "dns_family_share"
   else
     buckets=j.fetch("destinations").select { |row| row["accounting_bucket"] }
     abort("missing accounting bucket") if buckets.empty?
@@ -82,6 +94,8 @@ TRAFFIC_FACTS_OUT="$TMPDIR/traffic-facts.json"
 TRAFFIC_REPORT_SKIP_REFRESH=1 \
   TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
   TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
+  TRAFFIC_LAN_FLOW_FACTS_FILE="$TMPDIR/lan-flow-facts.tsv" \
+  TRAFFIC_LAN_FLOW_FACTS_STATUS_FILE="$TMPDIR/lan-flow-facts.status" \
   TRAFFIC_MOBILE_COUNTERS_FILE="$TMPDIR/mobile.tsv" \
   "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-facts" --json today > "$TRAFFIC_FACTS_OUT"
 assert_json_valid "$TRAFFIC_FACTS_OUT"
@@ -108,6 +122,10 @@ ruby -rjson -e '
     abort("bad LAN fact byte confidence") unless lan_rows.all? { |row| row["byte_confidence"] == "allocated" }
     abort("bad LAN fact destination confidence") unless lan_rows.all? { |row| row["destination_confidence"] == "dns_family" }
   end
+  conntrack_rows=j.fetch("traffic_facts").select { |row| row["channel"] == "Home Wi-Fi/LAN" && row["allocation_basis"] == "conntrack_snapshot_delta" }
+  abort("missing LAN conntrack facts") if conntrack_rows.empty?
+  abort("bad conntrack byte confidence") unless conntrack_rows.all? { |row| row["byte_confidence"] == "observed_delta" }
+  abort("bad conntrack destination confidence") unless conntrack_rows.all? { |row| row["destination_confidence"] == "ip" }
 ' "$TRAFFIC_FACTS_OUT"
 
 cat > "$TMPDIR/current-interface.tsv" <<'EOF'

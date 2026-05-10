@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# Roll back only the conntrack accounting switch used by lan-flow-facts-snapshot.
+# This does not touch GhostRoute routing, NAT, sing-box, dnsmasq, or ipsets.
+
+STATE_DIR="/jffs/addons/router_configuration/traffic"
+[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+
+ACCT_SYSCTL="/proc/sys/net/netfilter/nf_conntrack_acct"
+ACCT_PREVIOUS_FILE="$STATE_DIR/lan-flow-facts-acct.previous"
+STATUS_FILE="$STATE_DIR/lan-flow-facts.status"
+
+timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+
+if [ ! -f "$ACCT_SYSCTL" ]; then
+  printf '%s|partial|reason=acct_sysctl_missing|rows=0|facts=0|duration_ms=0|acct=missing|source=rollback\n' "$timestamp" > "$STATUS_FILE"
+  exit 0
+fi
+
+previous="0"
+[ -f "$ACCT_PREVIOUS_FILE" ] && previous="$(cat "$ACCT_PREVIOUS_FILE" 2>/dev/null || printf '0')"
+case "$previous" in
+  0|1) ;;
+  *) previous="0" ;;
+esac
+
+echo "$previous" > "$ACCT_SYSCTL" 2>/dev/null || true
+current="$(cat "$ACCT_SYSCTL" 2>/dev/null || printf 'unknown')"
+printf '%s|ok|reason=rolled_back|rows=0|facts=0|duration_ms=0|acct=%s|source=rollback\n' "$timestamp" "$current" > "$STATUS_FILE"
