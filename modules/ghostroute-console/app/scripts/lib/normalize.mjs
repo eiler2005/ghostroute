@@ -1241,6 +1241,30 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         order by collected_at asc, rowid asc`
     )
     .all(startUtc, endUtc);
+  if (hasTrafficFacts) {
+    const uniqueRows = new Map();
+    for (const row of sourceRows) {
+      const raw = parseJson(row.raw_json, {});
+      const stableKey = text(
+        raw.fact_id ||
+          [
+            row.snapshot_type,
+            raw.allocation_basis || row.source_log || "",
+            row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at,
+            row.client_ip,
+            row.destination_ip || row.destination,
+            row.destination_port,
+            row.route,
+            row.bytes,
+          ].join("|")
+      );
+      uniqueRows.set(stableKey, row);
+    }
+    sourceRows = Array.from(uniqueRows.values()).sort((a, b) => {
+      const collected = a.collected_at.localeCompare(b.collected_at);
+      return collected || a.rowid - b.rowid;
+    });
+  }
   if (sourceRows.length === 0) {
     sourceRows = db
       .prepare(
