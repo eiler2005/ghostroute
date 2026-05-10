@@ -13,6 +13,7 @@ import {
   shortDateTime,
   SplitBars,
   StatusBadge,
+  timeWithMillis,
 } from "@/components/Widgets";
 import { buildClientsModel, listClientActivity, listClientDomainBreakdown, listClientInventory } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
@@ -204,7 +205,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                         <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
                         <td><a className="row-link" href={clientHref(row)}>{row.owner || row.client_label || "Inventory"}</a></td>
                         <td><a className="row-link" href={clientHref(row)}>{row.device_type || row.role || "Unknown device"}</a></td>
-                        <td><a className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.collected_at, true)}</a></td>
                         <td><a className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></a></td>
                         <td><a className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></a></td>
                       </tr>
@@ -235,7 +236,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
                             <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
                             <td><a className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</a></td>
-                            <td><a className="row-link" href={clientHref(row)}>{shortDateTime(row.last_seen || row.collected_at)}</a></td>
+                            <td><a className="row-link" href={clientHref(row)}>{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.collected_at, true)}</a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></a></td>
                           </tr>
@@ -280,8 +281,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 ) : null}
                 <div className="detail-row"><span>Access channel</span><strong><ChannelBadge value={selected.channel} /></strong></div>
                 <div className="detail-row"><span>Status</span><strong><StatusBadge value={selected.status || "Inactive"} /></strong></div>
-                <div className="detail-row"><span>Last seen</span><strong>{shortDateTime(selected.last_seen || selected.collected_at)}</strong></div>
-                <div className="detail-row"><span>Traffic observed</span><strong>{selected.traffic_collected_at ? shortDateTime(selected.traffic_collected_at) : "not in window"}</strong></div>
+                <div className="detail-row"><span>Last seen</span><strong>{timeWithMillis(selected.display_ts_utc || selected.last_seen || selected.event_ts_utc || selected.collected_at, true)}</strong></div>
+                <div className="detail-row"><span>Traffic observed</span><strong>{selected.traffic_collected_at ? timeWithMillis(selected.traffic_collected_at, true) : "not in window"}</strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
               </div>

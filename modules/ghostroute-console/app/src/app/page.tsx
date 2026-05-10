@@ -261,7 +261,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     .slice(0, 8);
   const coverage = model.destinationAttributionCoverage || {};
   const clientTrafficRows = [...model.flows]
-    .filter((row) => (row.trafficClass === "client" || row.accounting_bucket) && observedBytes(row) > 0)
+    .filter((row) => (row.trafficClass === "client" || row.trafficClass === "personal_cloud" || row.accounting_bucket) && observedBytes(row) > 0)
     .sort((a, b) => observedBytes(b) - observedBytes(a));
   const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + observedBytes(row), 0));
   const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
@@ -379,7 +379,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <Link className="muted-button" href="/traffic?trafficClass=client">Open traffic</Link>
           </div>
           <p className="subtle">
-            Attributed {bytes(destinationAttributedBytes)} of {bytes(model.totals.observedBytes)} observed client traffic;
+            Attributed {bytes(destinationAttributedBytes)} of {bytes(model.totals.observedBytes)} observed client and personal cloud traffic;
             {destinationAttributionGap > 0
               ? ` ${bytes(destinationAttributionGap)} currently has client counters without destination-byte attribution.`
               : " destination attribution covers the observed client total."}

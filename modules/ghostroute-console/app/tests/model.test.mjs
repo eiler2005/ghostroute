@@ -35,7 +35,7 @@ const {
 const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
 const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
 const domainAttributionModule = await import(new URL("../src/lib/domain-attribution.mjs", import.meta.url));
-const { isServiceDomain, isUnclassifiedDomain, normalizeDomainBreakdown, trafficClassForDomain, trafficDomainLabel } = domainAttributionModule;
+const { isPersonalCloudDomain, isServiceDomain, isUnclassifiedDomain, normalizeDomainBreakdown, trafficClassForDomain, trafficDomainLabel } = domainAttributionModule;
 const timeWindowModule = await import(new URL("../src/lib/time/window.mjs", import.meta.url));
 const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
@@ -232,7 +232,7 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(db.prepare("select label from normalized_devices where device_id = 'macbook'").get().label, "macbook");
   assert.equal(db.prepare("select count(*) as count from normalized_flows").get().count, 1);
   assert.equal(db.prepare("select channel from normalized_flows limit 1").get().channel, "Home Wi-Fi/LAN");
-  const flow = db.prepare("select client, client_ip, sni, outbound, matched_rule, egress_ip, egress_asn, raw_json from normalized_flows limit 1").get();
+  const flow = db.prepare("select client, client_ip, sni, outbound, matched_rule, egress_ip, egress_asn, display_ts_utc, time_precision, raw_json from normalized_flows limit 1").get();
   assert.equal(flow.client, "lan-host-01");
   assert.equal(flow.client_ip, "192.168.1.24");
   assert.equal(flow.sni, "telegram.org");
@@ -240,6 +240,8 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(flow.matched_rule, "STEALTH_DOMAINS");
   assert.equal(flow.egress_ip, "203.0.113.67");
   assert.equal(flow.egress_asn, "AS209529");
+  assert.match(flow.display_ts_utc, /\.\d{3}Z$/);
+  assert.equal(flow.time_precision, "collector_ms");
   assert.equal(JSON.parse(flow.raw_json).identity_type, "lan_host");
   assert.equal(JSON.parse(flow.raw_json).bytes_confidence, "exact");
   assert.equal(db.prepare("select count(*) as count from events where event_type = 'flow.observed'").get().count, 1);
@@ -347,8 +349,11 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 7").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 8").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 9").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 10").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'display_ts_utc'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('normalized_dns') where name = 'time_precision'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'hostname'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'mac'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_hourly') where name = 'destination_key'").get());
@@ -357,6 +362,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'traffic_class'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('dns_query_log') where name = 'display_ts_utc'").get());
   db.close();
 });
 
@@ -469,13 +475,15 @@ test("destination attribution coverage keeps unattributed accounting buckets", (
   db.close();
 });
 
-test("traffic class separates client, service background and attribution gaps", () => {
+test("traffic class separates client personal cloud service background and attribution gaps", () => {
   assert.equal(trafficClassFor({ destination: "Google/YouTube", bytes: 1024, confidence: "estimated" }), "client");
-  assert.equal(trafficClassFor({ destination: "Apple/iCloud", bytes: 1024, confidence: "estimated" }), "service_background");
+  assert.equal(trafficClassFor({ destination: "Apple/iCloud", bytes: 1024, confidence: "estimated" }), "personal_cloud");
+  assert.equal(trafficClassFor({ destination: "www.dropbox.com", bytes: 1024, confidence: "estimated" }), "personal_cloud");
   assert.equal(trafficClassFor({ destination: "DNS/Resolver", bytes: 1024, confidence: "estimated" }), "service_background");
+  assert.equal(trafficClassFor({ domain: "_dns.resolver.arpa", qtype: "PTR", count: 2, confidence: "dns-interest" }), "service_background");
+  assert.equal(trafficClassFor({ domain: "miro.com", count: 2, confidence: "dns-interest" }), "client");
   assert.equal(trafficClassFor({ destination: "Other", bytes: 1024, confidence: "estimated" }), "unclassified");
   assert.equal(trafficClassFor({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "unclassified");
-  assert.equal(trafficClassFor({ destination: "example.invalid", bytes: 0, confidence: "dns-interest" }), "service_background");
   assert.equal(displayDestination({ destination: "Other", bytes: 1024, confidence: "estimated" }), "Unclassified domain");
   assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
   assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
@@ -484,7 +492,7 @@ test("traffic class separates client, service background and attribution gaps", 
 
 test("domain breakdown scales category evidence to authoritative client total", () => {
   const breakdown = normalizeDomainBreakdown([
-    { destination: "Apple/iCloud", bytes: 6000, via_vps_bytes: 6000, trafficClass: "service_background", route: "VPS" },
+    { destination: "Apple/iCloud", bytes: 6000, via_vps_bytes: 6000, trafficClass: "personal_cloud", route: "VPS" },
     { destination: "Google/YouTube", bytes: 3000, via_vps_bytes: 2000, direct_bytes: 1000, trafficClass: "client", route: "Mixed" },
     { destination: "Other/IP", bytes: 1000, direct_bytes: 1000, trafficClass: "unclassified", route: "Direct" },
   ], 2000, { limit: 8, minimumCoverageRatio: 0.5 });
@@ -492,7 +500,7 @@ test("domain breakdown scales category evidence to authoritative client total", 
   assert.equal(breakdown.unattributedBytes, 0);
   assert.equal(breakdown.rows.reduce((sum, row) => sum + row.bytes, 0), 2000);
   assert.equal(breakdown.rows[0].destination, "Apple/iCloud");
-  assert.equal(breakdown.rows[0].trafficClass, "service_background");
+  assert.equal(breakdown.rows[0].trafficClass, "personal_cloud");
 
   const sparse = normalizeDomainBreakdown([
     { destination: "Google/YouTube", bytes: 100, trafficClass: "client", route: "VPS" },
@@ -501,10 +509,12 @@ test("domain breakdown scales category evidence to authoritative client total", 
   assert.equal(sparse.unattributedBytes, 1900);
 });
 
-test("domain attribution module classifies service client and unresolved domains", () => {
+test("domain attribution module classifies personal cloud service client and unresolved domains", () => {
   assert.equal(trafficDomainLabel({ dns_qname: "api.example.invalid", destination: "" }), "api.example.invalid");
   assert.equal(trafficDomainLabel({ destination: "unknown", sni: "video.example.invalid" }), "video.example.invalid");
-  assert.equal(isServiceDomain("mask.icloud.com"), true);
+  assert.equal(isPersonalCloudDomain("mask.icloud.com"), true);
+  assert.equal(isPersonalCloudDomain("www.dropbox.com"), true);
+  assert.equal(isServiceDomain("mask.icloud.com"), false);
   assert.equal(isServiceDomain("configuration.apple.com"), true);
   assert.equal(isServiceDomain("a123.dscg.akamai.net"), true);
   assert.equal(isServiceDomain("assets.cloudfront.net"), true);
@@ -512,12 +522,13 @@ test("domain attribution module classifies service client and unresolved domains
   assert.equal(isUnclassifiedDomain("Other/IP"), true);
   assert.equal(isUnclassifiedDomain("Unknown/Unattributed client traffic"), true);
   assert.equal(trafficClassForDomain({ destination: "configuration.apple.com", bytes: 2048 }), "service_background");
+  assert.equal(trafficClassForDomain({ destination: "Apple/iCloud", bytes: 2048 }), "personal_cloud");
   assert.equal(trafficClassForDomain({ destination: "www.youtube.com", bytes: 2048 }), "client");
   assert.equal(trafficClassForDomain({ destination: "Other/IP", bytes: 2048 }), "unclassified");
   assert.equal(trafficClassForDomain({ domain: "dns.msftncsi.com", count: 4, confidence: "dns-interest" }), "service_background");
 });
 
-test("domain breakdown keeps client service and unclassified rows separate after scaling", () => {
+test("domain breakdown keeps client personal cloud and unclassified rows separate after scaling", () => {
   const breakdown = normalizeDomainBreakdown([
     { destination: "Apple/iCloud", bytes: 700, via_vps_bytes: 700 },
     { destination: "www.youtube.com", bytes: 200, via_vps_bytes: 100, direct_bytes: 100 },
@@ -526,7 +537,7 @@ test("domain breakdown keeps client service and unclassified rows separate after
   ], 100, { limit: 8, minimumCoverageRatio: 0.5 });
   assert.equal(breakdown.scaled, true);
   assert.equal(breakdown.rows.reduce((sum, row) => sum + row.bytes, 0), 100);
-  assert.deepEqual(breakdown.rows.map((row) => row.trafficClass), ["service_background", "client", "unclassified"]);
+  assert.deepEqual(breakdown.rows.map((row) => row.trafficClass), ["personal_cloud", "client", "unclassified"]);
   assert.equal(breakdown.rows.some((row) => row.accounting_bucket), false);
 });
 

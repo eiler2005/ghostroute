@@ -7,6 +7,7 @@ import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/select
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { destinationEvidence, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { trafficClassLabel } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -196,7 +197,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
             <div className="live-stream-meta traffic-stream-meta">
               {diagnostics
                 ? "Diagnostics mode: technical DNS and route events are visible."
-                : `${filters.trafficClass === "service_background" ? "Service/background" : filters.trafficClass === "unclassified" ? "Needs attribution" : filters.trafficClass === "client" ? "Client" : "All traffic"} flows by volume with policy, route and risk context.`}
+                : `${trafficClassLabel(filters.trafficClass || "all")} flows by volume with policy, route and risk context.`}
             </div>
             <div className="live-stream-meta traffic-stream-meta">
               Detailed traffic: latest full snapshot, refreshed less often · estimated - counters/log summaries · hidden system/no-byte evidence: {trafficPage.hiddenCount}
@@ -207,6 +208,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   <tr>
                     <th className="col-time">Time</th>
                     <th className="col-client">Client</th>
+                    <th className="col-channel">Channel</th>
                     <th className="col-destination">Site / group</th>
                     <th className="col-route">Route</th>
                     <th className="col-policy">Policy / Rule</th>
@@ -222,8 +224,9 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     const destination = destinationEvidence(row);
                     return (
                       <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>
-                        <td className="col-time"><Link className="row-link" href={href}>{timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</Link></td>
+                        <td className="col-time"><Link className="row-link" href={href}>{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.event_ts || row.collected_at, true)}</Link></td>
                         <td className="col-client" title={row.client}><Link className="row-link" href={href}>{row.client}</Link></td>
+                        <td className="col-channel"><Link className="row-link row-link-with-badges" href={href}><ChannelBadge value={row.channel} /></Link></td>
                         <td className="col-destination" title={`${destination.label} · ${destination.kind}`}>
                           <Link className="row-link row-link-with-badges destination-cell" href={href}>
                             <span>{destination.label}</span>

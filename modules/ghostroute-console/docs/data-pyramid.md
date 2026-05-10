@@ -64,7 +64,7 @@ server, including mobile pages and `/api/flows`, `/api/dns`, `/api/live` and
 windows only.
 
 Top-client prepared rows are operator-client rows only: non-zero
-`traffic_class=client` traffic that resolves through the private
+`traffic_class in ('client', 'personal_cloud')` traffic that resolves through the private
 `device-attribution.json` registry. Service channels, DNS-interest rows,
 accounting buckets and pseudo clients such as channel labels are retained for
 diagnostics, but they are not ranked as clients. Observed aliases such as
@@ -92,10 +92,18 @@ detail domain/category breakdowns read the prepared `client_traffic_*` chunks
 for the selected client and normalize that evidence to the authoritative client
 counter total when the source categories provide adequate coverage. That keeps
 large cumulative counters and per-domain evidence in one accounting frame:
-service/background categories such as Apple/iCloud, DNS resolver traffic and CDN
-infrastructure stay visible, client destinations stay separate, and true
+personal cloud categories such as iCloud/Drive/Dropbox stay visible next to
+client traffic, service/background categories such as DNS resolver traffic and
+CDN infrastructure stay separate, and true
 unclassified traffic remains explicit instead of becoming a misleading
 90-percent residual.
+
+Schema v10 is intentionally a clean accounting boundary. New facts carry
+`event_ts_utc`, `observed_at_utc`, `display_ts_utc` and `time_precision`, and the
+traffic-class contract is `client`, `personal_cloud`, `service_background` and
+`unclassified`. A reset rollout quarantines old Console SQLite/snapshot data and
+rebuilds chunks only from newly collected facts; old snapshots are kept for
+manual audit but must not seed week/month v10 aggregates.
 
 ## Collector Contract
 

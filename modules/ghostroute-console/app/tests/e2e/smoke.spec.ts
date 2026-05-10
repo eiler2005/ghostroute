@@ -140,6 +140,25 @@ test("traffic explorer hides technical evidence noise by default", async ({ page
   }
 });
 
+test("traffic class controls include personal cloud on desktop and mobile", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/traffic" : "/traffic");
+  await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
+  await expect(page.locator("select[name='trafficClass']")).toBeVisible();
+  await expect(page.locator("select[name='trafficClass']")).toContainText("Personal cloud");
+});
+
+test("traffic pages expose channel context without hiding mobile rows", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/traffic" : "/traffic");
+  await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
+  if (isMobile) {
+    await expect(page.locator(".mobile-list .mobile-row").first()).toBeVisible();
+    await expect(page.locator(".flow-detail-panel")).toHaveCount(0);
+  } else {
+    await expect(page.locator(".flow-events-table thead")).toContainText("Channel");
+    await expect(page.locator(".flow-events-table tbody tr").first()).toBeVisible();
+  }
+});
+
 test("traffic classes and live cadence are explicit", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/?desktop=1" : "/");
   await expect(page.getByRole("heading", { name: "Service/background traffic" })).toBeVisible();

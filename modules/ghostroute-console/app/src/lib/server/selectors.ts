@@ -583,7 +583,8 @@ function operatorTrafficRow(row: Record<string, any>, options: { allowAccounting
   if (total <= 0) return null;
   if (!options.allowAccountingBucket && decorated.accounting_bucket) return null;
   if (String(decorated.confidence || "").toLowerCase() === "dns-interest") return null;
-  if ((decorated.trafficClass || decorated.traffic_class || trafficClassFor(decorated)) !== "client") return null;
+  const rowClass = decorated.trafficClass || decorated.traffic_class || trafficClassFor(decorated);
+  if (!["client", "personal_cloud"].includes(String(rowClass))) return null;
   if (pseudoClientLabel(decorated)) return null;
   const resolved = registeredClientResolution(decorated);
   if (!resolved) return null;
@@ -662,6 +663,8 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
     client_label: row.client_label || row.client || "",
   });
   if (!resolved || pseudoClientLabel(row)) {
+    const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
+    const serviceLabel = trafficClass === "service_background" ? "Service DNS source" : "Unattributed DNS source";
     return {
       ...row,
       raw_client: row.raw_client || row.client || row.client_label || row.device_key || "",
@@ -669,7 +672,7 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
       client_key: "",
       client_label: "",
       device_key: "",
-      device_label: "Unattributed DNS source",
+      device_label: serviceLabel,
       client_attributed: false,
     };
   }
@@ -1639,7 +1642,7 @@ function flowSelect() {
   return `rowid as rowid, 'flow:' || rowid as id, snapshot_id, snapshot_type, collected_at,
     client, client_ip, channel, destination, destination_ip, destination_port, route, confidence,
     bytes, connections, protocol, dns_qname, dns_answer_ip, sni, outbound, matched_rule,
-    rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log,
+    rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log,
     traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json`;
 }
 
@@ -1668,6 +1671,10 @@ function mapFlowRow(row: any) {
     egress_asn: row.egress_asn,
     egress_country: row.egress_country,
     event_ts: row.event_ts,
+    event_ts_utc: row.event_ts_utc,
+    observed_at_utc: row.observed_at_utc,
+    display_ts_utc: row.display_ts_utc,
+    time_precision: row.time_precision,
     ts_confidence: row.ts_confidence,
     source_log: row.source_log,
     traffic_class: row.traffic_class,
@@ -1680,7 +1687,7 @@ function mapFlowRow(row: any) {
 }
 
 function flowSessionSelect() {
-  return `id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip, device_key,
+  return `id, snapshot_id, collected_at, first_seen, last_seen, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key,
     channel, destination, destination_ip, destination_port, protocol, route, policy, matched_rule,
     outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence,
     traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
@@ -1697,6 +1704,10 @@ function mapFlowSessionRow(row: any) {
     collected_at: row.collected_at,
     first_seen: row.first_seen,
     last_seen: row.last_seen,
+    event_ts_utc: row.event_ts_utc,
+    observed_at_utc: row.observed_at_utc,
+    display_ts_utc: row.display_ts_utc,
+    time_precision: row.time_precision,
     client: row.client,
     client_ip: row.client_ip,
     device_key: row.device_key,
@@ -1729,7 +1740,7 @@ function mapFlowSessionRow(row: any) {
     risk_reason: row.risk_reason,
     duration_seconds: Number(row.duration_seconds || 0),
     duration_confidence: row.duration_confidence,
-    event_ts: row.last_seen || row.first_seen || row.collected_at,
+    event_ts: row.display_ts_utc || row.last_seen || row.first_seen || row.collected_at,
     source_log: row.source_kind,
     raw,
   });
@@ -1812,7 +1823,7 @@ export function listTrafficRows(args: PageArgs = {}) {
      )
      .all(...params, fetchLimit)
      .map(mapFlowRow)
-     .map((row) => trafficClass === "client" ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], args.filters || {}).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
@@ -1892,7 +1903,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
      )
      .all(...params, fetchLimit)
      .map(mapFlowSessionRow)
-     .map((row) => trafficClass === "client" ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], filters).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
@@ -1933,6 +1944,10 @@ function mapDnsReadModelRow(row: any) {
     snapshot_id: row.snapshot_id,
     collected_at: row.collected_at,
     event_ts: row.event_ts,
+    event_ts_utc: row.event_ts_utc,
+    observed_at_utc: row.observed_at_utc,
+    display_ts_utc: row.display_ts_utc,
+    time_precision: row.time_precision,
     client: row.client,
     client_ip: row.client_ip,
     device_key: row.device_key,
@@ -2087,7 +2102,7 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const db = getDb();
   const rows = db
     .prepare(
-      `select id, snapshot_id, collected_at, event_ts, client, client_ip, device_key, domain,
+      `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
               qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
          from dns_query_log
         where ${whereSql}
@@ -3140,6 +3155,10 @@ function mapLiveRow(row: any) {
     source_kind: row.kind,
     event_type: eventType,
     occurred_at: row.occurred_at,
+    event_ts_utc: row.event_ts_utc,
+    observed_at_utc: row.observed_at_utc,
+    display_ts_utc: row.display_ts_utc,
+    time_precision: row.time_precision,
     origin: originForLive(row),
     client: row.client,
     client_ip: row.client_ip,
@@ -3168,13 +3187,13 @@ function listLiveEventsUncached(args: PageArgs = {}) {
   addCommonFilters(where, params, filter);
   const whereSql = where.length ? `where ${where.map((item) => `(${item})`).join(" and ")}` : "";
   const eventSelect = `
-    select 'event' as kind, id, event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
+    select 'event' as kind, id, event_type, occurred_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, summary, source_log
       from events
      ${whereSql}
      order by occurred_at desc, id desc
      limit ?`;
   const decisionSelect = `
-    select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, '' as summary, source_log
+    select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, channel, destination, dns_qname, destination_ip, route, confidence, '' as summary, source_log
       from route_decisions
      ${whereSql}
      order by occurred_at desc, id desc
@@ -3185,7 +3204,7 @@ function listLiveEventsUncached(args: PageArgs = {}) {
     .sort((a: any, b: any) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || Number(b.id || 0) - Number(a.id || 0))
     .slice(0, fetchLimit)
     .map(mapLiveRow)
-    .map((row) => filter.trafficClass === "client" ? operatorLiveRow(row) : row)
+    .map((row) => ["client", "personal_cloud"].includes(String(filter.trafficClass)) ? operatorLiveRow(row) : row)
     .filter((row): row is Record<string, any> => Boolean(row))
     .filter((row) => filterRows([row], filter).length > 0);
   const total = candidates.length >= fetchLimit ? fetchLimit : candidates.length;
