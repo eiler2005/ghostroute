@@ -181,6 +181,7 @@ export function getDb() {
         snapshot_id integer not null,
         collected_at text not null,
         client text not null default '',
+        client_ip text not null default '',
         domain text not null default '',
         qtype text not null default '',
         count integer not null default 0,
@@ -525,6 +526,7 @@ export function getDb() {
         bucket_start_utc text not null,
         bucket_msk_key text not null,
         client_key text not null default '',
+        client_ip text not null default '',
         domain text not null default '',
         qtype text not null default '',
         catalog_status text not null default 'unknown',
@@ -532,7 +534,7 @@ export function getDb() {
         confidence text not null default 'dns-interest',
         query_count integer not null default 0,
         updated_at_utc text not null default '',
-        primary key (bucket_start_utc, client_key, domain, qtype, catalog_status, route)
+        primary key (bucket_start_utc, client_key, client_ip, domain, qtype, catalog_status, route)
       );
       create table if not exists top_clients_window (
         window text not null,
@@ -614,6 +616,7 @@ export function getDb() {
         unknown_bytes: "integer not null default 0",
       },
       normalized_dns: {
+        client_ip: "text not null default ''",
         answer_ip: "text not null default ''",
         event_ts: "text not null default ''",
         ts_confidence: "text not null default ''",
@@ -659,6 +662,9 @@ export function getDb() {
         egress_asn: "text not null default ''",
         egress_country: "text not null default ''",
         source_log: "text not null default ''",
+      },
+      dns_log_5min: {
+        client_ip: "text not null default ''",
       },
     })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);

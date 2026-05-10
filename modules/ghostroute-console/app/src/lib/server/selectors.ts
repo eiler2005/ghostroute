@@ -43,6 +43,7 @@ import {
   snapshotMatchesPeriod,
 } from "../traffic-window.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
+import { mskWindowBounds } from "../time/window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 300_000);
@@ -116,6 +117,51 @@ function cachedLatestByTypes(types: Array<SnapshotRecord["type"]>) {
 
 function definedOverrides<T extends Record<string, any>>(overrides: T): Partial<T> {
   return Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
+function maxIso(...values: Array<string | undefined>) {
+  return values.filter(Boolean).sort((a, b) => Date.parse(String(b)) - Date.parse(String(a)))[0] || "";
+}
+
+function isoPlusMs(iso: string, ms: number) {
+  return new Date(Date.parse(iso) + ms).toISOString();
+}
+
+function isoMinusHours(iso: string, hours: number) {
+  return new Date(Date.parse(iso) - hours * 3600000).toISOString();
+}
+
+function bucketStartUtcForSelector(utcIso: string, granularity: "hour" | "day" = "hour") {
+  const date = new Date(utcIso);
+  if (Number.isNaN(date.getTime())) return utcIso;
+  if (granularity === "day") date.setUTCHours(0, 0, 0, 0);
+  else date.setUTCMinutes(0, 0, 0);
+  return date.toISOString();
+}
+
+function isIpv4Literal(value: unknown) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || ""));
+}
+
+function windowAggregateSegmentsForSelector(window = "today", now = new Date()) {
+  const nowIso = now.toISOString();
+  const bounds = mskWindowBounds(window, now);
+  const todayStart = mskWindowBounds("today", now).startUtc;
+  const freshHours = Math.max(1, Number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
+  const freshStart = maxIso(todayStart, bucketStartUtcForSelector(isoMinusHours(nowIso, freshHours), "hour"));
+  const endExclusive = isoPlusMs(bounds.endUtc, 1);
+  const segments: Array<{ layer: "daily" | "hourly" | "5min"; start: string; end: string }> = [];
+  if (window !== "today" && Date.parse(bounds.startUtc) < Date.parse(todayStart)) {
+    segments.push({ layer: "daily", start: bounds.startUtc, end: todayStart });
+  }
+  const hourlyStart = maxIso(bounds.startUtc, todayStart);
+  if (Date.parse(hourlyStart) < Date.parse(freshStart)) {
+    segments.push({ layer: "hourly", start: hourlyStart, end: freshStart });
+  }
+  if (Date.parse(freshStart) < Date.parse(endExclusive)) {
+    segments.push({ layer: "5min", start: freshStart, end: endExclusive });
+  }
+  return segments;
 }
 
 export function getConsolePageSummary(page: "health_mobile" | "health_shell" | "live_mobile" | string) {
@@ -1945,14 +1991,17 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const prepared = getPreparedWindowSnapshot("dns_counts", period, "all")?.payload;
   if (prepared?.rows) {
     const rows = (prepared.rows as Array<Record<string, any>>)
-      .map((row: any) => mapDnsReadModelRow({
-        id: `dns:prepared:${period}:${row.client || ""}:${row.domain}:${row.qtype}:${row.route}`,
+      .map((row: any) => {
+        const preparedClient = row.client || "";
+        const preparedClientIp = row.client_ip || (isIpv4Literal(preparedClient) ? preparedClient : "");
+        return mapDnsReadModelRow({
+        id: `dns:prepared:${period}:${preparedClient}:${row.domain}:${row.qtype}:${row.route}`,
         snapshot_id: 0,
         collected_at: row.event_ts || prepared.generatedAt || "",
         event_ts: row.event_ts || "",
-        client: row.client || "",
-        client_ip: "",
-        device_key: row.client || "",
+        client: preparedClient,
+        client_ip: preparedClientIp,
+        device_key: preparedClient,
         domain: row.domain || "",
         qtype: row.qtype || "",
         answer_ip: "",
@@ -1962,8 +2011,9 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
         count: Number(row.count || 0),
         risk: "low",
         confidence: row.confidence || "dns-interest",
-        evidence_json: "{}",
-      }))
+        evidence_json: JSON.stringify({ client: preparedClient, client_ip: preparedClientIp }),
+      });
+      })
       .map(operatorDnsRow)
       .filter((row): row is Record<string, any> => Boolean(row))
       .filter((row) => route === "all" || row.route === route)
@@ -2925,6 +2975,73 @@ function rowIdentityTokens(row: Record<string, any>) {
     ...(row.aliases || []),
     ...(row.observed_aliases || []),
   ].filter(Boolean).map((value) => String(value).toLowerCase());
+}
+
+function clientDomainAggregateRows(clientKey: string, period = "today") {
+  if (!clientKey) return [];
+  const db = getDb();
+  const grouped = new Map<string, Record<string, any>>();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const table = segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
+    const timeColumn = segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+    const rows = db.prepare(`
+      select max(client_label) as client_label,
+             destination_key,
+             route,
+             traffic_class,
+             confidence,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             max(${timeColumn}) as collected_at
+        from ${table}
+       where ${timeColumn} >= ?
+         and ${timeColumn} < ?
+         and client_key = ?
+         and coalesce(destination_key, '') not in ('', 'unknown destination', 'Unknown/Unattributed LAN-Wi-Fi')
+         and coalesce(attributed_bytes, bytes, 0) > 0
+       group by destination_key, route, traffic_class, confidence
+    `).all(segment.start, segment.end, clientKey) as Array<Record<string, any>>;
+    for (const row of rows) {
+      const key = [row.destination_key, row.route, row.traffic_class, row.confidence].join("|");
+      const current = grouped.get(key) || {
+        client: row.client_label || clientKey,
+        client_key: clientKey,
+        client_label: row.client_label || clientKey,
+        destination: row.destination_key,
+        destinationLabel: row.destination_key,
+        route: row.route || "Unknown",
+        trafficClass: row.traffic_class || trafficClassFor(row),
+        traffic_class: row.traffic_class || trafficClassFor(row),
+        confidence: row.confidence || "estimated",
+        bytes: 0,
+        total_bytes: 0,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        flows: 0,
+        collected_at: row.collected_at,
+      };
+      current.bytes += Number(row.bytes || 0);
+      current.total_bytes += Number(row.bytes || 0);
+      current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+      current.direct_bytes += Number(row.direct_bytes || 0);
+      current.unknown_bytes += Number(row.unknown_bytes || 0);
+      current.flows += Number(row.flows || 0);
+      if (String(row.collected_at || "") > String(current.collected_at || "")) current.collected_at = row.collected_at;
+      grouped.set(key, current);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0));
+}
+
+export function listClientDomainBreakdown(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const limit = Math.max(1, Number(options.limit || 20));
+  return cacheGet(`client-domain-breakdown:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => clientDomainAggregateRows(key, period).slice(0, limit));
 }
 
 export function listClientActivity(client: Record<string, any> | string, period = "today") {

@@ -77,10 +77,25 @@ still real observed client traffic.
 DNS Query Log is a factual evidence surface. DNS rows may be visible even when
 the client source is not yet registry-attributed, but only registry-backed
 clients participate in DNS top-client grouping or client inventory rows.
+Prepared DNS chunks carry both the observed client key and `client_ip`; the
+selector uses that IP only for private registry attribution and must not replace
+the factual domain row with an empty client record.
 
 Destination rankings are built from destination-bearing client chunks. Unknown
 or accounting-only traffic contributes to destination attribution coverage, but
 does not crowd concrete destinations out of the top-destination list.
+
+Client detail pages must not derive unknown traffic as
+`client counter total - visible flow table rows`. Flow rows are a bounded
+workbench sample and may be filtered by class, pagination or freshness. Client
+detail domain/category breakdowns read the prepared `client_traffic_*` chunks
+for the selected client and normalize that evidence to the authoritative client
+counter total when the source categories provide adequate coverage. That keeps
+large cumulative counters and per-domain evidence in one accounting frame:
+service/background categories such as Apple/iCloud, DNS resolver traffic and CDN
+infrastructure stay visible, client destinations stay separate, and true
+unclassified traffic remains explicit instead of becoming a misleading
+90-percent residual.
 
 ## Collector Contract
 

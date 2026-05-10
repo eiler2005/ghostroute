@@ -1,47 +1,4 @@
-function usefulText(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (["unknown", "client", "not observed", "n/a"].includes(text.toLowerCase())) return "";
-  return text;
-}
-
-function rawDestination(row) {
-  return usefulText(row.destination || row.family || row.app || row.dns_qname || row.sni || row.destination_ip);
-}
-
-function trafficBytes(row) {
-  return Number(row.bytes || row.total_bytes || row.totalBytes || 0);
-}
-
-function isDnsOnly(row) {
-  return trafficBytes(row) <= 0 && String(row.confidence || "").toLowerCase() === "dns-interest";
-}
-
-function isUnclassifiedDestination(value) {
-  const d = value.toLowerCase();
-  return d.startsWith("unknown/unattributed") || d === "other" || d === "other/ip" || d === "unknown" || d === "ip-only / no dns match" || d === "unclassified domain";
-}
-
-function isServiceDestination(value) {
-  const d = value.toLowerCase();
-  return (
-    d.includes("apple/icloud") ||
-    d.includes("dns/resolver") ||
-    d.includes("aws/cdn") ||
-    d.includes("icloud") ||
-    d.includes("apple") ||
-    d.includes("itunes") ||
-    d.includes("mzstatic") ||
-    d.includes("aaplimg") ||
-    d.includes("cloudfront") ||
-    d.includes("amazonaws") ||
-    d.includes("cloudflare") ||
-    d.includes("akamai") ||
-    d.includes("fastly") ||
-    d === "cdn" ||
-    d.includes("resolver")
-  );
-}
+import { isDnsOnlyTraffic, trafficClassForDomain, trafficDomainLabel } from "./domain-attribution.mjs";
 
 export const trafficClasses = ["client", "service_background", "unclassified", "all"];
 
@@ -53,13 +10,7 @@ export const trafficClassLabels = {
 };
 
 export function trafficClassFor(row) {
-  if (row?.accounting_bucket || row?.raw?.accounting_bucket) return "unclassified";
-  const destination = rawDestination(row);
-  if (isDnsOnly(row)) return "service_background";
-  if (!destination) return "service_background";
-  if (isServiceDestination(destination)) return "service_background";
-  if (isUnclassifiedDestination(destination)) return "unclassified";
-  return "client";
+  return trafficClassForDomain(row);
 }
 
 export function trafficClassLabel(value) {
@@ -67,14 +18,14 @@ export function trafficClassLabel(value) {
 }
 
 export function displayDestination(row) {
-  const destination = rawDestination(row);
+  const destination = trafficDomainLabel(row);
   if (!destination) return "n/a";
   const lower = destination.toLowerCase();
   if (lower === "other/ip") return "IP-only / no DNS match";
   if (lower.startsWith("unknown/unattributed")) return destination;
   if (lower === "other") {
-    if (isDnsOnly(row)) return "DNS-only interest";
-    if (usefulText(row.destination_ip)) return "IP-only / no DNS match";
+    if (isDnsOnlyTraffic(row)) return "DNS-only interest";
+    if (trafficDomainLabel({ destination: row.destination_ip })) return "IP-only / no DNS match";
     return "Unclassified domain";
   }
   return destination;

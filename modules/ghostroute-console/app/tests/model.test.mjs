@@ -34,6 +34,8 @@ const {
 } = trafficWindowModule;
 const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
 const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
+const domainAttributionModule = await import(new URL("../src/lib/domain-attribution.mjs", import.meta.url));
+const { isServiceDomain, isUnclassifiedDomain, normalizeDomainBreakdown, trafficClassForDomain, trafficDomainLabel } = domainAttributionModule;
 const timeWindowModule = await import(new URL("../src/lib/time/window.mjs", import.meta.url));
 const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
@@ -323,6 +325,12 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   assert.equal(sessionFlow.egress_country, "");
   assert.equal(sessionFlow.ts_confidence, "");
   assert.equal(db.prepare("select catalog_status from dns_query_log where domain = 'telegram.org'").get().catalog_status, "managed");
+  db.prepare("update normalized_dns set client_ip = '' where domain = 'telegram.org'").run();
+  rebuildPreparedWindows(db, "2026-04-29T00:05:00Z");
+  const dnsPrepared = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dns_counts' and window = 'today'").get().payload_json);
+  const preparedDnsRow = dnsPrepared.rows.find((row) => row.domain === "telegram.org");
+  assert.equal(preparedDnsRow.client, "lan-host-01");
+  assert.equal(preparedDnsRow.client_ip, "192.168.1.24");
   assert.equal(db.prepare("select count(*) as count from device_inventory").get().count > 0, true);
   assert.ok(db.prepare("select 1 from read_model_state where model = 'flow_sessions'").get());
   db.close();
@@ -472,6 +480,64 @@ test("traffic class separates client, service background and attribution gaps", 
   assert.equal(displayDestination({ destination: "Other/IP", bytes: 1024, confidence: "estimated" }), "IP-only / no DNS match");
   assert.equal(displayDestination({ destination: "Other", bytes: 0, confidence: "dns-interest" }), "DNS-only interest");
   assert.equal(trafficClassFor({ destination: "Unknown/Unattributed LAN-Wi-Fi", bytes: 1024, accounting_bucket: true }), "unclassified");
+});
+
+test("domain breakdown scales category evidence to authoritative client total", () => {
+  const breakdown = normalizeDomainBreakdown([
+    { destination: "Apple/iCloud", bytes: 6000, via_vps_bytes: 6000, trafficClass: "service_background", route: "VPS" },
+    { destination: "Google/YouTube", bytes: 3000, via_vps_bytes: 2000, direct_bytes: 1000, trafficClass: "client", route: "Mixed" },
+    { destination: "Other/IP", bytes: 1000, direct_bytes: 1000, trafficClass: "unclassified", route: "Direct" },
+  ], 2000, { limit: 8, minimumCoverageRatio: 0.5 });
+  assert.equal(breakdown.scaled, true);
+  assert.equal(breakdown.unattributedBytes, 0);
+  assert.equal(breakdown.rows.reduce((sum, row) => sum + row.bytes, 0), 2000);
+  assert.equal(breakdown.rows[0].destination, "Apple/iCloud");
+  assert.equal(breakdown.rows[0].trafficClass, "service_background");
+
+  const sparse = normalizeDomainBreakdown([
+    { destination: "Google/YouTube", bytes: 100, trafficClass: "client", route: "VPS" },
+  ], 2000, { limit: 8, minimumCoverageRatio: 0.5 });
+  assert.equal(sparse.scaled, false);
+  assert.equal(sparse.unattributedBytes, 1900);
+});
+
+test("domain attribution module classifies service client and unresolved domains", () => {
+  assert.equal(trafficDomainLabel({ dns_qname: "api.example.invalid", destination: "" }), "api.example.invalid");
+  assert.equal(trafficDomainLabel({ destination: "unknown", sni: "video.example.invalid" }), "video.example.invalid");
+  assert.equal(isServiceDomain("mask.icloud.com"), true);
+  assert.equal(isServiceDomain("configuration.apple.com"), true);
+  assert.equal(isServiceDomain("a123.dscg.akamai.net"), true);
+  assert.equal(isServiceDomain("assets.cloudfront.net"), true);
+  assert.equal(isServiceDomain("www.youtube.com"), false);
+  assert.equal(isUnclassifiedDomain("Other/IP"), true);
+  assert.equal(isUnclassifiedDomain("Unknown/Unattributed client traffic"), true);
+  assert.equal(trafficClassForDomain({ destination: "configuration.apple.com", bytes: 2048 }), "service_background");
+  assert.equal(trafficClassForDomain({ destination: "www.youtube.com", bytes: 2048 }), "client");
+  assert.equal(trafficClassForDomain({ destination: "Other/IP", bytes: 2048 }), "unclassified");
+  assert.equal(trafficClassForDomain({ domain: "dns.msftncsi.com", count: 4, confidence: "dns-interest" }), "service_background");
+});
+
+test("domain breakdown keeps client service and unclassified rows separate after scaling", () => {
+  const breakdown = normalizeDomainBreakdown([
+    { destination: "Apple/iCloud", bytes: 700, via_vps_bytes: 700 },
+    { destination: "www.youtube.com", bytes: 200, via_vps_bytes: 100, direct_bytes: 100 },
+    { destination: "Other/IP", bytes: 100, direct_bytes: 100 },
+    { destination: "Unknown/Unattributed client traffic", bytes: 5000, accounting_bucket: true },
+  ], 100, { limit: 8, minimumCoverageRatio: 0.5 });
+  assert.equal(breakdown.scaled, true);
+  assert.equal(breakdown.rows.reduce((sum, row) => sum + row.bytes, 0), 100);
+  assert.deepEqual(breakdown.rows.map((row) => row.trafficClass), ["service_background", "client", "unclassified"]);
+  assert.equal(breakdown.rows.some((row) => row.accounting_bucket), false);
+});
+
+test("domain breakdown avoids manufacturing attribution from sparse evidence", () => {
+  const breakdown = normalizeDomainBreakdown([
+    { destination: "www.youtube.com", bytes: 50, via_vps_bytes: 50 },
+    { destination: "Other/IP", bytes: 25, direct_bytes: 25 },
+  ], 1000, { limit: 8, minimumCoverageRatio: 0.5 });
+  assert.equal(breakdown.scaled, false);
+  assert.equal(breakdown.rows.reduce((sum, row) => sum + row.bytes, 0), 75);
+  assert.equal(breakdown.unattributedBytes, 925);
 });
 
 test("normalization keeps signed unknown bytes and records counter drift", () => {
