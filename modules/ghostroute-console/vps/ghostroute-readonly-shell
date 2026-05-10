@@ -26,6 +26,7 @@ command="${1:-}"
 
 case "$command" in
   modules/traffic-observatory/bin/traffic-report|\
+  modules/traffic-observatory/bin/traffic-facts|\
   modules/traffic-observatory/bin/traffic-summary|\
   modules/traffic-observatory/bin/live-events-report|\
   modules/ghostroute-health-monitor/bin/router-health-report|\
@@ -35,6 +36,7 @@ case "$command" in
   modules/dns-catalog-intelligence/bin/dns-forensics-report|\
   modules/ghostroute-console/bin/alarm-state|\
   "$repo_root"/modules/traffic-observatory/bin/traffic-report|\
+  "$repo_root"/modules/traffic-observatory/bin/traffic-facts|\
   "$repo_root"/modules/traffic-observatory/bin/traffic-summary|\
   "$repo_root"/modules/traffic-observatory/bin/live-events-report|\
   "$repo_root"/modules/ghostroute-health-monitor/bin/router-health-report|\
