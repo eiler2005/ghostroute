@@ -61,13 +61,54 @@ ruby -rjson -e '
   coverage=j.fetch("destination_attribution_coverage")
   abort("missing coverage observed") unless coverage["observed_bytes"].to_i > 0
   abort("missing coverage sources") unless coverage.fetch("sources").key?("lan_wifi")
-  buckets=j.fetch("destinations").select { |row| row["accounting_bucket"] }
-  abort("missing accounting bucket") if buckets.empty?
-  lan=buckets.find { |row| row["destination"] == "Unknown/Unattributed LAN-Wi-Fi" }
-  abort("missing LAN accounting bucket") unless lan
-  abort("bad LAN bucket confidence") unless lan["bytes_confidence"] == "exact-counter"
-  abort("bad LAN bucket evidence") unless lan["destination_evidence"] == "none"
+  lan_source=coverage.fetch("sources").fetch("lan_wifi")
+  abort("bad LAN attribution coverage") if lan_source["attributed_bytes"].to_i > lan_source["observed_bytes"].to_i
+  lan_rows=j.fetch("destinations").select { |row| row["channel"] == "Home Wi-Fi/LAN" && row["allocation_basis"] == "dns_family_share" }
+  if lan_rows.any?
+    abort("bad LAN DNS family evidence") unless lan_rows.all? { |row| row["destination_evidence"] == "dns_family" }
+    abort("bad LAN DNS family confidence") unless lan_rows.all? { |row| row["bytes_confidence"] == "allocated" }
+    abort("bad LAN coverage confidence") unless lan_source["destination_confidence"] == "dns_family_share"
+  else
+    buckets=j.fetch("destinations").select { |row| row["accounting_bucket"] }
+    abort("missing accounting bucket") if buckets.empty?
+    lan=buckets.find { |row| row["destination"] == "Unknown/Unattributed LAN-Wi-Fi" }
+    abort("missing LAN accounting bucket") unless lan
+    abort("bad LAN bucket confidence") unless lan["bytes_confidence"] == "exact-counter"
+    abort("bad LAN bucket evidence") unless lan["destination_evidence"] == "none"
+  end
 ' "$TRAFFIC_OUT"
+
+TRAFFIC_FACTS_OUT="$TMPDIR/traffic-facts.json"
+TRAFFIC_REPORT_SKIP_REFRESH=1 \
+  TRAFFIC_INTERFACE_COUNTERS_FILE="$TMPDIR/interface.tsv" \
+  TRAFFIC_LAN_COUNTERS_FILE="$TMPDIR/lan.tsv" \
+  TRAFFIC_MOBILE_COUNTERS_FILE="$TMPDIR/mobile.tsv" \
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/traffic-facts" --json today > "$TRAFFIC_FACTS_OUT"
+assert_json_valid "$TRAFFIC_FACTS_OUT"
+assert_common_contract "$TRAFFIC_FACTS_OUT"
+assert_json_key "$TRAFFIC_FACTS_OUT" traffic_facts
+assert_json_key "$TRAFFIC_FACTS_OUT" attribution_gaps
+assert_json_key "$TRAFFIC_FACTS_OUT" coverage
+ruby -rjson -e '
+  j=JSON.parse(File.read(ARGV[0]))
+  abort("bad traffic facts schema") unless j["schema_version"] == 2
+  abort("bad traffic facts command") unless j.dig("source", "command") == "traffic-facts"
+  mandatory=%w[fact_id client_key client_ip channel route traffic_class destination destination_kind bytes via_vps_bytes direct_bytes unknown_bytes identity_confidence byte_confidence destination_confidence allocation_basis evidence_level sources]
+  j.fetch("traffic_facts").each do |row|
+    abort("accounting bucket leaked into traffic_facts") if row["accounting_bucket"]
+    missing=mandatory.select { |key| !row.key?(key) }
+    abort("traffic_fact missing #{missing.join(",")}") unless missing.empty?
+  end
+  j.fetch("attribution_gaps").each do |row|
+    abort("bad gap allocation") unless row["allocation_basis"] == "unattributed_bucket"
+    abort("bad gap evidence") unless row["evidence_level"] == "gap"
+  end
+  lan_rows=j.fetch("traffic_facts").select { |row| row["channel"] == "Home Wi-Fi/LAN" && row["allocation_basis"] == "dns_family_share" }
+  unless lan_rows.empty?
+    abort("bad LAN fact byte confidence") unless lan_rows.all? { |row| row["byte_confidence"] == "allocated" }
+    abort("bad LAN fact destination confidence") unless lan_rows.all? { |row| row["destination_confidence"] == "dns_family" }
+  end
+' "$TRAFFIC_FACTS_OUT"
 
 cat > "$TMPDIR/current-interface.tsv" <<'EOF'
 wan0|1100|2200

@@ -82,6 +82,95 @@ test("snapshot contracts keep unknown fields and reject missing core fields", ()
   );
 });
 
+test("traffic facts v2 normalize facts, clients and gaps without synthetic flow rows", () => {
+  const db = new Database(":memory:");
+  ensureConsoleSchema(db);
+  const payload = {
+    schema_version: 2,
+    generated_at: "2026-05-10T08:00:00.123Z",
+    source: { command: "traffic-facts", period: "today" },
+    confidence: "mixed",
+    window: { period: "today" },
+    collector_metrics: { duration_ms: 12, source_row_counts: { traffic_facts: 1, attribution_gaps: 1 } },
+    clients: [{
+      client_key: "operator-phone",
+      client_label: "Operator Phone",
+      client_ip: "192.0.2.10",
+      hostname: "phone.local",
+      mac_hash: "hash",
+      channel: "Home Wi-Fi/LAN",
+      route: "VPS",
+      traffic_class: "client",
+      total_bytes: 1500,
+      via_vps_bytes: 1500,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      identity_confidence: "exact",
+      sources: ["fixture"],
+    }],
+    traffic_facts: [{
+      fact_id: "fact-1",
+      client_key: "operator-phone",
+      client_label: "Operator Phone",
+      client_ip: "192.0.2.10",
+      channel: "Home Wi-Fi/LAN",
+      route: "VPS",
+      traffic_class: "client",
+      destination: "Telegram",
+      destination_kind: "category",
+      dns_qname: "telegram.org",
+      sni: "",
+      destination_ip: "",
+      bytes: 1500,
+      via_vps_bytes: 1500,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      connections: 3,
+      identity_confidence: "exact",
+      byte_confidence: "allocated",
+      destination_confidence: "dns_family",
+      allocation_basis: "dns_family_share",
+      evidence_level: "dns_family",
+      sources: ["fixture"],
+      confidence: "estimated",
+      display_ts_utc: "2026-05-10T08:00:00.123Z",
+      time_precision: "event_ms",
+    }],
+    attribution_gaps: [{
+      gap_id: "gap-1",
+      scope: "Home Wi-Fi/LAN",
+      client_key: "lan",
+      client_label: "Home Wi-Fi/LAN",
+      channel: "Home Wi-Fi/LAN",
+      route: "Mixed",
+      destination: "Unknown/Unattributed LAN-Wi-Fi",
+      bytes: 900,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 900,
+      reason: "unattributed accounting bucket",
+      allocation_basis: "unattributed_bucket",
+      evidence_level: "gap",
+    }],
+    coverage: { observed_bytes: 2400, attributed_bytes: 1500, unattributed_bytes: 900 },
+  };
+  validateSnapshotPayload("traffic_facts", payload);
+  normalizeSnapshot(db, 1, "traffic_facts", payload.generated_at, payload);
+  assert.equal(db.prepare("select count(*) as count from traffic_clients").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from traffic_facts").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from traffic_attribution_gaps").get().count, 1);
+  assert.equal(db.prepare("select count(*) as count from normalized_flows where destination = 'Unknown/Unattributed LAN-Wi-Fi'").get().count, 0);
+  const flow = db.prepare("select client, channel, destination, traffic_class, via_vps_bytes from normalized_flows").get();
+  assert.deepEqual(flow, {
+    client: "Operator Phone",
+    channel: "Home Wi-Fi/LAN",
+    destination: "Telegram",
+    traffic_class: "client",
+    via_vps_bytes: 1500,
+  });
+  db.close();
+});
+
 test("deploy gate contract defaults preserve legacy live-check payloads", () => {
   const payload = withSnapshotContractDefaults("deploy_gate", {
     schema_version: 1,

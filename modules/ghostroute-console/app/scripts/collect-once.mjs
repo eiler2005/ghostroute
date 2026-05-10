@@ -33,6 +33,7 @@ let db = null;
 
 const commands = [
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
+  ["traffic_facts", "modules/traffic-observatory/bin/traffic-facts", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["traffic", "modules/traffic-observatory/bin/traffic-report", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"], { allowFailure: true, retries: 1 }],
   ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate", "--no-log"], { allowFailure: true, retries: 1 }],

@@ -22,6 +22,15 @@ const schemas = {
   }).refine((payload) => payload.totals || payload.devices || payload.app_flows || payload.destinations, {
     message: "traffic snapshot must include totals, devices, app_flows or destinations",
   }),
+  traffic_facts: common.extend({
+    schema_version: z.literal(2),
+    window: z.record(z.string(), z.unknown()).optional(),
+    collector_metrics: z.record(z.string(), z.unknown()),
+    clients: z.array(z.unknown()),
+    traffic_facts: z.array(z.record(z.string(), z.unknown())),
+    attribution_gaps: z.array(z.record(z.string(), z.unknown())),
+    coverage: z.record(z.string(), z.unknown()),
+  }),
   traffic_summary: common.extend({
     totals: z.record(z.string(), z.unknown()),
   }),

@@ -4,7 +4,7 @@ import { loadDeviceAttributions, resolveClient } from "../../src/lib/device-attr
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey } from "../../src/lib/time/window.mjs";
 
-const MIGRATION_VERSION = 10;
+const MIGRATION_VERSION = 11;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -458,6 +458,104 @@ export function ensureConsoleSchema(db) {
       raw_json text not null
     );
     create index if not exists idx_normalized_flows_snapshot on normalized_flows(snapshot_id);
+
+    create table if not exists traffic_facts (
+      fact_id text primary key,
+      snapshot_id integer not null,
+      collected_at text not null,
+      event_ts_utc text not null default '',
+      observed_at_utc text not null default '',
+      display_ts_utc text not null default '',
+      time_precision text not null default 'collector_ms',
+      client_key text not null default '',
+      client_label text not null default '',
+      client_ip text not null default '',
+      device_key text not null default '',
+      channel text not null default 'Unknown',
+      route text not null default 'Unknown',
+      traffic_class text not null default 'client',
+      destination text not null default '',
+      destination_kind text not null default '',
+      destination_ip text not null default '',
+      destination_port text not null default '',
+      dns_qname text not null default '',
+      dns_answer_ip text not null default '',
+      sni text not null default '',
+      policy text not null default '',
+      matched_rule text not null default '',
+      outbound text not null default '',
+      bytes integer not null default 0,
+      via_vps_bytes integer not null default 0,
+      direct_bytes integer not null default 0,
+      unknown_bytes integer not null default 0,
+      connections integer not null default 0,
+      identity_confidence text not null default 'unknown',
+      byte_confidence text not null default 'unknown',
+      destination_confidence text not null default 'unknown',
+      allocation_basis text not null default '',
+      evidence_level text not null default '',
+      confidence text not null default 'unknown',
+      evidence_json text not null default '{}'
+    );
+    create index if not exists idx_traffic_facts_collected on traffic_facts(collected_at desc);
+    create index if not exists idx_traffic_facts_client on traffic_facts(client_key, collected_at desc);
+    create index if not exists idx_traffic_facts_destination on traffic_facts(destination, dns_qname, destination_ip);
+
+    create table if not exists traffic_clients (
+      snapshot_id integer not null,
+      collected_at text not null,
+      client_key text not null default '',
+      client_label text not null default '',
+      client_ip text not null default '',
+      hostname text not null default '',
+      mac_hash text not null default '',
+      channel text not null default 'Unknown',
+      route text not null default 'Unknown',
+      traffic_class text not null default 'client',
+      total_bytes integer not null default 0,
+      via_vps_bytes integer not null default 0,
+      direct_bytes integer not null default 0,
+      unknown_bytes integer not null default 0,
+      identity_confidence text not null default 'unknown',
+      evidence_json text not null default '{}',
+      primary key (snapshot_id, client_key, channel)
+    );
+    create index if not exists idx_traffic_clients_collected on traffic_clients(collected_at desc);
+
+    create table if not exists traffic_dns_links (
+      snapshot_id integer not null,
+      collected_at text not null,
+      client_key text not null default '',
+      client_ip text not null default '',
+      domain text not null default '',
+      destination text not null default '',
+      link_type text not null default '',
+      confidence text not null default 'unknown',
+      evidence_json text not null default '{}'
+    );
+    create index if not exists idx_traffic_dns_links_domain on traffic_dns_links(domain, collected_at desc);
+
+    create table if not exists traffic_attribution_gaps (
+      gap_id text primary key,
+      snapshot_id integer not null,
+      collected_at text not null,
+      scope text not null default '',
+      client_key text not null default '',
+      client_label text not null default '',
+      client_ip text not null default '',
+      channel text not null default 'Unknown',
+      route text not null default 'Unknown',
+      destination text not null default '',
+      bytes integer not null default 0,
+      via_vps_bytes integer not null default 0,
+      direct_bytes integer not null default 0,
+      unknown_bytes integer not null default 0,
+      reason text not null default '',
+      allocation_basis text not null default '',
+      evidence_level text not null default 'gap',
+      evidence_json text not null default '{}'
+    );
+    create index if not exists idx_traffic_gaps_collected on traffic_attribution_gaps(collected_at desc);
 
     create table if not exists normalized_dns (
       snapshot_id integer not null,
@@ -1027,7 +1125,7 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
   `);
 
-  for (const version of [6, 7, 8, 9, MIGRATION_VERSION]) {
+  for (const version of [6, 7, 8, 9, 10, MIGRATION_VERSION]) {
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       version,
       new Date().toISOString()
@@ -1131,11 +1229,15 @@ function aggregateDirtyStart(db, now) {
 function flowFactsFromNormalized(db, startUtc, endUtc) {
   const registry = loadDeviceAttributions();
   const networkHints = buildInventoryNetworkHints(db, registry);
+  const hasTrafficFacts = Boolean(
+    db.prepare("select 1 from traffic_facts where collected_at >= ? and collected_at < ? limit 1").get(startUtc, endUtc)
+  );
   let sourceRows = db
     .prepare(
       `select rowid, *
          from normalized_flows
         where collected_at >= ? and collected_at < ?
+          ${hasTrafficFacts ? "and snapshot_type = 'traffic_facts'" : ""}
         order by collected_at asc, rowid asc`
     )
     .all(startUtc, endUtc);
@@ -1159,12 +1261,12 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
-      const clientKey = text(row.device_key || row.client || raw.profile || raw.client || row.client_ip || "Unknown client");
+      const clientKey = text(raw.client_key || row.device_key || raw.device_key || raw.profile || raw.client || row.client || row.client_ip || "Unknown client");
       const resolved = resolveOperatorClient({
         ...row,
         raw,
         client_key: clientKey,
-        client_label: clientKey,
+        client_label: raw.client_label || row.client || clientKey,
         device_key: row.device_key || raw.device_key || raw.device_id || "",
         client_ip: row.client_ip || raw.client_ip || "",
       }, registry, networkHints);
@@ -1190,7 +1292,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         raw,
       };
     });
-  const deviceRows = db
+  const deviceRows = hasTrafficFacts ? [] : db
     .prepare(
       `select rowid, * from normalized_devices
         where collected_at >= ? and collected_at < ?
@@ -2736,6 +2838,10 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
     "normalized_health",
     "normalized_catalog",
     "normalized_alerts",
+    "traffic_facts",
+    "traffic_clients",
+    "traffic_dns_links",
+    "traffic_attribution_gaps",
     "events",
     "route_decisions",
   ]) {
@@ -2745,6 +2851,7 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
 
 export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   resetNormalizedForSnapshot(db, snapshotId);
+  if (type === "traffic_facts") normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload);
   if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
   if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);
   if (type === "deploy_gate") normalizeDeployGate(db, snapshotId, type, collectedAt, payload);
@@ -2752,6 +2859,218 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);
   if (type === "dns") normalizeDns(db, snapshotId, collectedAt, payload);
   if (type === "live") normalizeLive(db, snapshotId, type, collectedAt, payload);
+}
+
+function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
+  const deviceInsert = db.prepare(`
+    insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, channel, route, confidence, total_bytes, via_vps_bytes, direct_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const clientInsert = db.prepare(`
+    insert or replace into traffic_clients(snapshot_id, collected_at, client_key, client_label, client_ip, hostname, mac_hash, channel, route, traffic_class, total_bytes, via_vps_bytes, direct_bytes, unknown_bytes, identity_confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of payload.clients || []) {
+    const split = signedByteSplit(row, row.route, aggregateTotalBytes(row));
+    const key = text(row.client_key || row.device_key || row.client_label || row.client_ip, "unknown-client");
+    const label = text(row.client_label || row.label || key, key);
+    clientInsert.run(
+      snapshotId,
+      collectedAt,
+      key,
+      label,
+      text(row.client_ip || row.ip || ""),
+      text(row.hostname || row.host || ""),
+      text(row.mac_hash || ""),
+      text(row.channel || inferChannel(row), "Unknown"),
+      text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      text(row.traffic_class || flowTrafficClass(row), "client"),
+      split.totalBytes,
+      split.viaVpsBytes,
+      split.directBytes,
+      split.unknownBytes,
+      text(row.identity_confidence || row.confidence || "unknown", "unknown"),
+      json(row)
+    );
+    deviceInsert.run(
+      snapshotId,
+      type,
+      collectedAt,
+      key,
+      label,
+      text(row.client_ip || row.ip || ""),
+      text(row.hostname || row.host || ""),
+      "",
+      text(row.channel || inferChannel(row), "Unknown"),
+      text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      confidence(row.identity_confidence || row.confidence, "unknown"),
+      split.totalBytes,
+      split.viaVpsBytes,
+      split.directBytes,
+      json(row)
+    );
+  }
+
+  const factInsert = db.prepare(`
+    insert or replace into traffic_facts(fact_id, snapshot_id, collected_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client_key, client_label, client_ip, device_key, channel, route, traffic_class, destination, destination_kind, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, policy, matched_rule, outbound, bytes, via_vps_bytes, direct_bytes, unknown_bytes, connections, identity_confidence, byte_confidence, destination_confidence, allocation_basis, evidence_level, confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const flowInsert = db.prepare(`
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const dnsLinkInsert = db.prepare(`
+    insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of payload.traffic_facts || []) {
+    const timing = timestampContract(row, collectedAt);
+    const eventTs = eventTimestamp(row, collectedAt);
+    const split = signedByteSplit(row, row.route, aggregateTotalBytes(row));
+    const key = text(row.client_key || row.device_key || row.client_label || row.client_ip, "unknown-client");
+    const label = text(row.client_label || row.client || row.label || key, key);
+    const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || "", "unknown destination");
+    const rowConfidence = confidence(row.confidence || row.byte_confidence, "estimated");
+    const trafficClass = text(row.traffic_class || flowTrafficClass(row), "client");
+    const factId = text(row.fact_id || `${snapshotId}:${key}:${destination}:${eventTs}`, `${snapshotId}:${key}`);
+    factInsert.run(
+      factId,
+      snapshotId,
+      collectedAt,
+      timing.eventTsUtc,
+      timing.observedAtUtc,
+      timing.displayTsUtc,
+      timing.timePrecision,
+      key,
+      label,
+      text(row.client_ip || row.ip || ""),
+      text(row.device_key || ""),
+      text(row.channel || inferChannel(row), "Unknown"),
+      text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      trafficClass,
+      destination,
+      text(row.destination_kind || ""),
+      destinationIp(row),
+      text(row.destination_port || row.port || ""),
+      text(row.dns_qname || row.qname || row.domain || ""),
+      text(row.dns_answer_ip || row.answer_ip || ""),
+      text(row.sni || ""),
+      text(row.policy || ""),
+      text(row.matched_rule || row.rule || row.rule_name || ""),
+      text(row.outbound || row.sing_box_outbound || ""),
+      split.totalBytes,
+      split.viaVpsBytes,
+      split.directBytes,
+      split.unknownBytes,
+      number(row.connections || row.total_connections),
+      text(row.identity_confidence || ""),
+      text(row.byte_confidence || row.bytes_confidence || ""),
+      text(row.destination_confidence || row.destination_evidence || ""),
+      text(row.allocation_basis || ""),
+      text(row.evidence_level || ""),
+      rowConfidence,
+      json(row)
+    );
+    flowInsert.run(
+      snapshotId,
+      type,
+      collectedAt,
+      label,
+      text(row.channel || inferChannel(row), "Unknown"),
+      destination,
+      text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      rowConfidence,
+      split.totalBytes,
+      number(row.connections || row.total_connections),
+      text(row.protocol || ""),
+      text(row.client_ip || row.ip || ""),
+      destinationIp(row),
+      text(row.destination_port || row.port || ""),
+      text(row.dns_qname || row.qname || row.domain || ""),
+      text(row.dns_answer_ip || row.answer_ip || ""),
+      text(row.sni || ""),
+      text(row.outbound || row.sing_box_outbound || ""),
+      text(row.matched_rule || row.rule || row.rule_name || ""),
+      text(row.policy || row.rule_set || ""),
+      visibleIp(row),
+      text(row.egress_asn || ""),
+      text(row.egress_country || ""),
+      eventTs,
+      timing.eventTsUtc,
+      timing.observedAtUtc,
+      timing.displayTsUtc,
+      timing.timePrecision,
+      text(row.ts_confidence || ""),
+      (Array.isArray(row.sources) ? row.sources[0] : "") || "",
+      trafficClass,
+      split.viaVpsBytes,
+      split.directBytes,
+      split.unknownBytes,
+      json(row)
+    );
+    const domain = text(row.dns_qname || row.domain || "");
+    if (domain) {
+      dnsLinkInsert.run(
+        snapshotId,
+        collectedAt,
+        key,
+        text(row.client_ip || row.ip || ""),
+        domain,
+        destination,
+        text(row.allocation_basis || "dns_link"),
+        text(row.destination_confidence || row.confidence || "unknown"),
+        json(row)
+      );
+    }
+    insertEvent(db, snapshotId, "traffic.fact", eventTs, {
+      event_id: factId,
+      client: label,
+      channel: text(row.channel || inferChannel(row), "Unknown"),
+      destination,
+      route: text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      confidence: rowConfidence,
+      client_ip: text(row.client_ip || row.ip || ""),
+      destination_ip: destinationIp(row),
+      destination_port: text(row.destination_port || row.port || ""),
+      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
+      sni: text(row.sni || ""),
+      outbound: text(row.outbound || row.sing_box_outbound || ""),
+      matched_rule: text(row.matched_rule || row.rule || row.rule_name || ""),
+      rule_set: text(row.policy || row.rule_set || ""),
+      timing,
+      summary: `${label} -> ${destination} via ${text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown")}`,
+      raw: row,
+    });
+  }
+
+  const gapInsert = db.prepare(`
+    insert or replace into traffic_attribution_gaps(gap_id, snapshot_id, collected_at, scope, client_key, client_label, client_ip, channel, route, destination, bytes, via_vps_bytes, direct_bytes, unknown_bytes, reason, allocation_basis, evidence_level, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of payload.attribution_gaps || []) {
+    const split = signedByteSplit(row, row.route, aggregateTotalBytes(row));
+    gapInsert.run(
+      text(row.gap_id || `${snapshotId}:${row.scope || "gap"}:${row.destination || row.client_key || ""}`, `${snapshotId}:gap`),
+      snapshotId,
+      collectedAt,
+      text(row.scope || "traffic"),
+      text(row.client_key || ""),
+      text(row.client_label || row.client || ""),
+      text(row.client_ip || row.ip || ""),
+      text(row.channel || inferChannel(row), "Unknown"),
+      text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      text(row.destination || row.reason || "attribution gap"),
+      split.totalBytes,
+      split.viaVpsBytes,
+      split.directBytes,
+      split.unknownBytes,
+      text(row.reason || row.unattributed_reason || ""),
+      text(row.allocation_basis || "unattributed_bucket"),
+      text(row.evidence_level || "gap"),
+      json(row)
+    );
+  }
 }
 
 function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
