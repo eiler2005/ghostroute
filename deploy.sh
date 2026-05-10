@@ -330,11 +330,11 @@ remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmas
 remove_managed_block /jffs/configs/dnsmasq.conf.add "router_configuration dnsmasq-stealth.conf.add"
 
 backup_if_present /jffs/configs/dnsmasq-stealth.conf.add
-cat "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" > /jffs/configs/dnsmasq-stealth.conf.add
+tr -d '\r' < "$REMOTE_STAGE/configs/dnsmasq-stealth.conf.add" > /jffs/configs/dnsmasq-stealth.conf.add
 if [ -f "$REMOTE_STAGE/secrets/dnsmasq-stealth.local.conf.add" ]; then
   {
     printf '\n# BEGIN local private dnsmasq stealth catalog\n'
-    cat "$REMOTE_STAGE/secrets/dnsmasq-stealth.local.conf.add"
+    tr -d '\r' < "$REMOTE_STAGE/secrets/dnsmasq-stealth.local.conf.add"
     printf '\n# END local private dnsmasq stealth catalog\n'
   } >> /jffs/configs/dnsmasq-stealth.conf.add
 fi
