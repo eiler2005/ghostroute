@@ -38,6 +38,7 @@ export function routeFilterForm({
         <select name="trafficClass" defaultValue={trafficClass || "all"}>
           <option value="all">All traffic</option>
           <option value="client">Client</option>
+          <option value="personal_cloud">Personal cloud</option>
           <option value="service_background">Service</option>
           <option value="unclassified">Needs attribution</option>
         </select>
@@ -80,7 +81,7 @@ export function MobileFlowList({ rows }: { rows: Array<Record<string, any>> }) {
         <a className="mobile-row" href={`/traffic/${encodeURIComponent(row.id)}`} key={row.id}>
           <span>
             <strong>{trafficDisplayDestination(row)}</strong>
-            <small>{row.client || "Unknown client"} · {timeWithMillis(row.last_seen || row.event_ts || row.collected_at)}</small>
+            <small>{row.client || "Unknown client"} · {timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.event_ts || row.collected_at, true)}</small>
           </span>
           <span className="mobile-row-meta">
             <RouteBadge value={row.route} />
@@ -100,7 +101,7 @@ export function MobileDnsList({ rows }: { rows: Array<Record<string, any>> }) {
         <a className="mobile-row" href={`/m/traffic?search=${encodeURIComponent(row.domain || row.dns_qname || "")}`} key={row.id}>
           <span>
             <strong>{row.domain || row.dns_qname || "n/a"}</strong>
-            <small>{row.device_label || row.client_label || row.client || "Unknown"} · {timeWithMillis(row.event_ts || row.collected_at)}</small>
+            <small>{row.device_label || row.client_label || row.client || "Unknown"} · {timeWithMillis(row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at, true)}</small>
           </span>
           <span className="mobile-row-meta">
             <RouteBadge value={row.route} />

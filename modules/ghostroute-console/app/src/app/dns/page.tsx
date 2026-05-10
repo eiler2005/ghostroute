@@ -6,6 +6,7 @@ import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
+import { trafficClassLabel } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -16,12 +17,15 @@ function sumCounts(rows: Array<Record<string, any>>) {
 }
 
 function grouped(rows: Array<Record<string, any>>, key: string, limit = 6) {
-  const map = new Map<string, { label: string; count: number; rows: number }>();
+  const map = new Map<string, { label: string; count: number; rows: number; trafficClass: string; classCounts: Record<string, number> }>();
   for (const row of rows) {
     const label = String(row[key] || "unknown");
-    const current = map.get(label) || { label, count: 0, rows: 0 };
+    const current = map.get(label) || { label, count: 0, rows: 0, trafficClass: "unclassified", classCounts: {} };
     current.count += Number(row.count || 1);
     current.rows += 1;
+    const trafficClass = String(row.trafficClass || row.traffic_class || "unclassified");
+    current.classCounts[trafficClass] = (current.classCounts[trafficClass] || 0) + Number(row.count || 1);
+    current.trafficClass = Object.entries(current.classCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || current.trafficClass;
     map.set(label, current);
   }
   return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, limit);
@@ -108,7 +112,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                     const answer = row.answer_ip || row.dns_answer_ip || "n/a";
                     return (
                       <tr key={row.id}>
-                        <td className="live-col-time">{timeWithMillis(row.event_ts || row.collected_at)}</td>
+                        <td className="live-col-time">{timeWithMillis(row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at, true)}</td>
                         <td className="live-col-client dns-col-client" title={clientDetail || clientLabel}>
                           <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{clientLabel}</Link>
                         </td>
@@ -154,7 +158,10 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
           <div className="panel-title"><h2>Top domains</h2></div>
           <div className="detail-list">
             {topDomains.length === 0 ? <div className="subtle">No domains visible.</div> : topDomains.map((row) => (
-              <div className="detail-row" key={row.label}><span>{row.label}</span><strong>{row.count}</strong></div>
+               <div className="detail-row" key={row.label}>
+                 <span>{row.label}<small className="subtle block-detail">{trafficClassLabel(row.trafficClass)}</small></span>
+                 <strong>{row.count}</strong>
+               </div>
             ))}
           </div>
         </aside>

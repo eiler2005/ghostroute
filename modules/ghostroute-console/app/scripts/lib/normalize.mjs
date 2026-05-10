@@ -4,7 +4,7 @@ import { loadDeviceAttributions, resolveClient } from "../../src/lib/device-attr
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey } from "../../src/lib/time/window.mjs";
 
-const MIGRATION_VERSION = 9;
+const MIGRATION_VERSION = 10;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -173,6 +173,35 @@ function eventTimestamp(row, collectedAt) {
   return parseSourceTimestamp(row.ts || row.timestamp || row.occurred_at || collectedAt);
 }
 
+function sourceTimeRaw(row) {
+  return text(row?.ts || row?.timestamp || row?.occurred_at || "");
+}
+
+function hasExplicitMillis(raw) {
+  return /\.\d{1,9}(?:Z|[+-]\d\d:?\d\d)?$/.test(text(raw));
+}
+
+function timestampContract(row, collectedAt) {
+  const observedAtUtc = parseSourceTimestamp(collectedAt);
+  const raw = sourceTimeRaw(row);
+  if (raw) {
+    const eventTsUtc = parseSourceTimestamp(raw);
+    const precision = hasExplicitMillis(raw) ? "event_ms" : "event_second";
+    return {
+      eventTsUtc,
+      observedAtUtc,
+      displayTsUtc: precision === "event_ms" ? eventTsUtc : observedAtUtc,
+      timePrecision: precision,
+    };
+  }
+  return {
+    eventTsUtc: "",
+    observedAtUtc,
+    displayTsUtc: observedAtUtc,
+    timePrecision: "collector_ms",
+  };
+}
+
 function hasNumber(value) {
   return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
 }
@@ -317,7 +346,7 @@ function resolveOperatorClient(row, registry = loadDeviceAttributions(), network
 
 function isOperatorTrafficRow(row, registry = loadDeviceAttributions()) {
   if (number(row?.bytes || row?.total_bytes) <= 0) return false;
-  if (row?.traffic_class !== "client") return false;
+  if (!["client", "personal_cloud"].includes(row?.traffic_class)) return false;
   if (String(row?.confidence || "").toLowerCase() === "dns-interest") return false;
   return registryHasClient(registry, row?.client_key);
 }
@@ -420,6 +449,10 @@ export function ensureConsoleSchema(db) {
       egress_asn text not null default '',
       egress_country text not null default '',
       event_ts text not null default '',
+      event_ts_utc text not null default '',
+      observed_at_utc text not null default '',
+      display_ts_utc text not null default '',
+      time_precision text not null default 'collector_ms',
       ts_confidence text not null default '',
       source_log text not null default '',
       raw_json text not null
@@ -436,6 +469,10 @@ export function ensureConsoleSchema(db) {
       count integer not null default 0,
       answer_ip text not null default '',
       event_ts text not null default '',
+      event_ts_utc text not null default '',
+      observed_at_utc text not null default '',
+      display_ts_utc text not null default '',
+      time_precision text not null default 'collector_ms',
       ts_confidence text not null default '',
       confidence text not null default 'dns-interest',
       raw_json text not null
@@ -497,10 +534,14 @@ export function ensureConsoleSchema(db) {
       );
       create table if not exists events (
         id integer primary key autoincrement,
-        snapshot_id integer,
-        event_type text not null,
-        occurred_at text not null,
-        client text not null default '',
+         snapshot_id integer,
+         event_type text not null,
+         occurred_at text not null,
+         event_ts_utc text not null default '',
+         observed_at_utc text not null default '',
+         display_ts_utc text not null default '',
+         time_precision text not null default 'collector_ms',
+         client text not null default '',
         channel text not null default 'Unknown',
         destination text not null default '',
         route text not null default 'Unknown',
@@ -524,10 +565,14 @@ export function ensureConsoleSchema(db) {
       );
       create index if not exists idx_events_occurred on events(occurred_at desc);
       create table if not exists route_decisions (
-        id integer primary key autoincrement,
-        snapshot_id integer,
-        occurred_at text not null,
-        client text not null default '',
+         id integer primary key autoincrement,
+         snapshot_id integer,
+         occurred_at text not null,
+         event_ts_utc text not null default '',
+         observed_at_utc text not null default '',
+         display_ts_utc text not null default '',
+         time_precision text not null default 'collector_ms',
+         client text not null default '',
         channel text not null default 'Unknown',
         destination text not null default '',
         route text not null default 'Unknown',
@@ -614,10 +659,14 @@ export function ensureConsoleSchema(db) {
       create table if not exists flow_sessions (
         id text primary key,
         snapshot_id integer,
-        collected_at text not null,
-        first_seen text not null default '',
-        last_seen text not null default '',
-        client text not null default '',
+         collected_at text not null,
+         first_seen text not null default '',
+         last_seen text not null default '',
+         event_ts_utc text not null default '',
+         observed_at_utc text not null default '',
+         display_ts_utc text not null default '',
+         time_precision text not null default 'collector_ms',
+         client text not null default '',
         client_ip text not null default '',
         device_key text not null default '',
         channel text not null default 'Unknown',
@@ -648,10 +697,14 @@ export function ensureConsoleSchema(db) {
       );
       create table if not exists dns_query_log (
         id text primary key,
-        snapshot_id integer,
-        collected_at text not null,
-        event_ts text not null default '',
-        client text not null default '',
+         snapshot_id integer,
+         collected_at text not null,
+         event_ts text not null default '',
+         event_ts_utc text not null default '',
+         observed_at_utc text not null default '',
+         display_ts_utc text not null default '',
+         time_precision text not null default 'collector_ms',
+         client text not null default '',
         client_ip text not null default '',
         device_key text not null default '',
         domain text not null default '',
@@ -863,6 +916,10 @@ export function ensureConsoleSchema(db) {
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
       event_ts: "text not null default ''",
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
       ts_confidence: "text not null default ''",
       source_log: "text not null default ''",
       traffic_class: "text not null default 'client'",
@@ -874,6 +931,10 @@ export function ensureConsoleSchema(db) {
       client_ip: "text not null default ''",
       answer_ip: "text not null default ''",
       event_ts: "text not null default ''",
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
       ts_confidence: "text not null default ''",
     },
     flow_sessions: {
@@ -883,6 +944,10 @@ export function ensureConsoleSchema(db) {
       egress_ip: "text not null default ''",
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
       ts_confidence: "text not null default ''",
       traffic_class: "text not null default 'client'",
       via_vps_bytes: "integer not null default 0",
@@ -904,6 +969,10 @@ export function ensureConsoleSchema(db) {
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
       source_log: "text not null default ''",
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
     },
     route_decisions: {
       event_id: "text not null default ''",
@@ -917,6 +986,16 @@ export function ensureConsoleSchema(db) {
       egress_asn: "text not null default ''",
       egress_country: "text not null default ''",
       source_log: "text not null default ''",
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
+    },
+    dns_query_log: {
+      event_ts_utc: "text not null default ''",
+      observed_at_utc: "text not null default ''",
+      display_ts_utc: "text not null default ''",
+      time_precision: "text not null default 'collector_ms'",
     },
     dns_log_5min: {
       client_ip: "text not null default ''",
@@ -948,7 +1027,7 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
   `);
 
-  for (const version of [6, 7, 8, MIGRATION_VERSION]) {
+  for (const version of [6, 7, 8, 9, MIGRATION_VERSION]) {
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       version,
       new Date().toISOString()
@@ -1490,6 +1569,7 @@ function groupRows(rows, keyFor, seedFor) {
 function preparedRowsForWindow(rows, trafficClass = "client") {
   return rows.filter((row) => {
     if (!trafficClass || trafficClass === "all") return true;
+    if (trafficClass === "primary_client") return ["client", "personal_cloud"].includes(row.traffic_class);
     if (row.traffic_class === trafficClass) return true;
     return trafficClass === "client" && row.accounting_bucket;
   });
@@ -1592,17 +1672,20 @@ function buildPreparedWindowPayload(db, window, facts, now) {
   const bounds = mskWindowBounds(window, now);
   const registry = loadDeviceAttributions();
   const rows = facts;
-  const classRows = preparedRowsForWindow(rows, "client").filter((row) => aggregateTotalBytes(row) > 0);
-  const operatorRows = classRows.filter((row) => isOperatorTrafficRow(row, registry));
+  const allRows = rows.filter((row) => aggregateTotalBytes(row) > 0);
+  const primaryRows = preparedRowsForWindow(rows, "primary_client").filter((row) => aggregateTotalBytes(row) > 0);
+  const operatorRows = primaryRows.filter((row) => isOperatorTrafficRow(row, registry));
   const clientRows = clientObservedRows(operatorRows).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
+  const supportRows = allRows.filter((row) => ["service_background", "unclassified"].includes(row.traffic_class));
+  const modelRows = [...operatorRows, ...supportRows];
   const groupedFlowRows = groupRows(
-    operatorRows,
-    (row) => [row.client_key, row.destination_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"),
+    modelRows,
+    (row) => [row.client_key || row.client_label || row.channel || "source", row.destination_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"),
     (row) => ({
-      id: `prepared:${window}:${row.client_key}:${row.destination_key}:${row.route}:${row.traffic_class}`,
-      client: row.client_label,
-      client_key: row.client_key,
-      client_label: row.client_label,
+      id: `prepared:${window}:${row.client_key || row.client_label || row.channel || "source"}:${row.destination_key}:${row.route}:${row.traffic_class}`,
+      client: row.client_label || row.channel || "",
+      client_key: row.client_key || "",
+      client_label: row.client_label || row.channel || "",
       channel: row.channel,
       destination: row.destination_key,
       destinationLabel: row.destination_key,
@@ -1618,7 +1701,7 @@ function buildPreparedWindowPayload(db, window, facts, now) {
     })
   ).sort((a, b) => number(b.bytes) - number(a.bytes));
   const flowRows = groupedFlowRows.slice(0, 250);
-  const factTotals = totalsForFacts(classRows);
+  const factTotals = totalsForFacts(allRows);
   const authoritative = latestAuthoritativeTotals(db, window, now);
   const totals = {
     ...(authoritative || factTotals),
@@ -1954,7 +2037,7 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
     payloads_stripped: 0,
   };
   result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
-  result.normalized_flows += db.prepare("delete from normalized_flows where traffic_class != 'client' and collected_at < ?").run(serviceCutoff).changes;
+      result.normalized_flows += db.prepare("delete from normalized_flows where traffic_class not in ('client', 'personal_cloud') and collected_at < ?").run(serviceCutoff).changes;
   result.normalized_dns += db.prepare("delete from normalized_dns where collected_at < ?").run(rawCutoff).changes;
   result.events += db.prepare("delete from events where occurred_at < ?").run(rawCutoff).changes;
   result.route_decisions += db.prepare("delete from route_decisions where occurred_at < ?").run(rawCutoff).changes;
@@ -2204,7 +2287,7 @@ function stableId(prefix, row) {
 }
 
 function primaryTime(row) {
-  return text(row.event_ts || row.occurred_at || row.collected_at || row.created_at || "");
+  return text(row.display_ts_utc || row.event_ts_utc || row.event_ts || row.occurred_at || row.collected_at || row.created_at || "");
 }
 
 function policyForFlow(row) {
@@ -2348,12 +2431,13 @@ export function rebuildObservabilityReadModels(db) {
     const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
     const catalogMatch = buildCatalogMatcher(catalogRows);
     const flowInsert = db.prepare(`
-      insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen, client, client_ip,
+      insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen,
+        event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
         device_key, channel, destination, destination_ip, destination_port, protocol, route, policy,
         matched_rule, outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country,
         ts_confidence, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections,
         duration_seconds, duration_confidence, risk, risk_reason, confidence, source_kind, evidence_json)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc limit ?").all(flowLimit);
     const flowTopDomains = new Map();
@@ -2361,6 +2445,12 @@ export function rebuildObservabilityReadModels(db) {
       const raw = parseJson(row.raw_json, {});
       if (raw.accounting_bucket || raw.device_counter) continue;
       const seen = primaryTime(row) || row.collected_at;
+      const timing = {
+        eventTsUtc: text(row.event_ts_utc || row.event_ts || ""),
+        observedAtUtc: text(row.observed_at_utc || row.collected_at),
+        displayTsUtc: text(row.display_ts_utc || seen || row.collected_at),
+        timePrecision: text(row.time_precision || (row.event_ts_utc ? "event_ms" : "collector_ms")),
+      };
       const risk = riskForFlow(row);
       const key = identityKey(row);
       const destination = text(row.destination || row.dns_qname || row.destination_ip, "unknown destination");
@@ -2372,6 +2462,10 @@ export function rebuildObservabilityReadModels(db) {
         row.collected_at,
         seen,
         seen,
+        timing.eventTsUtc,
+        timing.observedAtUtc,
+        timing.displayTsUtc,
+        timing.timePrecision,
         text(row.client),
         text(row.client_ip),
         key,
@@ -2414,20 +2508,31 @@ export function rebuildObservabilityReadModels(db) {
     }
 
     const dnsInsert = db.prepare(`
-      insert or replace into dns_query_log(id, snapshot_id, collected_at, event_ts, client, client_ip,
+      insert or replace into dns_query_log(id, snapshot_id, collected_at, event_ts,
+        event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
         device_key, domain, qtype, answer_ip, route, catalog_status, status, count, risk,
         confidence, evidence_json)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const dnsRows = db.prepare("select rowid, * from normalized_dns order by collected_at desc, rowid desc limit ?").all(dnsLimit);
     for (const row of dnsRows) {
       const match = catalogMatchFor(row.domain, catalogMatch);
       const status = queryStatusForDns(match, row);
+      const timing = {
+        eventTsUtc: text(row.event_ts_utc || row.event_ts || ""),
+        observedAtUtc: text(row.observed_at_utc || row.collected_at),
+        displayTsUtc: text(row.display_ts_utc || primaryTime(row) || row.collected_at),
+        timePrecision: text(row.time_precision || (row.event_ts_utc ? "event_ms" : "collector_ms")),
+      };
       dnsInsert.run(
         `dns:n:${row.rowid}`,
         row.snapshot_id,
         row.collected_at,
         primaryTime(row) || row.collected_at,
+        timing.eventTsUtc,
+        timing.observedAtUtc,
+        timing.displayTsUtc,
+        timing.timePrecision,
         text(row.client),
         text(row.client_ip || parseJson(row.raw_json, {}).client_ip || parseJson(row.raw_json, {}).ip),
         identityKey(row),
@@ -2451,11 +2556,21 @@ export function rebuildObservabilityReadModels(db) {
       const domain = text(row.dns_qname);
       if (!domain) continue;
       const match = catalogMatchFor(domain, catalogMatch);
+      const timing = {
+        eventTsUtc: text(row.event_ts_utc || row.occurred_at || ""),
+        observedAtUtc: text(row.observed_at_utc || row.collected_at),
+        displayTsUtc: text(row.display_ts_utc || row.occurred_at || row.collected_at),
+        timePrecision: text(row.time_precision || (row.event_ts_utc ? "event_ms" : "collector_ms")),
+      };
       dnsInsert.run(
         `dns:e:${row.id}`,
         row.snapshot_id,
         row.collected_at,
         row.occurred_at,
+        timing.eventTsUtc,
+        timing.observedAtUtc,
+        timing.displayTsUtc,
+        timing.timePrecision,
         text(row.client),
         text(row.client_ip),
         identityKey(row),
@@ -2665,8 +2780,8 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
   }
 
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of [...(payload.app_flows || []), ...(payload.destinations || []), ...(payload.route_events || [])]) {
     const route = text(row.route || routeFromTraffic(row));
@@ -2675,6 +2790,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
     const destination = text(row.destination || row.domain || row.app || row.family || "");
     const rowConfidence = confidence(row.confidence, "estimated");
     const eventTs = eventTimestamp(row, collectedAt);
+    const timing = timestampContract(row, collectedAt);
     const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
     const bytes = aggregateTotalBytes(row);
     const split = signedByteSplit(row, route, bytes);
@@ -2705,6 +2821,10 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       text(row.egress_asn || row.asn || ""),
       text(row.egress_country || row.country || ""),
       eventTs,
+      timing.eventTsUtc,
+      timing.observedAtUtc,
+      timing.displayTsUtc,
+      timing.timePrecision,
       text(row.ts_confidence || ""),
       text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
       trafficClass,
@@ -2733,6 +2853,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       egress_asn: text(row.egress_asn || row.asn || ""),
       egress_country: text(row.egress_country || row.country || ""),
       source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
+      timing,
       summary: `${client || "client"} -> ${destination || "destination"} via ${route}`,
       raw: row,
     });
@@ -2755,6 +2876,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       egress_asn: text(row.egress_asn || row.asn || ""),
       egress_country: text(row.egress_country || row.country || ""),
       source_log: text(rawRefs[0]?.source_log || rawRefs[0]?.source || ""),
+      timing,
       confidence: rowConfidence,
       raw: row,
     });
@@ -2869,8 +2991,8 @@ function normalizeDomains(db, snapshotId, type, collectedAt, payload) {
 
 function normalizeDns(db, snapshotId, collectedAt, payload) {
   const insert = db.prepare(`
-    insert into normalized_dns(snapshot_id, collected_at, client, client_ip, domain, qtype, count, answer_ip, event_ts, ts_confidence, confidence, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_dns(snapshot_id, collected_at, client, client_ip, domain, qtype, count, answer_ip, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, confidence, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.queries || []) {
     const client = text(row.client || row.client_ip || row.ip || "");
@@ -2878,6 +3000,7 @@ function normalizeDns(db, snapshotId, collectedAt, payload) {
     const domain = text(row.domain || row.qname || row.query || "");
     const rowConfidence = confidence(row.confidence, "dns-interest");
     const eventTs = eventTimestamp(row, collectedAt);
+    const timing = timestampContract(row, collectedAt);
     insert.run(
       snapshotId,
       collectedAt,
@@ -2888,6 +3011,10 @@ function normalizeDns(db, snapshotId, collectedAt, payload) {
       number(row.count || row.queries || 1),
       text(row.answer_ip || row.dns_answer_ip || ""),
       eventTs,
+      timing.eventTsUtc,
+      timing.observedAtUtc,
+      timing.displayTsUtc,
+      timing.timePrecision,
       text(row.ts_confidence || ""),
       rowConfidence,
       json(row)
@@ -2903,6 +3030,7 @@ function normalizeDns(db, snapshotId, collectedAt, payload) {
       dns_qname: domain,
       dns_answer_ip: text(row.answer_ip || row.dns_answer_ip || ""),
       source_log: text(row.raw_refs?.[0]?.source_log || row.raw_refs?.[0]?.source || ""),
+      timing,
       summary: `${client || "client"} queried ${domain || "domain"}`,
       raw: row,
     });
@@ -2990,13 +3118,18 @@ function insertAlert(db, snapshotId, type, collectedAt, row) {
 }
 
 function insertEvent(db, snapshotId, eventType, occurredAt, row) {
+  const timing = row.timing || timestampContract(row.raw || row, occurredAt);
   db.prepare(`
-    insert or ignore into events(snapshot_id, event_type, occurred_at, client, channel, destination, route, confidence, summary, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, source_log, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or ignore into events(snapshot_id, event_type, occurred_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, channel, destination, route, confidence, summary, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, source_log, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     snapshotId,
     eventType,
     occurredAt,
+    timing.eventTsUtc,
+    timing.observedAtUtc,
+    timing.displayTsUtc,
+    timing.timePrecision,
     row.client || "",
     row.channel || "Unknown",
     row.destination || "",
@@ -3022,12 +3155,17 @@ function insertEvent(db, snapshotId, eventType, occurredAt, row) {
 }
 
 function insertRouteDecision(db, snapshotId, occurredAt, row) {
+  const timing = row.timing || timestampContract(row.raw || row, occurredAt);
   db.prepare(`
-    insert or ignore into route_decisions(snapshot_id, occurred_at, client, channel, destination, route, outbound, matched_rule, visible_ip, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, rule_set, egress_asn, egress_country, source_log, confidence, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or ignore into route_decisions(snapshot_id, occurred_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, channel, destination, route, outbound, matched_rule, visible_ip, event_id, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, rule_set, egress_asn, egress_country, source_log, confidence, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     snapshotId,
     occurredAt,
+    timing.eventTsUtc,
+    timing.observedAtUtc,
+    timing.displayTsUtc,
+    timing.timePrecision,
     row.client || "",
     row.channel || "Unknown",
     row.destination || "",

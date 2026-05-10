@@ -37,32 +37,126 @@ export function isUnclassifiedDomain(value) {
     || domain === "unclassified domain";
 }
 
-export function isServiceDomain(value) {
+function rowText(row) {
+  return [
+    row?.client,
+    row?.clientLabel,
+    row?.device_label,
+    row?.destination,
+    row?.destinationLabel,
+    row?.family,
+    row?.app,
+    row?.domain,
+    row?.dns_qname,
+    row?.sni,
+    row?.qtype,
+    row?.source,
+    row?.source_kind,
+    row?.source_log,
+    row?.channel,
+    row?.raw?.client,
+    row?.raw?.source,
+    row?.raw?.source_log,
+    row?.raw?.qtype,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function isLocalAddress(value) {
+  const ip = text(value).trim().toLowerCase();
+  return ip === "127.0.0.1"
+    || ip === "::1"
+    || ip === "localhost"
+    || ip.startsWith("127.")
+    || ip.startsWith("169.254.")
+    || ip === "0.0.0.0";
+}
+
+export function isResolverOrRouterService(row) {
+  const domain = trafficDomainLabel(row).toLowerCase();
+  const evidence = rowText(row);
+  return isLocalAddress(row?.client_ip || row?.ip)
+    || isLocalAddress(row?.destination_ip || row?.answer_ip || row?.dns_answer_ip)
+    || domain.includes("dns/resolver")
+    || domain.endsWith(".arpa")
+    || domain === "_dns.resolver.arpa"
+    || evidence.includes("dnsmasq")
+    || evidence.includes("dnscrypt")
+    || evidence.includes("local resolver")
+    || evidence.includes("router/local")
+    || evidence.includes("router dns")
+    || /\bptr\b/.test(evidence);
+}
+
+export function isPersonalCloudDomain(value) {
   const domain = text(value).toLowerCase();
   return domain.includes("apple/icloud")
-    || domain.includes("dns/resolver")
-    || domain.includes("aws/cdn")
     || domain.includes("icloud")
-    || domain.includes("apple")
-    || domain.includes("itunes")
+    || domain.includes("icloud-content")
+    || domain.includes("icloud-drive")
+    || domain.includes("google drive")
+    || domain.includes("google photos")
+    || domain.includes("photos.google")
+    || domain.includes("drive.google")
+    || domain.includes("dropbox")
+    || domain.includes("onedrive")
+    || domain.includes("sharepoint")
+    || domain.includes("backup");
+}
+
+export function hasConcreteAppEvidence(row) {
+  const destination = text(row?.destination || row?.destinationLabel).toLowerCase();
+  const app = text(row?.app || row?.family || row?.category || row?.destination_class).toLowerCase();
+  const generic = /^(aws\/cdn|cdn|cloudfront|akamai|fastly|cloudflare|amazonaws|unclassified domain|other\/ip|unknown)$/;
+  return Boolean((app && !generic.test(app)) || (destination && !generic.test(destination)));
+}
+
+export function isServiceDomain(value, row = {}) {
+  const domain = text(value).toLowerCase();
+  const evidence = rowText(row);
+  if (isResolverOrRouterService({ ...row, destination: value })) return true;
+  return domain.includes("dns/resolver")
+    || domain.includes("asus")
+    || domain.includes("asuscomm")
+    || domain.includes("trendmicro")
+    || domain.includes("ntp.org")
+    || domain.includes("configuration.apple.com")
+    || domain.includes("stocks-data-service.apple.com")
+    || domain.includes("msftncsi")
+    || domain.includes("connectivitycheck")
+    || domain.includes("captive.apple")
+    || domain.includes("ocsp")
+    || domain.includes("crl.")
+    || domain.includes("crashlytics")
+    || domain.includes("app-measurement")
+    || domain.includes("beacons.gvt")
+    || domain.includes("firebase-settings")
+    || domain.includes("telemetry")
+    || domain.includes("analytics")
+    || domain.includes("metrics")
+    || domain.includes("push.apple")
+    || domain.includes("gvt2.com")
+    || domain.includes("gvt3.com")
     || domain.includes("mzstatic")
     || domain.includes("aaplimg")
+    || domain.includes("itunes")
+    || domain.includes("aws/cdn")
     || domain.includes("cloudfront")
     || domain.includes("amazonaws")
     || domain.includes("cloudflare")
     || domain.includes("akamai")
     || domain.includes("fastly")
-    || domain === "cdn"
-    || domain.includes("resolver");
+    || (domain === "cdn" && !hasConcreteAppEvidence(row))
+    || evidence.includes("health check")
+    || evidence.includes("control-plane");
 }
 
 export function trafficClassForDomain(row) {
   if (row?.accounting_bucket || row?.raw?.accounting_bucket) return "unclassified";
   const domain = trafficDomainLabel(row);
-  if (isDnsOnlyTraffic(row)) return "service_background";
   if (!domain) return "service_background";
-  if (isServiceDomain(domain)) return "service_background";
   if (isUnclassifiedDomain(domain)) return "unclassified";
+  if (isPersonalCloudDomain(domain)) return "personal_cloud";
+  if (isServiceDomain(domain, row)) return "service_background";
   return "client";
 }
 

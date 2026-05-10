@@ -143,13 +143,14 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
               </thead>
               <tbody>
                 {serviceRows.map((row, idx) => {
+                  const rowAny = row as Record<string, any>;
                   const eventType = row.event_type || "event";
                   const origin = row.origin || row.client || "System";
                   const destination = row.destinationLabel || row.destination || row.summary || "destination";
-                  const clientIp = (row as Record<string, any>).client_ip;
+                  const clientIp = rowAny.client_ip;
                   return (
                     <tr key={`${eventType}-${row.id || idx}`}>
-                      <td className="live-col-time">{timeWithMillis(row.occurred_at)}</td>
+                      <td className="live-col-time">{timeWithMillis(rowAny.display_ts_utc || rowAny.event_ts_utc || row.occurred_at, true)}</td>
                       <td className="live-col-event">
                         <span className={`event-dot event-${String(eventType).split(".")[0]}`} />
                         <strong>{eventType}</strong>
@@ -215,7 +216,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
                 <tbody>
                   {activeFlows.map((row, idx) => (
                     <tr key={row.id || idx}>
-                      <td className="live-col-time">{timeWithMillis(row.last_seen || row.event_ts || row.collected_at, true)}</td>
+                      <td className="live-col-time">{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.event_ts || row.collected_at, true)}</td>
                       <td className="live-col-client" title={row.client}>{row.client}</td>
                       <td className="activity-col-channel"><ChannelBadge value={row.channel} /></td>
                       <td className="live-col-destination" title={row.destinationLabel || row.destination}>

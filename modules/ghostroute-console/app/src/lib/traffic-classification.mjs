@@ -1,9 +1,10 @@
 import { isDnsOnlyTraffic, trafficClassForDomain, trafficDomainLabel } from "./domain-attribution.mjs";
 
-export const trafficClasses = ["client", "service_background", "unclassified", "all"];
+export const trafficClasses = ["client", "personal_cloud", "service_background", "unclassified", "all"];
 
 export const trafficClassLabels = {
   client: "Client",
+  personal_cloud: "Personal cloud",
   service_background: "Service/background",
   unclassified: "Needs attribution",
   all: "All traffic",

@@ -10,9 +10,13 @@ separately so they do not hide the client picture.
 - `Client` is normal user-facing traffic: messengers, video, social apps, AI,
   productivity, retail, banking and other real destinations with observed
   bytes.
+- `Personal cloud` is user-owned sync/backup traffic that may be intentional or
+  background: iCloud, Google Drive/Photos, Dropbox, OneDrive and similar backup
+  flows. It is counted next to client traffic by default but remains filterable
+  because large sync jobs can otherwise hide interactive usage.
 - `Service/background` is infrastructure and device service traffic: Apple
-  service traffic, DNS/resolver rows, CDN/infra rows, router/system events and
-  zero-byte DNS-interest rows.
+  configuration/update checks, OS telemetry, DNS/resolver rows, CDN/infra rows,
+  router/system events and local control-plane evidence.
 - `Needs attribution` is observed traffic that still lacks a clear app family:
   unclassified domains, IP-only rows and `Other` / `Other/IP` aggregates.
 
@@ -23,6 +27,14 @@ attribution later.
 Traffic totals are computed from the route split when needed. If a row carries
 `unknown_bytes` but a zero total, Console still treats those unknown bytes as
 observed client traffic instead of rendering `0 B`.
+
+All detailed event/read-model tables use the v10 timestamp contract:
+`event_ts_utc` when a source supplied event time, `observed_at_utc` for the
+collector observation time, `display_ts_utc` for UI sorting/rendering and
+`time_precision` (`event_ms`, `event_second`, `collector_ms` or `bucket`) so the
+UI can show milliseconds without pretending second-only source data was exact.
+Flow Explorer, DNS Query Log, Live and Clients display the millisecond timestamp
+available from this contract.
 
 ## Freshness
 
@@ -67,6 +79,10 @@ observed client traffic instead of rendering `0 B`.
   path, not the steady-state architecture for large databases.
 - Raw operational rows remain short-lived troubleshooting data. Client traffic
   history for the UI belongs in the aggregate/read-model tables.
+- Schema v10 is a clean accounting boundary. Old Console SQLite databases and
+  old snapshots may be quarantined during rollout and are not backfilled into
+  v10 calculations, because historical rows may lack the LAN identity, traffic
+  class and timestamp precision needed for correct future accounting.
 
 ## Navigation Performance
 
