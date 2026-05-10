@@ -17,6 +17,8 @@ ACCT_PREVIOUS_FILE="$STATE_DIR/lan-flow-facts-acct.previous"
 MAX_ROWS="${GHOSTROUTE_LAN_FLOW_MAX_ROWS:-6000}"
 MAX_FACTS="${GHOSTROUTE_LAN_FLOW_MAX_FACTS:-1200}"
 MAX_LOAD_X100="${GHOSTROUTE_LAN_FLOW_MAX_LOAD_X100:-600}"
+IPSET_BIN="$(command -v ipset 2>/dev/null || true)"
+[ -z "$IPSET_BIN" ] && [ -x /usr/sbin/ipset ] && IPSET_BIN=/usr/sbin/ipset
 
 mkdir -p "$STATE_DIR"
 
@@ -126,6 +128,7 @@ awk -v max_facts="$MAX_FACTS" '
   }
   {
     proto = $1
+    if ($1 ~ /^ipv[46]$/ && NF >= 3) proto = $3
     src_count = dst_count = sport_count = dport_count = bytes_count = 0
     for (i = 1; i <= NF; i++) {
       if ($i ~ /^src=/) src[++src_count] = clean($i)
@@ -193,8 +196,8 @@ awk -F'|' '
 
 route_for_ip() {
   ip="$1"
-  if command -v ipset >/dev/null 2>&1; then
-    if ipset test STEALTH_DOMAINS "$ip" >/dev/null 2>&1 || ipset test VPN_STATIC_NETS "$ip" >/dev/null 2>&1; then
+  if [ -n "$IPSET_BIN" ]; then
+    if "$IPSET_BIN" test STEALTH_DOMAINS "$ip" >/dev/null 2>&1 || "$IPSET_BIN" test VPN_STATIC_NETS "$ip" >/dev/null 2>&1; then
       printf 'VPS'
       return 0
     fi
