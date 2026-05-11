@@ -2,7 +2,14 @@
 
 > **Status**: snapshot review, current as of 2026-05-10. Findings to be addressed against `docs/future-improvements-backlog.md`. Successor to `docs/repo-review-2026-04-28.md`.
 >
-> **Scope**: documentation surface, GhostRoute Console architecture and code quality, product-level repo hygiene, git presentation. Hard non-goal: no router / channel A/B/C / sing-box / dnsmasq / iptables / Reality / VPS / traffic-observatory changes — this audit describes **what to improve**, it does not change runtime.
+> **Postscript (2026-05-11)**: the traffic-facts v3 + pyramid refactor in
+> [`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md)
+> directly closes Part B B1 (snapshot validators), B2 (3-query pagination via
+> aggregate read paths), and parts of B3-B6 (type safety on the DB↔API
+> boundary, writer-lock relief via aggregates, SQL consolidation in
+> normalize). Refer to that plan for current implementation work.
+>
+> **Scope**: documentation surface, GhostRoute Console architecture and code quality, product-level repo hygiene, git presentation. Hard non-goal: no router / channel A/B/C / sing-box / dnsmasq / iptables / Reality / VPS changes — this audit describes **what to improve**, it does not change runtime. `traffic-observatory` CLIs and read-only router scripts are now in active refactor scope per the linked plan.
 
 ---
 

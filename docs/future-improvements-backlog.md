@@ -38,6 +38,12 @@ Top-level sections:
 10. **Policy-based DNS / own resolver strategy** (`✓`) — implemented via
     dnscrypt-proxy + sing-box SOCKS per ADR-0009.
 11. **Semi-auto backup managed egress** (`○`) — failover egress design only.
+12. **traffic-facts v3 + Console pyramid + filter scaffold** (`◐ in progress`) —
+    canonical machine contract via `traffic-evidence`, pyramid aggregates with
+    retention, TZ unification, UI plumbing of new fields, dry-run filter
+    scaffold. Detailed plan:
+    [`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md).
+    Closes much of repo-review-2026-05-10 Part B.
 
 Detailed prose for each section is in Russian below. For new findings, see the
 2026-05-10 audit linked above.

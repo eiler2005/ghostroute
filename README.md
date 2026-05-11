@@ -751,6 +751,7 @@ directories. See [SECURITY.md](/SECURITY.md) and
 - [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics (RU primary; English equivalents in module runbooks such as `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`)
 - [docs/future-improvements-backlog.md](/docs/future-improvements-backlog.md) - long-running improvement backlog (RU primary; EN summary at the top)
 - [docs/repo-review-2026-05-10.md](/docs/repo-review-2026-05-10.md) - latest repository quality audit and prioritized fixlist
+- [docs/traffic-facts-v3-and-pyramid-plan.md](/docs/traffic-facts-v3-and-pyramid-plan.md) - active refactor plan: traffic-evidence + traffic-facts v3 + Console pyramid + filter scaffold
 
 ---
 
