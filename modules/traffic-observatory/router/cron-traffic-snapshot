@@ -21,6 +21,13 @@ if [ -x /jffs/scripts/lan-flow-facts-snapshot ]; then
     else
       /jffs/scripts/lan-flow-facts-snapshot >/dev/null 2>&1
     fi
+    if [ -x /jffs/scripts/traffic-rollup-snapshot ]; then
+      if command -v nice >/dev/null 2>&1; then
+        nice -n 10 /jffs/scripts/traffic-rollup-snapshot >/dev/null 2>&1
+      else
+        /jffs/scripts/traffic-rollup-snapshot >/dev/null 2>&1
+      fi
+    fi
   ) &
 fi
 

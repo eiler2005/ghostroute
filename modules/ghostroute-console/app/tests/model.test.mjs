@@ -42,6 +42,8 @@ const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-
 const { acquireCollectorLock } = collectorLockModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
 const { validateSnapshotPayload, withSnapshotContractDefaults } = snapshotContractsModule;
+const routerRollupsModule = await import(new URL("../scr" + "ipts/lib/router-rollups.mjs", import.meta.url));
+const { routerMskKey, routerMskTimestampToUtc } = routerRollupsModule;
 
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
@@ -80,6 +82,34 @@ test("snapshot contracts keep unknown fields and reject missing core fields", ()
     }),
     /generated_at/
   );
+});
+
+test("router rollup helpers preserve MSK bucket identity", () => {
+  assert.equal(routerMskTimestampToUtc("2026-05-11T12:35:00+0300"), "2026-05-11T09:35:00.000Z");
+  assert.equal(routerMskKey("2026-05-11T00:00:00+0300", "daily"), "2026-05-11");
+  assert.equal(routerMskKey("2026-05-01T00:00:00+0300", "monthly"), "2026-05");
+  const payload = validateSnapshotPayload("router_rollups", {
+    schema_version: 1,
+    generated_at: "2026-05-11T09:35:00.000Z",
+    source: { command: "router-rollup-export" },
+    collector_metrics: { status: "ok" },
+    traffic_totals: [{
+      layer: "5min",
+      window_start_msk: "2026-05-11T12:35:00+0300",
+      client_ip: "192.0.2.10",
+      channel: "Home Wi-Fi/LAN",
+      route: "VPS",
+      traffic_class: "client",
+      bytes: 100,
+      via_vps_bytes: 100,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      flows: 1,
+    }],
+    traffic_destinations: [],
+    dns_rollups: [],
+  });
+  assert.equal(payload.traffic_totals[0].layer, "5min");
 });
 
 test("traffic facts v2 normalize facts, clients and gaps without synthetic flow rows", () => {
@@ -235,6 +265,81 @@ test("traffic facts v2 resolves LAN IP facts through private device registry", (
       channel: "Home Wi-Fi/LAN",
     });
     assert.equal(db.prepare("select client from normalized_flows where destination_ip = ?").get("198.51.100.10").client, "Operator Laptop");
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("router rollups are preferred totals while traffic facts remain destination detail", () => {
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-rollups-"));
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  fs.writeFileSync(path.join(tmp, "device-attribution.local.json"), JSON.stringify({
+    clients: {
+      "operator-laptop": {
+        label: "Operator Laptop",
+        device_key: "operator-laptop",
+        primary_channel: "Home Wi-Fi/LAN",
+        ip_aliases: ["192.0.2.44"],
+      },
+    },
+  }));
+  const db = new Database(":memory:");
+  try {
+    ensureConsoleSchema(db);
+    const rollups = {
+      schema_version: 1,
+      generated_at: "2026-05-10T08:00:00.123Z",
+      source: { command: "router-rollup-export" },
+      collector_metrics: { status: "ok" },
+      traffic_totals: [{
+        layer: "5min",
+        window_start_msk: "2026-05-10T11:00:00+0300",
+        client_ip: "192.0.2.44",
+        channel: "Home Wi-Fi/LAN",
+        route: "VPS",
+        traffic_class: "client",
+        bytes: 9999,
+        via_vps_bytes: 9999,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        flows: 2,
+      }],
+      traffic_destinations: [],
+      dns_rollups: [],
+    };
+    const facts = {
+      schema_version: 2,
+      generated_at: "2026-05-10T08:00:00.456Z",
+      source: { command: "traffic-facts", period: "today" },
+      collector_metrics: {},
+      clients: [],
+      traffic_facts: [{
+        fact_id: "detail-fact",
+        client_ip: "192.0.2.44",
+        channel: "Home Wi-Fi/LAN",
+        route: "VPS",
+        traffic_class: "client",
+        destination: "example.invalid",
+        destination_kind: "domain",
+        bytes: 100,
+        via_vps_bytes: 100,
+        connections: 1,
+        confidence: "estimated",
+      }],
+      attribution_gaps: [],
+      coverage: {},
+    };
+    validateSnapshotPayload("router_rollups", rollups);
+    validateSnapshotPayload("traffic_facts", facts);
+    normalizeSnapshot(db, 1, "router_rollups", rollups.generated_at, rollups);
+    normalizeSnapshot(db, 2, "traffic_facts", facts.generated_at, facts);
+    rebuildPreparedWindows(db, "2026-05-10T08:10:00.000Z");
+    assert.equal(db.prepare("select sum(bytes) as bytes from client_traffic_5min where client_key = 'operator-laptop'").get().bytes, 9999);
+    assert.equal(db.prepare("select sum(bytes) as bytes from client_destination_traffic_5min where client_key = 'operator-laptop'").get().bytes, 100);
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
@@ -503,7 +608,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "dns_log_5min", "top_clients_window", "top_destinations_window", "traffic_window_snapshots", "aggregate_state"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "router_traffic_rollups", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "client_traffic_weekly", "client_traffic_monthly", "client_destination_traffic_5min", "client_destination_traffic_hourly", "client_destination_traffic_daily", "client_destination_traffic_weekly", "client_destination_traffic_monthly", "dns_log_5min", "dns_log_hourly", "dns_log_daily", "dns_log_weekly", "dns_log_monthly", "top_clients_window", "top_destinations_window", "traffic_window_snapshots", "aggregate_state"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
   assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
@@ -511,14 +616,17 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 8").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 9").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 10").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 12").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'display_ts_utc'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_dns') where name = 'time_precision'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'hostname'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_devices') where name = 'mac'").get());
-  assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_hourly') where name = 'destination_key'").get());
-  assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_daily') where name = 'destination_key'").get());
+  assert.equal(Boolean(db.prepare("select 1 from pragma_table_info('client_traffic_hourly') where name = 'destination_key'").get()), false);
+  assert.equal(Boolean(db.prepare("select 1 from pragma_table_info('client_traffic_daily') where name = 'destination_key'").get()), false);
+  assert.ok(db.prepare("select 1 from pragma_table_info('client_destination_traffic_hourly') where name = 'destination_key'").get());
+  assert.ok(db.prepare("select 1 from pragma_table_info('client_destination_traffic_daily') where name = 'destination_key'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'unknown_bytes'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
@@ -764,7 +872,7 @@ test("time helper produces stable MSK windows over UTC storage", () => {
   assert.equal(bucketStartUtc("2026-05-09T10:17:42.000Z", "5min"), "2026-05-09T10:15:00.000Z");
   assert.equal(toUtcIsoFromMskKey("2026-05-09", "day"), "2026-05-08T21:00:00.000Z");
   assert.equal(toUtcIsoFromMskKey("2026-05-10T24:40", "5min"), "2026-05-09T21:40:00.000Z");
-  assert.deepEqual(mskWindowBounds("week", "2026-05-09T10:17:42.000Z").startMskKey, "2026-05-03");
+  assert.deepEqual(mskWindowBounds("week", "2026-05-09T10:17:42.000Z").startMskKey, "2026-05-04");
 });
 
 test("dashboard analytics derives traffic charts quotas and mobile LTE usage from flows", () => {
@@ -853,13 +961,15 @@ test("prepared traffic windows use operator clients and preserve destination top
     const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
     assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
-    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 1534);
-    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 1534);
-    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].unknownBytes, 1234);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 3400);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 3400);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].unknownBytes, 0);
     assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
     assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "large-download.example");
-    assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");
-    assert.equal(db.prepare("select client_key from client_traffic_5min where destination_key = 'large-download.example'").get().client_key, "macbook");
+    assert.equal(db.prepare("select client_key from client_destination_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");
+    assert.equal(db.prepare("select client_key from client_destination_traffic_5min where destination_key = 'large-download.example'").get().client_key, "macbook");
+    assert.equal(db.prepare("select count(*) as count from pragma_table_info('client_traffic_5min') where name = 'destination_key'").get().count, 0);
+    assert.equal(db.prepare("select count(*) as count from client_traffic_hourly where substr(hour_start_utc, 15, 5) != '00:00'").get().count, 0);
     assert.equal(db.prepare("select count(*) as count from top_clients_window where bytes <= 0 or label in ('A/Home Reality', 'B/XHTTP relay')").get().count, 0);
     assert.ok(db.prepare("select 1 from aggregate_state where model = 'dashboard' and window_key = 'today'").get());
     const dryRun = repairAggregateRange(db, { fromUtc: "2026-05-07T08:00:00Z", toUtc: "2026-05-07T10:00:00Z", dryRun: true });

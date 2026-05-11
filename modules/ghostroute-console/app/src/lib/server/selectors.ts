@@ -43,7 +43,7 @@ import {
   snapshotMatchesPeriod,
 } from "../traffic-window.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
-import { mskWindowBounds } from "../time/window.mjs";
+import { bucketStartUtc, mskWindowBounds } from "../time/window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 300_000);
@@ -131,14 +131,6 @@ function isoMinusHours(iso: string, hours: number) {
   return new Date(Date.parse(iso) - hours * 3600000).toISOString();
 }
 
-function bucketStartUtcForSelector(utcIso: string, granularity: "hour" | "day" = "hour") {
-  const date = new Date(utcIso);
-  if (Number.isNaN(date.getTime())) return utcIso;
-  if (granularity === "day") date.setUTCHours(0, 0, 0, 0);
-  else date.setUTCMinutes(0, 0, 0);
-  return date.toISOString();
-}
-
 function isIpv4Literal(value: unknown) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || ""));
 }
@@ -147,12 +139,17 @@ function windowAggregateSegmentsForSelector(window = "today", now = new Date()) 
   const nowIso = now.toISOString();
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
+  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, Number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
-  const freshStart = maxIso(todayStart, bucketStartUtcForSelector(isoMinusHours(nowIso, freshHours), "hour"));
+  const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(nowIso, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
-  const segments: Array<{ layer: "daily" | "hourly" | "5min"; start: string; end: string }> = [];
-  if (window !== "today" && Date.parse(bounds.startUtc) < Date.parse(todayStart)) {
-    segments.push({ layer: "daily", start: bounds.startUtc, end: todayStart });
+  const segments: Array<{ layer: "weekly" | "daily" | "hourly" | "5min"; start: string; end: string }> = [];
+  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
+    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
+  }
+  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
+    segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
   const hourlyStart = maxIso(bounds.startUtc, todayStart);
   if (Date.parse(hourlyStart) < Date.parse(freshStart)) {
@@ -2997,8 +2994,8 @@ function clientDomainAggregateRows(clientKey: string, period = "today") {
   const db = getDb();
   const grouped = new Map<string, Record<string, any>>();
   for (const segment of windowAggregateSegmentsForSelector(period)) {
-    const table = segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
-    const timeColumn = segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+    const table = segment.layer === "weekly" ? "client_destination_traffic_weekly" : segment.layer === "daily" ? "client_destination_traffic_daily" : segment.layer === "hourly" ? "client_destination_traffic_hourly" : "client_destination_traffic_5min";
+    const timeColumn = segment.layer === "weekly" ? "week_start_utc" : segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
     const rows = db.prepare(`
       select max(client_label) as client_label,
              destination_key,

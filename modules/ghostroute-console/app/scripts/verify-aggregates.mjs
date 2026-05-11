@@ -44,12 +44,17 @@ function payload(kind, window) {
 function aggregateSegments(window, now) {
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
+  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
   const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(now, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
   const segments = [];
-  if (window !== "today" && Date.parse(bounds.startUtc) < Date.parse(todayStart)) {
-    segments.push({ layer: "daily", start: bounds.startUtc, end: todayStart });
+  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
+    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
+  }
+  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
+    segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
   const hourlyStart = maxIso(bounds.startUtc, todayStart);
   if (Date.parse(hourlyStart) < Date.parse(freshStart)) segments.push({ layer: "hourly", start: hourlyStart, end: freshStart });
@@ -58,17 +63,26 @@ function aggregateSegments(window, now) {
 }
 
 function segmentRows(segment) {
-  const table = segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
-  const timeColumn = segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
-  return db.prepare(`
+  const detailTable = segment.layer === "weekly" ? "client_destination_traffic_weekly" : segment.layer === "daily" ? "client_destination_traffic_daily" : segment.layer === "hourly" ? "client_destination_traffic_hourly" : "client_destination_traffic_5min";
+  const totalTable = segment.layer === "weekly" ? "client_traffic_weekly" : segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
+  const timeColumn = segment.layer === "weekly" ? "week_start_utc" : segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+  const detailRows = db.prepare(`
     select client_key, channel, destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
-           attributed_bytes,
-           case when attributed_bytes <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end as accounting_bucket
-      from ${table}
+           attributed_bytes, case when attributed_bytes <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end as accounting_bucket
+      from ${detailTable}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
        and traffic_class = 'client'
   `).all(segment.start, segment.end);
+  const totalRows = db.prepare(`
+    select client_key, channel, '' as destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
+           attributed_bytes, 1 as accounting_bucket
+      from ${totalTable}
+     where ${timeColumn} >= ?
+       and ${timeColumn} < ?
+       and traffic_class = 'client'
+  `).all(segment.start, segment.end);
+  return [...detailRows, ...totalRows];
 }
 
 function composedRows(window, now) {

@@ -14,7 +14,7 @@ assert.equal(today.startUtc, "2026-05-08T21:00:00.000Z");
 assert.equal(today.endUtc, "2026-05-09T10:17:42.000Z");
 
 const week = mskWindowBounds("week", "2026-05-09T10:17:42.000Z");
-assert.equal(week.startMskKey, "2026-05-03");
+assert.equal(week.startMskKey, "2026-05-04");
 
 const month = mskWindowBounds("month", "2026-05-09T10:17:42.000Z");
 assert.equal(month.startMskKey, "2026-05-01");

@@ -1,0 +1,92 @@
+#!/bin/sh
+
+LIB="/jffs/scripts/traffic-rollup-lib"
+[ -r "$LIB" ] || LIB="$(dirname "$0")/traffic-rollup-lib"
+. "$LIB"
+
+JSON_MODE=0
+PERIOD="today"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|week|month)
+      PERIOD="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: traffic-rollup-export --json [today|week|month]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$JSON_MODE" != "1" ]; then
+  echo "traffic-rollup-export is machine-readable; use --json." >&2
+  exit 1
+fi
+
+ROLLUP_DIR="$(traffic_rollup_dir)"
+STATUS_FILE="$(traffic_rollup_status_file)"
+generated_at="$(traffic_rollup_now)"
+
+emit_totals() {
+  awk -F'|' -v layer="$1" '
+    function esc(s) { gsub(/\\/,"\\\\",s); gsub(/"/,"\\\"",s); return s }
+    NF >= 10 {
+      if (seen++) printf ","
+      printf "{\"layer\":\"%s\",\"window_start_msk\":\"%s\",\"client_ip\":\"%s\",\"channel\":\"%s\",\"route\":\"%s\",\"traffic_class\":\"%s\",\"bytes\":%d,\"via_vps_bytes\":%d,\"direct_bytes\":%d,\"unknown_bytes\":%d,\"flows\":%d,\"source\":\"router_edge_rollup\"}", layer, esc($1), esc($2), esc($3), esc($4), esc($5), $6 + 0, $7 + 0, $8 + 0, $9 + 0, $10 + 0
+    }
+  ' "$ROLLUP_DIR/router_traffic_$1.tsv" 2>/dev/null || true
+}
+
+emit_destinations() {
+  awk -F'|' -v layer="$1" '
+    function esc(s) { gsub(/\\/,"\\\\",s); gsub(/"/,"\\\"",s); return s }
+    NF >= 11 {
+      if (seen++) printf ","
+      printf "{\"layer\":\"%s\",\"window_start_msk\":\"%s\",\"client_ip\":\"%s\",\"channel\":\"%s\",\"route\":\"%s\",\"traffic_class\":\"%s\",\"destination_ip\":\"%s\",\"bytes\":%d,\"via_vps_bytes\":%d,\"direct_bytes\":%d,\"unknown_bytes\":%d,\"flows\":%d,\"source\":\"router_edge_rollup\"}", layer, esc($1), esc($2), esc($3), esc($4), esc($5), esc($6), $7 + 0, $8 + 0, $9 + 0, $10 + 0, $11 + 0
+    }
+  ' "$ROLLUP_DIR/router_destination_traffic_$1.tsv" 2>/dev/null || true
+}
+
+status_line=""
+[ -r "$STATUS_FILE" ] && status_line="$(tail -n 1 "$STATUS_FILE" 2>/dev/null || true)"
+dns_status=""
+[ -r "$ROLLUP_DIR/router_dns.status" ] && dns_status="$(tail -n 1 "$ROLLUP_DIR/router_dns.status" 2>/dev/null || true)"
+
+printf '{'
+printf '"schema_version":1,'
+printf '"generated_at":"%s",' "$generated_at"
+printf '"window":{"period":"%s"},' "$PERIOD"
+printf '"source":{"command":"router-rollup-export","layer":"router_edge_rollup"},'
+printf '"collector_metrics":{"status":"%s","dns_status":"%s"},' "$(printf '%s' "$status_line" | sed 's/"/\\"/g')" "$(printf '%s' "$dns_status" | sed 's/"/\\"/g')"
+printf '"traffic_totals":['
+first=1
+for layer in 5min hourly daily weekly monthly; do
+  rows="$(emit_totals "$layer")"
+  [ -n "$rows" ] || continue
+  if [ "$first" = "1" ]; then
+    first=0
+  else
+    printf ','
+  fi
+  printf '%s' "$rows"
+done
+printf '],"traffic_destinations":['
+first=1
+for layer in 5min hourly daily weekly monthly; do
+  rows="$(emit_destinations "$layer")"
+  [ -n "$rows" ] || continue
+  if [ "$first" = "1" ]; then
+    first=0
+  else
+    printf ','
+  fi
+  printf '%s' "$rows"
+done
+printf '],"dns_rollups":[]'
+printf '}'
+printf '\n'

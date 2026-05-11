@@ -58,6 +58,13 @@ function mskMonthStart(parts, monthOffset = 0) {
   return mskDateParts(base);
 }
 
+function mskWeekStart(parts) {
+  const midnightUtc = utcFromMskParts({ ...parts, hour: 0, minute: 0, second: 0 });
+  const day = new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
+  const mondayOffset = (day + 6) % 7;
+  return mskDateParts(new Date(midnightUtc.getTime() - mondayOffset * 86400000));
+}
+
 export function nowUtcIso() {
   return new Date().toISOString();
 }
@@ -84,19 +91,26 @@ export function toMskKey(utcIso, granularity = "day") {
   if (granularity === "hour") {
     return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}`;
   }
+  if (granularity === "week") {
+    const week = mskWeekStart(parts);
+    return `${week.year}-${pad2(week.month)}-${pad2(week.day)}`;
+  }
+  if (granularity === "month") {
+    return `${parts.year}-${pad2(parts.month)}`;
+  }
   return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
 }
 
 export function toUtcIsoFromMskKey(mskKey, granularity = "day") {
   const value = String(mskKey || "");
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2})(?::(\d{2}))?)?$/);
+  const match = value.match(/^(\d{4})-(\d{2})(?:-(\d{2})(?:T(\d{2})(?::(\d{2}))?)?)?$/);
   if (!match) return nowUtcIso();
-  const [, year, month, day, hour = "0", minute = "0"] = match;
+  const [, year, month, day = "1", hour = "0", minute = "0"] = match;
   const date = utcFromMskParts({
     year: number(year),
     month: number(month),
     day: number(day),
-    hour: granularity === "day" ? 0 : normalizeClockHour(hour),
+    hour: ["day", "week", "month"].includes(granularity) ? 0 : normalizeClockHour(hour),
     minute: granularity === "5min" ? Math.floor(number(minute) / 5) * 5 : 0,
     second: 0,
   });
@@ -114,7 +128,7 @@ export function mskWindowBounds(window = "today", nowValue = new Date()) {
   if (window === "month") {
     startParts = mskMonthStart(current, 0);
   } else if (window === "week") {
-    startParts = addMskDays(current, -6);
+    startParts = mskWeekStart(current);
   } else {
     startParts = current;
   }
