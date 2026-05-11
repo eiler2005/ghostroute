@@ -1,0 +1,199 @@
+#!/bin/bash
+# Raw read-only traffic evidence for traffic-facts v3.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+JSON_MODE=0
+PERIOD_ARG="today"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|current|current-day|yesterday|week|month|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+      PERIOD_ARG="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-evidence --json [today|yesterday|week|month|YYYY-MM-DD]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$JSON_MODE" -ne 1 ]; then
+  echo "traffic-evidence is a machine-readable command; use --json." >&2
+  exit 1
+fi
+
+STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-}"
+REMOTE_STATE_DIR="${GHOSTROUTE_ROUTER_TRAFFIC_STATE_DIR:-/opt/var/log/router_configuration}"
+TMP_STATE_DIR=""
+cleanup() {
+  [ -z "$TMP_STATE_DIR" ] || rm -rf "$TMP_STATE_DIR"
+}
+trap cleanup EXIT
+
+if [ -z "$STATE_DIR" ]; then
+  for candidate in \
+    "$PROJECT_ROOT/.ghostroute/traffic" \
+    "$PROJECT_ROOT/reports/traffic" \
+    "/opt/var/log/router_configuration" \
+    "/jffs/addons/router_configuration/traffic"; do
+    if [ -d "$candidate" ]; then
+      STATE_DIR="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" = "1" ]; then
+  if router_health_load_env >/dev/null 2>&1; then
+    TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
+    router_ssh "cat '${REMOTE_STATE_DIR}/lan-flow-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/lan-flow-facts.tsv" || true
+    router_ssh "cat '${REMOTE_STATE_DIR}/dns-query-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/dns-query-facts.tsv" || true
+    STATE_DIR="$TMP_STATE_DIR"
+  fi
+fi
+
+TRAFFIC_EVIDENCE_PERIOD="$PERIOD_ARG" \
+TRAFFIC_EVIDENCE_STATE_DIR="$STATE_DIR" \
+ruby -rjson -rdigest -rtime - <<'RUBY'
+def text(value, fallback = '')
+  value.nil? || value.to_s.empty? ? fallback : value.to_s
+end
+
+def number(value)
+  Integer(value || 0)
+rescue ArgumentError, TypeError
+  0
+end
+
+def iso_time(value, fallback)
+  raw = text(value)
+  return fallback if raw.empty?
+  Time.parse(raw).utc.iso8601(3)
+rescue ArgumentError
+  fallback
+end
+
+def sample_id(row)
+  Digest::SHA1.hexdigest([
+    row['ts'], row['client_ip'], row['remote_ip'], row['remote_port'],
+    row['proto'], row['total_bytes'], row['source']
+  ].join('|'))
+end
+
+period = ENV.fetch('TRAFFIC_EVIDENCE_PERIOD', 'today')
+state_dir = text(ENV['TRAFFIC_EVIDENCE_STATE_DIR'])
+generated_at = Time.now.utc.iso8601(3)
+warnings = []
+flow_samples = []
+dns_queries = []
+route_evidence = []
+
+if state_dir.empty? || !Dir.exist?(state_dir)
+  warnings << { 'code' => 'state_dir_unavailable', 'message' => 'traffic state directory was not found', 'state_dir' => state_dir }
+else
+  lan_path = File.join(state_dir, 'lan-flow-facts.tsv')
+  if File.file?(lan_path)
+    File.readlines(lan_path, chomp: true).each_with_index do |line, index|
+      next if line.strip.empty?
+      parts = line.split('|', -1)
+      next if parts.length < 14
+      ts = iso_time(parts[0], generated_at)
+      total = number(parts[8])
+      row = {
+        'ts' => ts,
+        'client_ip' => text(parts[1]),
+        'remote_ip' => text(parts[2]),
+        'remote_port' => text(parts[3]),
+        'proto' => text(parts[4]).downcase,
+        'route' => text(parts[5], 'Unknown'),
+        'out_bytes' => number(parts[6]),
+        'in_bytes' => number(parts[7]),
+        'total_bytes' => total,
+        'connections' => number(parts[9]),
+        'source' => text(parts[10], 'conntrack_snapshot_delta'),
+        'allocation_basis' => text(parts[11], 'observed_delta'),
+        'destination_kind' => text(parts[12], 'ip'),
+        'status' => text(parts[13], 'ok'),
+        'route_source' => text(parts[14]),
+        'route_basis' => text(parts[15]),
+        'matched_ipset' => text(parts[16]),
+        'egress_iface' => text(parts[17]),
+        'fwmark' => text(parts[18]),
+        'conn_state' => text(parts[19]),
+        'raw_refs' => [{ 'source' => 'lan-flow-facts.tsv', 'line' => index + 1 }]
+      }
+      row['sample_id'] = sample_id(row)
+      flow_samples << row
+      route_evidence << {
+        'sample_id' => row['sample_id'],
+        'ts' => row['ts'],
+        'client_ip' => row['client_ip'],
+        'remote_ip' => row['remote_ip'],
+        'route' => row['route'],
+        'route_source' => row['route_source'],
+        'route_basis' => row['route_basis'],
+        'matched_ipset' => row['matched_ipset'],
+        'egress_iface' => row['egress_iface'],
+        'fwmark' => row['fwmark'],
+        'status' => row['status']
+      }
+    end
+  else
+    warnings << { 'code' => 'lan_flow_facts_missing', 'message' => 'lan-flow-facts.tsv not found', 'path' => lan_path }
+  end
+
+  dns_path = File.join(state_dir, 'dns-query-facts.tsv')
+  if File.file?(dns_path)
+    File.readlines(dns_path, chomp: true).each_with_index do |line, index|
+      next if line.strip.empty?
+      parts = line.split('|', -1)
+      next if parts.length < 8
+      row = {
+        'id' => Digest::SHA1.hexdigest([line, index].join('|')),
+        'ts' => iso_time(parts[0], generated_at),
+        'client_ip' => text(parts[1]),
+        'domain' => text(parts[2]),
+        'qtype' => text(parts[3], 'A'),
+        'answer_ip' => text(parts[4]),
+        'event_type' => text(parts[5]),
+        'source' => text(parts[6], 'dnsmasq'),
+        'status' => text(parts[7], 'ok'),
+        'raw_refs' => [{ 'source' => 'dns-query-facts.tsv', 'line' => index + 1 }]
+      }
+      dns_queries << row
+    end
+  else
+    warnings << { 'code' => 'dns_query_facts_missing', 'message' => 'dns-query-facts.tsv not found', 'path' => dns_path }
+  end
+end
+
+output = {
+  'schema_version' => 1,
+  'generated_at' => generated_at,
+  'window' => { 'period' => period },
+  'source' => { 'command' => 'traffic-evidence', 'schema' => 'traffic-evidence-v1', 'state_dir' => state_dir },
+  'flow_samples' => flow_samples,
+  'dns_queries' => dns_queries,
+  'route_evidence' => route_evidence,
+  'rollups' => {},
+  'warnings' => warnings,
+  'collector_metrics' => {
+    'source_row_counts' => {
+      'flow_samples' => flow_samples.length,
+      'dns_queries' => dns_queries.length,
+      'route_evidence' => route_evidence.length
+    }
+  }
+}
+
+puts JSON.pretty_generate(output)
+RUBY

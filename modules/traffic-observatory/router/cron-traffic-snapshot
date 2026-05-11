@@ -28,6 +28,13 @@ if [ -x /jffs/scripts/lan-flow-facts-snapshot ]; then
         /jffs/scripts/traffic-rollup-snapshot >/dev/null 2>&1
       fi
     fi
+    if [ -x /jffs/scripts/dns-query-snapshot ]; then
+      if command -v nice >/dev/null 2>&1; then
+        nice -n 10 /jffs/scripts/dns-query-snapshot >/dev/null 2>&1
+      else
+        /jffs/scripts/dns-query-snapshot >/dev/null 2>&1
+      fi
+    fi
   ) &
 fi
 

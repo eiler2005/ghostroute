@@ -1,0 +1,99 @@
+#!/bin/sh
+
+# Best-effort DNS query/answer sampler for GhostRoute Console.
+# This script only reads dnsmasq logs and writes local evidence files.
+
+STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-/jffs/addons/router_configuration/traffic}"
+[ -x /opt/bin/opkg ] && STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-/opt/var/log/router_configuration}"
+
+FACTS_FILE="$STATE_DIR/dns-query-facts.tsv"
+STATUS_FILE="$STATE_DIR/dns-query-facts.status"
+MAX_LINES="${GHOSTROUTE_DNS_QUERY_MAX_LINES:-4000}"
+LOG_PATH="${GHOSTROUTE_DNSMASQ_LOG:-}"
+
+mkdir -p "$STATE_DIR"
+
+timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+start_epoch="$(date '+%s')"
+
+status() {
+  state="$1"
+  reason="$2"
+  rows="${3:-0}"
+  end_epoch="$(date '+%s')"
+  duration_ms=$(( (end_epoch - start_epoch) * 1000 ))
+  printf '%s|%s|reason=%s|rows=%s|duration_ms=%s|source=dnsmasq\n' \
+    "$timestamp" "$state" "$reason" "$rows" "$duration_ms" > "$STATUS_FILE"
+}
+
+case "$MAX_LINES" in ''|*[!0-9]*) MAX_LINES=4000 ;; esac
+
+if [ -z "$LOG_PATH" ]; then
+  for candidate in /opt/var/log/dnsmasq.log /tmp/syslog.log /var/log/messages; do
+    if [ -r "$candidate" ]; then
+      LOG_PATH="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$LOG_PATH" ] || [ ! -r "$LOG_PATH" ]; then
+  status "partial" "dnsmasq_log_unavailable" 0
+  exit 0
+fi
+
+TMP_LOG="/tmp/dns-query-snapshot.log.$$"
+TMP_FACTS="/tmp/dns-query-snapshot.facts.$$"
+trap 'rm -f "$TMP_LOG" "$TMP_FACTS"' EXIT
+
+tail -n "$MAX_LINES" "$LOG_PATH" > "$TMP_LOG" 2>/dev/null || : > "$TMP_LOG"
+
+awk -v snapshot_ts="$timestamp" -v source_log="$LOG_PATH" '
+  BEGIN { OFS = "|" }
+  function clean_domain(value) {
+    gsub(/[.;]$/, "", value)
+    return value
+  }
+  function qtype_from_token(value) {
+    if (value ~ /^query\[[^]]+\]$/) {
+      sub(/^query\[/, "", value)
+      sub(/\]$/, "", value)
+      return value
+    }
+    return ""
+  }
+  {
+    rows++
+    for (i = 1; i <= NF; i++) {
+      qtype = qtype_from_token($i)
+      if (qtype != "" && (i + 3) <= NF && $(i + 2) == "from") {
+        domain = clean_domain($(i + 1))
+        client = $(i + 3)
+        last_client[domain] = client
+        last_qtype[domain] = qtype
+        printf "%s|%s|%s|%s|%s|query|%s|ok\n", snapshot_ts, client, domain, qtype, "", source_log
+      } else if ($i == "reply" && (i + 3) <= NF && $(i + 2) == "is") {
+        domain = clean_domain($(i + 1))
+        answer = $(i + 3)
+        if (answer ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+          client = last_client[domain]
+          qtype = last_qtype[domain]
+          if (qtype == "") qtype = "A"
+          printf "%s|%s|%s|%s|%s|answer|%s|ok\n", snapshot_ts, client, domain, qtype, answer, source_log
+        }
+      }
+    }
+  }
+  END {
+    if (rows == 0) exit 2
+  }
+' "$TMP_LOG" > "$TMP_FACTS"
+
+if [ -s "$TMP_FACTS" ]; then
+  cat "$TMP_FACTS" >> "$FACTS_FILE"
+  tail -n 50000 "$FACTS_FILE" > "$FACTS_FILE.tmp" && mv "$FACTS_FILE.tmp" "$FACTS_FILE"
+  rows_written="$(wc -l < "$TMP_FACTS" 2>/dev/null | tr -d ' ')"
+  status "ok" "sampled" "${rows_written:-0}"
+else
+  status "partial" "no_dns_rows" 0
+fi

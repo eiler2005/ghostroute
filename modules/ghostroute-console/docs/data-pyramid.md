@@ -15,14 +15,18 @@ with small watermarked chunks.
 - Prefer client traffic. Service/background evidence is retained for diagnostics
   and attribution gaps, not ranked as client traffic.
 
-## Schema v12 Boundary
+## Schema v13 Boundary
 
-Schema v12 is a reset boundary. Old Console SQLite and old snapshot-derived
-aggregates are quarantined for audit only and must not seed new calculations.
-The v12 source model is:
+Schema v12 is the aggregate reset boundary. Schema v13 extends that baseline
+with `traffic-facts` v3 fields, raw `traffic_evidence` snapshots and dry-run
+filter scaffold tables. Old Console SQLite and old snapshot-derived aggregates
+are quarantined for audit only and must not seed new calculations. The current
+source model is:
 
 - router edge rollups for authoritative LAN/Wi-Fi totals;
-- `traffic_facts` for audit, detail, destination evidence and fallback;
+- `traffic_evidence` for raw flow/DNS/route evidence;
+- `traffic_facts` v3 for audit, detail, DNS links, route/accounting metadata and
+  fallback;
 - `traffic_attribution_gaps` for attribution debt;
 - DNS facts for factual DNS views and DNS pyramid chunks.
 
@@ -33,7 +37,7 @@ normal destination rankings.
 ## Layers
 
 ```text
-router edge rollups / traffic_facts snapshots
+router edge rollups / traffic_evidence / traffic_facts snapshots
   -> router rollups are preferred totals
   -> facts remain audit/detail/fallback source
 
@@ -133,8 +137,8 @@ Normal collection has separate jobs:
 
 - Router edge rollup: bounded async chunk building on the router.
 - VPS incremental rollup: import router chunks as preferred totals, use
-  `traffic_facts` for detail/fallback, update 5-minute chunks, roll them into
-  hourly/daily/weekly/monthly chunks, and rewrite prepared windows.
+  `traffic_facts` v3 for detail/fallback, update 5-minute chunks, roll them
+  into hourly/daily/weekly/monthly chunks, and rewrite prepared windows.
 - Backfill/repair: rebuild missing or suspect historical chunks separately.
   Deploy/startup should not wait for full historical repair.
 
@@ -162,8 +166,10 @@ retained facts only. If retention has removed the source, it records
 Default retention should preserve the one-month UI window without keeping
 unbounded raw data:
 
-- raw normalized client rows: about 7 days;
+- raw normalized client rows and client `traffic_facts`: about 7 days;
 - service/background raw rows: shorter diagnostic retention;
+- DNS link evidence: about 7 days;
+- dry-run filter decisions: about 30 days;
 - router raw/delta files: short bounded history;
 - router 5-minute chunks: about 8 days;
 - router hourly/daily/weekly/monthly chunks: about 35 days;

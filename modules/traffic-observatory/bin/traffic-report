@@ -1,6 +1,10 @@
 #!/bin/bash
 # Router channel traffic report.
 #
+# DEPRECATED as a machine source. GhostRoute Console machine consumers MUST use
+# traffic-facts --json (schema_version=3), which reads traffic-evidence.
+# traffic-report remains runnable for operator/debug use only.
+#
 # This report intentionally does not inspect wgs1/wgc1. Channel A is the
 # router-managed default lane. Channel B is a selected-client production
 # home-first lane with separate ingress, represented with best-effort telemetry

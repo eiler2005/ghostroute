@@ -19,6 +19,8 @@ When the user asks for a router traffic report or router health/capacity report 
    - "review manual/static coverage", "catalog review", "review static cidr", "review manual domains", "cleanup candidates" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report
    - "save catalog review", "сохрани review каталога", "сохрани catalog review" -> ./modules/dns-catalog-intelligence/bin/catalog-review-report --save
    - "оптимизируй домены", "оптимизируй каталог", "review vpn domains", "cleanup catalog", "backlog review" -> first read docs/future-improvements-backlog.md, modules/dns-catalog-intelligence/docs/domain-management.md, modules/routing-core/docs/current-routing-explained.md, modules/traffic-observatory/docs/traffic-observability.md and answer with a review/plan by default
+   - "traffic facts json", "machine traffic", "console accounting" -> ./modules/traffic-observatory/bin/traffic-facts --json today
+   - "raw traffic evidence", "flow samples", "dns links evidence" -> ./modules/traffic-observatory/bin/traffic-evidence --json today
    - "сегодня", "текущий день", "today", "current day" -> ./modules/traffic-observatory/bin/traffic-report today
    - "вчера", "yesterday" -> ./modules/traffic-observatory/bin/traffic-report yesterday
    - specific date like 2026-04-14 -> ./modules/traffic-observatory/bin/traffic-report 2026-04-14

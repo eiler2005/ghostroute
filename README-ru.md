@@ -489,6 +489,10 @@ Traffic и observability:
 # analytics и проверок ошибок маршрутизации.
 ./modules/traffic-observatory/bin/traffic-summary --json today
 
+# Машинный контракт Console accounting: traffic-evidence -> traffic-facts v3.
+./modules/traffic-observatory/bin/traffic-evidence --json today
+./modules/traffic-observatory/bin/traffic-facts --json today
+
 # Главный usage-отчёт: exits, устройства, Home Reality ingress clients,
 # популярные назначения и проверки ошибок маршрутизации.
 ./modules/traffic-observatory/bin/traffic-report today
@@ -504,9 +508,11 @@ Traffic и observability:
 ```
 
 Легкий summary — основной источник частых traffic-карточек Console Dashboard.
-Полный traffic report показывает, сколько ушло через VPS, сколько осталось на
-home WAN, какие устройства и Home Reality ingress clients были активны, какие
-сайты/приложения популярны и не появились ли ошибки маршрутизации. Подробно:
+Машинный accounting Console читает `traffic-facts` v3 из raw
+`traffic-evidence`; `traffic-report` остаётся operator/debug отчётом: сколько
+ушло через VPS, сколько осталось на home WAN, какие устройства и Home Reality
+ingress clients были активны, какие сайты/приложения популярны и не появились
+ли ошибки маршрутизации. Подробно:
 [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
 
 Модуль мониторинга работоспособности:
