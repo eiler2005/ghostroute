@@ -882,6 +882,52 @@ export function getDb() {
         updated_at_utc text not null,
         primary key (model, window_key)
       );
+      create table if not exists destination_enrichment (
+        destination_key text primary key,
+        kind text not null,
+        value text not null,
+        normalized_value text not null,
+        category text not null default 'unknown',
+        provider text not null default '',
+        action_hint text not null default 'monitor',
+        confidence text not null default 'unknown',
+        reason_code text not null default '',
+        sources_json text not null default '[]',
+        evidence_json text not null default '{}',
+        first_seen text not null,
+        last_seen text not null,
+        expires_at text not null default ''
+      );
+      create table if not exists filter_rules (
+        rule_id text primary key,
+        scope text not null,
+        match_kind text not null,
+        match_value text not null,
+        action text not null,
+        priority integer not null default 100,
+        enabled integer not null default 0,
+        dry_run integer not null default 1,
+        reason text not null default '',
+        created_by text not null default 'operator',
+        created_at_utc text not null,
+        updated_at_utc text not null,
+        evidence_json text not null default '{}'
+      );
+      create table if not exists filter_decisions (
+        decision_id text primary key,
+        snapshot_id text not null,
+        observed_at_utc text not null,
+        rule_id text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        destination text not null default '',
+        destination_ip text not null default '',
+        matched_field text not null default '',
+        matched_value text not null default '',
+        would_have_action text not null,
+        applied integer not null default 0,
+        evidence_json text not null default '{}'
+      );
     `);
     addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
     addColumnIfMissing(db, "normalized_devices", "mac", "text not null default ''");
@@ -912,6 +958,15 @@ export function getDb() {
         via_vps_bytes: "integer not null default 0",
         direct_bytes: "integer not null default 0",
         unknown_bytes: "integer not null default 0",
+        bytes_up: "integer not null default 0",
+        bytes_down: "integer not null default 0",
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        route_verification: "text not null default ''",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
       },
       normalized_dns: {
         client_ip: "text not null default ''",
@@ -939,6 +994,15 @@ export function getDb() {
         via_vps_bytes: "integer not null default 0",
         direct_bytes: "integer not null default 0",
         unknown_bytes: "integer not null default 0",
+        bytes_up: "integer not null default 0",
+        bytes_down: "integer not null default 0",
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        route_verification: "text not null default ''",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
       },
       events: {
         event_id: "text not null default ''",
@@ -989,6 +1053,33 @@ export function getDb() {
     })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
     }
+    for (const [table, columns] of Object.entries({
+      traffic_facts: {
+        protocol: "text not null default ''",
+        bytes_up: "integer not null default 0",
+        bytes_down: "integer not null default 0",
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        egress_iface: "text not null default ''",
+        fwmark: "text not null default ''",
+        route_verification: "text not null default ''",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
+      },
+      traffic_dns_links: {
+        id: "text not null default ''",
+        destination_ip: "text not null default ''",
+        destination_port: "text not null default ''",
+        protocol: "text not null default ''",
+        dns_answer_ip: "text not null default ''",
+        dns_event_ts_utc: "text not null default ''",
+        flow_event_ts_utc: "text not null default ''",
+      },
+    })) {
+      for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
+    }
     db.exec(`
       create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
       create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
@@ -1024,8 +1115,15 @@ export function getDb() {
       create index if not exists idx_dlw_msk on dns_log_weekly(week_msk_key desc);
       create index if not exists idx_dlm_msk on dns_log_monthly(month_msk_key desc);
       create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
+      create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
+      create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
+      create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
+      create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
+      create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
+      create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
+      create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
     `);
-    for (const version of [6, 7, 8, 9, 10, 12]) {
+    for (const version of [6, 7, 8, 9, 10, 12, 13]) {
       db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
         version,
         new Date().toISOString()

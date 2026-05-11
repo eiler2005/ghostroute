@@ -26,6 +26,16 @@
     - { src: cron-save-ipset, dest: "{{ cron_save_ipset_script }}" }
     - { src: services-start, dest: "{{ services_start_hook }}" }
 
+- name: Install read-only traffic observatory router samplers
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/traffic-observatory/router/{{ item }}"
+    dest: "/jffs/scripts/{{ item }}"
+    mode: "0755"
+  loop:
+    - cron-traffic-snapshot
+    - lan-flow-facts-snapshot
+    - dns-query-snapshot
+
 - name: Install stealth-route-init.sh
   ansible.builtin.template:
     src: stealth-route-init.sh.j2

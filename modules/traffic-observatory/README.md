@@ -21,13 +21,15 @@ combine them with local metadata and render safe Markdown/text output for humans
 and LLM handoff.
 
 For Console accounting, the router also writes a bounded bottom layer of LAN
-flow facts and edge rollups. `lan-flow-facts-snapshot` samples conntrack byte
-deltas as `client_ip -> destination_ip -> route -> bytes`; then
-`traffic-rollup-snapshot` builds portable `5min/hourly/daily/weekly/monthly`
-chunks under the traffic state directory. Both jobs are asynchronous, guarded by
-lock/load/row limits, and do not change Channels A/B/C, managed domains,
-iptables routing rules or sing-box policy. The VPS/Console remains the main
-warehouse/read-model layer and imports router rollups as preferred totals.
+flow, DNS and edge-rollup evidence. `lan-flow-facts-snapshot` samples conntrack
+byte deltas as `client_ip -> destination_ip -> route -> bytes` with append-only
+v2 route-evidence columns, `dns-query-snapshot` records best-effort dnsmasq
+query/answer evidence, and `traffic-rollup-snapshot` builds portable
+`5min/hourly/daily/weekly/monthly` chunks under the traffic state directory. All
+jobs are asynchronous, guarded by lock/load/row limits, and do not change
+Channels A/B/C, managed domains, iptables routing rules or sing-box policy. The
+VPS/Console remains the warehouse/read-model layer and imports router rollups as
+preferred totals.
 
 ## Architecture
 
@@ -46,6 +48,8 @@ rollback script.
 
 - `./modules/traffic-observatory/bin/traffic-report`
 - `./modules/traffic-observatory/bin/traffic-report check`
+- `./modules/traffic-observatory/bin/traffic-evidence --json today`
+- `./modules/traffic-observatory/bin/traffic-facts --json today`
 - `./modules/traffic-observatory/bin/traffic-summary --json today`
 - `./modules/traffic-observatory/bin/traffic-summary --json recent --hours 2`
 - `./modules/traffic-observatory/bin/traffic-rollup-export --json today`
@@ -54,6 +58,10 @@ rollback script.
 - `./modules/traffic-observatory/bin/traffic-report yesterday`
 - `./modules/traffic-observatory/bin/traffic-report week`
 - `./modules/traffic-observatory/bin/traffic-daily-report`
+
+`traffic-facts --json` is the machine contract (`schema_version: 3`) consumed by
+Console. It reads `traffic-evidence --json` by default; `traffic-report` remains
+operator/debug output and a rollback source only.
 
 `modules/traffic-observatory/bin/live-check` remains a compatibility wrapper,
 but the canonical live A/B/C health owner is

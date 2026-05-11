@@ -531,6 +531,10 @@ Traffic and observability:
 # analytics or routing mistake checks.
 ./modules/traffic-observatory/bin/traffic-summary --json today
 
+# Machine contract for Console accounting: traffic-evidence -> traffic-facts v3.
+./modules/traffic-observatory/bin/traffic-evidence --json today
+./modules/traffic-observatory/bin/traffic-facts --json today
+
 # Main usage report: exits, devices, Home Reality ingress clients,
 # popular destinations and routing mistake checks.
 ./modules/traffic-observatory/bin/traffic-report today
@@ -543,9 +547,11 @@ Traffic and observability:
 ```
 
 The lightweight summary is the preferred source for frequent Console Dashboard
-traffic cards. The full traffic report answers how much went through the VPS,
-how much stayed on the home WAN, which devices and Home Reality ingress clients
-were active, and whether likely routing mistakes appeared. See
+traffic cards. Console machine accounting reads `traffic-facts` v3 from raw
+`traffic-evidence`; `traffic-report` remains the operator/debug report for how
+much went through the VPS, how much stayed on the home WAN, which devices and
+Home Reality ingress clients were active, and whether likely routing mistakes
+appeared. See
 [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
 
 Health monitor:

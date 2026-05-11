@@ -5,7 +5,7 @@ import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
 import { normalizeRouterRollups } from "./router-rollups.mjs";
 
-const MIGRATION_VERSION = 12;
+const MIGRATION_VERSION = 13;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -1172,6 +1172,52 @@ export function ensureConsoleSchema(db) {
         updated_at_utc text not null,
         primary key (model, window_key)
       );
+      create table if not exists destination_enrichment (
+        destination_key text primary key,
+        kind text not null,
+        value text not null,
+        normalized_value text not null,
+        category text not null default 'unknown',
+        provider text not null default '',
+        action_hint text not null default 'monitor',
+        confidence text not null default 'unknown',
+        reason_code text not null default '',
+        sources_json text not null default '[]',
+        evidence_json text not null default '{}',
+        first_seen text not null,
+        last_seen text not null,
+        expires_at text not null default ''
+      );
+      create table if not exists filter_rules (
+        rule_id text primary key,
+        scope text not null,
+        match_kind text not null,
+        match_value text not null,
+        action text not null,
+        priority integer not null default 100,
+        enabled integer not null default 0,
+        dry_run integer not null default 1,
+        reason text not null default '',
+        created_by text not null default 'operator',
+        created_at_utc text not null,
+        updated_at_utc text not null,
+        evidence_json text not null default '{}'
+      );
+      create table if not exists filter_decisions (
+        decision_id text primary key,
+        snapshot_id text not null,
+        observed_at_utc text not null,
+        rule_id text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        destination text not null default '',
+        destination_ip text not null default '',
+        matched_field text not null default '',
+        matched_value text not null default '',
+        would_have_action text not null,
+        applied integer not null default 0,
+        evidence_json text not null default '{}'
+      );
     `);
   addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
     addColumnIfMissing(db, "normalized_devices", "mac", "text not null default ''");
@@ -1202,6 +1248,15 @@ export function ensureConsoleSchema(db) {
       via_vps_bytes: "integer not null default 0",
       direct_bytes: "integer not null default 0",
       unknown_bytes: "integer not null default 0",
+      bytes_up: "integer not null default 0",
+      bytes_down: "integer not null default 0",
+      route_source: "text not null default ''",
+      route_basis: "text not null default ''",
+      matched_ipset: "text not null default ''",
+      route_verification: "text not null default ''",
+      dns_link_id: "text not null default ''",
+      dns_link_confidence: "text not null default ''",
+      accounting_status: "text not null default 'ok'",
     },
     normalized_dns: {
       client_ip: "text not null default ''",
@@ -1229,6 +1284,15 @@ export function ensureConsoleSchema(db) {
       via_vps_bytes: "integer not null default 0",
       direct_bytes: "integer not null default 0",
       unknown_bytes: "integer not null default 0",
+      bytes_up: "integer not null default 0",
+      bytes_down: "integer not null default 0",
+      route_source: "text not null default ''",
+      route_basis: "text not null default ''",
+      matched_ipset: "text not null default ''",
+      route_verification: "text not null default ''",
+      dns_link_id: "text not null default ''",
+      dns_link_confidence: "text not null default ''",
+      accounting_status: "text not null default 'ok'",
     },
     events: {
       event_id: "text not null default ''",
@@ -1279,6 +1343,33 @@ export function ensureConsoleSchema(db) {
   })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
   }
+  for (const [table, columns] of Object.entries({
+    traffic_facts: {
+      protocol: "text not null default ''",
+      bytes_up: "integer not null default 0",
+      bytes_down: "integer not null default 0",
+      route_source: "text not null default ''",
+      route_basis: "text not null default ''",
+      matched_ipset: "text not null default ''",
+      egress_iface: "text not null default ''",
+      fwmark: "text not null default ''",
+      route_verification: "text not null default ''",
+      dns_link_id: "text not null default ''",
+      dns_link_confidence: "text not null default ''",
+      accounting_status: "text not null default 'ok'",
+    },
+    traffic_dns_links: {
+      id: "text not null default ''",
+      destination_ip: "text not null default ''",
+      destination_port: "text not null default ''",
+      protocol: "text not null default ''",
+      dns_answer_ip: "text not null default ''",
+      dns_event_ts_utc: "text not null default ''",
+      flow_event_ts_utc: "text not null default ''",
+    },
+  })) {
+    for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
+  }
   db.exec(`
     create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
     create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
@@ -1312,9 +1403,16 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_dlw_msk on dns_log_weekly(week_msk_key desc);
     create index if not exists idx_dlm_msk on dns_log_monthly(month_msk_key desc);
     create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
+    create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
+    create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
+    create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
+    create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
+    create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
+    create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
+    create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
   `);
 
-  for (const version of [6, 7, 8, 9, 10, MIGRATION_VERSION]) {
+  for (const version of [6, 7, 8, 9, 10, 12, MIGRATION_VERSION]) {
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       version,
       new Date().toISOString()
@@ -2588,7 +2686,12 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   const rawDays = Math.max(1, number(process.env.GHOSTROUTE_RAW_RETENTION_DAYS || 7));
   const fineAggregateDays = Math.max(1, number(process.env.GHOSTROUTE_FINE_AGGREGATE_RETENTION_DAYS || 8));
   const aggregateDays = Math.max(31, number(process.env.GHOSTROUTE_AGGREGATE_RETENTION_DAYS || 35));
+  const dailyAggregateDays = Math.max(35, number(process.env.GHOSTROUTE_DAILY_AGGREGATE_RETENTION_DAYS || 400));
+  const dnsFineDays = Math.max(1, number(process.env.GHOSTROUTE_DNS_FINE_RETENTION_DAYS || 1));
+  const dnsDailyDays = Math.max(35, number(process.env.GHOSTROUTE_DNS_DAILY_RETENTION_DAYS || 100));
   const serviceHours = Math.max(1, number(process.env.GHOSTROUTE_SERVICE_RAW_RETENTION_HOURS || 24));
+  const unclassifiedHours = Math.max(1, number(process.env.GHOSTROUTE_UNCLASSIFIED_RAW_RETENTION_HOURS || 24));
+  const filterDays = Math.max(1, number(process.env.GHOSTROUTE_FILTER_DECISION_RETENTION_DAYS || 30));
   const errorDays = Math.max(1, number(process.env.GHOSTROUTE_COLLECTOR_ERROR_RETENTION_DAYS || 14));
   const cutoff = (days) => new Date(Date.parse(now) - days * 86400000).toISOString();
   const cutoffHours = (hours) => new Date(Date.parse(now) - hours * 3600000).toISOString();
@@ -2600,10 +2703,16 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
     events: 0,
     route_decisions: 0,
     collector_errors: 0,
+    traffic_facts: 0,
+    traffic_dns_links: 0,
+    traffic_attribution_gaps: 0,
     client_traffic_5min: 0,
     client_traffic_hourly: 0,
     client_traffic_daily: 0,
     dns_log_5min: 0,
+    dns_log_hourly: 0,
+    dns_log_daily: 0,
+    filter_decisions: 0,
     payloads_stripped: 0,
   };
   result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
@@ -2612,10 +2721,18 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   result.events += db.prepare("delete from events where occurred_at < ?").run(rawCutoff).changes;
   result.route_decisions += db.prepare("delete from route_decisions where occurred_at < ?").run(rawCutoff).changes;
   result.collector_errors += db.prepare("delete from collector_errors where collected_at < ?").run(cutoff(errorDays)).changes;
+  result.traffic_facts += db.prepare("delete from traffic_facts where traffic_class in ('client', 'personal_cloud') and coalesce(nullif(event_ts_utc, ''), collected_at) < ?").run(rawCutoff).changes;
+  result.traffic_facts += db.prepare("delete from traffic_facts where traffic_class = 'service_background' and coalesce(nullif(event_ts_utc, ''), collected_at) < ?").run(serviceCutoff).changes;
+  result.traffic_facts += db.prepare("delete from traffic_facts where traffic_class not in ('client', 'personal_cloud', 'service_background') and coalesce(nullif(event_ts_utc, ''), collected_at) < ?").run(cutoffHours(unclassifiedHours)).changes;
+  result.traffic_dns_links += db.prepare("delete from traffic_dns_links where collected_at < ?").run(rawCutoff).changes;
+  result.traffic_attribution_gaps += db.prepare("delete from traffic_attribution_gaps where collected_at < ?").run(rawCutoff).changes;
   result.client_traffic_5min += db.prepare("delete from client_traffic_5min where bucket_start_utc < ?").run(cutoff(fineAggregateDays)).changes;
-  result.dns_log_5min += db.prepare("delete from dns_log_5min where bucket_start_utc < ?").run(cutoff(aggregateDays)).changes;
+  result.dns_log_5min += db.prepare("delete from dns_log_5min where bucket_start_utc < ?").run(cutoff(dnsFineDays)).changes;
   result.client_traffic_hourly += db.prepare("delete from client_traffic_hourly where hour_start_utc < ?").run(cutoff(aggregateDays)).changes;
-  result.client_traffic_daily += db.prepare("delete from client_traffic_daily where day_start_utc < ?").run(cutoff(aggregateDays)).changes;
+  result.client_traffic_daily += db.prepare("delete from client_traffic_daily where day_start_utc < ?").run(cutoff(dailyAggregateDays)).changes;
+  result.dns_log_hourly += db.prepare("delete from dns_log_hourly where hour_start_utc < ?").run(cutoff(aggregateDays)).changes;
+  result.dns_log_daily += db.prepare("delete from dns_log_daily where day_start_utc < ?").run(cutoff(dnsDailyDays)).changes;
+  result.filter_decisions += db.prepare("delete from filter_decisions where observed_at_utc < ?").run(cutoff(filterDays)).changes;
   result.payloads_stripped += db.prepare(`
     update snapshots
        set payload_json = ''
@@ -3393,16 +3510,16 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
   }
 
   const factInsert = db.prepare(`
-    insert or replace into traffic_facts(fact_id, snapshot_id, collected_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client_key, client_label, client_ip, device_key, channel, route, traffic_class, destination, destination_kind, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, policy, matched_rule, outbound, bytes, via_vps_bytes, direct_bytes, unknown_bytes, connections, identity_confidence, byte_confidence, destination_confidence, allocation_basis, evidence_level, confidence, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or replace into traffic_facts(fact_id, snapshot_id, collected_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client_key, client_label, client_ip, device_key, channel, route, traffic_class, destination, destination_kind, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, policy, matched_rule, outbound, bytes, via_vps_bytes, direct_bytes, unknown_bytes, connections, identity_confidence, byte_confidence, destination_confidence, allocation_basis, evidence_level, confidence, evidence_json, protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, egress_iface, fwmark, route_verification, dns_link_id, dns_link_confidence, accounting_status)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes_up, bytes_down, route_source, route_basis, matched_ipset, route_verification, dns_link_id, dns_link_confidence, accounting_status, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const dnsLinkInsert = db.prepare(`
-    insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json, id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, flow_event_ts_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const row of payload.traffic_facts || []) {
     const timing = timestampContract(row, collectedAt);
@@ -3452,7 +3569,19 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.allocation_basis || ""),
       text(row.evidence_level || ""),
       rowConfidence,
-      json(row)
+      json(row),
+      text(row.protocol || ""),
+      number(row.bytes_up || row.out_bytes),
+      number(row.bytes_down || row.in_bytes),
+      text(row.route_source || ""),
+      text(row.route_basis || ""),
+      text(row.matched_ipset || ""),
+      text(row.egress_iface || ""),
+      text(row.fwmark || ""),
+      text(row.route_verification || ""),
+      text(row.dns_link_id || ""),
+      text(row.dns_link_confidence || ""),
+      text(row.accounting_status || "ok")
     );
     flowInsert.run(
       snapshotId,
@@ -3489,6 +3618,15 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       split.viaVpsBytes,
       split.directBytes,
       split.unknownBytes,
+      number(row.bytes_up || row.out_bytes),
+      number(row.bytes_down || row.in_bytes),
+      text(row.route_source || ""),
+      text(row.route_basis || ""),
+      text(row.matched_ipset || ""),
+      text(row.route_verification || ""),
+      text(row.dns_link_id || ""),
+      text(row.dns_link_confidence || ""),
+      text(row.accounting_status || "ok"),
       json(row)
     );
     const domain = text(row.dns_qname || row.domain || "");
@@ -3502,7 +3640,14 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
         destination,
         text(row.allocation_basis || "dns_link"),
         text(row.destination_confidence || row.confidence || "unknown"),
-        json(row)
+        json(row),
+        text(row.dns_link_id || row.link_id || `${snapshotId}:${key}:${domain}:${destinationIp(row)}`),
+        destinationIp(row),
+        text(row.destination_port || row.port || ""),
+        text(row.protocol || ""),
+        text(row.dns_answer_ip || row.answer_ip || ""),
+        text(row.dns_event_ts_utc || ""),
+        text(row.flow_event_ts_utc || row.event_ts_utc || "")
       );
     }
     insertEvent(db, snapshotId, "traffic.fact", eventTs, {
@@ -3554,6 +3699,63 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       json(row)
     );
   }
+  evaluateFilterDecisionsForSnapshot(db, snapshotId, collectedAt);
+}
+
+function filterRuleMatchesFact(rule, fact) {
+  const kind = text(rule.match_kind).toLowerCase();
+  const value = text(rule.match_value).toLowerCase();
+  if (!value) return null;
+  const domain = text(fact.dns_qname || fact.destination).toLowerCase();
+  const destinationIp = text(fact.destination_ip).toLowerCase();
+  const clientKey = text(fact.client_key).toLowerCase();
+  const route = text(fact.route).toLowerCase();
+  const trafficClass = text(fact.traffic_class).toLowerCase();
+  if (kind === "domain" && domain === value) return { field: "domain", value: domain };
+  if (kind === "domain_suffix" && (domain === value || domain.endsWith(`.${value}`))) return { field: "domain", value: domain };
+  if (kind === "ip" && destinationIp === value) return { field: "destination_ip", value: destinationIp };
+  if (kind === "client_key" && clientKey === value) return { field: "client_key", value: clientKey };
+  if (kind === "route" && route === value) return { field: "route", value: route };
+  if (kind === "category" && trafficClass === value) return { field: "traffic_class", value: trafficClass };
+  return null;
+}
+
+function evaluateFilterDecisionsForSnapshot(db, snapshotId, observedAtUtc) {
+  const rules = db.prepare("select * from filter_rules where enabled = 1 and dry_run = 1 order by priority asc, rule_id asc").all();
+  if (rules.length === 0) return { decisions: 0 };
+  const facts = db.prepare("select * from traffic_facts where snapshot_id = ?").all(snapshotId);
+  const insert = db.prepare(`
+    insert or replace into filter_decisions(decision_id, snapshot_id, observed_at_utc, rule_id, client_key, client_ip,
+      destination, destination_ip, matched_field, matched_value, would_have_action, applied, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+  `);
+  let decisions = 0;
+  for (const fact of facts) {
+    for (const rule of rules) {
+      const match = filterRuleMatchesFact(rule, fact);
+      if (!match) continue;
+      const decisionId = crypto.createHash("sha256")
+        .update([snapshotId, fact.fact_id, rule.rule_id, match.field, match.value].join("|"))
+        .digest("hex")
+        .slice(0, 32);
+      insert.run(
+        decisionId,
+        String(snapshotId),
+        text(fact.observed_at_utc || fact.event_ts_utc || observedAtUtc),
+        text(rule.rule_id),
+        text(fact.client_key),
+        text(fact.client_ip),
+        text(fact.destination),
+        text(fact.destination_ip),
+        match.field,
+        match.value,
+        text(rule.action || "monitor"),
+        json({ dry_run: true, fact_id: fact.fact_id, rule })
+      );
+      decisions += 1;
+    }
+  }
+  return { decisions };
 }
 
 function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {

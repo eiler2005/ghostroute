@@ -143,17 +143,20 @@ For the full end-to-end workflow and observer table, see
 | `./modules/ghostroute-health-monitor/bin/live-check` | canonical short live A/B/C health check for humans and LLMs; text/JSON, logs to `reports/live-check/`, optional `--active-probe` |
 | `./modules/traffic-observatory/bin/traffic-report check` | compatibility lightweight A/B/C channel check; prefer Health Monitor `live-check` for health decisions |
 | `./modules/traffic-observatory/bin/traffic-summary --json today` | lightweight current-day counter summary for frequent Console Dashboard collection |
-| `./modules/traffic-observatory/bin/traffic-facts --json today` | machine-readable Console contract: clients, traffic facts, attribution gaps, coverage and evidence |
-| `./modules/traffic-observatory/bin/traffic-report [period]` | canonical scheme usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
+| `./modules/traffic-observatory/bin/traffic-evidence --json today` | raw machine evidence: LAN flow samples, DNS query/answer evidence, route evidence and warnings |
+| `./modules/traffic-observatory/bin/traffic-facts --json today` | machine-readable Console contract v3: clients, traffic facts, DNS links, attribution gaps, coverage and evidence |
+| `./modules/traffic-observatory/bin/traffic-report [period]` | operator/debug usage report: exits, paths, devices, Home Reality ingress clients, destinations, routing checks |
 | `./modules/traffic-observatory/bin/traffic-report channel-a|channel-b|channel-c` | filtered variant of the lightweight live channel check |
 | `./modules/traffic-observatory/bin/traffic-daily-report` | period backend for saved day/week/month snapshot periods |
 | `./modules/dns-catalog-intelligence/bin/catalog-review-report` | advisory review of domains/static networks |
 | `./modules/dns-catalog-intelligence/bin/dns-forensics-report` | hourly DNS-interest snapshots |
 
-Use `traffic-report` as the main entrypoint:
+Use `traffic-summary`/`traffic-facts` for machines and `traffic-report` for
+operator-readable debugging:
 
 ```bash
 ./modules/traffic-observatory/bin/traffic-summary --json today
+./modules/traffic-observatory/bin/traffic-evidence --json today
 ./modules/traffic-observatory/bin/traffic-facts --json today
 ./modules/traffic-observatory/bin/traffic-report today
 ./modules/traffic-observatory/bin/traffic-report yesterday
@@ -162,15 +165,19 @@ Use `traffic-report` as the main entrypoint:
 ./modules/traffic-observatory/bin/traffic-report 2026-04-25
 ```
 
-### Traffic Facts v2
+### Traffic Facts v3
 
 Console should consume `traffic-facts --json`, not scrape the human
-`traffic-report` sections. The v2 contract separates:
+`traffic-report` sections. The v3 contract reads `traffic-evidence --json` by
+default and separates:
 
 - `clients[]`: observed client/device identity and exact route byte totals where
   counters exist.
 - `traffic_facts[]`: normal rows shaped as
-  `client/device -> ip -> destination -> route -> bytes -> evidence`.
+  `client/device -> ip/domain -> route -> bytes -> DNS/route evidence`.
+- `dns_links[]`: best-effort `domain -> answer_ip -> flow.destination_ip`
+  correlation. IP-only rows remain IP-only; the pipeline must not invent a
+  domain from an address.
 - `attribution_gaps[]`: accounting debt such as unattributed LAN buckets. These
   rows are not normal client traffic facts and must not appear in Top clients.
 - `coverage`: observed, attributed and unattributed byte coverage by scope.
@@ -178,15 +185,12 @@ Console should consume `traffic-facts --json`, not scrape the human
   Console freshness diagnostics.
 
 Every fact carries evidence fields: identity confidence, byte confidence,
-destination confidence, allocation basis, evidence level and source list. DNS
-family allocation is allowed for ranking and investigation, but it remains
-marked as allocated/estimated. LAN/Wi-Fi destination bytes now prefer the
-asynchronous router `lan-flow-facts.tsv` layer when available: it records bounded
-conntrack deltas as `client_ip -> destination_ip -> route -> bytes`, with
-`allocation_basis=conntrack_snapshot_delta` and
-`byte_confidence=observed_delta`. Domain naming/correlation remains a VPS/Console
-read-model responsibility; the router only writes the bottom fact layer and
-status/gap evidence.
+destination confidence, allocation basis, evidence level, source list, route
+source/basis, matched ipset, route verification, DNS link confidence and
+accounting status. LAN/Wi-Fi destination bytes now prefer the asynchronous
+router `lan-flow-facts.tsv` layer when available. Domain correlation comes from
+DNS evidence in `traffic-facts`; the router only writes read-only bottom-layer
+evidence and status/gap files.
 
 `traffic-report --json` remains a compatibility output for older consumers, and
 human `traffic-report today/week/month/check` keeps its operator-facing text.

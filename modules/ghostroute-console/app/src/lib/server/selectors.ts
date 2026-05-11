@@ -467,8 +467,15 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
   const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
   const rawClient = row.client;
   const rawProfile = row.profile || row.raw?.profile || "";
+  const raw = row.raw || {};
   const resolved = resolveClient({ ...row, profile: rawProfile });
   const client = resolved.client_label || displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
+  const bytes = Number(row.bytes || row.total_bytes || raw.bytes || 0);
+  const bytesUp = Number(row.bytes_up || raw.bytes_up || raw.out_bytes || 0);
+  const bytesDown = Number(row.bytes_down || raw.bytes_down || raw.in_bytes || 0);
+  const viaVps = Number(row.via_vps_bytes || raw.via_vps_bytes || 0);
+  const direct = Number(row.direct_bytes || raw.direct_bytes || 0);
+  const unknown = Number(row.unknown_bytes || raw.unknown_bytes || 0);
   return {
     ...row,
     raw_client: rawClient,
@@ -492,6 +499,30 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     destinationLabel: displayDestination(row),
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
+    route_meta: {
+      source: row.route_source || raw.route_source || "",
+      basis: row.route_basis || raw.route_basis || "",
+      matched_ipset: row.matched_ipset || raw.matched_ipset || "",
+      verification: row.route_verification || raw.route_verification || "",
+      egress_iface: row.egress_iface || raw.egress_iface || "",
+      fwmark: row.fwmark || raw.fwmark || "",
+    },
+    attribution: {
+      bytes,
+      bytes_up: bytesUp,
+      bytes_down: bytesDown,
+      via_vps: viaVps,
+      direct,
+      unknown,
+      accounting_status: row.accounting_status || raw.accounting_status || "ok",
+      confidence: row.byte_confidence || raw.byte_confidence || row.confidence || "unknown",
+    },
+    dns_link: {
+      id: row.dns_link_id || raw.dns_link_id || "",
+      qname: row.dns_qname || raw.dns_qname || "",
+      answer_ip: row.dns_answer_ip || raw.dns_answer_ip || "",
+      confidence: row.dns_link_confidence || raw.dns_link_confidence || "",
+    },
   };
 }
 

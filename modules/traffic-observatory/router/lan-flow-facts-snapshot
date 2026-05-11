@@ -130,12 +130,14 @@ awk -v max_facts="$MAX_FACTS" '
     proto = $1
     if ($1 ~ /^ipv[46]$/ && NF >= 3) proto = $3
     src_count = dst_count = sport_count = dport_count = bytes_count = 0
+    conn_state = ""
     for (i = 1; i <= NF; i++) {
       if ($i ~ /^src=/) src[++src_count] = clean($i)
       else if ($i ~ /^dst=/) dst[++dst_count] = clean($i)
       else if ($i ~ /^sport=/) sport[++sport_count] = clean($i)
       else if ($i ~ /^dport=/) dport[++dport_count] = clean($i)
       else if ($i ~ /^bytes=/) bytes[++bytes_count] = clean($i) + 0
+      else if ($i ~ /^(ESTABLISHED|SYN_SENT|SYN_RECV|FIN_WAIT|TIME_WAIT|CLOSE|CLOSE_WAIT|LAST_ACK|LISTEN|CLOSING|UNREPLIED|ASSURED)$/) conn_state = $i
     }
     if (src_count < 1 || dst_count < 1 || bytes_count < 1) next
 
@@ -161,11 +163,12 @@ awk -v max_facts="$MAX_FACTS" '
     out[key] += out_bytes
     inb[key] += in_bytes
     conn[key] += 1
+    if (conn_state != "") state[key] = conn_state
   }
   END {
     for (key in out) {
       split(key, parts, "|")
-      printf "%s|%s|%s|%s|%d|%d|%d\n", parts[1], parts[2], parts[3], parts[4], out[key], inb[key], conn[key]
+      printf "%s|%s|%s|%s|%d|%d|%d|%s\n", parts[1], parts[2], parts[3], parts[4], out[key], inb[key], conn[key], state[key]
       emitted++
       if (emitted >= max_facts) break
     }
@@ -190,30 +193,41 @@ awk -F'|' '
     out_delta = ($5 + 0) >= prev_out[key] ? ($5 + 0) - prev_out[key] : ($5 + 0)
     in_delta = ($6 + 0) >= prev_in[key] ? ($6 + 0) - prev_in[key] : ($6 + 0)
     total = out_delta + in_delta
-    if (total > 0) print $1, $2, $3, $4, out_delta, in_delta, total, $7
+    if (total > 0) print $1, $2, $3, $4, out_delta, in_delta, total, $7, $8
   }
 ' "$PREV_FILE" "$TMP_CURRENT" > "$TMP_DELTA"
 
-route_for_ip() {
+route_evidence_for_ip() {
   ip="$1"
   if [ -n "$IPSET_BIN" ]; then
-    if "$IPSET_BIN" test STEALTH_DOMAINS "$ip" >/dev/null 2>&1 || "$IPSET_BIN" test VPN_STATIC_NETS "$ip" >/dev/null 2>&1; then
-      printf 'VPS'
+    if "$IPSET_BIN" test STEALTH_DOMAINS "$ip" >/dev/null 2>&1; then
+      printf 'VPS|ipset|managed_domain|STEALTH_DOMAINS'
       return 0
     fi
-    printf 'Direct'
+    if "$IPSET_BIN" test VPN_STATIC_NETS "$ip" >/dev/null 2>&1; then
+      printf 'VPS|ipset|static_network|VPN_STATIC_NETS'
+      return 0
+    fi
+    printf 'Direct|ipset|default_direct|'
     return 0
   fi
-  printf 'Unknown'
+  printf 'Unknown|none|no_ipset|'
 }
 
 facts_written=0
-while IFS='|' read -r client remote port proto out_delta in_delta total conns; do
+while IFS='|' read -r client remote port proto out_delta in_delta total conns conn_state; do
   [ -n "$client" ] || continue
-  route="$(route_for_ip "$remote")"
-  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|conntrack_snapshot_delta|observed_delta|ip|ok\n' \
+  route_evidence="$(route_evidence_for_ip "$remote")"
+  route="${route_evidence%%|*}"
+  rest="${route_evidence#*|}"
+  route_source="${rest%%|*}"
+  rest="${rest#*|}"
+  route_basis="${rest%%|*}"
+  matched_ipset="${rest#*|}"
+  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|conntrack_snapshot_delta|observed_delta|ip|ok|%s|%s|%s|%s|%s|%s\n' \
     "$timestamp" "$client" "$remote" "$port" "$proto" "$route" \
-    "$out_delta" "$in_delta" "$total" "${conns:-1}" >> "$FACTS_FILE"
+    "$out_delta" "$in_delta" "$total" "${conns:-1}" \
+    "$route_source" "$route_basis" "$matched_ipset" "" "" "${conn_state:-}" >> "$FACTS_FILE"
   facts_written=$((facts_written + 1))
   [ "$facts_written" -ge "$MAX_FACTS" ] && break
 done < "$TMP_DELTA"

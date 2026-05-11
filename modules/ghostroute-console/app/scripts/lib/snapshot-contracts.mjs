@@ -23,13 +23,20 @@ const schemas = {
     message: "traffic snapshot must include totals, devices, app_flows or destinations",
   }),
   traffic_facts: common.extend({
-    schema_version: z.literal(2),
+    schema_version: z.union([z.literal(2), z.literal(3)]),
     window: z.record(z.string(), z.unknown()).optional(),
     collector_metrics: z.record(z.string(), z.unknown()),
     clients: z.array(z.unknown()),
     traffic_facts: z.array(z.record(z.string(), z.unknown())),
     attribution_gaps: z.array(z.record(z.string(), z.unknown())),
     coverage: z.record(z.string(), z.unknown()),
+  }),
+  traffic_evidence: common.extend({
+    schema_version: z.literal(1),
+    flow_samples: z.array(z.record(z.string(), z.unknown())),
+    dns_queries: z.array(z.record(z.string(), z.unknown())).optional(),
+    route_evidence: z.array(z.record(z.string(), z.unknown())).optional(),
+    warnings: z.array(z.unknown()).optional(),
   }),
   router_rollups: common.extend({
     schema_version: z.literal(1),
