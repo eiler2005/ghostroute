@@ -140,6 +140,16 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 - Public docs should describe stable behavior, interfaces, and recovery paths.
   Incident snapshots and one-off execution plans should remain local or be
   summarized into stable docs.
+- Traffic accounting machine contract is `traffic-facts --json`
+  (`schema_version: 3`) reading raw `traffic-evidence --json`. `traffic-report`
+  is operator-facing/debug only and **must not** be added as a new machine
+  consumer. Console reads `traffic-facts` and the Console SQLite pyramid,
+  never `traffic-report`. See
+  [`docs/traffic-facts-v3-and-pyramid-plan.md`](docs/traffic-facts-v3-and-pyramid-plan.md).
+- Router-side evidence collection (`lan-flow-facts-snapshot`,
+  `dns-query-snapshot`, `traffic-rollup-snapshot`, etc.) must remain read-only:
+  it reads conntrack, ipset, dnsmasq logs and never changes routing decisions,
+  ipset contents, sing-box config, dnsmasq config or iptables rules.
 
 ## Where Things Live
 

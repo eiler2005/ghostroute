@@ -107,13 +107,37 @@ intended source of truth. For deeper context, follow the cross-references.
 - **Read model** — denormalized SQLite table populated by the Console
   collector for low-latency UI rendering (`flow_sessions`,
   `dns_query_log`, `device_inventory`, `console_page_summaries`).
+- **traffic-evidence** — `modules/traffic-observatory/bin/traffic-evidence
+  --json`. Raw machine evidence layer: per-flow `flow_samples`, `dns_queries`,
+  `route_evidence`, rollups. Single canonical byte source for downstream
+  consumers. See
+  [`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md).
+- **traffic-facts v3** — `modules/traffic-observatory/bin/traffic-facts
+  --json`, `schema_version: 3`. Stable machine contract consumed by the
+  Console. One `traffic_fact` per `flow_sample`. Invariant:
+  `bytes == via_vps_bytes + direct_bytes + unknown_bytes` by construction.
+- **traffic-report** — operator-facing human report. **Deprecated as a
+  machine source** in the v3 refactor; Console does not consume it.
+- **flow_sample** — single per-flow byte sample produced by router
+  `lan-flow-facts-snapshot` and surfaced through `traffic-evidence`.
+- **dns_link** — correlation between a DNS query/answer and a flow
+  destination, with `link_type` (`exact_client_ip` / `recent_answer` /
+  `shared_answer` / `no_dns_match`) and `confidence`
+  (`high` / `medium` / `low` / `none`).
+- **Route verification** — how a flow's route label is grounded:
+  `verified_vps` / `verified_direct` (outbound/egress evidence confirms),
+  `intent_only` (only ipset/policy says route), `mismatch` (ipset conflicts
+  with outbound evidence), `unknown`.
+- **Pyramid** — Console SQLite roll-up cascade: `client_traffic_5min` →
+  `client_traffic_hourly` → `client_traffic_daily`, with symmetric
+  `dns_log_5min` → `dns_log_hourly` → `dns_log_daily`. Today / Week / Month
+  filters read prepared aggregates rather than raw rows.
 - **Confidence label** — per-flow attribution quality:
   `exact` / `estimated` / `dns-interest` / `mixed` / `unknown`. Copied from
   the upstream traffic-observatory output.
 - **Traffic class** — per-flow categorization for prioritization:
   `client` (real user traffic), `service_background` (Apple, DNS,
-  CDN heartbeats), `unclassified`. Currently applied at render-time in the
-  Console.
+  CDN heartbeats), `unclassified`. Stamped at ingest after the v3 refactor.
 - **Attribution coverage** — ratio of `attributed_bytes / observed_bytes`
   reported by `traffic-observatory`; large gaps usually mean
   service/background traffic mixed into the observed total.

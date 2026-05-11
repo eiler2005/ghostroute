@@ -153,6 +153,30 @@ normalized evidence in SQLite, and renders route/traffic/client/live views over
 that factual data. Console must not become a second source of truth for routing
 state.
 
+The traffic accounting pipeline is being refactored to the following target
+shape (see
+[`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md)
+for the full plan; until that refactor lands, the current pipeline still
+includes `traffic-report` as a transitional source):
+
+```text
+router snapshots / logs
+        ↓
+traffic-evidence --json         (raw machine evidence: flow_samples + DNS)
+        ↓
+traffic-facts --json            (stable contract v3; one fact per flow_sample;
+                                 bytes == via_vps + direct + unknown invariant)
+        ↓
+Console SQLite + read models    (pyramid: 5min → hourly → daily; DNS symmetric)
+        ↓
+UI / reports / intelligence
+```
+
+`traffic-report` becomes a debug-only operator wrapper after the refactor; the
+Console does not consume it. Channel A/B/C routing and managed-domain logic
+are unchanged by the refactor; it only extends router-side artifacts with
+additional read-only evidence fields.
+
 The VPS deployment keeps the Console app on `127.0.0.1:3000`. Public operator
 access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a
 small local buffering proxy. This keeps larger Console pages away from the
