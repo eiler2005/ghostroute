@@ -2,9 +2,10 @@ import crypto from "node:crypto";
 import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
 import { loadDeviceAttributions, resolveClient } from "../../src/lib/device-attribution.mjs";
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
-import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey } from "../../src/lib/time/window.mjs";
+import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
+import { normalizeRouterRollups } from "./router-rollups.mjs";
 
-const MIGRATION_VERSION = 11;
+const MIGRATION_VERSION = 12;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -56,79 +57,26 @@ function addColumnIfMissing(db, table, column, definition) {
   }
 }
 
-function tableHasColumn(db, table, column) {
-  return db.prepare(`pragma table_info(${table})`).all().some((row) => row.name === column);
-}
-
-function migrateAggregateDestinationKeys(db) {
-  if (!tableHasColumn(db, "client_traffic_hourly", "destination_key")) {
-    db.exec(`
-      drop table if exists client_traffic_hourly_legacy_v9;
-      alter table client_traffic_hourly rename to client_traffic_hourly_legacy_v9;
-      create table client_traffic_hourly (
-        hour_msk_key text not null,
-        hour_start_utc text not null,
-        client_key text not null default '',
-        client_label text not null default '',
-        channel text not null default 'Unknown',
-        route text not null default 'Unknown',
-        confidence text not null default 'unknown',
-        traffic_class text not null default 'client',
-        destination_key text not null default '',
-        bytes integer not null default 0,
-        via_vps_bytes integer not null default 0,
-        direct_bytes integer not null default 0,
-        unknown_bytes integer not null default 0,
-        observed_bytes integer not null default 0,
-        attributed_bytes integer not null default 0,
-        flows integer not null default 0,
-        clients integer not null default 0,
-        updated_at_utc text not null,
-        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
-      );
-      insert or ignore into client_traffic_hourly(hour_msk_key, hour_start_utc, client_key, client_label, channel, route,
-        confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
-        attributed_bytes, flows, clients, updated_at_utc)
-      select hour_msk_key, hour_start_utc, client_key, client_label, channel, route, confidence, traffic_class, '',
-        bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes, attributed_bytes, flows, clients, updated_at_utc
-        from client_traffic_hourly_legacy_v9;
-      drop table client_traffic_hourly_legacy_v9;
-    `);
-  }
-  if (!tableHasColumn(db, "client_traffic_daily", "destination_key")) {
-    db.exec(`
-      drop table if exists client_traffic_daily_legacy_v9;
-      alter table client_traffic_daily rename to client_traffic_daily_legacy_v9;
-      create table client_traffic_daily (
-        day_msk_key text not null,
-        day_start_utc text not null,
-        client_key text not null default '',
-        client_label text not null default '',
-        channel text not null default 'Unknown',
-        route text not null default 'Unknown',
-        confidence text not null default 'unknown',
-        traffic_class text not null default 'client',
-        destination_key text not null default '',
-        bytes integer not null default 0,
-        via_vps_bytes integer not null default 0,
-        direct_bytes integer not null default 0,
-        unknown_bytes integer not null default 0,
-        observed_bytes integer not null default 0,
-        attributed_bytes integer not null default 0,
-        flows integer not null default 0,
-        clients integer not null default 0,
-        updated_at_utc text not null,
-        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
-      );
-      insert or ignore into client_traffic_daily(day_msk_key, day_start_utc, client_key, client_label, channel, route,
-        confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
-        attributed_bytes, flows, clients, updated_at_utc)
-      select day_msk_key, day_start_utc, client_key, client_label, channel, route, confidence, traffic_class, '',
-        bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes, attributed_bytes, flows, clients, updated_at_utc
-        from client_traffic_daily_legacy_v9;
-      drop table client_traffic_daily_legacy_v9;
-    `);
-  }
+function dropLegacyAggregateTablesForV12(db) {
+  const version = db.prepare("select coalesce(max(version), 0) as version from schema_migrations").get()?.version || 0;
+  if (version >= 12) return;
+  db.exec(`
+    drop table if exists client_traffic_5min;
+    drop table if exists client_traffic_hourly;
+    drop table if exists client_traffic_daily;
+    drop table if exists client_traffic_weekly;
+    drop table if exists client_traffic_monthly;
+    drop table if exists client_destination_traffic_5min;
+    drop table if exists client_destination_traffic_hourly;
+    drop table if exists client_destination_traffic_daily;
+    drop table if exists client_destination_traffic_weekly;
+    drop table if exists client_destination_traffic_monthly;
+    drop table if exists dns_log_5min;
+    drop table if exists dns_log_hourly;
+    drop table if exists dns_log_daily;
+    drop table if exists dns_log_weekly;
+    drop table if exists dns_log_monthly;
+  `);
 }
 
 function inferChannel(row) {
@@ -375,6 +323,13 @@ export function ensureConsoleSchema(db) {
       version integer primary key,
       applied_at text not null
     );
+  `);
+  dropLegacyAggregateTablesForV12(db);
+  db.exec(`
+    create table if not exists schema_migrations (
+      version integer primary key,
+      applied_at text not null
+    );
 
     create table if not exists snapshots (
       id integer primary key autoincrement,
@@ -500,6 +455,32 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_traffic_facts_collected on traffic_facts(collected_at desc);
     create index if not exists idx_traffic_facts_client on traffic_facts(client_key, collected_at desc);
     create index if not exists idx_traffic_facts_destination on traffic_facts(destination, dns_qname, destination_ip);
+
+    create table if not exists router_traffic_rollups (
+      snapshot_id integer not null,
+      collected_at text not null,
+      kind text not null default 'total',
+      layer text not null default '',
+      window_start_utc text not null default '',
+      window_msk_key text not null default '',
+      client_key text not null default '',
+      client_label text not null default '',
+      client_ip text not null default '',
+      channel text not null default 'Home Wi-Fi/LAN',
+      route text not null default 'Unknown',
+      traffic_class text not null default 'client',
+      destination_ip text not null default '',
+      bytes integer not null default 0,
+      via_vps_bytes integer not null default 0,
+      direct_bytes integer not null default 0,
+      unknown_bytes integer not null default 0,
+      flows integer not null default 0,
+      source text not null default 'router_edge_rollup',
+      evidence_json text not null default '{}',
+      primary key (snapshot_id, kind, layer, window_start_utc, client_ip, channel, route, traffic_class, destination_ip)
+    );
+    create index if not exists idx_router_rollups_layer_window on router_traffic_rollups(kind, layer, window_start_utc);
+    create index if not exists idx_router_rollups_client on router_traffic_rollups(client_key, window_start_utc);
 
     create table if not exists traffic_clients (
       snapshot_id integer not null,
@@ -874,6 +855,106 @@ export function ensureConsoleSchema(db) {
         route text not null default 'Unknown',
         confidence text not null default 'unknown',
         traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        connections integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (bucket_start_utc, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_hourly (
+        hour_msk_key text not null,
+        hour_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_daily (
+        day_msk_key text not null,
+        day_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (day_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_weekly (
+        week_msk_key text not null,
+        week_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (week_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_traffic_monthly (
+        month_msk_key text not null,
+        month_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (month_msk_key, client_key, channel, route, confidence, traffic_class)
+      );
+      create table if not exists client_destination_traffic_5min (
+        bucket_start_utc text not null,
+        bucket_msk_key text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
         destination_key text not null default '',
         bytes integer not null default 0,
         via_vps_bytes integer not null default 0,
@@ -886,7 +967,7 @@ export function ensureConsoleSchema(db) {
         updated_at_utc text not null default '',
         primary key (bucket_start_utc, client_key, channel, route, confidence, traffic_class, destination_key)
       );
-      create table if not exists client_traffic_hourly (
+      create table if not exists client_destination_traffic_hourly (
         hour_msk_key text not null,
         hour_start_utc text not null,
         client_key text not null default '',
@@ -907,7 +988,7 @@ export function ensureConsoleSchema(db) {
         updated_at_utc text not null,
         primary key (hour_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
       );
-      create table if not exists client_traffic_daily (
+      create table if not exists client_destination_traffic_daily (
         day_msk_key text not null,
         day_start_utc text not null,
         client_key text not null default '',
@@ -928,6 +1009,48 @@ export function ensureConsoleSchema(db) {
         updated_at_utc text not null,
         primary key (day_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
       );
+      create table if not exists client_destination_traffic_weekly (
+        week_msk_key text not null,
+        week_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (week_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
+      create table if not exists client_destination_traffic_monthly (
+        month_msk_key text not null,
+        month_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'client',
+        destination_key text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        observed_bytes integer not null default 0,
+        attributed_bytes integer not null default 0,
+        flows integer not null default 0,
+        clients integer not null default 0,
+        updated_at_utc text not null,
+        primary key (month_msk_key, client_key, channel, route, confidence, traffic_class, destination_key)
+      );
       create table if not exists dns_log_5min (
         bucket_start_utc text not null,
         bucket_msk_key text not null,
@@ -941,6 +1064,62 @@ export function ensureConsoleSchema(db) {
         query_count integer not null default 0,
         updated_at_utc text not null default '',
         primary key (bucket_start_utc, client_key, client_ip, domain, qtype, catalog_status, route)
+      );
+      create table if not exists dns_log_hourly (
+        hour_msk_key text not null,
+        hour_start_utc text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (hour_msk_key, client_key, client_ip, domain, qtype, catalog_status, route)
+      );
+      create table if not exists dns_log_daily (
+        day_msk_key text not null,
+        day_start_utc text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (day_msk_key, client_key, client_ip, domain, qtype, catalog_status, route)
+      );
+      create table if not exists dns_log_weekly (
+        week_msk_key text not null,
+        week_start_utc text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (week_msk_key, client_key, client_ip, domain, qtype, catalog_status, route)
+      );
+      create table if not exists dns_log_monthly (
+        month_msk_key text not null,
+        month_start_utc text not null,
+        client_key text not null default '',
+        client_ip text not null default '',
+        domain text not null default '',
+        qtype text not null default '',
+        catalog_status text not null default 'unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'dns-interest',
+        query_count integer not null default 0,
+        updated_at_utc text not null default '',
+        primary key (month_msk_key, client_key, client_ip, domain, qtype, catalog_status, route)
       );
       create table if not exists top_clients_window (
         window text not null,
@@ -994,8 +1173,7 @@ export function ensureConsoleSchema(db) {
         primary key (model, window_key)
       );
     `);
-  migrateAggregateDestinationKeys(db);
-    addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
+  addColumnIfMissing(db, "normalized_devices", "hostname", "text not null default ''");
     addColumnIfMissing(db, "normalized_devices", "mac", "text not null default ''");
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
@@ -1120,8 +1298,19 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_cth_msk on client_traffic_hourly(hour_msk_key desc);
     create index if not exists idx_cth_class_msk on client_traffic_hourly(traffic_class, hour_msk_key desc);
     create index if not exists idx_ctd_msk on client_traffic_daily(day_msk_key desc);
+    create index if not exists idx_ctw_msk on client_traffic_weekly(week_msk_key desc);
+    create index if not exists idx_ctm_msk on client_traffic_monthly(month_msk_key desc);
+    create index if not exists idx_cdt5_msk on client_destination_traffic_5min(bucket_msk_key desc);
+    create index if not exists idx_cdth_msk on client_destination_traffic_hourly(hour_msk_key desc);
+    create index if not exists idx_cdtd_msk on client_destination_traffic_daily(day_msk_key desc);
+    create index if not exists idx_cdtw_msk on client_destination_traffic_weekly(week_msk_key desc);
+    create index if not exists idx_cdtm_msk on client_destination_traffic_monthly(month_msk_key desc);
     create index if not exists idx_dl5_msk on dns_log_5min(bucket_msk_key desc);
     create index if not exists idx_dl5_domain on dns_log_5min(domain, bucket_msk_key desc);
+    create index if not exists idx_dlh_msk on dns_log_hourly(hour_msk_key desc);
+    create index if not exists idx_dld_msk on dns_log_daily(day_msk_key desc);
+    create index if not exists idx_dlw_msk on dns_log_weekly(week_msk_key desc);
+    create index if not exists idx_dlm_msk on dns_log_monthly(month_msk_key desc);
     create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
   `);
 
@@ -1208,6 +1397,12 @@ function routeFromAggregate(row) {
 function bucketRangeEndUtc(endUtc, granularity) {
   const bucket = bucketStartUtc(endUtc, granularity);
   if (Date.parse(bucket) === Date.parse(endUtc)) return endUtc;
+  if (granularity === "week") return isoPlusMs(bucket, 7 * 86400000);
+  if (granularity === "month") {
+    const [year, month] = toMskKey(bucket, "month").split("-").map((part) => Number(part));
+    const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+    return toUtcIsoFromMskKey(nextMonth, "month");
+  }
   const ms = granularity === "day" ? 86400000 : granularity === "5min" ? 300000 : 3600000;
   return isoPlusMs(bucket, ms);
 }
@@ -1282,6 +1477,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
   }
   const rows = sourceRows.map((row) => {
       const raw = parseJson(row.raw_json, {});
+      if (raw.accounting_bucket) return null;
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
@@ -1315,53 +1511,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         accounting_bucket: Boolean(raw.accounting_bucket),
         raw,
       };
-    });
-  const deviceRows = hasTrafficFacts ? [] : db
-    .prepare(
-      `select rowid, * from normalized_devices
-        where collected_at >= ? and collected_at < ?
-        order by collected_at asc, rowid asc`
-    )
-    .all(startUtc, endUtc)
-    .map((row) => {
-      const raw = parseJson(row.raw_json, {});
-      const channel = text(row.channel || inferChannel(raw), "Unknown");
-      if (channel !== "Home Wi-Fi/LAN") return null;
-      const resolved = resolveOperatorClient({
-        ...row,
-        raw,
-        client_key: row.device_id || raw.profile || raw.observed_label || raw.label || row.ip || "",
-        client_label: row.label || raw.observed_label || row.device_id || row.ip || "",
-        device_key: row.device_id || raw.device_key || raw.device_id || "",
-        client_ip: row.ip || raw.client_ip || raw.ip || "",
-        ip: row.ip || raw.ip || raw.client_ip || "",
-        mac: raw.mac || raw.mac_address || "",
-      }, registry, networkHints);
-      const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.total_bytes));
-      return {
-        rowid: `device:${row.rowid}`,
-        snapshot_id: row.snapshot_id,
-        collected_at: parseSourceTimestamp(row.collected_at),
-        last_seen: parseSourceTimestamp(row.collected_at),
-        client_key: resolved.client_key,
-        client_label: resolved.client_label,
-        channel: resolved.channel || channel,
-        destination: "",
-        destination_key: "",
-        route: text(row.route || routeFromTraffic(raw), "Unknown"),
-        confidence: confidence(row.confidence, "exact"),
-        traffic_class: "client",
-        bytes: split.totalBytes,
-        via_vps_bytes: split.viaVpsBytes,
-        direct_bytes: split.directBytes,
-        unknown_bytes: split.unknownBytes,
-        connections: 0,
-        accounting_bucket: true,
-        raw: { ...raw, device_counter: true, profile: row.device_id || raw.profile || "", client: row.label || raw.observed_label || "" },
-      };
-    })
-    .filter(Boolean);
-  rows.push(...deviceRows);
+    }).filter(Boolean);
   const grouped = new Map();
   for (const row of rows) {
     const key = flowRollupKey(row);
@@ -1412,28 +1562,99 @@ function addToGroup(map, key, seed, row) {
   return current;
 }
 
-function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = now) {
-  const dirty5Start = bucketStartUtc(dirtyStartUtc, "5min");
-  const dirtyHourStart = bucketStartUtc(dirtyStartUtc, "hour");
-  const dirtyHourEnd = bucketRangeEndUtc(dirtyEndUtc, "hour");
-  const dirtyDayStart = bucketStartUtc(dirtyStartUtc, "day");
-  const dirtyDayEnd = bucketRangeEndUtc(dirtyEndUtc, "day");
-  db.prepare("delete from client_traffic_5min where bucket_start_utc >= ? and bucket_start_utc < ?").run(dirty5Start, dirtyEndUtc);
-  db.prepare("delete from client_traffic_hourly where hour_start_utc >= ? and hour_start_utc < ?").run(dirtyHourStart, dirtyHourEnd);
-  db.prepare("delete from client_traffic_daily where day_start_utc >= ? and day_start_utc < ?").run(dirtyDayStart, dirtyDayEnd);
-  const insert5 = db.prepare(`
-    insert into client_traffic_5min(bucket_start_utc, bucket_msk_key, client_key, client_label, channel, route,
-      confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, flows,
-      connections, observed_bytes, attributed_bytes, updated_at_utc)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const trafficPeriodMeta = {
+  week: { table: "client_traffic_weekly", keyColumn: "week_msk_key", timeColumn: "week_start_utc", granularity: "week" },
+  month: { table: "client_traffic_monthly", keyColumn: "month_msk_key", timeColumn: "month_start_utc", granularity: "month" },
+};
+
+const destinationRollupMeta = {
+  hour: {
+    sourceTable: "client_destination_traffic_5min",
+    sourceKey: "bucket_msk_key",
+    sourceTime: "bucket_start_utc",
+    table: "client_destination_traffic_hourly",
+    keyColumn: "hour_msk_key",
+    timeColumn: "hour_start_utc",
+    granularity: "hour",
+  },
+  day: {
+    sourceTable: "client_destination_traffic_hourly",
+    sourceKey: "hour_msk_key",
+    sourceTime: "hour_start_utc",
+    table: "client_destination_traffic_daily",
+    keyColumn: "day_msk_key",
+    timeColumn: "day_start_utc",
+    granularity: "day",
+  },
+  week: {
+    sourceTable: "client_destination_traffic_daily",
+    sourceKey: "day_msk_key",
+    sourceTime: "day_start_utc",
+    table: "client_destination_traffic_weekly",
+    keyColumn: "week_msk_key",
+    timeColumn: "week_start_utc",
+    granularity: "week",
+  },
+  month: {
+    sourceTable: "client_destination_traffic_daily",
+    sourceKey: "day_msk_key",
+    sourceTime: "day_start_utc",
+    table: "client_destination_traffic_monthly",
+    keyColumn: "month_msk_key",
+    timeColumn: "month_start_utc",
+    granularity: "month",
+  },
+};
+
+function rollupTotalTrafficPeriod(db, period, startUtc, endUtc, now) {
+  const meta = trafficPeriodMeta[period];
+  if (!meta) return;
+  const sourceRows = db.prepare(`
+    select * from client_traffic_daily
+     where day_start_utc >= ?
+       and day_start_utc < ?
+  `).all(startUtc, endUtc);
+  const grouped = new Map();
+  for (const row of sourceRows) {
+    const windowStart = bucketStartUtc(row.day_start_utc, meta.granularity);
+    const windowKey = toMskKey(windowStart, meta.granularity);
+    addToGroup(grouped, [windowKey, row.client_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"), {
+      windowKey,
+      windowStart,
+      client_key: row.client_key,
+      client_label: row.client_label,
+      channel: row.channel,
+      route: row.route,
+      confidence: row.confidence,
+      traffic_class: row.traffic_class,
+    }, row);
+  }
+  const insert = db.prepare(`
+    insert into ${meta.table}(${meta.keyColumn}, ${meta.timeColumn}, client_key, client_label, channel, route,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+      attributed_bytes, flows, clients, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const buckets = new Map();
-  for (const row of facts) {
-    const bucket = bucketStartUtc(row.collected_at, "5min");
-    const key = [bucket, row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key].join("|");
-    addToGroup(buckets, key, {
-      bucket_start_utc: bucket,
-      bucket_msk_key: toMskKey(bucket, "5min"),
+  for (const row of grouped.values()) {
+    insert.run(row.windowKey, row.windowStart, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), 1, now);
+  }
+}
+
+function rollupDestinationTraffic(db, period, startUtc, endUtc, now) {
+  const meta = destinationRollupMeta[period];
+  if (!meta) return;
+  const sourceRows = db.prepare(`
+    select * from ${meta.sourceTable}
+     where ${meta.sourceTime} >= ?
+       and ${meta.sourceTime} < ?
+  `).all(startUtc, endUtc);
+  const grouped = new Map();
+  for (const row of sourceRows) {
+    const windowStart = bucketStartUtc(row[meta.sourceTime], meta.granularity);
+    const windowKey = toMskKey(windowStart, meta.granularity);
+    addToGroup(grouped, [windowKey, row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key].join("|"), {
+      windowKey,
+      windowStart,
       client_key: row.client_key,
       client_label: row.client_label,
       channel: row.channel,
@@ -1441,24 +1662,139 @@ function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = n
       confidence: row.confidence,
       traffic_class: row.traffic_class,
       destination_key: row.destination_key,
-      observed_bytes: 0,
-      attributed_bytes: 0,
     }, row);
   }
-  for (const row of buckets.values()) {
-    insert5.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, row.bytes, row.via_vps_bytes, row.direct_bytes, row.unknown_bytes, row.flows, row.connections, row.observed_bytes, row.attributed_bytes, now);
-  }
-
-  const insertHour = db.prepare(`
-    insert into client_traffic_hourly(hour_msk_key, hour_start_utc, client_key, client_label, channel, route,
+  const insert = db.prepare(`
+    insert into ${meta.table}(${meta.keyColumn}, ${meta.timeColumn}, client_key, client_label, channel, route,
       confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
       attributed_bytes, flows, clients, updated_at_utc)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  for (const row of grouped.values()) {
+    insert.run(row.windowKey, row.windowStart, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), 1, now);
+  }
+}
+
+function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = now) {
+  const dirty5Start = bucketStartUtc(dirtyStartUtc, "5min");
+  const dirtyHourStart = bucketStartUtc(dirtyStartUtc, "hour");
+  const dirtyHourEnd = bucketRangeEndUtc(dirtyEndUtc, "hour");
+  const dirtyDayStart = bucketStartUtc(dirtyStartUtc, "day");
+  const dirtyDayEnd = bucketRangeEndUtc(dirtyEndUtc, "day");
+  const dirtyWeekStart = bucketStartUtc(dirtyStartUtc, "week");
+  const dirtyWeekEnd = bucketRangeEndUtc(dirtyEndUtc, "week");
+  const dirtyMonthStart = bucketStartUtc(dirtyStartUtc, "month");
+  const dirtyMonthEnd = bucketRangeEndUtc(dirtyEndUtc, "month");
+  db.prepare("delete from client_traffic_5min where bucket_start_utc >= ? and bucket_start_utc < ?").run(dirty5Start, dirtyEndUtc);
+  db.prepare("delete from client_destination_traffic_5min where bucket_start_utc >= ? and bucket_start_utc < ?").run(dirty5Start, dirtyEndUtc);
+  db.prepare("delete from client_traffic_hourly where hour_start_utc >= ? and hour_start_utc < ?").run(dirtyHourStart, dirtyHourEnd);
+  db.prepare("delete from client_destination_traffic_hourly where hour_start_utc >= ? and hour_start_utc < ?").run(dirtyHourStart, dirtyHourEnd);
+  db.prepare("delete from client_traffic_daily where day_start_utc >= ? and day_start_utc < ?").run(dirtyDayStart, dirtyDayEnd);
+  db.prepare("delete from client_destination_traffic_daily where day_start_utc >= ? and day_start_utc < ?").run(dirtyDayStart, dirtyDayEnd);
+  db.prepare("delete from client_traffic_weekly where week_start_utc >= ? and week_start_utc < ?").run(dirtyWeekStart, dirtyWeekEnd);
+  db.prepare("delete from client_destination_traffic_weekly where week_start_utc >= ? and week_start_utc < ?").run(dirtyWeekStart, dirtyWeekEnd);
+  db.prepare("delete from client_traffic_monthly where month_start_utc >= ? and month_start_utc < ?").run(dirtyMonthStart, dirtyMonthEnd);
+  db.prepare("delete from client_destination_traffic_monthly where month_start_utc >= ? and month_start_utc < ?").run(dirtyMonthStart, dirtyMonthEnd);
+
+  const insertTotal5 = db.prepare(`
+    insert into client_traffic_5min(bucket_start_utc, bucket_msk_key, client_key, client_label, channel, route,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, flows,
+      connections, observed_bytes, attributed_bytes, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertDetail5 = db.prepare(`
+    insert into client_destination_traffic_5min(bucket_start_utc, bucket_msk_key, client_key, client_label, channel, route,
+      confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, flows,
+      connections, observed_bytes, attributed_bytes, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const totalBuckets = new Map();
+  const detailBuckets = new Map();
+  const routerTotals = db.prepare(`
+    select *
+      from router_traffic_rollups
+     where kind = 'total'
+       and layer = '5min'
+       and window_start_utc >= ?
+       and window_start_utc < ?
+  `).all(dirty5Start, dirtyEndUtc);
+  const useRouterTotals = routerTotals.length > 0;
+
+  for (const row of routerTotals) {
+    const bucket = bucketStartUtc(row.window_start_utc, "5min");
+    const totalKey = [bucket, row.client_key, row.channel, row.route, "exact", row.traffic_class].join("|");
+    addToGroup(totalBuckets, totalKey, {
+      bucket_start_utc: bucket,
+      bucket_msk_key: toMskKey(bucket, "5min"),
+      client_key: row.client_key,
+      client_label: row.client_label,
+      channel: row.channel,
+      route: row.route,
+      confidence: "exact",
+      traffic_class: row.traffic_class,
+      observed_bytes: 0,
+      attributed_bytes: 0,
+    }, {
+      ...row,
+      total_bytes: number(row.bytes),
+      confidence: "exact",
+      observed_bytes: number(row.bytes),
+      attributed_bytes: number(row.bytes),
+    });
+  }
+
+  for (const row of facts) {
+    const bucket = bucketStartUtc(row.collected_at, "5min");
+    if (!useRouterTotals) {
+      const totalKey = [bucket, row.client_key, row.channel, row.route, row.confidence, row.traffic_class].join("|");
+      addToGroup(totalBuckets, totalKey, {
+        bucket_start_utc: bucket,
+        bucket_msk_key: toMskKey(bucket, "5min"),
+        client_key: row.client_key,
+        client_label: row.client_label,
+        channel: row.channel,
+        route: row.route,
+        confidence: row.confidence,
+        traffic_class: row.traffic_class,
+        observed_bytes: 0,
+        attributed_bytes: 0,
+      }, row);
+    }
+    const destination = text(row.destination_key || "", "");
+    if (destination) {
+      const detailKey = [bucket, row.client_key, row.channel, row.route, row.confidence, row.traffic_class, destination].join("|");
+      addToGroup(detailBuckets, detailKey, {
+        bucket_start_utc: bucket,
+        bucket_msk_key: toMskKey(bucket, "5min"),
+        client_key: row.client_key,
+        client_label: row.client_label,
+        channel: row.channel,
+        route: row.route,
+        confidence: row.confidence,
+        traffic_class: row.traffic_class,
+        destination_key: destination,
+        observed_bytes: 0,
+        attributed_bytes: 0,
+      }, row);
+    }
+  }
+  for (const row of totalBuckets.values()) {
+    insertTotal5.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.bytes, row.via_vps_bytes, row.direct_bytes, row.unknown_bytes, row.flows, row.connections, row.observed_bytes, row.attributed_bytes, now);
+  }
+  for (const row of detailBuckets.values()) {
+    insertDetail5.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, row.bytes, row.via_vps_bytes, row.direct_bytes, row.unknown_bytes, row.flows, row.connections, row.observed_bytes, row.attributed_bytes, now);
+  }
+
+  const insertTotalHour = db.prepare(`
+    insert into client_traffic_hourly(hour_msk_key, hour_start_utc, client_key, client_label, channel, route,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+      attributed_bytes, flows, clients, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   const hourly = db.prepare(`
     select substr(bucket_msk_key, 1, 13) as hour_msk_key,
            min(bucket_start_utc) as hour_start_utc,
-           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class, destination_key,
+           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class,
            sum(bytes) as bytes, sum(via_vps_bytes) as via_vps_bytes, sum(direct_bytes) as direct_bytes,
            sum(unknown_bytes) as unknown_bytes, sum(observed_bytes) as observed_bytes,
            sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
@@ -1466,22 +1802,24 @@ function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = n
       from client_traffic_5min
      where bucket_start_utc >= ?
        and bucket_start_utc < ?
-     group by hour_msk_key, client_key, channel, route, confidence, traffic_class, destination_key
+     group by hour_msk_key, client_key, channel, route, confidence, traffic_class
   `).all(dirtyHourStart, dirtyHourEnd);
   for (const row of hourly) {
-    insertHour.run(row.hour_msk_key, row.hour_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
+    insertTotalHour.run(row.hour_msk_key, bucketStartUtc(row.hour_start_utc, "hour"), row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
   }
 
-  const insertDay = db.prepare(`
+  rollupDestinationTraffic(db, "hour", dirtyHourStart, dirtyHourEnd, now);
+
+  const insertTotalDay = db.prepare(`
     insert into client_traffic_daily(day_msk_key, day_start_utc, client_key, client_label, channel, route,
-      confidence, traffic_class, destination_key, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
+      confidence, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, observed_bytes,
       attributed_bytes, flows, clients, updated_at_utc)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const daily = db.prepare(`
     select substr(hour_msk_key, 1, 10) as day_msk_key,
            min(hour_start_utc) as day_start_utc,
-           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class, destination_key,
+           client_key, max(client_label) as client_label, channel, route, confidence, traffic_class,
            sum(bytes) as bytes, sum(via_vps_bytes) as via_vps_bytes, sum(direct_bytes) as direct_bytes,
            sum(unknown_bytes) as unknown_bytes, sum(observed_bytes) as observed_bytes,
            sum(attributed_bytes) as attributed_bytes, sum(flows) as flows,
@@ -1489,11 +1827,17 @@ function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = n
       from client_traffic_hourly
      where hour_start_utc >= ?
        and hour_start_utc < ?
-     group by day_msk_key, client_key, channel, route, confidence, traffic_class, destination_key
+     group by day_msk_key, client_key, channel, route, confidence, traffic_class
   `).all(dirtyDayStart, dirtyDayEnd);
   for (const row of daily) {
-    insertDay.run(row.day_msk_key, row.day_start_utc, row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
+    insertTotalDay.run(row.day_msk_key, bucketStartUtc(row.day_start_utc, "day"), row.client_key, row.client_label, row.channel, row.route, row.confidence, row.traffic_class, number(row.bytes), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.observed_bytes), number(row.attributed_bytes), number(row.flows), number(row.clients), now);
   }
+
+  rollupDestinationTraffic(db, "day", dirtyDayStart, dirtyDayEnd, now);
+  rollupTotalTrafficPeriod(db, "week", dirtyWeekStart, dirtyWeekEnd, now);
+  rollupDestinationTraffic(db, "week", dirtyWeekStart, dirtyWeekEnd, now);
+  rollupTotalTrafficPeriod(db, "month", dirtyMonthStart, dirtyMonthEnd, now);
+  rollupDestinationTraffic(db, "month", dirtyMonthStart, dirtyMonthEnd, now);
 }
 
 function dnsRowsForAggregateRange(db, dirtyStartUtc, dirtyEndUtc) {
@@ -1513,7 +1857,19 @@ function dnsRowsForAggregateRange(db, dirtyStartUtc, dirtyEndUtc) {
 
 function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
   const dirty5Start = bucketStartUtc(dirtyStartUtc, "5min");
+  const dirtyHourStart = bucketStartUtc(dirtyStartUtc, "hour");
+  const dirtyHourEnd = bucketRangeEndUtc(dirtyEndUtc, "hour");
+  const dirtyDayStart = bucketStartUtc(dirtyStartUtc, "day");
+  const dirtyDayEnd = bucketRangeEndUtc(dirtyEndUtc, "day");
+  const dirtyWeekStart = bucketStartUtc(dirtyStartUtc, "week");
+  const dirtyWeekEnd = bucketRangeEndUtc(dirtyEndUtc, "week");
+  const dirtyMonthStart = bucketStartUtc(dirtyStartUtc, "month");
+  const dirtyMonthEnd = bucketRangeEndUtc(dirtyEndUtc, "month");
   db.prepare("delete from dns_log_5min where bucket_start_utc >= ? and bucket_start_utc < ?").run(dirty5Start, dirtyEndUtc);
+  db.prepare("delete from dns_log_hourly where hour_start_utc >= ? and hour_start_utc < ?").run(dirtyHourStart, dirtyHourEnd);
+  db.prepare("delete from dns_log_daily where day_start_utc >= ? and day_start_utc < ?").run(dirtyDayStart, dirtyDayEnd);
+  db.prepare("delete from dns_log_weekly where week_start_utc >= ? and week_start_utc < ?").run(dirtyWeekStart, dirtyWeekEnd);
+  db.prepare("delete from dns_log_monthly where month_start_utc >= ? and month_start_utc < ?").run(dirtyMonthStart, dirtyMonthEnd);
   const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
   const catalogMatch = buildCatalogMatcher(catalogRows);
   const rows = dnsRowsForAggregateRange(db, dirtyStartUtc, dirtyEndUtc);
@@ -1551,6 +1907,55 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
   for (const row of grouped.values()) {
     insert.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
   }
+  rollupDnsLayer(db, "hour", dirtyHourStart, dirtyHourEnd, now);
+  rollupDnsLayer(db, "day", dirtyDayStart, dirtyDayEnd, now);
+  rollupDnsLayer(db, "week", dirtyWeekStart, dirtyWeekEnd, now);
+  rollupDnsLayer(db, "month", dirtyMonthStart, dirtyMonthEnd, now);
+}
+
+const dnsRollupMeta = {
+  hour: { sourceTable: "dns_log_5min", sourceTime: "bucket_start_utc", table: "dns_log_hourly", keyColumn: "hour_msk_key", timeColumn: "hour_start_utc", granularity: "hour" },
+  day: { sourceTable: "dns_log_hourly", sourceTime: "hour_start_utc", table: "dns_log_daily", keyColumn: "day_msk_key", timeColumn: "day_start_utc", granularity: "day" },
+  week: { sourceTable: "dns_log_daily", sourceTime: "day_start_utc", table: "dns_log_weekly", keyColumn: "week_msk_key", timeColumn: "week_start_utc", granularity: "week" },
+  month: { sourceTable: "dns_log_daily", sourceTime: "day_start_utc", table: "dns_log_monthly", keyColumn: "month_msk_key", timeColumn: "month_start_utc", granularity: "month" },
+};
+
+function rollupDnsLayer(db, period, startUtc, endUtc, now) {
+  const meta = dnsRollupMeta[period];
+  if (!meta) return;
+  const rows = db.prepare(`
+    select * from ${meta.sourceTable}
+     where ${meta.sourceTime} >= ?
+       and ${meta.sourceTime} < ?
+  `).all(startUtc, endUtc);
+  const grouped = new Map();
+  for (const row of rows) {
+    const windowStart = bucketStartUtc(row[meta.sourceTime], meta.granularity);
+    const windowKey = toMskKey(windowStart, meta.granularity);
+    const key = [windowKey, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence].join("|");
+    const current = grouped.get(key) || {
+      windowKey,
+      windowStart,
+      client_key: row.client_key,
+      client_ip: row.client_ip,
+      domain: row.domain,
+      qtype: row.qtype,
+      catalog_status: row.catalog_status,
+      route: row.route,
+      confidence: row.confidence,
+      query_count: 0,
+    };
+    current.query_count += number(row.query_count);
+    grouped.set(key, current);
+  }
+  const insert = db.prepare(`
+    insert into ${meta.table}(${meta.keyColumn}, ${meta.timeColumn}, client_key, client_ip, domain, qtype,
+      catalog_status, route, confidence, query_count, updated_at_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of grouped.values()) {
+    insert.run(row.windowKey, row.windowStart, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
+  }
 }
 
 function factsForWindow(facts, window, now) {
@@ -1584,12 +1989,17 @@ function maxIso(...values) {
 function windowAggregateSegments(window, now) {
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
+  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
   const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(now, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
   const segments = [];
-  if (window !== "today" && Date.parse(bounds.startUtc) < Date.parse(todayStart)) {
-    segments.push({ layer: "daily", start: bounds.startUtc, end: todayStart });
+  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
+    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
+  }
+  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
+    segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
   const hourlyStart = maxIso(bounds.startUtc, todayStart);
   if (Date.parse(hourlyStart) < Date.parse(freshStart)) {
@@ -1601,10 +2011,18 @@ function windowAggregateSegments(window, now) {
   return segments;
 }
 
-function aggregateRowsFromLayer(db, layer, startUtc, endUtc) {
+function aggregateLayerMeta(layer, detail = false) {
+  const prefix = detail ? "client_destination_traffic" : "client_traffic";
+  if (layer === "monthly") return { table: `${prefix}_monthly`, timeColumn: "month_start_utc" };
+  if (layer === "weekly") return { table: `${prefix}_weekly`, timeColumn: "week_start_utc" };
+  if (layer === "daily") return { table: `${prefix}_daily`, timeColumn: "day_start_utc" };
+  if (layer === "hourly") return { table: `${prefix}_hourly`, timeColumn: "hour_start_utc" };
+  return { table: `${prefix}_5min`, timeColumn: "bucket_start_utc" };
+}
+
+function aggregateRowsFromLayer(db, layer, startUtc, endUtc, detail = false) {
   if (Date.parse(startUtc) >= Date.parse(endUtc)) return [];
-  const table = layer === "daily" ? "client_traffic_daily" : layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
-  const timeColumn = layer === "daily" ? "day_start_utc" : layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+  const { table, timeColumn } = aggregateLayerMeta(layer, detail);
   return db.prepare(`
     select client_key,
            max(client_label) as client_label,
@@ -1612,7 +2030,7 @@ function aggregateRowsFromLayer(db, layer, startUtc, endUtc) {
            route,
            confidence,
            traffic_class,
-           destination_key,
+           ${detail ? "destination_key" : "'' as destination_key"},
            sum(bytes) as bytes,
            sum(bytes) as total_bytes,
            sum(via_vps_bytes) as via_vps_bytes,
@@ -1624,17 +2042,21 @@ function aggregateRowsFromLayer(db, layer, startUtc, endUtc) {
            sum(attributed_bytes) as attributed_bytes,
            max(${timeColumn}) as collected_at,
            max(${timeColumn}) as last_seen,
-           case when sum(attributed_bytes) <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end as accounting_bucket,
+           ${detail ? "case when sum(attributed_bytes) <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end" : "1"} as accounting_bucket,
            '${layer}' as aggregate_layer
       from ${table}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-     group by client_key, channel, route, confidence, traffic_class, destination_key
+     group by client_key, channel, route, confidence, traffic_class${detail ? ", destination_key" : ""}
   `).all(startUtc, endUtc);
 }
 
 function aggregateRowsForWindow(db, window, now) {
-  const rows = windowAggregateSegments(window, now).flatMap((segment) => aggregateRowsFromLayer(db, segment.layer, segment.start, segment.end));
+  const segments = windowAggregateSegments(window, now);
+  const rows = [
+    ...segments.flatMap((segment) => aggregateRowsFromLayer(db, segment.layer, segment.start, segment.end, true)),
+    ...segments.flatMap((segment) => aggregateRowsFromLayer(db, segment.layer, segment.start, segment.end, false)),
+  ];
   return groupRows(
     rows,
     (row) => [row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key].join("|"),
@@ -2022,15 +2444,26 @@ function rebuildTopWindows(db, window, payload, computedAt) {
 function rebuildDnsPreparedWindows(db, sourceVersion, computedAt) {
   for (const window of ["today", "week", "month"]) {
     const bounds = mskWindowBounds(window, computedAt);
-    const rows = db.prepare(`
-      select client_key as client, client_ip, domain, qtype, catalog_status, route, confidence, sum(query_count) as count,
-             max(bucket_start_utc) as event_ts
-        from dns_log_5min
-       where bucket_start_utc >= ? and bucket_start_utc <= ?
-       group by client_key, client_ip, domain, qtype, catalog_status, route, confidence
-       order by count desc, event_ts desc
-       limit 500
-    `).all(bounds.startUtc, bounds.endUtc);
+    const grouped = new Map();
+    for (const segment of windowAggregateSegments(window, computedAt)) {
+      const layer = segment.layer === "weekly" ? "week" : segment.layer === "daily" ? "day" : segment.layer === "hourly" ? "hour" : "5min";
+      const meta = dnsRollupMeta[layer] || { sourceTable: "dns_log_5min", sourceTime: "bucket_start_utc" };
+      const rows = db.prepare(`
+        select client_key as client, client_ip, domain, qtype, catalog_status, route, confidence, sum(query_count) as count,
+               max(${meta.sourceTime}) as event_ts
+          from ${meta.sourceTable}
+         where ${meta.sourceTime} >= ? and ${meta.sourceTime} < ?
+         group by client_key, client_ip, domain, qtype, catalog_status, route, confidence
+      `).all(segment.start, segment.end);
+      for (const row of rows) {
+        const key = [row.client, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence].join("|");
+        const current = grouped.get(key) || { ...row, count: 0 };
+        current.count += number(row.count);
+        if (String(row.event_ts || "") > String(current.event_ts || "")) current.event_ts = row.event_ts;
+        grouped.set(key, current);
+      }
+    }
+    const rows = Array.from(grouped.values()).sort((a, b) => number(b.count) - number(a.count) || String(b.event_ts || "").localeCompare(String(a.event_ts || ""))).slice(0, 500);
     writePreparedWindow(db, "dns_counts", window, "all", bounds, sourceVersion, computedAt, {
       generatedAt: computedAt,
       prepared: true,
@@ -2077,7 +2510,18 @@ export function rebuildPreparedWindows(db, computedAt = new Date().toISOString()
   writeAggregateLayerStates(db, { model: "client_traffic_5min", table: "client_traffic_5min", timeColumn: "bucket_start_utc", mskKeyColumn: "bucket_msk_key", startUtc: bucketStartUtc(dirtyStart, "5min"), endUtc: computedAt, sourceVersion, detail: { dirty_start_utc: dirtyStart, fact_count: facts.length } });
   writeAggregateLayerStates(db, { model: "client_traffic_hourly", table: "client_traffic_hourly", timeColumn: "hour_start_utc", mskKeyColumn: "hour_msk_key", startUtc: bucketStartUtc(dirtyStart, "hour"), endUtc: bucketRangeEndUtc(computedAt, "hour"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "hour") } });
   writeAggregateLayerStates(db, { model: "client_traffic_daily", table: "client_traffic_daily", timeColumn: "day_start_utc", mskKeyColumn: "day_msk_key", startUtc: bucketStartUtc(dirtyStart, "day"), endUtc: bucketRangeEndUtc(computedAt, "day"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "day") } });
+  writeAggregateLayerStates(db, { model: "client_traffic_weekly", table: "client_traffic_weekly", timeColumn: "week_start_utc", mskKeyColumn: "week_msk_key", startUtc: bucketStartUtc(dirtyStart, "week"), endUtc: bucketRangeEndUtc(computedAt, "week"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "week") } });
+  writeAggregateLayerStates(db, { model: "client_traffic_monthly", table: "client_traffic_monthly", timeColumn: "month_start_utc", mskKeyColumn: "month_msk_key", startUtc: bucketStartUtc(dirtyStart, "month"), endUtc: bucketRangeEndUtc(computedAt, "month"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "month") } });
+  writeAggregateLayerStates(db, { model: "client_destination_traffic_5min", table: "client_destination_traffic_5min", timeColumn: "bucket_start_utc", mskKeyColumn: "bucket_msk_key", startUtc: bucketStartUtc(dirtyStart, "5min"), endUtc: computedAt, sourceVersion, detail: { dirty_start_utc: dirtyStart } });
+  writeAggregateLayerStates(db, { model: "client_destination_traffic_hourly", table: "client_destination_traffic_hourly", timeColumn: "hour_start_utc", mskKeyColumn: "hour_msk_key", startUtc: bucketStartUtc(dirtyStart, "hour"), endUtc: bucketRangeEndUtc(computedAt, "hour"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "hour") } });
+  writeAggregateLayerStates(db, { model: "client_destination_traffic_daily", table: "client_destination_traffic_daily", timeColumn: "day_start_utc", mskKeyColumn: "day_msk_key", startUtc: bucketStartUtc(dirtyStart, "day"), endUtc: bucketRangeEndUtc(computedAt, "day"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "day") } });
+  writeAggregateLayerStates(db, { model: "client_destination_traffic_weekly", table: "client_destination_traffic_weekly", timeColumn: "week_start_utc", mskKeyColumn: "week_msk_key", startUtc: bucketStartUtc(dirtyStart, "week"), endUtc: bucketRangeEndUtc(computedAt, "week"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "week") } });
+  writeAggregateLayerStates(db, { model: "client_destination_traffic_monthly", table: "client_destination_traffic_monthly", timeColumn: "month_start_utc", mskKeyColumn: "month_msk_key", startUtc: bucketStartUtc(dirtyStart, "month"), endUtc: bucketRangeEndUtc(computedAt, "month"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "month") } });
   writeAggregateLayerStates(db, { model: "dns_log_5min", table: "dns_log_5min", timeColumn: "bucket_start_utc", mskKeyColumn: "bucket_msk_key", metricColumn: "query_count", startUtc: dirtyStart, endUtc: computedAt, sourceVersion, detail: { dirty_start_utc: dirtyStart } });
+  writeAggregateLayerStates(db, { model: "dns_log_hourly", table: "dns_log_hourly", timeColumn: "hour_start_utc", mskKeyColumn: "hour_msk_key", metricColumn: "query_count", startUtc: bucketStartUtc(dirtyStart, "hour"), endUtc: bucketRangeEndUtc(computedAt, "hour"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "hour") } });
+  writeAggregateLayerStates(db, { model: "dns_log_daily", table: "dns_log_daily", timeColumn: "day_start_utc", mskKeyColumn: "day_msk_key", metricColumn: "query_count", startUtc: bucketStartUtc(dirtyStart, "day"), endUtc: bucketRangeEndUtc(computedAt, "day"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "day") } });
+  writeAggregateLayerStates(db, { model: "dns_log_weekly", table: "dns_log_weekly", timeColumn: "week_start_utc", mskKeyColumn: "week_msk_key", metricColumn: "query_count", startUtc: bucketStartUtc(dirtyStart, "week"), endUtc: bucketRangeEndUtc(computedAt, "week"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "week") } });
+  writeAggregateLayerStates(db, { model: "dns_log_monthly", table: "dns_log_monthly", timeColumn: "month_start_utc", mskKeyColumn: "month_msk_key", metricColumn: "query_count", startUtc: bucketStartUtc(dirtyStart, "month"), endUtc: bucketRangeEndUtc(computedAt, "month"), sourceVersion, detail: { dirty_start_utc: bucketStartUtc(dirtyStart, "month") } });
   const windows = rebuildPreparedWindowPayloads(db, sourceVersion, computedAt);
   return { factCount: facts.length, sourceVersion, windows };
 }
@@ -2863,6 +3307,7 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
     "normalized_catalog",
     "normalized_alerts",
     "traffic_facts",
+    "router_traffic_rollups",
     "traffic_clients",
     "traffic_dns_links",
     "traffic_attribution_gaps",
@@ -2875,6 +3320,14 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
 
 export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
   resetNormalizedForSnapshot(db, snapshotId);
+  if (type === "router_rollups") normalizeRouterRollups(db, snapshotId, type, collectedAt, payload, {
+    text,
+    number,
+    json,
+    loadDeviceAttributions,
+    buildInventoryNetworkHints,
+    resolveOperatorClient,
+  });
   if (type === "traffic_facts") normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload);
   if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
   if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);

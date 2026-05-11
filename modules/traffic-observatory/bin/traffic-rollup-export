@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+router_health_load_env
+
+JSON_MODE=0
+PERIOD="today"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    today|week|month)
+      PERIOD="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: ./modules/traffic-observatory/bin/traffic-rollup-export --json [today|week|month]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$JSON_MODE" != "1" ]; then
+  echo "traffic-rollup-export is machine-readable; use --json." >&2
+  exit 1
+fi
+
+router_ssh "/jffs/scripts/traffic-rollup-export --json '$PERIOD'"

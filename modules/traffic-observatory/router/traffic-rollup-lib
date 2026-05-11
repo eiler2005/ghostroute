@@ -1,0 +1,39 @@
+#!/bin/sh
+
+traffic_state_dir() {
+  if [ -n "${GHOSTROUTE_TRAFFIC_STATE_DIR:-}" ]; then
+    printf '%s\n' "$GHOSTROUTE_TRAFFIC_STATE_DIR"
+    return 0
+  fi
+  if [ -x /opt/bin/opkg ]; then
+    printf '%s\n' /opt/var/log/router_configuration
+  else
+    printf '%s\n' /jffs/addons/router_configuration/traffic
+  fi
+}
+
+traffic_rollup_dir() {
+  printf '%s\n' "$(traffic_state_dir)/rollups"
+}
+
+traffic_rollup_status_file() {
+  printf '%s\n' "$(traffic_rollup_dir)/router-rollups.status"
+}
+
+traffic_rollup_lock_dir() {
+  printf '%s\n' "$(traffic_rollup_dir)/router-rollups.lock"
+}
+
+traffic_rollup_now() {
+  date '+%Y-%m-%dT%H:%M:%S%z'
+}
+
+traffic_rollup_write_status() {
+  state="$1"
+  reason="$2"
+  rows="${3:-0}"
+  duration_ms="${4:-0}"
+  mkdir -p "$(traffic_rollup_dir)"
+  printf '%s|%s|reason=%s|rows=%s|duration_ms=%s|source=router_edge_rollup\n' \
+    "$(traffic_rollup_now)" "$state" "$reason" "$rows" "$duration_ms" > "$(traffic_rollup_status_file)"
+}

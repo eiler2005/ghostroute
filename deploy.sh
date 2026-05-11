@@ -134,6 +134,9 @@ require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traff
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-lib"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-export"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh"
@@ -177,6 +180,9 @@ upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-acco
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot" "${REMOTE_STAGE}/scripts/lan-flow-facts-snapshot"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback" "${REMOTE_STAGE}/scripts/lan-flow-facts-rollback"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-lib" "${REMOTE_STAGE}/scripts/traffic-rollup-lib"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-snapshot" "${REMOTE_STAGE}/scripts/traffic-rollup-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-export" "${REMOTE_STAGE}/scripts/traffic-rollup-export"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-accounting-refresh" "${REMOTE_STAGE}/scripts/mobile-reality-accounting-refresh"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/mobile-reality-counters-snapshot" "${REMOTE_STAGE}/scripts/mobile-reality-counters-snapshot"
 upload_file "${PROJECT_ROOT}/modules/ghostroute-health-monitor/router/lib.sh" "${REMOTE_STAGE}/scripts/health-monitor/lib.sh"
@@ -399,6 +405,18 @@ install_fully_managed_script \
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/lan-flow-facts-rollback" \
   /jffs/scripts/lan-flow-facts-rollback
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/traffic-rollup-lib" \
+  /jffs/scripts/traffic-rollup-lib
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/traffic-rollup-snapshot" \
+  /jffs/scripts/traffic-rollup-snapshot
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/traffic-rollup-export" \
+  /jffs/scripts/traffic-rollup-export
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/mobile-reality-accounting-refresh" \

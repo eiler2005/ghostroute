@@ -31,6 +31,13 @@ const schemas = {
     attribution_gaps: z.array(z.record(z.string(), z.unknown())),
     coverage: z.record(z.string(), z.unknown()),
   }),
+  router_rollups: common.extend({
+    schema_version: z.literal(1),
+    collector_metrics: z.record(z.string(), z.unknown()),
+    traffic_totals: z.array(z.record(z.string(), z.unknown())),
+    traffic_destinations: z.array(z.record(z.string(), z.unknown())),
+    dns_rollups: z.array(z.record(z.string(), z.unknown())),
+  }),
   traffic_summary: common.extend({
     totals: z.record(z.string(), z.unknown()),
   }),

@@ -1,0 +1,187 @@
+#!/bin/sh
+
+# Build bounded router-edge traffic rollups from lan-flow-facts.tsv.
+# This is read-only accounting work: no dataplane, iptables, sing-box, dnsmasq,
+# Channel A/B/C, or managed-domain state is changed here.
+
+LIB="/jffs/scripts/traffic-rollup-lib"
+[ -r "$LIB" ] || LIB="$(dirname "$0")/traffic-rollup-lib"
+. "$LIB"
+
+STATE_DIR="$(traffic_state_dir)"
+ROLLUP_DIR="$(traffic_rollup_dir)"
+LOCK_DIR="$(traffic_rollup_lock_dir)"
+FACTS_FILE="${GHOSTROUTE_LAN_FLOW_FACTS_FILE:-$STATE_DIR/lan-flow-facts.tsv}"
+MAX_INPUT_LINES="${GHOSTROUTE_ROUTER_ROLLUP_MAX_INPUT_LINES:-50000}"
+MAX_LOAD_X100="${GHOSTROUTE_ROUTER_ROLLUP_MAX_LOAD_X100:-700}"
+
+case "$MAX_INPUT_LINES" in ''|*[!0-9]*) MAX_INPUT_LINES=50000 ;; esac
+case "$MAX_LOAD_X100" in ''|*[!0-9]*) MAX_LOAD_X100=700 ;; esac
+
+mkdir -p "$ROLLUP_DIR"
+start_epoch="$(date '+%s')"
+
+finish_status() {
+  state="$1"
+  reason="$2"
+  rows="${3:-0}"
+  end_epoch="$(date '+%s')"
+  traffic_rollup_write_status "$state" "$reason" "$rows" "$(( (end_epoch - start_epoch) * 1000 ))"
+}
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  finish_status partial lock_busy 0
+  exit 0
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_INPUT" "$TMP_TOTALS" "$TMP_DESTS"' EXIT
+
+load_x100="$(awk '
+  {
+    split($1, parts, ".")
+    frac = parts[2]
+    while (length(frac) < 2) frac = frac "0"
+    printf "%d\n", (parts[1] * 100) + substr(frac, 1, 2)
+  }' /proc/loadavg 2>/dev/null || printf '0\n')"
+case "$load_x100" in ''|*[!0-9]*) load_x100=0 ;; esac
+if [ "$load_x100" -gt "$MAX_LOAD_X100" ]; then
+  finish_status partial "load_high_${load_x100}" 0
+  exit 0
+fi
+
+if [ ! -s "$FACTS_FILE" ]; then
+  finish_status missing_source no_lan_flow_facts 0
+  exit 0
+fi
+
+TMP_INPUT="/tmp/router-rollup.input.$$"
+TMP_TOTALS="/tmp/router-rollup.totals.$$"
+TMP_DESTS="/tmp/router-rollup.dests.$$"
+
+tail -n "$MAX_INPUT_LINES" "$FACTS_FILE" > "$TMP_INPUT" 2>/dev/null || : > "$TMP_INPUT"
+rows_seen="$(wc -l < "$TMP_INPUT" 2>/dev/null | tr -d ' ')"
+case "$rows_seen" in ''|*[!0-9]*) rows_seen=0 ;; esac
+if [ "$rows_seen" -eq 0 ]; then
+  finish_status missing_source empty_lan_flow_facts 0
+  exit 0
+fi
+
+awk -F'|' '
+  BEGIN { OFS = "|" }
+
+  function days_from_civil(y, m, d, era, yoe, doy, doe) {
+    y -= (m <= 2)
+    era = int((y >= 0 ? y : y - 399) / 400)
+    yoe = y - era * 400
+    doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+    doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+    return era * 146097 + doe - 719468
+  }
+
+  function civil_from_days(z, out, era, doe, yoe, y, doy, mp, d, m) {
+    z += 719468
+    era = int((z >= 0 ? z : z - 146096) / 146097)
+    doe = z - era * 146097
+    yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
+    y = yoe + era * 400
+    doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
+    mp = int((5 * doy + 2) / 153)
+    d = doy - int((153 * mp + 2) / 5) + 1
+    m = mp + (mp < 10 ? 3 : -9)
+    y += (m <= 2)
+    out[1] = y
+    out[2] = m
+    out[3] = d
+  }
+
+  function parse_ts(ts, parts) {
+    parts[1] = substr(ts, 1, 4) + 0
+    parts[2] = substr(ts, 6, 2) + 0
+    parts[3] = substr(ts, 9, 2) + 0
+    parts[4] = substr(ts, 12, 2) + 0
+    parts[5] = substr(ts, 15, 2) + 0
+  }
+
+  function week_start(y, m, d, civil, z, dow) {
+    z = days_from_civil(y, m, d)
+    dow = (z + 3) % 7
+    if (dow < 0) dow += 7
+    civil_from_days(z - dow, civil)
+    return sprintf("%04d-%02d-%02dT00:00:00+0300", civil[1], civil[2], civil[3])
+  }
+
+  function bucket(ts, layer, parts, min5) {
+    parse_ts(ts, parts)
+    if (layer == "5min") {
+      min5 = int(parts[5] / 5) * 5
+      return sprintf("%04d-%02d-%02dT%02d:%02d:00+0300", parts[1], parts[2], parts[3], parts[4], min5)
+    }
+    if (layer == "hourly") return sprintf("%04d-%02d-%02dT%02d:00:00+0300", parts[1], parts[2], parts[3], parts[4])
+    if (layer == "daily") return sprintf("%04d-%02d-%02dT00:00:00+0300", parts[1], parts[2], parts[3])
+    if (layer == "weekly") return week_start(parts[1], parts[2], parts[3])
+    return sprintf("%04d-%02d-01T00:00:00+0300", parts[1], parts[2])
+  }
+
+  function traffic_class_for(remote) {
+    if (remote == "" || remote == "0.0.0.0") return "unclassified"
+    return "client"
+  }
+
+  function add_row(layer, ts, client_ip, remote_ip, route, bytes, flows, cls, key, via, direct, unknown) {
+    key = layer "|" bucket(ts, layer) "|" client_ip "|Home Wi-Fi/LAN|" route "|" cls
+    totals[key] += bytes
+    total_flows[key] += flows
+    if (route == "VPS") total_vps[key] += bytes
+    else if (route == "Direct") total_direct[key] += bytes
+    else total_unknown[key] += bytes
+
+    key = layer "|" bucket(ts, layer) "|" client_ip "|Home Wi-Fi/LAN|" route "|" cls "|" remote_ip
+    dests[key] += bytes
+    dest_flows[key] += flows
+    if (route == "VPS") dest_vps[key] += bytes
+    else if (route == "Direct") dest_direct[key] += bytes
+    else dest_unknown[key] += bytes
+  }
+
+  NF >= 10 {
+    ts = $1
+    client_ip = $2
+    remote_ip = $3
+    route = $6
+    bytes = $9 + 0
+    flows = $10 + 0
+    cls = traffic_class_for(remote_ip)
+    if (bytes <= 0 || client_ip == "") next
+    if (flows <= 0) flows = 1
+    add_row("5min", ts, client_ip, remote_ip, route, bytes, flows, cls)
+    add_row("hourly", ts, client_ip, remote_ip, route, bytes, flows, cls)
+    add_row("daily", ts, client_ip, remote_ip, route, bytes, flows, cls)
+    add_row("weekly", ts, client_ip, remote_ip, route, bytes, flows, cls)
+    add_row("monthly", ts, client_ip, remote_ip, route, bytes, flows, cls)
+  }
+
+  END {
+    for (key in totals) {
+      split(key, parts, "|")
+      print "total", parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], totals[key] + 0, total_vps[key] + 0, total_direct[key] + 0, total_unknown[key] + 0, total_flows[key] + 0
+    }
+    for (key in dests) {
+      split(key, parts, "|")
+      print "destination", parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], dests[key] + 0, dest_vps[key] + 0, dest_direct[key] + 0, dest_unknown[key] + 0, dest_flows[key] + 0
+    }
+  }
+' "$TMP_INPUT" > "$TMP_TOTALS"
+
+for layer in 5min hourly daily weekly monthly; do
+  awk -F'|' -v layer="$layer" '$1 == "total" && $2 == layer {
+    print $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 "|" $10 "|" $11 "|" $12
+  }' "$TMP_TOTALS" > "$ROLLUP_DIR/router_traffic_${layer}.tsv.tmp"
+  mv "$ROLLUP_DIR/router_traffic_${layer}.tsv.tmp" "$ROLLUP_DIR/router_traffic_${layer}.tsv"
+
+  awk -F'|' -v layer="$layer" '$1 == "destination" && $2 == layer {
+    print $3 "|" $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9 "|" $10 "|" $11 "|" $12 "|" $13
+  }' "$TMP_TOTALS" > "$ROLLUP_DIR/router_destination_traffic_${layer}.tsv.tmp"
+  mv "$ROLLUP_DIR/router_destination_traffic_${layer}.tsv.tmp" "$ROLLUP_DIR/router_destination_traffic_${layer}.tsv"
+done
+
+printf '%s|missing_source|reason=dns_source_not_available|source=router_edge_rollup\n' "$(traffic_rollup_now)" > "$ROLLUP_DIR/router_dns.status"
+finish_status ok sampled "$rows_seen"
