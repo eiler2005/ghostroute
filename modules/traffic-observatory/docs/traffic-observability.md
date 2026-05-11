@@ -176,8 +176,10 @@ default and separates:
 - `traffic_facts[]`: normal rows shaped as
   `client/device -> ip/domain -> route -> bytes -> DNS/route evidence`.
 - `dns_links[]`: best-effort `domain -> answer_ip -> flow.destination_ip`
-  correlation. IP-only rows remain IP-only; the pipeline must not invent a
-  domain from an address.
+  correlation. Links require matching client evidence when present, matching
+  answer/destination IP, a DNS event before the flow, and a bounded correlation
+  window. Shared CDN answers stay low confidence, and IP-only rows remain
+  IP-only; the pipeline must not invent a domain from an address.
 - `attribution_gaps[]`: accounting debt such as unattributed LAN buckets. These
   rows are not normal client traffic facts and must not appear in Top clients.
 - `coverage`: observed, attributed and unattributed byte coverage by scope.
@@ -188,9 +190,12 @@ Every fact carries evidence fields: identity confidence, byte confidence,
 destination confidence, allocation basis, evidence level, source list, route
 source/basis, matched ipset, route verification, DNS link confidence and
 accounting status. LAN/Wi-Fi destination bytes now prefer the asynchronous
-router `lan-flow-facts.tsv` layer when available. Domain correlation comes from
-DNS evidence in `traffic-facts`; the router only writes read-only bottom-layer
-evidence and status/gap files.
+router `lan-flow-facts.tsv` layer when available. Route labels from ipset/policy
+evidence are intent-only until real outbound/egress evidence exists, so
+unverified bytes stay in `unknown_bytes` and every fact must satisfy
+`bytes = via_vps_bytes + direct_bytes + unknown_bytes`. Domain correlation comes
+from DNS evidence in `traffic-facts`; the router only writes read-only
+bottom-layer evidence and status/gap files.
 
 `traffic-report --json` remains a compatibility output for older consumers, and
 human `traffic-report today/week/month/check` keeps its operator-facing text.

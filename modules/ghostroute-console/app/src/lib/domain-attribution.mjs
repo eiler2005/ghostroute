@@ -1,3 +1,5 @@
+import { classifyDestination } from "./intelligence/classification.mjs";
+
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;
   return String(value);
@@ -113,6 +115,8 @@ export function hasConcreteAppEvidence(row) {
 export function isServiceDomain(value, row = {}) {
   const domain = text(value).toLowerCase();
   const evidence = rowText(row);
+  const classification = classifyDestination({ ...row, destination: value });
+  if (classification.category.startsWith("system.") || classification.category.startsWith("analytics.") || classification.category.startsWith("tracker.") || classification.category.startsWith("cdn.")) return true;
   if (isResolverOrRouterService({ ...row, destination: value })) return true;
   return domain.includes("dns/resolver")
     || domain.includes("asus")
@@ -155,9 +159,17 @@ export function trafficClassForDomain(row) {
   const domain = trafficDomainLabel(row);
   if (!domain) return "service_background";
   if (isUnclassifiedDomain(domain)) return "unclassified";
+  const classification = classifyDestination(row);
+  if (["unknown.empty", "unknown.ip_only", "unknown.no_dns_match"].includes(classification.category)) return "unclassified";
+  if (classification.category.startsWith("personal_cloud.")) return "personal_cloud";
+  if (classification.category.startsWith("system.") || classification.category.startsWith("analytics.") || classification.category.startsWith("tracker.") || classification.category.startsWith("cdn.")) return "service_background";
   if (isPersonalCloudDomain(domain)) return "personal_cloud";
   if (isServiceDomain(domain, row)) return "service_background";
   return "client";
+}
+
+export function destinationClassification(row) {
+  return classifyDestination(row);
 }
 
 function rowBytes(row) {

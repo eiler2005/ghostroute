@@ -63,7 +63,7 @@ fi
 
 TRAFFIC_EVIDENCE_PERIOD="$PERIOD_ARG" \
 TRAFFIC_EVIDENCE_STATE_DIR="$STATE_DIR" \
-ruby -rjson -rdigest -rtime - <<'RUBY'
+ruby -rjson -rdigest -rtime -rdate - <<'RUBY'
 def text(value, fallback = '')
   value.nil? || value.to_s.empty? ? fallback : value.to_s
 end
@@ -74,12 +74,17 @@ rescue ArgumentError, TypeError
   0
 end
 
-def iso_time(value, fallback)
+def parse_time(value)
   raw = text(value)
-  return fallback if raw.empty?
-  Time.parse(raw).utc.iso8601(3)
+  return nil if raw.empty?
+  Time.parse(raw).utc
 rescue ArgumentError
-  fallback
+  nil
+end
+
+def iso_time(value)
+  parsed = parse_time(value)
+  parsed&.iso8601(3)
 end
 
 def sample_id(row)
@@ -89,9 +94,64 @@ def sample_id(row)
   ].join('|'))
 end
 
+def local_midnight(date)
+  Time.local(date.year, date.month, date.day, 0, 0, 0)
+end
+
+def window_for(period, timezone)
+  original_tz = ENV['TZ']
+  ENV['TZ'] = timezone
+  now = Time.now
+  today = Date.new(now.year, now.month, now.day)
+  normalized = period.to_s
+
+  start_date =
+    case normalized
+    when 'today', 'current', 'current-day'
+      today
+    when 'yesterday'
+      today - 1
+    when 'week'
+      today - (today.cwday - 1)
+    when 'month'
+      Date.new(today.year, today.month, 1)
+    when /\A\d{4}-\d{2}-\d{2}\z/
+      Date.parse(normalized)
+    else
+      today
+    end
+
+  end_date =
+    case normalized
+    when 'week'
+      start_date + 7
+    when 'month'
+      start_date.next_month
+    else
+      start_date + 1
+    end
+
+  {
+    'period' => period,
+    'timezone' => timezone,
+    'start_ts_utc' => local_midnight(start_date).utc.iso8601(3),
+    'end_ts_utc' => local_midnight(end_date).utc.iso8601(3)
+  }
+ensure
+  ENV['TZ'] = original_tz
+end
+
+def in_window?(parsed_time, start_time, end_time)
+  parsed_time && parsed_time >= start_time && parsed_time < end_time
+end
+
 period = ENV.fetch('TRAFFIC_EVIDENCE_PERIOD', 'today')
+timezone = ENV.fetch('GHOSTROUTE_TRAFFIC_WINDOW_TZ', 'Europe/Moscow')
 state_dir = text(ENV['TRAFFIC_EVIDENCE_STATE_DIR'])
 generated_at = Time.now.utc.iso8601(3)
+window = window_for(period, timezone)
+window_start = Time.parse(window['start_ts_utc'])
+window_end = Time.parse(window['end_ts_utc'])
 warnings = []
 flow_samples = []
 dns_queries = []
@@ -106,7 +166,13 @@ else
       next if line.strip.empty?
       parts = line.split('|', -1)
       next if parts.length < 14
-      ts = iso_time(parts[0], generated_at)
+      parsed_ts = parse_time(parts[0])
+      unless parsed_ts
+        warnings << { 'code' => 'unparsable_timestamp', 'source' => 'lan-flow-facts.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }
+        next
+      end
+      next unless in_window?(parsed_ts, window_start, window_end)
+      ts = parsed_ts.iso8601(3)
       total = number(parts[8])
       row = {
         'ts' => ts,
@@ -157,9 +223,15 @@ else
       next if line.strip.empty?
       parts = line.split('|', -1)
       next if parts.length < 8
+      parsed_ts = parse_time(parts[0])
+      unless parsed_ts
+        warnings << { 'code' => 'unparsable_timestamp', 'source' => 'dns-query-facts.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }
+        next
+      end
+      next unless in_window?(parsed_ts, window_start, window_end)
       row = {
         'id' => Digest::SHA1.hexdigest([line, index].join('|')),
-        'ts' => iso_time(parts[0], generated_at),
+        'ts' => parsed_ts.iso8601(3),
         'client_ip' => text(parts[1]),
         'domain' => text(parts[2]),
         'qtype' => text(parts[3], 'A'),
@@ -179,7 +251,7 @@ end
 output = {
   'schema_version' => 1,
   'generated_at' => generated_at,
-  'window' => { 'period' => period },
+  'window' => window,
   'source' => { 'command' => 'traffic-evidence', 'schema' => 'traffic-evidence-v1', 'state_dir' => state_dir },
   'flow_samples' => flow_samples,
   'dns_queries' => dns_queries,

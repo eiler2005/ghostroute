@@ -75,10 +75,10 @@ awk -v snapshot_ts="$timestamp" -v source_log="$LOG_PATH" '
       } else if ($i == "reply" && (i + 3) <= NF && $(i + 2) == "is") {
         domain = clean_domain($(i + 1))
         answer = $(i + 3)
-        if (answer ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+        if (answer ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ || answer ~ /^[0-9A-Fa-f:]+$/) {
           client = last_client[domain]
           qtype = last_qtype[domain]
-          if (qtype == "") qtype = "A"
+          if (qtype == "") qtype = (answer ~ /:/ ? "AAAA" : "A")
           printf "%s|%s|%s|%s|%s|answer|%s|ok\n", snapshot_ts, client, domain, qtype, answer, source_log
         }
       }

@@ -63,6 +63,14 @@ rollback script.
 Console. It reads `traffic-evidence --json` by default; `traffic-report` remains
 operator/debug output and a rollback source only.
 
+`traffic-evidence --json <period>` applies explicit UTC window bounds for
+`today`, `yesterday`, `week`, `month` and `YYYY-MM-DD` before facts are built, so
+retained router tails do not leak old rows into current accounting. Evidence
+mode is conservative: route/ipset matches are policy intent until real egress
+or outbound evidence exists, DNS links only use safe time-ordered answers, and
+unverified route bytes stay in `unknown_bytes` to preserve the accounting
+invariant.
+
 `modules/traffic-observatory/bin/live-check` remains a compatibility wrapper,
 but the canonical live A/B/C health owner is
 `./modules/ghostroute-health-monitor/bin/live-check`.
