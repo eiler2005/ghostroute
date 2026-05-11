@@ -14,3 +14,4 @@ modules/**/router/* text eol=lf
 modules/**/vps/* text eol=lf
 modules/**/vps/ghostroute-readonly-shell text eol=lf
 tests/*.sh text eol=lf
+configs/** text eol=lf
