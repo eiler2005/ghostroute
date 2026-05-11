@@ -15,13 +15,14 @@ with small watermarked chunks.
 - Prefer client traffic. Service/background evidence is retained for diagnostics
   and attribution gaps, not ranked as client traffic.
 
-## Schema v13 Boundary
+## Schema v14 Boundary
 
-Schema v12 is the aggregate reset boundary. Schema v13 extends that baseline
-with `traffic-facts` v3 fields, raw `traffic_evidence` snapshots and dry-run
-filter scaffold tables. Old Console SQLite and old snapshot-derived aggregates
-are quarantined for audit only and must not seed new calculations. The current
-source model is:
+Schema v12 is the aggregate reset boundary. Schema v13 introduced
+`traffic-facts` v3 fields, raw `traffic_evidence` snapshots and dry-run filter
+scaffold tables. Schema v14 is an idempotent guard that keeps fresh and migrated
+DBs aligned for route/accounting metadata, detailed DNS links and fact lookup
+indexes. Old Console SQLite and old snapshot-derived aggregates are quarantined
+for audit only and must not seed new calculations. The current source model is:
 
 - router edge rollups for authoritative LAN/Wi-Fi totals;
 - `traffic_evidence` for raw flow/DNS/route evidence;

@@ -5,7 +5,7 @@ import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
 import { normalizeRouterRollups } from "./router-rollups.mjs";
 
-const MIGRATION_VERSION = 13;
+const MIGRATION_VERSION = 14;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -1405,6 +1405,7 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
     create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
     create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
+    create index if not exists idx_traffic_facts_client_dest on traffic_facts(client_ip, destination_ip, event_ts_utc desc);
     create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
     create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
     create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
@@ -1412,7 +1413,7 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
   `);
 
-  for (const version of [6, 7, 8, 9, 10, 12, MIGRATION_VERSION]) {
+  for (const version of [6, 7, 8, 9, 10, 12, 13, MIGRATION_VERSION]) {
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       version,
       new Date().toISOString()
@@ -3521,6 +3522,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json, id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, flow_event_ts_utc)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const dnsLinksById = new Map((payload.dns_links || []).map((link) => [text(link.id || link.dns_link_id), link]));
   for (const row of payload.traffic_facts || []) {
     const timing = timestampContract(row, collectedAt);
     const eventTs = eventTimestamp(row, collectedAt);
@@ -3631,23 +3633,24 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     );
     const domain = text(row.dns_qname || row.domain || "");
     if (domain) {
+      const linkedDns = dnsLinksById.get(text(row.dns_link_id || row.link_id)) || row;
       dnsLinkInsert.run(
         snapshotId,
         collectedAt,
         key,
         text(row.client_ip || row.ip || ""),
-        domain,
-        destination,
-        text(row.allocation_basis || "dns_link"),
-        text(row.destination_confidence || row.confidence || "unknown"),
-        json(row),
+        text(linkedDns.domain || domain),
+        text(linkedDns.destination || destination),
+        text(linkedDns.link_type || row.allocation_basis || "dns_link"),
+        text(linkedDns.confidence || row.destination_confidence || row.confidence || "unknown"),
+        json(linkedDns),
         text(row.dns_link_id || row.link_id || `${snapshotId}:${key}:${domain}:${destinationIp(row)}`),
-        destinationIp(row),
-        text(row.destination_port || row.port || ""),
-        text(row.protocol || ""),
-        text(row.dns_answer_ip || row.answer_ip || ""),
-        text(row.dns_event_ts_utc || ""),
-        text(row.flow_event_ts_utc || row.event_ts_utc || "")
+        text(linkedDns.destination_ip || destinationIp(row)),
+        text(linkedDns.destination_port || row.destination_port || row.port || ""),
+        text(linkedDns.protocol || row.protocol || ""),
+        text(linkedDns.dns_answer_ip || row.dns_answer_ip || row.answer_ip || ""),
+        text(linkedDns.dns_event_ts_utc || ""),
+        text(linkedDns.flow_event_ts_utc || row.event_ts_utc || "")
       );
     }
     insertEvent(db, snapshotId, "traffic.fact", eventTs, {

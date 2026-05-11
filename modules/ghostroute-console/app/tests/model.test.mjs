@@ -17,7 +17,7 @@ const {
   rebuildPreparedWindows,
 } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
-const { deviceRole, displayDestination, trafficClassFor } = classificationModule;
+const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
@@ -617,6 +617,8 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 9").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 10").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 12").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 13").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 14").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'display_ts_utc'").get());
@@ -632,6 +634,99 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('dns_query_log') where name = 'display_ts_utc'").get());
+  for (const column of ["protocol", "bytes_up", "bytes_down", "route_source", "route_basis", "matched_ipset", "egress_iface", "fwmark", "route_verification", "dns_link_id", "dns_link_confidence", "accounting_status"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('traffic_facts') where name = ?").get(column), column);
+  }
+  for (const column of ["id", "destination_ip", "destination_port", "protocol", "dns_answer_ip", "dns_event_ts_utc", "flow_event_ts_utc"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('traffic_dns_links') where name = ?").get(column), column);
+  }
+  assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_client_dest'").get());
+  assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_domain_answer'").get());
+  assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_facts_client_dest'").get());
+  db.close();
+});
+
+test("traffic facts v3 persists route accounting and dns link details", () => {
+  const db = new Database(":memory:");
+  ensureConsoleSchema(db);
+  const payload = {
+    schema_version: 3,
+    generated_at: "2026-05-11T09:00:00.000Z",
+    source: { command: "traffic-facts", source_report: "traffic-evidence" },
+    confidence: "mixed",
+    window: { period: "today", start_ts_utc: "2026-05-10T21:00:00.000Z", end_ts_utc: "2026-05-11T21:00:00.000Z" },
+    collector_metrics: { duration_ms: 1, source_row_counts: { traffic_facts: 1, dns_links: 1 } },
+    clients: [],
+    traffic_facts: [{
+      fact_id: "v3-fact-1",
+      event_ts_utc: "2026-05-11T09:00:00.000Z",
+      client_key: "192.0.2.10",
+      client_label: "192.0.2.10",
+      client_ip: "192.0.2.10",
+      channel: "Home Wi-Fi/LAN",
+      route: "VPS",
+      traffic_class: "service_background",
+      destination: "example.invalid",
+      destination_kind: "domain",
+      destination_ip: "198.51.100.20",
+      destination_port: "443",
+      protocol: "tcp",
+      dns_qname: "example.invalid",
+      dns_answer_ip: "198.51.100.20",
+      dns_link_id: "dns-link-1",
+      dns_link_confidence: "high",
+      bytes: 4200,
+      bytes_up: 1200,
+      bytes_down: 3000,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 4200,
+      route_source: "ipset",
+      route_basis: "ipset_membership",
+      matched_ipset: "STEALTH_DOMAINS",
+      egress_iface: "",
+      fwmark: "",
+      route_verification: "intent_only",
+      accounting_status: "incomplete_evidence",
+      confidence: "observed",
+    }],
+    dns_links: [{
+      id: "dns-link-1",
+      client_key: "192.0.2.10",
+      client_ip: "192.0.2.10",
+      domain: "example.invalid",
+      destination: "198.51.100.20",
+      destination_ip: "198.51.100.20",
+      destination_port: "443",
+      protocol: "tcp",
+      dns_answer_ip: "198.51.100.20",
+      dns_event_ts_utc: "2026-05-11T08:59:00.000Z",
+      flow_event_ts_utc: "2026-05-11T09:00:00.000Z",
+      link_type: "exact_client_ip",
+      confidence: "high",
+    }],
+    attribution_gaps: [],
+    coverage: {},
+  };
+  normalizeSnapshot(db, 1, "traffic_facts", payload.generated_at, payload);
+  const fact = db.prepare("select protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, route_verification, dns_link_id, dns_link_confidence, accounting_status from traffic_facts where fact_id = 'v3-fact-1'").get();
+  assert.equal(fact.protocol, "tcp");
+  assert.equal(fact.bytes_up, 1200);
+  assert.equal(fact.bytes_down, 3000);
+  assert.equal(fact.route_source, "ipset");
+  assert.equal(fact.route_basis, "ipset_membership");
+  assert.equal(fact.matched_ipset, "STEALTH_DOMAINS");
+  assert.equal(fact.route_verification, "intent_only");
+  assert.equal(fact.dns_link_id, "dns-link-1");
+  assert.equal(fact.dns_link_confidence, "high");
+  assert.equal(fact.accounting_status, "incomplete_evidence");
+  const link = db.prepare("select id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, flow_event_ts_utc from traffic_dns_links where id = 'dns-link-1'").get();
+  assert.equal(link.destination_ip, "198.51.100.20");
+  assert.equal(link.destination_port, "443");
+  assert.equal(link.protocol, "tcp");
+  assert.equal(link.dns_answer_ip, "198.51.100.20");
+  assert.equal(link.dns_event_ts_utc, "2026-05-11T08:59:00.000Z");
+  assert.equal(link.flow_event_ts_utc, "2026-05-11T09:00:00.000Z");
   db.close();
 });
 
@@ -796,6 +891,33 @@ test("domain attribution module classifies personal cloud service client and unr
   assert.equal(trafficClassForDomain({ destination: "Other/IP", bytes: 2048 }), "unclassified");
   assert.equal(trafficClassForDomain({ domain: "dns.msftncsi.com", count: 4, confidence: "dns-interest" }), "service_background");
 });
+
+test("local traffic intelligence returns deterministic labels and action hints", () => {
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "app-measurement.com" })),
+    { category: "analytics.firebase", action_hint: "block_candidate" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "push.apple.com" })),
+    { category: "system.apple.push", action_hint: "allow" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "www.dropbox.com" })),
+    { category: "personal_cloud.dropbox", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20" })),
+    { category: "unknown.ip_only", action_hint: "investigate" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20", dns_link_confidence: "no_dns_match" })),
+    { category: "unknown.no_dns_match", action_hint: "investigate" }
+  );
+});
+
+function pick(row) {
+  return { category: row.category, action_hint: row.action_hint };
+}
 
 test("domain breakdown keeps client personal cloud and unclassified rows separate after scaling", () => {
   const breakdown = normalizeDomainBreakdown([

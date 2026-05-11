@@ -1117,13 +1117,14 @@ export function getDb() {
       create index if not exists idx_tws_window on traffic_window_snapshots(kind, window, traffic_class, computed_at_utc desc);
       create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
       create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
+      create index if not exists idx_traffic_facts_client_dest on traffic_facts(client_ip, destination_ip, event_ts_utc desc);
       create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
       create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
       create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
       create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
       create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
     `);
-    for (const version of [6, 7, 8, 9, 10, 12, 13]) {
+    for (const version of [6, 7, 8, 9, 10, 12, 13, 14]) {
       db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
         version,
         new Date().toISOString()

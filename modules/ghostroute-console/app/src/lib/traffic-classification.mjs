@@ -1,4 +1,4 @@
-import { isDnsOnlyTraffic, trafficClassForDomain, trafficDomainLabel } from "./domain-attribution.mjs";
+import { destinationClassification, isDnsOnlyTraffic, trafficClassForDomain, trafficDomainLabel } from "./domain-attribution.mjs";
 
 export const trafficClasses = ["client", "personal_cloud", "service_background", "unclassified", "all"];
 
@@ -12,6 +12,10 @@ export const trafficClassLabels = {
 
 export function trafficClassFor(row) {
   return trafficClassForDomain(row);
+}
+
+export function trafficIntelligenceFor(row) {
+  return destinationClassification(row);
 }
 
 export function trafficClassLabel(value) {

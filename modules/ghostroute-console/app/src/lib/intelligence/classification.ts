@@ -4,39 +4,51 @@ export type DestinationClassification = {
   action_hint: "allow" | "block_candidate" | "monitor" | "investigate";
   confidence: "high" | "medium" | "low" | "unknown";
   reason_code: string;
+  traffic_role?: string;
+  traffic_purpose?: string;
 };
+
+function text(value: unknown, fallback = ""): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  return String(value);
+}
 
 function valueFor(input: unknown): string {
   if (typeof input === "string") return input.toLowerCase();
   const row = (input || {}) as Record<string, unknown>;
-  return String(row.destination || row.domain || row.dns_qname || row.sni || row.destination_ip || "").toLowerCase();
+  if (text(row.dns_link_confidence).toLowerCase() === "no_dns_match") return "unknown:no_dns_match";
+  return text(row.destination || row.domain || row.dns_qname || row.sni || row.destination_ip).toLowerCase();
+}
+
+function result(
+  category: string,
+  provider: string,
+  action_hint: DestinationClassification["action_hint"],
+  confidence: DestinationClassification["confidence"],
+  reason_code: string,
+  traffic_role: string,
+  traffic_purpose: string
+): DestinationClassification {
+  return { category, provider, action_hint, confidence, reason_code, traffic_role, traffic_purpose };
 }
 
 export function classifyDestination(input: unknown): DestinationClassification {
   const value = valueFor(input);
-  if (!value) {
-    return { category: "unknown.empty", provider: "", action_hint: "investigate", confidence: "unknown", reason_code: "empty_destination" };
-  }
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) {
-    return { category: "unknown.ip_only", provider: "", action_hint: "investigate", confidence: "low", reason_code: "ip_only" };
-  }
-  if (value.includes("app-measurement") || value.includes("analytics") || value.includes("telemetry") || value.includes("crashlytics")) {
-    return { category: "analytics", provider: value.includes("firebase") || value.includes("app-measurement") ? "firebase" : "", action_hint: "block_candidate", confidence: "medium", reason_code: "analytics_domain" };
-  }
-  if (value.includes("push.apple")) {
-    return { category: "system.apple.push", provider: "apple", action_hint: "allow", confidence: "high", reason_code: "apple_push" };
-  }
-  if (value.includes("itunes") || value.includes("mzstatic") || value.includes("aaplimg")) {
-    return { category: "system.apple.appstore", provider: "apple", action_hint: "allow", confidence: "medium", reason_code: "apple_appstore" };
-  }
-  if (value.includes("icloud")) {
-    return { category: "personal_cloud.apple", provider: "apple", action_hint: "monitor", confidence: "high", reason_code: "icloud" };
-  }
-  if (value.includes("dropbox")) {
-    return { category: "personal_cloud.dropbox", provider: "dropbox", action_hint: "monitor", confidence: "high", reason_code: "dropbox" };
-  }
-  if (value.includes("cloudfront") || value.includes("akamai") || value.includes("fastly") || value.includes("cloudflare")) {
-    return { category: "cdn", provider: "", action_hint: "monitor", confidence: "medium", reason_code: "cdn_suffix" };
-  }
-  return { category: "unknown.domain", provider: "", action_hint: "monitor", confidence: "unknown", reason_code: "no_rule" };
+  if (!value) return result("unknown.empty", "", "investigate", "unknown", "empty_destination", "unknown", "unknown");
+  if (value === "unknown:no_dns_match") return result("unknown.no_dns_match", "", "investigate", "low", "no_dns_match", "unknown", "unknown");
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value) || /^[0-9a-f:]+$/i.test(value)) return result("unknown.ip_only", "", "investigate", "low", "ip_only", "unknown", "unknown");
+  if (value.includes("app-measurement") || value.includes("firebase") || value.includes("crashlytics")) return result("analytics.firebase", "firebase", "block_candidate", "high", "firebase_analytics", "analytics_tracker", "telemetry");
+  if (/(^|[.-])(ads?|doubleclick|adservice|googlesyndication|scorecardresearch|branch|adjust|appsflyer)([.-]|$)/.test(value)) return result("tracker.ads", "", "block_candidate", "medium", "ad_tracker_domain", "analytics_tracker", "tracking");
+  if (value.includes("push.apple")) return result("system.apple.push", "apple", "allow", "high", "apple_push", "system_maintenance", "push");
+  if (value.includes("configuration.apple") || value.includes("captive.apple") || value.includes("ocsp.apple")) return result("system.apple.maintenance", "apple", "allow", "medium", "apple_system", "system_maintenance", "maintenance");
+  if (value.includes("gvt") || value.includes("gstatic") || value.includes("connectivitycheck") || value.includes("googleapis")) return result("system.google.background", "google", "allow", "medium", "google_system", "system_maintenance", "maintenance");
+  if (value.includes("icloud")) return result("personal_cloud.apple", "apple", "monitor", "high", "icloud", "client_bulk_sync", "personal_cloud");
+  if (value.includes("dropbox")) return result("personal_cloud.dropbox", "dropbox", "monitor", "high", "dropbox", "client_bulk_sync", "personal_cloud");
+  if (value.includes("onedrive") || value.includes("sharepoint")) return result("personal_cloud.microsoft", "microsoft", "monitor", "high", "microsoft_cloud", "client_bulk_sync", "personal_cloud");
+  if (value.includes("drive.google") || value.includes("photos.google")) return result("personal_cloud.google", "google", "monitor", "high", "google_cloud", "client_bulk_sync", "personal_cloud");
+  if (value.includes("cloudfront")) return result("cdn.cloudfront", "aws", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
+  if (value.includes("akamai")) return result("cdn.akamai", "akamai", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
+  if (value.includes("fastly")) return result("cdn.fastly", "fastly", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
+  if (value.includes("cloudflare")) return result("cdn.cloudflare", "cloudflare", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
+  return result("unknown.domain", "", "monitor", "unknown", "no_rule", "client_interactive", "unknown");
 }
