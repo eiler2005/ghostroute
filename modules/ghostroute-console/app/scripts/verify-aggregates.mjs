@@ -72,7 +72,7 @@ function segmentRows(segment) {
       from ${detailTable}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-       and traffic_class = 'client'
+        and traffic_class in ('client', 'personal_cloud')
   `).all(segment.start, segment.end);
   const totalRows = db.prepare(`
     select client_key, channel, '' as destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
@@ -80,7 +80,7 @@ function segmentRows(segment) {
       from ${totalTable}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-       and traffic_class = 'client'
+        and traffic_class in ('client', 'personal_cloud')
   `).all(segment.start, segment.end);
   return [...detailRows, ...totalRows];
 }
