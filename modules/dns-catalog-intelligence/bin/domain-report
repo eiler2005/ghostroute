@@ -12,6 +12,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 [ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
 [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
 if [ -n "${GHOSTROUTE_ROUTER_ENV_FILE:-}" ] && [ -r "${GHOSTROUTE_ROUTER_ENV_FILE}" ]; then
@@ -42,23 +43,16 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-SSH_OPTS=(
-  -i "$SSH_IDENTITY_FILE"
-  -p "$ROUTER_PORT"
-  -o ConnectTimeout="$CONNECT_TIMEOUT"
-  -o IdentitiesOnly=yes
-  -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
-  -o PubkeyAcceptedAlgorithms=+ssh-rsa
-  -o StrictHostKeyChecking=accept-new
-  -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
-)
-
 LOCAL_AUTO_FILE="${DOMAIN_REPORT_AUTO_FILE:-}"
 LOCAL_ACTIVITY_FILE="${DOMAIN_REPORT_ACTIVITY_LOG_FILE:-}"
 LOCAL_BLOCKED_FILE="${DOMAIN_REPORT_BLOCKED_LIST_FILE:-}"
 NEEDS_ROUTER=1
 if [ "$JSON_MODE" = "1" ] && [ -n "${LOCAL_AUTO_FILE}${LOCAL_ACTIVITY_FILE}${LOCAL_BLOCKED_FILE}" ]; then
   NEEDS_ROUTER=0
+fi
+
+if [ "$NEEDS_ROUTER" = "1" ]; then
+  router_health_load_env
 fi
 
 if [ -z "$ROUTER" ] && [ "$NEEDS_ROUTER" = "1" ]; then
@@ -91,7 +85,7 @@ if [ "$JSON_MODE" = "1" ]; then
   if [ -n "$LOCAL_AUTO_FILE" ]; then
     [ -f "$LOCAL_AUTO_FILE" ] && grep "^ipset=" "$LOCAL_AUTO_FILE" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u > "$AUTO_OUT" || true
   elif [ -n "$ROUTER" ]; then
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        [ -f "$AUTO" ] && grep "^ipset=" "$AUTO" | sed "s|ipset=/||;s|/STEALTH_DOMAINS||" | sort -u || true' > "$AUTO_OUT"
   fi
@@ -100,9 +94,8 @@ if [ "$JSON_MODE" = "1" ]; then
     [ -f "$LOCAL_ACTIVITY_FILE" ] && tail -n "$LOG_LINES" "$LOCAL_ACTIVITY_FILE" > "$ACTIVITY_OUT" || true
     [ -f "$LOCAL_ACTIVITY_FILE" ] && grep "^│  ?" "$LOCAL_ACTIVITY_FILE" | sed "s/^│  ? //" | awk "{print \$1}" | sort | uniq -c | sort -rn | head -50 > "$CANDIDATES_OUT" || true
   elif [ -n "$ROUTER" ]; then
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" LOG_LINES="$LOG_LINES" \
-      '[ -f /opt/var/log/domain-activity.log ] && tail -n "$LOG_LINES" /opt/var/log/domain-activity.log || true' > "$ACTIVITY_OUT"
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh "LOG_LINES='$LOG_LINES'; [ -f /opt/var/log/domain-activity.log ] && tail -n \"\$LOG_LINES\" /opt/var/log/domain-activity.log || true" > "$ACTIVITY_OUT"
+    router_ssh \
       'ACTIVITY=/opt/var/log/domain-activity.log
        [ -f "$ACTIVITY" ] && grep "^│  ?" "$ACTIVITY" | sed "s/^│  ? //" | awk "{print \$1}" | sort | uniq -c | sort -rn | head -50 || true' > "$CANDIDATES_OUT"
   fi
@@ -110,7 +103,7 @@ if [ "$JSON_MODE" = "1" ]; then
   if [ -n "$LOCAL_BLOCKED_FILE" ] && [ -f "$LOCAL_BLOCKED_FILE" ]; then
     printf 'count=%s\n' "$(wc -l < "$LOCAL_BLOCKED_FILE" | tr -d ' ')" > "$BLOCKED_META_OUT"
   elif [ -n "$ROUTER" ]; then
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'BL=/opt/tmp/blocked-domains.lst
        [ -f "$BL" ] && printf "count=%s\n" "$(wc -l < "$BL")" || printf "count=0\n"' > "$BLOCKED_META_OUT"
   fi
@@ -187,7 +180,7 @@ case "$MODE" in
     echo "=== ЛОГА АКТИВНОСТИ ДОМЕНОВ (последние ${LOG_LINES} строк) ==="
     echo "Файл на роутере: /opt/var/log/domain-activity.log"
     echo ""
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       "[ -f /opt/var/log/domain-activity.log ] \
        && tail -n ${LOG_LINES} /opt/var/log/domain-activity.log \
        || echo 'Лог ещё не создан. Подождите первого запуска крона (каждые 4 часа).'"
@@ -195,7 +188,7 @@ case "$MODE" in
 
   reset)
     echo "Удаляю все авто-добавленные домены..."
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'rm -f /jffs/configs/dnsmasq-autodiscovered.conf.add
        service restart_dnsmasq
        echo "Готово. Все авто-добавленные домены удалены, dnsmasq перезапущен."'
@@ -203,7 +196,7 @@ case "$MODE" in
 
   cleanup)
     echo "Нормализую auto-файл на роутере и убираю дочерние записи, покрытые более общими правилами..."
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        BEFORE=$( [ -f "$AUTO" ] && grep -c "^ipset=" "$AUTO" || echo 0 )
        /jffs/addons/x3mRouting/domain-auto-add.sh --cleanup-only
@@ -214,7 +207,7 @@ case "$MODE" in
 
   all)
     echo "=== ВСЕ АВТО-ДОБАВЛЕННЫЕ STEALTH-ДОМЕНЫ ==="
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        [ -f "$AUTO" ] || { echo "(нет авто-добавленных доменов)"; exit 0; }
        echo "Файл: $AUTO"
@@ -223,7 +216,7 @@ case "$MODE" in
     ;;
 
   summary)
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'AUTO=/jffs/configs/dnsmasq-autodiscovered.conf.add
        ACTIVITY=/opt/var/log/domain-activity.log
 
@@ -261,7 +254,7 @@ case "$MODE" in
     echo "Домены, которые видели в DNS, но не добавили в STEALTH"
     echo "(отсутствуют в blocked-domains.lst)"
     echo ""
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" \
+    router_ssh \
       'ACTIVITY=/opt/var/log/domain-activity.log
        if [ -f "$ACTIVITY" ]; then
          grep "^│  ?" "$ACTIVITY" \

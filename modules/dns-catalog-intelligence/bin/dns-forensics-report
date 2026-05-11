@@ -9,6 +9,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 . "${PROJECT_ROOT}/modules/shared/lib/device-labels.sh"
 [ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
 [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
@@ -56,17 +57,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-SSH_OPTS=(
-  -i "$SSH_IDENTITY_FILE"
-  -p "$ROUTER_PORT"
-  -o ConnectTimeout="$CONNECT_TIMEOUT"
-  -o IdentitiesOnly=yes
-  -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
-  -o PubkeyAcceptedAlgorithms=+ssh-rsa
-  -o StrictHostKeyChecking=accept-new
-  -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
-)
-
 detect_router_ip() {
   local candidate
 
@@ -98,10 +88,11 @@ if [ -n "${DNS_FORENSICS_SOURCE_DIR:-}" ]; then
   cp "$SELECTED_FILE" "$SNAPSHOT_FILE"
   SNAPSHOT_SOURCE="$SELECTED_FILE"
 else
+  router_health_load_env
   ROUTER="${ROUTER:-$(detect_router_ip || true)}"
   [ -n "$ROUTER" ] || { echo "Cannot detect router IP. Set ROUTER=<ip> in secrets/router.env (or .env)" >&2; exit 1; }
   SELECTED_FILE="$(
-    ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" WINDOW_PREFIX="$WINDOW_PREFIX" 'sh -s' <<'REMOTE'
+    router_ssh WINDOW_PREFIX="$WINDOW_PREFIX" 'sh -s' <<'REMOTE'
 set -e
 DIR=/jffs/addons/router_configuration/dns-forensics
 [ -d /opt/var/log/router_configuration/dns-forensics ] && DIR=/opt/var/log/router_configuration/dns-forensics
@@ -121,7 +112,7 @@ REMOTE
     fi
     exit 1
   }
-  ssh "${SSH_OPTS[@]}" "${ROUTER_USER}@${ROUTER}" "cat \"$SELECTED_FILE\"" > "$SNAPSHOT_FILE"
+  router_ssh "cat \"$SELECTED_FILE\"" > "$SNAPSHOT_FILE"
   SNAPSHOT_SOURCE="$SELECTED_FILE"
 fi
 
