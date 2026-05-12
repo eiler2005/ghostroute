@@ -53,6 +53,25 @@ function notObserved(value: unknown) {
   return String(value);
 }
 
+function observedDetailRows(details: Record<string, any> = {}) {
+  return [
+    ["Label", details.label],
+    ["Client key", details.key],
+    ["Device", details.device],
+    ["Device key", details.deviceKey],
+    ["Client IP", details.ip],
+    ["Raw IP", details.rawIp && details.rawIp !== details.ip ? details.rawIp : ""],
+    ["Channel", details.channel],
+    ["Owner", details.owner],
+    ["Type", details.type],
+    ["Role", details.role],
+    ["Profile", details.profile],
+    ["Confidence", details.confidence],
+    ["Matched by", details.matchedBy],
+    ["Aliases", Array.isArray(details.aliases) ? details.aliases.join(" · ") : details.aliases],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== "not observed" && value !== "unknown");
+}
+
 function destinationEvidenceLevel(evidence: Evidence) {
   if (evidence.displayEvidenceKind === "IP/provider") return "provider/IP";
   if (evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain) return "exact DNS";
@@ -103,6 +122,15 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
       </div>
 
       <section className="flow-detail-section">
+        <h3><User size={16} /> Client details</h3>
+        <div className="detail-list compact-detail-list">
+          {observedDetailRows(evidence.clientDetails).map(([label, value]) => (
+            <div className="detail-row" key={String(label)}><span>{label}</span><strong>{String(value)}</strong></div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flow-detail-section">
         <h3><ShieldCheck size={16} /> Why this route?</h3>
         <p>{evidence.operatorView.decision}</p>
         <div className="flow-reason-box">
@@ -117,7 +145,7 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
           <div className="detail-row"><span>Policy</span><strong>{notObserved(evidence.flow.policy || evidence.flow.rule_set)}</strong></div>
           <div className="detail-row"><span>Rule</span><strong>{notObserved(evidence.matchedRule)}</strong></div>
           <div className="detail-row"><span>Outbound</span><strong>{notObserved(evidence.outbound)}</strong></div>
-          <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain)}</strong></div>
+          <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain || evidence.domain)}</strong></div>
         </div>
       </section>
 
@@ -126,7 +154,7 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
         <div className="detail-list compact-detail-list">
           <div className="detail-row"><span>Site / group</span><strong>{notObserved(evidence.siteView.destination || evidence.destination)}</strong></div>
           <div className="detail-row"><span>Domain</span><strong>{notObserved(evidence.domain)}</strong></div>
-          <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain)}</strong></div>
+          <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain || evidence.domain)}</strong></div>
           <div className="detail-row"><span>SNI</span><strong>{notObserved(evidence.siteView.sni || evidence.sni)}</strong></div>
           <div className="detail-row"><span>Destination IP</span><strong>{notObserved(evidence.destinationIp)}</strong></div>
           <div className="detail-row"><span>Provider / AS</span><strong>{notObserved(evidence.destinationCountryAs || evidence.siteView.destinationCountryAs)}</strong></div>

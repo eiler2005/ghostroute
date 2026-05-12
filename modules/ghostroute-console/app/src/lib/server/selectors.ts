@@ -522,8 +522,13 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     profile: rawProfile || inventoryIdentity?.profile,
     ip: row.client_ip || inventoryIdentity?.ip,
   });
-  const client = resolved.client_label
-    || inventoryIdentity?.client_label
+  const resolvedLooksLikeIp = isIpv4Literal(resolved.client_label)
+    || isIpv4Literal(resolved.client_key)
+    || (isIpv4Literal(row.client) && resolved.client_label === row.client);
+  const inventoryClient = inventoryIdentity?.client_label || inventoryIdentity?.label || "";
+  const preferInventoryClient = Boolean(inventoryClient && (resolvedLooksLikeIp || !resolved.client_key));
+  const client = (preferInventoryClient ? inventoryClient : resolved.client_label)
+    || inventoryClient
     || displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
   const bytes = Number(row.bytes || row.total_bytes || raw.bytes || 0);
   const bytesUp = Number(row.bytes_up || raw.bytes_up || raw.out_bytes || 0);
@@ -536,15 +541,15 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     raw_client: rawClient,
     raw_profile: rawProfile,
     client,
-    client_key: resolved.client_key || inventoryIdentity?.client_key || row.client_key || "",
+    client_key: (preferInventoryClient ? inventoryIdentity?.client_key : resolved.client_key) || inventoryIdentity?.client_key || row.client_key || "",
     client_label: client,
-    device_key: resolved.device_key || inventoryIdentity?.device_key || resolved.client_key || row.device_key || "",
-    device_label: resolved.device_label || inventoryIdentity?.device_label || resolved.client_label || client,
+    device_key: (preferInventoryClient ? inventoryIdentity?.device_key : resolved.device_key) || inventoryIdentity?.device_key || resolved.client_key || row.device_key || "",
+    device_label: (preferInventoryClient ? inventoryIdentity?.device_label : resolved.device_label) || inventoryIdentity?.device_label || resolved.client_label || client,
     client_role: resolved.client_role || row.client_role || "",
     owner: resolved.client_owner || row.owner || "",
     device_type: resolved.device_type || row.device_type || inventoryIdentity?.device_type || "",
-    client_channel: resolved.client_channel || row.client_channel || inventoryIdentity?.client_channel || "",
-    matched_by: resolved.matched_by || inventoryIdentity?.matched_by,
+    client_channel: (preferInventoryClient ? inventoryIdentity?.client_channel : resolved.client_channel) || row.client_channel || inventoryIdentity?.client_channel || "",
+    matched_by: (preferInventoryClient ? inventoryIdentity?.matched_by : resolved.matched_by) || inventoryIdentity?.matched_by,
     attribution_confidence: resolved.attribution_confidence,
     accounting_bucket: Boolean(row.accounting_bucket || row.raw?.accounting_bucket),
     unattributed_reason: row.unattributed_reason || row.raw?.unattributed_reason || "",
@@ -749,17 +754,20 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
     client_key: row.device_key || row.client_key || row.client || "",
     client_label: row.client_label || row.client || "",
   });
-  if (!resolved || pseudoClientLabel(row)) {
+  if (!resolved) {
     const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
+    const rawClient = row.raw_client || row.client || row.client_label || row.device_key || row.client_ip || "";
     const serviceLabel = trafficClass === "service_background" ? "Service DNS source" : "Unattributed DNS source";
+    const clientLabel = row.client_label || row.client || row.device_key || row.client_ip || serviceLabel;
     return {
       ...row,
-      raw_client: row.raw_client || row.client || row.client_label || row.device_key || "",
-      client: "",
-      client_key: "",
-      client_label: "",
+      raw_client: rawClient,
+      client: clientLabel,
+      client_key: row.client_key || row.device_key || row.client || row.client_ip || "",
+      client_label: clientLabel,
       device_key: "",
-      device_label: serviceLabel,
+      device_label: clientLabel,
+      channel: row.client_channel || row.channel || "Unknown",
       client_attributed: false,
     };
   }
@@ -770,6 +778,9 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
     client_label: resolved.client_label || row.client_label,
     device_key: resolved.device_key || row.device_key,
     device_label: resolved.device_label || row.device_label,
+    channel: resolved.client_channel || row.client_channel || row.channel || "Unknown",
+    client_channel: resolved.client_channel || row.client_channel || "",
+    matched_by: resolved.matched_by || row.matched_by,
     client_attributed: true,
   };
 }
@@ -2246,6 +2257,7 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
         client: preparedClient,
         client_ip: preparedClientIp,
         device_key: preparedClient,
+        channel: row.channel || row.client_channel || "",
         domain: row.domain || "",
         qtype: row.qtype || "",
         answer_ip: "",
