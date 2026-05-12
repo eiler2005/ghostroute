@@ -124,6 +124,11 @@ available from this contract.
   selectors, cache keys or read-model rendering change: run
   `npm run seed:gui` from `modules/ghostroute-console/app`. The seed step also
   rebuilds the prepared today/week/month windows used by GUI/API tests.
+- GUI destination checks should verify the primary label and the raw evidence
+  separately. Raw IP addresses are valid DNS/route evidence, but the default
+  Dashboard, Traffic, Live, Clients and mobile views should show a domain,
+  platform/category or IP-only type label instead of exposing the IP as the
+  main destination.
 - The seeded database lives under the gitignored
   `modules/ghostroute-console/data/gui-test/` path. It should contain enough
   Flow Explorer, DNS Query Log, Clients and Live rows to verify dense tables,

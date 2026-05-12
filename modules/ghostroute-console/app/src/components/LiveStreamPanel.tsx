@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Download, Pause, Play } from "lucide-react";
 import { RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
+import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 type LivePayload = {
   generated_at: string;
@@ -102,7 +103,7 @@ export function LiveStreamPanel({
           <tbody>
             {rows.map((row, idx) => {
               const eventType = row.event_type || "route.decision";
-              const destination = row.destinationLabel || row.destination || row.dns_qname || row.summary || "destination";
+              const destination = trafficDisplayDestination(row);
               const origin = row.origin || row.source_log || "Router/sing-box";
               const client = row.client || row.client_label || row.client_ip || "not observed";
               const status = row.status || row.result || (String(row.route || "").toLowerCase() === "blocked" ? "Blocked" : "OK");

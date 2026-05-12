@@ -280,6 +280,7 @@ function seed(db) {
     ["Telegram", "telegram.test.invalid", "203.0.113.30"],
     ["Meta/Instagram", "instagram.test.invalid", "203.0.113.40"],
     ["Retail/RU", "retail.test.invalid", "203.0.113.50"],
+    ["Home Reality ingress", "", "198.51.100.30"],
     ["Unclassified domain", "unknown-destination.test.invalid", "198.51.100.20"],
   ];
   const routes = ["VPS", "Direct", "Mixed", "VPS", "Direct"];
@@ -328,8 +329,8 @@ function seed(db) {
     snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
     bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname,
     dns_answer_ip, sni, outbound, matched_rule, rule_set, source_log, traffic_class,
-    via_vps_bytes, direct_bytes, unknown_bytes, raw_json
-  ) values (@snapshot_id,@snapshot_type,@collected_at,@client,@channel,@destination,@route,@confidence,@bytes,@connections,@protocol,@client_ip,@destination_ip,@destination_port,@dns_qname,@dns_answer_ip,@sni,@outbound,@matched_rule,@rule_set,@source_log,@traffic_class,@via_vps_bytes,@direct_bytes,@unknown_bytes,@raw_json)`);
+    via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, raw_json
+  ) values (@snapshot_id,@snapshot_type,@collected_at,@client,@channel,@destination,@route,@confidence,@bytes,@connections,@protocol,@client_ip,@destination_ip,@destination_port,@dns_qname,@dns_answer_ip,@sni,@outbound,@matched_rule,@rule_set,@source_log,@traffic_class,@via_vps_bytes,@direct_bytes,@unknown_bytes,@route_verification,@route_status,@raw_json)`);
   for (let i = 0; i < 320; i++) {
     const client = clients[i % clients.length];
     const [destLabel, domain, ip] = destinations[i % destinations.length];
@@ -385,6 +386,8 @@ function seed(db) {
       via_vps_bytes: viaVpsBytes,
       direct_bytes: directBytes,
       unknown_bytes: unknownBytes,
+      route_verification: route === "Mixed" ? "counter_allocated" : route === "VPS" ? "verified_vps" : route === "Direct" ? "verified_direct" : "unknown",
+      route_status: route === "Mixed" ? "counter_allocated" : route === "VPS" || route === "Direct" ? "verified" : "unknown",
       raw_json: JSON.stringify({
         fact_id: `test-seed:fact:${String(i + 1).padStart(4, "0")}`,
         schema_version: 3,

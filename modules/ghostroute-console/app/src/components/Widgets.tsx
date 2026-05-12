@@ -21,10 +21,10 @@ export function shortDateTime(value?: string | number | Date) {
     hour12: false,
   }).formatToParts(date);
   const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
-  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
-export function timeWithMillis(value?: string | number | Date, alwaysShowMillis = false) {
+export function timeWithMillis(value?: string | number | Date, alwaysShowMillis = true) {
   if (!value) return "n/a";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);

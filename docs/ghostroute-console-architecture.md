@@ -396,6 +396,16 @@ proof quality and keeps affected destination addresses/domains with
 `unknown_route` and `intent_only_*` buckets. Review exports are local files
 under gitignored Console data and are meant for offline/LLM classification, with
 the GUI acting as a viewer/filter rather than a manual per-flow labeling tool.
+The Clients page consumes these lane and route-evidence read models directly:
+content lanes answer "what kind of traffic is this?", while route evidence
+answers "how well was VPS/direct proven?".
+
+Destination presentation is intentionally split from raw evidence. Default
+HTML views render DNS/SNI/domain, platform or category labels first and collapse
+IP-only rows to a type label. Raw IP addresses remain in DNS answer columns,
+route diagnostics, exports and raw evidence, but are not primary destination
+labels or Top destinations. Channel/accounting labels such as Home Reality
+ingress describe ingress context and are excluded from destination rankings.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

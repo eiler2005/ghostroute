@@ -145,7 +145,7 @@ export function MobileLiveList({ rows }: { rows: Array<Record<string, any>> }) {
           </span>
           <span className="mobile-row-meta">
             <RouteBadge value={row.route} />
-            <b>{row.destinationLabel || row.destination || row.summary || "n/a"}</b>
+            <b>{trafficDisplayDestination(row)}</b>
           </span>
         </div>
       ))}

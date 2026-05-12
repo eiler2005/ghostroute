@@ -396,10 +396,11 @@ function formatMoscowBoundary(value: string) {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   }).formatToParts(new Date(ts));
   const pick = (type: string) => parts.find((part) => part.type === type)?.value || "";
-  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}`;
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}.${String(new Date(ts).getMilliseconds()).padStart(3, "0")}`;
 }
 
 function trafficWindowLabel(traffic: Record<string, any>) {
@@ -3194,6 +3195,73 @@ function rowIdentityTokens(row: Record<string, any>) {
   ].filter(Boolean).map((value) => String(value).toLowerCase());
 }
 
+function uniqueNonEmpty(values: Array<unknown>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (!text) continue;
+    for (const candidate of [text, text.toLowerCase()]) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      result.push(candidate);
+    }
+  }
+  return result;
+}
+
+function laneClientKeyCandidates(target: Record<string, any>) {
+  const raw = rawJson(target);
+  const resolved = resolveClient({ ...target, raw, profile: target.profile || raw.profile });
+  const base = uniqueNonEmpty([
+    resolved.client_key,
+    resolved.device_key,
+    resolved.client_label,
+    resolved.device_label,
+    target.client_key,
+    target.device_key,
+    target.device_id,
+    target.id,
+    target.label,
+    target.client_label,
+    target.device_label,
+    target.client,
+    target.profile,
+    raw.profile,
+    raw.label,
+    raw.client,
+    keyForDevice({ ...target, raw }),
+    ...(resolved.observed_aliases || []),
+    ...(target.aliases || []),
+    ...(target.observed_aliases || []),
+    ...rowIdentityTokens(target),
+  ]);
+  const expanded = [...base];
+  for (const value of base) {
+    if (/^(lan-host|mobile-client|mobile-source)-\d+$/i.test(value)) continue;
+    const stripped = value.replace(/-\d+$/, "");
+    if (stripped && stripped !== value) expanded.push(stripped);
+  }
+  return uniqueNonEmpty(expanded);
+}
+
+function resolveLaneClientKey(target: Record<string, any>, table: "client_traffic_by_lane" | "client_destination_by_lane" | "client_route_evidence_defects") {
+  const candidates = laneClientKeyCandidates(target);
+  if (candidates.length === 0) return "";
+  const db = getDb();
+  const byKey = db.prepare(`select client_key from ${table} where client_key = ? limit 1`);
+  for (const candidate of candidates) {
+    const row = byKey.get(candidate) as { client_key?: string } | undefined;
+    if (row?.client_key) return row.client_key;
+  }
+  const byLabel = db.prepare(`select client_key from ${table} where lower(client_label) = lower(?) order by bytes desc limit 1`);
+  for (const candidate of candidates) {
+    const row = byLabel.get(candidate) as { client_key?: string } | undefined;
+    if (row?.client_key) return row.client_key;
+  }
+  return candidates[0];
+}
+
 function clientDomainAggregateRows(clientKey: string, period = "today") {
   if (!clientKey) return [];
   const db = getDb();
@@ -3506,14 +3574,14 @@ export function listClientDomainBreakdown(client: Record<string, any> | string, 
 
 export function listClientLaneSummary(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
-  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const key = resolveLaneClientKey(target, "client_traffic_by_lane");
   const limit = Math.max(1, Number(options.limit || 50));
   return cacheGet(`client-lane-summary:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => clientLaneSummaryRows(key, period).slice(0, limit));
 }
 
 export function listClientDestinationsByLane(client: Record<string, any> | string, period = "today", options: { lane?: string; limit?: number } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
-  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const key = resolveLaneClientKey(target, "client_destination_by_lane");
   const lane = String(options.lane || "all");
   const limit = Math.max(1, Number(options.limit || 50));
   return cacheGet(`client-destination-lanes:${latestSnapshotVersion()}:${period}:${key}:${lane}:${limit}`, () => clientDestinationLaneRows(key, period, lane).slice(0, limit));
@@ -3521,7 +3589,7 @@ export function listClientDestinationsByLane(client: Record<string, any> | strin
 
 export function listRouteEvidenceDefects(period = "today", options: { client?: Record<string, any> | string; evidence?: string; limit?: number } = {}) {
   const target = typeof options.client === "string" ? { label: options.client, client_key: options.client } : options.client || {};
-  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const key = resolveLaneClientKey(target, "client_route_evidence_defects");
   const limit = Math.max(1, Number(options.limit || 100));
   const evidence = String(options.evidence || "");
   return cacheGet(`route-evidence-defects:${latestSnapshotVersion()}:${period}:${key}:${evidence}:${limit}`, () => routeEvidenceDefectRows(period, { clientKey: key, evidence }).slice(0, limit));

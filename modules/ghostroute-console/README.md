@@ -221,9 +221,9 @@ Core read models are rebuilt from factual snapshots:
 | `device_inventory` | Clients inventory, attribution and selected-device detail. |
 | `alarm_events` | Alarm Center evidence and operator state overlay. |
 | `client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily` | Prepared client-first traffic aggregates for Dashboard, Clients, Budget and week/month windows. |
-| `client_traffic_by_lane` | GUI-ready per-client lane summary for `all`, `client_observed`, `service_system`, `privacy_risk`, `shared_infra` and `unknown_review`. |
-| `client_destination_by_lane` | Matching per-client destination drilldown by lane/category/decision hint; used for testing and future Clients GUI tabs. |
-| `client_route_evidence_defects` | Per-client/per-destination route evidence diagnostics for `unknown_route`, `counter_allocated`, `mismatch` and `intent_only_*` bytes. |
+| `client_traffic_by_lane` | GUI-ready per-client lane summary for `/clients` tabs: `all`, `client_observed`, `service_system`, `privacy_risk`, `shared_infra` and `unknown_review`. |
+| `client_destination_by_lane` | Matching per-client destination drilldown by lane/category/decision hint for the Clients side panel. |
+| `client_route_evidence_defects` | Per-client/per-destination route evidence diagnostics for `unknown_route`, `counter_allocated`, `mismatch` and `intent_only_*` bytes; rendered separately from content lanes. |
 | `ip_prefix_catalog`, `ip_enrichment_cache` | Optional local-first IP/provider enrichment cache. Advisory metadata only; never changes routing or blocking. |
 | `dns_log_5min` | Prepared DNS query aggregate for DNS Query Log and DNS-interest counts. |
 | `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector for every traffic class. |
@@ -240,6 +240,13 @@ buckets stay available for diagnostics but are not ranked as clients. Detail
 workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
 force the current Moscow day, while Dashboard/Clients/Reports use the prepared
 `today`, `week` and `month` aggregate windows.
+
+Default GUI destination labels prefer DNS/SNI/domain evidence and platform or
+category labels. Raw IP addresses remain available in DNS answers, route
+diagnostics, exports and raw evidence, but they are not used as primary
+destination labels in Dashboard, Flow Explorer, Live, Clients or mobile lists.
+Pseudo channel/accounting labels such as Home Reality ingress are route context,
+not Top destinations.
 
 Traffic-driven surfaces use one selected traffic window at a time. Dashboard
 route analytics preserve the accounting invariant:

@@ -315,7 +315,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         </div>
         <div className="dashboard-rank-grid">
           <RankedClients rows={analytics.topClients || []} />
-          <RankedDestinations rows={analytics.topDestinations || []} />
+          <RankedDestinations rows={topDestinations} />
         </div>
         <UsageChart points={analytics.usage?.points || []} note={analytics.usage?.note} />
       </div>
@@ -413,8 +413,8 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
 
         <section className="card">
           <div className="toolbar">
-            <h2>Top destinations</h2>
-            <Link className="muted-button" href="/traffic?trafficClass=client">Open traffic</Link>
+            <h2>Destination coverage</h2>
+            <Link className="muted-button" href="/clients">Open clients</Link>
           </div>
           <p className="subtle">
             Attributed {bytes(destinationAttributedBytes)} of {bytes(model.totals.observedBytes)} observed client and personal cloud traffic;
@@ -422,24 +422,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
               ? ` ${bytes(destinationAttributionGap)} currently has client counters without destination-byte attribution.`
               : " destination attribution covers the observed client total."}
           </p>
-          {topDestinations.length === 0 ? (
-            <EmptyState
-              title="No concrete or category destination snapshots"
-              detail="Observed traffic is present, but current prepared rows do not yet carry concrete destination attribution."
-            />
-          ) : (
-            <div className="detail-list">
-              {topDestinations.map((row, idx) => (
-                <div className="detail-row" key={idx}>
-                  <span>
-                    {trafficDisplayDestination(row)}
-                    {row.detail ? <small className="subtle block-detail">{row.detail}</small> : null}
-                  </span>
-                  <strong>{bytes(observedBytes(row))} <RouteBadge value={row.route} /></strong>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="detail-list">
+            <div className="detail-row"><span>Attributed destination bytes</span><strong>{bytes(destinationAttributedBytes)}</strong></div>
+            <div className="detail-row"><span>Counter-only / no site evidence</span><strong>{bytes(destinationAttributionGap)}</strong></div>
+            <div className="detail-row"><span>Visible destination groups</span><strong>{topDestinations.length}</strong></div>
+          </div>
         </section>
       </div>
 
