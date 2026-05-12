@@ -12,7 +12,7 @@ const dbFile = path.join(dataDir, "ghostroute.db");
 const db = new Database(dbFile, { readonly: true, fileMustExist: true });
 const registry = loadDeviceAttributions(dataDir);
 const trafficClasses = ["all", "client", "personal_cloud", "service_background", "unclassified"];
-const driftCheckedClasses = new Set(["all", "client", "personal_cloud"]);
+const driftCheckedClasses = new Set(["all", "client"]);
 
 function number(value) {
   const parsed = Number(value || 0);
