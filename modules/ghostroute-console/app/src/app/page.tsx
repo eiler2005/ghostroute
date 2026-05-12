@@ -82,8 +82,9 @@ function destinationSection(row: Record<string, any>) {
   return "client";
 }
 
-function sectionLabel(value: string) {
-  return value === "service" ? "Service/background" : "Client traffic";
+function destinationDetailLabel(row: Record<string, any>) {
+  const domain = row.domains?.size ? String(Array.from(row.domains)[0]).trim() : "";
+  return domain || String(row.destinationLabel || row.label || "").trim();
 }
 
 function isNeedsAttributionRow(row: Record<string, any>) {
@@ -148,8 +149,7 @@ function groupDashboardDestinations(rows: Array<Record<string, any>>, limit = 10
       rank: idx + 1,
       route: routeFromRoutes(row.routes || new Set()),
       detail: [
-        sectionLabel(row.section),
-        row.domains?.size ? `domain ${Array.from(row.domains)[0]}` : "",
+        destinationDetailLabel(row),
         row.clients?.size ? `${row.clients.size} client${row.clients.size === 1 ? "" : "s"}` : "",
         row.connections ? `${row.connections} sessions` : "",
       ].filter(Boolean).join(" · "),
