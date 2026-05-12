@@ -10,6 +10,7 @@ future cross-repo utilities that do not belong to a specific module.
 | `routing-core` | Production router data plane hooks and rule-set refresh. |
 | `ghostroute-health-monitor` | Router/VPS health monitor and merged health reports. |
 | `traffic-observatory` | Traffic counters, snapshots and usage reports. |
+| `traffic-intelligence` | Local deterministic traffic labels, explanations and advisory decision hints. |
 | `ghostroute-console` | Read-only web Console over prepared route, traffic, client, health, live and catalog evidence. |
 | `dns-catalog-intelligence` | Domain discovery, DNS forensics and catalog review. |
 | `performance-diagnostics` | Performance troubleshooting knowledge and checks. |

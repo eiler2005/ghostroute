@@ -1,54 +1,51 @@
-export type DestinationClassification = {
-  category: string;
-  provider: string;
-  action_hint: "allow" | "block_candidate" | "monitor" | "investigate";
-  confidence: "high" | "medium" | "low" | "unknown";
-  reason_code: string;
-  traffic_role?: string;
-  traffic_purpose?: string;
+export { classifyDestination } from "./classification.mjs";
+
+export type TrafficClass = "client" | "personal_cloud" | "service_background" | "unclassified";
+export type TrafficRole =
+  | "client_interactive"
+  | "client_bulk_sync"
+  | "system_maintenance"
+  | "analytics_tracker"
+  | "cdn_delivery"
+  | "infra_hosting"
+  | "unknown";
+export type DecisionHint =
+  | "allow"
+  | "block_candidate"
+  | "monitor"
+  | "route_vps_candidate"
+  | "direct_candidate"
+  | "ask_user";
+export type Confidence = "high" | "medium" | "low" | "unknown";
+
+export type TrafficIntelligenceInput = {
+  destination?: string;
+  destination_ip?: string;
+  domain?: string;
+  dns_qname?: string;
+  dns_link_confidence?: string;
+  route?: string;
+  route_verification?: string;
+  protocol?: string;
+  destination_port?: number | string;
+  traffic_class?: string;
+  provider?: string;
+  asn_org?: string;
+  egress_asn?: string;
+  organization?: string;
 };
 
-function text(value: unknown, fallback = ""): string {
-  if (value === undefined || value === null || value === "") return fallback;
-  return String(value);
-}
-
-function valueFor(input: unknown): string {
-  if (typeof input === "string") return input.toLowerCase();
-  const row = (input || {}) as Record<string, unknown>;
-  if (text(row.dns_link_confidence).toLowerCase() === "no_dns_match") return "unknown:no_dns_match";
-  return text(row.destination || row.domain || row.dns_qname || row.sni || row.destination_ip).toLowerCase();
-}
-
-function result(
-  category: string,
-  provider: string,
-  action_hint: DestinationClassification["action_hint"],
-  confidence: DestinationClassification["confidence"],
-  reason_code: string,
-  traffic_role: string,
-  traffic_purpose: string
-): DestinationClassification {
-  return { category, provider, action_hint, confidence, reason_code, traffic_role, traffic_purpose };
-}
-
-export function classifyDestination(input: unknown): DestinationClassification {
-  const value = valueFor(input);
-  if (!value) return result("unknown.empty", "", "investigate", "unknown", "empty_destination", "unknown", "unknown");
-  if (value === "unknown:no_dns_match") return result("unknown.no_dns_match", "", "investigate", "low", "no_dns_match", "unknown", "unknown");
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value) || /^[0-9a-f:]+$/i.test(value)) return result("unknown.ip_only", "", "investigate", "low", "ip_only", "unknown", "unknown");
-  if (value.includes("app-measurement") || value.includes("firebase") || value.includes("crashlytics")) return result("analytics.firebase", "firebase", "block_candidate", "high", "firebase_analytics", "analytics_tracker", "telemetry");
-  if (/(^|[.-])(ads?|doubleclick|adservice|googlesyndication|scorecardresearch|branch|adjust|appsflyer)([.-]|$)/.test(value)) return result("tracker.ads", "", "block_candidate", "medium", "ad_tracker_domain", "analytics_tracker", "tracking");
-  if (value.includes("push.apple")) return result("system.apple.push", "apple", "allow", "high", "apple_push", "system_maintenance", "push");
-  if (value.includes("configuration.apple") || value.includes("captive.apple") || value.includes("ocsp.apple")) return result("system.apple.maintenance", "apple", "allow", "medium", "apple_system", "system_maintenance", "maintenance");
-  if (value.includes("gvt") || value.includes("gstatic") || value.includes("connectivitycheck") || value.includes("googleapis")) return result("system.google.background", "google", "allow", "medium", "google_system", "system_maintenance", "maintenance");
-  if (value.includes("icloud")) return result("personal_cloud.apple", "apple", "monitor", "high", "icloud", "client_bulk_sync", "personal_cloud");
-  if (value.includes("dropbox")) return result("personal_cloud.dropbox", "dropbox", "monitor", "high", "dropbox", "client_bulk_sync", "personal_cloud");
-  if (value.includes("onedrive") || value.includes("sharepoint")) return result("personal_cloud.microsoft", "microsoft", "monitor", "high", "microsoft_cloud", "client_bulk_sync", "personal_cloud");
-  if (value.includes("drive.google") || value.includes("photos.google")) return result("personal_cloud.google", "google", "monitor", "high", "google_cloud", "client_bulk_sync", "personal_cloud");
-  if (value.includes("cloudfront")) return result("cdn.cloudfront", "aws", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
-  if (value.includes("akamai")) return result("cdn.akamai", "akamai", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
-  if (value.includes("fastly")) return result("cdn.fastly", "fastly", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
-  if (value.includes("cloudflare")) return result("cdn.cloudflare", "cloudflare", "monitor", "medium", "cdn_provider", "cdn_delivery", "cdn");
-  return result("unknown.domain", "", "monitor", "unknown", "no_rule", "client_interactive", "unknown");
-}
+export type TrafficIntelligenceResult = {
+  traffic_class: TrafficClass;
+  category: string;
+  provider: string;
+  traffic_role: TrafficRole;
+  traffic_purpose: string;
+  decision_hint: DecisionHint;
+  recommended_action: DecisionHint;
+  action_hint: DecisionHint;
+  confidence: Confidence;
+  reason_code: string;
+  human_explanation: string;
+  evidence_sources: string[];
+};

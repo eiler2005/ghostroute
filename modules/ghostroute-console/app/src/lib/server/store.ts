@@ -890,13 +890,36 @@ export function getDb() {
         category text not null default 'unknown',
         provider text not null default '',
         action_hint text not null default 'monitor',
+        traffic_class text not null default 'unclassified',
+        traffic_role text not null default 'unknown',
+        traffic_purpose text not null default 'unknown',
+        decision_hint text not null default 'monitor',
+        human_explanation text not null default '',
+        source text not null default 'local_rules',
         confidence text not null default 'unknown',
         reason_code text not null default '',
         sources_json text not null default '[]',
+        evidence_sources_json text not null default '[]',
         evidence_json text not null default '{}',
         first_seen text not null,
         last_seen text not null,
         expires_at text not null default ''
+      );
+      create table if not exists decision_candidates (
+        candidate_id text primary key,
+        snapshot_id integer,
+        destination_key text not null default '',
+        client_key text not null default '',
+        client_ip text not null default '',
+        proposed_action text not null,
+        confidence text not null default 'unknown',
+        reason_code text not null default '',
+        explanation text not null default '',
+        status text not null default 'pending',
+        applied integer not null default 0,
+        created_at_utc text not null,
+        updated_at_utc text not null,
+        evidence_json text not null default '{}'
       );
       create table if not exists filter_rules (
         rule_id text primary key,
@@ -963,9 +986,13 @@ export function getDb() {
         route_source: "text not null default ''",
         route_basis: "text not null default ''",
         matched_ipset: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
         route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
         dns_link_id: "text not null default ''",
         dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
         accounting_status: "text not null default 'ok'",
       },
       normalized_dns: {
@@ -999,9 +1026,13 @@ export function getDb() {
         route_source: "text not null default ''",
         route_basis: "text not null default ''",
         matched_ipset: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
         route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
         dns_link_id: "text not null default ''",
         dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
         accounting_status: "text not null default 'ok'",
       },
       events: {
@@ -1063,9 +1094,13 @@ export function getDb() {
         matched_ipset: "text not null default ''",
         egress_iface: "text not null default ''",
         fwmark: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
         route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
         dns_link_id: "text not null default ''",
         dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
         accounting_status: "text not null default 'ok'",
       },
       traffic_dns_links: {
@@ -1075,7 +1110,22 @@ export function getDb() {
         protocol: "text not null default ''",
         dns_answer_ip: "text not null default ''",
         dns_event_ts_utc: "text not null default ''",
+        dns_ts_source: "text not null default ''",
         flow_event_ts_utc: "text not null default ''",
+      },
+      destination_enrichment: {
+        traffic_class: "text not null default 'unclassified'",
+        traffic_role: "text not null default 'unknown'",
+        traffic_purpose: "text not null default 'unknown'",
+        decision_hint: "text not null default 'monitor'",
+        human_explanation: "text not null default ''",
+        source: "text not null default 'local_rules'",
+        evidence_sources_json: "text not null default '[]'",
+      },
+      decision_candidates: {
+        snapshot_id: "integer",
+        client_ip: "text not null default ''",
+        applied: "integer not null default 0",
       },
     })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
@@ -1118,13 +1168,16 @@ export function getDb() {
       create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
       create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
       create index if not exists idx_traffic_facts_client_dest on traffic_facts(client_ip, destination_ip, event_ts_utc desc);
+      create index if not exists idx_destination_enrichment_class on destination_enrichment(traffic_class, category, last_seen desc);
+      create index if not exists idx_decision_candidates_status on decision_candidates(status, updated_at_utc desc);
+      create index if not exists idx_decision_candidates_destination on decision_candidates(destination_key, client_key, updated_at_utc desc);
       create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
       create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
       create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
       create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
       create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
     `);
-    for (const version of [6, 7, 8, 9, 10, 12, 13, 14]) {
+    for (const version of [6, 7, 8, 9, 10, 12, 13, 14, 15]) {
       db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
         version,
         new Date().toISOString()

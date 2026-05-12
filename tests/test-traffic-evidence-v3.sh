@@ -14,14 +14,15 @@ not-a-time|192.168.1.10|192.0.2.11|443|tcp|VPS|1|2|3|1|conntrack_snapshot_delta|
 EOF
 
 cat > "$TMP_DIR/dns-query-facts.tsv" <<'EOF'
-2026-05-10T09:00:00+0300|192.168.1.10|yesterday.invalid|A|192.0.2.10|answer|dnsmasq|ok
-2026-05-11T09:00:00+0300|192.168.1.10|example.invalid|A|192.0.2.20|answer|dnsmasq|ok
-2026-05-11T09:20:00+0300|192.168.1.10|future.invalid|A|192.0.2.40|answer|dnsmasq|ok
-2026-05-11T09:00:00+0300|192.168.1.10|cdn-one.invalid|A|192.0.2.50|answer|dnsmasq|ok
-2026-05-11T09:01:00+0300|192.168.1.10|cdn-two.invalid|A|192.0.2.50|answer|dnsmasq|ok
-bad-time|192.168.1.10|bad.invalid|A|192.0.2.60|answer|dnsmasq|ok
+2026-05-10T09:00:00+0300|192.168.1.10|yesterday.invalid|A|192.0.2.10|answer|dnsmasq|ok|parsed_log
+2026-05-11T09:00:00+0300|192.168.1.10|example.invalid|A|192.0.2.20|answer|dnsmasq|ok|parsed_log
+2026-05-11T09:20:00+0300|192.168.1.10|future.invalid|A|192.0.2.40|answer|dnsmasq|ok|parsed_log
+2026-05-11T09:00:00+0300|192.168.1.10|cdn-one.invalid|A|192.0.2.50|answer|dnsmasq|ok|parsed_log
+2026-05-11T09:01:00+0300|192.168.1.10|cdn-two.invalid|A|192.0.2.50|answer|dnsmasq|ok|parsed_log
+bad-time|192.168.1.10|bad.invalid|A|192.0.2.60|answer|dnsmasq|ok|parsed_log
 EOF
 
+GHOSTROUTE_TRAFFIC_WINDOW_NOW="2026-05-11T12:00:00+0300" \
 GHOSTROUTE_TRAFFIC_STATE_DIR="$TMP_DIR" \
   "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-evidence" --json today > "$TMP_DIR/evidence.json"
 
@@ -44,8 +45,9 @@ ruby -rjson -e '
     abort "byte split mismatch: #{row.inspect}" unless row["bytes"].to_i == sum
   end
   linked = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.20" }
-  abort "expected dns link" unless linked && linked["dns_qname"] == "example.invalid" && linked["dns_link_confidence"] == "high"
-  abort "expected intent-only route" unless linked["route"] == "VPS" && linked["route_verification"] == "intent_only"
+  abort "expected dns link" unless linked && linked["dns_qname"] == "example.invalid" && linked["dns_link_confidence"] == "high" && linked["dns_status"] == "exact"
+  abort "expected intent-only route" unless linked["route"] == "VPS" && linked["intended_route"] == "VPS" && linked["route_verification"] == "intent_only" && linked["route_status"] == "intent_only"
+  abort "accounting_status should only describe accounting" unless linked["accounting_status"] == "ok"
   abort "expected no synthetic outbound" unless linked["outbound"].to_s.empty?
   abort "expected intent-only bytes to stay unknown" unless linked["unknown_bytes"].to_i == linked["bytes"].to_i && linked["via_vps_bytes"].to_i == 0
   future = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.40" }

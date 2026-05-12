@@ -188,14 +188,32 @@ default and separates:
 
 Every fact carries evidence fields: identity confidence, byte confidence,
 destination confidence, allocation basis, evidence level, source list, route
-source/basis, matched ipset, route verification, DNS link confidence and
-accounting status. LAN/Wi-Fi destination bytes now prefer the asynchronous
-router `lan-flow-facts.tsv` layer when available. Route labels from ipset/policy
+source/basis, matched ipset, intended route, route verification, route status,
+DNS link confidence, DNS status, DNS timestamp source and accounting status.
+LAN/Wi-Fi destination bytes now prefer the asynchronous router
+`lan-flow-facts.tsv` layer when available. Route labels from ipset/policy
 evidence are intent-only until real outbound/egress evidence exists, so
 unverified bytes stay in `unknown_bytes` and every fact must satisfy
-`bytes = via_vps_bytes + direct_bytes + unknown_bytes`. Domain correlation comes
-from DNS evidence in `traffic-facts`; the router only writes read-only
-bottom-layer evidence and status/gap files.
+`bytes = via_vps_bytes + direct_bytes + unknown_bytes`.
+
+Keep these boundaries stable:
+
+- `intended_route` is policy/ipset intent: `VPS`, `Direct` or `Unknown`.
+- `route_verification` is the detailed compatibility value:
+  `verified_vps`, `verified_direct`, `intent_only`, `mismatch` or `unknown`.
+- `route_status` is the GUI-friendly status: `verified`, `intent_only`,
+  `mismatch` or `unknown`.
+- `accounting_status` is only `ok` or `accounting_error`.
+- `dns_status` is `exact`, `shared`, `no_match` or `approximate_ts`.
+- `dns_ts_source` is `parsed_log` or `snapshot_approx`; approximate DNS
+  timestamps must cap attribution confidence.
+
+Domain correlation comes from DNS evidence in `traffic-facts`; the router only
+writes read-only bottom-layer evidence and status/gap files. DNS TSV/JSON uses
+`event_type` for query/answer semantics; do not rename that field to `rcode`.
+Traffic interpretation such as category, provider, recommended action or human
+explanation belongs in the separate Traffic Intelligence layer, not in
+`traffic_facts`.
 
 `traffic-report --json` remains a compatibility output for older consumers, and
 human `traffic-report today/week/month/check` keeps its operator-facing text.

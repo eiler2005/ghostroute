@@ -101,7 +101,7 @@ end
 def window_for(period, timezone)
   original_tz = ENV['TZ']
   ENV['TZ'] = timezone
-  now = Time.now
+  now = ENV['GHOSTROUTE_TRAFFIC_WINDOW_NOW'] ? Time.parse(ENV['GHOSTROUTE_TRAFFIC_WINDOW_NOW']) : Time.now
   today = Date.new(now.year, now.month, now.day)
   normalized = period.to_s
 
@@ -239,6 +239,7 @@ else
         'event_type' => text(parts[5]),
         'source' => text(parts[6], 'dnsmasq'),
         'status' => text(parts[7], 'ok'),
+        'ts_source' => text(parts[8], 'snapshot_approx'),
         'raw_refs' => [{ 'source' => 'dns-query-facts.tsv', 'line' => index + 1 }]
       }
       dns_queries << row

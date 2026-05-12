@@ -71,7 +71,7 @@ awk -v snapshot_ts="$timestamp" -v source_log="$LOG_PATH" '
         client = $(i + 3)
         last_client[domain] = client
         last_qtype[domain] = qtype
-        printf "%s|%s|%s|%s|%s|query|%s|ok\n", snapshot_ts, client, domain, qtype, "", source_log
+        printf "%s|%s|%s|%s|%s|query|%s|ok|snapshot_approx\n", snapshot_ts, client, domain, qtype, "", source_log
       } else if ($i == "reply" && (i + 3) <= NF && $(i + 2) == "is") {
         domain = clean_domain($(i + 1))
         answer = $(i + 3)
@@ -79,7 +79,7 @@ awk -v snapshot_ts="$timestamp" -v source_log="$LOG_PATH" '
           client = last_client[domain]
           qtype = last_qtype[domain]
           if (qtype == "") qtype = (answer ~ /:/ ? "AAAA" : "A")
-          printf "%s|%s|%s|%s|%s|answer|%s|ok\n", snapshot_ts, client, domain, qtype, answer, source_log
+          printf "%s|%s|%s|%s|%s|answer|%s|ok|snapshot_approx\n", snapshot_ts, client, domain, qtype, answer, source_log
         }
       }
     }

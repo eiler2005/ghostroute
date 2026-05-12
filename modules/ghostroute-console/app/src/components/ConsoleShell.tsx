@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Boxes, Gauge, Home, Radio, Search, Settings, ShieldCheck, SlidersHorizontal, Users, Wifi } from "lucide-react";
+import { Activity, BarChart3, Boxes, Brain, Gauge, Home, Radio, Search, Settings, ShieldCheck, SlidersHorizontal, Users, Wifi } from "lucide-react";
 import { shortDateTime } from "@/components/Widgets";
 import { filterOptions } from "@/lib/server/selectors/shell";
 import type { ConsoleFilters, ConsoleModel } from "@/lib/server/types";
@@ -7,6 +7,7 @@ const nav = [
   ["Dashboard", "/", Home],
   ["Flow Explorer", "/traffic", Search],
   ["DNS Query Log", "/dns", Wifi],
+  ["Intelligence", "/intelligence", Brain],
   ["Clients", "/clients", Users],
   ["Health Center", "/health", ShieldCheck],
   ["Catalog", "/catalog", Boxes],

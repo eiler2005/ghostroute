@@ -1,4 +1,13 @@
-export type FilterAction = "allow" | "block" | "route_via_vps" | "route_direct" | "monitor";
+export type FilterAction =
+  | "allow"
+  | "block"
+  | "block_candidate"
+  | "route_via_vps"
+  | "route_vps_candidate"
+  | "route_direct"
+  | "direct_candidate"
+  | "monitor"
+  | "ask_user";
 
 export type FilterRule = {
   rule_id: string;
