@@ -324,13 +324,23 @@ function seed(db) {
     bytes, connections, duration_seconds, duration_confidence, risk, risk_reason, confidence,
     source_kind, evidence_json
   ) values (@id,@snapshot_id,@collected_at,@first_seen,@last_seen,@client,@client_ip,@device_key,@channel,@destination,@destination_ip,@destination_port,@protocol,@route,@policy,@matched_rule,@outbound,@dns_qname,@dns_answer_ip,@sni,@egress_ip,@egress_asn,@egress_country,@ts_confidence,@bytes,@connections,@duration_seconds,@duration_confidence,@risk,@risk_reason,@confidence,@source_kind,@evidence_json)`);
+  const normalizedFlowStmt = db.prepare(`insert into normalized_flows(
+    snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+    bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname,
+    dns_answer_ip, sni, outbound, matched_rule, rule_set, source_log, traffic_class,
+    via_vps_bytes, direct_bytes, unknown_bytes, raw_json
+  ) values (@snapshot_id,@snapshot_type,@collected_at,@client,@channel,@destination,@route,@confidence,@bytes,@connections,@protocol,@client_ip,@destination_ip,@destination_port,@dns_qname,@dns_answer_ip,@sni,@outbound,@matched_rule,@rule_set,@source_log,@traffic_class,@via_vps_bytes,@direct_bytes,@unknown_bytes,@raw_json)`);
   for (let i = 0; i < 320; i++) {
     const client = clients[i % clients.length];
     const [destLabel, domain, ip] = destinations[i % destinations.length];
     const route = routes[i % routes.length];
     const offsetMs = flowOffsetMs(i);
     const durationSeconds = 30 + (i % 900);
-    flowStmt.run({
+    const bytes = 90000000 - i * 177000;
+    const viaVpsBytes = route === "VPS" ? bytes : route === "Mixed" ? Math.floor(bytes * 0.55) : 0;
+    const directBytes = route === "Direct" ? bytes : route === "Mixed" ? Math.floor(bytes * 0.35) : 0;
+    const unknownBytes = bytes - viaVpsBytes - directBytes;
+    const flow = {
       id: `test-seed:flow:${String(i + 1).padStart(4, "0")}`,
       snapshot_id: trafficSnapshotId,
       collected_at: iso(now, offsetMs),
@@ -355,7 +365,7 @@ function seed(db) {
       egress_asn: route === "VPS" ? "AS64500" : "",
       egress_country: route === "VPS" ? "Testland" : "",
       ts_confidence: i % 5 === 0 ? "snapshot" : "exact",
-      bytes: 90000000 - i * 177000,
+      bytes,
       connections: 2 + (i % 9),
       duration_seconds: durationSeconds,
       duration_confidence: i % 5 === 0 ? "estimated" : "exact",
@@ -364,6 +374,27 @@ function seed(db) {
       confidence: i % 7 === 0 ? "dns-interest" : "estimated",
       source_kind: "local-test-seed",
       evidence_json: JSON.stringify({ synthetic: true, domain }),
+    };
+    flowStmt.run(flow);
+    normalizedFlowStmt.run({
+      ...flow,
+      snapshot_type: "traffic_facts",
+      rule_set: flow.policy,
+      source_log: "local-test-seed",
+      traffic_class: "client",
+      via_vps_bytes: viaVpsBytes,
+      direct_bytes: directBytes,
+      unknown_bytes: unknownBytes,
+      raw_json: JSON.stringify({
+        fact_id: `test-seed:fact:${String(i + 1).padStart(4, "0")}`,
+        schema_version: 3,
+        synthetic: true,
+        domain,
+        via_vps_bytes: viaVpsBytes,
+        direct_bytes: directBytes,
+        unknown_bytes: unknownBytes,
+        accounting_status: "ok",
+      }),
     });
   }
 
