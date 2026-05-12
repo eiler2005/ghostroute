@@ -64,14 +64,26 @@ function isIpLiteral(value: unknown) {
 }
 
 function flowDomain(row: Record<string, any>) {
+  const usable = (value: unknown) => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (["Client", "n/a", "not observed", "unknown destination", "IP-only destination"].includes(text)) return "";
+    return text;
+  };
   const candidates = [row.dns_qname, row.sni, row.domain, row.raw?.dns_qname, row.raw?.sni, row.raw?.domain];
   for (const candidate of candidates) {
     const value = String(candidate || "").trim();
     if (value && value.includes(".") && !isIpLiteral(value)) return value;
   }
+  const destination = destinationEvidence(row);
+  const destinationLabel = usable(destination.label);
+  if (destinationLabel) return destinationLabel;
   const display = trafficDisplayDestination(row);
-  if (display.includes(".") && !isIpLiteral(display)) return display;
-  return "not observed";
+  const displayLabel = usable(display);
+  if (displayLabel) return displayLabel;
+  const rawDestination = String(row.destination || row.raw?.destination || "").trim();
+  if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination)) return rawDestination;
+  return usable(row.destination_ip || row.raw?.destination_ip) || usable(row.matched_rule || row.rule_set || row.policy) || usable(row.channel) || "not observed";
 }
 
 function Sparkline({ values, tone = "ok" }: { values: number[]; tone?: "ok" | "warn" | "danger" }) {

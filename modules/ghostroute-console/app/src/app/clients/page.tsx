@@ -168,8 +168,85 @@ function isServiceSite(row: Record<string, any>) {
 
 function isUsefulSiteLabel(label: string) {
   return Boolean(label)
-    && !["n/a", "Client", "No site evidence", "Encrypted ingress traffic"].includes(label)
+    && !["n/a", "Client", "No site evidence"].includes(label)
     && !label.toLowerCase().includes("destination aggregate");
+}
+
+function inferredClientLane(selected?: Record<string, any>) {
+  const channel = String(selected?.channel || "");
+  if (channel.includes("A/Home") || channel.includes("Reality")) return "client_observed";
+  if (Number(selected?.total_bytes || 0) > 0) return "client_observed";
+  return "unknown_review";
+}
+
+function fallbackClientLaneRows(selected: Record<string, any> | undefined, route: string) {
+  const total = siteBytes(selected || {});
+  if (!selected || total <= 0) return [];
+  return [{
+    client_key: selected.client_key || selected.id || selected.device_key || selected.label || "",
+    client_label: selected.client_label || selected.label || selected.device_label || "",
+    channel: selected.channel || "Unknown",
+    route,
+    confidence: selected.confidence || "estimated",
+    traffic_class: "client",
+    traffic_lane: inferredClientLane(selected),
+    dns_category: selected.channel?.includes("Reality") ? "user_content" : "unknown_domain",
+    decision_hint: "monitor",
+    enrichment_status: "inventory_fallback",
+    bytes: total,
+    total_bytes: total,
+    via_vps_bytes: Number(selected.via_vps_bytes || 0),
+    direct_bytes: Number(selected.direct_bytes || 0),
+    unknown_bytes: Math.max(0, total - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0)),
+    flows: Math.max(1, Number(selected.flows || selected.connections || selected.snapshot_samples || 1)),
+    destinations_count: 1,
+    last_seen_utc: selected.traffic_collected_at || selected.last_seen || selected.collected_at || "",
+    fallback: true,
+  }];
+}
+
+function fallbackClientDestinationRows(selected: Record<string, any> | undefined, route: string, lane = "all") {
+  const total = siteBytes(selected || {});
+  if (!selected || total <= 0) return [];
+  const trafficLane = inferredClientLane(selected);
+  if (lane !== "all" && lane !== trafficLane) return [];
+  const reality = String(selected.channel || "").includes("Reality");
+  const destination = reality ? "Home Reality ingress" : selected.label || selected.client_label || selected.id || "Client traffic";
+  return [{
+    client_key: selected.client_key || selected.id || selected.device_key || selected.label || "",
+    client_label: selected.client_label || selected.label || selected.device_label || "",
+    destination,
+    destination_key: destination,
+    destination_label: destination,
+    category: reality ? "client.home_reality_ingress" : "client.observed",
+    provider: reality ? "ghostroute" : "",
+    route,
+    confidence: selected.confidence || "estimated",
+    traffic_class: "client",
+    traffic_lane: trafficLane,
+    dns_category: reality ? "user_content" : "unknown_domain",
+    decision_hint: "monitor",
+    enrichment_status: "inventory_fallback",
+    bytes: total,
+    total_bytes: total,
+    via_vps_bytes: Number(selected.via_vps_bytes || 0),
+    direct_bytes: Number(selected.direct_bytes || 0),
+    unknown_bytes: Math.max(0, total - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0)),
+    flows: Math.max(1, Number(selected.flows || selected.connections || selected.snapshot_samples || 1)),
+    last_seen_utc: selected.traffic_collected_at || selected.last_seen || selected.collected_at || "",
+    fallback: true,
+  }];
+}
+
+function fallbackClientActivityRows(selected: Record<string, any> | undefined, route: string) {
+  const total = siteBytes(selected || {});
+  if (!selected || total <= 0) return [];
+  return [{
+    hour_key: selected.traffic_collected_at || selected.last_seen || selected.collected_at || new Date().toISOString(),
+    bytes: total,
+    route,
+    mode: "snapshot",
+  }];
 }
 
 function routeFromSiteRoutes(routes: Set<string>) {
@@ -359,11 +436,15 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedDns = selected ? aggregateDnsInterest(model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)), 8) : [];
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
-  const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
-  const selectedLaneRows = selected ? listClientLaneSummary(selected, filters.period || "today", { limit: 80 }) : [];
+  const rawSelectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
+  const selectedActivity = rawSelectedActivity.length ? rawSelectedActivity : fallbackClientActivityRows(selected, selectedRoute);
+  const rawSelectedLaneRows = selected ? listClientLaneSummary(selected, filters.period || "today", { limit: 80 }) : [];
+  const selectedLaneRows = rawSelectedLaneRows.length ? rawSelectedLaneRows : fallbackClientLaneRows(selected, selectedRoute);
   const selectedLaneSummary = summarizeLaneRows(selectedLaneRows);
-  const selectedLaneDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: selectedLane, limit: 16 }) : [];
-  const selectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
+  const rawSelectedLaneDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: selectedLane, limit: 16 }) : [];
+  const selectedLaneDestinations = rawSelectedLaneDestinations.length ? rawSelectedLaneDestinations : fallbackClientDestinationRows(selected, selectedRoute, selectedLane);
+  const rawSelectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
+  const selectedAllDestinations = rawSelectedAllDestinations.length ? rawSelectedAllDestinations : fallbackClientDestinationRows(selected, selectedRoute, "all");
   const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
   const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
   const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15);

@@ -6,6 +6,7 @@ const GENERIC_DESTINATIONS = new Set([
   "Dev/Productivity",
   "Google/YouTube",
   "IP-only / no DNS match",
+  "Client",
   "Meta/Instagram",
   "Other",
   "Other/IP",
@@ -106,6 +107,7 @@ export function isGenericTrafficDestination(value) {
   if (GENERIC_DESTINATIONS.has(destination)) return true;
   if (isPseudoTrafficDestination(destination)) return true;
   if (destination.includes("/") && !destination.includes(".")) return true;
+  if (destination === "Client") return true;
   return false;
 }
 
@@ -216,6 +218,10 @@ export function isPrimaryTrafficDestinationLabel(value) {
   return !isPseudoTrafficDestination(label);
 }
 
+function isClientOnlyDestination(value) {
+  return text(value).trim() === "Client";
+}
+
 export function destinationEvidence(row) {
   const dns = text(row?.dns_qname || row?.raw?.dns_qname).trim();
   if (dns) return { label: dns, kind: "DNS", exact: true };
@@ -227,7 +233,7 @@ export function destinationEvidence(row) {
     return { label, kind: label === "IP-only destination" ? "IP" : "IP/provider", exact: false, technical: ip };
   }
   const rawDestination = text(row?.destinationLabel || row?.destination || row?.family || row?.domain).trim();
-  if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination) && !isPseudoTrafficDestination(rawDestination)) {
+  if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination) && !isPseudoTrafficDestination(rawDestination) && !isClientOnlyDestination(rawDestination)) {
     return {
       label: rawDestination,
       kind: isGenericTrafficDestination(rawDestination) ? "category" : "counter",
@@ -235,7 +241,7 @@ export function destinationEvidence(row) {
     };
   }
   const destination = trafficDisplayDestination(row);
-  if (destination && destination !== "unknown destination") {
+  if (destination && destination !== "n/a" && destination !== "unknown destination" && !isClientOnlyDestination(destination)) {
     return {
       label: destination,
       kind: isGenericTrafficDestination(destination) ? "category" : "counter",

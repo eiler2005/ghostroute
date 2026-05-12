@@ -352,6 +352,13 @@ function destinationNetworkOwner(flow: Record<string, any>, decision?: Record<st
   return parts.length ? parts.join(" / ") : "not observed";
 }
 
+function observedList(...values: Array<unknown>) {
+  return Array.from(new Set(values
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((value) => text(value, ""))
+    .filter((value) => value && value !== "not observed" && value !== "unknown")));
+}
+
 function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, any>, index: number) {
   if (!flow) return null;
   const route = text(flow.route || routeFromBytes(flow), "Unknown");
@@ -392,6 +399,31 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const clientIpValue = text(flow.client_ip || decision?.client_ip || device?.ip || flow.ip || flow.raw?.client_ip || flow.raw?.ip, "not observed");
   const clientIpLabel = displayClientIp(clientIpValue, channel);
   const sni = displaySni(flow, decision, destination);
+  const operatorDomain = text(
+    flow.dns_qname
+      || flow.sni
+      || dns?.domain
+      || (!isIpLiteral(destination) && destination.includes(".") ? destination : "")
+      || (!["IP-only destination", "n/a", "not observed"].includes(displayEvidence.label) ? displayEvidence.label : "")
+      || (!["IP-only destination", "n/a", "not observed"].includes(displayDestination) ? displayDestination : ""),
+    "not observed"
+  );
+  const clientDetails = {
+    label: client,
+    key: text(flow.client_key || device?.client_key || device?.id || resolvedClient.client_key, ""),
+    device: text(device?.device_label || flow.device_label || resolvedClient.device_label || device?.label, ""),
+    deviceKey: text(flow.device_key || device?.device_key || resolvedClient.device_key, ""),
+    ip: clientIpLabel,
+    rawIp: text(clientIpValue, ""),
+    channel,
+    owner: text(device?.owner || flow.owner || resolvedClient.client_owner, ""),
+    type: text(device?.device_type || flow.device_type || resolvedClient.device_type, ""),
+    role: text(device?.role || device?.client_role || flow.client_role || resolvedClient.client_role, ""),
+    profile: text(flow.profile || flow.raw_profile || flow.raw?.profile || device?.profile, ""),
+    confidence: text(device?.confidence || flow.attribution_confidence || resolvedClient.attribution_confidence || flow.confidence, ""),
+    matchedBy: text(flow.matched_by || device?.matched_by || resolvedClient.matched_by, ""),
+    aliases: observedList(device?.aliases, device?.observed_identities, flow.observed_aliases, resolvedClient.observed_aliases).slice(0, 8),
+  };
   const accountingBucket = Boolean(flow.accounting_bucket || flow.raw?.accounting_bucket);
   const aggregateDestination = (accountingBucket || isCategoryAggregate(destination)) && !dns && !text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "");
   const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : displayDestination || destination;
@@ -424,12 +456,13 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
     eventTimeLabel: formatEventTime(eventTime),
     sourceKind: text(flow._source, "flow"),
     client,
+    clientDetails,
     clientIp: clientIpLabel,
     channel,
     destination,
     displayDestination,
     displayEvidenceKind: displayEvidence.kind,
-    domain: text(flow.dns_qname || flow.sni || dns?.domain || (!isIpLiteral(destination) && destination.includes(".") ? destination : ""), "not observed"),
+    domain: operatorDomain,
     destinationIp: text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "not observed"),
     destinationPort: text(flow.destination_port || decision?.destination_port || flow.raw?.destination_port, "not observed"),
     destinationCountryAs,
