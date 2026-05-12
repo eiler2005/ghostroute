@@ -188,6 +188,11 @@ a non-negative byte split satisfying
 `bytes = via_vps_bytes + direct_bytes + unknown_bytes`; legacy
 `traffic-report`-derived allocation rows such as connection-share/domain-or-SNI
 estimates are excluded from current GUI totals.
+Prepared Dashboard, Clients and LLM-safe report windows are materialized per
+coarse traffic class (`all`, `client`, `personal_cloud`,
+`service_background`, `unclassified`). The GUI must select the prepared window
+matching the active `trafficClass` filter so personal-cloud or service-heavy
+devices remain visible in `All traffic` while strict `Client` views stay clean.
 
 Facts and interpretation are intentionally separate:
 

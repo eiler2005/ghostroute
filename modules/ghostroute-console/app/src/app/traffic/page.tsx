@@ -26,6 +26,29 @@ function riskBadge(value?: string) {
   return <span className={`badge risk-${risk.toLowerCase()}`}>{risk}</span>;
 }
 
+function routeStatus(row: Record<string, any>) {
+  const status = String(row.route_status || "").toLowerCase();
+  if (status) return status;
+  const verification = String(row.route_verification || "").toLowerCase();
+  if (verification === "verified_vps" || verification === "verified_direct") return "verified";
+  if (verification === "intent_only" || verification === "mismatch") return verification;
+  return "unknown";
+}
+
+function dnsStatus(row: Record<string, any>) {
+  const status = String(row.dns_status || "").toLowerCase();
+  if (status) return status;
+  const confidence = String(row.dns_link_confidence || "").toLowerCase();
+  if (confidence === "no_dns_match") return "no_match";
+  if (confidence === "low") return "shared";
+  return confidence ? "exact" : "no_match";
+}
+
+function EvidenceBadge({ label, value }: { label: string; value?: string }) {
+  const normalized = String(value || "unknown").replace(/_/g, " ");
+  return <span className="badge evidence-status">{label} · {normalized}</span>;
+}
+
 function rowBytes(row: Record<string, any>) {
   return Number(row.bytes || row.total_bytes || 0);
 }
@@ -211,6 +234,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     <th className="col-channel">Channel</th>
                     <th className="col-destination">Site / group</th>
                     <th className="col-route">Route</th>
+                    <th className="col-evidence">Evidence</th>
                     <th className="col-policy">Policy / Rule</th>
                     <th className="col-traffic">Traffic</th>
                     <th className="col-duration">Duration</th>
@@ -234,6 +258,12 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                           </Link>
                         </td>
                         <td className="col-route"><Link className="row-link row-link-with-badges" href={href}><RouteBadge value={row.route} /></Link></td>
+                        <td className="col-evidence">
+                          <Link className="row-link row-link-with-badges" href={href}>
+                            <EvidenceBadge label={row.intended_route || row.route || "Unknown"} value={routeStatus(row)} />
+                            <EvidenceBadge label="DNS" value={dnsStatus(row)} />
+                          </Link>
+                        </td>
                         <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
                           <Link className="row-link" href={href}>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</Link>
                         </td>

@@ -128,6 +128,11 @@ intended source of truth. For deeper context, follow the cross-references.
 - **decision_candidates** — advisory review rows proposed by Traffic
   Intelligence. They are dry-run (`applied=0`) unless a future, separately
   designed control-plane explicitly applies them.
+- **trafficClass prepared window** — Console materialized Dashboard/Clients
+  window for one coarse class (`all`, `client`, `personal_cloud`,
+  `service_background`, `unclassified`). GUI filters must read the matching
+  window; otherwise personal-cloud/service traffic can disappear from
+  `All traffic` views.
 - **flow_sample** — single per-flow byte sample produced by router
   `lan-flow-facts-snapshot` and surfaced through `traffic-evidence`.
 - **dns_link** — correlation between a DNS query/answer and a flow

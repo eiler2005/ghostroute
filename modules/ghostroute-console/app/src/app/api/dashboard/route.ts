@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     route: url.searchParams.get("route") || "all",
     channel: url.searchParams.get("channel") || "all",
     confidence: url.searchParams.get("confidence") || "all",
-    trafficClass: url.searchParams.get("trafficClass") || "client",
+    trafficClass: url.searchParams.get("trafficClass") || "all",
     client: url.searchParams.get("client") || "all",
     search: url.searchParams.get("search") || "",
   });

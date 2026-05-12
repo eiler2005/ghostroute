@@ -27,6 +27,7 @@ const TRAFFIC_READ_MODEL_TABLES = [
   "top_destinations_window",
   "traffic_window_snapshots",
 ];
+const PREPARED_TRAFFIC_CLASSES = ["all", "client", "personal_cloud", "service_background", "unclassified"];
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -2504,7 +2505,7 @@ function preparedRowsForWindow(rows, trafficClass = "client") {
     if (!trafficClass || trafficClass === "all") return true;
     if (trafficClass === "primary_client") return ["client", "personal_cloud"].includes(row.traffic_class);
     if (row.traffic_class === trafficClass) return true;
-    return trafficClass === "client" && row.accounting_bucket;
+    return trafficClass === "client" && row.accounting_bucket && row.traffic_class === "client";
   });
 }
 
@@ -2601,16 +2602,18 @@ function clientObservedRows(rows) {
   );
 }
 
-function buildPreparedWindowPayload(db, window, facts, now) {
+function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all") {
   const bounds = mskWindowBounds(window, now);
   const registry = loadDeviceAttributions();
-  const rows = facts;
+  const rows = preparedRowsForWindow(facts, trafficClass);
   const allRows = rows.filter((row) => aggregateTotalBytes(row) > 0);
   const primaryRows = preparedRowsForWindow(rows, "primary_client").filter((row) => aggregateTotalBytes(row) > 0);
-  const operatorRows = primaryRows.filter((row) => isOperatorTrafficRow(row, registry));
+  const operatorRows = allRows.filter((row) => isOperatorTrafficRow(row, registry));
   const clientRows = clientObservedRows(operatorRows).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
-  const supportRows = allRows.filter((row) => ["service_background", "unclassified"].includes(row.traffic_class));
-  const modelRows = [...operatorRows, ...supportRows];
+  const supportRows = allRows.filter((row) => !isOperatorTrafficRow(row, registry) && ["service_background", "unclassified"].includes(row.traffic_class));
+  const modelRows = trafficClass === "client" || trafficClass === "personal_cloud"
+    ? operatorRows
+    : [...operatorRows, ...supportRows];
   const groupedFlowRows = groupRows(
     modelRows,
     (row) => [row.client_key || row.client_label || row.channel || "source", row.destination_key, row.channel, row.route, row.confidence, row.traffic_class].join("|"),
@@ -2681,6 +2684,7 @@ function buildPreparedWindowPayload(db, window, facts, now) {
     generatedAt: now,
     prepared: true,
     window,
+    trafficClass,
     windowStartUtc: bounds.startUtc,
     windowEndUtc: bounds.endUtc,
     totals,
@@ -2832,16 +2836,16 @@ function writeAggregateLayerStates(db, { model, table, timeColumn, mskKeyColumn,
   }
 }
 
-function rebuildTopWindows(db, window, payload, computedAt) {
-  db.prepare("delete from top_clients_window where window = ?").run(window);
-  db.prepare("delete from top_destinations_window where window = ?").run(window);
+function rebuildTopWindows(db, window, payload, computedAt, trafficClass = "all") {
+  db.prepare("delete from top_clients_window where window = ? and traffic_class = ?").run(window, trafficClass);
+  db.prepare("delete from top_destinations_window where window = ? and traffic_class = ?").run(window, trafficClass);
   const insertClient = db.prepare(`
     insert into top_clients_window(window, traffic_class, rank, client_key, label, channel, route, bytes,
       via_vps_bytes, direct_bytes, unknown_bytes, flows, computed_at_utc)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   (payload.devices || []).slice(0, 50).forEach((row, idx) => {
-    insertClient.run(window, "client", idx + 1, row.client_key || row.id || row.label || "", row.label || row.client_label || "", row.channel || "Unknown", row.route || "Unknown", aggregateTotalBytes(row), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.flows || 1), computedAt);
+    insertClient.run(window, trafficClass, idx + 1, row.client_key || row.id || row.label || "", row.label || row.client_label || "", row.channel || "Unknown", row.route || "Unknown", aggregateTotalBytes(row), number(row.via_vps_bytes), number(row.direct_bytes), number(row.unknown_bytes), number(row.flows || 1), computedAt);
   });
   const insertDestination = db.prepare(`
     insert into top_destinations_window(window, traffic_class, rank, destination, channel, route, bytes,
@@ -2849,7 +2853,7 @@ function rebuildTopWindows(db, window, payload, computedAt) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   (payload.dashboardAnalytics?.topDestinations || []).slice(0, 50).forEach((row, idx) => {
-    insertDestination.run(window, "client", idx + 1, row.label || row.destination || "", row.channel || "Unknown", row.route || "Unknown", number(row.bytes), number(row.flows || 1), number(row.bytes), row.accounting_bucket ? 0 : number(row.bytes), computedAt);
+    insertDestination.run(window, trafficClass, idx + 1, row.label || row.destination || "", row.channel || "Unknown", row.route || "Unknown", number(row.bytes), number(row.flows || 1), number(row.bytes), row.accounting_bucket ? 0 : number(row.bytes), computedAt);
   });
 }
 
@@ -2890,17 +2894,22 @@ function rebuildPreparedWindowPayloads(db, sourceVersion, computedAt) {
   const windows = [];
   for (const window of ["today", "week", "month"]) {
     const bounds = mskWindowBounds(window, computedAt);
-    const payload = buildPreparedWindowPayload(db, window, aggregateRowsForWindow(db, window, computedAt), computedAt);
-    writePreparedWindow(db, "dashboard", window, "client", bounds, sourceVersion, computedAt, payload);
-    writePreparedWindow(db, "clients", window, "client", bounds, sourceVersion, computedAt, {
-      generatedAt: computedAt,
-      prepared: true,
-      window,
-      rows: payload.devices,
-      total: payload.devices.length,
-    });
-    writePreparedWindow(db, "reports_llm_safe", window, "all", bounds, sourceVersion, computedAt, payload);
-    rebuildTopWindows(db, window, payload, computedAt);
+    const facts = aggregateRowsForWindow(db, window, computedAt);
+    const payload = buildPreparedWindowPayload(db, window, facts, computedAt, "all");
+    for (const trafficClass of PREPARED_TRAFFIC_CLASSES) {
+      const classPayload = trafficClass === "all" ? payload : buildPreparedWindowPayload(db, window, facts, computedAt, trafficClass);
+      writePreparedWindow(db, "dashboard", window, trafficClass, bounds, sourceVersion, computedAt, classPayload);
+      writePreparedWindow(db, "clients", window, trafficClass, bounds, sourceVersion, computedAt, {
+        generatedAt: computedAt,
+        prepared: true,
+        window,
+        trafficClass,
+        rows: classPayload.devices,
+        total: classPayload.devices.length,
+      });
+      writePreparedWindow(db, "reports_llm_safe", window, trafficClass, bounds, sourceVersion, computedAt, classPayload);
+      rebuildTopWindows(db, window, classPayload, computedAt, trafficClass);
+    }
     writeAggregateState(db, "dashboard", window, bounds.endUtc, sourceVersion, "ok", {
       rows: payload.flows?.length || 0,
       clients: payload.devices?.length || 0,
