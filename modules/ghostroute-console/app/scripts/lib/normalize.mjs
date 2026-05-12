@@ -2000,29 +2000,31 @@ function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = n
        and window_start_utc >= ?
        and window_start_utc < ?
   `).all(dirty5Start, dirtyEndUtc);
-  const useRouterTotals = routerTotals.length > 0;
+  const useRouterTotals = routerTotals.length > 0 && facts.length === 0;
 
-  for (const row of routerTotals) {
-    const bucket = bucketStartUtc(row.window_start_utc, "5min");
-    const totalKey = [bucket, row.client_key, row.channel, row.route, "exact", row.traffic_class].join("|");
-    addToGroup(totalBuckets, totalKey, {
-      bucket_start_utc: bucket,
-      bucket_msk_key: toMskKey(bucket, "5min"),
-      client_key: row.client_key,
-      client_label: row.client_label,
-      channel: row.channel,
-      route: row.route,
-      confidence: "exact",
-      traffic_class: row.traffic_class,
-      observed_bytes: 0,
-      attributed_bytes: 0,
-    }, {
-      ...row,
-      total_bytes: number(row.bytes),
-      confidence: "exact",
-      observed_bytes: number(row.bytes),
-      attributed_bytes: number(row.bytes),
-    });
+  if (useRouterTotals) {
+    for (const row of routerTotals) {
+      const bucket = bucketStartUtc(row.window_start_utc, "5min");
+      const totalKey = [bucket, row.client_key, row.channel, row.route, "exact", row.traffic_class].join("|");
+      addToGroup(totalBuckets, totalKey, {
+        bucket_start_utc: bucket,
+        bucket_msk_key: toMskKey(bucket, "5min"),
+        client_key: row.client_key,
+        client_label: row.client_label,
+        channel: row.channel,
+        route: row.route,
+        confidence: "exact",
+        traffic_class: row.traffic_class,
+        observed_bytes: 0,
+        attributed_bytes: 0,
+      }, {
+        ...row,
+        total_bytes: number(row.bytes),
+        confidence: "exact",
+        observed_bytes: number(row.bytes),
+        attributed_bytes: number(row.bytes),
+      });
+    }
   }
 
   for (const row of facts) {
@@ -2531,10 +2533,12 @@ function buildPreparedWindowPayload(db, window, facts, now) {
     })
   ).sort((a, b) => number(b.bytes) - number(a.bytes));
   const flowRows = groupedFlowRows.slice(0, 250);
-  const factTotals = totalsForFacts(allRows);
   const authoritative = latestAuthoritativeTotals(db, window, now);
+  const clientTotals = totalsForFacts(clientRows);
+  const factTotals = totalsForFacts(primaryRows.filter((row) => row.accounting_bucket || !text(row.destination_key)));
+  const accountingTotals = clientTotals.observedBytes > 0 ? clientTotals : factTotals.observedBytes > 0 ? factTotals : authoritative;
   const totals = {
-    ...(authoritative || factTotals),
+    ...(accountingTotals || { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 }),
     periodLabel: authoritative?.periodLabel || window,
     windowLabel: authoritative?.windowLabel || mskWindowLabel(window, bounds),
   };

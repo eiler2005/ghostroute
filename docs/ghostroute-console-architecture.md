@@ -68,7 +68,7 @@ Layer 2 normalized storage
 
 Layer 3 UI read models
   flow_sessions
-    -> Dashboard route accounting
+    -> Dashboard route accounting from traffic_facts
     -> Flow Explorer rows and selected-flow detail
     -> Clients traffic windows
     -> Live client activity summary
@@ -173,6 +173,12 @@ Layer 6 deployment/access
     -> Console does not deploy router/VPS runtime from review pages
     -> controlled actions prepare audited operator artifacts only
 ```
+
+`traffic_facts` is the authoritative accounting source for prepared Dashboard,
+Clients and Flow Explorer totals. `router_rollups` remains useful as bounded
+router-side evidence and as a fallback when no `traffic_facts` rows exist for a
+window, but it must not override v3 fact bytes or route split when facts are
+available.
 
 ## Data Sources
 

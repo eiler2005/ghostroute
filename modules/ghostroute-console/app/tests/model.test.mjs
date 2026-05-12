@@ -273,7 +273,7 @@ test("traffic facts v2 resolves LAN IP facts through private device registry", (
   }
 });
 
-test("router rollups are preferred totals while traffic facts remain destination detail", () => {
+test("traffic facts remain authoritative for prepared accounting when router rollups exist", () => {
   const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-rollups-"));
   process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
@@ -326,7 +326,11 @@ test("router rollups are preferred totals while traffic facts remain destination
         destination: "example.invalid",
         destination_kind: "domain",
         bytes: 100,
-        via_vps_bytes: 100,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 100,
+        route_verification: "intent_only",
+        accounting_status: "ok",
         connections: 1,
         confidence: "estimated",
       }],
@@ -338,7 +342,12 @@ test("router rollups are preferred totals while traffic facts remain destination
     normalizeSnapshot(db, 1, "router_rollups", rollups.generated_at, rollups);
     normalizeSnapshot(db, 2, "traffic_facts", facts.generated_at, facts);
     rebuildPreparedWindows(db, "2026-05-10T08:10:00.000Z");
-    assert.equal(db.prepare("select sum(bytes) as bytes from client_traffic_5min where client_key = 'operator-laptop'").get().bytes, 9999);
+    assert.deepEqual(db.prepare("select sum(bytes) as bytes, sum(via_vps_bytes) as vps, sum(direct_bytes) as direct, sum(unknown_bytes) as unknown from client_traffic_5min where client_key = 'operator-laptop'").get(), {
+      bytes: 100,
+      vps: 0,
+      direct: 0,
+      unknown: 100,
+    });
     assert.equal(db.prepare("select sum(bytes) as bytes from client_destination_traffic_5min where client_key = 'operator-laptop'").get().bytes, 100);
   } finally {
     db.close();

@@ -293,15 +293,18 @@ function seed(db) {
     "assets.test.invalid",
     "auth.test.invalid",
   ];
-  const trafficSnapshotId = insertSnapshot(db, now, "traffic", 0, {
-    totals: {
-      client_observed_bytes: 734003200,
-      via_vps_bytes: 356515840,
-      direct_bytes: 251658240,
-      unknown_bytes: 125829120,
+  const trafficSnapshotId = insertSnapshot(db, now, "traffic_facts", 0, {
+    schema_version: 3,
+    source: { command: "traffic-facts", period: "today" },
+    coverage: {
+      observed_bytes: 734003200,
+      attributed_bytes: 608174080,
+      unattributed_bytes: 125829120,
     },
-    app_flows: [],
-    destinations: [],
+    clients: [],
+    traffic_facts: [],
+    dns_links: [],
+    attribution_gaps: [],
   });
   const summarySnapshotId = insertSnapshot(db, now, "traffic_summary", 500, {
     totals: {

@@ -165,29 +165,37 @@ export function reconcileTrafficRows(rows, totals = {}) {
   const rowTotal = rows.reduce((sum, row) => sum + byteValue(row), 0);
   if (rowTotal <= observed * 1.03) return rows;
   const totalScale = observed / rowTotal;
-  const vpsTotal = rows.reduce((sum, row) => sum + number(row?.via_vps_bytes || (row?.route === "VPS" ? row?.bytes : 0)), 0);
-  const directTotal = rows.reduce((sum, row) => sum + number(row?.direct_bytes || (row?.route === "Direct" ? row?.bytes : 0)), 0);
+  const splitFor = (row) => {
+    const bytes = byteValue(row);
+    const viaVps = number(row?.via_vps_bytes);
+    const direct = number(row?.direct_bytes);
+    let unknown = number(row?.unknown_bytes);
+    if (bytes > 0 && viaVps + direct + unknown === 0) unknown = bytes;
+    return { viaVps, direct, unknown };
+  };
+  const vpsTotal = rows.reduce((sum, row) => sum + splitFor(row).viaVps, 0);
+  const directTotal = rows.reduce((sum, row) => sum + splitFor(row).direct, 0);
   const unknownTotal = rows.reduce((sum, row) => {
-    const split = number(row?.via_vps_bytes || (row?.route === "VPS" ? row?.bytes : 0)) + number(row?.direct_bytes || (row?.route === "Direct" ? row?.bytes : 0));
-    return split > 0 ? sum : sum + byteValue(row);
+    return sum + splitFor(row).unknown;
   }, 0);
   const unknownBudget = Math.max(0, observed - number(totals.vps) - number(totals.direct));
   const vpsScale = number(totals.vps) > 0 && vpsTotal > number(totals.vps) ? number(totals.vps) / vpsTotal : totalScale;
   const directScale = number(totals.direct) > 0 && directTotal > number(totals.direct) ? number(totals.direct) / directTotal : totalScale;
   const unknownScale = unknownTotal > 0 ? Math.min(totalScale, unknownBudget / unknownTotal) : totalScale;
   const reconciled = rows.map((row) => {
-    const viaVps = Math.round(number(row?.via_vps_bytes || (row?.route === "VPS" ? row?.bytes : 0)) * vpsScale);
-    const direct = Math.round(number(row?.direct_bytes || (row?.route === "Direct" ? row?.bytes : 0)) * directScale);
-    const hasSplit = viaVps > 0 || direct > 0;
-    const value = Math.round(byteValue(row) * unknownScale);
-    const bytesValue = hasSplit ? viaVps + direct : value;
+    const split = splitFor(row);
+    const viaVps = Math.round(split.viaVps * vpsScale);
+    const direct = Math.round(split.direct * directScale);
+    const unknown = Math.round(split.unknown * unknownScale);
+    const bytesValue = viaVps + direct + unknown;
     return {
       ...row,
       total_bytes: row?.total_bytes !== undefined ? bytesValue : row?.total_bytes,
       bytes: row?.bytes !== undefined ? bytesValue : row?.bytes,
       via_vps_bytes: row?.via_vps_bytes !== undefined ? viaVps : row?.via_vps_bytes,
       direct_bytes: row?.direct_bytes !== undefined ? direct : row?.direct_bytes,
-      route: hasSplit ? routeFromCounters({ via_vps_bytes: viaVps, direct_bytes: direct, route: row?.route }) : row?.route,
+      unknown_bytes: row?.unknown_bytes !== undefined ? unknown : row?.unknown_bytes,
+      route: viaVps > 0 || direct > 0 ? routeFromCounters({ via_vps_bytes: viaVps, direct_bytes: direct }) : row?.route,
       reconciled: true,
       raw_total_bytes: byteValue(row),
     };
@@ -200,6 +208,21 @@ export function reconcileTrafficRows(rows, totals = {}) {
       const adjustment = Math.min(current, overage);
       if (row.total_bytes !== undefined) row.total_bytes = current - adjustment;
       if (row.bytes !== undefined) row.bytes = current - adjustment;
+      let remaining = adjustment;
+      if (row.unknown_bytes !== undefined) {
+        const take = Math.min(number(row.unknown_bytes), remaining);
+        row.unknown_bytes = number(row.unknown_bytes) - take;
+        remaining -= take;
+      }
+      if (remaining > 0 && row.direct_bytes !== undefined) {
+        const take = Math.min(number(row.direct_bytes), remaining);
+        row.direct_bytes = number(row.direct_bytes) - take;
+        remaining -= take;
+      }
+      if (remaining > 0 && row.via_vps_bytes !== undefined) {
+        const take = Math.min(number(row.via_vps_bytes), remaining);
+        row.via_vps_bytes = number(row.via_vps_bytes) - take;
+      }
       overage -= adjustment;
       if (overage <= 0) break;
     }
