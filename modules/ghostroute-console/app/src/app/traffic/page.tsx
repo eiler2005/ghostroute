@@ -7,7 +7,7 @@ import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/select
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { destinationEvidence, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
-import { trafficClassLabel } from "@/lib/traffic-classification.mjs";
+import { trafficClassLabel, trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -234,6 +234,8 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     <th className="col-channel">Channel</th>
                     <th className="col-destination">Site / group</th>
                     <th className="col-route">Route</th>
+                    <th>Role</th>
+                    <th>Decision</th>
                     <th className="col-evidence">Evidence</th>
                     <th className="col-policy">Policy / Rule</th>
                     <th className="col-traffic">Traffic</th>
@@ -246,6 +248,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   {rows.map((row) => {
                     const href = flowHref(row.id);
                     const destination = destinationEvidence(row);
+                    const intel = trafficIntelligenceFor(row);
                     return (
                       <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>
                         <td className="col-time"><Link className="row-link" href={href}>{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.event_ts || row.collected_at, true)}</Link></td>
@@ -258,6 +261,13 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                           </Link>
                         </td>
                         <td className="col-route"><Link className="row-link row-link-with-badges" href={href}><RouteBadge value={row.route} /></Link></td>
+                        <td><Link className="row-link row-link-with-badges" href={href}>
+                          <span className="badge">{String(intel.traffic_role || "unknown").replace(/_/g, " ")}</span>
+                          <span className="badge">{String(intel.dns_category || intel.category || "unknown").replace(/_/g, " ")}</span>
+                        </Link></td>
+                        <td><Link className="row-link row-link-with-badges" href={href}>
+                          <span className={`badge action-${String(intel.decision_hint || "monitor").replace(/_/g, "-")}`}>{String(intel.decision_hint || "monitor").replace(/_/g, " ")}</span>
+                        </Link></td>
                         <td className="col-evidence">
                           <Link className="row-link row-link-with-badges" href={href}>
                             <EvidenceBadge label={row.intended_route || row.route || "Unknown"} value={routeStatus(row)} />

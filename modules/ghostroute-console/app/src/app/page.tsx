@@ -4,6 +4,7 @@ import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, groupDestinationRows, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
@@ -71,6 +72,28 @@ function compactBytes(value: number) {
   if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
   if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(value >= 10 * 1024 ** 2 ? 0 : 1)} MB`;
   return bytes(value);
+}
+
+function trafficIntelSummary(rows: Array<Record<string, any>>) {
+  const summary = {
+    client_observed: 0,
+    service_system: 0,
+    privacy_risk: 0,
+    shared_infra: 0,
+    unknown_review: 0,
+    block_candidate: 0,
+    ask_user: 0,
+  };
+  for (const row of rows) {
+    const rowBytes = observedBytes(row);
+    if (rowBytes <= 0) continue;
+    const intel = trafficIntelligenceFor(row);
+    const lane = String(intel.traffic_lane || "unknown_review") as keyof typeof summary;
+    if (lane in summary) summary[lane] += rowBytes;
+    if (intel.decision_hint === "block_candidate") summary.block_candidate += 1;
+    if (intel.decision_hint === "ask_user") summary.ask_user += 1;
+  }
+  return summary;
 }
 
 function dateLabel(value?: string) {
@@ -280,6 +303,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     10
   );
   const latestDecisions = clientTrafficRows.slice(0, 8);
+  const intelligenceSummary = trafficIntelSummary(model.flows);
 
   return (
     <ConsoleShell active="/" model={model} filters={filters}>
@@ -312,6 +336,20 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
         <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
       </div>
+
+      <section className="card" style={{ marginTop: 14 }}>
+        <div className="toolbar">
+          <h2>Traffic Intelligence Summary</h2>
+          <Link className="muted-button" href="/intelligence">Open review</Link>
+        </div>
+        <div className="grid cards intelligence-summary-grid">
+          <MetricCard label="Client traffic" value={bytes(intelligenceSummary.client_observed)} detail="user-facing or encrypted client evidence" />
+          <MetricCard label="Service/system" value={bytes(intelligenceSummary.service_system)} detail="OS/app background that is usually allowed" />
+          <MetricCard label="Analytics/trackers" value={bytes(intelligenceSummary.privacy_risk)} detail={`${intelligenceSummary.block_candidate} block candidates`} />
+          <MetricCard label="CDN/shared infra" value={bytes(intelligenceSummary.shared_infra)} detail="monitor; do not block by IP alone" />
+          <MetricCard label="Unknown/review" value={bytes(intelligenceSummary.unknown_review)} detail={`${intelligenceSummary.ask_user} ask-user rows`} />
+        </div>
+      </section>
 
       <section className="card" style={{ marginTop: 14 }}>
           <div className="toolbar">

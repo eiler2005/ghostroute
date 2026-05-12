@@ -57,6 +57,7 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
     TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
     router_ssh "cat '${REMOTE_STATE_DIR}/lan-flow-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/lan-flow-facts.tsv" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/dns-query-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/dns-query-facts.tsv" || true
+    router_ssh "cat '${REMOTE_STATE_DIR}/mobile-reality-counters.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/mobile-reality-counters.tsv" || true
     STATE_DIR="$TMP_STATE_DIR"
   fi
 fi
@@ -92,6 +93,10 @@ def sample_id(row)
     row['ts'], row['client_ip'], row['remote_ip'], row['remote_port'],
     row['proto'], row['total_bytes'], row['source']
   ].join('|'))
+end
+
+def evidence_id(*parts)
+  Digest::SHA1.hexdigest(parts.map { |part| text(part) }.join('|'))
 end
 
 def local_midnight(date)
@@ -155,6 +160,7 @@ window_end = Time.parse(window['end_ts_utc'])
 warnings = []
 flow_samples = []
 dns_queries = []
+home_reality_samples = []
 route_evidence = []
 
 if state_dir.empty? || !Dir.exist?(state_dir)
@@ -247,6 +253,65 @@ else
   else
     warnings << { 'code' => 'dns_query_facts_missing', 'message' => 'dns-query-facts.tsv not found', 'path' => dns_path }
   end
+
+  mobile_path = File.join(state_dir, 'mobile-reality-counters.tsv')
+  if File.file?(mobile_path)
+    rows_by_key = Hash.new { |hash, key| hash[key] = [] }
+    File.readlines(mobile_path, chomp: true).each_with_index do |line, index|
+      next if line.strip.empty?
+      parts = line.split('|', -1)
+      next if parts.length < 5
+      parsed_ts = parse_time(parts[0])
+      unless parsed_ts
+        warnings << { 'code' => 'unparsable_timestamp', 'source' => 'mobile-reality-counters.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }
+        next
+      end
+      source_ip = text(parts[1])
+      profile = text(parts[2], source_ip.empty? ? 'unknown-home-reality-profile' : "remote:#{source_ip}")
+      key = [source_ip, profile].join('|')
+      rows_by_key[key] << {
+        'ts' => parsed_ts,
+        'source_ip' => source_ip,
+        'client_key' => profile.sub(/\Aremote:/, 'remote:'),
+        'client_label' => profile,
+        'bytes_up_counter' => number(parts[3]),
+        'bytes_down_counter' => number(parts[4]),
+        'raw_refs' => [{ 'source' => 'mobile-reality-counters.tsv', 'line' => index + 1 }]
+      }
+    end
+
+    rows_by_key.each_value do |rows|
+      previous = nil
+      rows.sort_by { |row| row['ts'] }.each do |row|
+        in_window = in_window?(row['ts'], window_start, window_end)
+        if previous && in_window
+          up_delta = row['bytes_up_counter'] >= previous['bytes_up_counter'] ? row['bytes_up_counter'] - previous['bytes_up_counter'] : row['bytes_up_counter']
+          down_delta = row['bytes_down_counter'] >= previous['bytes_down_counter'] ? row['bytes_down_counter'] - previous['bytes_down_counter'] : row['bytes_down_counter']
+          total = up_delta + down_delta
+          if total > 0
+            sample = {
+              'sample_id' => evidence_id('home-reality', previous['ts'].iso8601(3), row['ts'].iso8601(3), row['source_ip'], row['client_label'], total),
+              'ts' => row['ts'].utc.iso8601(3),
+              'client_key' => row['client_key'],
+              'client_label' => row['client_label'],
+              'source_ip' => row['source_ip'],
+              'channel' => 'A/Home Reality',
+              'bytes_up' => up_delta,
+              'bytes_down' => down_delta,
+              'total_bytes' => total,
+              'source' => 'mobile_reality_counter_delta',
+              'allocation_basis' => 'observed_profile_counter_delta',
+              'destination_kind' => 'encrypted_ingress',
+              'status' => 'ok',
+              'raw_refs' => row['raw_refs']
+            }
+            home_reality_samples << sample
+          end
+        end
+        previous = in_window ? row : nil
+      end
+    end
+  end
 end
 
 output = {
@@ -255,6 +320,7 @@ output = {
   'window' => window,
   'source' => { 'command' => 'traffic-evidence', 'schema' => 'traffic-evidence-v1', 'state_dir' => state_dir },
   'flow_samples' => flow_samples,
+  'home_reality_samples' => home_reality_samples,
   'dns_queries' => dns_queries,
   'route_evidence' => route_evidence,
   'rollups' => {},
@@ -262,6 +328,7 @@ output = {
   'collector_metrics' => {
     'source_row_counts' => {
       'flow_samples' => flow_samples.length,
+      'home_reality_samples' => home_reality_samples.length,
       'dns_queries' => dns_queries.length,
       'route_evidence' => route_evidence.length
     }

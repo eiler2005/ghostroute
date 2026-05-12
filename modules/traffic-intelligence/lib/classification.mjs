@@ -41,9 +41,13 @@ function result(input, fields) {
   const decisionHint = fields.decision_hint || fields.action_hint || "monitor";
   const category = fields.category || "unknown.domain";
   const trafficClass = fields.traffic_class || trafficClassForCategory(category);
+  const trafficLane = fields.traffic_lane || trafficLaneForCategory(category, trafficClass);
+  const dnsCategory = fields.dns_category || dnsCategoryForCategory(category);
   const explanation = fields.human_explanation || explanationFor(category, decisionHint, fields.provider || "");
   return {
     traffic_class: trafficClass,
+    traffic_lane: trafficLane,
+    dns_category: dnsCategory,
     category,
     provider: fields.provider || "",
     traffic_role: fields.traffic_role || "unknown",
@@ -66,7 +70,37 @@ function trafficClassForCategory(category) {
   return "unclassified";
 }
 
+function trafficLaneForCategory(category, trafficClass) {
+  if (category.startsWith("analytics.") || category.startsWith("tracker.")) return "privacy_risk";
+  if (category.startsWith("system.")) return "service_system";
+  if (category.startsWith("cdn.") || category.startsWith("vps.")) return "shared_infra";
+  if (category.startsWith("unknown.")) return "unknown_review";
+  if (trafficClass === "client" || trafficClass === "personal_cloud" || category.startsWith("personal_cloud.") || category.startsWith("client.")) return "client_observed";
+  if (trafficClass === "service_background") return "service_system";
+  return "unknown_review";
+}
+
+function dnsCategoryForCategory(category) {
+  if (category === "analytics.firebase") return "analytics";
+  if (category === "tracker.ads") return "ads_tracking";
+  if (category === "system.apple.push") return "system_push";
+  if (category.startsWith("system.apple.")) return category.includes("store") || category.includes("itunes") ? "system_appstore" : "system_maintenance";
+  if (category.startsWith("system.google.connectivity") || category.startsWith("system.microsoft.connectivity")) return "system_connectivity";
+  if (category.startsWith("system.")) return "system_maintenance";
+  if (category.startsWith("personal_cloud.")) return "personal_cloud";
+  if (category.includes(".youtube") || category.startsWith("client.media.")) return "media_streaming";
+  if (category.startsWith("client.messaging.")) return "messaging";
+  if (category.startsWith("client.")) return "user_content";
+  if (category.startsWith("cdn.")) return "cdn_shared";
+  if (category.startsWith("vps.")) return "cloud_hosting";
+  if (category === "unknown.no_dns_match") return "unknown_ip_only";
+  if (category === "unknown.shared_dns_answer") return "unknown_shared_answer";
+  if (category === "unknown.ip_only") return "unknown_ip_only";
+  return "unknown_domain";
+}
+
 function explanationFor(category, decisionHint, provider) {
+  if (category === "client.home_reality_ingress") return "Home Reality encrypted ingress counter; destination details are not attributed without DNS or flow evidence.";
   if (category === "analytics.firebase") return "Firebase analytics traffic; review as a block candidate.";
   if (category === "tracker.ads") return "Advertising or tracking traffic; review as a block candidate.";
   if (category === "system.apple.push") return "Apple Push traffic; usually keep allowed for notifications.";
@@ -95,8 +129,24 @@ function includesAny(value, terms) {
 }
 
 export function classifyDestination(input) {
-  const value = lower(valueFor(input));
   const row = input && typeof input === "object" ? input : {};
+  const rawDestination = lower(row.destination || row.domain || row.dns_qname || "");
+  if (rawDestination.includes("home reality ingress") || lower(row.destination_kind) === "encrypted_ingress") {
+    return result(input, {
+      value: rawDestination || "home reality ingress",
+      category: "client.home_reality_ingress",
+      provider: "ghostroute",
+      traffic_class: "client",
+      traffic_lane: "client_observed",
+      dns_category: "user_content",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "home_reality_counter",
+      traffic_role: "client_interactive",
+      traffic_purpose: "encrypted_ingress",
+    });
+  }
+  const value = lower(valueFor(input));
   if (!value) {
     return result(input, {
       value,

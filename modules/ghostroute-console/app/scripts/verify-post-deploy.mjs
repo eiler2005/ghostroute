@@ -64,6 +64,21 @@ function readPayload(kind, window, trafficClass) {
   return JSON.parse(row.payload_json || "{}");
 }
 
+function latestSnapshotPayload(type) {
+  const row = db.prepare(`
+    select payload_json
+      from snapshots
+     where type = ?
+     order by collected_at desc
+     limit 1
+  `).get(type);
+  return row ? JSON.parse(row.payload_json || "{}") : {};
+}
+
+function tableHasColumn(table, column) {
+  return Boolean(db.prepare(`select 1 from pragma_table_info('${table}') where name = ?`).get(column));
+}
+
 const activeLocks = [];
 for (const file of lockFiles) {
   const fullPath = path.join(dataDir, file);
@@ -94,6 +109,16 @@ for (const type of requiredFullSnapshots) {
      limit 1
   `).get(type);
   assert.ok(row, `missing required post-deploy snapshot type=${type}`);
+}
+
+for (const column of ["protocol", "bytes_up", "bytes_down", "route_source", "route_basis", "matched_ipset", "intended_route", "route_verification", "route_status", "dns_link_id", "dns_link_confidence", "dns_status", "dns_ts_source", "accounting_status"]) {
+  assert.ok(tableHasColumn("traffic_facts", column), `traffic_facts missing ${column}`);
+}
+for (const column of ["id", "destination_ip", "destination_port", "protocol", "dns_answer_ip", "dns_event_ts_utc", "dns_ts_source", "flow_event_ts_utc"]) {
+  assert.ok(tableHasColumn("traffic_dns_links", column), `traffic_dns_links missing ${column}`);
+}
+for (const column of ["traffic_class", "traffic_lane", "dns_category", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
+  assert.ok(tableHasColumn("destination_enrichment", column), `destination_enrichment missing ${column}`);
 }
 
 for (const kind of preparedKinds) {
@@ -128,6 +153,40 @@ for (const table of aggregateTables) {
   `).get();
   assert.equal(number(bad.count), 0, `${table} has invalid byte splits`);
 }
+
+const factSplitViolations = db.prepare(`
+  select count(*) as count
+    from traffic_facts
+   where bytes < 0
+      or via_vps_bytes < 0
+      or direct_bytes < 0
+      or unknown_bytes < 0
+      or bytes != via_vps_bytes + direct_bytes + unknown_bytes
+`).get();
+assert.equal(number(factSplitViolations.count), 0, "traffic_facts has invalid byte splits");
+
+const badIntent = db.prepare(`
+  select count(*) as count
+    from traffic_facts
+   where route_verification = 'intent_only'
+     and lower(coalesce(route_source, '')) in ('', 'none')
+`).get();
+assert.equal(number(badIntent.count), 0, "traffic_facts has intent_only rows with route_source=none");
+
+const latestSummary = latestSnapshotPayload("traffic_summary");
+const latestEvidence = latestSnapshotPayload("traffic_evidence");
+const homeRealityIngress = number(latestSummary?.totals?.home_reality_ingress_bytes || latestSummary?.home_reality_ingress_bytes);
+const homeRealitySamples = Array.isArray(latestEvidence?.home_reality_samples) ? latestEvidence.home_reality_samples.length : 0;
+assert.ok(homeRealityIngress <= 0 || homeRealitySamples > 0, `traffic_summary reports Home Reality ingress (${homeRealityIngress}) but latest traffic_evidence has no home_reality_samples`);
+
+const legacyInLatestFacts = db.prepare(`
+  select count(*) as count
+    from traffic_facts
+   where allocation_basis = 'connection_share'
+      or evidence_level = 'domain_or_sni'
+      or evidence_json like '%traffic-report app_flows%'
+`).get();
+assert.equal(number(legacyInLatestFacts.count), 0, "legacy traffic-report app_flows rows are present in authoritative traffic_facts; reset/quarantine polluted DB before GUI totals");
 
 const factClasses = db.prepare("select traffic_class, count(*) as rows, sum(bytes) as bytes from traffic_facts group by traffic_class order by traffic_class").all();
 const preparedSummary = db.prepare(`

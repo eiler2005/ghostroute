@@ -160,10 +160,12 @@ router read-only evidence
   lan-flow-facts-snapshot / dns-query-snapshot / traffic-rollup-snapshot
         ↓
 traffic-evidence --json
-  raw machine evidence: flow_samples, dns_queries, route_evidence, warnings
+  raw machine evidence: flow_samples, home_reality_samples, dns_queries,
+  route_evidence, warnings
         ↓
 traffic-facts --json
-  stable contract v3; one fact per flow_sample;
+  stable contract v3; one fact per LAN/Wi-Fi flow_sample or Home Reality
+  profile-counter delta;
   bytes == via_vps + direct + unknown invariant
         ↓
 Console SQLite factual read models
@@ -180,6 +182,13 @@ UI / reports / review surfaces
 source. Channel A/B/C routing and managed-domain logic are unchanged by the
 observability pipeline; router-side evidence collectors remain read-only and
 never mutate dnsmasq, ipset, sing-box, iptables or route rules.
+
+Home Reality profile accounting is intentionally narrow: read-only
+`mobile-reality-counters.tsv` deltas become `home_reality_samples`, and
+`traffic_facts` represents them as `Home Reality ingress` with all bytes in
+`unknown_bytes`, `route_status=unknown` and `dns_status=no_match`. The pipeline
+does not recreate legacy per-destination estimates such as Apple/iCloud from
+encrypted ingress counters unless real DNS/flow evidence exists.
 
 Console may store old or legacy traffic rows for history/debug, but operational
 traffic windows must pass a read-model eligibility gate before they reach
@@ -205,6 +214,11 @@ Facts and interpretation are intentionally separate:
   Intelligence outputs. They can explain traffic and suggest review actions,
   but they must not rewrite bytes, route split, route verification, DNS
   confidence, managed domains, filters or routing policy.
+- Traffic Intelligence exposes additional GUI axes (`traffic_lane`,
+  `dns_category`, `decision_hint`) for Client, Service/system,
+  Analytics/trackers, CDN/shared infra and Unknown/review workbench views. These
+  axes are interpretation only and do not replace `traffic_class` or
+  accounting.
 - Optional enrichment providers such as IPinfo/Shodan/AbuseIPDB/VirusTotal/MCP
   are future advisory inputs only, disabled by default and never automatic
   blocking/routing authority.

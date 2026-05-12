@@ -187,7 +187,8 @@ Console reads machine-readable JSON from existing operational modules:
 - `traffic-summary --json today` for frequent current-day Dashboard traffic
   cards without destination analytics.
 - `traffic-evidence --json <period>` for raw machine evidence: flow samples,
-  DNS queries/answers, route evidence and warnings.
+  Home Reality profile-counter deltas, DNS queries/answers, route evidence and
+  warnings.
 - `traffic-facts --json <period>` for the authoritative v3 accounting contract:
   traffic facts, DNS links, attribution gaps, route status and byte split.
 - router rollup snapshots for prepared aggregate windows.
@@ -236,6 +237,21 @@ Those rows can power the `/intelligence` GUI, coarse `trafficClass` filters,
 fine categories, action hints and human explanations. They must not alter fact
 bytes, route verification, DNS confidence, managed-domain policy, filter rules
 or router/VPS state.
+
+Home Reality evidence is treated as observed encrypted ingress only. A profile
+counter delta may create a trusted client fact named `Home Reality ingress`, but
+it must not manufacture destination facts such as Apple/iCloud or Google/YouTube
+without matching DNS/flow evidence. These rows keep `unknown_bytes=bytes`,
+`route_status=unknown` and `dns_status=no_match`.
+
+The Traffic Intelligence GUI axes are:
+
+- `traffic_lane`: `client_observed`, `service_system`, `privacy_risk`,
+  `shared_infra` or `unknown_review`.
+- `dns_category`: local purpose/category such as `personal_cloud`,
+  `system_push`, `analytics`, `cdn_shared` or `unknown_ip_only`.
+- `decision_hint`: advisory only (`allow`, `monitor`, `block_candidate`,
+  `route_vps_candidate`, `direct_candidate`, `investigate`, `ask_user`).
 
 The status fields are deliberately split:
 
@@ -349,8 +365,9 @@ Schema v15 is the current guard for the trustworthy v3 pipeline and the local
 Traffic Intelligence read model. It ensures factual tables carry the v3
 route/DNS/accounting fields (`intended_route`, `route_status`, `dns_status`,
 `dns_ts_source`, detailed DNS link columns) and keeps interpretation outside
-`traffic_facts` in `destination_enrichment` / `decision_candidates`. Fresh and
-migrated databases must converge to the same columns and indexes.
+`traffic_facts` in `destination_enrichment` / `decision_candidates`, including
+`traffic_lane` and `dns_category` for GUI review grouping. Fresh and migrated
+databases must converge to the same columns and indexes.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

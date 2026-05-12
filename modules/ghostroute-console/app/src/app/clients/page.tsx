@@ -21,6 +21,7 @@ import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { normalizeDomainBreakdown } from "@/lib/domain-attribution.mjs";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -96,6 +97,26 @@ function ClientActivityChart({ rows }: { rows: Array<Record<string, any>> }) {
   );
 }
 
+function privacyBreakdown(rows: Array<Record<string, any>>) {
+  const result = {
+    client_observed: 0,
+    service_system: 0,
+    privacy_risk: 0,
+    shared_infra: 0,
+    unknown_review: 0,
+    block_candidate: 0,
+  };
+  for (const row of rows) {
+    const rowBytes = Number(row.bytes || row.total_bytes || 0);
+    if (rowBytes <= 0) continue;
+    const intel = trafficIntelligenceFor(row);
+    const lane = String(intel.traffic_lane || "unknown_review") as keyof typeof result;
+    if (lane in result) result[lane] += rowBytes;
+    if (intel.decision_hint === "block_candidate") result.block_candidate += 1;
+  }
+  return result;
+}
+
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
@@ -146,6 +167,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
         },
       ]
     : selectedDomainBreakdown.rows;
+  const selectedPrivacy = privacyBreakdown([...allSelectedFlows, ...selectedDomainRows]);
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -291,6 +313,15 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 direct={selected.direct_bytes || 0}
                 unknown={Math.max(0, Number(selected.total_bytes || 0) - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0))}
               />
+              <h3>Privacy breakdown</h3>
+              <div className="detail-list">
+                <div className="detail-row"><span>Client traffic</span><strong>{bytes(selectedPrivacy.client_observed)}</strong></div>
+                <div className="detail-row"><span>Service/system</span><strong>{bytes(selectedPrivacy.service_system)}</strong></div>
+                <div className="detail-row"><span>Analytics/trackers</span><strong>{bytes(selectedPrivacy.privacy_risk)}</strong></div>
+                <div className="detail-row"><span>CDN/shared</span><strong>{bytes(selectedPrivacy.shared_infra)}</strong></div>
+                <div className="detail-row"><span>Unknown/review</span><strong>{bytes(selectedPrivacy.unknown_review)}</strong></div>
+                <div className="detail-row"><span>Block candidates</span><strong>{selectedPrivacy.block_candidate}</strong></div>
+              </div>
               <h3>Client activity</h3>
               <ClientActivityChart rows={selectedActivity} />
               <h3>Top domains</h3>
