@@ -47,9 +47,28 @@ function destinationLabel(row: Record<string, any>) {
   return trafficDisplayDestination(row);
 }
 
+const dashboardNonDestinations = new Set(["client", "no site evidence", "encrypted ingress traffic", "n/a", "unknown destination", "traffic without site attribution"]);
+
+function isDomainLike(value: unknown) {
+  const text = String(value || "").trim();
+  return Boolean(text)
+    && text.includes(".")
+    && !/^(\d{1,3}\.){3}\d{1,3}$/.test(text)
+    && !text.includes(" ");
+}
+
+function domainForRow(row: Record<string, any>) {
+  for (const candidate of [row.dns_qname, row.sni, row.domain, row.destination, row.raw?.dns_qname, row.raw?.sni, row.raw?.domain]) {
+    if (isDomainLike(candidate)) return String(candidate).trim();
+  }
+  return "";
+}
+
 function hasDashboardDestination(row: Record<string, any>) {
   if (row.accounting_bucket || row.raw?.accounting_bucket) return false;
-  return isPrimaryTrafficDestinationLabel(destinationLabel(row));
+  const label = destinationLabel(row).trim();
+  if (dashboardNonDestinations.has(label.toLowerCase())) return false;
+  return isPrimaryTrafficDestinationLabel(label);
 }
 
 function laneForRow(row: Record<string, any>) {
@@ -100,6 +119,7 @@ function groupDashboardDestinations(rows: Array<Record<string, any>>, limit = 10
       clients: new Set<string>(),
       routes: new Set<string>(),
       lanes: new Set<string>(),
+      domains: new Set<string>(),
     };
     const rowBytes = observedBytes(row);
     const split = routeSplit(row);
@@ -115,6 +135,8 @@ function groupDashboardDestinations(rows: Array<Record<string, any>>, limit = 10
     if (row.client) current.clients.add(String(row.client));
     if (row.route) current.routes.add(String(row.route));
     current.lanes.add(laneForRow(row));
+    const domain = domainForRow(row);
+    if (domain) current.domains.add(domain);
     grouped.set(key, current);
   }
   const sectionRank = (row: Record<string, any>) => row.section === "service" ? 1 : 0;
@@ -127,6 +149,7 @@ function groupDashboardDestinations(rows: Array<Record<string, any>>, limit = 10
       route: routeFromRoutes(row.routes || new Set()),
       detail: [
         sectionLabel(row.section),
+        row.domains?.size ? `domain ${Array.from(row.domains)[0]}` : "",
         row.clients?.size ? `${row.clients.size} client${row.clients.size === 1 ? "" : "s"}` : "",
         row.connections ? `${row.connections} sessions` : "",
       ].filter(Boolean).join(" · "),
