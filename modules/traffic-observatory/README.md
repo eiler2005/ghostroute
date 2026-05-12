@@ -24,12 +24,14 @@ For Console accounting, the router also writes a bounded bottom layer of LAN
 flow, DNS and edge-rollup evidence. `lan-flow-facts-snapshot` samples conntrack
 byte deltas as `client_ip -> destination_ip -> route -> bytes` with append-only
 v2 route-evidence columns, `dns-query-snapshot` records best-effort dnsmasq
-query/answer evidence, and `traffic-rollup-snapshot` builds portable
-`5min/hourly/daily/weekly/monthly` chunks under the traffic state directory. All
-jobs are asynchronous, guarded by lock/load/row limits, and do not change
-Channels A/B/C, managed domains, iptables routing rules or sing-box policy. The
-VPS/Console remains the warehouse/read-model layer and imports router rollups as
-preferred totals.
+query/answer evidence, `lan-device-counters.tsv` supplies per-client
+VPN/WAN/other counter deltas, and `traffic-rollup-snapshot` builds portable
+`5min/hourly/daily/weekly/monthly` chunks under the traffic state directory.
+`sing-box-route-evidence-snapshot` is an optional read-only tail of sing-box
+outbound lines for route proof/mismatch diagnostics. All jobs are asynchronous,
+guarded by lock/load/row limits, and do not change Channels A/B/C, managed
+domains, iptables routing rules or sing-box policy. The VPS/Console remains the
+warehouse/read-model layer and imports router rollups as preferred totals.
 
 ## Architecture
 
@@ -67,9 +69,12 @@ operator/debug output and a rollback source only.
 `today`, `yesterday`, `week`, `month` and `YYYY-MM-DD` before facts are built, so
 retained router tails do not leak old rows into current accounting. Evidence
 mode is conservative: route/ipset matches are policy intent until real egress
-or outbound evidence exists, DNS links only use safe time-ordered answers, and
-unverified route bytes stay in `unknown_bytes` to preserve the accounting
-invariant.
+or outbound evidence exists. LAN/Wi-Fi and ingress bytes may also be marked
+`counter_allocated` when per-client counters or inbound/outbound route mix prove
+the route split for the same window; this is a route-split proof, not exact
+destination byte proof.
+DNS links only use safe time-ordered answers, and unverified route bytes stay in
+`unknown_bytes` to preserve the accounting invariant.
 
 `modules/traffic-observatory/bin/live-check` remains a compatibility wrapper,
 but the canonical live A/B/C health owner is

@@ -3254,11 +3254,277 @@ function clientDomainAggregateRows(clientKey: string, period = "today") {
   return Array.from(grouped.values()).sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0));
 }
 
+function laneGranularity(layer: "weekly" | "daily" | "hourly" | "5min") {
+  if (layer === "weekly") return "week";
+  if (layer === "daily") return "day";
+  if (layer === "hourly") return "hour";
+  return "5min";
+}
+
+function clientLaneSummaryRows(clientKey: string, period = "today") {
+  if (!clientKey) return [];
+  const db = getDb();
+  const grouped = new Map<string, Record<string, any>>();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const rows = db.prepare(`
+      select max(client_label) as client_label,
+             channel,
+             route,
+             confidence,
+             traffic_class,
+             traffic_lane,
+             dns_category,
+             decision_hint,
+             enrichment_status,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             sum(destinations_count) as destinations_count,
+             max(last_seen_utc) as last_seen_utc
+        from client_traffic_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         and client_key = ?
+       group by channel, route, confidence, traffic_class, traffic_lane, dns_category, decision_hint, enrichment_status
+    `).all(granularity, segment.start, segment.end, clientKey) as Array<Record<string, any>>;
+    for (const row of rows) {
+      const key = [row.channel, row.route, row.confidence, row.traffic_class, row.traffic_lane, row.dns_category, row.decision_hint, row.enrichment_status].join("|");
+      const current = grouped.get(key) || {
+        client_key: clientKey,
+        client_label: row.client_label || clientKey,
+        channel: row.channel || "Unknown",
+        route: row.route || "Unknown",
+        confidence: row.confidence || "unknown",
+        traffic_class: row.traffic_class || "unclassified",
+        traffic_lane: row.traffic_lane || "unknown_review",
+        dns_category: row.dns_category || "unknown_domain",
+        decision_hint: row.decision_hint || "monitor",
+        enrichment_status: row.enrichment_status || "missing",
+        bytes: 0,
+        total_bytes: 0,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        flows: 0,
+        destinations_count: 0,
+        last_seen_utc: row.last_seen_utc || "",
+      };
+      current.bytes += Number(row.bytes || 0);
+      current.total_bytes += Number(row.bytes || 0);
+      current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+      current.direct_bytes += Number(row.direct_bytes || 0);
+      current.unknown_bytes += Number(row.unknown_bytes || 0);
+      current.flows += Number(row.flows || 0);
+      current.destinations_count += Number(row.destinations_count || 0);
+      if (String(row.last_seen_utc || "") > String(current.last_seen_utc || "")) current.last_seen_utc = row.last_seen_utc;
+      grouped.set(key, current);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0));
+}
+
+function clientDestinationLaneRows(clientKey: string, period = "today", trafficLane = "all") {
+  if (!clientKey) return [];
+  const db = getDb();
+  const grouped = new Map<string, Record<string, any>>();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const laneSql = trafficLane && trafficLane !== "all" ? "and traffic_lane = ?" : "";
+    const params = trafficLane && trafficLane !== "all"
+      ? [granularity, segment.start, segment.end, clientKey, trafficLane]
+      : [granularity, segment.start, segment.end, clientKey];
+    const rows = db.prepare(`
+      select max(client_label) as client_label,
+             destination_key,
+             max(destination_label) as destination_label,
+             route,
+             confidence,
+             traffic_class,
+             traffic_lane,
+             dns_category,
+             decision_hint,
+             max(category) as category,
+             max(provider) as provider,
+             max(enrichment_status) as enrichment_status,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             max(last_seen_utc) as last_seen_utc
+        from client_destination_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         and client_key = ?
+         ${laneSql}
+       group by destination_key, route, confidence, traffic_class, traffic_lane, dns_category, decision_hint
+    `).all(...params) as Array<Record<string, any>>;
+    for (const row of rows) {
+      const key = [row.destination_key, row.route, row.confidence, row.traffic_class, row.traffic_lane, row.dns_category, row.decision_hint].join("|");
+      const current = grouped.get(key) || {
+        client_key: clientKey,
+        client_label: row.client_label || clientKey,
+        destination: row.destination_label || row.destination_key,
+        destination_key: row.destination_key,
+        destination_label: row.destination_label || row.destination_key,
+        route: row.route || "Unknown",
+        confidence: row.confidence || "unknown",
+        traffic_class: row.traffic_class || "unclassified",
+        traffic_lane: row.traffic_lane || "unknown_review",
+        dns_category: row.dns_category || "unknown_domain",
+        decision_hint: row.decision_hint || "monitor",
+        category: row.category || "unknown",
+        provider: row.provider || "",
+        enrichment_status: row.enrichment_status || "missing",
+        bytes: 0,
+        total_bytes: 0,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        flows: 0,
+        last_seen_utc: row.last_seen_utc || "",
+      };
+      current.bytes += Number(row.bytes || 0);
+      current.total_bytes += Number(row.bytes || 0);
+      current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+      current.direct_bytes += Number(row.direct_bytes || 0);
+      current.unknown_bytes += Number(row.unknown_bytes || 0);
+      current.flows += Number(row.flows || 0);
+      if (String(row.last_seen_utc || "") > String(current.last_seen_utc || "")) current.last_seen_utc = row.last_seen_utc;
+      grouped.set(key, current);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0));
+}
+
+function routeEvidenceDefectRows(period = "today", options: { clientKey?: string; evidence?: string } = {}) {
+  const db = getDb();
+  const grouped = new Map<string, Record<string, any>>();
+  const clientKey = String(options.clientKey || "");
+  const evidence = String(options.evidence || "");
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const whereClient = clientKey ? "and client_key = ?" : "";
+    const whereEvidence = evidence ? "and route_evidence = ?" : "";
+    const params: Array<string> = [granularity, segment.start, segment.end];
+    if (clientKey) params.push(clientKey);
+    if (evidence) params.push(evidence);
+    const rows = db.prepare(`
+      select max(client_label) as client_label,
+             client_key,
+             channel,
+             destination_key,
+             max(destination_label) as destination_label,
+             traffic_lane,
+             dns_category,
+             max(category) as category,
+             max(provider) as provider,
+             route_evidence,
+             route,
+             intended_route,
+             route_verification,
+             route_status,
+             matched_ipset,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             max(last_seen_utc) as last_seen_utc
+        from client_route_evidence_defects
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         ${whereClient}
+         ${whereEvidence}
+       group by client_key, channel, destination_key, traffic_lane, dns_category,
+                route_evidence, route, intended_route, route_verification, route_status, matched_ipset
+    `).all(...params) as Array<Record<string, any>>;
+    for (const row of rows) {
+      const key = [
+        row.client_key,
+        row.channel,
+        row.destination_key,
+        row.traffic_lane,
+        row.dns_category,
+        row.route_evidence,
+        row.route,
+        row.intended_route,
+        row.route_verification,
+        row.route_status,
+        row.matched_ipset,
+      ].join("|");
+      const current = grouped.get(key) || {
+        client_key: row.client_key || "",
+        client_label: row.client_label || row.client_key || "",
+        channel: row.channel || "Unknown",
+        destination: row.destination_label || row.destination_key,
+        destination_key: row.destination_key,
+        destination_label: row.destination_label || row.destination_key,
+        traffic_lane: row.traffic_lane || "unknown_review",
+        dns_category: row.dns_category || "unknown_domain",
+        category: row.category || "unknown",
+        provider: row.provider || "",
+        route_evidence: row.route_evidence || "unknown_route",
+        route: row.route || "Unknown",
+        intended_route: row.intended_route || "Unknown",
+        route_verification: row.route_verification || "unknown",
+        route_status: row.route_status || "unknown",
+        matched_ipset: row.matched_ipset || "",
+        bytes: 0,
+        total_bytes: 0,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 0,
+        flows: 0,
+        last_seen_utc: row.last_seen_utc || "",
+      };
+      current.bytes += Number(row.bytes || 0);
+      current.total_bytes += Number(row.bytes || 0);
+      current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+      current.direct_bytes += Number(row.direct_bytes || 0);
+      current.unknown_bytes += Number(row.unknown_bytes || 0);
+      current.flows += Number(row.flows || 0);
+      if (String(row.last_seen_utc || "") > String(current.last_seen_utc || "")) current.last_seen_utc = row.last_seen_utc;
+      grouped.set(key, current);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => Number(b.unknown_bytes || 0) - Number(a.unknown_bytes || 0) || Number(b.bytes || 0) - Number(a.bytes || 0));
+}
+
 export function listClientDomainBreakdown(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
   const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
   const limit = Math.max(1, Number(options.limit || 20));
   return cacheGet(`client-domain-breakdown:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => clientDomainAggregateRows(key, period).slice(0, limit));
+}
+
+export function listClientLaneSummary(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const limit = Math.max(1, Number(options.limit || 50));
+  return cacheGet(`client-lane-summary:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => clientLaneSummaryRows(key, period).slice(0, limit));
+}
+
+export function listClientDestinationsByLane(client: Record<string, any> | string, period = "today", options: { lane?: string; limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const lane = String(options.lane || "all");
+  const limit = Math.max(1, Number(options.limit || 50));
+  return cacheGet(`client-destination-lanes:${latestSnapshotVersion()}:${period}:${key}:${lane}:${limit}`, () => clientDestinationLaneRows(key, period, lane).slice(0, limit));
+}
+
+export function listRouteEvidenceDefects(period = "today", options: { client?: Record<string, any> | string; evidence?: string; limit?: number } = {}) {
+  const target = typeof options.client === "string" ? { label: options.client, client_key: options.client } : options.client || {};
+  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const limit = Math.max(1, Number(options.limit || 100));
+  const evidence = String(options.evidence || "");
+  return cacheGet(`route-evidence-defects:${latestSnapshotVersion()}:${period}:${key}:${evidence}:${limit}`, () => routeEvidenceDefectRows(period, { clientKey: key, evidence }).slice(0, limit));
 }
 
 export function listClientActivity(client: Record<string, any> | string, period = "today") {

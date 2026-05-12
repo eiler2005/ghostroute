@@ -43,6 +43,27 @@ function payload(kind, window, trafficClass = "client") {
   return row ? JSON.parse(row.payload_json || "{}") : null;
 }
 
+function tableExists(table) {
+  return Boolean(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table));
+}
+
+for (const table of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects", "ip_prefix_catalog", "ip_enrichment_cache"]) {
+  assert.ok(tableExists(table), `missing ${table}`);
+}
+
+for (const table of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects"]) {
+  const bad = db.prepare(`
+    select count(*) as count
+      from ${table}
+     where bytes < 0
+        or via_vps_bytes < 0
+        or direct_bytes < 0
+        or unknown_bytes < 0
+        or bytes != via_vps_bytes + direct_bytes + unknown_bytes
+  `).get();
+  assert.equal(number(bad.count), 0, `${table} has invalid byte splits`);
+}
+
 function aggregateSegments(window, now) {
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
@@ -178,6 +199,16 @@ assert.equal(
 const missingSourceStates = db.prepare("select model, window_key from aggregate_state where status = 'missing_source'").all();
 if (missingSourceStates.length > 0) {
   console.warn(`aggregate missing source warnings: ${missingSourceStates.slice(0, 5).map((row) => `${row.model}/${row.window_key}`).join(", ")}`);
+}
+
+const laneDetailBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_destination_by_lane").get().bytes);
+const laneSummaryBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane != 'all'").get().bytes);
+const laneAllBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane = 'all'").get().bytes);
+assert.equal(laneSummaryBytes, laneDetailBytes, "client_traffic_by_lane lane rows do not match destination detail bytes");
+assert.equal(laneAllBytes, laneDetailBytes, "client_traffic_by_lane all rows do not match destination detail bytes");
+
+for (const model of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects"]) {
+  assert.ok(db.prepare("select 1 from aggregate_state where model = ? and window_key = 'all'").get(model), `missing aggregate_state ${model}/all`);
 }
 
 db.close();

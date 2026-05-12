@@ -190,6 +190,20 @@ Home Reality profile accounting is intentionally narrow: read-only
 does not recreate legacy per-destination estimates such as Apple/iCloud from
 encrypted ingress counters unless real DNS/flow evidence exists.
 
+LAN/Wi-Fi route accounting may additionally use read-only
+`lan-device-counters.tsv` deltas. When destination flow samples are present but
+per-destination egress proof is missing, `traffic_facts` can allocate that
+client's bytes by the observed VPN/WAN/other counter split and mark the row
+`route_status=counter_allocated`. This is route-split evidence for the
+client/window, not exact per-destination byte proof.
+
+Ingress route accounting uses the same allocation model. `sing-box` outbound
+log evidence records the inbound tag (`reality-in`, Channel B relay SOCKS,
+Channel C Shadowrocket HTTP, Channel C Naive) when it can correlate the same
+connection id. When an ingress byte counter exists for that channel/profile,
+`traffic_facts` may allocate the ingress bytes by the observed VPS/direct
+outbound mix and mark detailed verification as `ingress_route_allocated`.
+
 Console may store old or legacy traffic rows for history/debug, but operational
 traffic windows must pass a read-model eligibility gate before they reach
 Dashboard, Clients or Live. Eligible rows must be Traffic Observatory facts with
@@ -219,9 +233,18 @@ Facts and interpretation are intentionally separate:
   Analytics/trackers, CDN/shared infra and Unknown/review workbench views. These
   axes are interpretation only and do not replace `traffic_class` or
   accounting.
-- Optional enrichment providers such as IPinfo/Shodan/AbuseIPDB/VirusTotal/MCP
-  are future advisory inputs only, disabled by default and never automatic
-  blocking/routing authority.
+- `client_traffic_by_lane` and `client_destination_by_lane` materialize those
+  axes into a client-centric GUI/test layer. They are rebuildable views over the
+  aggregate pyramid, not a duplicate ledger.
+- `client_route_evidence_defects` materializes route proof gaps by client and
+  destination, so high `Unknown` route accounting can be investigated separately
+  from content/category unknowns.
+- Optional IP/provider enrichment is local-first through `ip_prefix_catalog` and
+  `ip_enrichment_cache`. External providers are advisory inputs only, disabled
+  by default and never automatic blocking/routing authority.
+- Unknown/weak destination classification is file-first: Console exports
+  gitignored JSON/Markdown review queues for offline/LLM analysis, and stable
+  results are promoted into deterministic local rules.
 
 The VPS deployment keeps the Console app on `127.0.0.1:3000`. Public operator
 access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a

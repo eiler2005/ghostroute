@@ -57,7 +57,9 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
     TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
     router_ssh "cat '${REMOTE_STATE_DIR}/lan-flow-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/lan-flow-facts.tsv" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/dns-query-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/dns-query-facts.tsv" || true
+    router_ssh "cat '${REMOTE_STATE_DIR}/lan-device-counters.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/lan-device-counters.tsv" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/mobile-reality-counters.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/mobile-reality-counters.tsv" || true
+    router_ssh "cat '${REMOTE_STATE_DIR}/sing-box-route-evidence.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/sing-box-route-evidence.tsv" || true
     STATE_DIR="$TMP_STATE_DIR"
   fi
 fi
@@ -160,6 +162,8 @@ window_end = Time.parse(window['end_ts_utc'])
 warnings = []
 flow_samples = []
 dns_queries = []
+lan_device_route_deltas = []
+sing_box_route_evidence = []
 home_reality_samples = []
 route_evidence = []
 
@@ -254,6 +258,121 @@ else
     warnings << { 'code' => 'dns_query_facts_missing', 'message' => 'dns-query-facts.tsv not found', 'path' => dns_path }
   end
 
+  lan_counters_path = File.join(state_dir, 'lan-device-counters.tsv')
+  if File.file?(lan_counters_path)
+    rows_by_ip = Hash.new { |hash, key| hash[key] = [] }
+    File.readlines(lan_counters_path, chomp: true).each_with_index do |line, index|
+      next if line.strip.empty?
+      parts = line.split('|', -1)
+      next if parts.length < 10
+      parsed_ts = parse_time(parts[0])
+      unless parsed_ts
+        warnings << { 'code' => 'unparsable_timestamp', 'source' => 'lan-device-counters.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }
+        next
+      end
+      client_ip = text(parts[1])
+      next if client_ip.empty?
+      rows_by_ip[client_ip] << {
+        'ts' => parsed_ts,
+        'client_ip' => client_ip,
+        'client_label' => text(parts[2], client_ip),
+        'vpn_up_counter' => number(parts[3]),
+        'vpn_down_counter' => number(parts[4]),
+        'wan_up_counter' => number(parts[5]),
+        'wan_down_counter' => number(parts[6]),
+        'other_up_counter' => number(parts[7]),
+        'other_down_counter' => number(parts[8]),
+        'mac' => text(parts[9]),
+        'hostname' => text(parts[10], text(parts[2], client_ip)),
+        'raw_refs' => [{ 'source' => 'lan-device-counters.tsv', 'line' => index + 1 }]
+      }
+    end
+
+    rows_by_ip.each_value do |rows|
+      previous = nil
+      rows.sort_by { |row| row['ts'] }.each do |row|
+        in_window = in_window?(row['ts'], window_start, window_end)
+        if previous && in_window
+          vpn_up = row['vpn_up_counter'] >= previous['vpn_up_counter'] ? row['vpn_up_counter'] - previous['vpn_up_counter'] : row['vpn_up_counter']
+          vpn_down = row['vpn_down_counter'] >= previous['vpn_down_counter'] ? row['vpn_down_counter'] - previous['vpn_down_counter'] : row['vpn_down_counter']
+          wan_up = row['wan_up_counter'] >= previous['wan_up_counter'] ? row['wan_up_counter'] - previous['wan_up_counter'] : row['wan_up_counter']
+          wan_down = row['wan_down_counter'] >= previous['wan_down_counter'] ? row['wan_down_counter'] - previous['wan_down_counter'] : row['wan_down_counter']
+          other_up = row['other_up_counter'] >= previous['other_up_counter'] ? row['other_up_counter'] - previous['other_up_counter'] : row['other_up_counter']
+          other_down = row['other_down_counter'] >= previous['other_down_counter'] ? row['other_down_counter'] - previous['other_down_counter'] : row['other_down_counter']
+          vpn_bytes = vpn_up + vpn_down
+          direct_bytes = wan_up + wan_down
+          other_bytes = other_up + other_down
+          total = vpn_bytes + direct_bytes + other_bytes
+          if total > 0
+            lan_device_route_deltas << {
+              'sample_id' => evidence_id('lan-device-route', previous['ts'].iso8601(3), row['ts'].iso8601(3), row['client_ip'], total),
+              'ts' => row['ts'].utc.iso8601(3),
+              'client_ip' => row['client_ip'],
+              'client_key' => row['client_ip'],
+              'client_label' => row['client_label'],
+              'hostname' => row['hostname'],
+              'vpn_bytes' => vpn_bytes,
+              'direct_bytes' => direct_bytes,
+              'other_bytes' => other_bytes,
+              'total_bytes' => total,
+              'source' => 'lan_device_route_counters',
+              'allocation_basis' => 'client_counter_delta',
+              'status' => 'ok',
+              'raw_refs' => row['raw_refs']
+            }
+          end
+        end
+        previous = in_window ? row : nil
+      end
+    end
+  end
+
+  sing_box_path = File.join(state_dir, 'sing-box-route-evidence.tsv')
+  if File.file?(sing_box_path)
+    File.readlines(sing_box_path, chomp: true).each_with_index do |line, index|
+      next if line.strip.empty?
+      parts = line.split('|', -1)
+      next if parts.length < 8
+      parsed_ts = parse_time(parts[0])
+      unless parsed_ts
+        warnings << { 'code' => 'unparsable_timestamp', 'source' => 'sing-box-route-evidence.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }
+        next
+      end
+      next unless in_window?(parsed_ts, window_start, window_end)
+      row = {
+        'id' => evidence_id('sing-box-route', line, index),
+        'ts' => parsed_ts.iso8601(3),
+        'connection_id' => text(parts[1]),
+        'route' => text(parts[2], 'Unknown'),
+        'outbound' => text(parts[3]),
+        'destination' => text(parts[4]),
+        'destination_host' => text(parts[5]),
+        'destination_port' => text(parts[6]),
+        'source' => text(parts[7], 'sing-box.log'),
+        'status' => text(parts[8], 'ok'),
+        'inbound' => text(parts[9]),
+        'profile' => text(parts[10]),
+        'raw_refs' => [{ 'source' => 'sing-box-route-evidence.tsv', 'line' => index + 1 }]
+      }
+      sing_box_route_evidence << row
+      route_evidence << {
+        'sample_id' => row['id'],
+        'ts' => row['ts'],
+        'client_ip' => '',
+        'remote_ip' => '',
+        'route' => row['route'],
+        'route_source' => 'sing-box',
+        'route_basis' => 'outbound_log',
+        'matched_ipset' => '',
+        'egress_iface' => '',
+        'fwmark' => '',
+        'outbound' => row['outbound'],
+        'destination' => row['destination'],
+        'status' => row['status']
+      }
+    end
+  end
+
   mobile_path = File.join(state_dir, 'mobile-reality-counters.tsv')
   if File.file?(mobile_path)
     rows_by_key = Hash.new { |hash, key| hash[key] = [] }
@@ -320,6 +439,8 @@ output = {
   'window' => window,
   'source' => { 'command' => 'traffic-evidence', 'schema' => 'traffic-evidence-v1', 'state_dir' => state_dir },
   'flow_samples' => flow_samples,
+  'lan_device_route_deltas' => lan_device_route_deltas,
+  'sing_box_route_evidence' => sing_box_route_evidence,
   'home_reality_samples' => home_reality_samples,
   'dns_queries' => dns_queries,
   'route_evidence' => route_evidence,
@@ -328,6 +449,8 @@ output = {
   'collector_metrics' => {
     'source_row_counts' => {
       'flow_samples' => flow_samples.length,
+      'lan_device_route_deltas' => lan_device_route_deltas.length,
+      'sing_box_route_evidence' => sing_box_route_evidence.length,
       'home_reality_samples' => home_reality_samples.length,
       'dns_queries' => dns_queries.length,
       'route_evidence' => route_evidence.length

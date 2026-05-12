@@ -35,6 +35,13 @@ if [ -x /jffs/scripts/lan-flow-facts-snapshot ]; then
         /jffs/scripts/dns-query-snapshot >/dev/null 2>&1
       fi
     fi
+    if [ -x /jffs/scripts/sing-box-route-evidence-snapshot ]; then
+      if command -v nice >/dev/null 2>&1; then
+        nice -n 10 /jffs/scripts/sing-box-route-evidence-snapshot >/dev/null 2>&1
+      else
+        /jffs/scripts/sing-box-route-evidence-snapshot >/dev/null 2>&1
+      fi
+    fi
   ) &
 fi
 

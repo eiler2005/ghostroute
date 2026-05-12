@@ -134,6 +134,7 @@ require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traff
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/dns-query-snapshot"
+require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/sing-box-route-evidence-snapshot"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-lib"
 require_local_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-snapshot"
@@ -181,6 +182,7 @@ upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-traffic-acco
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-device-counters-snapshot" "${REMOTE_STAGE}/scripts/lan-device-counters-snapshot"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-snapshot" "${REMOTE_STAGE}/scripts/lan-flow-facts-snapshot"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/dns-query-snapshot" "${REMOTE_STAGE}/scripts/dns-query-snapshot"
+upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/sing-box-route-evidence-snapshot" "${REMOTE_STAGE}/scripts/sing-box-route-evidence-snapshot"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/lan-flow-facts-rollback" "${REMOTE_STAGE}/scripts/lan-flow-facts-rollback"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-lib" "${REMOTE_STAGE}/scripts/traffic-rollup-lib"
 upload_file "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-snapshot" "${REMOTE_STAGE}/scripts/traffic-rollup-snapshot"
@@ -407,6 +409,10 @@ install_fully_managed_script \
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/dns-query-snapshot" \
   /jffs/scripts/dns-query-snapshot
+
+install_fully_managed_script \
+  "$REMOTE_STAGE/scripts/sing-box-route-evidence-snapshot" \
+  /jffs/scripts/sing-box-route-evidence-snapshot
 
 install_fully_managed_script \
   "$REMOTE_STAGE/scripts/lan-flow-facts-rollback" \

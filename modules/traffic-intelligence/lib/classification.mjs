@@ -89,7 +89,13 @@ function dnsCategoryForCategory(category) {
   if (category.startsWith("system.")) return "system_maintenance";
   if (category.startsWith("personal_cloud.")) return "personal_cloud";
   if (category.includes(".youtube") || category.startsWith("client.media.")) return "media_streaming";
-  if (category.startsWith("client.messaging.")) return "messaging";
+  if (category.startsWith("client.messaging.")) return "messaging_platform";
+  if (category.startsWith("client.social.")) return "social_platform";
+  if (category.startsWith("client.meeting.")) return "meeting_platform";
+  if (category.startsWith("client.ai.")) return "ai_assistant";
+  if (category.startsWith("client.mail.")) return "mail";
+  if (category.startsWith("client.dev.")) return "developer_tool";
+  if (category.startsWith("client.search.")) return "search";
   if (category.startsWith("client.")) return "user_content";
   if (category.startsWith("cdn.")) return "cdn_shared";
   if (category.startsWith("vps.")) return "cloud_hosting";
@@ -266,7 +272,111 @@ export function classifyDestination(input) {
       traffic_purpose: "personal_cloud",
     });
   }
-  if (value.includes("push.apple")) {
+  if (value.includes("youtube") || value.includes("ytimg.com") || value.includes("googlevideo.com")) {
+    return result(input, {
+      value,
+      category: "client.google.youtube",
+      provider: "google",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "user_content_domain",
+      traffic_role: "client_interactive",
+      traffic_purpose: "media",
+    });
+  }
+  if (includesAny(value, ["api.anthropic.com", "chatgpt.com", "openai.com"])) {
+    return result(input, {
+      value,
+      category: value.includes("anthropic") ? "client.ai.anthropic" : "client.ai.openai",
+      provider: value.includes("anthropic") ? "anthropic" : "openai",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "high",
+      reason_code: "known_client_ai_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "ai_assistant",
+    });
+  }
+  if (/(^|[.-])zoom\.us$/.test(value) || value.endsWith(".zoom.us")) {
+    return result(input, {
+      value,
+      category: "client.meeting.zoom",
+      provider: "zoom",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "high",
+      reason_code: "known_meeting_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "meeting",
+    });
+  }
+  if (includesAny(value, ["instagram.com", "facebook.com", "fbcdn.net"]) || /(^|[.-])(dgw|dgw-ig)\.c10r\./.test(value)) {
+    return result(input, {
+      value,
+      category: value.includes("instagram") || value.includes("dgw-ig") ? "client.social.instagram" : "client.social.facebook",
+      provider: "meta",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "known_social_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "social",
+    });
+  }
+  if (value === "x.com" || value.endsWith(".x.com") || value.includes("twitter.com")) {
+    return result(input, {
+      value,
+      category: "client.social.x",
+      provider: "x",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "known_social_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "social",
+    });
+  }
+  if (value.includes("github.com")) {
+    return result(input, {
+      value,
+      category: "client.dev.github",
+      provider: "github",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "known_developer_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "developer_tool",
+    });
+  }
+  if (includesAny(value, ["imap.gmail.com", "gmail.com", "mail.google.com", "imap.mail.me.com"])) {
+    return result(input, {
+      value,
+      category: value.includes("mail.me.com") ? "client.mail.icloud" : "client.mail.gmail",
+      provider: value.includes("mail.me.com") ? "apple" : "google",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "known_mail_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "mail",
+    });
+  }
+  if (value === "www.google.com" || value === "google.com") {
+    return result(input, {
+      value,
+      category: "client.search.google",
+      provider: "google",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "known_search_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "search",
+    });
+  }
+  if (value.includes("push.apple") || value.includes("push-apple")) {
     return result(input, {
       value,
       category: "system.apple.push",
@@ -278,7 +388,7 @@ export function classifyDestination(input) {
       traffic_purpose: "push",
     });
   }
-  if (includesAny(value, ["configuration.apple", "captive.apple", "ocsp.apple", "stocks-data-service.apple", "mzstatic", "aaplimg", "itunes"])) {
+  if (includesAny(value, ["configuration.apple", "captive.apple", "ocsp.apple", "stocks-data-service.apple", "mzstatic", "aaplimg", "itunes", "apple-dns.net"])) {
     return result(input, {
       value,
       category: "system.apple.maintenance",
@@ -300,19 +410,6 @@ export function classifyDestination(input) {
       reason_code: value.includes("msftncsi") ? "microsoft_connectivity" : "google_system",
       traffic_role: "system_maintenance",
       traffic_purpose: "maintenance",
-    });
-  }
-  if (value.includes("youtube") || value.includes("ytimg.com") || value.includes("googlevideo.com")) {
-    return result(input, {
-      value,
-      category: "client.google.youtube",
-      provider: "google",
-      traffic_class: "client",
-      decision_hint: "monitor",
-      confidence: "medium",
-      reason_code: "user_content_domain",
-      traffic_role: "client_interactive",
-      traffic_purpose: "media",
     });
   }
   if (value === "miro.com" || value.endsWith(".miro.com")) {

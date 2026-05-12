@@ -102,6 +102,19 @@ Layer 3 UI read models
     -> prepared dashboard, client, DNS and report payloads
     -> no raw scans for week/month request paths
 
+  client_traffic_by_lane / client_destination_by_lane
+    -> client-centric lane summary and destination detail
+    -> GUI-ready All / Client / Service / Privacy / Shared / Unknown views
+    -> rebuilt from traffic aggregates and destination enrichment
+
+  client_route_evidence_defects
+    -> route-proof diagnostics by client and destination
+    -> separates content classification from VPS/Direct proof gaps
+
+  ip_prefix_catalog / ip_enrichment_cache
+    -> optional local-first IP/provider enrichment cache
+    -> advisory metadata only; no route or blocking decisions
+
   console_page_summaries
     -> health_shell
     -> health_mobile
@@ -256,7 +269,8 @@ The Traffic Intelligence GUI axes are:
 The status fields are deliberately split:
 
 - `accounting_status`: `ok` or `accounting_error`.
-- `route_status`: `verified`, `intent_only`, `mismatch` or `unknown`.
+- `route_status`: `verified`, `counter_allocated`, `intent_only`, `mismatch`
+  or `unknown`.
 - `dns_status`: `exact`, `shared`, `no_match` or `approximate_ts`.
 - `dns_ts_source`: `parsed_log` or `snapshot_approx`.
 
@@ -368,6 +382,20 @@ route/DNS/accounting fields (`intended_route`, `route_status`, `dns_status`,
 `traffic_facts` in `destination_enrichment` / `decision_candidates`, including
 `traffic_lane` and `dns_category` for GUI review grouping. Fresh and migrated
 databases must converge to the same columns and indexes.
+
+Schema v16 adds the client lane data layer. `client_traffic_by_lane` is a
+materialized client/lane summary, and `client_destination_by_lane` is the
+matching destination detail for drilldown. Both are rebuildable caches derived
+from `client_destination_traffic_*`, `destination_enrichment` and the optional
+`ip_enrichment_cache`; they are not a second source of truth. The synthetic
+`traffic_lane = 'all'` rows are aggregate convenience rows for GUI filters.
+When a destination has no classification, it lands in
+`unknown_review / unknown_ip_only|unknown_domain / ask_user`.
+`client_route_evidence_defects` is the sibling diagnostics table for route
+proof quality and keeps affected destination addresses/domains with
+`unknown_route` and `intent_only_*` buckets. Review exports are local files
+under gitignored Console data and are meant for offline/LLM classification, with
+the GUI acting as a viewer/filter rather than a manual per-flow labeling tool.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

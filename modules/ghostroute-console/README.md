@@ -221,6 +221,10 @@ Core read models are rebuilt from factual snapshots:
 | `device_inventory` | Clients inventory, attribution and selected-device detail. |
 | `alarm_events` | Alarm Center evidence and operator state overlay. |
 | `client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily` | Prepared client-first traffic aggregates for Dashboard, Clients, Budget and week/month windows. |
+| `client_traffic_by_lane` | GUI-ready per-client lane summary for `all`, `client_observed`, `service_system`, `privacy_risk`, `shared_infra` and `unknown_review`. |
+| `client_destination_by_lane` | Matching per-client destination drilldown by lane/category/decision hint; used for testing and future Clients GUI tabs. |
+| `client_route_evidence_defects` | Per-client/per-destination route evidence diagnostics for `unknown_route`, `counter_allocated`, `mismatch` and `intent_only_*` bytes. |
+| `ip_prefix_catalog`, `ip_enrichment_cache` | Optional local-first IP/provider enrichment cache. Advisory metadata only; never changes routing or blocking. |
 | `dns_log_5min` | Prepared DNS query aggregate for DNS Query Log and DNS-interest counts. |
 | `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector for every traffic class. |
 | `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads for `all`, `client`, `personal_cloud`, `service_background` and `unclassified`. |
@@ -248,6 +252,42 @@ Total = Via VPS + Direct + Unknown
 unproven bytes stay `Unknown`. Destination views keep concrete destination rows
 separate from explicit unattributed buckets, so attribution gaps remain visible
 instead of being silently converted into invented sites.
+
+The client lane layer is rebuilt after the normal traffic pyramid. It lets the
+operator inspect client traffic by lane locally before changing GUI filters:
+for example a device can have non-zero `all` traffic while `client_observed`
+is small and most bytes sit in `service_system` or `unknown_review`.
+
+IP-only destinations can be enriched locally from an iptoasn TSV snapshot. For
+the current IPv4 traffic, download `ip2asn-v4-u32.tsv.gz` and run:
+
+```bash
+cd modules/ghostroute-console/app
+npm run import:iptoasn -- --file /path/to/ip2asn-v4-u32.tsv.gz --refresh-cache
+npm run repair:aggregates -- --full
+npm run verify:aggregates
+```
+
+The importer fills `ip_prefix_catalog` and `ip_enrichment_cache`, then the lane
+read model maps IP-only destinations into conservative provider families such as
+messaging, social, meeting, CDN/cloud hosting, vendor infra or generic network
+provider. It does not call public APIs and does not change routing, blocking,
+filters or facts.
+
+Unknown or weakly classified destinations are reviewed through local files, not
+manual per-flow GUI buttons. After rebuilding aggregates, export the queue:
+
+```bash
+cd modules/ghostroute-console/app
+npm run export:review-queue -- --window today --limit 100
+```
+
+The command writes gitignored JSON and Markdown files under
+`modules/ghostroute-console/data/review/`. These files include destination
+addresses/domains, current lane/category hints, bytes, client counts and route
+evidence defects. They are intended for offline/LLM-assisted classification;
+stable findings should become deterministic local rules and then be verified
+with `repair:aggregates` + `verify:aggregates`.
 
 The collector stores timestamps in UTC and derives UI windows in Moscow local
 time. `today`, `week` and `month` are rebuilt into prepared aggregate tables and

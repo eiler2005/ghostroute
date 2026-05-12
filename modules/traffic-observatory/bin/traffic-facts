@@ -119,6 +119,23 @@ def split_for_verification(route_verification, total)
   end
 end
 
+def split_for_counter_allocation(total, allocation)
+  total = number(total)
+  vps_counter = number(allocation && allocation['vpn_bytes'])
+  direct_counter = number(allocation && allocation['direct_bytes'])
+  other_counter = number(allocation && allocation['other_bytes'])
+  counter_total = vps_counter + direct_counter + other_counter
+  return [total, 0, 0, total] if total <= 0 || counter_total <= 0 || vps_counter + direct_counter <= 0
+  vps = (total * vps_counter / counter_total.to_f).floor
+  direct = (total * direct_counter / counter_total.to_f).floor
+  unknown = total - vps - direct
+  [total, vps, direct, unknown]
+end
+
+def split_for_route_allocation(total, allocation)
+  split_for_counter_allocation(total, allocation)
+end
+
 def explicit_outbound(row)
   text(first_present(row['outbound'], row['sing_box_outbound'], row['egress_outbound'], row['actual_outbound']))
 end
@@ -163,6 +180,8 @@ def route_status_for(route_verification)
   case text(route_verification)
   when 'verified_vps', 'verified_direct'
     'verified'
+  when 'counter_allocated', 'ingress_route_allocated'
+    'counter_allocated'
   when 'intent_only'
     'intent_only'
   when 'mismatch'
@@ -275,6 +294,141 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
   [link, link_type, confidence, ts_source]
 end
 
+def lan_route_allocations(input)
+  allocations = Hash.new { |hash, key| hash[key] = { 'vpn_bytes' => 0, 'direct_bytes' => 0, 'other_bytes' => 0, 'total_bytes' => 0, 'samples' => [] } }
+  (input['lan_device_route_deltas'] || []).each do |row|
+    next unless row.is_a?(Hash)
+    keys = [text(row['client_key']), text(row['client_ip'])].reject(&:empty?).uniq
+    next if keys.empty?
+    payload = {
+      'vpn_bytes' => number(row['vpn_bytes']),
+      'direct_bytes' => number(row['direct_bytes']),
+      'other_bytes' => number(row['other_bytes']),
+      'total_bytes' => number(row['total_bytes']),
+      'sample_id' => text(row['sample_id']),
+      'ts' => text(row['ts'])
+    }
+    keys.each do |key|
+      allocations[key]['vpn_bytes'] += payload['vpn_bytes']
+      allocations[key]['direct_bytes'] += payload['direct_bytes']
+      allocations[key]['other_bytes'] += payload['other_bytes']
+      allocations[key]['total_bytes'] += payload['total_bytes']
+      allocations[key]['samples'] << payload if allocations[key]['samples'].length < 12
+    end
+  end
+  allocations
+end
+
+def allocation_for_sample(sample, allocations)
+  [text(sample['client_key']), text(sample['client_ip'])].each do |key|
+    next if key.empty?
+    allocation = allocations[key]
+    return allocation if allocation && number(allocation['vpn_bytes']) + number(allocation['direct_bytes']) > 0
+  end
+  nil
+end
+
+def ingress_channel_for_inbound(inbound)
+  case text(inbound)
+  when 'reality-in'
+    'A/Home Reality'
+  when 'channel-b-relay-socks'
+    'Channel B'
+  when 'channel-c-shadowrocket-http-in'
+    'Channel C'
+  when 'channel-c-naive-in'
+    'Channel C'
+  else
+    ''
+  end
+end
+
+def ingress_route_allocations(input)
+  allocations = Hash.new { |hash, key| hash[key] = { 'vpn_bytes' => 0, 'direct_bytes' => 0, 'other_bytes' => 0, 'total_bytes' => 0, 'samples' => [], 'basis' => 'ingress_outbound_mix' } }
+  (input['sing_box_route_evidence'] || []).each do |row|
+    next unless row.is_a?(Hash)
+    inbound = text(row['inbound'])
+    channel = ingress_channel_for_inbound(inbound)
+    next if channel.empty?
+    route = text(row['route'])
+    unit = 1
+    keys = [channel]
+    profile = text(row['profile'])
+    keys << "#{channel}|#{profile}" unless profile.empty?
+    payload = {
+      'vpn_bytes' => route == 'VPS' ? unit : 0,
+      'direct_bytes' => route == 'Direct' ? unit : 0,
+      'other_bytes' => %w[VPS Direct].include?(route) ? 0 : unit,
+      'total_bytes' => unit,
+      'sample_id' => text(row['id']),
+      'ts' => text(row['ts']),
+      'inbound' => inbound,
+      'profile' => profile
+    }
+    keys.uniq.each do |key|
+      allocations[key]['vpn_bytes'] += payload['vpn_bytes']
+      allocations[key]['direct_bytes'] += payload['direct_bytes']
+      allocations[key]['other_bytes'] += payload['other_bytes']
+      allocations[key]['total_bytes'] += payload['total_bytes']
+      allocations[key]['samples'] << payload if allocations[key]['samples'].length < 12
+    end
+  end
+  allocations
+end
+
+def allocation_for_ingress_sample(sample, allocations)
+  channel = text(sample['channel'])
+  label = text(sample['client_label'], text(sample['client_key']))
+  [channel.empty? ? '' : "#{channel}|#{label}", channel].each do |key|
+    next if key.empty?
+    allocation = allocations[key]
+    return allocation if allocation && number(allocation['vpn_bytes']) + number(allocation['direct_bytes']) > 0
+  end
+  nil
+end
+
+def route_candidates_for(sample, dns_link)
+  [
+    text(dns_link['domain']),
+    text(sample['dns_qname']),
+    text(sample['sni']),
+    text(sample['remote_ip']),
+    text(sample['destination_ip'])
+  ].reject(&:empty?).uniq
+end
+
+def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_seconds)
+  candidates = route_candidates_for(sample, dns_link).map(&:downcase)
+  return nil if candidates.empty?
+  sample_ts = Time.parse(iso_time(sample['ts'] || sample['event_ts'], generated_at)) rescue Time.parse(generated_at)
+  matches = evidence_rows.map do |row|
+    next unless row.is_a?(Hash)
+    destination_values = [row['destination'], row['destination_host']].map { |value| text(value).downcase }.reject(&:empty?)
+    next if (destination_values & candidates).empty?
+    evidence_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil
+    next unless evidence_ts
+    age = (sample_ts - evidence_ts).abs
+    next if age > window_seconds
+    [age, row]
+  end.compact
+  matches.sort_by(&:first).first&.last
+end
+
+def verification_with_evidence(sample, dns_link, sing_box_evidence, allocation, generated_at, window_seconds)
+  log_row = sing_box_route_for(sample, dns_link, sing_box_evidence, generated_at, window_seconds)
+  observed_route = outbound_route(log_row && log_row['outbound'])
+  route = text(sample['route'], 'Unknown')
+  if observed_route != ''
+    verification = (!route.casecmp('Unknown').zero? && !route.casecmp(observed_route).zero?) ? 'mismatch' : (observed_route == 'VPS' ? 'verified_vps' : 'verified_direct')
+    return [verification, log_row]
+  end
+  base = route_verification_for(sample)
+  if %w[unknown intent_only].include?(base) && allocation && number(allocation['vpn_bytes']) + number(allocation['direct_bytes']) > 0
+    return ['counter_allocated', nil]
+  end
+  [base, nil]
+end
+
 def report_rows(report)
   rows = []
   %w[app_flows destinations].each do |key|
@@ -376,22 +530,26 @@ if source_mode == 'report'
   end
 else
   answers = dns_answer_rows(input)
+  route_allocations = lan_route_allocations(input)
+  ingress_allocations = ingress_route_allocations(input)
+  sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row| row.is_a?(Hash) }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
   (input['flow_samples'] || []).each_with_index do |sample, index|
     next unless sample.is_a?(Hash)
     total = number(sample['total_bytes'])
     next if total <= 0 && number(sample['connections']) <= 0
-    route_verification = route_verification_for(sample)
-    route_status = route_status_for(route_verification)
-    total, vps, direct, unknown = split_for_verification(route_verification, total)
-    total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
     dns_link, link_type, link_confidence, dns_ts_source = dns_link_for(sample, answers, generated_at, window_seconds)
     dns_links << dns_link unless dns_link.empty?
     dns_status = dns_status_for(link_type, link_confidence, dns_ts_source)
     destination = text(dns_link['domain'], text(sample['remote_ip'], 'unknown destination'))
     destination_kind = dns_link.empty? ? 'ip' : 'domain'
     destination_confidence = dns_link.empty? ? 'ip_only' : "dns_#{link_confidence}"
+    allocation = allocation_for_sample(sample, route_allocations)
+    route_verification, log_route_evidence = verification_with_evidence(sample, dns_link, sing_box_evidence, allocation, generated_at, window_seconds)
+    route_status = route_status_for(route_verification)
+    total, vps, direct, unknown = route_verification == 'counter_allocated' ? split_for_counter_allocation(total, allocation) : split_for_verification(route_verification, total)
+    total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
     event_ts = iso_time(sample['ts'], generated_at)
     key = text(sample['client_key'], text(sample['client_ip'], 'unknown-client'))
     fact = {
@@ -406,7 +564,7 @@ else
       'client_label' => key,
       'client_ip' => text(sample['client_ip']),
       'channel' => 'Home Wi-Fi/LAN',
-      'route' => text(sample['route'], 'Unknown'),
+      'route' => route_from_split(vps, direct, unknown),
       'intended_route' => intended_route_for(sample),
       'route_verification' => route_verification,
       'route_status' => route_status,
@@ -430,7 +588,7 @@ else
       'sni' => '',
       'policy' => text(sample['matched_ipset']),
       'matched_rule' => text(sample['matched_ipset']),
-      'outbound' => explicit_outbound(sample),
+      'outbound' => text(explicit_outbound(sample), text(log_route_evidence && log_route_evidence['outbound'])),
       'bytes' => total,
       'bytes_up' => number(sample['out_bytes']),
       'bytes_down' => number(sample['in_bytes']),
@@ -446,7 +604,14 @@ else
       'allocation_basis' => text(sample['allocation_basis'], 'observed_delta'),
       'evidence_level' => 'flow_sample',
       'sources' => ['traffic-evidence', text(sample['source'], 'lan-flow-facts')],
-      'evidence_json' => JSON.generate({ 'sample' => sample, 'dns_link_type' => link_type, 'accounting_corrected' => corrected_split })
+      'evidence_json' => JSON.generate({
+        'sample' => sample,
+        'dns_link_type' => link_type,
+        'accounting_corrected' => corrected_split,
+        'route_allocation' => route_verification == 'counter_allocated' ? allocation : nil,
+        'route_allocation_basis' => route_verification == 'counter_allocated' ? 'client_counter_delta' : '',
+        'sing_box_route_evidence' => log_route_evidence
+      })
     }
     if corrected_split
       warnings << { 'code' => 'accounting_split_corrected', 'sample_id' => text(sample['sample_id']), 'message' => 'byte split was corrected to unknown_bytes to preserve invariant' }
@@ -460,6 +625,11 @@ else
     event_ts = iso_time(sample['ts'], generated_at)
     key = text(sample['client_key'], text(sample['client_label'], text(sample['source_ip'], 'unknown-home-reality-profile')))
     label = text(sample['client_label'], key)
+    allocation = allocation_for_ingress_sample(sample, ingress_allocations)
+    route_verification = allocation ? 'ingress_route_allocated' : 'unknown'
+    route_status = route_status_for(route_verification)
+    total, vps, direct, unknown = route_verification == 'ingress_route_allocated' ? split_for_route_allocation(total, allocation) : split_for_verification(route_verification, total)
+    total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
     fact = {
       'fact_id' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
       'sample_id' => text(sample['sample_id']),
@@ -472,12 +642,12 @@ else
       'client_label' => label,
       'client_ip' => text(sample['source_ip']),
       'channel' => text(sample['channel'], 'A/Home Reality'),
-      'route' => 'Unknown',
+      'route' => route_from_split(vps, direct, unknown),
       'intended_route' => 'Unknown',
-      'route_verification' => 'unknown',
-      'route_status' => 'unknown',
-      'route_source' => '',
-      'route_basis' => '',
+      'route_verification' => route_verification,
+      'route_status' => route_status,
+      'route_source' => allocation ? 'sing-box' : '',
+      'route_basis' => allocation ? 'ingress_outbound_mix' : '',
       'matched_ipset' => '',
       'egress_iface' => '',
       'fwmark' => '',
@@ -500,19 +670,23 @@ else
       'bytes' => total,
       'bytes_up' => number(sample['bytes_up']),
       'bytes_down' => number(sample['bytes_down']),
-      'via_vps_bytes' => 0,
-      'direct_bytes' => 0,
-      'unknown_bytes' => total,
+      'via_vps_bytes' => vps,
+      'direct_bytes' => direct,
+      'unknown_bytes' => unknown,
       'connections' => 0,
       'identity_confidence' => text(sample['client_label']).empty? ? 'source_ip' : 'profile',
       'byte_confidence' => 'observed_delta',
       'destination_confidence' => 'none',
       'confidence' => 'observed',
-      'accounting_status' => 'ok',
+      'accounting_status' => accounting_status_for(corrected_split),
       'allocation_basis' => text(sample['allocation_basis'], 'observed_profile_counter_delta'),
       'evidence_level' => 'home_reality_profile_counter',
       'sources' => ['traffic-evidence', text(sample['source'], 'mobile-reality-counters')],
-      'evidence_json' => JSON.generate({ 'sample' => sample })
+      'evidence_json' => JSON.generate({
+        'sample' => sample,
+        'route_allocation' => allocation,
+        'route_allocation_basis' => allocation ? 'ingress_outbound_mix' : ''
+      })
     }
     facts << fact
   end
@@ -567,8 +741,10 @@ output = {
   'collector_metrics' => {
     'duration_ms' => duration_ms,
     'source_command_timings' => { source_command => duration_ms },
-    'source_row_counts' => {
+      'source_row_counts' => {
       'flow_samples' => (input['flow_samples'] || []).length,
+      'lan_device_route_deltas' => (input['lan_device_route_deltas'] || []).length,
+      'sing_box_route_evidence' => (input['sing_box_route_evidence'] || []).length,
       'home_reality_samples' => (input['home_reality_samples'] || []).length,
       'dns_queries' => (input['dns_queries'] || []).length,
       'traffic_facts' => facts.length,

@@ -1,0 +1,151 @@
+#!/bin/sh
+
+# Read-only sing-box outbound evidence snapshot for route diagnostics.
+# This script tails logs only. It must not change routing, NAT, sing-box,
+# dnsmasq, ipset membership, or Channel A/B/C ownership.
+
+STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-}"
+if [ -z "$STATE_DIR" ]; then
+  STATE_DIR="/jffs/addons/router_configuration/traffic"
+  [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
+fi
+LOG_PATH="${SINGBOX_LOG_PATH:-/opt/var/log/sing-box.log}"
+EVIDENCE_FILE="$STATE_DIR/sing-box-route-evidence.tsv"
+STATUS_FILE="$STATE_DIR/sing-box-route-evidence.status"
+LOCK_DIR="$STATE_DIR/sing-box-route-evidence.lock"
+MAX_LINES="${GHOSTROUTE_SINGBOX_ROUTE_EVIDENCE_MAX_LINES:-5000}"
+MAX_HISTORY="${GHOSTROUTE_SINGBOX_ROUTE_EVIDENCE_MAX_HISTORY:-50000}"
+
+case "$MAX_LINES" in ''|*[!0-9]*) MAX_LINES=5000 ;; esac
+case "$MAX_HISTORY" in ''|*[!0-9]*) MAX_HISTORY=50000 ;; esac
+
+mkdir -p "$STATE_DIR"
+timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+start_epoch="$(date '+%s')"
+
+status() {
+  state="$1"
+  reason="$2"
+  rows="${3:-0}"
+  end_epoch="$(date '+%s')"
+  duration_ms=$(( (end_epoch - start_epoch) * 1000 ))
+  printf '%s|%s|reason=%s|rows=%s|duration_ms=%s|source=sing-box-log\n' \
+    "$timestamp" "$state" "$reason" "$rows" "$duration_ms" > "$STATUS_FILE"
+}
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  status "partial" "lock_busy" 0
+  exit 0
+fi
+
+TMP_TAIL="/tmp/sing-box-route-evidence.tail.$$"
+TMP_ROWS="/tmp/sing-box-route-evidence.rows.$$"
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_TAIL" "$TMP_ROWS"' EXIT
+
+if [ ! -r "$LOG_PATH" ]; then
+  status "missing_source" "sing_box_log_unreadable" 0
+  exit 0
+fi
+
+tail -n "$MAX_LINES" "$LOG_PATH" > "$TMP_TAIL" 2>/dev/null || : > "$TMP_TAIL"
+
+awk '
+  function conn_id(line,   body, parts) {
+    if (match(line, /\[[0-9]+ [^]]+\]/)) {
+      body = substr(line, RSTART + 1, RLENGTH - 2)
+      split(body, parts, " ")
+      return parts[1]
+    }
+    return ""
+  }
+  function destination_from_line(line, value) {
+    value = line
+    sub(/^.* outbound connection to /, "", value)
+    sub(/[[:space:]].*$/, "", value)
+    return value
+  }
+  function destination_host(value, host) {
+    host = value
+    if (host ~ /^\[[0-9A-Fa-f:.]+\]:[0-9]+$/) {
+      sub(/^\[/, "", host)
+      sub(/\]:[0-9]+$/, "", host)
+      return host
+    }
+    sub(/:[0-9]+$/, "", host)
+    return host
+  }
+  function destination_port(value, port) {
+    port = value
+    if (port ~ /:[0-9]+$/) {
+      sub(/^.*:/, "", port)
+      return port
+    }
+    return ""
+  }
+  function inbound_profile(line, value) {
+    if (line !~ /inbound\/[^[]+\[[^]]+\]: \[[^]]+\] inbound connection to /) {
+      return ""
+    }
+    value = line
+    sub(/^.*inbound\/[^[]+\[[^]]+\]: \[/, "", value)
+    sub(/\].*$/, "", value)
+    return value
+  }
+  function inbound_tag(line, value) {
+    value = line
+    sub(/^.*inbound\/[^[]+\[/, "", value)
+    sub(/\].*$/, "", value)
+    return value
+  }
+  function remember_ingress(line, id, tag) {
+    id = conn_id(line)
+    tag = inbound_tag(line)
+    if (id != "") {
+      inbound[id] = tag
+      profile[id] = inbound_profile(line)
+    }
+  }
+  function emit(route, outbound, line, id, destination, host, port, ts) {
+    id = conn_id(line)
+    destination = destination_from_line(line)
+    host = destination_host(destination)
+    port = destination_port(destination)
+    ts = $2 "T" $3 $1
+    print ts "|" id "|" route "|" outbound "|" destination "|" host "|" port "|sing-box.log|ok|" inbound[id] "|" profile[id]
+  }
+  /inbound\/vless\[reality-in\]: \[[^]]+\] inbound connection to / {
+    remember_ingress($0)
+    next
+  }
+  /inbound\/socks\[channel-b-relay-socks\]: inbound connection to / {
+    remember_ingress($0)
+    next
+  }
+  /inbound\/http\[channel-c-shadowrocket-http-in\]: (\[[^]]+\] )?inbound connection to / {
+    remember_ingress($0)
+    next
+  }
+  /inbound\/naive\[channel-c-naive-in\]: inbound connection to / {
+    remember_ingress($0)
+    next
+  }
+  /outbound\/vless\[reality-out\]: outbound connection to / {
+    emit("VPS", "reality-out", $0)
+    next
+  }
+  /outbound\/direct\[direct-out\]: outbound connection to / {
+    emit("Direct", "direct-out", $0)
+    next
+  }
+' "$TMP_TAIL" > "$TMP_ROWS"
+
+rows="$(wc -l < "$TMP_ROWS" 2>/dev/null | tr -d ' ')"
+case "$rows" in ''|*[!0-9]*) rows=0 ;; esac
+
+if [ "$rows" -gt 0 ]; then
+  cat "$TMP_ROWS" >> "$EVIDENCE_FILE"
+  tail -n "$MAX_HISTORY" "$EVIDENCE_FILE" > "$EVIDENCE_FILE.tmp" && mv "$EVIDENCE_FILE.tmp" "$EVIDENCE_FILE"
+  status "ok" "sampled" "$rows"
+else
+  status "partial" "no_route_evidence" 0
+fi
