@@ -514,6 +514,10 @@ Traffic и observability:
 ingress clients были активны, какие сайты/приложения популярны и не появились
 ли ошибки маршрутизации. Подробно:
 [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
+Интерпретация трафика вынесена отдельно: `traffic_facts` хранит байты,
+DNS/route evidence и accounting status, а Traffic Intelligence пишет labels,
+объяснения и dry-run decision candidates для Console `/intelligence`. Этот слой
+не меняет routing, blocking, managed domains или accounting.
 
 Модуль мониторинга работоспособности:
 

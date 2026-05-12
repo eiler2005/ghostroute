@@ -266,11 +266,12 @@ addresses so private LAN/MAC data does not enter git.
 
 LAN/Wi-Fi attribution is registry-first end to end. Router
 `lan-device-counters-snapshot` emits the historical eight counter columns plus
-optional MAC/hostname columns; `traffic-report --json` preserves those as
-`client_ip`, `mac`, `hostname`, and `observed_label`. Console prepared windows
-use those hints only to resolve rows to explicit registry clients. Pseudo
-channels, DNS-interest rows, accounting buckets without a registry client, and
-zero-byte rows are excluded from client rankings and client APIs.
+optional MAC/hostname columns, while `traffic-evidence` / `traffic-facts` carry
+flow/DNS identity hints such as `client_ip`, DNS qname/answer and route
+evidence. Console prepared windows use those hints only to resolve rows to
+explicit registry clients. Pseudo channels, DNS-interest rows, accounting
+buckets without a registry client, and zero-byte rows are excluded from client
+rankings and client APIs.
 
 For Console-only deployment use the Console playbook, not root `./deploy.sh`.
 When changing attribution collection or deliberately discarding polluted
