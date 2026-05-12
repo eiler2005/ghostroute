@@ -245,6 +245,9 @@ Default GUI destination labels prefer DNS/SNI/domain evidence and platform or
 category labels. Raw IP addresses remain available in DNS answers, route
 diagnostics, exports and raw evidence, but they are not used as primary
 destination labels in Dashboard, Flow Explorer, Live, Clients or mobile lists.
+When an IP-only row has local IP-ASN enrichment, the primary label can be a
+provider/source label such as `Facebook network`, `Google network` or
+`Yandex network`; the raw IP remains in diagnostics.
 Pseudo channel/accounting labels such as Home Reality ingress are route context,
 not Top destinations.
 
@@ -264,6 +267,10 @@ The client lane layer is rebuilt after the normal traffic pyramid. It lets the
 operator inspect client traffic by lane locally before changing GUI filters:
 for example a device can have non-zero `all` traffic while `client_observed`
 is small and most bytes sit in `service_system` or `unknown_review`.
+The Clients page also renders a selected-device popular-sites panel from the
+same per-client destination layer: byte-attributed client sites are shown first
+and service/system sites separately, with DNS-interest rows used only as a
+clearly marked fallback when no byte-level destination attribution exists.
 
 IP-only destinations can be enriched locally from an iptoasn TSV snapshot. For
 the current IPv4 traffic, download `ip2asn-v4-u32.tsv.gz` and run:

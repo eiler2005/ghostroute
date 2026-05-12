@@ -399,13 +399,18 @@ the GUI acting as a viewer/filter rather than a manual per-flow labeling tool.
 The Clients page consumes these lane and route-evidence read models directly:
 content lanes answer "what kind of traffic is this?", while route evidence
 answers "how well was VPS/direct proven?".
+Below the inventory, the selected-client popular-sites panel reads the same
+destination layer and splits byte-attributed destinations into client traffic
+and service/system traffic. DNS-interest rows are displayed only as a fallback
+when no byte-level destination rows exist for the selected client/day.
 
 Destination presentation is intentionally split from raw evidence. Default
 HTML views render DNS/SNI/domain, platform or category labels first and collapse
-IP-only rows to a type label. Raw IP addresses remain in DNS answer columns,
-route diagnostics, exports and raw evidence, but are not primary destination
-labels or Top destinations. Channel/accounting labels such as Home Reality
-ingress describe ingress context and are excluded from destination rankings.
+IP-only rows to a type or provider/source label when local IP-ASN enrichment is
+available. Raw IP addresses remain in DNS answer columns, route diagnostics,
+exports and raw evidence, but are not primary destination labels or Top
+destinations. Channel/accounting labels such as Home Reality ingress describe
+ingress context and are excluded from destination rankings.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

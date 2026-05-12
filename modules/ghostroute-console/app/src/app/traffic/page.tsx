@@ -59,6 +59,21 @@ function compactNumber(value: number) {
   return String(value);
 }
 
+function isIpLiteral(value: unknown) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
+}
+
+function flowDomain(row: Record<string, any>) {
+  const candidates = [row.dns_qname, row.sni, row.domain, row.raw?.dns_qname, row.raw?.sni, row.raw?.domain];
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (value && value.includes(".") && !isIpLiteral(value)) return value;
+  }
+  const display = trafficDisplayDestination(row);
+  if (display.includes(".") && !isIpLiteral(display)) return display;
+  return "not observed";
+}
+
 function Sparkline({ values, tone = "ok" }: { values: number[]; tone?: "ok" | "warn" | "danger" }) {
   const clean = values.length ? values : [0];
   const max = Math.max(...clean, 1);
@@ -213,7 +228,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     pageSize={trafficPage.pageSize}
                     total={trafficPage.total}
                     totalPages={trafficPage.totalPages}
-                    extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined, flow: selectedId || undefined }}
+                    extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
                   />
                 </div>
               </div>
@@ -241,6 +256,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                     <th className="col-policy">Policy / Rule</th>
                     <th className="col-traffic">Traffic</th>
                     <th className="col-duration">Duration</th>
+                    <th className="col-domain">Domain</th>
                     <th className="col-risk">Risk</th>
                     <th className="col-confidence">Confidence</th>
                   </tr>
@@ -280,6 +296,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                         </td>
                         <td className="col-traffic"><Link className="row-link" href={href}>{bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions</Link></td>
                         <td className="col-duration"><Link className="row-link" href={href}>{durationLabel(row.duration_seconds)}</Link></td>
+                        <td className="col-domain" title={flowDomain(row)}><Link className="row-link" href={href}>{flowDomain(row)}</Link></td>
                         <td className="col-risk"><Link className="row-link row-link-with-badges" href={href}>{riskBadge(row.risk)}</Link></td>
                         <td className="col-confidence"><Link className="row-link row-link-with-badges" href={href}><ConfidenceBadge value={row.confidence} /></Link></td>
                       </tr>
@@ -295,7 +312,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 pageSize={trafficPage.pageSize}
                 total={trafficPage.total}
                 totalPages={trafficPage.totalPages}
-                extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined, flow: selectedId || undefined }}
+                extraParams={{ ...filterParams, diagnostics: diagnostics ? "1" : undefined }}
               />
             </div>
           </section>

@@ -16,6 +16,7 @@ import {
 } from "@/components/Widgets";
 import {
   buildClientsModel,
+  listClientDomainBreakdown,
   listClientActivity,
   listClientDestinationsByLane,
   listClientInventory,
@@ -152,6 +153,118 @@ function evidenceSummary(rows: Array<Record<string, any>>, totalBytes: number) {
   return result;
 }
 
+function siteBytes(row: Record<string, any>) {
+  return Number(row.bytes || row.total_bytes || 0);
+}
+
+function siteLane(row: Record<string, any>) {
+  return String(row.traffic_lane || row.trafficClass || row.traffic_class || "unknown_review");
+}
+
+function isServiceSite(row: Record<string, any>) {
+  const lane = siteLane(row);
+  return lane === "service_system" || String(row.trafficClass || row.traffic_class || "") === "service_background";
+}
+
+function isUsefulSiteLabel(label: string) {
+  return Boolean(label)
+    && !["n/a", "Client", "No site evidence", "Encrypted ingress traffic"].includes(label)
+    && !label.toLowerCase().includes("destination aggregate");
+}
+
+function routeFromSiteRoutes(routes: Set<string>) {
+  const clean = Array.from(routes).filter(Boolean);
+  if (clean.length === 0) return "Unknown";
+  if (clean.length === 1) return clean[0];
+  return "Mixed";
+}
+
+function groupPopularSites(rows: Array<Record<string, any>>, kind: "client" | "service", limit: number) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    if ((kind === "service") !== isServiceSite(row)) continue;
+    const label = trafficDisplayDestination(row);
+    if (!isUsefulSiteLabel(label)) continue;
+    const key = label.toLowerCase();
+    const current = grouped.get(key) || {
+      ...row,
+      label,
+      destinationLabel: label,
+      bytes: 0,
+      total_bytes: 0,
+      flows: 0,
+      routes: new Set<string>(),
+      lanes: new Set<string>(),
+      last_seen_utc: row.last_seen_utc || row.collected_at || "",
+    };
+    current.bytes += siteBytes(row);
+    current.total_bytes += siteBytes(row);
+    current.flows += Number(row.flows || row.connections || 0);
+    if (row.route) current.routes.add(String(row.route));
+    current.lanes.add(siteLane(row));
+    if (String(row.last_seen_utc || row.collected_at || "") > String(current.last_seen_utc || "")) {
+      current.last_seen_utc = row.last_seen_utc || row.collected_at || "";
+    }
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || String(a.label).localeCompare(String(b.label)))
+    .slice(0, limit)
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      route: routeFromSiteRoutes(row.routes || new Set()),
+      laneLabel: Array.from(row.lanes || []).filter(Boolean).map((lane) => title(String(lane))).slice(0, 2).join(", ") || title(siteLane(row)),
+    }));
+}
+
+function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
+  return rows.slice(0, limit).map((row, index) => ({
+    id: `dns-interest-${index}`,
+    rank: index + 1,
+    label: row.domain,
+    destination: row.domain,
+    destinationLabel: row.domain,
+    bytes: 0,
+    total_bytes: 0,
+    flows: Number(row.count || 0),
+    route: "dns-interest",
+    laneLabel: "DNS interest",
+    confidence: "dns-interest",
+    dnsOnly: true,
+  }));
+}
+
+function PopularSitesList({ title: heading, rows, dnsFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>> }) {
+  const visible = rows.length ? rows : dnsFallback || [];
+  return (
+    <section className="card client-popular-sites-list">
+      <div className="toolbar">
+        <h3>{heading}</h3>
+        <span className="subtle">{rows.length ? "byte-attributed traffic" : "DNS interest fallback"}</span>
+      </div>
+      {visible.length === 0 ? (
+        <EmptyState title="No site-level traffic for this client" detail="Only client/channel counters were observed in the selected day." />
+      ) : (
+        <div className="detail-list">
+          {visible.map((row) => (
+            <div className="detail-row popular-site-row" key={`${row.label}-${row.rank}`}>
+              <span>
+                <strong>{row.rank}. {row.label}</strong>
+                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : "flows"}</small>
+              </span>
+              <strong>
+                {row.dnsOnly ? "not byte-attributed" : bytes(siteBytes(row))}
+                <RouteBadge value={row.route || routeFromBytes(row)} />
+              </strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
@@ -186,6 +299,12 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedLaneRows = selected ? listClientLaneSummary(selected, filters.period || "today", { limit: 80 }) : [];
   const selectedLaneSummary = summarizeLaneRows(selectedLaneRows);
   const selectedLaneDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: selectedLane, limit: 16 }) : [];
+  const selectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
+  const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
+  const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
+  const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15);
+  const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8);
+  const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
   const filterParams = {
@@ -451,6 +570,18 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
           )}
         </aside>}
       </div>
+      {!mobile && selected ? (
+        <section className="client-popular-sites-section" style={{ marginTop: 14 }}>
+          <div className="toolbar">
+            <h2>Most popular sites for {selected.label || selected.client_label || selected.id}</h2>
+            <span className="subtle">{filters.period || "today"} · traffic and DNS interest for selected client</span>
+          </div>
+          <div className="grid two">
+            <PopularSitesList title="Client sites" rows={selectedClientSites} dnsFallback={selectedDnsFallback} />
+            <PopularSitesList title="Service/system sites" rows={selectedServiceSites} />
+          </div>
+        </section>
+      ) : null}
     </ConsoleShell>
   );
 }

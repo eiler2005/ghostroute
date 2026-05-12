@@ -468,13 +468,63 @@ function filterRows(rows: Array<Record<string, any>>, filters: ConsoleFilters) {
   });
 }
 
+function inventoryIdentityForTrafficRow(row: Record<string, any>) {
+  const candidate = String(row.client_ip || (ipv4Literal(row.client) ? row.client : "") || "").trim();
+  if (!candidate) return null;
+  return cacheGet(`traffic-inventory-identity:${latestSnapshotVersion()}:${candidate}`, () => {
+    try {
+      const inventory = getDb().prepare(`
+        select device_key, label, ip, hostname, profile, device_type, channel, confidence
+          from device_inventory
+         where ip = ?
+         order by last_seen desc
+         limit 1
+      `).get(candidate) as Record<string, any> | undefined;
+      if (!inventory) return null;
+      const resolved = resolveClient({
+        client: inventory.label,
+        label: inventory.label,
+        client_ip: inventory.ip,
+        ip: inventory.ip,
+        device_key: inventory.device_key,
+        profile: inventory.profile,
+        hostname: inventory.hostname,
+      });
+      return {
+        ...inventory,
+        label: inventory.label || "",
+        ip: inventory.ip || "",
+        profile: inventory.profile || "",
+        device_type: inventory.device_type || "",
+        client_key: resolved.client_key || inventory.device_key || inventory.ip || "",
+        client_label: resolved.client_label || inventory.label || inventory.hostname || inventory.ip || "",
+        device_key: resolved.device_key || inventory.device_key || resolved.client_key || "",
+        device_label: resolved.device_label || resolved.client_label || inventory.label || "",
+        client_channel: resolved.client_channel || inventory.channel || "",
+        matched_by: resolved.matched_by || "device_inventory_ip",
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
 function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
   const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
   const rawClient = row.client;
   const rawProfile = row.profile || row.raw?.profile || "";
   const raw = row.raw || {};
-  const resolved = resolveClient({ ...row, profile: rawProfile });
-  const client = resolved.client_label || displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
+  const inventoryIdentity = inventoryIdentityForTrafficRow(row);
+  const resolved = resolveClient({
+    ...row,
+    label: row.label || inventoryIdentity?.label,
+    device_key: row.device_key || inventoryIdentity?.device_key,
+    profile: rawProfile || inventoryIdentity?.profile,
+    ip: row.client_ip || inventoryIdentity?.ip,
+  });
+  const client = resolved.client_label
+    || inventoryIdentity?.client_label
+    || displayDeviceLabel(row.client || row.label || row.device_id || row.id || "");
   const bytes = Number(row.bytes || row.total_bytes || raw.bytes || 0);
   const bytesUp = Number(row.bytes_up || raw.bytes_up || raw.out_bytes || 0);
   const bytesDown = Number(row.bytes_down || raw.bytes_down || raw.in_bytes || 0);
@@ -486,15 +536,15 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     raw_client: rawClient,
     raw_profile: rawProfile,
     client,
-    client_key: resolved.client_key || row.client_key || "",
+    client_key: resolved.client_key || inventoryIdentity?.client_key || row.client_key || "",
     client_label: client,
-    device_key: resolved.device_key || resolved.client_key || row.device_key || "",
-    device_label: resolved.device_label || resolved.client_label || client,
+    device_key: resolved.device_key || inventoryIdentity?.device_key || resolved.client_key || row.device_key || "",
+    device_label: resolved.device_label || inventoryIdentity?.device_label || resolved.client_label || client,
     client_role: resolved.client_role || row.client_role || "",
     owner: resolved.client_owner || row.owner || "",
-    device_type: resolved.device_type || row.device_type || "",
-    client_channel: resolved.client_channel || row.client_channel || "",
-    matched_by: resolved.matched_by,
+    device_type: resolved.device_type || row.device_type || inventoryIdentity?.device_type || "",
+    client_channel: resolved.client_channel || row.client_channel || inventoryIdentity?.client_channel || "",
+    matched_by: resolved.matched_by || inventoryIdentity?.matched_by,
     attribution_confidence: resolved.attribution_confidence,
     accounting_bucket: Boolean(row.accounting_bucket || row.raw?.accounting_bucket),
     unattributed_reason: row.unattributed_reason || row.raw?.unattributed_reason || "",
@@ -1729,8 +1779,84 @@ function flowSelect() {
     traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, raw_json`;
 }
 
+function ipv4Literal(value?: string) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
+}
+
+function ipv4ToU32(value?: string) {
+  const parts = String(value || "").trim().split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return ((parts[0] * 256 ** 3) + (parts[1] * 256 ** 2) + (parts[2] * 256) + parts[3]) >>> 0;
+}
+
+function ipEnrichmentFor(value?: string) {
+  const ip = String(value || "").trim();
+  if (!ipv4Literal(ip)) return null;
+  return cacheGet(`ip-enrichment:${latestSnapshotVersion()}:${ip}`, () => {
+    try {
+      const row = getDb().prepare(`
+        select ip, prefix_cidr, asn, asn_org, provider, category_hint,
+               traffic_lane_hint, dns_category_hint, decision_hint, country,
+               source, confidence, lookup_status
+          from ip_enrichment_cache
+         where ip = ?
+           and lookup_status = 'hit'
+         limit 1
+      `).get(ip) as Record<string, any> | undefined;
+      if (row) return row;
+      const ipU32 = ipv4ToU32(ip);
+      if (ipU32 === null) return null;
+      const prefix = getDb().prepare(`
+        select prefix_cidr, asn, asn_org, provider, country, registry, source
+          from ip_prefix_catalog
+         where range_start_u32 <= ?
+           and range_end_u32 >= ?
+         order by (range_end_u32 - range_start_u32) asc
+         limit 1
+      `).get(ipU32, ipU32) as Record<string, any> | undefined;
+      if (!prefix) return null;
+      const provider = prefix.provider || prefix.asn_org || "";
+      const normalizedProvider = String(provider).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "network";
+      return {
+        ip,
+        ...prefix,
+        provider,
+        category_hint: `ip_asn.network_provider.${normalizedProvider}`,
+        traffic_lane_hint: "shared_infra",
+        dns_category_hint: "network_provider",
+        decision_hint: "monitor",
+        confidence: "estimated",
+        lookup_status: "prefix_hit",
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
+function destinationContextFromIp(row: Record<string, any>) {
+  const candidate = row.destination_ip || (ipv4Literal(row.destination) ? row.destination : "");
+  const enrichment = ipEnrichmentFor(candidate);
+  if (!enrichment) return row;
+  return {
+    ...row,
+    ip_provider: enrichment.provider || "",
+    ip_asn: enrichment.asn || "",
+    ip_asn_org: enrichment.asn_org || "",
+    ip_category_hint: enrichment.category_hint || "",
+    ip_traffic_lane_hint: enrichment.traffic_lane_hint || "",
+    ip_dns_category_hint: enrichment.dns_category_hint || "",
+    ip_decision_hint: enrichment.decision_hint || "",
+    ip_enrichment_source: enrichment.source || "",
+    ip_enrichment_confidence: enrichment.confidence || "",
+    provider: row.provider || enrichment.provider || enrichment.asn_org || "",
+    asn_org: row.asn_org || enrichment.asn_org || "",
+    category: row.category || enrichment.category_hint || "",
+  };
+}
+
 function mapFlowRow(row: any) {
-  return decorateTrafficRow({
+  return destinationContextFromIp(decorateTrafficRow({
     id: row.id,
     rowid: row.rowid,
     client: row.client,
@@ -1774,7 +1900,7 @@ function mapFlowRow(row: any) {
     accounting_status: row.accounting_status,
     collected_at: row.collected_at,
     raw: rawJson(row),
-  });
+  }));
 }
 
 function flowSessionSelect() {
@@ -1788,7 +1914,7 @@ function flowSessionSelect() {
 function mapFlowSessionRow(row: any) {
   const raw = evidenceJson(row);
   const rowid = String(row.id || "").replace(/^flow:/, "");
-  return decorateTrafficRow({
+  return destinationContextFromIp(decorateTrafficRow({
     id: row.id,
     rowid,
     snapshot_id: row.snapshot_id,
@@ -1841,7 +1967,7 @@ function mapFlowSessionRow(row: any) {
     event_ts: row.display_ts_utc || row.last_seen || row.first_seen || row.collected_at,
     source_log: row.source_kind,
     raw,
-  });
+  }));
 }
 
 function dashboardAnalyticsRows(filters: ConsoleFilters = {}) {
@@ -1907,9 +2033,7 @@ export function listTrafficRows(args: PageArgs = {}) {
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;
   const trafficClass = args.filters?.trafficClass || "client";
-  const hasRegistryFilter = Boolean(args.filters?.client && args.filters.client !== "all");
-  const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
-  const fetchLimit = Math.min(maxRows, hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize);
+  const fetchLimit = Math.min(maxRows, Math.max(offset + pageSize * 8, 500));
   const sqlTotal = Math.min(maxRows, Number((getDb().prepare(`select count(*) as count from normalized_flows where ${whereSql}`).get(...params) as any)?.count || 0));
   const rawRows = getDb()
     .prepare(
@@ -1928,7 +2052,7 @@ export function listTrafficRows(args: PageArgs = {}) {
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today", trafficClass)) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
+  const total = Math.min(maxRows, Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length));
   const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
@@ -1986,9 +2110,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
   const whereSql = where.map((item) => `(${item})`).join(" and ");
   const offset = (page - 1) * pageSize;
   const trafficClass = filters.trafficClass || "client";
-  const hasRegistryFilter = Boolean(filters.client && filters.client !== "all");
-  const hasPostFilter = hasRegistryFilter || Boolean(trafficClass && trafficClass !== "all");
-  const fetchLimit = Math.min(maxRows, hasPostFilter ? Math.max(offset + pageSize * 8, 500) : offset + pageSize);
+  const fetchLimit = Math.min(maxRows, Math.max(offset + pageSize * 8, 500));
   const db = getDb();
   const sqlTotal = Math.min(maxRows, Number((db.prepare(`select count(*) as count from flow_sessions where ${whereSql}`).get(...params) as any)?.count || 0));
   const rawRows = db
@@ -2008,7 +2130,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today", trafficClass)) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
+  const total = Math.min(maxRows, Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length));
   const rows = allRows.slice(offset, offset + pageSize);
   return {
     rows,
