@@ -2458,6 +2458,12 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
     insert into dns_log_5min(bucket_start_utc, bucket_msk_key, client_key, client_ip, domain, qtype, catalog_status,
       route, confidence, query_count, updated_at_utc)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict(bucket_start_utc, client_key, client_ip, domain, qtype, catalog_status, route)
+    do update set
+      bucket_msk_key = excluded.bucket_msk_key,
+      confidence = excluded.confidence,
+      query_count = excluded.query_count,
+      updated_at_utc = excluded.updated_at_utc
   `);
   for (const row of grouped.values()) {
     insert.run(row.bucket_start_utc, row.bucket_msk_key, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
@@ -2507,6 +2513,12 @@ function rollupDnsLayer(db, period, startUtc, endUtc, now) {
     insert into ${meta.table}(${meta.keyColumn}, ${meta.timeColumn}, client_key, client_ip, domain, qtype,
       catalog_status, route, confidence, query_count, updated_at_utc)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict(${meta.keyColumn}, client_key, client_ip, domain, qtype, catalog_status, route)
+    do update set
+      ${meta.timeColumn} = excluded.${meta.timeColumn},
+      confidence = excluded.confidence,
+      query_count = excluded.query_count,
+      updated_at_utc = excluded.updated_at_utc
   `);
   for (const row of grouped.values()) {
     insert.run(row.windowKey, row.windowStart, row.client_key, row.client_ip, row.domain, row.qtype, row.catalog_status, row.route, row.confidence, row.query_count, now);
