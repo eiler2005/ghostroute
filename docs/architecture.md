@@ -145,37 +145,56 @@ depending on a separate VPS resolver leg. If the optional VPS Unbound resolver
 is enabled for private diagnostics, it is intentionally not public: public
 `53/tcp,udp` stays denied.
 
-### Observability And Console
+### Observability, Console And Traffic Intelligence
 
-GhostRoute Console is an observability/control-plane surface, not part of the
-router data plane. It reads module-owned JSON reports, stores snapshots and
-normalized evidence in SQLite, and renders route/traffic/client/live views over
-that factual data. Console must not become a second source of truth for routing
-state.
+GhostRoute Console is an observability/review surface, not part of the router
+data plane. It reads module-owned JSON facts, stores snapshots and normalized
+evidence in SQLite, and renders route/traffic/client/live/intelligence views
+over that factual data. Console must not become a second source of truth for
+routing state.
 
-The traffic accounting pipeline is being refactored to the following target
-shape (see
-[`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md)
-for the full plan; until that refactor lands, the current pipeline still
-includes `traffic-report` as a transitional source):
+The current traffic accounting architecture is:
 
 ```text
-router snapshots / logs
+router read-only evidence
+  lan-flow-facts-snapshot / dns-query-snapshot / traffic-rollup-snapshot
         ↓
-traffic-evidence --json         (raw machine evidence: flow_samples + DNS)
+traffic-evidence --json
+  raw machine evidence: flow_samples, dns_queries, route_evidence, warnings
         ↓
-traffic-facts --json            (stable contract v3; one fact per flow_sample;
-                                 bytes == via_vps + direct + unknown invariant)
+traffic-facts --json
+  stable contract v3; one fact per flow_sample;
+  bytes == via_vps + direct + unknown invariant
         ↓
-Console SQLite + read models    (pyramid: 5min → hourly → daily; DNS symmetric)
+Console SQLite factual read models
+  traffic_facts, traffic_dns_links, normalized_flows, flow_sessions,
+  client_traffic_5min → hourly → daily, DNS rollups
         ↓
-UI / reports / intelligence
+Traffic Intelligence read model
+  destination_enrichment + dry-run decision_candidates
+        ↓
+UI / reports / review surfaces
 ```
 
-`traffic-report` becomes a debug-only operator wrapper after the refactor; the
-Console does not consume it. Channel A/B/C routing and managed-domain logic
-are unchanged by the refactor; it only extends router-side artifacts with
-additional read-only evidence fields.
+`traffic-report` is a debug/operator wrapper and is not a Console machine
+source. Channel A/B/C routing and managed-domain logic are unchanged by the
+observability pipeline; router-side evidence collectors remain read-only and
+never mutate dnsmasq, ipset, sing-box, iptables or route rules.
+
+Facts and interpretation are intentionally separate:
+
+- `traffic_facts` owns accounting facts: client, destination/IP, protocol,
+  bytes, route intent, route verification, DNS link confidence and evidence
+  status.
+- `accounting_status` is limited to accounting correctness; route and DNS
+  status are separate fields.
+- `destination_enrichment` and `decision_candidates` are local Traffic
+  Intelligence outputs. They can explain traffic and suggest review actions,
+  but they must not rewrite bytes, route split, route verification, DNS
+  confidence, managed domains, filters or routing policy.
+- Optional enrichment providers such as IPinfo/Shodan/AbuseIPDB/VirusTotal/MCP
+  are future advisory inputs only, disabled by default and never automatic
+  blocking/routing authority.
 
 The VPS deployment keeps the Console app on `127.0.0.1:3000`. Public operator
 access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a

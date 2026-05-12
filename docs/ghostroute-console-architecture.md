@@ -14,8 +14,10 @@ plain text model because the read-model and cache layer will continue to evolve.
 Layer 0 source modules
   Traffic Observatory
     -> traffic-summary --json today
-    -> traffic-report --json
-    -> traffic-daily-report --json
+    -> traffic-evidence --json <period>
+    -> traffic-facts --json <period>
+    -> router_rollups snapshots
+    -> traffic-report for human/debug only
 
   Health Monitor
     -> router-health-report --json
@@ -111,6 +113,14 @@ Layer 3 UI read models
     -> rebuild timestamps
     -> cache keys
 
+  destination_enrichment
+    -> local Traffic Intelligence labels and explanations
+    -> client / personal_cloud / service_background / unclassified
+
+  decision_candidates
+    -> advisory review actions
+    -> dry-run only; applied=0 in this phase
+
 Layer 4 request-time cache
   in-process derived selector cache
     -> keyed by read_model_state / lightweight snapshot metadata
@@ -123,6 +133,7 @@ Layer 5 public interfaces
     -> / dashboard analytics and status overview
     -> /traffic Flow Explorer workbench
     -> /dns DNS Query Log
+    -> /intelligence Traffic Intelligence review
     -> /clients Device Inventory
     -> /health Health Center, Alarm Center, Deploy Gate, leaks
     -> /live event snapshots and client activity
@@ -158,7 +169,8 @@ Layer 6 deployment/access
 
   Safety invariant
     -> Console renders prepared facts
-    -> Console does not deploy router/VPS runtime
+    -> Traffic Intelligence never changes accounting or routing
+    -> Console does not deploy router/VPS runtime from review pages
     -> controlled actions prepare audited operator artifacts only
 ```
 
@@ -168,8 +180,11 @@ Console reads machine-readable JSON from existing operational modules:
 
 - `traffic-summary --json today` for frequent current-day Dashboard traffic
   cards without destination analytics.
-- `traffic-report --json` and `traffic-daily-report --json` for detailed usage,
-  devices, route events and destination summaries.
+- `traffic-evidence --json <period>` for raw machine evidence: flow samples,
+  DNS queries/answers, route evidence and warnings.
+- `traffic-facts --json <period>` for the authoritative v3 accounting contract:
+  traffic facts, DNS links, attribution gaps, route status and byte split.
+- router rollup snapshots for prepared aggregate windows.
 - `router-health-report --json` and `leak-check --json` for health, leak and
   egress identity evidence.
 - `domain-report --json` and `dns-forensics-report --json` for catalog, DNS
@@ -180,7 +195,11 @@ Console reads machine-readable JSON from existing operational modules:
 Markdown report output remains human-facing. Console must not parse Markdown as
 an application contract.
 
-## Evidence Model
+`traffic-report` remains runnable for operator/debug workflows, but it is not a
+new Console machine source. New accounting/read-model work must start from
+`traffic-facts --json` and the SQLite pyramid/read models.
+
+## Evidence And Intelligence Model
 
 The canonical route evidence shape is assembled in Console from normalized
 rows. A route explanation can include:
@@ -197,6 +216,32 @@ rows. A route explanation can include:
 
 If a source does not prove a field, Console should show `not observed` or an
 estimated confidence note rather than fabricating a value.
+
+The authoritative accounting source is `traffic_facts`. It owns bytes,
+`via_vps_bytes`, `direct_bytes`, `unknown_bytes`, route intent, route
+verification, route status, DNS link confidence and DNS timestamp status.
+Every normal traffic fact must preserve the invariant
+`bytes = via_vps_bytes + direct_bytes + unknown_bytes`.
+
+Traffic Intelligence is a separate interpretation layer above those facts. It
+reads traffic facts and DNS links, then writes local deterministic labels into
+`destination_enrichment` and dry-run review rows into `decision_candidates`.
+Those rows can power the `/intelligence` GUI, coarse `trafficClass` filters,
+fine categories, action hints and human explanations. They must not alter fact
+bytes, route verification, DNS confidence, managed-domain policy, filter rules
+or router/VPS state.
+
+The status fields are deliberately split:
+
+- `accounting_status`: `ok` or `accounting_error`.
+- `route_status`: `verified`, `intent_only`, `mismatch` or `unknown`.
+- `dns_status`: `exact`, `shared`, `no_match` or `approximate_ts`.
+- `dns_ts_source`: `parsed_log` or `snapshot_approx`.
+
+Optional enrichment providers are future advisory inputs for unknown/IP-only
+destinations; they are not part of the primary client-vs-service classifier and
+must remain disabled-by-default unless a separate privacy/review design enables
+them.
 
 VPS egress identity is an explicit source, not an inference from the public
 Console URL. Operators configure it through `GHOSTROUTE_VPS_EGRESS_IP`,
@@ -228,18 +273,16 @@ selected-client domains or route split values outside the selected window. If no
 prepared current-window traffic exists, traffic views should show an empty state
 instead of presenting stale bytes as today's data.
 
-Traffic report snapshots can contain cumulative counters. Console therefore
-does not sum multiple same-day snapshots as independent traffic rows. Current
-client/device views use positive deltas between sequential samples when they are
-available, then reconcile the displayed rows to the authoritative
-`traffic-summary`/`traffic` KPI totals for the selected window. Reconciled rows
-may keep their raw snapshot total as troubleshooting evidence, but the primary
-UI amount must remain bounded by the current-window KPI. Destination rows follow
-the same rule: a generic category can enrich a row as class/type, but concrete
-destinations need DNS/SNI/domain/IP evidence. When attributed destinations cover
-only part of the client/device counter total, `traffic-report --json` emits
-`destination_attribution_coverage` and synthetic `Unknown/Unattributed ...`
-accounting rows. Those rows carry real counter bytes and no destination
+Traffic snapshots can contain retained evidence tails and cumulative counters.
+Console therefore does not sum multiple same-day snapshots as independent
+traffic rows. `traffic-evidence` first cuts flow/DNS rows to the requested
+window; `traffic-facts` then emits one normal fact per flow sample plus explicit
+attribution gaps. Current client/device views use the prepared factual rows and
+rollups for the selected window. Destination rows follow the same rule: a
+generic category can enrich a row as class/type, but concrete destinations need
+DNS/SNI/domain/IP evidence. When attributed destinations cover only part of the
+client/device counter total, `traffic-facts --json` emits `attribution_gaps`
+with residual bytes. Those rows carry real counter bytes and no destination
 evidence, so Dashboard, Flow Explorer, Clients, Live and API selectors can all
 show the same complete accounting total without pretending that DNS-interest
 hints prove per-site bytes.
@@ -295,6 +338,13 @@ temporary rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`, but
 the steady-state large-database contract is prepared-window reads only.
 The detailed anti-warehouse-rebuild contract is documented in
 [data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
+
+Schema v15 is the current guard for the trustworthy v3 pipeline and the local
+Traffic Intelligence read model. It ensures factual tables carry the v3
+route/DNS/accounting fields (`intended_route`, `route_status`, `dns_status`,
+`dns_ts_source`, detailed DNS link columns) and keeps interpretation outside
+`traffic_facts` in `destination_enrichment` / `decision_candidates`. Fresh and
+migrated databases must converge to the same columns and indexes.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

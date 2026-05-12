@@ -118,6 +118,16 @@ intended source of truth. For deeper context, follow the cross-references.
   `bytes == via_vps_bytes + direct_bytes + unknown_bytes` by construction.
 - **traffic-report** — operator-facing human report. **Deprecated as a
   machine source** in the v3 refactor; Console does not consume it.
+- **Traffic Intelligence** — local deterministic interpretation layer above
+  `traffic_facts`. It writes `destination_enrichment` and dry-run
+  `decision_candidates` for GUI review, but never changes accounting, DNS/route
+  evidence, routing policy or blocking.
+- **destination_enrichment** — Console SQLite read model keyed by destination.
+  Stores Traffic Intelligence category, provider, coarse `traffic_class`,
+  traffic role/purpose, confidence, reason code and human explanation.
+- **decision_candidates** — advisory review rows proposed by Traffic
+  Intelligence. They are dry-run (`applied=0`) unless a future, separately
+  designed control-plane explicitly applies them.
 - **flow_sample** — single per-flow byte sample produced by router
   `lan-flow-facts-snapshot` and surfaced through `traffic-evidence`.
 - **dns_link** — correlation between a DNS query/answer and a flow
@@ -136,8 +146,10 @@ intended source of truth. For deeper context, follow the cross-references.
   `exact` / `estimated` / `dns-interest` / `mixed` / `unknown`. Copied from
   the upstream traffic-observatory output.
 - **Traffic class** — per-flow categorization for prioritization:
-  `client` (real user traffic), `service_background` (Apple, DNS,
-  CDN heartbeats), `unclassified`. Stamped at ingest after the v3 refactor.
+  `client` (interactive user traffic), `personal_cloud` (operator-visible sync),
+  `service_background` (Apple/Google system, analytics, DNS/CDN/service
+  background), `unclassified`. Facts may carry a source class; Traffic
+  Intelligence can refine the GUI read model without rewriting accounting.
 - **Attribution coverage** — ratio of `attributed_bytes / observed_bytes`
   reported by `traffic-observatory`; large gaps usually mean
   service/background traffic mixed into the observed total.

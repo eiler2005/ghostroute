@@ -553,6 +553,11 @@ much went through the VPS, how much stayed on the home WAN, which devices and
 Home Reality ingress clients were active, and whether likely routing mistakes
 appeared. See
 [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
+Traffic interpretation is a separate local layer: `traffic_facts` keeps bytes,
+DNS/route evidence and accounting status, while Traffic Intelligence writes
+labels, explanations and dry-run decision candidates for the Console
+`/intelligence` review surface. It does not change routing, blocking, managed
+domains or accounting.
 
 Health monitor:
 
