@@ -3,7 +3,8 @@ name: ghostroute-console
 services:
   ghostroute-console:
     build:
-      context: ../app
+      context: ../..
+      dockerfile: ghostroute-console/app/Dockerfile
       args:
         GHOSTROUTE_CONSOLE_BUILD_COMMIT: ${GHOSTROUTE_CONSOLE_BUILD_COMMIT:-unknown}
         GHOSTROUTE_CONSOLE_BUILD_AT: ${GHOSTROUTE_CONSOLE_BUILD_AT:-unknown}

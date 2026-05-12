@@ -1,9 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
-COPY package*.json ./
+COPY ghostroute-console/app/package*.json ./
 RUN npm ci
-COPY . .
+COPY ghostroute-console/app .
+COPY traffic-intelligence /traffic-intelligence
 RUN npm run build
 
 FROM builder AS prod-deps
@@ -25,6 +26,7 @@ COPY --from=builder --chown=ghostroute:ghostroute /app/.next/static ./.next/stat
 COPY --from=builder --chown=ghostroute:ghostroute /app/public ./public
 COPY --from=builder --chown=ghostroute:ghostroute /app/scripts ./scripts
 COPY --from=builder --chown=ghostroute:ghostroute /app/src/lib ./src/lib
+COPY --from=builder --chown=ghostroute:ghostroute /traffic-intelligence /traffic-intelligence
 USER ghostroute
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
