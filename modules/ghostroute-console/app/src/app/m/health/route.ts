@@ -57,7 +57,7 @@ function shortDateTime(value?: string | number | Date) {
     hour12: false,
   }).formatToParts(date);
   const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
-  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
 function minutesSince(value?: string) {

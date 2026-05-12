@@ -12,6 +12,34 @@ const GENERIC_DESTINATIONS = new Set([
   "Unclassified domain",
 ]);
 
+const PSEUDO_DESTINATIONS = new Set([
+  "Home Reality ingress",
+  "A/Home Reality",
+  "B/XHTTP relay",
+  "C/Naive ingress",
+  "Channel A",
+  "Channel B",
+  "Channel C",
+  "Unknown/Unattributed client traffic",
+  "Unknown/Unattributed LAN-Wi-Fi",
+]);
+
+const CATEGORY_LABELS = {
+  "client.home_reality_ingress": "Encrypted ingress traffic",
+  "client.google.youtube": "Google YouTube",
+  "client.ai.anthropic": "Anthropic API",
+  "client.ai.openai": "OpenAI / ChatGPT",
+  "client.meeting.zoom": "Zoom meeting traffic",
+  "personal_cloud.dropbox": "Dropbox",
+  "system.apple.push": "Apple push service",
+  "analytics.firebase": "Firebase analytics",
+  "cdn.shared": "Shared CDN traffic",
+  "unknown.ip_only": "IP-only destination",
+  "unknown.no_dns_match": "IP-only destination",
+  "unknown.shared_dns_answer": "Shared DNS answer",
+  "unknown.domain": "Unknown domain",
+};
+
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;
   return String(value);
@@ -64,10 +92,19 @@ export function isIpLiteral(value) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(text(value));
 }
 
+export function isPseudoTrafficDestination(value) {
+  const destination = text(value).trim();
+  if (!destination) return false;
+  if (PSEUDO_DESTINATIONS.has(destination)) return true;
+  const lower = destination.toLowerCase();
+  return lower.endsWith(" ingress") || lower.includes(" ingress ") || lower.includes(" relay");
+}
+
 export function isGenericTrafficDestination(value) {
   const destination = text(value).trim();
   if (!destination) return true;
   if (GENERIC_DESTINATIONS.has(destination)) return true;
+  if (isPseudoTrafficDestination(destination)) return true;
   if (destination.includes("/") && !destination.includes(".")) return true;
   return false;
 }
@@ -79,18 +116,64 @@ export function concreteTrafficDestination(row) {
     row?.raw?.dns_qname,
     row?.raw?.sni,
     row?.destination,
-    row?.destination_ip,
-    row?.raw?.destination_ip,
   ].map((value) => text(value).trim()).filter(Boolean);
   for (const candidate of candidates) {
-    if (isIpLiteral(candidate)) return candidate;
+    if (isIpLiteral(candidate)) continue;
     if (candidate.includes(".") && !isGenericTrafficDestination(candidate)) return candidate;
   }
   return "";
 }
 
+export function technicalTrafficDestination(row) {
+  return concreteTrafficDestination(row) || text(row?.destination_ip || row?.raw?.destination_ip || row?.dns_qname || row?.sni || row?.raw?.destination_ip, "");
+}
+
+function prettyToken(value) {
+  return text(value)
+    .replace(/^[a-z]+[.]/, "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function categoryLabel(row) {
+  const category = text(row?.category || row?.raw?.category || row?.dns_category || row?.traffic_lane || row?.traffic_role || row?.traffic_class, "");
+  if (CATEGORY_LABELS[category]) return CATEGORY_LABELS[category];
+  if (category) return prettyToken(category);
+  const provider = text(row?.provider || row?.raw?.provider, "");
+  if (provider) return provider;
+  const role = text(row?.traffic_role || row?.traffic_purpose, "");
+  if (role) return prettyToken(role);
+  return "";
+}
+
+function hasIpEvidence(row) {
+  return Boolean(text(row?.destination_ip || row?.raw?.destination_ip || row?.answer_ip || row?.dns_answer_ip, ""));
+}
+
 export function trafficDisplayDestination(row) {
-  return concreteTrafficDestination(row) || text(row?.destinationLabel || row?.destination || row?.family || row?.domain, "n/a");
+  const concrete = concreteTrafficDestination(row);
+  if (concrete) return concrete;
+  for (const candidate of [row?.destinationLabel, row?.destination, row?.family, row?.domain]) {
+    const value = text(candidate).trim();
+    if (!value || value === "unknown destination") continue;
+    if (isIpLiteral(value)) continue;
+    if (!isGenericTrafficDestination(value)) return value;
+  }
+  const category = categoryLabel(row);
+  if (category) return category;
+  if (hasIpEvidence(row)) return "IP-only destination";
+  if (row?.accounting_bucket) return "No site evidence";
+  return "n/a";
+}
+
+export function isPrimaryTrafficDestinationLabel(value) {
+  const label = text(value).trim();
+  if (!label || label === "n/a" || label === "unknown destination") return false;
+  if (isIpLiteral(label)) return false;
+  if (label === "IP-only destination" || label === "No site evidence") return false;
+  return !isPseudoTrafficDestination(label);
 }
 
 export function destinationEvidence(row) {
@@ -99,8 +182,16 @@ export function destinationEvidence(row) {
   const sni = text(row?.sni || row?.raw?.sni).trim();
   if (sni && !isGenericTrafficDestination(sni)) return { label: sni, kind: "SNI", exact: true };
   const ip = text(row?.destination_ip || row?.raw?.destination_ip).trim();
-  if (ip) return { label: ip, kind: "IP", exact: true };
-  const destination = text(row?.destinationLabel || row?.destination || row?.family || row?.domain).trim();
+  if (ip) return { label: "IP-only destination", kind: "IP", exact: true, technical: ip };
+  const rawDestination = text(row?.destinationLabel || row?.destination || row?.family || row?.domain).trim();
+  if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination) && !isPseudoTrafficDestination(rawDestination)) {
+    return {
+      label: rawDestination,
+      kind: isGenericTrafficDestination(rawDestination) ? "category" : "counter",
+      exact: false,
+    };
+  }
+  const destination = trafficDisplayDestination(row);
   if (destination && destination !== "unknown destination") {
     return {
       label: destination,

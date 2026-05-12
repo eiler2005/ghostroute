@@ -1,3 +1,5 @@
+import { isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "./traffic-window.mjs";
+
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;
   return String(value);
@@ -166,7 +168,7 @@ function routeFromSplit(row) {
 }
 
 function destinationLabel(row) {
-  return text(row?.destination || row?.dns_qname || row?.sni || row?.destination_ip, "unknown destination");
+  return trafficDisplayDestination(row);
 }
 
 export function isMobileTrafficRow(row) {
@@ -277,7 +279,7 @@ function topDestinations(rows, limit = 5) {
   const grouped = new Map();
   for (const row of rows) {
     const label = destinationLabel(row);
-    if (!label || label === "unknown destination") continue;
+    if (!isPrimaryTrafficDestinationLabel(label)) continue;
     const key = label.toLowerCase();
     const current = grouped.get(key) || {
       key,

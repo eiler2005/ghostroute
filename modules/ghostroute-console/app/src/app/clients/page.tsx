@@ -10,18 +10,22 @@ import {
   RawEvidence,
   RouteBadge,
   routeFromBytes,
-  shortDateTime,
   SplitBars,
   StatusBadge,
   timeWithMillis,
 } from "@/components/Widgets";
-import { buildClientsModel, listClientActivity, listClientDomainBreakdown, listClientInventory } from "@/lib/server/selectors/clients";
+import {
+  buildClientsModel,
+  listClientActivity,
+  listClientDestinationsByLane,
+  listClientInventory,
+  listClientLaneSummary,
+  listRouteEvidenceDefects,
+} from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { normalizeDomainBreakdown } from "@/lib/domain-attribution.mjs";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
-import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -97,23 +101,54 @@ function ClientActivityChart({ rows }: { rows: Array<Record<string, any>> }) {
   );
 }
 
-function privacyBreakdown(rows: Array<Record<string, any>>) {
-  const result = {
-    client_observed: 0,
-    service_system: 0,
-    privacy_risk: 0,
-    shared_infra: 0,
-    unknown_review: 0,
-    block_candidate: 0,
-  };
-  for (const row of rows) {
-    const rowBytes = Number(row.bytes || row.total_bytes || 0);
-    if (rowBytes <= 0) continue;
-    const intel = trafficIntelligenceFor(row);
-    const lane = String(intel.traffic_lane || "unknown_review") as keyof typeof result;
-    if (lane in result) result[lane] += rowBytes;
-    if (intel.decision_hint === "block_candidate") result.block_candidate += 1;
+const laneTabs = [
+  { value: "all", label: "All" },
+  { value: "client_observed", label: "Client" },
+  { value: "service_system", label: "Service/system" },
+  { value: "privacy_risk", label: "Analytics/trackers" },
+  { value: "shared_infra", label: "CDN/shared" },
+  { value: "unknown_review", label: "Unknown/review" },
+];
+
+function title(value?: string) {
+  return String(value || "unknown").replace(/_/g, " ");
+}
+
+function summarizeLaneRows(rows: Array<Record<string, any>>) {
+  const summary: Record<string, Record<string, any>> = {};
+  for (const tab of laneTabs) {
+    summary[tab.value] = { bytes: 0, flows: 0, destinations: 0, decisionHints: new Map<string, number>() };
   }
+  const hasAllRow = rows.some((row) => String(row.traffic_lane || "") === "all");
+  for (const row of rows) {
+    const lane = String(row.traffic_lane || "unknown_review");
+    const target = summary[lane] || (summary[lane] = { bytes: 0, flows: 0, destinations: 0, decisionHints: new Map<string, number>() });
+    const rowBytes = Number(row.bytes || row.total_bytes || 0);
+    target.bytes += rowBytes;
+    target.flows += Number(row.flows || 0);
+    target.destinations += Number(row.destinations_count || 0);
+    const hint = String(row.decision_hint || "monitor");
+    target.decisionHints.set(hint, (target.decisionHints.get(hint) || 0) + Number(row.flows || 1));
+    if (lane !== "all" && !hasAllRow) {
+      summary.all.bytes += rowBytes;
+      summary.all.flows += Number(row.flows || 0);
+      summary.all.destinations += Number(row.destinations_count || 0);
+    }
+  }
+  return summary;
+}
+
+function evidenceSummary(rows: Array<Record<string, any>>, totalBytes: number) {
+  const result = { proven: 0, counter: 0, intent: 0, mismatch: 0, unknown: 0 };
+  for (const row of rows) {
+    const value = Number(row.bytes || row.total_bytes || 0);
+    const evidence = String(row.route_evidence || row.route_verification || "");
+    if (evidence.includes("counter") || evidence.includes("allocated")) result.counter += value;
+    else if (evidence.includes("intent")) result.intent += value;
+    else if (evidence.includes("mismatch")) result.mismatch += value;
+    else if (evidence.includes("unknown")) result.unknown += value;
+  }
+  result.proven = Math.max(0, totalBytes - result.counter - result.intent - result.mismatch - result.unknown);
   return result;
 }
 
@@ -122,6 +157,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const selectedClientParam = scalar(params.client) || "";
+  const selectedLane = laneTabs.some((tab) => tab.value === scalar(params.lane)) ? String(scalar(params.lane)) : "all";
   const listFilters = { ...filters, client: "all" };
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
@@ -147,27 +183,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const selectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
-  const selectedDomainBreakdown = selected
-    ? normalizeDomainBreakdown(
-        listClientDomainBreakdown(selected, filters.period || "today", { limit: 24 }),
-        Number(selected.total_bytes || 0),
-        { limit: 8, minimumCoverageRatio: 0.5 },
-      )
-    : { rows: [], unattributedBytes: 0 };
-  const selectedUnattributedBytes = Number(selectedDomainBreakdown.unattributedBytes || 0);
-  const selectedDomainRows = selectedUnattributedBytes > 0
-    ? [
-        ...selectedDomainBreakdown.rows,
-        {
-          destination: "Unknown/Unattributed client traffic",
-          destinationLabel: "Unknown/Unattributed client traffic",
-          bytes: selectedUnattributedBytes,
-          route: selectedRoute,
-          accounting_bucket: true,
-        },
-      ]
-    : selectedDomainBreakdown.rows;
-  const selectedPrivacy = privacyBreakdown([...allSelectedFlows, ...selectedDomainRows]);
+  const selectedLaneRows = selected ? listClientLaneSummary(selected, filters.period || "today", { limit: 80 }) : [];
+  const selectedLaneSummary = summarizeLaneRows(selectedLaneRows);
+  const selectedLaneDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: selectedLane, limit: 16 }) : [];
+  const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
+  const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
   const filterParams = {
     period: filters.period,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -175,6 +195,17 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
     trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     search: filters.search,
+  };
+  const laneHref = (lane: string) => {
+    const next = new URLSearchParams();
+    Object.entries(filterParams).forEach(([key, value]) => {
+      if (value) next.set(key, String(value));
+    });
+    next.set("page", String(clientsPage.page));
+    next.set("pageSize", String(clientsPage.pageSize));
+    if (selected) next.set("client", String(selectedClientId));
+    if (lane !== "all") next.set("lane", lane);
+    return `/clients?${next.toString()}`;
   };
   const clientHref = (row: Record<string, any>) => {
     const next = new URLSearchParams();
@@ -184,6 +215,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     next.set("page", String(clientsPage.page));
     next.set("pageSize", String(clientsPage.pageSize));
     next.set("client", String(selectedClientValue(row)));
+    if (selectedLane !== "all") next.set("lane", selectedLane);
     return `/clients?${next.toString()}`;
   };
   const isSelectedRow = (row: Record<string, any>) => selectedClientId ? selectedClientValue(row) === selectedClientId || matchesClientFilter(row, selectedClientId) : false;
@@ -313,25 +345,63 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 direct={selected.direct_bytes || 0}
                 unknown={Math.max(0, Number(selected.total_bytes || 0) - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0))}
               />
-              <h3>Privacy breakdown</h3>
+              <h3>Traffic lanes</h3>
               <div className="detail-list">
-                <div className="detail-row"><span>Client traffic</span><strong>{bytes(selectedPrivacy.client_observed)}</strong></div>
-                <div className="detail-row"><span>Service/system</span><strong>{bytes(selectedPrivacy.service_system)}</strong></div>
-                <div className="detail-row"><span>Analytics/trackers</span><strong>{bytes(selectedPrivacy.privacy_risk)}</strong></div>
-                <div className="detail-row"><span>CDN/shared</span><strong>{bytes(selectedPrivacy.shared_infra)}</strong></div>
-                <div className="detail-row"><span>Unknown/review</span><strong>{bytes(selectedPrivacy.unknown_review)}</strong></div>
-                <div className="detail-row"><span>Block candidates</span><strong>{selectedPrivacy.block_candidate}</strong></div>
+                {laneTabs.map((tab) => (
+                  <div className="detail-row" key={tab.value}>
+                    <span>
+                      <a href={laneHref(tab.value)}>{tab.label}</a>
+                      <small className="subtle block-detail">
+                        {(selectedLaneSummary[tab.value]?.flows || 0)} flows · {(selectedLaneSummary[tab.value]?.destinations || 0)} destinations
+                      </small>
+                    </span>
+                    <strong>{bytes(selectedLaneSummary[tab.value]?.bytes || 0)}</strong>
+                  </div>
+                ))}
               </div>
+              <nav className="intelligence-tabs" aria-label="Client traffic lane filters">
+                {laneTabs.map((tab) => (
+                  <a className={`muted-button ${selectedLane === tab.value ? "active" : ""}`} href={laneHref(tab.value)} key={tab.value}>
+                    {tab.label}
+                  </a>
+                ))}
+              </nav>
+              <h3>Route evidence</h3>
+              <div className="detail-list">
+                <div className="detail-row"><span>Proven</span><strong>{bytes(selectedEvidenceSummary.proven)}</strong></div>
+                <div className="detail-row"><span>Counter allocated</span><strong>{bytes(selectedEvidenceSummary.counter)}</strong></div>
+                <div className="detail-row"><span>Policy intent</span><strong>{bytes(selectedEvidenceSummary.intent)}</strong></div>
+                <div className="detail-row"><span>Mismatch</span><strong>{bytes(selectedEvidenceSummary.mismatch)}</strong></div>
+                <div className="detail-row"><span>Unknown</span><strong>{bytes(selectedEvidenceSummary.unknown)}</strong></div>
+              </div>
+              {selectedRouteEvidence.length ? (
+                <div className="detail-list">
+                  {selectedRouteEvidence.slice(0, 6).map((row: Record<string, any>) => (
+                    <div className="detail-row" key={`${row.destination_key}-${row.route_evidence}-${row.route_verification}`}>
+                      <span>
+                        {trafficDisplayDestination(row)}
+                        <small className="subtle block-detail">{title(row.route_evidence)} · {title(row.route_verification)} · {title(row.traffic_lane)}</small>
+                      </span>
+                      <strong>{bytes(row.bytes || row.total_bytes || 0)} <RouteBadge value={row.route} /></strong>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="subtle">No route evidence defects for the selected window.</div>}
               <h3>Client activity</h3>
               <ClientActivityChart rows={selectedActivity} />
-              <h3>Top domains</h3>
-              {selectedDomainRows.length === 0 ? (
-                <EmptyState title="No domains for selected client" />
+              <h3>Destinations by lane</h3>
+              {selectedLaneDestinations.length === 0 ? (
+                <EmptyState title="No destinations for selected lane" />
               ) : (
                 <div className="detail-list">
-                  {selectedDomainRows.map((row: Record<string, any>, idx: number) => (
-                    <div className="detail-row" key={idx}>
-                      <span>{trafficDisplayDestination(row)}</span>
+                  {selectedLaneDestinations.map((row: Record<string, any>) => (
+                    <div className="detail-row" key={`${row.destination_key}-${row.traffic_lane}-${row.route}-${row.decision_hint}`}>
+                      <span>
+                        {trafficDisplayDestination(row)}
+                        <small className="subtle block-detail">
+                          {title(row.traffic_lane)} · {title(row.dns_category)} · {row.provider || row.category || title(row.decision_hint)}
+                        </small>
+                      </span>
                       <strong>{bytes(row.bytes || 0)} <RouteBadge value={row.route || routeFromBytes(row)} /></strong>
                     </div>
                   ))}
@@ -367,7 +437,16 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 </div>
               )}
               <ConfidenceHelp />
-              <RawEvidence value={{ client: selected, activity: selectedActivity, flows: selectedFlows, dns: selectedDns, alerts: selectedAlerts }} />
+              <RawEvidence value={{
+                client: selected,
+                laneSummary: selectedLaneRows,
+                laneDestinations: selectedLaneDestinations,
+                routeEvidence: selectedRouteEvidence,
+                activity: selectedActivity,
+                flows: selectedFlows,
+                dns: selectedDns,
+                alerts: selectedAlerts,
+              }} />
             </>
           )}
         </aside>}

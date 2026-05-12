@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listClientInventory } from "@/lib/server/selectors/clients";
+import {
+  listClientDestinationsByLane,
+  listClientInventory,
+  listClientLaneSummary,
+  listRouteEvidenceDefects,
+} from "@/lib/server/selectors/clients";
 import { clearDerivedCache } from "@/lib/server/selectors/shell";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +26,16 @@ export async function GET(request: NextRequest) {
       search: search.get("search") || "",
     },
   });
+  const selectedClient = search.get("client") || "";
+  const selected = selectedClient && selectedClient !== "all" ? result.rows[0] || selectedClient : null;
+  const lane = search.get("lane") || "all";
+  const selectedPayload = selected
+    ? {
+        laneSummary: listClientLaneSummary(selected, search.get("period") || "today", { limit: 80 }),
+        laneDestinations: listClientDestinationsByLane(selected, search.get("period") || "today", { lane, limit: 50 }),
+        routeEvidence: listRouteEvidenceDefects(search.get("period") || "today", { client: selected, limit: 50 }),
+      }
+    : undefined;
   return NextResponse.json({
     total: result.total,
     page: result.page,
@@ -30,5 +45,6 @@ export async function GET(request: NextRequest) {
       const { raw, ...rest } = row;
       return rest;
     }),
+    selected: selectedPayload,
   });
 }

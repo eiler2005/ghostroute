@@ -6,7 +6,7 @@ import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLiveModel, listLiveEvents } from "@/lib/server/selectors/live";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { aggregateDnsInterest } from "@/lib/traffic-window.mjs";
+import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -146,7 +146,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
                   const rowAny = row as Record<string, any>;
                   const eventType = row.event_type || "event";
                   const origin = row.origin || row.client || "System";
-                  const destination = row.destinationLabel || row.destination || row.summary || "destination";
+                  const destination = trafficDisplayDestination(row);
                   const clientIp = rowAny.client_ip;
                   return (
                     <tr key={`${eventType}-${row.id || idx}`}>
@@ -219,8 +219,8 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
                       <td className="live-col-time">{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.event_ts || row.collected_at, true)}</td>
                       <td className="live-col-client" title={row.client}>{row.client}</td>
                       <td className="activity-col-channel"><ChannelBadge value={row.channel} /></td>
-                      <td className="live-col-destination" title={row.destinationLabel || row.destination}>
-                        <Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{row.destinationLabel || row.destination}</Link>
+                      <td className="live-col-destination" title={trafficDisplayDestination(row)}>
+                        <Link href={`/traffic/${encodeURIComponent(row.id || `flow:${idx}`)}`}>{trafficDisplayDestination(row)}</Link>
                       </td>
                       <td className="live-col-route"><RouteBadge value={row.route} /></td>
                       <td className="activity-col-traffic">{bytes(row.bytes || row.total_bytes || 0)}</td>

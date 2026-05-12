@@ -67,6 +67,7 @@ test("dashboard shows traffic analytics in English", async ({ page, isMobile }) 
 
 test("dashboard rankings hide pseudo clients and keep destinations populated", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/?desktop=1" : "/");
+  await expect(page.getByRole("heading", { name: "Top destinations" })).toHaveCount(1);
   const topClients = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top clients" }) });
   const topDestinations = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top destinations" }) });
   await expect(topClients.locator(".dashboard-rank-row").first()).toBeVisible();
@@ -78,6 +79,8 @@ test("dashboard rankings hide pseudo clients and keep destinations populated", a
   expect(clientTotals.map((value) => value.trim())).not.toContain("0 B");
   await expect(topDestinations.locator(".dashboard-rank-row").first()).toBeVisible();
   await expect(topDestinations).not.toContainText(/No destination traffic observed|No concrete/i);
+  await expect(topDestinations).not.toContainText(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+  await expect(topDestinations).not.toContainText("Home Reality ingress");
 });
 
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {
@@ -266,6 +269,29 @@ test("clients row selection updates the detail panel", async ({ page, isMobile }
   if (selectedClient) expect(new URL(page.url()).searchParams.get("client")).toBe(selectedClient);
   await expect(page.locator(".clients-card tbody tr.selected")).toHaveCount(1);
   await expect(page.locator(".side-panel")).toContainText(deviceName);
+});
+
+test("clients expose lane drilldown and route evidence", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only client lane panel");
+  await page.goto("/clients");
+  await expect(page.getByRole("heading", { name: "Traffic lanes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Destinations by lane" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Route evidence" })).toBeVisible();
+  await expect(page.locator(".side-panel")).toContainText("Counter allocated");
+  await page.getByRole("link", { name: /Service\/system/ }).first().click();
+  await expect(page).toHaveURL(/lane=service_system/);
+});
+
+test("traffic and live primary destinations hide raw IP labels", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/traffic?desktop=1" : "/traffic");
+  if (!(await page.getByText("No traffic rows").isVisible().catch(() => false))) {
+    await expect(page.locator(".flow-events-table tbody tr .col-destination").first()).toBeVisible();
+    const labels = await page.locator(".flow-events-table tbody tr .col-destination .destination-cell > span:first-child").allTextContents();
+    expect(labels.join("\n")).not.toMatch(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+  }
+  await page.goto(isMobile ? "/live?desktop=1" : "/live");
+  const liveLabels = await page.locator(".client-activity-table tbody tr .live-col-destination").allTextContents();
+  expect(liveLabels.join("\n")).not.toMatch(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
 });
 
 test("live summary shows milliseconds and aggregated DNS interest", async ({ page, isMobile }) => {

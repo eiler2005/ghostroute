@@ -301,13 +301,17 @@ function formatEventTime(value: unknown) {
   if (!source) return "latest snapshot";
   const parsed = new Date(source);
   if (Number.isNaN(parsed.getTime())) return source;
-  return parsed.toLocaleString("ru-RU", {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  }).replace(",", "");
+    hour12: false,
+  }).formatToParts(parsed);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+  return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}.${String(parsed.getMilliseconds()).padStart(3, "0")}`;
 }
 
 function isCategoryAggregate(value: string) {
