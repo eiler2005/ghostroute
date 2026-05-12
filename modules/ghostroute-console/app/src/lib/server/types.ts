@@ -73,4 +73,15 @@ export type ConsoleModel = {
   alerts: Array<Record<string, any>>;
   catalog: Array<Record<string, any>>;
   settingsInventory?: Record<string, any>;
+  trafficIntelligence?: {
+    enrichments: Array<Record<string, any>>;
+    candidates: Array<Record<string, any>>;
+    summary: {
+      total: number;
+      pendingCandidates: number;
+      byClass: Record<string, number>;
+      byRole: Record<string, number>;
+      byAction: Record<string, number>;
+    };
+  };
 };

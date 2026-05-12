@@ -500,10 +500,12 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
     trafficClass,
     trafficClassLabel: trafficClassLabel(trafficClass),
     route_meta: {
+      intended_route: row.intended_route || raw.intended_route || row.route || "Unknown",
       source: row.route_source || raw.route_source || "",
       basis: row.route_basis || raw.route_basis || "",
       matched_ipset: row.matched_ipset || raw.matched_ipset || "",
       verification: row.route_verification || raw.route_verification || "",
+      status: row.route_status || raw.route_status || "",
       egress_iface: row.egress_iface || raw.egress_iface || "",
       fwmark: row.fwmark || raw.fwmark || "",
     },
@@ -522,6 +524,8 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
       qname: row.dns_qname || raw.dns_qname || "",
       answer_ip: row.dns_answer_ip || raw.dns_answer_ip || "",
       confidence: row.dns_link_confidence || raw.dns_link_confidence || "",
+      status: row.dns_status || raw.dns_status || "",
+      ts_source: row.dns_ts_source || raw.dns_ts_source || "",
     },
   };
 }
@@ -1311,6 +1315,7 @@ function buildConsoleModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
     destination_ip: row.destination_ip,
     destination_port: row.destination_port,
     route: row.route,
+    intended_route: row.intended_route,
     confidence: row.confidence,
     bytes: row.bytes,
     connections: row.connections,
@@ -1588,6 +1593,15 @@ function evidenceJson(row: any) {
   }
 }
 
+function safeJson(value: unknown, fallback: any) {
+  try {
+    if (typeof value !== "string" || !value.trim()) return fallback;
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 function readModelHasRows(table: string) {
   if (!/^(flow_sessions|dns_query_log|device_inventory|alarm_events)$/.test(table)) return false;
   try {
@@ -1668,10 +1682,10 @@ function notSyntheticAccountingBucketSql(evidenceColumn = "evidence_json") {
 
 function flowSelect() {
   return `rowid as rowid, 'flow:' || rowid as id, snapshot_id, snapshot_type, collected_at,
-    client, client_ip, channel, destination, destination_ip, destination_port, route, confidence,
+    client, client_ip, channel, destination, destination_ip, destination_port, route, intended_route, confidence,
     bytes, connections, protocol, dns_qname, dns_answer_ip, sni, outbound, matched_rule,
     rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log,
-    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json`;
+    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, raw_json`;
 }
 
 function mapFlowRow(row: any) {
@@ -1685,6 +1699,7 @@ function mapFlowRow(row: any) {
     destination_ip: row.destination_ip,
     destination_port: row.destination_port,
     route: row.route,
+    intended_route: row.intended_route,
     confidence: row.confidence,
     bytes: Number(row.bytes || 0),
     connections: Number(row.connections || 0),
@@ -1709,6 +1724,13 @@ function mapFlowRow(row: any) {
     via_vps_bytes: Number(row.via_vps_bytes || 0),
     direct_bytes: Number(row.direct_bytes || 0),
     unknown_bytes: Number(row.unknown_bytes || 0),
+    route_verification: row.route_verification,
+    route_status: row.route_status,
+    dns_link_id: row.dns_link_id,
+    dns_link_confidence: row.dns_link_confidence,
+    dns_status: row.dns_status,
+    dns_ts_source: row.dns_ts_source,
+    accounting_status: row.accounting_status,
     collected_at: row.collected_at,
     raw: rawJson(row),
   });
@@ -1716,9 +1738,9 @@ function mapFlowRow(row: any) {
 
 function flowSessionSelect() {
   return `id, snapshot_id, collected_at, first_seen, last_seen, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key,
-    channel, destination, destination_ip, destination_port, protocol, route, policy, matched_rule,
+    channel, destination, destination_ip, destination_port, protocol, route, intended_route, policy, matched_rule,
     outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country, ts_confidence,
-    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
+    traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, bytes, connections, duration_seconds, duration_confidence, risk, risk_reason,
     confidence, source_kind, evidence_json`;
 }
 
@@ -1763,6 +1785,13 @@ function mapFlowSessionRow(row: any) {
     via_vps_bytes: Number(row.via_vps_bytes || 0),
     direct_bytes: Number(row.direct_bytes || 0),
     unknown_bytes: Number(row.unknown_bytes || 0),
+    route_verification: row.route_verification,
+    route_status: row.route_status,
+    dns_link_id: row.dns_link_id,
+    dns_link_confidence: row.dns_link_confidence,
+    dns_status: row.dns_status,
+    dns_ts_source: row.dns_ts_source,
+    accounting_status: row.accounting_status,
     policy: row.policy,
     risk: row.risk,
     risk_reason: row.risk_reason,
@@ -2619,6 +2648,95 @@ function buildCatalogModelUncached(filters: ConsoleFilters = {}) {
   return buildShellModel(filters, {
     catalog,
     catalogReviews: catalogReviews() as Array<Record<string, any>>,
+  });
+}
+
+function intelligenceSearchMatches(row: Record<string, any>, search = "") {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    row.destination_key,
+    row.value,
+    row.normalized_value,
+    row.category,
+    row.provider,
+    row.traffic_class,
+    row.traffic_role,
+    row.traffic_purpose,
+    row.decision_hint,
+    row.reason_code,
+    row.human_explanation,
+  ].filter(Boolean).join(" ").toLowerCase().includes(needle);
+}
+
+function readTrafficIntelligence(filters: ConsoleFilters = {}) {
+  const trafficClass = filters.trafficClass || "all";
+  const search = filters.search || "";
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      select destination_key, kind, value, normalized_value, category, provider, action_hint,
+             traffic_class, traffic_role, traffic_purpose, decision_hint, human_explanation,
+             source, confidence, reason_code, sources_json, evidence_sources_json, evidence_json,
+             first_seen, last_seen, expires_at
+        from destination_enrichment
+       order by last_seen desc
+       limit 500
+    `).all() as Array<Record<string, any>>;
+    const enrichments: Array<Record<string, any>> = rows
+      .filter((row) => trafficClass === "all" || row.traffic_class === trafficClass)
+      .filter((row) => intelligenceSearchMatches(row, search))
+      .slice(0, 250)
+      .map((row) => ({
+        ...row,
+        evidence_sources: safeJson(row.evidence_sources_json, []),
+        sources: safeJson(row.sources_json, []),
+        evidence: safeJson(row.evidence_json, {}),
+      }));
+    const candidates = db.prepare(`
+      select candidate_id, snapshot_id, destination_key, client_key, client_ip, proposed_action,
+             confidence, reason_code, explanation, status, applied, created_at_utc, updated_at_utc,
+             evidence_json
+        from decision_candidates
+       order by updated_at_utc desc
+       limit 200
+    `).all() as Array<Record<string, any>>;
+    const filteredCandidates: Array<Record<string, any>> = candidates
+      .filter((row) => !search || JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
+      .map((row) => ({ ...row, evidence: safeJson(row.evidence_json, {}) }));
+    const summary = {
+      total: enrichments.length,
+      pendingCandidates: filteredCandidates.filter((row) => row.status === "pending" && !Number(row.applied || 0)).length,
+      byClass: enrichments.reduce<Record<string, number>>((acc, row) => {
+        const key = row.traffic_class || "unclassified";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+      byRole: enrichments.reduce<Record<string, number>>((acc, row) => {
+        const key = row.traffic_role || "unknown";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+      byAction: enrichments.reduce<Record<string, number>>((acc, row) => {
+        const key = row.decision_hint || row.action_hint || "monitor";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+    };
+    return { enrichments, candidates: filteredCandidates.slice(0, 80), summary };
+  } catch {
+    return {
+      enrichments: [],
+      candidates: [],
+      summary: { total: 0, pendingCandidates: 0, byClass: {}, byRole: {}, byAction: {} },
+    };
+  }
+}
+
+export function buildIntelligenceModel(filters: ConsoleFilters = {}): ConsoleModel {
+  return cacheGet(`build-intelligence-model:${dbContentVersion()}:${filtersKey(filters)}`, () => {
+    const trafficIntelligence = readTrafficIntelligence(filters);
+    return buildShellModel(filters, { trafficIntelligence });
   });
 }
 

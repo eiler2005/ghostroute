@@ -1,5 +1,3 @@
-export { classifyDestination } from "./classification.mjs";
-
 export type TrafficClass = "client" | "personal_cloud" | "service_background" | "unclassified";
 export type TrafficRole =
   | "client_interactive"
@@ -49,3 +47,5 @@ export type TrafficIntelligenceResult = {
   human_explanation: string;
   evidence_sources: string[];
 };
+
+export function classifyDestination(input: TrafficIntelligenceInput | string | unknown): TrafficIntelligenceResult;

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const pages = ["/", "/traffic", "/dns", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
+const pages = ["/", "/traffic", "/dns", "/intelligence", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
 const mobileRedirects: Record<string, string> = {
   "/": "/m",
   "/traffic": "/m/traffic",
@@ -145,6 +145,15 @@ test("traffic class controls include personal cloud on desktop and mobile", asyn
   await expect(page.getByRole("heading", { name: "Flow Explorer" }).first()).toBeVisible();
   await expect(page.locator("select[name='trafficClass']")).toBeVisible();
   await expect(page.locator("select[name='trafficClass']")).toContainText("Personal cloud");
+});
+
+test("traffic intelligence is read-only and honors traffic class filters", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/intelligence?desktop=1&trafficClass=service_background" : "/intelligence?trafficClass=service_background");
+  await expect(page.getByRole("heading", { name: "Traffic Intelligence" })).toBeVisible();
+  await expect(page.locator("select[name='trafficClass']")).toHaveValue("service_background");
+  await expect(page.getByText("Dry-run only")).toBeVisible();
+  await expect(page.getByText("Destination intelligence")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Runtime deploy");
 });
 
 test("traffic pages expose channel context without hiding mobile rows", async ({ page, isMobile }) => {

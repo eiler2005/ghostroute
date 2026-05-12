@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
+import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
 import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
 import { loadDeviceAttributions, resolveClient } from "../../src/lib/device-attribution.mjs";
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
 import { normalizeRouterRollups } from "./router-rollups.mjs";
 
-const MIGRATION_VERSION = 14;
+const MIGRATION_VERSION = 15;
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -210,6 +211,135 @@ function signedByteSplit(row, route = row?.route, totalBytes = number(row?.bytes
 
 function flowTrafficClass(row) {
   return trafficClassFor({ ...row, raw: row?.raw || row });
+}
+
+function intendedRoute(row) {
+  const route = text(row?.intended_route || row?.route || "");
+  if (["VPS", "Direct"].includes(route)) return route;
+  return "Unknown";
+}
+
+function routeStatus(row) {
+  const value = text(row?.route_status || "").toLowerCase();
+  if (["verified", "intent_only", "mismatch", "unknown"].includes(value)) return value;
+  const verification = text(row?.route_verification || "").toLowerCase();
+  if (["verified_vps", "verified_direct"].includes(verification)) return "verified";
+  if (verification === "intent_only") return "intent_only";
+  if (verification === "mismatch") return "mismatch";
+  return "unknown";
+}
+
+function dnsStatus(row) {
+  const value = text(row?.dns_status || "").toLowerCase();
+  if (["exact", "shared", "no_match", "approximate_ts"].includes(value)) return value;
+  const confidenceValue = text(row?.dns_link_confidence || "").toLowerCase();
+  if (confidenceValue === "no_dns_match") return "no_match";
+  if (confidenceValue === "low") return "shared";
+  if (text(row?.dns_ts_source || "").toLowerCase() === "snapshot_approx") return "approximate_ts";
+  return confidenceValue ? "exact" : "no_match";
+}
+
+function dnsTsSource(row) {
+  return text(row?.dns_ts_source || row?.ts_source || "");
+}
+
+function destinationKeyFor(row) {
+  const value = text(row?.dns_qname || row?.domain || row?.destination || row?.destination_ip || row?.ip || "").trim().toLowerCase();
+  return value || "unknown";
+}
+
+function destinationKindFor(row) {
+  const key = destinationKeyFor(row);
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(key) || (key.includes(":") && /^[0-9a-f:.]+$/i.test(key))) return "ip";
+  return "domain";
+}
+
+function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
+  const classification = classifyDestination(fact);
+  const destinationKey = destinationKeyFor(fact);
+  const kind = destinationKindFor(fact);
+  const value = text(fact.dns_qname || fact.domain || fact.destination || fact.destination_ip || destinationKey);
+  const normalizedValue = destinationKey;
+  const now = collectedAt || new Date().toISOString();
+  const sources = classification.evidence_sources || [];
+  const evidence = {
+    fact_id: fact.fact_id,
+    route: fact.route,
+    intended_route: fact.intended_route,
+    route_verification: fact.route_verification,
+    route_status: fact.route_status,
+    dns_link_confidence: fact.dns_link_confidence,
+    dns_status: fact.dns_status,
+  };
+  db.prepare(`
+    insert into destination_enrichment(destination_key, kind, value, normalized_value, category, provider, action_hint,
+      traffic_class, traffic_role, traffic_purpose, decision_hint, human_explanation, source, confidence, reason_code,
+      sources_json, evidence_sources_json, evidence_json, first_seen, last_seen, expires_at)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+    on conflict(destination_key) do update set
+      kind = excluded.kind,
+      value = excluded.value,
+      normalized_value = excluded.normalized_value,
+      category = excluded.category,
+      provider = excluded.provider,
+      action_hint = excluded.action_hint,
+      traffic_class = excluded.traffic_class,
+      traffic_role = excluded.traffic_role,
+      traffic_purpose = excluded.traffic_purpose,
+      decision_hint = excluded.decision_hint,
+      human_explanation = excluded.human_explanation,
+      source = excluded.source,
+      confidence = excluded.confidence,
+      reason_code = excluded.reason_code,
+      sources_json = excluded.sources_json,
+      evidence_sources_json = excluded.evidence_sources_json,
+      evidence_json = excluded.evidence_json,
+      last_seen = excluded.last_seen
+  `).run(
+    destinationKey,
+    kind,
+    value,
+    normalizedValue,
+    classification.category,
+    classification.provider,
+    classification.action_hint || classification.decision_hint,
+    classification.traffic_class,
+    classification.traffic_role,
+    classification.traffic_purpose,
+    classification.decision_hint,
+    classification.human_explanation,
+    "local_rules",
+    classification.confidence,
+    classification.reason_code,
+    JSON.stringify(sources),
+    JSON.stringify(sources),
+    JSON.stringify(evidence),
+    now,
+    now
+  );
+
+  const candidateId = crypto.createHash("sha256")
+    .update([snapshotId, destinationKey, fact.client_key || "", classification.decision_hint, classification.reason_code].join("|"))
+    .digest("hex")
+    .slice(0, 32);
+  db.prepare(`
+    insert or replace into decision_candidates(candidate_id, snapshot_id, destination_key, client_key, client_ip,
+      proposed_action, confidence, reason_code, explanation, status, applied, created_at_utc, updated_at_utc, evidence_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+  `).run(
+    candidateId,
+    snapshotId,
+    destinationKey,
+    text(fact.client_key || ""),
+    text(fact.client_ip || ""),
+    classification.decision_hint,
+    classification.confidence,
+    classification.reason_code,
+    classification.human_explanation,
+    now,
+    now,
+    JSON.stringify({ ...evidence, category: classification.category, traffic_class: classification.traffic_class })
+  );
 }
 
 function isConcreteDestination(value) {
@@ -1180,13 +1310,36 @@ export function ensureConsoleSchema(db) {
         category text not null default 'unknown',
         provider text not null default '',
         action_hint text not null default 'monitor',
+        traffic_class text not null default 'unclassified',
+        traffic_role text not null default 'unknown',
+        traffic_purpose text not null default 'unknown',
+        decision_hint text not null default 'monitor',
+        human_explanation text not null default '',
+        source text not null default 'local_rules',
         confidence text not null default 'unknown',
         reason_code text not null default '',
         sources_json text not null default '[]',
+        evidence_sources_json text not null default '[]',
         evidence_json text not null default '{}',
         first_seen text not null,
         last_seen text not null,
         expires_at text not null default ''
+      );
+      create table if not exists decision_candidates (
+        candidate_id text primary key,
+        snapshot_id integer,
+        destination_key text not null default '',
+        client_key text not null default '',
+        client_ip text not null default '',
+        proposed_action text not null,
+        confidence text not null default 'unknown',
+        reason_code text not null default '',
+        explanation text not null default '',
+        status text not null default 'pending',
+        applied integer not null default 0,
+        created_at_utc text not null,
+        updated_at_utc text not null,
+        evidence_json text not null default '{}'
       );
       create table if not exists filter_rules (
         rule_id text primary key,
@@ -1224,7 +1377,7 @@ export function ensureConsoleSchema(db) {
     addColumnIfMissing(db, "normalized_devices", "channel", "text not null default 'Unknown'");
   addColumnIfMissing(db, "normalized_flows", "channel", "text not null default 'Unknown'");
   for (const [table, columns] of Object.entries({
-    normalized_flows: {
+      normalized_flows: {
       client_ip: "text not null default ''",
       destination_ip: "text not null default ''",
       destination_port: "text not null default ''",
@@ -1250,14 +1403,18 @@ export function ensureConsoleSchema(db) {
       unknown_bytes: "integer not null default 0",
       bytes_up: "integer not null default 0",
       bytes_down: "integer not null default 0",
-      route_source: "text not null default ''",
-      route_basis: "text not null default ''",
-      matched_ipset: "text not null default ''",
-      route_verification: "text not null default ''",
-      dns_link_id: "text not null default ''",
-      dns_link_confidence: "text not null default ''",
-      accounting_status: "text not null default 'ok'",
-    },
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
+        route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
+      },
     normalized_dns: {
       client_ip: "text not null default ''",
       answer_ip: "text not null default ''",
@@ -1286,14 +1443,18 @@ export function ensureConsoleSchema(db) {
       unknown_bytes: "integer not null default 0",
       bytes_up: "integer not null default 0",
       bytes_down: "integer not null default 0",
-      route_source: "text not null default ''",
-      route_basis: "text not null default ''",
-      matched_ipset: "text not null default ''",
-      route_verification: "text not null default ''",
-      dns_link_id: "text not null default ''",
-      dns_link_confidence: "text not null default ''",
-      accounting_status: "text not null default 'ok'",
-    },
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
+        route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
+      },
     events: {
       event_id: "text not null default ''",
       client_ip: "text not null default ''",
@@ -1344,29 +1505,48 @@ export function ensureConsoleSchema(db) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
   }
   for (const [table, columns] of Object.entries({
-    traffic_facts: {
-      protocol: "text not null default ''",
-      bytes_up: "integer not null default 0",
-      bytes_down: "integer not null default 0",
-      route_source: "text not null default ''",
-      route_basis: "text not null default ''",
-      matched_ipset: "text not null default ''",
-      egress_iface: "text not null default ''",
-      fwmark: "text not null default ''",
-      route_verification: "text not null default ''",
-      dns_link_id: "text not null default ''",
-      dns_link_confidence: "text not null default ''",
-      accounting_status: "text not null default 'ok'",
-    },
-    traffic_dns_links: {
+      traffic_facts: {
+        protocol: "text not null default ''",
+        bytes_up: "integer not null default 0",
+        bytes_down: "integer not null default 0",
+        route_source: "text not null default ''",
+        route_basis: "text not null default ''",
+        matched_ipset: "text not null default ''",
+        egress_iface: "text not null default ''",
+        fwmark: "text not null default ''",
+        intended_route: "text not null default 'Unknown'",
+        route_verification: "text not null default ''",
+        route_status: "text not null default 'unknown'",
+        dns_link_id: "text not null default ''",
+        dns_link_confidence: "text not null default ''",
+        dns_status: "text not null default 'no_match'",
+        dns_ts_source: "text not null default ''",
+        accounting_status: "text not null default 'ok'",
+      },
+      traffic_dns_links: {
       id: "text not null default ''",
       destination_ip: "text not null default ''",
       destination_port: "text not null default ''",
       protocol: "text not null default ''",
-      dns_answer_ip: "text not null default ''",
-      dns_event_ts_utc: "text not null default ''",
-      flow_event_ts_utc: "text not null default ''",
-    },
+        dns_answer_ip: "text not null default ''",
+        dns_event_ts_utc: "text not null default ''",
+        dns_ts_source: "text not null default ''",
+        flow_event_ts_utc: "text not null default ''",
+      },
+      destination_enrichment: {
+        traffic_class: "text not null default 'unclassified'",
+        traffic_role: "text not null default 'unknown'",
+        traffic_purpose: "text not null default 'unknown'",
+        decision_hint: "text not null default 'monitor'",
+        human_explanation: "text not null default ''",
+        source: "text not null default 'local_rules'",
+        evidence_sources_json: "text not null default '[]'",
+      },
+      decision_candidates: {
+        snapshot_id: "integer",
+        client_ip: "text not null default ''",
+        applied: "integer not null default 0",
+      },
   })) {
     for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
   }
@@ -1406,6 +1586,9 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_traffic_dns_links_client_dest on traffic_dns_links(client_ip, destination_ip, collected_at desc);
     create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
     create index if not exists idx_traffic_facts_client_dest on traffic_facts(client_ip, destination_ip, event_ts_utc desc);
+    create index if not exists idx_destination_enrichment_class on destination_enrichment(traffic_class, category, last_seen desc);
+    create index if not exists idx_decision_candidates_status on decision_candidates(status, updated_at_utc desc);
+    create index if not exists idx_decision_candidates_destination on decision_candidates(destination_key, client_key, updated_at_utc desc);
     create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
     create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
     create index if not exists idx_filter_decisions_obs on filter_decisions(observed_at_utc desc);
@@ -1413,7 +1596,7 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
   `);
 
-  for (const version of [6, 7, 8, 9, 10, 12, 13, MIGRATION_VERSION]) {
+  for (const version of [6, 7, 8, 9, 10, 12, 13, 14, MIGRATION_VERSION]) {
     db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
       version,
       new Date().toISOString()
@@ -3118,15 +3301,16 @@ export function rebuildObservabilityReadModels(db) {
 
     const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
     const catalogMatch = buildCatalogMatcher(catalogRows);
-    const flowInsert = db.prepare(`
-      insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen,
-        event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
-        device_key, channel, destination, destination_ip, destination_port, protocol, route, policy,
+      const flowInsert = db.prepare(`
+        insert into flow_sessions(id, snapshot_id, collected_at, first_seen, last_seen,
+          event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
+        device_key, channel, destination, destination_ip, destination_port, protocol, route, intended_route, policy,
         matched_rule, outbound, dns_qname, dns_answer_ip, sni, egress_ip, egress_asn, egress_country,
-        ts_confidence, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes, connections,
+        ts_confidence, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status,
+        dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, bytes, connections,
         duration_seconds, duration_confidence, risk, risk_reason, confidence, source_kind, evidence_json)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
     const flowRows = db.prepare("select rowid, * from normalized_flows order by collected_at desc, rowid desc limit ?").all(flowLimit);
     const flowTopDomains = new Map();
     for (const row of flowRows) {
@@ -3163,6 +3347,7 @@ export function rebuildObservabilityReadModels(db) {
         text(row.destination_port),
         text(row.protocol),
         text(row.route || routeFromTraffic(raw), "Unknown"),
+        intendedRoute(row),
         policyForFlow(row),
         text(row.matched_rule),
         text(row.outbound),
@@ -3177,6 +3362,13 @@ export function rebuildObservabilityReadModels(db) {
         rawSplit.viaVpsBytes,
         rawSplit.directBytes,
         rawSplit.unknownBytes,
+        text(row.route_verification || ""),
+        routeStatus(row),
+        text(row.dns_link_id || ""),
+        text(row.dns_link_confidence || ""),
+        dnsStatus(row),
+        dnsTsSource(row),
+        text(row.accounting_status || "ok"),
         number(row.bytes),
         number(row.connections),
         durationSeconds(row),
@@ -3185,7 +3377,7 @@ export function rebuildObservabilityReadModels(db) {
         risk.reason,
         confidence(row.confidence),
         text(row.snapshot_type || "traffic"),
-        json({ ...raw, normalized_rowid: row.rowid })
+        json({ ...raw, normalized_rowid: row.rowid, intended_route: intendedRoute(row), route_status: routeStatus(row), dns_status: dnsStatus(row), dns_ts_source: dnsTsSource(row) })
       );
       flowCount += 1;
       if (destination && destination !== "unknown destination") {
@@ -3431,6 +3623,7 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
     "traffic_attribution_gaps",
     "events",
     "route_decisions",
+    "decision_candidates",
   ]) {
     db.prepare(`delete from ${table} where snapshot_id = ?`).run(snapshotId);
   }
@@ -3511,16 +3704,16 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
   }
 
   const factInsert = db.prepare(`
-    insert or replace into traffic_facts(fact_id, snapshot_id, collected_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client_key, client_label, client_ip, device_key, channel, route, traffic_class, destination, destination_kind, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, policy, matched_rule, outbound, bytes, via_vps_bytes, direct_bytes, unknown_bytes, connections, identity_confidence, byte_confidence, destination_confidence, allocation_basis, evidence_level, confidence, evidence_json, protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, egress_iface, fwmark, route_verification, dns_link_id, dns_link_confidence, accounting_status)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert or replace into traffic_facts(fact_id, snapshot_id, collected_at, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client_key, client_label, client_ip, device_key, channel, route, intended_route, traffic_class, destination, destination_kind, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, policy, matched_rule, outbound, bytes, via_vps_bytes, direct_bytes, unknown_bytes, connections, identity_confidence, byte_confidence, destination_confidence, allocation_basis, evidence_level, confidence, evidence_json, protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, egress_iface, fwmark, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const flowInsert = db.prepare(`
-    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes_up, bytes_down, route_source, route_basis, matched_ipset, route_verification, dns_link_id, dns_link_confidence, accounting_status, raw_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, intended_route, confidence, bytes, connections, protocol, client_ip, destination_ip, destination_port, dns_qname, dns_answer_ip, sni, outbound, matched_rule, rule_set, egress_ip, egress_asn, egress_country, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, source_log, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, bytes_up, bytes_down, route_source, route_basis, matched_ipset, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, raw_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const dnsLinkInsert = db.prepare(`
-    insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json, id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, flow_event_ts_utc)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into traffic_dns_links(snapshot_id, collected_at, client_key, client_ip, domain, destination, link_type, confidence, evidence_json, id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, dns_ts_source, flow_event_ts_utc)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const dnsLinksById = new Map((payload.dns_links || []).map((link) => [text(link.id || link.dns_link_id), link]));
   for (const row of payload.traffic_facts || []) {
@@ -3549,6 +3742,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       resolved.device_key || text(row.device_key || ""),
       channel,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      intendedRoute(row),
       trafficClass,
       destination,
       text(row.destination_kind || ""),
@@ -3581,8 +3775,11 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.egress_iface || ""),
       text(row.fwmark || ""),
       text(row.route_verification || ""),
+      routeStatus(row),
       text(row.dns_link_id || ""),
       text(row.dns_link_confidence || ""),
+      dnsStatus(row),
+      dnsTsSource(row),
       text(row.accounting_status || "ok")
     );
     flowInsert.run(
@@ -3593,6 +3790,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       channel,
       destination,
       text(row.route || routeFromSplit(split.viaVpsBytes, split.directBytes, split.unknownBytes), "Unknown"),
+      intendedRoute(row),
       rowConfidence,
       split.totalBytes,
       number(row.connections || row.total_connections),
@@ -3626,11 +3824,28 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.route_basis || ""),
       text(row.matched_ipset || ""),
       text(row.route_verification || ""),
+      routeStatus(row),
       text(row.dns_link_id || ""),
       text(row.dns_link_confidence || ""),
+      dnsStatus(row),
+      dnsTsSource(row),
       text(row.accounting_status || "ok"),
       json(row)
     );
+    syncTrafficIntelligence(db, snapshotId, collectedAt, {
+      ...row,
+      fact_id: factId,
+      client_key: key,
+      client_ip: text(row.client_ip || row.ip || ""),
+      destination,
+      destination_ip: destinationIp(row),
+      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      traffic_class: trafficClass,
+      intended_route: intendedRoute(row),
+      route_status: routeStatus(row),
+      dns_status: dnsStatus(row),
+      dns_ts_source: dnsTsSource(row),
+    });
     const domain = text(row.dns_qname || row.domain || "");
     if (domain) {
       const linkedDns = dnsLinksById.get(text(row.dns_link_id || row.link_id)) || row;
@@ -3650,6 +3865,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
         text(linkedDns.protocol || row.protocol || ""),
         text(linkedDns.dns_answer_ip || row.dns_answer_ip || row.answer_ip || ""),
         text(linkedDns.dns_event_ts_utc || ""),
+        text(linkedDns.dns_ts_source || row.dns_ts_source || ""),
         text(linkedDns.flow_event_ts_utc || row.event_ts_utc || "")
       );
     }

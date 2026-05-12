@@ -619,6 +619,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 12").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 13").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 14").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 15").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'display_ts_utc'").get());
@@ -634,12 +635,16 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'dns_qname'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('flow_sessions') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('dns_query_log') where name = 'display_ts_utc'").get());
-  for (const column of ["protocol", "bytes_up", "bytes_down", "route_source", "route_basis", "matched_ipset", "egress_iface", "fwmark", "route_verification", "dns_link_id", "dns_link_confidence", "accounting_status"]) {
+  for (const column of ["protocol", "bytes_up", "bytes_down", "route_source", "route_basis", "matched_ipset", "egress_iface", "fwmark", "intended_route", "route_verification", "route_status", "dns_link_id", "dns_link_confidence", "dns_status", "dns_ts_source", "accounting_status"]) {
     assert.ok(db.prepare("select 1 from pragma_table_info('traffic_facts') where name = ?").get(column), column);
   }
-  for (const column of ["id", "destination_ip", "destination_port", "protocol", "dns_answer_ip", "dns_event_ts_utc", "flow_event_ts_utc"]) {
+  for (const column of ["id", "destination_ip", "destination_port", "protocol", "dns_answer_ip", "dns_event_ts_utc", "dns_ts_source", "flow_event_ts_utc"]) {
     assert.ok(db.prepare("select 1 from pragma_table_info('traffic_dns_links') where name = ?").get(column), column);
   }
+  for (const column of ["traffic_class", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('destination_enrichment') where name = ?").get(column), column);
+  }
+  assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = 'decision_candidates'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_client_dest'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_domain_answer'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_facts_client_dest'").get());
@@ -687,7 +692,10 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
       egress_iface: "",
       fwmark: "",
       route_verification: "intent_only",
-      accounting_status: "incomplete_evidence",
+      route_status: "intent_only",
+      dns_status: "approximate_ts",
+      dns_ts_source: "snapshot_approx",
+      accounting_status: "ok",
       confidence: "observed",
     }],
     dns_links: [{
@@ -701,6 +709,7 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
       protocol: "tcp",
       dns_answer_ip: "198.51.100.20",
       dns_event_ts_utc: "2026-05-11T08:59:00.000Z",
+      dns_ts_source: "snapshot_approx",
       flow_event_ts_utc: "2026-05-11T09:00:00.000Z",
       link_type: "exact_client_ip",
       confidence: "high",
@@ -709,24 +718,39 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
     coverage: {},
   };
   normalizeSnapshot(db, 1, "traffic_facts", payload.generated_at, payload);
-  const fact = db.prepare("select protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, route_verification, dns_link_id, dns_link_confidence, accounting_status from traffic_facts where fact_id = 'v3-fact-1'").get();
+  const fact = db.prepare("select protocol, bytes_up, bytes_down, route_source, route_basis, matched_ipset, intended_route, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status from traffic_facts where fact_id = 'v3-fact-1'").get();
   assert.equal(fact.protocol, "tcp");
   assert.equal(fact.bytes_up, 1200);
   assert.equal(fact.bytes_down, 3000);
   assert.equal(fact.route_source, "ipset");
   assert.equal(fact.route_basis, "ipset_membership");
   assert.equal(fact.matched_ipset, "STEALTH_DOMAINS");
+  assert.equal(fact.intended_route, "VPS");
   assert.equal(fact.route_verification, "intent_only");
+  assert.equal(fact.route_status, "intent_only");
   assert.equal(fact.dns_link_id, "dns-link-1");
   assert.equal(fact.dns_link_confidence, "high");
-  assert.equal(fact.accounting_status, "incomplete_evidence");
-  const link = db.prepare("select id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, flow_event_ts_utc from traffic_dns_links where id = 'dns-link-1'").get();
+  assert.equal(fact.dns_status, "approximate_ts");
+  assert.equal(fact.dns_ts_source, "snapshot_approx");
+  assert.equal(fact.accounting_status, "ok");
+  const link = db.prepare("select id, destination_ip, destination_port, protocol, dns_answer_ip, dns_event_ts_utc, dns_ts_source, flow_event_ts_utc from traffic_dns_links where id = 'dns-link-1'").get();
   assert.equal(link.destination_ip, "198.51.100.20");
   assert.equal(link.destination_port, "443");
   assert.equal(link.protocol, "tcp");
   assert.equal(link.dns_answer_ip, "198.51.100.20");
   assert.equal(link.dns_event_ts_utc, "2026-05-11T08:59:00.000Z");
+  assert.equal(link.dns_ts_source, "snapshot_approx");
   assert.equal(link.flow_event_ts_utc, "2026-05-11T09:00:00.000Z");
+  const enrichment = db.prepare("select category, traffic_class, traffic_role, decision_hint, source from destination_enrichment where destination_key = 'example.invalid'").get();
+  assert.equal(enrichment.category, "unknown.domain");
+  assert.equal(enrichment.traffic_class, "unclassified");
+  assert.equal(enrichment.traffic_role, "unknown");
+  assert.equal(enrichment.decision_hint, "ask_user");
+  assert.equal(enrichment.source, "local_rules");
+  const candidate = db.prepare("select proposed_action, status, applied from decision_candidates where destination_key = 'example.invalid'").get();
+  assert.equal(candidate.proposed_action, "ask_user");
+  assert.equal(candidate.status, "pending");
+  assert.equal(candidate.applied, 0);
   db.close();
 });
 
@@ -907,11 +931,15 @@ test("local traffic intelligence returns deterministic labels and action hints",
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20" })),
-    { category: "unknown.ip_only", action_hint: "investigate" }
+    { category: "unknown.ip_only", action_hint: "ask_user" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20", dns_link_confidence: "no_dns_match" })),
-    { category: "unknown.no_dns_match", action_hint: "investigate" }
+    { category: "unknown.no_dns_match", action_hint: "ask_user" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "unknown-service.example.invalid" })),
+    { category: "unknown.domain", action_hint: "ask_user" }
   );
 });
 
@@ -960,7 +988,7 @@ test("normalization keeps signed unknown bytes and records counter drift", () =>
     }],
   });
   const row = db.prepare("select traffic_class, via_vps_bytes, direct_bytes, unknown_bytes from normalized_flows").get();
-  assert.equal(row.traffic_class, "client");
+  assert.equal(row.traffic_class, "unclassified");
   assert.equal(row.via_vps_bytes, 80);
   assert.equal(row.direct_bytes, 40);
   assert.equal(row.unknown_bytes, -20);

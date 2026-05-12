@@ -134,6 +134,12 @@ def route_intent?(row)
   text(row['route_source']) != '' || text(row['route_basis']) != '' || text(row['matched_ipset']) != ''
 end
 
+def intended_route_for(row)
+  route = text(row['route'], 'Unknown')
+  return route if %w[VPS Direct].include?(route)
+  'Unknown'
+end
+
 def route_verification_for(row)
   route = text(row['route'], 'Unknown')
   outbound = explicit_outbound(row)
@@ -149,6 +155,19 @@ def route_verification_for(row)
   'unknown'
 end
 
+def route_status_for(route_verification)
+  case text(route_verification)
+  when 'verified_vps', 'verified_direct'
+    'verified'
+  when 'intent_only'
+    'intent_only'
+  when 'mismatch'
+    'mismatch'
+  else
+    'unknown'
+  end
+end
+
 def enforce_split(total, vps, direct, unknown)
   total = number(total)
   vps = number(vps)
@@ -158,12 +177,20 @@ def enforce_split(total, vps, direct, unknown)
   [total, 0, 0, total, true]
 end
 
-def accounting_status_for(route_verification, dns_confidence, corrected)
+def accounting_status_for(corrected)
   return 'accounting_error' if corrected
-  return 'route_mismatch' if route_verification == 'mismatch'
-  return 'incomplete_evidence' if %w[intent_only unknown].include?(route_verification)
-  return 'no_dns_match' if dns_confidence == 'no_dns_match'
   'ok'
+end
+
+def dns_ts_source_for(row)
+  text(row['dns_ts_source'] || row['ts_source'], 'snapshot_approx')
+end
+
+def dns_status_for(link_type, confidence, ts_source)
+  return 'no_match' if confidence == 'no_dns_match'
+  return 'shared' if link_type == 'shared_answer'
+  return 'approximate_ts' if ts_source == 'snapshot_approx'
+  confidence.to_s.empty? ? 'no_match' : 'exact'
 end
 
 def traffic_class_for(destination)
@@ -204,7 +231,7 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
     next if age.negative? || age > window_seconds
     [dns_client != '' && dns_client == sample_client ? 0 : 1, age, row]
   end.compact
-  return [{}, 'no_dns_match', 'no_dns_match'] if candidates.empty?
+  return [{}, 'no_dns_match', 'no_dns_match', ''] if candidates.empty?
 
   domains = candidates.map { |candidate| text(candidate[2]['domain']) }.reject(&:empty?).uniq.sort
   ranked = candidates.sort_by { |rank| [rank[0], rank[1]] }
@@ -212,6 +239,7 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
   row = best[2]
   age = best[1]
   client_match = best[0] == 0
+  ts_source = dns_ts_source_for(row)
   if domains.length > 1
     link_type = 'shared_answer'
     confidence = 'low'
@@ -219,6 +247,7 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
   else
     link_type = client_match ? 'exact_client_ip' : 'recent_answer'
     confidence = client_match ? 'high' : 'medium'
+    confidence = 'medium' if confidence == 'high' && ts_source == 'snapshot_approx'
     domain = text(row['domain'])
   end
   link = {
@@ -233,12 +262,13 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
     'protocol' => text(sample['proto'] || sample['protocol']),
     'dns_answer_ip' => sample_ip,
     'dns_event_ts_utc' => iso_time(row['ts'], generated_at),
+    'dns_ts_source' => ts_source,
     'flow_event_ts_utc' => iso_time(sample['ts'] || sample['event_ts'], generated_at),
     'link_type' => link_type,
     'confidence' => confidence,
     'evidence_json' => JSON.generate({ 'dns_query' => row, 'candidate_domains' => domains, 'sample_id' => sample['sample_id'], 'age_seconds' => age })
   }
-  [link, link_type, confidence]
+  [link, link_type, confidence, ts_source]
 end
 
 def report_rows(report)
@@ -297,7 +327,9 @@ if source_mode == 'report'
       'client_ip' => text(row['client_ip'] || row['ip']),
       'channel' => text(row['channel'], 'Unknown'),
       'route' => route_from_split(vps, direct, unknown),
+      'intended_route' => text(row['intended_route'], route_from_split(vps, direct, unknown)),
       'route_verification' => 'legacy_report',
+      'route_status' => 'unknown',
       'route_source' => 'traffic-report',
       'route_basis' => 'reported_summary',
       'matched_ipset' => '',
@@ -313,6 +345,8 @@ if source_mode == 'report'
       'dns_answer_ip' => text(row['dns_answer_ip'] || row['answer_ip']),
       'dns_link_id' => '',
       'dns_link_confidence' => '',
+      'dns_status' => '',
+      'dns_ts_source' => '',
       'sni' => text(row['sni']),
       'policy' => text(row['policy']),
       'matched_rule' => text(row['matched_rule'] || row['rule'] || row['rule_name']),
@@ -345,10 +379,12 @@ else
     total = number(sample['total_bytes'])
     next if total <= 0 && number(sample['connections']) <= 0
     route_verification = route_verification_for(sample)
+    route_status = route_status_for(route_verification)
     total, vps, direct, unknown = split_for_verification(route_verification, total)
     total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
-    dns_link, link_type, link_confidence = dns_link_for(sample, answers, generated_at, window_seconds)
+    dns_link, link_type, link_confidence, dns_ts_source = dns_link_for(sample, answers, generated_at, window_seconds)
     dns_links << dns_link unless dns_link.empty?
+    dns_status = dns_status_for(link_type, link_confidence, dns_ts_source)
     destination = text(dns_link['domain'], text(sample['remote_ip'], 'unknown destination'))
     destination_kind = dns_link.empty? ? 'ip' : 'domain'
     destination_confidence = dns_link.empty? ? 'ip_only' : "dns_#{link_confidence}"
@@ -367,7 +403,9 @@ else
       'client_ip' => text(sample['client_ip']),
       'channel' => 'Home Wi-Fi/LAN',
       'route' => text(sample['route'], 'Unknown'),
+      'intended_route' => intended_route_for(sample),
       'route_verification' => route_verification,
+      'route_status' => route_status,
       'route_source' => text(sample['route_source']),
       'route_basis' => text(sample['route_basis']),
       'matched_ipset' => text(sample['matched_ipset']),
@@ -383,6 +421,8 @@ else
       'dns_answer_ip' => text(dns_link['dns_answer_ip']),
       'dns_link_id' => text(dns_link['id']),
       'dns_link_confidence' => link_confidence,
+      'dns_status' => dns_status,
+      'dns_ts_source' => dns_ts_source,
       'sni' => '',
       'policy' => text(sample['matched_ipset']),
       'matched_rule' => text(sample['matched_ipset']),
@@ -398,7 +438,7 @@ else
       'byte_confidence' => 'observed',
       'destination_confidence' => destination_confidence,
       'confidence' => 'observed',
-      'accounting_status' => accounting_status_for(route_verification, link_confidence, corrected_split),
+      'accounting_status' => accounting_status_for(corrected_split),
       'allocation_basis' => text(sample['allocation_basis'], 'observed_delta'),
       'evidence_level' => 'flow_sample',
       'sources' => ['traffic-evidence', text(sample['source'], 'lan-flow-facts')],

@@ -160,12 +160,11 @@ export function trafficClassForDomain(row) {
   if (!domain) return "service_background";
   if (isUnclassifiedDomain(domain)) return "unclassified";
   const classification = classifyDestination(row);
-  if (["unknown.empty", "unknown.ip_only", "unknown.no_dns_match"].includes(classification.category)) return "unclassified";
-  if (classification.category.startsWith("personal_cloud.")) return "personal_cloud";
-  if (classification.category.startsWith("system.") || classification.category.startsWith("analytics.") || classification.category.startsWith("tracker.") || classification.category.startsWith("cdn.")) return "service_background";
+  if (classification.category && !classification.category.startsWith("unknown.")) return classification.traffic_class;
+  if (["unknown.empty", "unknown.ip_only", "unknown.no_dns_match", "unknown.shared_dns_answer"].includes(classification.category)) return "unclassified";
   if (isPersonalCloudDomain(domain)) return "personal_cloud";
   if (isServiceDomain(domain, row)) return "service_background";
-  return "client";
+  return "unclassified";
 }
 
 export function destinationClassification(row) {
