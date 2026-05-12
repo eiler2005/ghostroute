@@ -31,6 +31,31 @@ function grouped(rows: Array<Record<string, any>>, key: string, limit = 6) {
   return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, limit);
 }
 
+function dnsRoute(row: Record<string, any>) {
+  return String(row.route || "").toLowerCase() === "vps" ? "VPS" : "Direct";
+}
+
+function dnsTime(row: Record<string, any>) {
+  const value = row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at;
+  const base = timeWithMillis(value, true).replace(/\.000$/, "");
+  return row.time_precision === "prepared_bucket" ? `${base} MSK bucket` : `${base} MSK`;
+}
+
+function dnsChannel(row: Record<string, any>) {
+  return row.channel || row.client_channel || row.raw?.channel || "Unknown";
+}
+
+function dnsTrafficType(row: Record<string, any>, intel: Record<string, any>) {
+  const lane = String(intel.traffic_lane || row.traffic_lane || "");
+  const trafficClass = String(row.trafficClass || row.traffic_class || "");
+  if (lane === "service_system" || trafficClass === "service_background") return "Service/system";
+  if (trafficClass === "personal_cloud") return "Personal cloud";
+  if (lane === "privacy_risk") return "Analytics/tracker";
+  if (lane === "shared_infra") return "Shared infra";
+  if (trafficClass === "client" || lane === "client_observed") return "Client";
+  return trafficClassLabel(trafficClass || "unclassified");
+}
+
 export default async function DnsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
@@ -44,7 +69,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const model = buildShellModel(filters, { dnsQueries: dnsPage.rows, alerts: alarms });
   const totalCount = sumCounts(dnsPage.rows);
   const managedCount = sumCounts(dnsPage.rows.filter((row) => row.catalog_status === "managed"));
-  const directCount = sumCounts(dnsPage.rows.filter((row) => row.route === "Direct"));
+  const directCount = sumCounts(dnsPage.rows.filter((row) => dnsRoute(row) === "Direct"));
   const suspiciousCount = sumCounts(dnsPage.rows.filter((row) => ["medium", "high"].includes(String(row.risk || "")) || ["Blocked", "Review"].includes(String(row.status || ""))));
   const topDomains = grouped(dnsPage.rows, "domain", 7);
   const topClients = grouped(dnsPage.rows.filter((row) => row.client_attributed && row.client_key), "client", 7);
@@ -83,7 +108,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
           </div>
         </div>
         <div className="live-stream-meta">
-          Client, domain answer, route decision and catalog status · pageSize up to 1000
+          Client, DNS domain, channel, traffic type, route and catalog status · pageSize up to 1000
         </div>
         {dnsPage.rows.length === 0 ? (
           <div className="dns-empty-wrap"><EmptyState title="No DNS query rows" /></div>
@@ -92,11 +117,11 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
             <table className="live-events-table dns-events-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
+                    <th>Time (MSK)</th>
                     <th>Client</th>
                     <th>Domain</th>
-                    <th>Type</th>
-                    <th>Answer</th>
+                    <th>Channel</th>
+                    <th>Traffic</th>
                     <th>Route</th>
                     <th>Category</th>
                     <th>Decision</th>
@@ -115,7 +140,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                     const intel = trafficIntelligenceFor({ ...row, destination: domain, destination_ip: answer });
                     return (
                       <tr key={row.id}>
-                        <td className="live-col-time">{timeWithMillis(row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at, true)}</td>
+                        <td className="live-col-time">{dnsTime(row)}</td>
                         <td className="live-col-client dns-col-client" title={clientDetail || clientLabel}>
                           <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{clientLabel}</Link>
                         </td>
@@ -124,9 +149,9 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                           <Link href={`/traffic?search=${encodeURIComponent(domain)}`}>{domain}</Link>
                           {Number(row.count || 1) > 1 ? <small> x{row.count}</small> : null}
                         </td>
-                        <td className="dns-col-type">{row.qtype || "A"}</td>
-                        <td className="dns-col-answer" title={answer}>{answer}</td>
-                        <td className="live-col-route"><RouteBadge value={row.route} /></td>
+                        <td className="dns-col-type">{dnsChannel(row)}</td>
+                        <td className="dns-col-answer" title={answer === "n/a" ? "DNS answer not observed" : `DNS answer ${answer}`}>{dnsTrafficType(row, intel)}</td>
+                        <td className="live-col-route"><RouteBadge value={dnsRoute(row)} /></td>
                         <td><span className="badge" title={intel.human_explanation}>{String(intel.dns_category || intel.category).replace(/_/g, " ")}</span></td>
                         <td><span className={`badge action-${String(intel.decision_hint || "monitor").replace(/_/g, "-")}`}>{String(intel.decision_hint || "monitor").replace(/_/g, " ")}</span></td>
                         <td className="dns-col-catalog"><ConfidenceBadge value={row.catalog_status || "unknown"} /></td>

@@ -774,6 +774,10 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
   };
 }
 
+function dnsRouteValue(value: unknown) {
+  return String(value || "").toLowerCase() === "vps" ? "VPS" : "Direct";
+}
+
 function operatorLiveRow(row: Record<string, any>): Record<string, any> | null {
   if (pseudoClientLabel(row)) return null;
   const resolved = registeredClientResolution({
@@ -2171,13 +2175,15 @@ function mapDnsReadModelRow(row: any) {
     client: row.client,
     client_ip: row.client_ip,
     device_key: row.device_key,
+    channel: row.channel,
     destination: row.domain,
     domain: row.domain,
     dns_qname: row.domain,
     qtype: row.qtype,
     answer_ip: row.answer_ip,
     dns_answer_ip: row.answer_ip,
-    route: row.route,
+    raw_route: row.route,
+    route: dnsRouteValue(row.route),
     catalog_status: row.catalog_status,
     status: row.status,
     count: Number(row.count || 0),
@@ -2200,7 +2206,8 @@ function mapDnsFallbackRow(row: any) {
     qtype: row.qtype,
     answer_ip: row.answer_ip,
     dns_answer_ip: row.answer_ip,
-    route: "Unknown",
+    raw_route: row.route,
+    route: dnsRouteValue(row.route),
     catalog_status: "unknown",
     status: "OK",
     count: Number(row.count || 0),
@@ -2234,6 +2241,8 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
         snapshot_id: 0,
         collected_at: row.event_ts || prepared.generatedAt || "",
         event_ts: row.event_ts || "",
+        display_ts_utc: row.event_ts || "",
+        time_precision: "prepared_bucket",
         client: preparedClient,
         client_ip: preparedClientIp,
         device_key: preparedClient,
@@ -2294,11 +2303,12 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const where = [latest.sql];
   const params = [...latest.params];
   if (route !== "all") {
-    where.push("route = ?");
-    params.push(route);
-  }
-  if (filters.channel && filters.channel !== "all") {
-    where.push("1 = 0");
+    if (route === "VPS") {
+      where.push("route = ?");
+      params.push(route);
+    } else {
+      where.push("coalesce(route, '') != 'VPS'");
+    }
   }
   if (filters.confidence && filters.confidence !== "all") {
     where.push("confidence = ?");

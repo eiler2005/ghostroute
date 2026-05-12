@@ -276,12 +276,12 @@ function counterFallbackRows(selected: Record<string, any> | undefined, rows: Ar
   if (!selected || kind === "service") return [];
   const selectedBytes = Math.max(
     siteBytes(selected),
-    rows.reduce((sum, row) => sum + siteBytes(row), 0)
+    rows.reduce((max, row) => Math.max(max, siteBytes(row)), 0)
   );
   if (selectedBytes <= 0) return [];
   const selectedFlows = Math.max(
     Number(selected.flows || selected.connections || 0),
-    rows.reduce((sum, row) => sum + Number(row.flows || row.connections || 0), 0)
+    rows.reduce((max, row) => Math.max(max, Number(row.flows || row.connections || 0)), 0)
   );
   return [{
     id: "client-counter-fallback",
@@ -366,29 +366,10 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
   const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
   const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
-  const selectedCounterSourceRows = selected ? [
-    ...selectedSiteRows,
-    ...selectedLaneRows,
-    {
-      ...selected,
-      destination: "Client",
-      destinationLabel: "Client",
-      accounting_bucket: true,
-      bytes: siteBytes(selected),
-      total_bytes: siteBytes(selected),
-      flows: Number(selected.flows || selected.connections || 0),
-      traffic_lane: "client_observed",
-      traffic_class: "client",
-      route: selectedRoute,
-    },
-  ] : [];
   const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15);
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8);
-  const selectedClientCounterSites = counterOnlyRows(selectedCounterSourceRows, "client", 1);
-  const selectedClientFallbackSites = selectedClientCounterSites.length
-    ? selectedClientCounterSites
-    : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client");
-  const selectedServiceCounterSites = counterOnlyRows(selectedCounterSourceRows, "service", 1);
+  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client");
+  const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
   const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
