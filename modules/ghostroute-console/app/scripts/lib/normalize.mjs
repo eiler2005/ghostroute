@@ -210,6 +210,14 @@ function signedByteSplit(row, route = row?.route, totalBytes = number(row?.bytes
   let viaVpsBytes = firstNumber(row?.via_vps_bytes, row?.reality_bytes, evidence.via_vps_bytes, evidence.reality_bytes);
   let directBytes = firstNumber(row?.direct_bytes, row?.wan_bytes, evidence.direct_bytes, evidence.wan_bytes);
   let unknownBytes = firstNumber(row?.unknown_bytes, row?.unresolved_bytes, evidence.unknown_bytes, evidence.unresolved_bytes);
+  const evidenceHasSplit = hasNumber(evidence.via_vps_bytes) || hasNumber(evidence.reality_bytes)
+    || hasNumber(evidence.direct_bytes) || hasNumber(evidence.wan_bytes)
+    || hasNumber(evidence.unknown_bytes) || hasNumber(evidence.unresolved_bytes);
+  if (total > 0 && !evidenceHasSplit && viaVpsBytes === 0 && directBytes === 0 && unknownBytes === 0) {
+    explicitVps = false;
+    explicitDirect = false;
+    explicitUnknown = false;
+  }
   if (total <= 0 && viaVpsBytes + directBytes + unknownBytes > 0) {
     total = viaVpsBytes + directBytes + unknownBytes;
   }
@@ -238,10 +246,12 @@ function rawSplitValues(row = {}, raw = row?.raw || {}) {
 }
 
 function hasAnyExplicitSplit(row = {}, raw = row?.raw || {}) {
-  return hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes) || hasNumber(row?.direct_bytes)
-    || hasNumber(row?.wan_bytes) || hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes)
-    || hasNumber(raw?.via_vps_bytes) || hasNumber(raw?.reality_bytes) || hasNumber(raw?.direct_bytes)
-    || hasNumber(raw?.wan_bytes) || hasNumber(raw?.unknown_bytes) || hasNumber(raw?.unresolved_bytes);
+  const rawExplicit = hasNumber(raw?.via_vps_bytes) || hasNumber(raw?.reality_bytes)
+    || hasNumber(raw?.direct_bytes) || hasNumber(raw?.wan_bytes)
+    || hasNumber(raw?.unknown_bytes) || hasNumber(raw?.unresolved_bytes);
+  if (rawExplicit) return true;
+  const split = rawSplitValues(row, raw);
+  return split.via_vps_bytes !== 0 || split.direct_bytes !== 0 || split.unknown_bytes !== 0;
 }
 
 function invalidExplicitSplit(row = {}, raw = row?.raw || {}, totalBytes = aggregateTotalBytes(row)) {
