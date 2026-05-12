@@ -46,6 +46,10 @@ import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 import { bucketStartUtc, mskWindowBounds } from "../time/window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
+const TRAFFIC_DETAIL_TYPES = new Set(["traffic_facts", "traffic"]);
+const TRAFFIC_DEVICE_TYPES = new Set(["traffic_facts", "traffic_summary", "traffic"]);
+const TRAFFIC_DNS_TYPES = new Set(["dns", "traffic_evidence", "traffic"]);
+const ALERT_CONTEXT_TYPES = new Set(["traffic_facts", "traffic_summary", "traffic_evidence", "dns", "health", "leaks", "domains"]);
 const DERIVED_CACHE_TTL_MS = Number(process.env.GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS || 300_000);
 const derivedCache = new Map<string, { expiresAt: number; value: any }>();
 const USE_PREPARED_WINDOWS = process.env.GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS !== "0";
@@ -753,6 +757,22 @@ function routeFromCounters(row: Record<string, any>) {
   return row.route || "Unknown";
 }
 
+function splitCounters(row: Record<string, any>, totalBytes = Number(row.bytes || row.total_bytes || 0)) {
+  const viaVpsBytes = Number(row.via_vps_bytes || row.reality_bytes || 0);
+  const directBytes = Number(row.direct_bytes || row.wan_bytes || 0);
+  let unknownBytes = Number(row.unknown_bytes || row.unresolved_bytes || 0);
+  if (totalBytes > 0 && viaVpsBytes + directBytes + unknownBytes === 0) {
+    unknownBytes = totalBytes;
+  } else if (totalBytes > viaVpsBytes + directBytes + unknownBytes) {
+    unknownBytes += totalBytes - viaVpsBytes - directBytes - unknownBytes;
+  }
+  return {
+    via_vps_bytes: viaVpsBytes,
+    direct_bytes: directBytes,
+    unknown_bytes: unknownBytes,
+  };
+}
+
 function deviceRoute(row: Record<string, any>) {
   const route = String(row.route || "");
   if (route && route !== "Unknown") return route;
@@ -1061,13 +1081,13 @@ function destinationAttributionCoverageForPeriod(period = "today") {
     if (prepared?.destinationAttributionCoverage) return prepared.destinationAttributionCoverage;
     if (USE_PREPARED_WINDOWS && period !== "today") return null;
     const rows = getDb()
-      .prepare("select collected_at, payload_json from snapshots where type = 'traffic' order by collected_at desc limit 50")
+      .prepare("select type, collected_at, payload_json from snapshots where type in ('traffic_facts', 'traffic') order by collected_at desc limit 50")
       .all() as Array<Record<string, any>>;
     for (const row of rows) {
       if ((period || "today") === "today" && moscowDateKey(row.collected_at) !== moscowDateKey(new Date())) continue;
       const payload = rawJson({ raw_json: row.payload_json });
-      if (snapshotMatchesPeriod({ type: "traffic", collectedAt: row.collected_at, payload }, period || "today", new Date())) {
-        return payload.destination_attribution_coverage || null;
+      if (snapshotMatchesPeriod({ type: row.type, collectedAt: row.collected_at, payload }, period || "today", new Date())) {
+        return payload.destination_attribution_coverage || payload.coverage || null;
       }
     }
     return null;
@@ -1105,19 +1125,33 @@ function applyFlowWindowDeltas(rows: Array<Record<string, any>>) {
     let previous: Record<string, any> | null = null;
     let latest: Record<string, any> = ordered[ordered.length - 1];
     let bytes = 0;
+    let viaVpsBytes = 0;
+    let directBytes = 0;
+    let unknownBytes = 0;
     let connections = 0;
     let snapshotSamples = 0;
     let deltaSamples = 0;
     for (const sample of ordered) {
       const currentBytes = flowByteValue(sample);
       const currentConnections = Number(sample.connections || 0);
+      const currentSplit = splitCounters(sample, currentBytes);
       const first = !previous;
       const previousBytes = previous ? flowByteValue(previous) : 0;
       const previousConnections = Number(previous?.connections || 0);
+      const previousSplit = previous ? splitCounters(previous, previousBytes) : { via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0 };
       const byteDelta = first ? currentBytes : Math.max(0, currentBytes - previousBytes);
+      const deltaVps = first ? currentSplit.via_vps_bytes : Math.max(0, currentSplit.via_vps_bytes - previousSplit.via_vps_bytes);
+      const deltaDirect = first ? currentSplit.direct_bytes : Math.max(0, currentSplit.direct_bytes - previousSplit.direct_bytes);
+      const deltaUnknownRaw = first ? currentSplit.unknown_bytes : Math.max(0, currentSplit.unknown_bytes - previousSplit.unknown_bytes);
+      const deltaUnknown = deltaVps + deltaDirect + deltaUnknownRaw === byteDelta
+        ? deltaUnknownRaw
+        : Math.max(0, byteDelta - deltaVps - deltaDirect);
       const connectionDelta = first ? currentConnections : Math.max(0, currentConnections - previousConnections);
       if (byteDelta > 0 || connectionDelta > 0) {
         bytes += byteDelta;
+        viaVpsBytes += deltaVps;
+        directBytes += deltaDirect;
+        unknownBytes += deltaUnknown;
         connections += connectionDelta;
         if (first) snapshotSamples += 1;
         else deltaSamples += 1;
@@ -1129,6 +1163,12 @@ function applyFlowWindowDeltas(rows: Array<Record<string, any>>) {
       ...latest,
       bytes,
       total_bytes: bytes,
+      via_vps_bytes: viaVpsBytes,
+      direct_bytes: directBytes,
+      unknown_bytes: unknownBytes,
+      route: viaVpsBytes > 0 || directBytes > 0
+        ? routeFromCounters({ via_vps_bytes: viaVpsBytes, direct_bytes: directBytes })
+        : latest.route || "Unknown",
       connections,
       raw_total_bytes: flowByteValue(latest),
       traffic_basis: snapshotSamples && !deltaSamples ? "snapshot_total" : snapshotSamples ? "snapshot_total+delta" : "delta",
@@ -1147,7 +1187,7 @@ function matchesTrafficClass(row: Record<string, any>, trafficClass = "client") 
 
 function deviceDeltaRowsForPeriod(period = "today") {
   return cacheGet(`device-deltas:${latestSnapshotVersion()}:${period}`, () => {
-  const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"])))
+  const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, TRAFFIC_DEVICE_TYPES))
     .map((row: any) => ({
       id: row.device_id,
       device_id: row.device_id,
@@ -1276,9 +1316,9 @@ function buildConsoleModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const leaks = snapshots.leaks?.payload || {};
   const domains = snapshots.domains?.payload || {};
   const dns = snapshots.dns?.payload || {};
-  const detailTrafficWindowIds = snapshotIdsForWindow(period, new Set(["traffic"]));
-  const dnsWindowIds = snapshotIdsForWindow(period, new Set(["dns", "traffic"]));
-  const alertWindowIds = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+  const detailTrafficWindowIds = snapshotIdsForWindow(period, TRAFFIC_DETAIL_TYPES);
+  const dnsWindowIds = snapshotIdsForWindow(period, TRAFFIC_DNS_TYPES);
+  const alertWindowIds = snapshotIdsForWindow(period, ALERT_CONTEXT_TYPES);
 
   const newest = Object.values(snapshots)
     .filter(Boolean)
@@ -1612,7 +1652,7 @@ function readModelHasRows(table: string) {
 }
 
 function latestIdWhereForFilters(filters: ConsoleFilters = {}) {
-  const ids = snapshotIdsForWindow(filters.period || "today", new Set(["traffic"]));
+  const ids = snapshotIdsForWindow(filters.period || "today", TRAFFIC_DETAIL_TYPES);
   if (ids.length === 0) return { ids, sql: "1 = 0", params: [] as any[] };
   return { ids, sql: `snapshot_id in (${ids.map(() => "?").join(",")})`, params: ids as any[] };
 }
@@ -1910,7 +1950,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
   const maxRows = Math.max(pageSize, Number(args.maxRows || Number.MAX_SAFE_INTEGER));
-  const latest = idWhereForWindow(args.filters?.period || "today", new Set(["traffic"]));
+  const latest = idWhereForWindow(args.filters?.period || "today", TRAFFIC_DETAIL_TYPES);
   const where = [latest.sql];
   const params = [...latest.params];
   const filters = args.filters || {};
@@ -2236,7 +2276,7 @@ function listAlarmEventsUncached(args: AlarmPageArgs = {}) {
   const source = args.source || "all";
   const state = readAlarmState();
   if (!readModelHasRows("alarm_events")) {
-    const ids = snapshotIdsForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+    const ids = snapshotIdsForWindow(period, ALERT_CONTEXT_TYPES);
     const rows = overlayAlarmState(normalizedRowsForIds("normalized_alerts", ids)
       .map(mapAlarmFallbackRow)
       .filter((row) => severity === "all" || String(row.severity || "").toLowerCase() === severity.toLowerCase())
@@ -2258,7 +2298,7 @@ function listAlarmEventsUncached(args: AlarmPageArgs = {}) {
       totalPages,
     };
   }
-  const latest = idWhereForWindow(period, new Set(["traffic", "traffic_summary", "dns", "health", "leaks", "domains"]));
+  const latest = idWhereForWindow(period, ALERT_CONTEXT_TYPES);
   const where = [latest.sql];
   const params = [...latest.params];
   if (severity !== "all") {
@@ -3010,10 +3050,15 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
   if (prepared?.rows) {
     return (prepared.rows as Array<Record<string, any>>).map((row) => {
       const total = observedByteValue(row);
+      const split = splitCounters(row, total);
       return operatorClientRow({
       ...row,
       bytes: total,
       total_bytes: total,
+      via_vps_bytes: split.via_vps_bytes,
+      direct_bytes: split.direct_bytes,
+      unknown_bytes: split.unknown_bytes,
+      route: routeFromCounters(split),
       traffic_window_active: total > 0,
       });
     }).filter((row): row is Record<string, any> => Boolean(row));
@@ -3227,7 +3272,7 @@ function listClientActivityUncached(client: Record<string, any> | string, period
   const targetKey = keyForDevice(target);
   if (targetKey) targetTokens.add(targetKey.toLowerCase());
   if (targetTokens.size === 0) return [];
-  const ids = snapshotIdsForDeviceWindow(period, new Set(["traffic", "traffic_summary"]));
+  const ids = snapshotIdsForDeviceWindow(period, TRAFFIC_DEVICE_TYPES);
   const samples = normalizedRowsForIds("normalized_devices", ids)
     .filter((row: any) => {
       const tokens = rowIdentityTokens(row);
