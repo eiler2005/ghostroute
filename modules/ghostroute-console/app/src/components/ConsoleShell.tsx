@@ -40,7 +40,8 @@ export function ConsoleShell({
     model.nextExpectedCollection ? `next ${shortDateTime(model.nextExpectedCollection)}` : "",
     model.staleThresholdMinutes ? `stale>${model.staleThresholdMinutes}m` : "",
   ].filter(Boolean).join(" · ");
-  const latestTraffic = model.runtime.latestSnapshots.traffic ? shortDateTime(model.runtime.latestSnapshots.traffic) : "n/a";
+  const latestTrafficSnapshot = model.runtime.latestSnapshots.traffic_facts || model.runtime.latestSnapshots.traffic;
+  const latestTraffic = latestTrafficSnapshot ? shortDateTime(latestTrafficSnapshot) : "n/a";
   const latestSummary = model.runtime.latestSnapshots.traffic_summary ? shortDateTime(model.runtime.latestSnapshots.traffic_summary) : "n/a";
   const buildLabel = model.runtime.buildAt ? `${model.runtime.buildCommit} · ${shortDateTime(model.runtime.buildAt)}` : model.runtime.buildCommit;
   const sourceTitle = [
