@@ -154,7 +154,7 @@ function evidenceSummary(rows: Array<Record<string, any>>, totalBytes: number) {
 }
 
 function siteBytes(row: Record<string, any>) {
-  return Number(row.bytes || row.total_bytes || 0);
+  return Number(row.bytes || row.total_bytes || row.totalBytes || row.observed_bytes || 0);
 }
 
 function siteLane(row: Record<string, any>) {
@@ -235,13 +235,77 @@ function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
   }));
 }
 
-function PopularSitesList({ title: heading, rows, dnsFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>> }) {
-  const visible = rows.length ? rows : dnsFallback || [];
+function counterOnlyRows(rows: Array<Record<string, any>>, kind: "client" | "service", limit: number) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    if ((kind === "service") !== isServiceSite(row)) continue;
+    if (siteBytes(row) <= 0 && !row.accounting_bucket && !row.raw?.accounting_bucket) continue;
+    const label = trafficDisplayDestination(row);
+    if (isUsefulSiteLabel(label)) continue;
+    const key = isServiceSite(row) ? "service-counter-only" : "client-counter-only";
+    const current = grouped.get(key) || {
+      ...row,
+      id: key,
+      label: "Traffic without site attribution",
+      destination: "Traffic without site attribution",
+      destinationLabel: "Traffic without site attribution",
+      bytes: 0,
+      total_bytes: 0,
+      flows: 0,
+      routes: new Set<string>(),
+      laneLabel: "counter-only · destination not observed",
+      counterOnly: true,
+    };
+    current.bytes += siteBytes(row);
+    current.total_bytes += siteBytes(row);
+    current.flows += Number(row.flows || row.connections || 0);
+    if (row.route) current.routes.add(String(row.route));
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0))
+    .slice(0, limit)
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      route: routeFromSiteRoutes(row.routes || new Set()),
+    }));
+}
+
+function counterFallbackRows(selected: Record<string, any> | undefined, rows: Array<Record<string, any>>, route: string, kind: "client" | "service") {
+  if (!selected || kind === "service") return [];
+  const selectedBytes = Math.max(
+    siteBytes(selected),
+    rows.reduce((sum, row) => sum + siteBytes(row), 0)
+  );
+  if (selectedBytes <= 0) return [];
+  const selectedFlows = Math.max(
+    Number(selected.flows || selected.connections || 0),
+    rows.reduce((sum, row) => sum + Number(row.flows || row.connections || 0), 0)
+  );
+  return [{
+    id: "client-counter-fallback",
+    rank: 1,
+    label: "Traffic without site attribution",
+    destination: "Traffic without site attribution",
+    destinationLabel: "Traffic without site attribution",
+    bytes: selectedBytes,
+    total_bytes: selectedBytes,
+    flows: selectedFlows,
+    route,
+    laneLabel: "counter-only · destination not observed",
+    counterOnly: true,
+  }];
+}
+
+function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>> }) {
+  const fallbackRows = [...(dnsFallback || []), ...(counterFallback || [])];
+  const visible = rows.length ? rows : fallbackRows;
   return (
     <section className="card client-popular-sites-list">
       <div className="toolbar">
         <h3>{heading}</h3>
-        <span className="subtle">{rows.length ? "byte-attributed traffic" : "DNS interest fallback"}</span>
+        <span className="subtle">{rows.length ? "byte-attributed traffic" : "fallback evidence"}</span>
       </div>
       {visible.length === 0 ? (
         <EmptyState title="No site-level traffic for this client" detail="Only client/channel counters were observed in the selected day." />
@@ -251,7 +315,7 @@ function PopularSitesList({ title: heading, rows, dnsFallback }: { title: string
             <div className="detail-row popular-site-row" key={`${row.label}-${row.rank}`}>
               <span>
                 <strong>{row.rank}. {row.label}</strong>
-                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : "flows"}</small>
+                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : "flows"}</small>
               </span>
               <strong>
                 {row.dnsOnly ? "not byte-attributed" : bytes(siteBytes(row))}
@@ -302,8 +366,29 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
   const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
   const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
+  const selectedCounterSourceRows = selected ? [
+    ...selectedSiteRows,
+    ...selectedLaneRows,
+    {
+      ...selected,
+      destination: "Client",
+      destinationLabel: "Client",
+      accounting_bucket: true,
+      bytes: siteBytes(selected),
+      total_bytes: siteBytes(selected),
+      flows: Number(selected.flows || selected.connections || 0),
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: selectedRoute,
+    },
+  ] : [];
   const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15);
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8);
+  const selectedClientCounterSites = counterOnlyRows(selectedCounterSourceRows, "client", 1);
+  const selectedClientFallbackSites = selectedClientCounterSites.length
+    ? selectedClientCounterSites
+    : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client");
+  const selectedServiceCounterSites = counterOnlyRows(selectedCounterSourceRows, "service", 1);
   const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
@@ -577,8 +662,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <span className="subtle">{filters.period || "today"} · traffic and DNS interest for selected client</span>
           </div>
           <div className="grid two">
-            <PopularSitesList title="Client sites" rows={selectedClientSites} dnsFallback={selectedDnsFallback} />
-            <PopularSitesList title="Service/system sites" rows={selectedServiceSites} />
+            <PopularSitesList title="Client sites" rows={selectedClientSites} dnsFallback={selectedDnsFallback} counterFallback={selectedClientFallbackSites} />
+            <PopularSitesList title="Service/system sites" rows={selectedServiceSites} counterFallback={selectedServiceCounterSites} />
           </div>
         </section>
       ) : null}
