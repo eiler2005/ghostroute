@@ -14,6 +14,12 @@ traffic for the GUI, and emits advisory decision candidates. It never changes
 bytes, route split, DNS confidence, router rules, blocking, deploy hooks or
 VPS/router state.
 
+This implementation also fixes the Home Reality coverage gap before expanding
+GUI review surfaces: encrypted Home Reality profile counters are brought into
+trusted v3 evidence as `home_reality_samples`, then represented in
+`traffic_facts` as `Home Reality ingress` with no manufactured per-destination
+labels.
+
 The attached PDF/image material for this pass rendered as a blank black page in
 the local tools, so this plan is based on the repo state and the explicit
 operator requirements from the discussion.
@@ -82,6 +88,32 @@ type TrafficIntelligenceInput = {
 
 type TrafficIntelligenceResult = {
   traffic_class: "client" | "personal_cloud" | "service_background" | "unclassified";
+  traffic_lane:
+    | "client_observed"
+    | "service_system"
+    | "privacy_risk"
+    | "shared_infra"
+    | "unknown_review";
+  dns_category:
+    | "user_content"
+    | "messaging"
+    | "personal_cloud"
+    | "media_streaming"
+    | "system_push"
+    | "system_appstore"
+    | "system_connectivity"
+    | "system_auth_security"
+    | "system_maintenance"
+    | "app_background"
+    | "crash_reporting"
+    | "analytics"
+    | "ads_tracking"
+    | "telemetry"
+    | "cdn_shared"
+    | "cloud_hosting"
+    | "unknown_ip_only"
+    | "unknown_shared_answer"
+    | "unknown_domain";
   category: string;
   provider: string;
   traffic_role:
@@ -100,6 +132,7 @@ type TrafficIntelligenceResult = {
     | "monitor"
     | "route_vps_candidate"
     | "direct_candidate"
+    | "investigate"
     | "ask_user";
   confidence: "high" | "medium" | "low" | "unknown";
   reason_code: string;
@@ -117,6 +150,14 @@ Coarse GUI filter values stay stable:
 - `service_background`
 - `unclassified`
 - `all`
+
+GUI lanes:
+
+- `client_observed`
+- `service_system`
+- `privacy_risk`
+- `shared_infra`
+- `unknown_review`
 
 Fine categories:
 
@@ -144,6 +185,10 @@ Default rules:
 
 `unknown.domain` must not become `client_interactive` by default.
 
+CDN is treated as infrastructure, not behavior. A known domain may carry the
+domain's meaning; an IP-only/shared CDN answer stays `shared_infra` or
+`unknown_review` and must not become a confident block rule.
+
 ## Read Model
 
 Do not store intelligence authority in `traffic_facts`. Use
@@ -154,6 +199,8 @@ Do not store intelligence authority in `traffic_facts`. Use
 - `category`
 - `provider`
 - `traffic_class`
+- `traffic_lane`
+- `dns_category`
 - `traffic_role`
 - `traffic_purpose`
 - `decision_hint`

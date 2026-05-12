@@ -651,7 +651,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   for (const column of ["id", "destination_ip", "destination_port", "protocol", "dns_answer_ip", "dns_event_ts_utc", "dns_ts_source", "flow_event_ts_utc"]) {
     assert.ok(db.prepare("select 1 from pragma_table_info('traffic_dns_links') where name = ?").get(column), column);
   }
-  for (const column of ["traffic_class", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
+  for (const column of ["traffic_class", "traffic_lane", "dns_category", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
     assert.ok(db.prepare("select 1 from pragma_table_info('destination_enrichment') where name = ?").get(column), column);
   }
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = 'decision_candidates'").get());
@@ -672,42 +672,75 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
     window: { period: "today", start_ts_utc: "2026-05-10T21:00:00.000Z", end_ts_utc: "2026-05-11T21:00:00.000Z" },
     collector_metrics: { duration_ms: 1, source_row_counts: { traffic_facts: 1, dns_links: 1 } },
     clients: [],
-    traffic_facts: [{
-      fact_id: "v3-fact-1",
-      event_ts_utc: "2026-05-11T09:00:00.000Z",
-      client_key: "192.0.2.10",
-      client_label: "192.0.2.10",
-      client_ip: "192.0.2.10",
-      channel: "Home Wi-Fi/LAN",
-      route: "VPS",
-      traffic_class: "service_background",
-      destination: "example.invalid",
-      destination_kind: "domain",
-      destination_ip: "198.51.100.20",
-      destination_port: "443",
-      protocol: "tcp",
-      dns_qname: "example.invalid",
-      dns_answer_ip: "198.51.100.20",
-      dns_link_id: "dns-link-1",
-      dns_link_confidence: "high",
-      bytes: 4200,
-      bytes_up: 1200,
-      bytes_down: 3000,
-      via_vps_bytes: 0,
-      direct_bytes: 0,
-      unknown_bytes: 4200,
-      route_source: "ipset",
-      route_basis: "ipset_membership",
-      matched_ipset: "STEALTH_DOMAINS",
-      egress_iface: "",
-      fwmark: "",
-      route_verification: "intent_only",
-      route_status: "intent_only",
-      dns_status: "approximate_ts",
-      dns_ts_source: "snapshot_approx",
-      accounting_status: "ok",
-      confidence: "observed",
-    }],
+    traffic_facts: [
+      {
+        fact_id: "v3-fact-1",
+        event_ts_utc: "2026-05-11T09:00:00.000Z",
+        client_key: "192.0.2.10",
+        client_label: "192.0.2.10",
+        client_ip: "192.0.2.10",
+        channel: "Home Wi-Fi/LAN",
+        route: "VPS",
+        traffic_class: "service_background",
+        destination: "example.invalid",
+        destination_kind: "domain",
+        destination_ip: "198.51.100.20",
+        destination_port: "443",
+        protocol: "tcp",
+        dns_qname: "example.invalid",
+        dns_answer_ip: "198.51.100.20",
+        dns_link_id: "dns-link-1",
+        dns_link_confidence: "high",
+        bytes: 4200,
+        bytes_up: 1200,
+        bytes_down: 3000,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 4200,
+        route_source: "ipset",
+        route_basis: "ipset_membership",
+        matched_ipset: "STEALTH_DOMAINS",
+        egress_iface: "",
+        fwmark: "",
+        route_verification: "intent_only",
+        route_status: "intent_only",
+        dns_status: "approximate_ts",
+        dns_ts_source: "snapshot_approx",
+        accounting_status: "ok",
+        confidence: "observed",
+      },
+      {
+        fact_id: "home-reality-1",
+        event_ts_utc: "2026-05-11T09:05:00.000Z",
+        client_key: "iphone-4",
+        client_label: "iphone-4 (Mamulia)",
+        client_ip: "198.51.100.10",
+        channel: "A/Home Reality",
+        route: "Unknown",
+        intended_route: "Unknown",
+        traffic_class: "client",
+        destination: "Home Reality ingress",
+        destination_kind: "encrypted_ingress",
+        bytes: 4096,
+        bytes_up: 1024,
+        bytes_down: 3072,
+        via_vps_bytes: 0,
+        direct_bytes: 0,
+        unknown_bytes: 4096,
+        route_source: "none",
+        route_basis: "home_reality_ingress",
+        route_verification: "unknown",
+        route_status: "unknown",
+        dns_link_confidence: "no_dns_match",
+        dns_status: "no_match",
+        accounting_status: "ok",
+        byte_confidence: "observed_delta",
+        destination_confidence: "none",
+        allocation_basis: "observed_profile_counter_delta",
+        evidence_level: "home_reality_profile_counter",
+        confidence: "observed",
+      },
+    ],
     dns_links: [{
       id: "dns-link-1",
       client_key: "192.0.2.10",
@@ -751,9 +784,11 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   assert.equal(link.dns_event_ts_utc, "2026-05-11T08:59:00.000Z");
   assert.equal(link.dns_ts_source, "snapshot_approx");
   assert.equal(link.flow_event_ts_utc, "2026-05-11T09:00:00.000Z");
-  const enrichment = db.prepare("select category, traffic_class, traffic_role, decision_hint, source from destination_enrichment where destination_key = 'example.invalid'").get();
+  const enrichment = db.prepare("select category, traffic_class, traffic_lane, dns_category, traffic_role, decision_hint, source from destination_enrichment where destination_key = 'example.invalid'").get();
   assert.equal(enrichment.category, "unknown.domain");
   assert.equal(enrichment.traffic_class, "unclassified");
+  assert.equal(enrichment.traffic_lane, "unknown_review");
+  assert.equal(enrichment.dns_category, "unknown_domain");
   assert.equal(enrichment.traffic_role, "unknown");
   assert.equal(enrichment.decision_hint, "ask_user");
   assert.equal(enrichment.source, "local_rules");
@@ -761,6 +796,22 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   assert.equal(candidate.proposed_action, "ask_user");
   assert.equal(candidate.status, "pending");
   assert.equal(candidate.applied, 0);
+  const homeReality = db.prepare("select destination, traffic_class, bytes, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, dns_status, outbound from traffic_facts where fact_id = 'home-reality-1'").get();
+  assert.equal(homeReality.destination, "Home Reality ingress");
+  assert.equal(homeReality.traffic_class, "client");
+  assert.equal(homeReality.bytes, 4096);
+  assert.equal(homeReality.via_vps_bytes, 0);
+  assert.equal(homeReality.direct_bytes, 0);
+  assert.equal(homeReality.unknown_bytes, 4096);
+  assert.equal(homeReality.route_verification, "unknown");
+  assert.equal(homeReality.dns_status, "no_match");
+  assert.equal(homeReality.outbound, "");
+  const homeRealityEnrichment = db.prepare("select category, traffic_class, traffic_lane, dns_category, decision_hint from destination_enrichment where destination_key = 'home reality ingress'").get();
+  assert.equal(homeRealityEnrichment.category, "client.home_reality_ingress");
+  assert.equal(homeRealityEnrichment.traffic_class, "client");
+  assert.equal(homeRealityEnrichment.traffic_lane, "client_observed");
+  assert.equal(homeRealityEnrichment.dns_category, "user_content");
+  assert.equal(homeRealityEnrichment.decision_hint, "monitor");
   db.close();
 });
 
@@ -929,36 +980,40 @@ test("domain attribution module classifies personal cloud service client and unr
 test("local traffic intelligence returns deterministic labels and action hints", () => {
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "app-measurement.com" })),
-    { category: "analytics.firebase", action_hint: "block_candidate" }
+    { category: "analytics.firebase", traffic_lane: "privacy_risk", dns_category: "analytics", action_hint: "block_candidate" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "push.apple.com" })),
-    { category: "system.apple.push", action_hint: "allow" }
+    { category: "system.apple.push", traffic_lane: "service_system", dns_category: "system_push", action_hint: "allow" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "www.dropbox.com" })),
-    { category: "personal_cloud.dropbox", action_hint: "monitor" }
+    { category: "personal_cloud.dropbox", traffic_lane: "client_observed", dns_category: "personal_cloud", action_hint: "monitor" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20" })),
-    { category: "unknown.ip_only", action_hint: "ask_user" }
+    { category: "unknown.ip_only", traffic_lane: "unknown_review", dns_category: "unknown_ip_only", action_hint: "ask_user" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination_ip: "192.0.2.20", dns_link_confidence: "no_dns_match" })),
-    { category: "unknown.no_dns_match", action_hint: "ask_user" }
+    { category: "unknown.no_dns_match", traffic_lane: "unknown_review", dns_category: "unknown_ip_only", action_hint: "ask_user" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "", dns_link_confidence: "low" })),
-    { category: "unknown.shared_dns_answer", action_hint: "ask_user" }
+    { category: "unknown.shared_dns_answer", traffic_lane: "unknown_review", dns_category: "unknown_shared_answer", action_hint: "ask_user" }
   );
   assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "unknown-service.example.invalid" })),
-    { category: "unknown.domain", action_hint: "ask_user" }
+    { category: "unknown.domain", traffic_lane: "unknown_review", dns_category: "unknown_domain", action_hint: "ask_user" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "Home Reality ingress", destination_kind: "encrypted_ingress" })),
+    { category: "client.home_reality_ingress", traffic_lane: "client_observed", dns_category: "user_content", action_hint: "monitor" }
   );
 });
 
 function pick(row) {
-  return { category: row.category, action_hint: row.action_hint };
+  return { category: row.category, traffic_lane: row.traffic_lane, dns_category: row.dns_category, action_hint: row.action_hint };
 }
 
 test("domain breakdown keeps client personal cloud and unclassified rows separate after scaling", () => {

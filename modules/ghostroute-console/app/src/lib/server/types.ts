@@ -80,6 +80,8 @@ export type ConsoleModel = {
       total: number;
       pendingCandidates: number;
       byClass: Record<string, number>;
+      byLane: Record<string, number>;
+      byDnsCategory: Record<string, number>;
       byRole: Record<string, number>;
       byAction: Record<string, number>;
     };

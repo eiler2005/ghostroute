@@ -1,6 +1,27 @@
 export { classifyDestination } from "./classification.mjs";
 
 export type TrafficClass = "client" | "personal_cloud" | "service_background" | "unclassified";
+export type TrafficLane = "client_observed" | "service_system" | "privacy_risk" | "shared_infra" | "unknown_review";
+export type DnsCategory =
+  | "user_content"
+  | "messaging"
+  | "personal_cloud"
+  | "media_streaming"
+  | "system_push"
+  | "system_appstore"
+  | "system_connectivity"
+  | "system_auth_security"
+  | "system_maintenance"
+  | "app_background"
+  | "crash_reporting"
+  | "analytics"
+  | "ads_tracking"
+  | "telemetry"
+  | "cdn_shared"
+  | "cloud_hosting"
+  | "unknown_ip_only"
+  | "unknown_shared_answer"
+  | "unknown_domain";
 export type TrafficRole =
   | "client_interactive"
   | "client_bulk_sync"
@@ -15,6 +36,7 @@ export type DecisionHint =
   | "monitor"
   | "route_vps_candidate"
   | "direct_candidate"
+  | "investigate"
   | "ask_user";
 export type Confidence = "high" | "medium" | "low" | "unknown";
 
@@ -37,6 +59,8 @@ export type TrafficIntelligenceInput = {
 
 export type TrafficIntelligenceResult = {
   traffic_class: TrafficClass;
+  traffic_lane: TrafficLane;
+  dns_category: DnsCategory;
   category: string;
   provider: string;
   traffic_role: TrafficRole;

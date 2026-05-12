@@ -2,6 +2,7 @@ import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, Pagination, RawEvidence } from "@/components/Widgets";
 import { CatalogReviewPanel } from "@/components/CatalogReviewPanel";
 import { buildCatalogModel } from "@/lib/server/selectors/catalog";
+import { buildIntelligenceModel } from "@/lib/server/selectors/intelligence";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 
@@ -10,6 +11,7 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
   const mobile = await isMobileRequest();
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const model = buildCatalogModel(filters);
+  const intelligenceModel = buildIntelligenceModel(filters);
   const page = Math.max(1, Number.parseInt(Array.isArray(params.page) ? params.page[0] : params.page || "1", 10) || 1);
   const pageSize = boundedPageSize(Array.isArray(params.pageSize) ? params.pageSize[0] : params.pageSize, { desktop: 100, mobile: 25, min: 25, desktopMax: 1000, mobileMax: 25 }, mobile);
   const totalPages = Math.max(1, Math.ceil(model.catalog.length / pageSize));
@@ -22,6 +24,9 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
     return acc;
   }, {});
   const preview = model.catalog.filter((row) => row.type === "candidates" || row.status === "candidate").slice(0, 8);
+  const decisionPreview = (intelligenceModel.trafficIntelligence?.candidates || [])
+    .filter((row) => ["block_candidate", "ask_user", "route_vps_candidate", "direct_candidate", "investigate"].includes(String(row.proposed_action || "")))
+    .slice(0, 8);
   return (
     <ConsoleShell active="/catalog" model={model} filters={filters}>
       <div className="grid two">
@@ -81,6 +86,20 @@ export default async function CatalogPage({ searchParams }: { searchParams?: Sea
             </div>
           )}
           <CatalogReviewPanel candidates={preview} />
+          <h3 style={{ marginTop: 16 }}>Rules Preview</h3>
+          <p className="subtle">Read-only advisory candidates; no apply/deploy actions are available here.</p>
+          {decisionPreview.length === 0 ? (
+            <div className="subtle">No advisory rule candidates in the current read model.</div>
+          ) : (
+            <div className="detail-list">
+              {decisionPreview.map((row) => (
+                <div className="detail-row" key={row.candidate_id}>
+                  <span>{row.destination_key}<small className="subtle block-detail">{row.explanation || row.reason_code}</small></span>
+                  <strong>{String(row.proposed_action || "monitor").replace(/_/g, " ")}</strong>
+                </div>
+              ))}
+            </div>
+          )}
           <h3 style={{ marginTop: 16 }}>Audit / reviews</h3>
           <div className="detail-list">
             {model.catalogReviews.slice(0, 8).map((row) => (

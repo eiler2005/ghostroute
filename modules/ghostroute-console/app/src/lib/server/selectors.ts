@@ -2716,7 +2716,7 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
     const db = getDb();
     const rows = db.prepare(`
       select destination_key, kind, value, normalized_value, category, provider, action_hint,
-             traffic_class, traffic_role, traffic_purpose, decision_hint, human_explanation,
+             traffic_class, traffic_lane, dns_category, traffic_role, traffic_purpose, decision_hint, human_explanation,
              source, confidence, reason_code, sources_json, evidence_sources_json, evidence_json,
              first_seen, last_seen, expires_at
         from destination_enrichment
@@ -2757,6 +2757,16 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
         acc[key] = (acc[key] || 0) + 1;
         return acc;
       }, {}),
+      byLane: enrichments.reduce<Record<string, number>>((acc, row) => {
+        const key = row.traffic_lane || "unknown_review";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+      byDnsCategory: enrichments.reduce<Record<string, number>>((acc, row) => {
+        const key = row.dns_category || "unknown_domain";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
       byAction: enrichments.reduce<Record<string, number>>((acc, row) => {
         const key = row.decision_hint || row.action_hint || "monitor";
         acc[key] = (acc[key] || 0) + 1;
@@ -2768,7 +2778,7 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
     return {
       enrichments: [],
       candidates: [],
-      summary: { total: 0, pendingCandidates: 0, byClass: {}, byRole: {}, byAction: {} },
+      summary: { total: 0, pendingCandidates: 0, byClass: {}, byLane: {}, byDnsCategory: {}, byRole: {}, byAction: {} },
     };
   }
 }

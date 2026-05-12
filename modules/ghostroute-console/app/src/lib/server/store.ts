@@ -891,6 +891,8 @@ export function getDb() {
         provider text not null default '',
         action_hint text not null default 'monitor',
         traffic_class text not null default 'unclassified',
+        traffic_lane text not null default 'unknown_review',
+        dns_category text not null default 'unknown_domain',
         traffic_role text not null default 'unknown',
         traffic_purpose text not null default 'unknown',
         decision_hint text not null default 'monitor',
@@ -1115,6 +1117,8 @@ export function getDb() {
       },
       destination_enrichment: {
         traffic_class: "text not null default 'unclassified'",
+        traffic_lane: "text not null default 'unknown_review'",
+        dns_category: "text not null default 'unknown_domain'",
         traffic_role: "text not null default 'unknown'",
         traffic_purpose: "text not null default 'unknown'",
         decision_hint: "text not null default 'monitor'",

@@ -15,10 +15,20 @@ Outputs:
 
 - Coarse `traffic_class`: `client`, `personal_cloud`, `service_background` or
   `unclassified`.
+- GUI lane/category axes:
+  - `traffic_lane`: `client_observed`, `service_system`, `privacy_risk`,
+    `shared_infra` or `unknown_review`;
+  - `dns_category`: local purpose/category such as `system_push`,
+    `personal_cloud`, `analytics`, `ads_tracking`, `cdn_shared` or
+    `unknown_ip_only`.
 - Fine category/provider labels such as Apple system, Firebase analytics, CDN,
   personal cloud, hosting/VPS-like or unknown.
 - Advisory `decision_hint` values for human review. These are not applied
   firewall/routing actions.
+
+Home Reality encrypted ingress is classified as client-observed counter
+evidence only. The module does not invent Apple/iCloud, Google/YouTube or other
+destination labels for Home Reality profile bytes without DNS/flow evidence.
 
 External OSINT/API providers are intentionally not called by this module. Future
 IPinfo/Shodan/AbuseIPDB/VirusTotal/MCP adapters should be manual,

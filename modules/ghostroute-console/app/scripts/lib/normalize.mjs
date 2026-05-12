@@ -369,9 +369,9 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
   };
   db.prepare(`
     insert into destination_enrichment(destination_key, kind, value, normalized_value, category, provider, action_hint,
-      traffic_class, traffic_role, traffic_purpose, decision_hint, human_explanation, source, confidence, reason_code,
+      traffic_class, traffic_lane, dns_category, traffic_role, traffic_purpose, decision_hint, human_explanation, source, confidence, reason_code,
       sources_json, evidence_sources_json, evidence_json, first_seen, last_seen, expires_at)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
     on conflict(destination_key) do update set
       kind = excluded.kind,
       value = excluded.value,
@@ -380,6 +380,8 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
       provider = excluded.provider,
       action_hint = excluded.action_hint,
       traffic_class = excluded.traffic_class,
+      traffic_lane = excluded.traffic_lane,
+      dns_category = excluded.dns_category,
       traffic_role = excluded.traffic_role,
       traffic_purpose = excluded.traffic_purpose,
       decision_hint = excluded.decision_hint,
@@ -400,6 +402,8 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
     classification.provider,
     classification.action_hint || classification.decision_hint,
     classification.traffic_class,
+    classification.traffic_lane,
+    classification.dns_category,
     classification.traffic_role,
     classification.traffic_purpose,
     classification.decision_hint,
@@ -414,6 +418,8 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
     now
   );
 
+  const actionable = new Set(["block_candidate", "ask_user", "route_vps_candidate", "direct_candidate", "investigate"]);
+  if (!actionable.has(classification.decision_hint)) return;
   const candidateId = crypto.createHash("sha256")
     .update([snapshotId, destinationKey, fact.client_key || "", classification.decision_hint, classification.reason_code].join("|"))
     .digest("hex")
@@ -434,7 +440,7 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
     classification.human_explanation,
     now,
     now,
-    JSON.stringify({ ...evidence, category: classification.category, traffic_class: classification.traffic_class })
+    JSON.stringify({ ...evidence, category: classification.category, traffic_class: classification.traffic_class, traffic_lane: classification.traffic_lane, dns_category: classification.dns_category })
   );
 }
 
@@ -1407,6 +1413,8 @@ export function ensureConsoleSchema(db) {
         provider text not null default '',
         action_hint text not null default 'monitor',
         traffic_class text not null default 'unclassified',
+        traffic_lane text not null default 'unknown_review',
+        dns_category text not null default 'unknown_domain',
         traffic_role text not null default 'unknown',
         traffic_purpose text not null default 'unknown',
         decision_hint text not null default 'monitor',
@@ -1631,6 +1639,8 @@ export function ensureConsoleSchema(db) {
       },
       destination_enrichment: {
         traffic_class: "text not null default 'unclassified'",
+        traffic_lane: "text not null default 'unknown_review'",
+        dns_category: "text not null default 'unknown_domain'",
         traffic_role: "text not null default 'unknown'",
         traffic_purpose: "text not null default 'unknown'",
         decision_hint: "text not null default 'monitor'",

@@ -131,7 +131,11 @@ def outbound_route(outbound)
 end
 
 def route_intent?(row)
-  text(row['route_source']) != '' || text(row['route_basis']) != '' || text(row['matched_ipset']) != ''
+  source = text(row['route_source']).downcase
+  basis = text(row['route_basis']).downcase
+  return false if source.empty? || source == 'none'
+  return false if basis == 'no_ipset'
+  text(row['matched_ipset']) != '' || %w[ipset policy fwmark route_lookup].include?(source)
 end
 
 def intended_route_for(row)
@@ -449,6 +453,69 @@ else
     end
     facts << fact
   end
+  (input['home_reality_samples'] || []).each do |sample|
+    next unless sample.is_a?(Hash)
+    total = number(sample['total_bytes'])
+    next if total <= 0
+    event_ts = iso_time(sample['ts'], generated_at)
+    key = text(sample['client_key'], text(sample['client_label'], text(sample['source_ip'], 'unknown-home-reality-profile')))
+    label = text(sample['client_label'], key)
+    fact = {
+      'fact_id' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
+      'sample_id' => text(sample['sample_id']),
+      'event_ts' => event_ts,
+      'event_ts_utc' => event_ts,
+      'observed_at_utc' => event_ts,
+      'display_ts_utc' => event_ts,
+      'time_precision' => 'second',
+      'client_key' => key,
+      'client_label' => label,
+      'client_ip' => text(sample['source_ip']),
+      'channel' => text(sample['channel'], 'A/Home Reality'),
+      'route' => 'Unknown',
+      'intended_route' => 'Unknown',
+      'route_verification' => 'unknown',
+      'route_status' => 'unknown',
+      'route_source' => '',
+      'route_basis' => '',
+      'matched_ipset' => '',
+      'egress_iface' => '',
+      'fwmark' => '',
+      'traffic_class' => 'client',
+      'destination' => 'Home Reality ingress',
+      'destination_kind' => 'encrypted_ingress',
+      'destination_ip' => '',
+      'destination_port' => '',
+      'protocol' => 'tcp',
+      'dns_qname' => '',
+      'dns_answer_ip' => '',
+      'dns_link_id' => '',
+      'dns_link_confidence' => 'no_dns_match',
+      'dns_status' => 'no_match',
+      'dns_ts_source' => '',
+      'sni' => '',
+      'policy' => '',
+      'matched_rule' => '',
+      'outbound' => '',
+      'bytes' => total,
+      'bytes_up' => number(sample['bytes_up']),
+      'bytes_down' => number(sample['bytes_down']),
+      'via_vps_bytes' => 0,
+      'direct_bytes' => 0,
+      'unknown_bytes' => total,
+      'connections' => 0,
+      'identity_confidence' => text(sample['client_label']).empty? ? 'source_ip' : 'profile',
+      'byte_confidence' => 'observed_delta',
+      'destination_confidence' => 'none',
+      'confidence' => 'observed',
+      'accounting_status' => 'ok',
+      'allocation_basis' => text(sample['allocation_basis'], 'observed_profile_counter_delta'),
+      'evidence_level' => 'home_reality_profile_counter',
+      'sources' => ['traffic-evidence', text(sample['source'], 'mobile-reality-counters')],
+      'evidence_json' => JSON.generate({ 'sample' => sample })
+    }
+    facts << fact
+  end
 end
 
 facts.each do |fact|
@@ -502,6 +569,7 @@ output = {
     'source_command_timings' => { source_command => duration_ms },
     'source_row_counts' => {
       'flow_samples' => (input['flow_samples'] || []).length,
+      'home_reality_samples' => (input['home_reality_samples'] || []).length,
       'dns_queries' => (input['dns_queries'] || []).length,
       'traffic_facts' => facts.length,
       'attribution_gaps' => gaps.length,

@@ -11,6 +11,8 @@ const dataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR || path.resolve(moduleDi
 const dbFile = path.join(dataDir, "ghostroute.db");
 const db = new Database(dbFile, { readonly: true, fileMustExist: true });
 const registry = loadDeviceAttributions(dataDir);
+const trafficClasses = ["all", "client", "personal_cloud", "service_background", "unclassified"];
+const driftCheckedClasses = new Set(["all", "client", "personal_cloud"]);
 
 function number(value) {
   const parsed = Number(value || 0);
@@ -34,10 +36,10 @@ function concreteDestination(value) {
   return Boolean(text && text !== "unknown" && text !== "unknown destination" && text !== "n/a");
 }
 
-function payload(kind, window) {
+function payload(kind, window, trafficClass = "client") {
   const row = db
-    .prepare("select payload_json from traffic_window_snapshots where kind = ? and window = ? and traffic_class = 'client'")
-    .get(kind, window);
+    .prepare("select payload_json from traffic_window_snapshots where kind = ? and window = ? and traffic_class = ?")
+    .get(kind, window, trafficClass);
   return row ? JSON.parse(row.payload_json || "{}") : null;
 }
 
@@ -62,31 +64,37 @@ function aggregateSegments(window, now) {
   return segments;
 }
 
-function segmentRows(segment) {
+function trafficClassPredicate(trafficClass) {
+  if (trafficClass === "all") return { sql: "and traffic_class in ('client', 'personal_cloud', 'service_background', 'unclassified')", params: [] };
+  return { sql: "and traffic_class = ?", params: [trafficClass] };
+}
+
+function segmentRows(segment, trafficClass = "client") {
   const detailTable = segment.layer === "weekly" ? "client_destination_traffic_weekly" : segment.layer === "daily" ? "client_destination_traffic_daily" : segment.layer === "hourly" ? "client_destination_traffic_hourly" : "client_destination_traffic_5min";
   const totalTable = segment.layer === "weekly" ? "client_traffic_weekly" : segment.layer === "daily" ? "client_traffic_daily" : segment.layer === "hourly" ? "client_traffic_hourly" : "client_traffic_5min";
   const timeColumn = segment.layer === "weekly" ? "week_start_utc" : segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
+  const classPredicate = trafficClassPredicate(trafficClass);
   const detailRows = db.prepare(`
     select client_key, channel, destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
            attributed_bytes, case when attributed_bytes <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end as accounting_bucket
       from ${detailTable}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-        and traffic_class in ('client', 'personal_cloud')
-  `).all(segment.start, segment.end);
+       ${classPredicate.sql}
+  `).all(segment.start, segment.end, ...classPredicate.params);
   const totalRows = db.prepare(`
     select client_key, channel, '' as destination_key, traffic_class, confidence, bytes, via_vps_bytes, direct_bytes, unknown_bytes,
            attributed_bytes, 1 as accounting_bucket
       from ${totalTable}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-        and traffic_class in ('client', 'personal_cloud')
-  `).all(segment.start, segment.end);
+       ${classPredicate.sql}
+  `).all(segment.start, segment.end, ...classPredicate.params);
   return [...detailRows, ...totalRows];
 }
 
-function composedRows(window, now) {
-  return aggregateSegments(window, now).flatMap(segmentRows);
+function composedRows(window, now, trafficClass = "client") {
+  return aggregateSegments(window, now).flatMap((segment) => segmentRows(segment, trafficClass));
 }
 
 function observedBytes(rows, allowedClientKeys = null) {
@@ -117,36 +125,42 @@ function repairHint(window, dashboard) {
 }
 
 for (const window of ["today", "week", "month"]) {
-  const dashboard = payload("dashboard", window);
-  assert.ok(dashboard, `missing prepared dashboard ${window}`);
-  const rows = composedRows(window, dashboard.windowEndUtc);
-  const preparedDevices = dashboard.devices || [];
-  const preparedClientKeys = new Set(preparedDevices.map((row) => row.client_key).filter(Boolean));
-  const aggregateBytes = observedBytes(rows, preparedClientKeys);
-  const preparedBytes = preparedDevices.reduce((sum, row) => sum + rowTotalBytes(row), 0)
-    || number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes);
-  const allowed = Math.max(1, aggregateBytes * 0.01);
-  if (Math.abs(aggregateBytes - preparedBytes) > allowed) {
-    console.warn(`${window} aggregate drift: aggregate=${aggregateBytes} prepared=${preparedBytes}; repair: ${repairHint(window, dashboard)}`);
+  for (const trafficClass of trafficClasses) {
+    const dashboard = payload("dashboard", window, trafficClass);
+    assert.ok(dashboard, `missing prepared dashboard ${window}/${trafficClass}`);
+    assert.ok(payload("clients", window, trafficClass), `missing prepared clients ${window}/${trafficClass}`);
+    assert.ok(payload("reports_llm_safe", window, trafficClass), `missing prepared reports_llm_safe ${window}/${trafficClass}`);
+    const rows = composedRows(window, dashboard.windowEndUtc, trafficClass);
+    if (driftCheckedClasses.has(trafficClass)) {
+      const preparedDevices = dashboard.devices || [];
+      const preparedClientKeys = new Set(preparedDevices.map((row) => row.client_key).filter(Boolean));
+      const aggregateBytes = observedBytes(rows, preparedClientKeys);
+      const preparedBytes = preparedDevices.reduce((sum, row) => sum + rowTotalBytes(row), 0)
+        || number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes);
+      const allowed = Math.max(1, aggregateBytes * 0.01);
+      if (Math.abs(aggregateBytes - preparedBytes) > allowed) {
+        console.warn(`${window}/${trafficClass} aggregate drift: aggregate=${aggregateBytes} prepared=${preparedBytes}; repair: ${repairHint(window, dashboard)}`);
+      }
+    }
+
+    const state = db
+      .prepare("select status, detail_json from aggregate_state where model = 'dashboard' and window_key = ?")
+      .get(window);
+    assert.ok(state, `missing aggregate_state dashboard/${window}; repair: ${repairHint(window, dashboard)}`);
+    assert.ok(["ok", "partial"].includes(state.status), `aggregate_state dashboard/${window} status=${state.status}; repair: ${repairHint(window, dashboard)}`);
+
+    const concreteOperatorBytes = rows
+      .filter((row) => registry.clients[row.client_key] && concreteDestination(row.destination_key) && number(row.attributed_bytes) > 0)
+      .reduce((sum, row) => sum + number(row.attributed_bytes), 0);
+    const topDestinations = dashboard.dashboardAnalytics?.topDestinations || [];
+    assert.ok(
+      concreteOperatorBytes <= 0 || topDestinations.length > 0,
+      `${window}/${trafficClass} has concrete destination bytes but no top destinations; repair: ${repairHint(window, dashboard)}`
+    );
   }
-
-  const state = db
-    .prepare("select status, detail_json from aggregate_state where model = 'dashboard' and window_key = ?")
-    .get(window);
-  assert.ok(state, `missing aggregate_state dashboard/${window}; repair: ${repairHint(window, dashboard)}`);
-  assert.ok(["ok", "partial"].includes(state.status), `aggregate_state dashboard/${window} status=${state.status}; repair: ${repairHint(window, dashboard)}`);
-
-  const concreteOperatorBytes = rows
-    .filter((row) => registry.clients[row.client_key] && concreteDestination(row.destination_key) && number(row.attributed_bytes) > 0)
-    .reduce((sum, row) => sum + number(row.attributed_bytes), 0);
-  const topDestinations = dashboard.dashboardAnalytics?.topDestinations || [];
-  assert.ok(
-    concreteOperatorBytes <= 0 || topDestinations.length > 0,
-    `${window} has concrete destination bytes but no top destinations; repair: ${repairHint(window, dashboard)}`
-  );
 }
 
-const topClients = db.prepare("select window, rank, client_key, label, bytes from top_clients_window where traffic_class = 'client'").all();
+const topClients = db.prepare("select window, rank, client_key, label, bytes from top_clients_window where traffic_class in ('all', 'client', 'personal_cloud')").all();
 const pseudoClient = /^(A\/Home Reality|B\/XHTTP relay|C1?\b|Channel [BC]|Home Reality)$/i;
 const badClients = topClients.filter((row) => number(row.bytes) <= 0 || pseudoClient.test(String(row.label || "")) || !registry.clients[row.client_key]);
 assert.equal(

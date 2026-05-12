@@ -6,7 +6,7 @@ import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { trafficClassLabel } from "@/lib/traffic-classification.mjs";
+import { trafficClassLabel, trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -98,6 +98,8 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                     <th>Type</th>
                     <th>Answer</th>
                     <th>Route</th>
+                    <th>Category</th>
+                    <th>Decision</th>
                     <th>Catalog</th>
                     <th>Status</th>
                   </tr>
@@ -110,6 +112,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                     const clientDetail = [row.client_ip, row.raw_client && row.raw_client !== row.client ? row.raw_client : ""].filter(Boolean).join(" · ");
                     const domain = row.domain || row.dns_qname || "n/a";
                     const answer = row.answer_ip || row.dns_answer_ip || "n/a";
+                    const intel = trafficIntelligenceFor({ ...row, destination: domain, destination_ip: answer });
                     return (
                       <tr key={row.id}>
                         <td className="live-col-time">{timeWithMillis(row.display_ts_utc || row.event_ts_utc || row.event_ts || row.collected_at, true)}</td>
@@ -124,6 +127,8 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                         <td className="dns-col-type">{row.qtype || "A"}</td>
                         <td className="dns-col-answer" title={answer}>{answer}</td>
                         <td className="live-col-route"><RouteBadge value={row.route} /></td>
+                        <td><span className="badge" title={intel.human_explanation}>{String(intel.dns_category || intel.category).replace(/_/g, " ")}</span></td>
+                        <td><span className={`badge action-${String(intel.decision_hint || "monitor").replace(/_/g, "-")}`}>{String(intel.decision_hint || "monitor").replace(/_/g, " ")}</span></td>
                         <td className="dns-col-catalog"><ConfidenceBadge value={row.catalog_status || "unknown"} /></td>
                         <td className="live-col-status"><span className={`status-text-${statusSlug}`}>{statusValue}</span></td>
                       </tr>

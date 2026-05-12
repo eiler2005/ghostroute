@@ -114,8 +114,13 @@ intended source of truth. For deeper context, follow the cross-references.
   [`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md).
 - **traffic-facts v3** — `modules/traffic-observatory/bin/traffic-facts
   --json`, `schema_version: 3`. Stable machine contract consumed by the
-  Console. One `traffic_fact` per `flow_sample`. Invariant:
+  Console. One `traffic_fact` per LAN/Wi-Fi `flow_sample` or Home Reality
+  profile-counter delta. Invariant:
   `bytes == via_vps_bytes + direct_bytes + unknown_bytes` by construction.
+- **home_reality_samples** — read-only `traffic-evidence` rows derived from
+  positive `mobile-reality-counters.tsv` profile counter deltas. They prove
+  encrypted ingress bytes for a Home Reality profile, not per-destination app
+  traffic.
 - **traffic-report** — operator-facing human report. **Deprecated as a
   machine source** in the v3 refactor; Console does not consume it.
 - **Traffic Intelligence** — local deterministic interpretation layer above
@@ -124,7 +129,8 @@ intended source of truth. For deeper context, follow the cross-references.
   evidence, routing policy or blocking.
 - **destination_enrichment** — Console SQLite read model keyed by destination.
   Stores Traffic Intelligence category, provider, coarse `traffic_class`,
-  traffic role/purpose, confidence, reason code and human explanation.
+  `traffic_lane`, `dns_category`, traffic role/purpose, confidence, reason code
+  and human explanation.
 - **decision_candidates** — advisory review rows proposed by Traffic
   Intelligence. They are dry-run (`applied=0`) unless a future, separately
   designed control-plane explicitly applies them.

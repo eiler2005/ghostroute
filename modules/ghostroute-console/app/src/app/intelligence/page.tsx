@@ -19,12 +19,16 @@ function scalar(value: string | string[] | undefined) {
 function matchesView(row: Record<string, any>, view: string) {
   const category = String(row.category || "");
   const trafficClass = String(row.traffic_class || "");
-  if (view === "analytics") return category.startsWith("analytics.") || category.startsWith("tracker.");
-  if (view === "cdn") return category.startsWith("cdn.") || category === "unknown.shared_dns_answer";
-  if (view === "unknown") return trafficClass === "unclassified" || category.startsWith("unknown.");
-  if (view === "client") return trafficClass === "client";
-  if (view === "service_background") return trafficClass === "service_background";
-  if (view === "personal_cloud") return trafficClass === "personal_cloud";
+  const lane = String(row.traffic_lane || "");
+  const action = String(row.decision_hint || row.action_hint || "");
+  if (view === "review") return ["block_candidate", "ask_user", "route_vps_candidate", "direct_candidate", "investigate"].includes(action) || lane === "unknown_review";
+  if (view === "destinations") return true;
+  if (view === "rules") return ["block_candidate", "ask_user", "route_vps_candidate", "direct_candidate", "investigate"].includes(action);
+  if (view === "analytics") return lane === "privacy_risk" || category.startsWith("analytics.") || category.startsWith("tracker.");
+  if (view === "cdn") return lane === "shared_infra" || category.startsWith("cdn.") || category === "unknown.shared_dns_answer";
+  if (view === "unknown") return lane === "unknown_review" || trafficClass === "unclassified" || category.startsWith("unknown.");
+  if (view === "client") return lane === "client_observed" || trafficClass === "client";
+  if (view === "service_background") return lane === "service_system" || trafficClass === "service_background";
   return true;
 }
 
@@ -48,25 +52,24 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
   const intelligence = model.trafficIntelligence || {
     enrichments: [],
     candidates: [],
-    summary: { total: 0, pendingCandidates: 0, byClass: {}, byRole: {}, byAction: {} },
+    summary: { total: 0, pendingCandidates: 0, byClass: {}, byLane: {}, byDnsCategory: {}, byRole: {}, byAction: {} },
   };
   const allRows = intelligence.enrichments;
   const activeView = scalar(params.view) || "all";
   const rows = allRows.filter((row) => matchesView(row, activeView));
   const candidates = intelligence.candidates;
   const summary = intelligence.summary;
-  const trackerCount = rows.filter((row) => String(row.category || "").startsWith("analytics.") || String(row.category || "").startsWith("tracker.")).length;
-  const cdnCount = rows.filter((row) => String(row.category || "").startsWith("cdn.")).length;
-  const unknownCount = countOf(summary.byClass, "unclassified");
-  const serviceCount = countOf(summary.byClass, "service_background");
-  const personalCount = countOf(summary.byClass, "personal_cloud");
-  const clientCount = countOf(summary.byClass, "client");
+  const trackerCount = countOf(summary.byLane || {}, "privacy_risk");
+  const cdnCount = countOf(summary.byLane || {}, "shared_infra");
+  const unknownCount = countOf(summary.byLane || {}, "unknown_review");
+  const serviceCount = countOf(summary.byLane || {}, "service_system");
+  const clientCount = countOf(summary.byLane || {}, "client_observed");
+  const actionableCount = allRows.filter((row) => matchesView(row, "review")).length;
   const viewTabs = [
-    { value: "all", label: "All", count: allRows.length },
-    { value: "client", label: "Client", count: clientCount },
-    { value: "service_background", label: "Service/background", count: serviceCount },
-    { value: "analytics", label: "Analytics & trackers", count: trackerCount },
-    { value: "cdn", label: "CDN/shared", count: cdnCount },
+    { value: "all", label: "Overview", count: allRows.length },
+    { value: "review", label: "Review Queue", count: actionableCount },
+    { value: "destinations", label: "Destinations", count: allRows.length },
+    { value: "rules", label: "Rules Preview", count: candidates.length },
     { value: "unknown", label: "Unknown / needs review", count: unknownCount },
   ];
   const viewHref = (view: string) => {
@@ -102,7 +105,7 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
         <section className="card flow-kpi">
           <span>Client traffic</span>
           <strong>{clientCount}</strong>
-          <small>interactive/user-facing labels</small>
+          <small>client-observed labels</small>
         </section>
         <section className="card flow-kpi">
           <span>Service/background</span>
@@ -110,9 +113,14 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
           <small>system, analytics, CDN delivery</small>
         </section>
         <section className="card flow-kpi">
-          <span>Personal cloud</span>
-          <strong>{personalCount}</strong>
-          <small>sync destinations to monitor</small>
+          <span>Analytics/trackers</span>
+          <strong>{trackerCount}</strong>
+          <small>privacy-risk labels</small>
+        </section>
+        <section className="card flow-kpi">
+          <span>CDN/shared</span>
+          <strong>{cdnCount}</strong>
+          <small>monitor or ask user</small>
         </section>
         <section className="card flow-kpi flow-kpi-warn">
           <span>Needs review</span>
@@ -150,6 +158,7 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
                   <tr>
                     <th>Destination</th>
                     <th>Class</th>
+                    <th>Lane / DNS</th>
                     <th>Category</th>
                     <th>Role / purpose</th>
                     <th>Decision hint</th>
@@ -166,6 +175,10 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
                         <small>{row.provider || row.kind || "local rules"}</small>
                       </td>
                       <td><span className="badge">{trafficClassLabel(row.traffic_class)}</span></td>
+                      <td>
+                        <strong>{title(row.traffic_lane)}</strong>
+                        <small>{title(row.dns_category)}</small>
+                      </td>
                       <td>{row.category || "unknown.domain"}</td>
                       <td>
                         <strong>{title(row.traffic_role)}</strong>
