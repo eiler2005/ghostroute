@@ -13,13 +13,15 @@ const durations = [];
 
 for (let i = 0; i < 50; i += 1) {
   for (const window of ["today", "week", "month"]) {
-    const started = performance.now();
-    const row = db
-      .prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = ? and traffic_class = 'client'")
-      .get(window);
-    assert.ok(row, `missing dashboard prepared window ${window}`);
-    JSON.parse(row.payload_json || "{}");
-    durations.push(performance.now() - started);
+    for (const trafficClass of ["all", "client", "personal_cloud", "service_background", "unclassified"]) {
+      const started = performance.now();
+      const row = db
+        .prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = ? and traffic_class = ?")
+        .get(window, trafficClass);
+      assert.ok(row, `missing dashboard prepared window ${window}/${trafficClass}`);
+      JSON.parse(row.payload_json || "{}");
+      durations.push(performance.now() - started);
+    }
   }
 }
 
