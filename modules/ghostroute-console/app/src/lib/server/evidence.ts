@@ -1,5 +1,6 @@
 import type { ConsoleModel } from "./types";
 import { canonicalDeviceKey, displayDeviceLabel, resolveClient } from "../device-attribution.mjs";
+import { destinationEvidence, trafficDisplayDestination } from "../traffic-window.mjs";
 
 function lower(value: unknown) {
   return String(value || "").toLowerCase();
@@ -322,7 +323,7 @@ function displaySni(flow: Record<string, any>, decision: Record<string, any> | u
   const sni = text(flow.sni || decision?.sni || flow.raw?.sni, "");
   if (sni) return sni;
   if (destination.includes(".") && !isIpLiteral(destination) && !isCategoryAggregate(destination)) return destination;
-  return "category aggregate";
+  return "not observed";
 }
 
 function displayClientIp(value: string, channel: string) {
@@ -343,10 +344,20 @@ function ruleEvidence(route: string, flow: Record<string, any>, catalog?: Record
   return { label: fallback, detail: fallback === "STEALTH_DOMAINS" ? "derived from route counters" : "derived rule evidence", kind: "derived rule" };
 }
 
+function destinationNetworkOwner(flow: Record<string, any>, decision?: Record<string, any>) {
+  const provider = text(flow.provider || flow.ip_provider || flow.asn_org || flow.ip_asn_org || decision?.provider || decision?.asn_org, "");
+  const asn = text(flow.ip_asn || flow.asn || decision?.asn || "", "");
+  const country = text(flow.country || flow.ip_country || decision?.country || "", "");
+  const parts = [country, asn ? `AS${String(asn).replace(/^AS/i, "")}` : "", provider].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "not observed";
+}
+
 function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, any>, index: number) {
   if (!flow) return null;
   const route = text(flow.route || routeFromBytes(flow), "Unknown");
   const rawDestination = text(flow.destination || flow.destination_ip || flow.dns_qname || flow.family || flow.domain || flow.app, "unknown destination");
+  const displayDestination = trafficDisplayDestination(flow);
+  const displayEvidence = destinationEvidence(flow);
   const dnsByAnswer = model.dnsQueries.find((row) => lower(row.answer_ip) === lower(rawDestination) || lower(row.raw?.dns_answer_ip) === lower(rawDestination));
   const destination = text(flow.dns_qname || dnsByAnswer?.domain || dnsByAnswer?.qname || rawDestination, "unknown destination");
   const resolvedClient = resolveClient({ ...flow, client: flow.client || dnsByAnswer?.client, label: flow.label });
@@ -383,8 +394,9 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
   const sni = displaySni(flow, decision, destination);
   const accountingBucket = Boolean(flow.accounting_bucket || flow.raw?.accounting_bucket);
   const aggregateDestination = (accountingBucket || isCategoryAggregate(destination)) && !dns && !text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "");
-  const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : destination;
-  const siteSni = aggregateDestination && sni === "category aggregate" ? "not observed" : sni;
+  const siteDestination = aggregateDestination ? "not observed (destination aggregate)" : displayDestination || destination;
+  const siteSni = aggregateDestination ? "not observed" : sni;
+  const destinationCountryAs = destinationNetworkOwner(flow, decision);
   const timeline = [
     { at: formatEventTime(dns?.event_ts || dns?.raw?.ts || dns?.collected_at || eventTime), label: "DNS request", detail: `${text(dns?.domain || flow.dns_qname || destination)}${dns?.answer_ip || flow.dns_answer_ip ? ` -> ${dns?.answer_ip || flow.dns_answer_ip}` : ""}` },
     { at: formatEventTime(eventTime), label: "IP/rule evidence", detail: `${matchedRule}${flow.rule_set ? ` / ${flow.rule_set}` : ""}` },
@@ -415,8 +427,13 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
     clientIp: clientIpLabel,
     channel,
     destination,
+    displayDestination,
+    displayEvidenceKind: displayEvidence.kind,
+    domain: text(flow.dns_qname || flow.sni || dns?.domain || (!isIpLiteral(destination) && destination.includes(".") ? destination : ""), "not observed"),
     destinationIp: text(flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "not observed"),
     destinationPort: text(flow.destination_port || decision?.destination_port || flow.raw?.destination_port, "not observed"),
+    destinationCountryAs,
+    destinationTechnical: text(displayEvidence.technical || flow.destination_ip || decision?.destination_ip || flow.raw?.destination_ip, "not observed"),
     route,
     outbound,
     matchedRule,
@@ -447,6 +464,7 @@ function buildRouteEvidenceFromInput(model: ConsoleModel, flow: Record<string, a
       ),
       protocol,
       sni: siteSni,
+      destinationCountryAs,
     },
     operatorView: {
       input: `${channel} / ${client}`,

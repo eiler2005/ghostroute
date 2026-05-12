@@ -2,8 +2,9 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
-import { groupAttributionRows, groupDestinationRows, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function share(value: number, total: number) {
@@ -24,38 +25,108 @@ function unknownBytes(row: Record<string, any>) {
   return Math.max(0, observedBytes(row) - Number(row.via_vps_bytes || row.viaVpsBytes || 0) - Number(row.direct_bytes || row.directBytes || 0));
 }
 
-function groupDestinationFallback(rows: Array<Record<string, any>>, limit = 8) {
+function trafficClassOf(row: Record<string, any>) {
+  return String(row.trafficClass || row.traffic_class || "").trim();
+}
+
+function routeSplit(row: Record<string, any>) {
+  const viaVps = Number(row.via_vps_bytes || row.viaVpsBytes || (row.route === "VPS" ? observedBytes(row) : 0) || 0);
+  const direct = Number(row.direct_bytes || row.directBytes || (row.route === "Direct" ? observedBytes(row) : 0) || 0);
+  const unknown = Math.max(0, observedBytes(row) - viaVps - direct);
+  return { viaVps, direct, unknown };
+}
+
+function routeFromRoutes(routes: Set<string>) {
+  const clean = Array.from(routes).filter(Boolean);
+  if (clean.length === 0) return "Unknown";
+  if (clean.length === 1) return clean[0];
+  return "Mixed";
+}
+
+function destinationLabel(row: Record<string, any>) {
+  return trafficDisplayDestination(row);
+}
+
+function hasDashboardDestination(row: Record<string, any>) {
+  if (row.accounting_bucket || row.raw?.accounting_bucket) return false;
+  return isPrimaryTrafficDestinationLabel(destinationLabel(row));
+}
+
+function laneForRow(row: Record<string, any>) {
+  return String(trafficIntelligenceFor(row).traffic_lane || row.traffic_lane || "unknown_review");
+}
+
+function destinationSection(row: Record<string, any>) {
+  const trafficClass = trafficClassOf(row);
+  const lane = laneForRow(row);
+  if (lane === "service_system" || trafficClass === "service_background") return "service";
+  return "client";
+}
+
+function sectionLabel(value: string) {
+  return value === "service" ? "Service/background" : "Client traffic";
+}
+
+function isNeedsAttributionRow(row: Record<string, any>) {
+  if (observedBytes(row) <= 0 || row.accounting_bucket || row.raw?.accounting_bucket) return false;
+  const label = destinationLabel(row);
+  const trafficClass = trafficClassOf(row);
+  const lane = laneForRow(row);
+  if (!isPrimaryTrafficDestinationLabel(label)) return true;
+  return trafficClass === "unclassified" || lane === "unknown_review";
+}
+
+function groupDashboardDestinations(rows: Array<Record<string, any>>, limit = 10) {
   const grouped = new Map<string, Record<string, any>>();
   for (const row of rows) {
-    const label = trafficDisplayDestination(row);
-    if (!label || label === "unknown destination") continue;
-    const key = label.toLowerCase();
+    if (observedBytes(row) <= 0 || !hasDashboardDestination(row)) continue;
+    const label = destinationLabel(row);
+    const section = destinationSection(row);
+    const key = `${section}|${label.toLowerCase()}`;
     const current = grouped.get(key) || {
       ...row,
       destinationLabel: label,
+      label,
+      section,
       bytes: 0,
       total_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      viaVpsBytes: 0,
+      directBytes: 0,
+      unknownBytes: 0,
       connections: 0,
       clients: new Set<string>(),
       routes: new Set<string>(),
-      categoryFallback: true,
+      lanes: new Set<string>(),
     };
     const rowBytes = observedBytes(row);
+    const split = routeSplit(row);
     current.bytes += rowBytes;
     current.total_bytes += rowBytes;
+    current.via_vps_bytes += split.viaVps;
+    current.direct_bytes += split.direct;
+    current.unknown_bytes += split.unknown;
+    current.viaVpsBytes += split.viaVps;
+    current.directBytes += split.direct;
+    current.unknownBytes += split.unknown;
     current.connections += Number(row.connections || 0);
     if (row.client) current.clients.add(String(row.client));
     if (row.route) current.routes.add(String(row.route));
+    current.lanes.add(laneForRow(row));
     grouped.set(key, current);
   }
+  const sectionRank = (row: Record<string, any>) => row.section === "service" ? 1 : 0;
   return Array.from(grouped.values())
-    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0))
+    .sort((a, b) => sectionRank(a) - sectionRank(b) || Number(b.bytes || 0) - Number(a.bytes || 0))
     .slice(0, limit)
-    .map((row) => ({
+    .map((row, idx) => ({
       ...row,
-      route: row.routes?.has("VPS") && row.routes?.has("Direct") ? "Mixed" : Array.from(row.routes || [row.route])[0] || row.route,
+      rank: idx + 1,
+      route: routeFromRoutes(row.routes || new Set()),
       detail: [
-        "category aggregate",
+        sectionLabel(row.section),
         row.clients?.size ? `${row.clients.size} client${row.clients.size === 1 ? "" : "s"}` : "",
         row.connections ? `${row.connections} sessions` : "",
       ].filter(Boolean).join(" · "),
@@ -215,11 +286,12 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
 
 function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
   const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
+  const total = Math.max(1, rows.reduce((sum, row) => sum + observedBytes(row), 0));
   return (
     <section className="card dashboard-rank-card">
       <div className="dashboard-card-head">
         <h2>Top destinations</h2>
-        <Link className="dashboard-card-link" href="/traffic?trafficClass=client">Open all</Link>
+        <Link className="dashboard-card-link" href="/traffic">Open all</Link>
       </div>
       {rows.length === 0 ? <EmptyState title="No destination traffic observed" /> : (
         <div className="dashboard-rank-list">
@@ -229,7 +301,7 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
               <div className="rank-title"><strong>{row.label}</strong><small>{row.detail || "not observed"}</small></div>
               <RouteBadge value={row.route} />
               <div className="rank-meter">
-                <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || 0}%</span>
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || pct(observedBytes(row), total)}%</span>
                 <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
                 <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
               </div>
@@ -283,26 +355,34 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     .sort((a, b) => observedBytes(b) - observedBytes(a))
     .slice(0, 8);
   const coverage = model.destinationAttributionCoverage || {};
+  const detailFlowRows = listFlowSessions({
+    page: 1,
+    pageSize: 500,
+    maxPageSize: 500,
+    maxRows: 5000,
+    filters: { ...filters, trafficClass: "all" },
+    diagnostics: true,
+  }).rows;
+  const observedFlowRows = [...(detailFlowRows.length ? detailFlowRows : model.flows)]
+    .filter((row) => observedBytes(row) > 0)
+    .sort((a, b) => observedBytes(b) - observedBytes(a));
   const clientTrafficRows = [...model.flows]
-    .filter((row) => (row.trafficClass === "client" || row.trafficClass === "personal_cloud" || row.accounting_bucket) && observedBytes(row) > 0)
+    .filter((row) => (trafficClassOf(row) === "client" || trafficClassOf(row) === "personal_cloud" || row.accounting_bucket) && observedBytes(row) > 0)
     .sort((a, b) => observedBytes(b) - observedBytes(a));
   const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + observedBytes(row), 0));
   const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
-  const concreteDestinations = groupDestinationRows(clientTrafficRows.filter((row) => !row.accounting_bucket), 8);
-  const bucketDestinations = groupDestinationFallback(clientTrafficRows.filter((row) => row.accounting_bucket), 4);
-  const fallbackTopDestinations = [...concreteDestinations, ...bucketDestinations]
-    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0))
-    .slice(0, 8);
-  const topDestinations: Array<Record<string, any>> = (analytics.topDestinations || []).length ? analytics.topDestinations : fallbackTopDestinations;
-  const serviceTraffic = [...model.flows]
-    .filter((row) => row.trafficClass === "service_background" && observedBytes(row) > 0)
-    .sort((a, b) => observedBytes(b) - observedBytes(a))
-    .slice(0, 5);
-  const needsAttribution = groupAttributionRows(
-    model.flows.filter((row) => row.trafficClass === "unclassified" && observedBytes(row) > 0),
+  const topDestinations = groupDashboardDestinations(observedFlowRows, 10);
+  const serviceTraffic = groupDashboardDestinations(
+    observedFlowRows.filter((row) => destinationSection(row) === "service"),
     10
   );
-  const latestDecisions = clientTrafficRows.slice(0, 8);
+  const needsAttribution = groupAttributionRows(
+    observedFlowRows.filter(isNeedsAttributionRow),
+    10
+  );
+  const latestDecisions = observedFlowRows
+    .filter((row) => destinationSection(row) === "client" && hasDashboardDestination(row))
+    .slice(0, 10);
   const intelligenceSummary = trafficIntelSummary(model.flows);
 
   return (

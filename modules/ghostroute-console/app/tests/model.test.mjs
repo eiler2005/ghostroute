@@ -1548,6 +1548,13 @@ test("traffic presentation prefers concrete destinations over generic categories
   });
   assert.equal(concreteTrafficDestination({ destination_ip: "203.0.113.10" }), "");
   assert.equal(trafficDisplayDestination({ destination: "203.0.113.10", destination_ip: "203.0.113.10" }), "IP-only destination");
+  assert.equal(trafficDisplayDestination({ destination: "198.51.100.63", destination_ip: "198.51.100.63", provider: "FACEBOOK", category: "ip_asn.social_platform.facebook" }), "Facebook network");
+  assert.deepEqual(destinationEvidence({ destination: "198.51.100.8", destination_ip: "198.51.100.8", provider: "YANDEX LLC" }), {
+    label: "Yandex network",
+    kind: "IP/provider",
+    exact: false,
+    technical: "198.51.100.8",
+  });
   assert.equal(trafficDisplayDestination({ destination: "Home Reality ingress", category: "client.home_reality_ingress" }), "Encrypted ingress traffic");
   assert.equal(isPrimaryTrafficDestinationLabel("203.0.113.10"), false);
   assert.equal(isPrimaryTrafficDestinationLabel("Home Reality ingress"), false);

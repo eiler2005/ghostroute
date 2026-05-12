@@ -137,6 +137,42 @@ function prettyToken(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function providerDisplayName(value) {
+  const provider = text(value).trim();
+  if (!provider) return "";
+  const normalized = provider.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (!normalized || normalized === "unknown") return "";
+  if (normalized.includes("facebook") || normalized.includes("meta")) return "Facebook network";
+  if (normalized.includes("google")) return "Google network";
+  if (normalized.includes("youtube")) return "Google YouTube network";
+  if (normalized.includes("yandex")) return "Yandex network";
+  if (normalized.includes("telegram")) return "Telegram network";
+  if (normalized.includes("apple")) return "Apple network";
+  if (normalized.includes("microsoft")) return "Microsoft network";
+  if (normalized.includes("cloudflare")) return "Cloudflare network";
+  if (normalized.includes("amazon") || normalized === "aws") return "Amazon/AWS network";
+  if (normalized.includes("akamai")) return "Akamai CDN";
+  if (normalized.includes("fastly")) return "Fastly CDN";
+  const compact = provider
+    .replace(/[_-]+/g, " ")
+    .replace(/\b(AS|LLC|INC|LTD|CORP|CO)\b\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return compact ? `${prettyToken(compact)} network` : "";
+}
+
+function ipCategoryDisplayName(value) {
+  const category = text(value).trim();
+  if (!category || category.startsWith("unknown.")) return "";
+  return prettyToken(category.replace(/^ip_asn[.]/, ""));
+}
+
+function ipEnrichmentLabel(row) {
+  const provider = providerDisplayName(row?.provider || row?.ip_provider || row?.asn_org || row?.raw?.provider || row?.raw?.ip_provider || row?.raw?.asn_org);
+  if (provider) return provider;
+  return ipCategoryDisplayName(row?.category || row?.ip_category_hint || row?.raw?.category || row?.raw?.ip_category_hint);
+}
+
 function categoryLabel(row) {
   const category = text(row?.category || row?.raw?.category || row?.dns_category || row?.traffic_lane || row?.traffic_role || row?.traffic_class, "");
   if (CATEGORY_LABELS[category]) return CATEGORY_LABELS[category];
@@ -149,12 +185,16 @@ function categoryLabel(row) {
 }
 
 function hasIpEvidence(row) {
-  return Boolean(text(row?.destination_ip || row?.raw?.destination_ip || row?.answer_ip || row?.dns_answer_ip, ""));
+  return Boolean(text(row?.destination_ip || row?.raw?.destination_ip || row?.answer_ip || row?.dns_answer_ip, "")) || isIpLiteral(row?.destination);
 }
 
 export function trafficDisplayDestination(row) {
   const concrete = concreteTrafficDestination(row);
   if (concrete) return concrete;
+  if (hasIpEvidence(row)) {
+    const ipLabel = ipEnrichmentLabel(row);
+    if (ipLabel) return ipLabel;
+  }
   for (const candidate of [row?.destinationLabel, row?.destination, row?.family, row?.domain]) {
     const value = text(candidate).trim();
     if (!value || value === "unknown destination") continue;
@@ -181,8 +221,11 @@ export function destinationEvidence(row) {
   if (dns) return { label: dns, kind: "DNS", exact: true };
   const sni = text(row?.sni || row?.raw?.sni).trim();
   if (sni && !isGenericTrafficDestination(sni)) return { label: sni, kind: "SNI", exact: true };
-  const ip = text(row?.destination_ip || row?.raw?.destination_ip).trim();
-  if (ip) return { label: "IP-only destination", kind: "IP", exact: true, technical: ip };
+  const ip = text(row?.destination_ip || row?.raw?.destination_ip || (isIpLiteral(row?.destination) ? row?.destination : "")).trim();
+  if (ip) {
+    const label = ipEnrichmentLabel(row) || "IP-only destination";
+    return { label, kind: label === "IP-only destination" ? "IP" : "IP/provider", exact: false, technical: ip };
+  }
   const rawDestination = text(row?.destinationLabel || row?.destination || row?.family || row?.domain).trim();
   if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination) && !isPseudoTrafficDestination(rawDestination)) {
     return {

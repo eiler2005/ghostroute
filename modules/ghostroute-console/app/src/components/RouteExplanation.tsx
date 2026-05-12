@@ -54,6 +54,7 @@ function notObserved(value: unknown) {
 }
 
 function destinationEvidenceLevel(evidence: Evidence) {
+  if (evidence.displayEvidenceKind === "IP/provider") return "provider/IP";
   if (evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain) return "exact DNS";
   if (evidence.siteView.sni && evidence.siteView.sni !== "not observed" && evidence.siteView.sni !== "category aggregate") return "exact SNI";
   if (evidence.destinationIp && evidence.destinationIp !== "not observed") return "exact IP";
@@ -90,8 +91,8 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
         </div>
         <span>{"->"}</span>
         <div>
-          <strong>{evidence.destination}</strong>
-          <small>{evidence.destinationIp}:{evidence.destinationPort}</small>
+          <strong>{evidence.displayDestination || evidence.destination}</strong>
+          <small>{evidence.destinationTechnical || evidence.destinationIp}:{evidence.destinationPort}</small>
         </div>
       </div>
 
@@ -124,9 +125,11 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
         <h3><Globe2 size={16} /> Destination evidence</h3>
         <div className="detail-list compact-detail-list">
           <div className="detail-row"><span>Site / group</span><strong>{notObserved(evidence.siteView.destination || evidence.destination)}</strong></div>
+          <div className="detail-row"><span>Domain</span><strong>{notObserved(evidence.domain)}</strong></div>
           <div className="detail-row"><span>DNS</span><strong>{notObserved(evidence.flow.dns_qname || evidence.dnsMatches[0]?.domain)}</strong></div>
           <div className="detail-row"><span>SNI</span><strong>{notObserved(evidence.siteView.sni || evidence.sni)}</strong></div>
           <div className="detail-row"><span>Destination IP</span><strong>{notObserved(evidence.destinationIp)}</strong></div>
+          <div className="detail-row"><span>Provider / AS</span><strong>{notObserved(evidence.destinationCountryAs || evidence.siteView.destinationCountryAs)}</strong></div>
           <div className="detail-row"><span>Evidence level</span><strong>{destinationEvidenceLevel(evidence)}</strong></div>
         </div>
       </section>

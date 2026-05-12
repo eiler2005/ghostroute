@@ -314,8 +314,9 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .traffic-table-wrap { flex: 1 1 auto; min-height: 140px; max-height: none !important; }
 .traffic-stream-meta { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 .traffic-mode-button { min-height: 34px; padding: 0 12px; }
-.flow-events-table { min-width: 1500px; }
-.flow-events-table .col-client, .flow-events-table .col-destination, .flow-events-table .col-policy, .flow-events-table .col-traffic { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-events-table { min-width: 1640px; }
+.flow-events-table .col-client, .flow-events-table .col-destination, .flow-events-table .col-policy, .flow-events-table .col-traffic, .flow-events-table .col-domain { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-events-table .col-domain { width: 190px; }
 .flow-events-table .col-port span { color: #8da2bb; font-size: 11px; }
 .flow-events-table .inline-badges { display: inline-flex; margin: 0 0 0 8px; vertical-align: middle; }
 .flow-events-table .badge { min-height: 20px; padding: 1px 8px; font-size: 11px; }
