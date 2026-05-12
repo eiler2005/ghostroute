@@ -31,6 +31,7 @@ function routeStatus(row: Record<string, any>) {
   if (status) return status;
   const verification = String(row.route_verification || "").toLowerCase();
   if (verification === "verified_vps" || verification === "verified_direct") return "verified";
+  if (verification === "counter_allocated" || verification === "ingress_route_allocated") return "counter_allocated";
   if (verification === "intent_only" || verification === "mismatch") return verification;
   return "unknown";
 }

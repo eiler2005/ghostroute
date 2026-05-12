@@ -618,7 +618,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-schema-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));
   ensureConsoleSchema(db);
-  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "router_traffic_rollups", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "client_traffic_weekly", "client_traffic_monthly", "client_destination_traffic_5min", "client_destination_traffic_hourly", "client_destination_traffic_daily", "client_destination_traffic_weekly", "client_destination_traffic_monthly", "dns_log_5min", "dns_log_hourly", "dns_log_daily", "dns_log_weekly", "dns_log_monthly", "top_clients_window", "top_destinations_window", "traffic_window_snapshots", "aggregate_state"]) {
+  for (const table of ["hourly_traffic", "retention_runs", "collector_runs", "collector_errors", "events", "route_decisions", "live_cursors", "audit_log", "notifications", "notification_settings", "catalog_reviews", "ops_runs", "read_model_state", "flow_sessions", "dns_query_log", "device_inventory", "alarm_events", "console_settings", "console_page_summaries", "router_traffic_rollups", "client_traffic_5min", "client_traffic_hourly", "client_traffic_daily", "client_traffic_weekly", "client_traffic_monthly", "client_destination_traffic_5min", "client_destination_traffic_hourly", "client_destination_traffic_daily", "client_destination_traffic_weekly", "client_destination_traffic_monthly", "client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects", "ip_prefix_catalog", "ip_enrichment_cache", "dns_log_5min", "dns_log_hourly", "dns_log_daily", "dns_log_weekly", "dns_log_monthly", "top_clients_window", "top_destinations_window", "traffic_window_snapshots", "aggregate_state"]) {
     assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table), table);
   }
   assert.ok(db.prepare("select version from schema_migrations where version = 6").get());
@@ -630,6 +630,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select version from schema_migrations where version = 13").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 14").get());
   assert.ok(db.prepare("select version from schema_migrations where version = 15").get());
+  assert.ok(db.prepare("select version from schema_migrations where version = 16").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'egress_asn'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'traffic_class'").get());
   assert.ok(db.prepare("select 1 from pragma_table_info('normalized_flows') where name = 'display_ts_utc'").get());
@@ -654,10 +655,52 @@ test("schema includes collector reliability and post-MVP tables", () => {
   for (const column of ["traffic_class", "traffic_lane", "dns_category", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
     assert.ok(db.prepare("select 1 from pragma_table_info('destination_enrichment') where name = ?").get(column), column);
   }
+  for (const column of ["traffic_lane", "dns_category", "decision_hint", "top_destinations_json", "enrichment_status"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('client_traffic_by_lane') where name = ?").get(column), column);
+  }
+  for (const column of ["destination_key", "traffic_lane", "dns_category", "decision_hint", "category", "provider", "enrichment_status"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('client_destination_by_lane') where name = ?").get(column), column);
+  }
+  for (const column of ["destination_key", "destination_label", "traffic_lane", "dns_category", "category", "provider", "route_evidence", "intended_route", "route_verification", "matched_ipset"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('client_route_evidence_defects') where name = ?").get(column), column);
+  }
+  for (const column of ["range_start", "range_end", "range_start_u32", "range_end_u32", "asn", "asn_org", "provider"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('ip_prefix_catalog') where name = ?").get(column), column);
+  }
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'table' and name = 'decision_candidates'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_client_dest'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_domain_answer'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_facts_client_dest'").get());
+  db.close();
+});
+
+test("schema repairs traffic intelligence columns even when migration marker already exists", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    create table schema_migrations(version integer primary key, applied_at text not null);
+    insert into schema_migrations(version, applied_at) values (15, '2026-05-12T00:00:00.000Z');
+    create table destination_enrichment (
+      destination_key text primary key,
+      kind text not null,
+      value text not null,
+      normalized_value text not null,
+      category text not null default 'unknown',
+      provider text not null default '',
+      action_hint text not null default 'monitor',
+      confidence text not null default 'unknown',
+      reason_code text not null default '',
+      sources_json text not null default '[]',
+      evidence_json text not null default '{}',
+      first_seen text not null,
+      last_seen text not null,
+      expires_at text not null default ''
+    );
+  `);
+  ensureConsoleSchema(db);
+  for (const column of ["traffic_class", "traffic_lane", "dns_category", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
+    assert.ok(db.prepare("select 1 from pragma_table_info('destination_enrichment') where name = ?").get(column), column);
+  }
+  assert.ok(db.prepare("select version from schema_migrations where version = 16").get());
   db.close();
 });
 
@@ -740,6 +783,36 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
         evidence_level: "home_reality_profile_counter",
         confidence: "observed",
       },
+      {
+        fact_id: "counter-allocated-1",
+        event_ts_utc: "2026-05-11T09:06:00.000Z",
+        client_key: "192.0.2.11",
+        client_label: "192.0.2.11",
+        client_ip: "192.0.2.11",
+        channel: "Home Wi-Fi/LAN",
+        route: "Mixed",
+        intended_route: "VPS",
+        traffic_class: "client",
+        destination: "counter.example.invalid",
+        destination_kind: "domain",
+        destination_ip: "198.51.100.21",
+        destination_port: "443",
+        protocol: "tcp",
+        bytes: 6000,
+        bytes_up: 2000,
+        bytes_down: 4000,
+        via_vps_bytes: 4000,
+        direct_bytes: 1000,
+        unknown_bytes: 1000,
+        route_source: "ipset",
+        route_basis: "client_counter_delta",
+        matched_ipset: "STEALTH_DOMAINS",
+        route_verification: "counter_allocated",
+        dns_link_confidence: "no_dns_match",
+        dns_status: "no_match",
+        accounting_status: "ok",
+        confidence: "observed",
+      },
     ],
     dns_links: [{
       id: "dns-link-1",
@@ -771,6 +844,10 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   assert.equal(fact.intended_route, "VPS");
   assert.equal(fact.route_verification, "intent_only");
   assert.equal(fact.route_status, "intent_only");
+  const counterAllocated = db.prepare("select route_verification, route_status, via_vps_bytes, direct_bytes, unknown_bytes from traffic_facts where fact_id = 'counter-allocated-1'").get();
+  assert.equal(counterAllocated.route_verification, "counter_allocated");
+  assert.equal(counterAllocated.route_status, "counter_allocated");
+  assert.equal(counterAllocated.via_vps_bytes + counterAllocated.direct_bytes + counterAllocated.unknown_bytes, 6000);
   assert.equal(fact.dns_link_id, "dns-link-1");
   assert.equal(fact.dns_link_confidence, "high");
   assert.equal(fact.dns_status, "approximate_ts");
@@ -812,6 +889,26 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   assert.equal(homeRealityEnrichment.traffic_lane, "client_observed");
   assert.equal(homeRealityEnrichment.dns_category, "user_content");
   assert.equal(homeRealityEnrichment.decision_hint, "monitor");
+  rebuildPreparedWindows(db, "2026-05-11T09:10:00.000Z");
+  const laneRows = db.prepare("select traffic_lane, dns_category, decision_hint, sum(bytes) as bytes from client_traffic_by_lane where bucket_granularity = '5min' and traffic_lane != 'all' group by traffic_lane, dns_category, decision_hint order by traffic_lane").all();
+  assert.deepEqual(laneRows.map((row) => [row.traffic_lane, row.dns_category, row.decision_hint, row.bytes]), [
+    ["client_observed", "user_content", "monitor", 4096],
+    ["unknown_review", "unknown_domain", "ask_user", 10200],
+  ]);
+  const allLaneBytes = db.prepare("select sum(bytes) as bytes from client_traffic_by_lane where bucket_granularity = '5min' and traffic_lane = 'all'").get().bytes;
+  const detailLaneBytes = db.prepare("select sum(bytes) as bytes from client_destination_by_lane where bucket_granularity = '5min'").get().bytes;
+  assert.equal(allLaneBytes, detailLaneBytes);
+  const unknownDestination = db.prepare("select destination_key, traffic_lane, dns_category, decision_hint, category from client_destination_by_lane where bucket_granularity = '5min' and destination_key = 'example.invalid'").get();
+  assert.equal(unknownDestination.traffic_lane, "unknown_review");
+  assert.equal(unknownDestination.dns_category, "unknown_domain");
+  assert.equal(unknownDestination.decision_hint, "ask_user");
+  assert.equal(unknownDestination.category, "unknown.domain");
+  const routeDefect = db.prepare("select destination_key, traffic_lane, dns_category, route_evidence, unknown_bytes from client_route_evidence_defects where bucket_granularity = '5min' and client_key = 'iphone-4'").get();
+  assert.equal(routeDefect.destination_key, "Home Reality ingress");
+  assert.equal(routeDefect.traffic_lane, "client_observed");
+  assert.equal(routeDefect.dns_category, "user_content");
+  assert.equal(routeDefect.route_evidence, "unknown_route");
+  assert.equal(routeDefect.unknown_bytes, 4096);
   db.close();
 });
 
@@ -1010,6 +1107,22 @@ test("local traffic intelligence returns deterministic labels and action hints",
     pick(trafficIntelligenceFor({ destination: "Home Reality ingress", destination_kind: "encrypted_ingress" })),
     { category: "client.home_reality_ingress", traffic_lane: "client_observed", dns_category: "user_content", action_hint: "monitor" }
   );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "rr1.sn-ajixh5-55.googlevideo.com" })),
+    { category: "client.google.youtube", traffic_lane: "client_observed", dns_category: "media_streaming", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "api.anthropic.com" })),
+    { category: "client.ai.anthropic", traffic_lane: "client_observed", dns_category: "ai_assistant", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "zoomfrarr62mmr.fra.zoom.us" })),
+    { category: "client.meeting.zoom", traffic_lane: "client_observed", dns_category: "meeting_platform", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "eu-central-courier-4.push-apple.com.akadns.net" })),
+    { category: "system.apple.push", traffic_lane: "service_system", dns_category: "system_push", action_hint: "allow" }
+  );
 });
 
 function pick(row) {
@@ -1083,6 +1196,60 @@ test("operational pruning keeps raw tables bounded after prepared windows exist"
   assert.equal(pruned.normalized_flows > 0, true);
   assert.equal(db.prepare("select count(*) as count from normalized_flows where client = 'old-client'").get().count, 0);
   assert.equal(db.prepare("select count(*) as count from normalized_flows where client = 'new-client'").get().count, 1);
+  db.close();
+});
+
+test("operational pruning keeps only the latest traffic facts snapshot", () => {
+  const db = new Database(":memory:");
+  ensureConsoleSchema(db);
+  const insertSnapshot = db.prepare("insert into snapshots(id, type, collected_at, source, path, payload_json) values (?, 'traffic_facts', ?, 'test', '', '{}')");
+  const payloadFor = (factId, generatedAt, bytes) => ({
+    schema_version: 3,
+    generated_at: generatedAt,
+    source: { command: "traffic-facts", source_report: "traffic-evidence" },
+    confidence: "observed",
+    window: { period: "today", start_ts_utc: "2026-05-11T21:00:00.000Z", end_ts_utc: "2026-05-12T21:00:00.000Z" },
+    collector_metrics: { duration_ms: 1, source_row_counts: { traffic_facts: 1 } },
+    clients: [],
+    traffic_facts: [{
+      fact_id: factId,
+      event_ts_utc: generatedAt,
+      client_key: "client-1",
+      client_label: "Client 1",
+      client_ip: "192.0.2.10",
+      channel: "Home Wi-Fi/LAN",
+      route: "VPS",
+      intended_route: "VPS",
+      traffic_class: "client",
+      destination: "example.invalid",
+      destination_kind: "domain",
+      bytes,
+      via_vps_bytes: bytes,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      route_verification: "counter_allocated",
+      route_status: "counter_allocated",
+      accounting_status: "ok",
+      confidence: "observed",
+    }],
+    dns_links: [],
+    attribution_gaps: [],
+    coverage: {},
+  });
+  insertSnapshot.run(1, "2026-05-12T08:00:00.000Z");
+  normalizeSnapshot(db, 1, "traffic_facts", "2026-05-12T08:00:00.000Z", payloadFor("old-fact", "2026-05-12T08:00:00.000Z", 1000));
+  insertSnapshot.run(2, "2026-05-12T09:00:00.000Z");
+  normalizeSnapshot(db, 2, "traffic_facts", "2026-05-12T09:00:00.000Z", payloadFor("new-fact", "2026-05-12T09:00:00.000Z", 2000));
+  db.prepare("insert into flow_sessions(id, snapshot_id, collected_at, client, destination, bytes) values (?, ?, ?, ?, ?, ?)").run("old-session", 1, "2026-05-12T08:00:00.000Z", "Client 1", "old.example.invalid", 1000);
+  db.prepare("insert into flow_sessions(id, snapshot_id, collected_at, client, destination, bytes) values (?, ?, ?, ?, ?, ?)").run("new-session", 2, "2026-05-12T09:00:00.000Z", "Client 1", "new.example.invalid", 2000);
+
+  assert.equal(db.prepare("select count(*) as count from traffic_facts").get().count, 2);
+  const pruned = pruneOperationalTables(db, "2026-05-12T10:00:00.000Z");
+  assert.equal(pruned.superseded_traffic_fact_snapshots, 1);
+  assert.equal(db.prepare("select group_concat(id) as ids from snapshots where type = 'traffic_facts'").get().ids, "2");
+  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from traffic_facts").get().ids, "2");
+  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from normalized_flows").get().ids, "2");
+  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from flow_sessions").get().ids, "2");
   db.close();
 });
 

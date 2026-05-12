@@ -59,12 +59,43 @@ client_traffic_monthly / client_destination_traffic_monthly / dns_log_monthly
 
 traffic_window_snapshots
   -> small prepared payloads for today/week/month
+
+client_traffic_by_lane / client_destination_by_lane
+  -> GUI-ready client lane summary and destination drilldown
+
+client_route_evidence_defects
+  -> GUI/review-ready route proof defects by client and destination
 ```
 
 `client_traffic_*` tables are compact totals and do not contain
 `destination_key`. Destination breakdown lives in
 `client_destination_traffic_*`. This prevents Top clients from being multiplied
 by destination cardinality while keeping destination attribution available.
+
+`client_traffic_by_lane` and `client_destination_by_lane` are the client-centric
+Traffic Intelligence view over those destination chunks. They group traffic by
+`traffic_lane`, `dns_category` and `decision_hint` so Clients/Intelligence can
+show all observed traffic, service/system traffic, privacy-risk traffic,
+shared/CDN infrastructure and unknown/review traffic without rescanning raw
+facts on request. They are rebuildable read models, not a second ledger.
+
+`client_route_evidence_defects` is the matching diagnostics view for route
+proof quality. It keeps destination addresses/domains next to
+`route_evidence`, `intended_route`, `route_verification` and the byte split, so
+route-unknown problems can be reviewed separately from content classification.
+
+For high-volume unknown classification, Console exports local review files from
+the read models:
+
+```bash
+cd modules/ghostroute-console/app
+npm run export:review-queue -- --window today --limit 100
+```
+
+The files land in gitignored `modules/ghostroute-console/data/review/` as JSON
+and Markdown. They are the handoff point for offline/LLM analysis; the GUI
+should primarily display/filter the queue, while durable decisions become local
+deterministic rules and are rechecked by rebuilding aggregates.
 
 ## Window Planning
 
@@ -113,6 +144,13 @@ DNS top-client grouping or client inventory rows.
 Destination rankings are built from destination-bearing chunks. Unknown or
 accounting-only traffic contributes to coverage, not to concrete Top
 destinations.
+
+Client lane drilldowns are built from destination-bearing chunks plus
+`destination_enrichment` and optional IP enrichment cache rows. If a destination
+cannot be classified, the lane layer preserves it as `unknown_review` instead
+of filtering it out. The synthetic `all` lane is stored only as a GUI
+convenience total; facts and route accounting remain authoritative in
+`traffic_facts` and the core aggregate pyramid.
 
 ## Router Edge Rollups
 

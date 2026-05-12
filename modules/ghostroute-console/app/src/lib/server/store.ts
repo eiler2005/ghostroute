@@ -872,6 +872,92 @@ export function getDb() {
         payload_json text not null,
         primary key (kind, window, traffic_class)
       );
+      create table if not exists client_traffic_by_lane (
+        bucket_granularity text not null,
+        bucket_key text not null,
+        bucket_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'unclassified',
+        traffic_lane text not null default 'unknown_review',
+        dns_category text not null default 'unknown_domain',
+        decision_hint text not null default 'monitor',
+        enrichment_status text not null default 'missing',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        destinations_count integer not null default 0,
+        top_destinations_json text not null default '[]',
+        first_seen_utc text not null default '',
+        last_seen_utc text not null default '',
+        updated_at_utc text not null default '',
+        primary key (bucket_granularity, bucket_key, client_key, channel, route, confidence, traffic_class, traffic_lane, dns_category, decision_hint)
+      );
+      create table if not exists client_destination_by_lane (
+        bucket_granularity text not null,
+        bucket_key text not null,
+        bucket_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        route text not null default 'Unknown',
+        confidence text not null default 'unknown',
+        traffic_class text not null default 'unclassified',
+        traffic_lane text not null default 'unknown_review',
+        dns_category text not null default 'unknown_domain',
+        decision_hint text not null default 'monitor',
+        destination_key text not null default '',
+        destination_label text not null default '',
+        category text not null default 'unknown',
+        provider text not null default '',
+        traffic_role text not null default 'unknown',
+        traffic_purpose text not null default 'unknown',
+        source text not null default '',
+        enrichment_status text not null default 'missing',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        first_seen_utc text not null default '',
+        last_seen_utc text not null default '',
+        updated_at_utc text not null default '',
+        primary key (bucket_granularity, bucket_key, client_key, channel, route, confidence, traffic_class, traffic_lane, dns_category, decision_hint, destination_key)
+      );
+      create table if not exists client_route_evidence_defects (
+        bucket_granularity text not null,
+        bucket_key text not null,
+        bucket_start_utc text not null,
+        client_key text not null default '',
+        client_label text not null default '',
+        channel text not null default 'Unknown',
+        destination_key text not null default '',
+        destination_label text not null default '',
+        traffic_lane text not null default 'unknown_review',
+        dns_category text not null default 'unknown_domain',
+        category text not null default 'unknown',
+        provider text not null default '',
+        route_evidence text not null default 'unknown_route',
+        route text not null default 'Unknown',
+        intended_route text not null default 'Unknown',
+        route_verification text not null default 'unknown',
+        route_status text not null default 'unknown',
+        matched_ipset text not null default '',
+        bytes integer not null default 0,
+        via_vps_bytes integer not null default 0,
+        direct_bytes integer not null default 0,
+        unknown_bytes integer not null default 0,
+        flows integer not null default 0,
+        first_seen_utc text not null default '',
+        last_seen_utc text not null default '',
+        updated_at_utc text not null default '',
+        primary key (bucket_granularity, bucket_key, client_key, channel, destination_key, traffic_lane, dns_category, route_evidence, route, intended_route, route_verification, route_status, matched_ipset)
+      );
       create table if not exists aggregate_state (
         model text not null,
         window_key text not null,
@@ -906,6 +992,41 @@ export function getDb() {
         first_seen text not null,
         last_seen text not null,
         expires_at text not null default ''
+      );
+      create table if not exists ip_prefix_catalog (
+        prefix_cidr text primary key,
+        range_start text not null default '',
+        range_end text not null default '',
+        range_start_u32 integer not null default 0,
+        range_end_u32 integer not null default 0,
+        asn text not null default '',
+        asn_org text not null default '',
+        provider text not null default '',
+        country text not null default '',
+        registry text not null default '',
+        source text not null default 'local',
+        updated_at_utc text not null default ''
+      );
+      create table if not exists ip_enrichment_cache (
+        ip text primary key,
+        prefix_cidr text not null default '',
+        asn text not null default '',
+        asn_org text not null default '',
+        provider text not null default '',
+        category_hint text not null default '',
+        traffic_lane_hint text not null default '',
+        dns_category_hint text not null default '',
+        decision_hint text not null default '',
+        country text not null default '',
+        registry text not null default '',
+        source text not null default '',
+        confidence text not null default 'unknown',
+        lookup_status text not null default 'pending',
+        raw_json text not null default '{}',
+        first_seen_utc text not null default '',
+        last_seen_utc text not null default '',
+        updated_at_utc text not null default '',
+        expires_at_utc text not null default ''
       );
       create table if not exists decision_candidates (
         candidate_id text primary key,
@@ -1131,6 +1252,20 @@ export function getDb() {
         client_ip: "text not null default ''",
         applied: "integer not null default 0",
       },
+      ip_prefix_catalog: {
+        range_start: "text not null default ''",
+        range_end: "text not null default ''",
+        range_start_u32: "integer not null default 0",
+        range_end_u32: "integer not null default 0",
+      },
+      client_route_evidence_defects: {
+        destination_key: "text not null default ''",
+        destination_label: "text not null default ''",
+        traffic_lane: "text not null default 'unknown_review'",
+        dns_category: "text not null default 'unknown_domain'",
+        category: "text not null default 'unknown'",
+        provider: "text not null default ''",
+      },
     })) {
       for (const [column, definition] of Object.entries(columns)) addColumnIfMissing(db, table, column, definition);
     }
@@ -1162,6 +1297,13 @@ export function getDb() {
       create index if not exists idx_cdtd_msk on client_destination_traffic_daily(day_msk_key desc);
       create index if not exists idx_cdtw_msk on client_destination_traffic_weekly(week_msk_key desc);
       create index if not exists idx_cdtm_msk on client_destination_traffic_monthly(month_msk_key desc);
+      create index if not exists idx_ctl_client_lane on client_traffic_by_lane(client_key, bucket_granularity, traffic_lane, bucket_start_utc desc);
+      create index if not exists idx_ctl_lane_time on client_traffic_by_lane(bucket_granularity, traffic_lane, bucket_start_utc desc);
+      create index if not exists idx_cdl_client_lane on client_destination_by_lane(client_key, bucket_granularity, traffic_lane, bucket_start_utc desc);
+      create index if not exists idx_cdl_destination on client_destination_by_lane(destination_key, bucket_start_utc desc);
+      create index if not exists idx_cred_route_evidence on client_route_evidence_defects(bucket_granularity, route_evidence, bucket_start_utc desc);
+      create index if not exists idx_cred_client on client_route_evidence_defects(client_key, bucket_granularity, bucket_start_utc desc);
+      create index if not exists idx_cred_destination on client_route_evidence_defects(destination_key, bucket_start_utc desc);
       create index if not exists idx_dl5_msk on dns_log_5min(bucket_msk_key desc);
       create index if not exists idx_dl5_domain on dns_log_5min(domain, bucket_msk_key desc);
       create index if not exists idx_dlh_msk on dns_log_hourly(hour_msk_key desc);
@@ -1173,6 +1315,9 @@ export function getDb() {
       create index if not exists idx_traffic_dns_links_domain_answer on traffic_dns_links(domain, dns_answer_ip, collected_at desc);
       create index if not exists idx_traffic_facts_client_dest on traffic_facts(client_ip, destination_ip, event_ts_utc desc);
       create index if not exists idx_destination_enrichment_class on destination_enrichment(traffic_class, category, last_seen desc);
+      create index if not exists idx_ip_enrichment_cache_status on ip_enrichment_cache(lookup_status, updated_at_utc desc);
+      create index if not exists idx_ip_enrichment_cache_prefix on ip_enrichment_cache(prefix_cidr);
+      create index if not exists idx_ip_prefix_catalog_v4_range on ip_prefix_catalog(range_start_u32, range_end_u32);
       create index if not exists idx_decision_candidates_status on decision_candidates(status, updated_at_utc desc);
       create index if not exists idx_decision_candidates_destination on decision_candidates(destination_key, client_key, updated_at_utc desc);
       create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
@@ -1181,7 +1326,7 @@ export function getDb() {
       create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
       create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
     `);
-    for (const version of [6, 7, 8, 9, 10, 12, 13, 14, 15]) {
+    for (const version of [6, 7, 8, 9, 10, 12, 13, 14, 15, 16]) {
       db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
         version,
         new Date().toISOString()

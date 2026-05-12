@@ -25,6 +25,9 @@ const aggregateTables = [
   "client_destination_traffic_daily",
   "client_destination_traffic_weekly",
   "client_destination_traffic_monthly",
+  "client_traffic_by_lane",
+  "client_destination_by_lane",
+  "client_route_evidence_defects",
   "top_clients_window",
 ];
 const lockFiles = ["collector.lock", "light-collector.lock", "live-collector.lock", "collector-writer.lock"];
@@ -120,6 +123,10 @@ for (const column of ["id", "destination_ip", "destination_port", "protocol", "d
 for (const column of ["traffic_class", "traffic_lane", "dns_category", "traffic_role", "traffic_purpose", "decision_hint", "human_explanation", "source", "evidence_sources_json"]) {
   assert.ok(tableHasColumn("destination_enrichment", column), `destination_enrichment missing ${column}`);
 }
+for (const table of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects", "ip_prefix_catalog", "ip_enrichment_cache"]) {
+  const exists = db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(table);
+  assert.ok(exists, `missing ${table}`);
+}
 
 for (const kind of preparedKinds) {
   for (const window of windows) {
@@ -153,6 +160,12 @@ for (const table of aggregateTables) {
   `).get();
   assert.equal(number(bad.count), 0, `${table} has invalid byte splits`);
 }
+
+const laneDetailBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_destination_by_lane").get().bytes);
+const laneSummaryBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane != 'all'").get().bytes);
+const laneAllBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane = 'all'").get().bytes);
+assert.equal(laneSummaryBytes, laneDetailBytes, "client lane summary bytes do not match detail bytes");
+assert.equal(laneAllBytes, laneDetailBytes, "client lane all bytes do not match detail bytes");
 
 const factSplitViolations = db.prepare(`
   select count(*) as count

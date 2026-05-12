@@ -35,6 +35,7 @@
     - cron-traffic-snapshot
     - lan-flow-facts-snapshot
     - dns-query-snapshot
+    - sing-box-route-evidence-snapshot
 
 - name: Install stealth-route-init.sh
   ansible.builtin.template:

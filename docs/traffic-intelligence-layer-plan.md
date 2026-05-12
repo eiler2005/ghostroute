@@ -41,10 +41,11 @@ operator requirements from the discussion.
 Keep fact fields factual and separate:
 
 - `intended_route`: `VPS | Direct | Unknown`; route intent from policy/ipset.
-- `route_verification`: `verified_vps | verified_direct | intent_only |
-  mismatch | unknown`; compatibility field from the v3 contract.
-- `route_status`: `verified | intent_only | mismatch | unknown`; GUI-friendly
-  status for badges and filters.
+- `route_verification`: `verified_vps | verified_direct |
+  counter_allocated | ingress_route_allocated | intent_only | mismatch |
+  unknown`; compatibility field from the v3 contract.
+- `route_status`: `verified | counter_allocated | intent_only | mismatch |
+  unknown`; GUI-friendly status for badges and filters.
 - `accounting_status`: only `ok | accounting_error`.
 - `dns_status`: `exact | shared | no_match | approximate_ts`.
 - `dns_ts_source`: `parsed_log | snapshot_approx`.

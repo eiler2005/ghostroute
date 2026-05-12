@@ -147,8 +147,11 @@ intended source of truth. For deeper context, follow the cross-references.
   (`high` / `medium` / `low` / `none`).
 - **Route verification** — how a flow's route label is grounded:
   `verified_vps` / `verified_direct` (outbound/egress evidence confirms),
-  `intent_only` (only ipset/policy says route), `mismatch` (ipset conflicts
-  with outbound evidence), `unknown`.
+  `counter_allocated` (per-client VPN/WAN counters prove the split but not
+  exact per-destination bytes), `ingress_route_allocated` (ingress bytes are
+  allocated by observed sing-box inbound/outbound route mix), `intent_only`
+  (only ipset/policy says route), `mismatch` (ipset conflicts with outbound
+  evidence), `unknown`.
 - **Pyramid** — Console SQLite roll-up cascade: `client_traffic_5min` →
   `client_traffic_hourly` → `client_traffic_daily`, with symmetric
   `dns_log_5min` → `dns_log_hourly` → `dns_log_daily`. Today / Week / Month

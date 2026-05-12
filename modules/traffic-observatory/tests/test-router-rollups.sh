@@ -32,4 +32,19 @@ export_json="$(
 )"
 node -e 'const j = JSON.parse(process.argv[1]); if (j.schema_version !== 1) process.exit(1); if (j.traffic_totals.length < 5) process.exit(2); if (j.traffic_destinations.length < 5) process.exit(3);' "$export_json"
 
+cat > "$TMPDIR/sing-box.log" <<'EOF'
++0300 2026-05-11 12:39:59 INFO [100 10ms] inbound/vless[reality-in]: [iphone-1] inbound connection to api.example.invalid:443
++0300 2026-05-11 12:40:00 INFO [100 10ms] outbound/vless[reality-out]: outbound connection to api.example.invalid:443
++0300 2026-05-11 12:40:59 INFO [101 10ms] inbound/http[channel-c-shadowrocket-http-in]: [client] inbound connection to local.example.invalid:443
++0300 2026-05-11 12:41:00 INFO [101 10ms] outbound/direct[direct-out]: outbound connection to local.example.invalid:443
+EOF
+
+SINGBOX_LOG_PATH="$TMPDIR/sing-box.log" \
+GHOSTROUTE_TRAFFIC_STATE_DIR="$TMPDIR" \
+  "${PROJECT_ROOT}/modules/traffic-observatory/router/sing-box-route-evidence-snapshot"
+
+test -s "$TMPDIR/sing-box-route-evidence.tsv"
+grep -q 'VPS|reality-out|api.example.invalid:443|api.example.invalid|443|sing-box.log|ok|reality-in|iphone-1' "$TMPDIR/sing-box-route-evidence.tsv"
+grep -q 'Direct|direct-out|local.example.invalid:443|local.example.invalid|443|sing-box.log|ok|channel-c-shadowrocket-http-in|client' "$TMPDIR/sing-box-route-evidence.tsv"
+
 echo "router rollup fixture test passed"

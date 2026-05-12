@@ -192,17 +192,24 @@ source/basis, matched ipset, intended route, route verification, route status,
 DNS link confidence, DNS status, DNS timestamp source and accounting status.
 LAN/Wi-Fi destination bytes now prefer the asynchronous router
 `lan-flow-facts.tsv` layer when available. Route labels from ipset/policy
-evidence are intent-only until real outbound/egress evidence exists, so
-unverified bytes stay in `unknown_bytes` and every fact must satisfy
+evidence are intent-only until real outbound/egress evidence exists. When
+allocated route evidence is available for the same window, `traffic-facts` may
+mark GUI route proof as `counter_allocated` and distribute bytes by a
+route-split allocation. LAN uses per-client VPN/WAN/other counter deltas;
+ingress lanes use sing-box inbound/outbound route mix for the same channel or
+profile. This lowers route-unknown accounting while keeping allocation proof
+separate from exact per-destination byte proof. Fully unverified bytes stay in
+`unknown_bytes` and every fact must satisfy
 `bytes = via_vps_bytes + direct_bytes + unknown_bytes`.
 
 Keep these boundaries stable:
 
 - `intended_route` is policy/ipset intent: `VPS`, `Direct` or `Unknown`.
 - `route_verification` is the detailed compatibility value:
-  `verified_vps`, `verified_direct`, `intent_only`, `mismatch` or `unknown`.
-- `route_status` is the GUI-friendly status: `verified`, `intent_only`,
-  `mismatch` or `unknown`.
+  `verified_vps`, `verified_direct`, `counter_allocated`,
+  `ingress_route_allocated`, `intent_only`, `mismatch` or `unknown`.
+- `route_status` is the GUI-friendly status: `verified`,
+  `counter_allocated`, `intent_only`, `mismatch` or `unknown`.
 - `accounting_status` is only `ok` or `accounting_error`.
 - `dns_status` is `exact`, `shared`, `no_match` or `approximate_ts`.
 - `dns_ts_source` is `parsed_log` or `snapshot_approx`; approximate DNS
