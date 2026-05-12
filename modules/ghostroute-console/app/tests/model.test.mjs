@@ -589,8 +589,8 @@ test("collector normalizes factual traffic and catalog snapshots", () => {
   rebuildHourlyAggregates(db);
   assert.equal(db.prepare("select count(*) as count from hourly_traffic").get().count >= 1, true);
   assert.equal(db.prepare("select count(*) as count from client_traffic_hourly").get().count > 0, true);
-  assert.equal(db.prepare("select count(*) as count from traffic_window_snapshots where kind = 'dashboard' and window in ('today','week','month')").get().count, 3);
-  const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);
+  assert.equal(db.prepare("select count(*) as count from traffic_window_snapshots where kind = 'dashboard' and window in ('today','week','month')").get().count, 15);
+  const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
   assert.equal(preparedDashboard.prepared, true);
   assert.equal(preparedDashboard.window, "today");
   assert.equal(readModels.flowCount, 1);
@@ -948,6 +948,10 @@ test("local traffic intelligence returns deterministic labels and action hints",
     { category: "unknown.no_dns_match", action_hint: "ask_user" }
   );
   assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "", dns_link_confidence: "low" })),
+    { category: "unknown.shared_dns_answer", action_hint: "ask_user" }
+  );
+  assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "unknown-service.example.invalid" })),
     { category: "unknown.domain", action_hint: "ask_user" }
   );
@@ -1117,7 +1121,7 @@ test("prepared traffic windows use operator clients and preserve destination top
     insert.run(1, "2026-05-07T08:20:00Z", "iphone-1", "A/Home Reality", "ai.example", "VPS", "exact", 500, 3, "", "client", 500, 0, 0, JSON.stringify({ profile: "iphone-1" }));
 
     rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
-    const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today'").get().payload_json);
+    const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
     const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
     assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
@@ -1181,6 +1185,69 @@ test("prepared traffic windows exclude legacy report-derived facts from current 
     assert.equal(db.prepare("select count(*) as count from client_traffic_5min where unknown_bytes < 0 or bytes != via_vps_bytes + direct_bytes + unknown_bytes").get().count, 0);
   } finally {
     db.close();
+  }
+});
+
+test("prepared traffic windows keep personal-cloud clients visible in all traffic without polluting client view", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-classes-"));
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.json"),
+    JSON.stringify({
+      clients: {
+        mamulia: {
+          label: "iphone-4 (Mamulia)",
+          device_key: "mamulia-iphone",
+          device_label: "iphone-4 (Mamulia)",
+          primary_channel: "A/Home Reality",
+          aliases: { channel_a: ["iphone-4", "iphone-4 (Mamulia)"] },
+        },
+        macbook: {
+          label: "lan-host-13 (MacBook Denis 23)",
+          device_key: "operator-macbook",
+          device_label: "MacBook Denis 23",
+          aliases: { lan_wifi: ["lan-host-13", "lan-host-13 (MacBook Denis 23)"] },
+        },
+      },
+    })
+  );
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    const insert = db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (?, 'traffic_facts', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, ?, ?, ?, ?, ?)
+    `);
+    insert.run(30, "2026-05-12T04:00:00.000Z", "iphone-4 (Mamulia)", "A/Home Reality", "Apple/iCloud", "Unknown", "estimated",
+      21_000, 8, "192.0.2.40", "personal_cloud", 0, 0, 21_000, JSON.stringify({ fact_id: "pc-iphone", schema_version: 3, unknown_bytes: 21_000 }));
+    insert.run(31, "2026-05-12T04:05:00.000Z", "lan-host-13 (MacBook Denis 23)", "Home Wi-Fi/LAN", "www.youtube.com", "Direct", "exact",
+      3_000, 3, "192.0.2.13", "client", 0, 3_000, 0, JSON.stringify({ fact_id: "client-macbook", schema_version: 3, direct_bytes: 3_000 }));
+
+    rebuildPreparedWindows(db, "2026-05-12T05:00:00.000Z");
+
+    const payload = (kind, trafficClass) => JSON.parse(db.prepare(
+      "select payload_json from traffic_window_snapshots where kind = ? and window = 'today' and traffic_class = ?"
+    ).get(kind, trafficClass).payload_json);
+    const allClients = payload("clients", "all").rows.map((row) => row.label);
+    const clientClients = payload("clients", "client").rows.map((row) => row.label);
+    const personalClients = payload("clients", "personal_cloud").rows.map((row) => row.label);
+    assert.ok(allClients.includes("iphone-4 (Mamulia)"));
+    assert.ok(allClients.includes("lan-host-13 (MacBook Denis 23)"));
+    assert.equal(clientClients.includes("iphone-4 (Mamulia)"), false);
+    assert.deepEqual(personalClients, ["iphone-4 (Mamulia)"]);
+
+    const allTop = payload("dashboard", "all").dashboardAnalytics.topClients.map((row) => row.label);
+    const clientTop = payload("dashboard", "client").dashboardAnalytics.topClients.map((row) => row.label);
+    assert.ok(allTop.includes("iphone-4 (Mamulia)"));
+    assert.equal(clientTop.includes("iphone-4 (Mamulia)"), false);
+    assert.equal(db.prepare("select bytes from top_clients_window where window = 'today' and traffic_class = 'all' and label = 'iphone-4 (Mamulia)'").get().bytes, 21_000);
+    assert.equal(db.prepare("select count(*) as count from top_clients_window where window = 'today' and traffic_class = 'client' and label = 'iphone-4 (Mamulia)'").get().count, 0);
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
   }
 });
 

@@ -12,6 +12,22 @@ function title(value?: string) {
   return String(value || "unknown").replace(/_/g, " ");
 }
 
+function scalar(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function matchesView(row: Record<string, any>, view: string) {
+  const category = String(row.category || "");
+  const trafficClass = String(row.traffic_class || "");
+  if (view === "analytics") return category.startsWith("analytics.") || category.startsWith("tracker.");
+  if (view === "cdn") return category.startsWith("cdn.") || category === "unknown.shared_dns_answer";
+  if (view === "unknown") return trafficClass === "unclassified" || category.startsWith("unknown.");
+  if (view === "client") return trafficClass === "client";
+  if (view === "service_background") return trafficClass === "service_background";
+  if (view === "personal_cloud") return trafficClass === "personal_cloud";
+  return true;
+}
+
 function actionTone(value?: string) {
   const action = String(value || "monitor");
   if (action === "block_candidate") return "danger";
@@ -26,14 +42,17 @@ function ActionBadge({ value }: { value?: string }) {
 }
 
 export default async function IntelligencePage({ searchParams }: { searchParams?: SearchParams }) {
-  const filters = await filtersFromSearchParams(searchParams);
+  const params = searchParams ? await searchParams : {};
+  const filters = await filtersFromSearchParams(Promise.resolve(params));
   const model = buildIntelligenceModel(filters);
   const intelligence = model.trafficIntelligence || {
     enrichments: [],
     candidates: [],
     summary: { total: 0, pendingCandidates: 0, byClass: {}, byRole: {}, byAction: {} },
   };
-  const rows = intelligence.enrichments;
+  const allRows = intelligence.enrichments;
+  const activeView = scalar(params.view) || "all";
+  const rows = allRows.filter((row) => matchesView(row, activeView));
   const candidates = intelligence.candidates;
   const summary = intelligence.summary;
   const trackerCount = rows.filter((row) => String(row.category || "").startsWith("analytics.") || String(row.category || "").startsWith("tracker.")).length;
@@ -42,6 +61,29 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
   const serviceCount = countOf(summary.byClass, "service_background");
   const personalCount = countOf(summary.byClass, "personal_cloud");
   const clientCount = countOf(summary.byClass, "client");
+  const viewTabs = [
+    { value: "all", label: "All", count: allRows.length },
+    { value: "client", label: "Client", count: clientCount },
+    { value: "service_background", label: "Service/background", count: serviceCount },
+    { value: "analytics", label: "Analytics & trackers", count: trackerCount },
+    { value: "cdn", label: "CDN/shared", count: cdnCount },
+    { value: "unknown", label: "Unknown / needs review", count: unknownCount },
+  ];
+  const viewHref = (view: string) => {
+    const next = new URLSearchParams();
+    Object.entries({
+      period: filters.period,
+      route: filters.route !== "all" ? filters.route : undefined,
+      channel: filters.channel !== "all" ? filters.channel : undefined,
+      confidence: filters.confidence !== "all" ? filters.confidence : undefined,
+      trafficClass: "all",
+      search: filters.search,
+      view: view !== "all" ? view : undefined,
+    }).forEach(([key, value]) => {
+      if (value) next.set(key, String(value));
+    });
+    return `/intelligence?${next.toString()}`;
+  };
 
   return (
     <ConsoleShell active="/intelligence" model={model} filters={filters}>
@@ -92,6 +134,13 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
               <span className="badge">unknown {unknownCount}</span>
             </div>
           </div>
+          <nav className="intelligence-tabs" aria-label="Traffic intelligence views">
+            {viewTabs.map(({ value, label, count }) => (
+              <a className={`muted-button ${activeView === value ? "active" : ""}`} href={viewHref(value)} key={value}>
+                {label} <span>{count}</span>
+              </a>
+            ))}
+          </nav>
           {rows.length === 0 ? (
             <EmptyState title="No intelligence rows" detail="Run collection/normalization or relax the current filters." />
           ) : (

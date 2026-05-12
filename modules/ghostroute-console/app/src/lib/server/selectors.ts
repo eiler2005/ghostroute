@@ -233,8 +233,8 @@ function getPreparedWindowSnapshot(kind: string, period = "today", trafficClass 
   });
 }
 
-function preparedDashboard(period = "today") {
-  return getPreparedWindowSnapshot("dashboard", period, "client")?.payload || null;
+function preparedDashboard(period = "today", trafficClass = "all") {
+  return getPreparedWindowSnapshot("dashboard", period, trafficClass || "all")?.payload || null;
 }
 
 function filtersKey(filters: ConsoleFilters = {}) {
@@ -1040,9 +1040,9 @@ function snapshotIdsForDeviceWindow(period = "today", types = new Set<string>(["
   });
 }
 
-function authoritativeTotalsForPeriod(period = "today") {
-  return cacheGet(`authoritative-totals:${latestSnapshotVersion()}:${period}`, () => {
-  const prepared = preparedDashboard(period);
+function authoritativeTotalsForPeriod(period = "today", trafficClass = "all") {
+  return cacheGet(`authoritative-totals:${latestSnapshotVersion()}:${period}:${trafficClass || "all"}`, () => {
+  const prepared = preparedDashboard(period, trafficClass);
   if (prepared?.totals) {
     return {
       observed: Number(prepared.totals.observedBytes || 0),
@@ -1077,7 +1077,7 @@ function authoritativeTotalsForPeriod(period = "today") {
 
 function destinationAttributionCoverageForPeriod(period = "today") {
   return cacheGet(`destination-coverage:${latestSnapshotVersion()}:${period}`, () => {
-    const prepared = preparedDashboard(period);
+    const prepared = preparedDashboard(period, "all");
     if (prepared?.destinationAttributionCoverage) return prepared.destinationAttributionCoverage;
     if (USE_PREPARED_WINDOWS && period !== "today") return null;
     const rows = getDb()
@@ -1925,7 +1925,7 @@ export function listTrafficRows(args: PageArgs = {}) {
      .filter((row) => filterRows([row], args.filters || {}).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today")) as Array<Record<string, any>>)
+  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(args.filters?.period || "today", trafficClass)) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
   const rows = allRows.slice(offset, offset + pageSize);
@@ -2005,7 +2005,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
      .filter((row) => filterRows([row], filters).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
-  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today")) as Array<Record<string, any>>)
+  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today", trafficClass)) as Array<Record<string, any>>)
     .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
   const total = Math.min(maxRows, hasPostFilter ? Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length) : sqlTotal);
   const rows = allRows.slice(offset, offset + pageSize);
@@ -2605,7 +2605,7 @@ export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel 
 
 function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const period = filters.period || "today";
-  const prepared = preparedDashboard(period);
+  const prepared = preparedDashboard(period, filters.trafficClass || "all");
   if (prepared) {
     const shell = buildShellModel(filters, {
       devices: (prepared.devices || []).map((row: any) => decorateTrafficRow(row)),
@@ -3018,7 +3018,7 @@ function buildBudgetModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
       periodLabel: trafficPeriodLabel(dashboardTraffic),
       windowLabel: trafficWindowLabel(dashboardTraffic),
     },
-    devices: filterRows(reconcileTrafficRows(currentRows, authoritativeTotalsForPeriod(period)), filters),
+    devices: filterRows(reconcileTrafficRows(currentRows, authoritativeTotalsForPeriod(period, filters.trafficClass || "all")), filters),
     flows: [],
     dnsQueries: [],
     alerts: dedupeAlerts([...staleAlert, ...leakAlerts, ...collectorErrors.map((row) => ({
@@ -3045,8 +3045,9 @@ function clientSearch(row: Record<string, any>, search?: string) {
 
 function clientInventoryRows(filters: ConsoleFilters = {}) {
   const period = filters.period || "today";
-  return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}`, () => {
-  const prepared = getPreparedWindowSnapshot("clients", period, "client")?.payload;
+  const trafficClass = filters.trafficClass || "all";
+  return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}:${trafficClass}`, () => {
+  const prepared = getPreparedWindowSnapshot("clients", period, trafficClass)?.payload;
   if (prepared?.rows) {
     return (prepared.rows as Array<Record<string, any>>).map((row) => {
       const total = observedByteValue(row);
@@ -3095,7 +3096,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       traffic_collected_at: row.last_seen || row.collected_at || "",
     });
   }
-   return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period)) as Array<Record<string, any>>)
+    return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period, trafficClass)) as Array<Record<string, any>>)
     .map((row) => operatorClientRow(row))
     .filter((row): row is Record<string, any> => Boolean(row))
     .sort((a, b) => {
