@@ -143,7 +143,10 @@ chrome.
 Traffic windows are prepared after each collector pass. Source timestamps stay in
 UTC in SQLite, while `today`, `week` and `month` are keyed by Moscow local time.
 Dashboard, Clients, DNS and safe report APIs should use
-`traffic_window_snapshots` plus the aggregate tables for all three windows.
+`traffic_window_snapshots` plus the aggregate tables for all three windows. The
+prepared Dashboard, Clients and `reports_llm_safe` windows are class-aware and
+must exist for `all`, `client`, `personal_cloud`, `service_background` and
+`unclassified`; `all` must include any client visible in a narrower class.
 Week/month must not scan `normalized_flows`, `normalized_dns`, `events` or raw
 snapshot payloads on the request path. If a prepared historical window is
 missing, render a bounded empty/fallback state until collection rebuilds it. The
@@ -165,6 +168,40 @@ already gone, the command records `missing_source` in `aggregate_state` and does
 not delete existing historical aggregate chunks.
 The detailed data-pyramid contract is documented in
 [data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
+
+## Post-Deploy Collector Guard
+
+Root `./deploy.sh` updates the router/runtime side of the repository. Console
+container releases use the module VPS playbook:
+
+```bash
+cd ansible
+ansible-playbook -i inventory/stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/deploy-readonly.yml
+```
+
+After the container is replaced, a startup collector may already be running. If
+`collector:once` says another run is active, wait and retry; do not delete lock
+files unless PID-based stale-lock recovery has failed and the operator has
+inspected the process table. The normal post-deploy sequence is:
+
+```bash
+npm run collector:once
+npm run verify:post-deploy
+npm run verify:aggregates
+npm run verify:timezone
+npm run bench:dashboard
+npm run report:db-size
+```
+
+`verify:post-deploy` is the fast guard for the class-aware traffic pipeline. It
+checks that no collector locks are active, the latest full collector completed
+without errors, required full-collector snapshots (`traffic_summary`,
+`router_rollups`, `traffic_evidence`, `traffic_facts`) are present,
+Dashboard/Clients/reports prepared windows exist for all traffic classes, and
+aggregate byte splits still satisfy `bytes = via_vps_bytes + direct_bytes +
+unknown_bytes`. This is the guard that catches a release where `/clients` or
+Dashboard would accidentally show only `client` traffic while hiding
+`personal_cloud` or `service_background` clients from the `all` view.
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the

@@ -189,6 +189,7 @@ stored for debug/history, but they are not allowed into prepared traffic windows
 ./modules/ghostroute-console/bin/ghostroute-console collect-once
 ./modules/ghostroute-console/bin/ghostroute-console collect-light
 ./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from 2026-05-07 --to 2026-05-08 --dry-run
+./modules/ghostroute-console/bin/ghostroute-console verify-post-deploy
 ./modules/ghostroute-console/bin/ghostroute-console alarm-state --json get
 ./modules/ghostroute-console/bin/ghostroute-console doctor
 ./modules/traffic-observatory/bin/traffic-summary --json today
@@ -221,8 +222,8 @@ Core read models are rebuilt from factual snapshots:
 | `alarm_events` | Alarm Center evidence and operator state overlay. |
 | `client_traffic_5min`, `client_traffic_hourly`, `client_traffic_daily` | Prepared client-first traffic aggregates for Dashboard, Clients, Budget and week/month windows. |
 | `dns_log_5min` | Prepared DNS query aggregate for DNS Query Log and DNS-interest counts. |
-| `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector. |
-| `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads. |
+| `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector for every traffic class. |
+| `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads for `all`, `client`, `personal_cloud`, `service_background` and `unclassified`. |
 | `aggregate_state` | Watermarks/status for prepared aggregate layers and dashboard windows. |
 | `console_page_summaries` | Prepared Health/Live/mobile summaries for fast request paths. |
 | `read_model_state` | Rebuild freshness, source version and cache keys. |
@@ -250,11 +251,14 @@ instead of being silently converted into invented sites.
 
 The collector stores timestamps in UTC and derives UI windows in Moscow local
 time. `today`, `week` and `month` are rebuilt into prepared aggregate tables and
-`traffic_window_snapshots` after each collection. Week/month request paths must
-read those prepared entities and must not scan raw `normalized_flows`,
-`normalized_dns`, `events` or snapshot payloads. If a prepared historical window
-is absent, the UI should render a bounded empty/fallback state until the next
-collector rebuild rather than doing heavy request-time work.
+`traffic_window_snapshots` after each collection. Dashboard, Clients and safe
+report payloads must exist for `all`, `client`, `personal_cloud`,
+`service_background` and `unclassified`; `all` must never be narrower than
+`client`. Week/month request paths must read those prepared entities and must
+not scan raw `normalized_flows`, `normalized_dns`, `events` or snapshot
+payloads. If a prepared historical window is absent, the UI should render a
+bounded empty/fallback state until the next collector rebuild rather than doing
+heavy request-time work.
 
 Operational pruning keeps raw normalized traffic/DNS/live rows bounded by
 retention defaults while the aggregate/read-model tables carry the UI history.
@@ -348,9 +352,12 @@ deterministic Playwright gates.
 
 `verify:timezone` protects UTC-storage/MSK-window math. `verify:aggregates`
 checks that prepared windows exist and reconcile to dashboard attribution
-coverage. `bench:dashboard` reads Dashboard from prepared windows repeatedly and
-fails if request-time reads regress. `report:db-size` prints SQLite table sizes
-for retention review.
+coverage. `verify:post-deploy` is the runtime guard after a Console release: it
+requires the latest full collector to finish cleanly, checks the required
+Traffic Observatory snapshots, verifies class-aware prepared windows for
+Dashboard/Clients/reports and enforces aggregate byte splits. `bench:dashboard`
+reads Dashboard from prepared windows repeatedly and fails if request-time reads
+regress. `report:db-size` prints SQLite table sizes for retention review.
 
 For one local pre-deploy gate:
 
@@ -365,6 +372,23 @@ The VPS deployment is still read-only from the Console perspective. It builds a
 new Console image before replacing the running container, tags the prepared
 image with the build commit, passes build metadata into the app, runs local
 health/UI/API smoke and attempts rollback if smoke fails.
+
+After a Console deploy, wait for any startup collector lock to clear, then run a
+standard full collection (`npm run collector:once` inside the container or the
+module wrapper on a local runtime). The post-deploy gate is:
+
+```bash
+npm run verify:post-deploy
+npm run verify:aggregates
+npm run verify:timezone
+npm run bench:dashboard
+npm run report:db-size
+```
+
+The expected full collector set includes `traffic_summary`, `router_rollups`,
+`traffic_evidence` and `traffic_facts`; the prepared `dashboard`, `clients` and
+`reports_llm_safe` windows must exist for `all`, `client`, `personal_cloud`,
+`service_background` and `unclassified`.
 
 The dedicated public listener defaults to nginx on the configured non-443
 Console port and proxies through a local buffering proxy to the Next.js
