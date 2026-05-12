@@ -168,7 +168,7 @@ traffic-facts --json
         ↓
 Console SQLite factual read models
   traffic_facts, traffic_dns_links, normalized_flows, flow_sessions,
-  client_traffic_5min → hourly → daily, DNS rollups
+  eligible client_traffic_5min -> hourly -> daily, DNS rollups
         ↓
 Traffic Intelligence read model
   destination_enrichment + dry-run decision_candidates
@@ -180,6 +180,14 @@ UI / reports / review surfaces
 source. Channel A/B/C routing and managed-domain logic are unchanged by the
 observability pipeline; router-side evidence collectors remain read-only and
 never mutate dnsmasq, ipset, sing-box, iptables or route rules.
+
+Console may store old or legacy traffic rows for history/debug, but operational
+traffic windows must pass a read-model eligibility gate before they reach
+Dashboard, Clients or Live. Eligible rows must be Traffic Observatory facts with
+a non-negative byte split satisfying
+`bytes = via_vps_bytes + direct_bytes + unknown_bytes`; legacy
+`traffic-report`-derived allocation rows such as connection-share/domain-or-SNI
+estimates are excluded from current GUI totals.
 
 Facts and interpretation are intentionally separate:
 

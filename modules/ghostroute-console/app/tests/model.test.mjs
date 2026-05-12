@@ -14,6 +14,7 @@ const {
   repairAggregateRange,
   rebuildHourlyAggregates,
   rebuildObservabilityReadModels,
+  rebuildAllTrafficReadModels,
   rebuildPreparedWindows,
 } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
@@ -1141,6 +1142,78 @@ test("prepared traffic windows use operator clients and preserve destination top
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
     else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+});
+
+test("prepared traffic windows exclude legacy report-derived facts from current GUI totals", () => {
+  const db = new Database(":memory:");
+  try {
+    ensureConsoleSchema(db);
+    const insert = db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (?, 'traffic_facts', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, 'client', ?, ?, ?, ?)
+    `);
+    insert.run(10, "2026-05-12T02:00:00.000Z", "iphone-4 (Mamulia)", "A/Home Reality", "Apple/iCloud", "VPS", "estimated",
+      20_000_000_000, 10, "192.0.2.40", 20_000_000_000, 0, 0, JSON.stringify({
+        client: "report-mobile-profile-02",
+        allocation_basis: "connection_share",
+        evidence_level: "domain_or_sni",
+        sources: ["traffic-report"],
+      }));
+    insert.run(11, "2026-05-12T04:00:00.000Z", "iphone-4 (Mamulia)", "A/Home Reality", "push.apple.com", "VPS", "estimated",
+      1_500, 2, "192.0.2.40", 0, 0, 1_500, JSON.stringify({
+        fact_id: "v3-iphone-4-apple-push",
+        schema_version: 3,
+        route_verification: "intent_only",
+        accounting_status: "ok",
+        dns_link_confidence: "medium",
+        unknown_bytes: 1_500,
+      }));
+
+    rebuildPreparedWindows(db, "2026-05-12T05:00:00.000Z");
+
+    const topClient = db.prepare("select * from top_clients_window where window = 'today' and client_key like '%iphone-4%'").get();
+    assert.equal(topClient.bytes, 1_500);
+    assert.equal(topClient.unknown_bytes, 1_500);
+    assert.equal(topClient.via_vps_bytes, 0);
+    assert.equal(db.prepare("select count(*) as count from top_destinations_window where window = 'today' and destination = 'Apple/iCloud'").get().count, 0);
+    assert.equal(db.prepare("select count(*) as count from client_traffic_5min where unknown_bytes < 0 or bytes != via_vps_bytes + direct_bytes + unknown_bytes").get().count, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {
+  const db = new Database(":memory:");
+  try {
+    ensureConsoleSchema(db);
+    db.prepare(`
+      insert into top_clients_window(window, traffic_class, rank, client_key, label, channel, route, bytes,
+        via_vps_bytes, direct_bytes, unknown_bytes, flows, computed_at_utc)
+      values ('today', 'client', 1, 'stale', 'stale', 'Unknown', 'Mixed', 999, 1000, 0, -1, 1, '2026-05-12T00:00:00.000Z')
+    `).run();
+    const insert = db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (?, 'traffic_facts', ?, ?, ?, ?, ?, ?, ?, ?, 'TCP', ?, 'client', ?, ?, ?, ?)
+    `);
+    insert.run(20, "2026-05-12T04:10:00.000Z", "lan-host-13 (MacBook Denis 23)", "Home Wi-Fi/LAN", "bad.example", "Mixed", "estimated",
+      100, 1, "192.0.2.13", 120, 0, -20, JSON.stringify({ fact_id: "bad-split", schema_version: 3, accounting_status: "accounting_error" }));
+    insert.run(21, "2026-05-12T04:15:00.000Z", "lan-host-13 (MacBook Denis 23)", "Home Wi-Fi/LAN", "ok.example", "Unknown", "estimated",
+      700, 1, "192.0.2.13", 0, 0, 700, JSON.stringify({ fact_id: "ok-split", schema_version: 3, accounting_status: "ok", unknown_bytes: 700 }));
+
+    const result = rebuildAllTrafficReadModels(db, { fromUtc: "2026-05-12T00:00:00.000Z", toUtc: "2026-05-12T05:00:00.000Z", computedAt: "2026-05-12T05:00:00.000Z" });
+    assert.equal(result.repaired, true);
+    assert.equal(db.prepare("select count(*) as count from top_clients_window where client_key = 'stale'").get().count, 0);
+    assert.equal(db.prepare("select count(*) as count from client_destination_traffic_5min where destination_key = 'bad.example'").get().count, 0);
+    const macbook = db.prepare("select bytes, via_vps_bytes, direct_bytes, unknown_bytes from top_clients_window where window = 'today' and client_key like '%lan-host-13%'").get();
+    assert.deepEqual(macbook, { bytes: 700, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 700 });
+    for (const table of ["client_traffic_5min", "client_destination_traffic_5min", "top_clients_window"]) {
+      assert.equal(db.prepare(`select count(*) as count from ${table} where unknown_bytes < 0 or bytes != via_vps_bytes + direct_bytes + unknown_bytes`).get().count, 0, table);
+    }
+  } finally {
+    db.close();
   }
 });
 
