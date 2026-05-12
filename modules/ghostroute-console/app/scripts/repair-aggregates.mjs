@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, repairAggregateRange } from "./lib/normalize.mjs";
+import { ensureConsoleSchema, rebuildAllTrafficReadModels, repairAggregateRange } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 import { parseSourceTimestamp, toUtcIsoFromMskKey } from "../src/lib/time/window.mjs";
 
@@ -13,14 +13,17 @@ const dbFile = path.join(dataDir, "ghostroute.db");
 
 function usage() {
   console.error("Usage: ghostroute-console repair-aggregates --from <YYYY-MM-DD|ISO> [--to <YYYY-MM-DD|ISO>] [--dry-run]");
+  console.error("       ghostroute-console repair-aggregates --full [--from <YYYY-MM-DD|ISO>] [--to <YYYY-MM-DD|ISO>]");
 }
 
 function parseArgs(argv) {
-  const result = { from: "", to: "", dryRun: false };
+  const result = { from: "", to: "", dryRun: false, full: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") {
       result.dryRun = true;
+    } else if (arg === "--full") {
+      result.full = true;
     } else if (arg === "--from") {
       result.from = argv[++i] || "";
     } else if (arg === "--to") {
@@ -32,7 +35,7 @@ function parseArgs(argv) {
       throw new Error(`unknown repair-aggregates argument: ${arg}`);
     }
   }
-  if (!result.from) throw new Error("--from is required");
+  if (!result.full && !result.from) throw new Error("--from is required");
   return result;
 }
 
@@ -61,15 +64,39 @@ function compactResult(result) {
   };
 }
 
+async function backupDbFile(db, dbFile) {
+  const backupFile = `${dbFile}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  await db.backup(backupFile);
+  return backupFile;
+}
+
+function earliestSourceTimestamp(db) {
+  const candidates = [];
+  for (const [table, column] of [
+    ["normalized_flows", "collected_at"],
+    ["flow_sessions", "collected_at"],
+    ["normalized_dns", "collected_at"],
+    ["dns_query_log", "collected_at"],
+  ]) {
+    try {
+      const row = db.prepare(`select min(${column}) as min_ts from ${table}`).get();
+      if (row?.min_ts) candidates.push(row.min_ts);
+    } catch {
+      // Best-effort helper for partial/local DBs.
+    }
+  }
+  return candidates.filter(Boolean).sort()[0] || "";
+}
+
 let lockRelease = null;
 let writerRelease = null;
 let db = null;
 
 try {
   const args = parseArgs(process.argv.slice(2));
-  const fromUtc = rangeBoundary(args.from, false);
+  const fromUtc = args.from ? rangeBoundary(args.from, false) : "";
   const toUtc = rangeBoundary(args.to, true);
-  if (Date.parse(fromUtc) >= Date.parse(toUtc)) throw new Error("--from must be earlier than --to");
+  if (fromUtc && Date.parse(fromUtc) >= Date.parse(toUtc)) throw new Error("--from must be earlier than --to");
   fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(dbFile)) throw new Error(`SQLite database does not exist: ${dbFile}`);
   if (!args.dryRun) {
@@ -88,10 +115,17 @@ try {
   db = new Database(dbFile, args.dryRun ? { readonly: true, fileMustExist: true } : undefined);
   db.pragma("busy_timeout = 10000");
   if (!args.dryRun) ensureConsoleSchema(db);
-  const result = args.dryRun
-    ? repairAggregateRange(db, { fromUtc, toUtc, dryRun: true })
-    : db.transaction(() => repairAggregateRange(db, { fromUtc, toUtc }))();
-  console.log(JSON.stringify(compactResult(result), null, 2));
+  let backupPath = "";
+  if (args.full && !args.dryRun) backupPath = await backupDbFile(db, dbFile);
+  const fullFromUtc = fromUtc || earliestSourceTimestamp(db) || new Date(Date.now() - 86400000).toISOString();
+  const result = args.full
+    ? (args.dryRun
+        ? repairAggregateRange(db, { fromUtc: fullFromUtc, toUtc, dryRun: true })
+        : db.transaction(() => rebuildAllTrafficReadModels(db, { fromUtc, toUtc }))())
+    : (args.dryRun
+        ? repairAggregateRange(db, { fromUtc, toUtc, dryRun: true })
+        : db.transaction(() => repairAggregateRange(db, { fromUtc, toUtc }))());
+  console.log(JSON.stringify({ ...compactResult(result), full_rebuild: Boolean(args.full), backup_path: backupPath }, null, 2));
 } catch (error) {
   usage();
   console.error(`repair-aggregates failed: ${error.message}`);

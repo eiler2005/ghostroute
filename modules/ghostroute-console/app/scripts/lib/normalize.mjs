@@ -7,6 +7,26 @@ import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, 
 import { normalizeRouterRollups } from "./router-rollups.mjs";
 
 const MIGRATION_VERSION = 15;
+const TRAFFIC_READ_MODEL_TABLES = [
+  "client_traffic_5min",
+  "client_traffic_hourly",
+  "client_traffic_daily",
+  "client_traffic_weekly",
+  "client_traffic_monthly",
+  "client_destination_traffic_5min",
+  "client_destination_traffic_hourly",
+  "client_destination_traffic_daily",
+  "client_destination_traffic_weekly",
+  "client_destination_traffic_monthly",
+  "dns_log_5min",
+  "dns_log_hourly",
+  "dns_log_daily",
+  "dns_log_weekly",
+  "dns_log_monthly",
+  "top_clients_window",
+  "top_destinations_window",
+  "traffic_window_snapshots",
+];
 
 function json(value) {
   return JSON.stringify(value || {});
@@ -207,6 +227,71 @@ function signedByteSplit(row, route = row?.route, totalBytes = number(row?.bytes
     unknownBytes = total - viaVpsBytes - directBytes;
   }
   return { totalBytes: total, viaVpsBytes, directBytes, unknownBytes };
+}
+
+function rawSplitValues(row = {}, raw = row?.raw || {}) {
+  return {
+    via_vps_bytes: firstNumber(row?.via_vps_bytes, row?.reality_bytes, raw?.via_vps_bytes, raw?.reality_bytes),
+    direct_bytes: firstNumber(row?.direct_bytes, row?.wan_bytes, raw?.direct_bytes, raw?.wan_bytes),
+    unknown_bytes: firstNumber(row?.unknown_bytes, row?.unresolved_bytes, raw?.unknown_bytes, raw?.unresolved_bytes),
+  };
+}
+
+function hasAnyExplicitSplit(row = {}, raw = row?.raw || {}) {
+  return hasNumber(row?.via_vps_bytes) || hasNumber(row?.reality_bytes) || hasNumber(row?.direct_bytes)
+    || hasNumber(row?.wan_bytes) || hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes)
+    || hasNumber(raw?.via_vps_bytes) || hasNumber(raw?.reality_bytes) || hasNumber(raw?.direct_bytes)
+    || hasNumber(raw?.wan_bytes) || hasNumber(raw?.unknown_bytes) || hasNumber(raw?.unresolved_bytes);
+}
+
+function invalidExplicitSplit(row = {}, raw = row?.raw || {}, totalBytes = aggregateTotalBytes(row)) {
+  if (!hasAnyExplicitSplit(row, raw)) return false;
+  const split = rawSplitValues(row, raw);
+  if (split.via_vps_bytes < 0 || split.direct_bytes < 0 || split.unknown_bytes < 0) return true;
+  const hasExplicitUnknown = hasNumber(row?.unknown_bytes) || hasNumber(row?.unresolved_bytes)
+    || hasNumber(raw?.unknown_bytes) || hasNumber(raw?.unresolved_bytes);
+  const explicitSum = split.via_vps_bytes + split.direct_bytes + split.unknown_bytes;
+  if (hasExplicitUnknown && explicitSum !== number(totalBytes)) return true;
+  if (!hasExplicitUnknown && split.via_vps_bytes + split.direct_bytes > number(totalBytes)) return true;
+  return false;
+}
+
+function legacyReportDerivedTrafficFact(row = {}, raw = row?.raw || {}) {
+  const basis = lower(raw?.allocation_basis || row?.allocation_basis || row?.source_log || "");
+  const evidence = lower(raw?.evidence_level || row?.evidence_level || "");
+  const sourceText = lower(JSON.stringify({
+    sources: raw?.sources || row?.sources || "",
+    source: raw?.source || row?.source || "",
+    client: raw?.client || row?.client || "",
+    client_label: raw?.client_label || row?.client_label || "",
+  }));
+  if (basis === "connection_share") return true;
+  if (evidence === "domain_or_sni") return true;
+  if (sourceText.includes("traffic-report")) return true;
+  if (sourceText.includes("report-mobile-profile-")) return true;
+  return false;
+}
+
+function splitInvariantHolds(split) {
+  return split.totalBytes >= 0
+    && split.viaVpsBytes >= 0
+    && split.directBytes >= 0
+    && split.unknownBytes >= 0
+    && split.totalBytes === split.viaVpsBytes + split.directBytes + split.unknownBytes;
+}
+
+function trafficAggregateEligibility(row = {}, raw = row?.raw || {}, split = signedByteSplit(row)) {
+  const snapshotType = text(row?.snapshot_type || raw?.snapshot_type || "");
+  if (snapshotType === "traffic_facts" && legacyReportDerivedTrafficFact(row, raw)) {
+    return { eligible: false, reason: "legacy_report_derived" };
+  }
+  if (invalidExplicitSplit(row, raw, split.totalBytes)) {
+    return { eligible: false, reason: "invalid_explicit_split" };
+  }
+  if (!splitInvariantHolds(split)) {
+    return { eligible: false, reason: "invalid_split_invariant" };
+  }
+  return { eligible: true, reason: "ok" };
 }
 
 function flowTrafficClass(row) {
@@ -1762,6 +1847,8 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       if (raw.accounting_bucket) return null;
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
+      const eligibility = trafficAggregateEligibility(row, raw, split);
+      if (!eligibility.eligible) return null;
       const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
       const clientKey = text(raw.client_key || row.device_key || raw.device_key || raw.profile || raw.client || row.client || row.client_ip || "Unknown client");
       const resolved = resolveOperatorClient({
@@ -1810,8 +1897,10 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       const bytes = first ? sample.bytes : Math.max(0, sample.bytes - previous.bytes);
       const viaVps = first ? sample.via_vps_bytes : Math.max(0, sample.via_vps_bytes - previous.via_vps_bytes);
       const direct = first ? sample.direct_bytes : Math.max(0, sample.direct_bytes - previous.direct_bytes);
-      const unknown = first ? sample.unknown_bytes : bytes - viaVps - direct;
+      let unknown = first ? sample.unknown_bytes : Math.max(0, sample.unknown_bytes - previous.unknown_bytes);
       previous = sample;
+      if (bytes !== viaVps + direct + unknown) unknown = bytes - viaVps - direct;
+      if (bytes < 0 || viaVps < 0 || direct < 0 || unknown < 0 || bytes !== viaVps + direct + unknown) continue;
       if (bytes <= 0 && viaVps <= 0 && direct <= 0 && unknown <= 0 && sample.connections <= 0) continue;
       facts.push({
         ...sample,
@@ -1830,6 +1919,8 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
 function addToGroup(map, key, seed, row) {
   const current = map.get(key) || { ...seed, bytes: 0, total_bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, observed_bytes: 0, attributed_bytes: 0, flows: 0, connections: 0 };
   const rowTotal = aggregateTotalBytes(row);
+  const split = signedByteSplit(row, row?.route, rowTotal);
+  if (!trafficAggregateEligibility(row, row?.raw || row, split).eligible) return current;
   current.bytes += rowTotal;
   current.total_bytes += rowTotal;
   current.via_vps_bytes += number(row.via_vps_bytes);
@@ -2650,6 +2741,31 @@ function sourceStatsForRange(db, startUtc, endUtc) {
   };
 }
 
+function earliestSourceTimestamp(db) {
+  const candidates = [];
+  for (const [table, column] of [
+    ["normalized_flows", "collected_at"],
+    ["flow_sessions", "collected_at"],
+    ["normalized_dns", "collected_at"],
+    ["dns_query_log", "collected_at"],
+  ]) {
+    try {
+      const row = db.prepare(`select min(${column}) as min_ts from ${table}`).get();
+      if (row?.min_ts) candidates.push(row.min_ts);
+    } catch {
+      // Table may not exist in partially initialized fixture DBs.
+    }
+  }
+  return candidates.filter(Boolean).sort()[0] || "";
+}
+
+export function clearTrafficReadModels(db) {
+  for (const table of TRAFFIC_READ_MODEL_TABLES) {
+    db.prepare(`delete from ${table}`).run();
+  }
+  db.prepare("delete from aggregate_state where model like 'client_traffic_%' or model like 'client_destination_traffic_%' or model like 'dns_log_%' or model in ('dashboard', 'dns_counts', 'repair_aggregates')").run();
+}
+
 function sourceRowCount(stats, trafficOnly = false) {
   const trafficRows = number(stats.normalized_flows?.rows) + number(stats.flow_sessions?.rows);
   if (trafficOnly) return trafficRows;
@@ -2868,6 +2984,13 @@ export function repairAggregateRange(db, options = {}) {
     writeAggregateState(db, "repair_aggregates", key, toUtc, sourceVersion, "error", { ...detail, error: error.message });
     throw error;
   }
+}
+
+export function rebuildAllTrafficReadModels(db, options = {}) {
+  const computedAt = options.computedAt || new Date().toISOString();
+  const fromUtc = options.fromUtc || earliestSourceTimestamp(db) || mskWindowBounds("month", computedAt).startUtc;
+  clearTrafficReadModels(db);
+  return repairAggregateRange(db, { fromUtc, toUtc: options.toUtc || computedAt, computedAt });
 }
 
 export function pruneOperationalTables(db, now = new Date().toISOString()) {

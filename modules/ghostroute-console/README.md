@@ -137,7 +137,7 @@ same prepared data.
 
 ```text
 1. Source modules produce JSON
-     traffic-summary / traffic-report / traffic-daily-report
+     traffic-summary / traffic-facts / traffic-daily-report
      router-health-report / leak-check / deploy-gate evidence
      domain-report / dns-forensics-report
      live-events-report for bounded router log-tail events
@@ -159,6 +159,7 @@ same prepared data.
      pages read prepared rows, not full raw reports
      missing evidence renders as not observed
      route accounting keeps Total = Via VPS + Direct + Unknown
+     legacy traffic-report rows stay debug-only and are excluded from GUI totals
      short in-process cache follows read_model_state and snapshot metadata
 
 5. Full Console serves investigations
@@ -173,6 +174,12 @@ same prepared data.
 
 The key boundary is simple: Console renders prepared facts and operator state
 overlays; router/VPS runtime changes remain separate explicit actions.
+
+Traffic accounting has an additional guardrail: operational Dashboard, Clients
+and Live totals are built only from eligible Traffic Observatory facts whose byte
+split satisfies `bytes = via_vps_bytes + direct_bytes + unknown_bytes` with no
+negative components. Legacy `traffic-report`-derived allocation rows can remain
+stored for debug/history, but they are not allowed into prepared traffic windows.
 
 ## Public Commands
 
