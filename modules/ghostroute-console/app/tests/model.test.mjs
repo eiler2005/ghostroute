@@ -22,7 +22,7 @@ const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor 
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
 const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
-const { composePopularSiteRows, counterFallbackRows, groupPopularSites, siteBytes } = popularSitesModule;
+const { composePopularSiteRows, counterFallbackRows, dnsEstimatedRows, groupPopularSites, siteBytes } = popularSitesModule;
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
@@ -1635,6 +1635,55 @@ test("client popular sites include residual counter traffic when site attributio
   assert.equal(visible.some((row) => row.label === "lan-host-13 (MacBook Denis 23)"), false);
   assert.equal(visible.some((row) => row.dnsOnly), false);
   assert.equal(visible.find((row) => row.label === "Cloudflare network").rank, 2);
+});
+
+test("client popular sites allocate residual traffic to DNS-estimated domains when byte detail undercounts", () => {
+  const selected = {
+    id: "lan-host-02",
+    label: "lan-host-02 (iPhone)",
+    total_bytes: 1_070_000_000,
+    flows: 150,
+  };
+  const byteRows = groupPopularSites([
+    {
+      destination: "Apple network",
+      destination_label: "Apple network",
+      traffic_lane: "shared_infra",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 1_000_000,
+      flows: 9,
+    },
+  ], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const attributedBytes = byteRows.reduce((sum, row) => sum + siteBytes(row), 0);
+  const dnsRows = dnsEstimatedRows([
+    { domain: "www.youtube.com", count: 80 },
+    { domain: "Apple network", count: 40 },
+    { domain: "docs.google.com", count: 30 },
+  ], siteBytes(selected) - attributedBytes, "Mixed", 15, { excludeLabels: [selected.id, selected.label] });
+  const fallbackRows = dnsRows.length ? [] : counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
+  const visible = composePopularSiteRows([...byteRows, ...dnsRows], [], fallbackRows);
+  assert.equal(visible[0].label, "www.youtube.com");
+  assert.equal(visible.some((row) => row.label === "Traffic without site attribution"), false);
+  assert.equal(visible.some((row) => row.dnsEstimated), true);
+  assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), siteBytes(selected));
+  assert.equal(siteBytes(visible.find((row) => row.label === "Apple network")), 286_066_666);
+});
+
+test("client popular sites keep residual traffic only when no DNS interest can explain it", () => {
+  const selected = {
+    id: "lan-host-04",
+    label: "lan-host-04 (Sofi)",
+    total_bytes: 516_000_000,
+    flows: 9,
+  };
+  const byteRows = groupPopularSites([], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const dnsRows = dnsEstimatedRows([], siteBytes(selected), "Mixed", 15, { excludeLabels: [selected.id, selected.label] });
+  const fallbackRows = dnsRows.length ? [] : counterFallbackRows(selected, [], "Mixed", "client", 0);
+  const visible = composePopularSiteRows(byteRows, [], fallbackRows);
+  assert.equal(dnsRows.length, 0);
+  assert.equal(visible[0].label, "Traffic without site attribution");
+  assert.equal(siteBytes(visible[0]), siteBytes(selected));
 });
 
 test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {
