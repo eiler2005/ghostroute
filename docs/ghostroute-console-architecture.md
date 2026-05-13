@@ -509,12 +509,14 @@ before host UFW or nginx can receive traffic. The data directory is
 
 The operator UI intentionally keeps first-page HTML small. Dashboard analytics
 are derived from scoped read models and render SVG/CSS charts for today's route
-split, monthly VPS usage, mobile/selected-client LTE reserve and forecasted
-cumulative usage without adding a browser chart dependency. The `today` route
-chart uses cumulative `traffic_summary` deltas when available so it stays in the
-same accounting scope as the Dashboard KPI. The route series use explicit
-read-model split evidence, so `Total` is always the sum of `Via VPS`, `Direct`
-and `Unknown`, including rows whose route badge is `Mixed`.
+split and forecasted cumulative usage without adding a browser chart dependency.
+The primary observed traffic cards sit directly under the daily chart; quota
+cards are intentionally omitted from the Dashboard so current route accounting
+stays visually separated from billing/reserve views. The `today` route chart
+uses cumulative `traffic_summary` deltas when available so it stays in the same
+accounting scope as the Dashboard KPI. The route series use explicit read-model
+split evidence, so `Total` is always the sum of `Via VPS`, `Direct` and
+`Unknown`, including rows whose route badge is `Mixed`.
 Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and

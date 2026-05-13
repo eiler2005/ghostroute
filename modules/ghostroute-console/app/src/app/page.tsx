@@ -190,18 +190,6 @@ function trafficIntelSummary(rows: Array<Record<string, any>>) {
   return summary;
 }
 
-function dateLabel(value?: string) {
-  if (!value) return "not set";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Moscow",
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
-
 function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
   return Math.max(1, ...points.flatMap((point) => keys.map((key) => Number(point[key] || 0))));
 }
@@ -252,29 +240,6 @@ function TrafficTodayChart({ points }: { points: Array<Record<string, any>> }) {
         </svg>
       </div>
       <div className="chart-axis-labels">{ticks.map((tick) => <span key={tick}>{tick}</span>)}</div>
-    </section>
-  );
-}
-
-function QuotaCard({ title, data, tone }: { title: string; data: Record<string, any>; tone: "vps" | "lte" }) {
-  const quota = Number(data?.quotaBytes || 0);
-  const used = Number(data?.usedBytes || 0);
-  const percent = quota > 0 ? pct(used, quota) : 0;
-  const visiblePercent = quota > 0 && used > 0 ? Math.max(2, percent) : percent;
-  const percentLabel = quota > 0 && used > 0 && percent === 0 ? "<1%" : `${percent}%`;
-  return (
-    <section className={`card dashboard-quota-card quota-${tone}`}>
-      <h2>{title}</h2>
-      <div className="quota-value">
-        <strong>{compactBytes(used)}</strong>
-        <span>/ {quota > 0 ? compactBytes(quota) : "quota not set"}</span>
-      </div>
-      <div className="quota-progress"><span style={{ width: `${visiblePercent}%` }} /></div>
-      <div className="quota-meta">
-        <div><span>Remaining</span><strong>{quota > 0 ? compactBytes(Number(data.remainingBytes || 0)) : "not observed"}</strong></div>
-        <div><span>Quota reset</span><strong>{dateLabel(data?.resetDate)}</strong></div>
-        <div><span>Used</span><strong>{quota > 0 ? percentLabel : "not set"}</strong></div>
-      </div>
     </section>
   );
 }
@@ -412,9 +377,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     <ConsoleShell active="/" model={model} filters={filters}>
       <div className="dashboard-analytics">
         <TrafficTodayChart points={analytics.trafficToday?.points || []} />
-        <div className="dashboard-quota-grid">
-          <QuotaCard title="VPS traffic this month" data={analytics.quota?.vps || {}} tone="vps" />
-          <QuotaCard title="LTE reserve (mobile internet)" data={analytics.quota?.lte || {}} tone="lte" />
+        <div className="grid four">
+          <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Data for ${trafficWindowText} · refresh about 5 minutes`} />
+          <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed · current-day KPI`} />
+          <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
+          <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
         </div>
         <div className="dashboard-rank-grid">
           <RankedClients rows={analytics.topClients || []} />
@@ -431,13 +398,6 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             <p>{card.detail}</p>
           </section>
         ))}
-      </div>
-
-      <div className="grid four" style={{ marginTop: 14 }}>
-        <MetricCard label="Observed traffic" value={bytes(model.totals.observedBytes)} detail={`Data for ${trafficWindowText} · refresh about 5 minutes`} />
-        <MetricCard label="Via VPS" value={bytes(model.totals.viaVpsBytes)} detail={`${share(model.totals.viaVpsBytes, total)}% observed · current-day KPI`} />
-        <MetricCard label="Direct" value={bytes(model.totals.directBytes)} detail={`${share(model.totals.directBytes, total)}% observed · current-day KPI`} />
-        <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
       </div>
 
       <section className="card" style={{ marginTop: 14 }}>
