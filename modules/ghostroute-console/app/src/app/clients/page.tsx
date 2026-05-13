@@ -15,19 +15,20 @@ import {
   timeWithMillis,
 } from "@/components/Widgets";
 import {
-  buildClientsModel,
   listClientDomainBreakdown,
   listClientActivity,
   listClientDestinationsByLane,
   listClientInventory,
   listClientLaneSummary,
+  listAlarmEvents,
+  listDnsQueryLog,
   listRouteEvidenceDefects,
 } from "@/lib/server/selectors/clients";
-import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
-import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, dnsEstimatedRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
+import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -50,13 +51,13 @@ function matchesClientFilter(client: Record<string, any>, value?: string) {
   return Boolean(target) && clientTokens(client).some((token) => normalizeToken(token) === target);
 }
 
-function belongsToClient(row: Record<string, any>, tokens: string[]) {
-  if (tokens.length === 0) return false;
-  const normalizedTokens = tokens.map(normalizeToken);
-  const clientFields = [row.client, row.client_key, row.client_label, row.device_key, row.device_label, row.label, row.device_id, row.id, row.ip, row.source_ip].filter(Boolean).map(String);
-  if (clientFields.some((value) => normalizedTokens.includes(normalizeToken(value)))) return true;
-  const raw = normalizeToken(JSON.stringify(row));
-  return tokens.some((token) => token.length > 2 && raw.includes(normalizeToken(token)));
+function isIpLiteral(value: unknown) {
+  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
+}
+
+function inventoryDeviceLabel(row: Record<string, any>) {
+  if (row.client_attributed === false || row.attribution_state === "needs_attribution") return row.label || "Unknown LAN device";
+  return row.device_label || row.label || row.id;
 }
 
 function hourLabel(value?: string) {
@@ -167,6 +168,57 @@ function evidenceSummary(rows: Array<Record<string, any>>, totalBytes: number) {
   return result;
 }
 
+function compactClientEvidence(row?: Record<string, any>) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    label: row.label,
+    client_key: row.client_key,
+    device_key: row.device_key,
+    channel: row.channel,
+    total_bytes: row.total_bytes,
+    via_vps_bytes: row.via_vps_bytes,
+    direct_bytes: row.direct_bytes,
+    unknown_bytes: row.unknown_bytes,
+    route: row.route || routeFromBytes(row),
+    confidence: row.confidence,
+    traffic_window_active: row.traffic_window_active,
+    observed_aliases: (row.observed_aliases || row.aliases || []).slice(0, 8),
+  };
+}
+
+function compactTrafficEvidence(row: Record<string, any>) {
+  return {
+    client_key: row.client_key,
+    traffic_lane: row.traffic_lane,
+    destination: trafficDisplayDestination(row),
+    route: row.route || routeFromBytes(row),
+    bytes: row.bytes || row.total_bytes || 0,
+    flows: row.flows || row.connections || 0,
+    confidence: row.confidence,
+    decision_hint: row.decision_hint,
+    evidence: row.route_evidence || row.route_verification || row.evidence_level,
+  };
+}
+
+function compactDnsEvidence(row: Record<string, any>) {
+  return {
+    domain: row.domain,
+    count: row.count,
+    trafficClass: row.trafficClass || row.traffic_class,
+    category: row.category || row.dns_category,
+  };
+}
+
+function compactAlertEvidence(row: Record<string, any>) {
+  return {
+    title: row.title,
+    severity: row.severity,
+    status: row.status,
+    domain: row.domain,
+  };
+}
+
 function inferredClientLane(selected?: Record<string, any>) {
   const channel = String(selected?.channel || "");
   if (channel.includes("A/Home") || channel.includes("Reality")) return "client_observed";
@@ -244,31 +296,11 @@ function fallbackClientActivityRows(selected: Record<string, any> | undefined, r
   }];
 }
 
-function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
-  return rows.slice(0, limit).map((row, index) => ({
-    id: `dns-interest-${index}`,
-    rank: index + 1,
-    label: row.domain,
-    destination: row.domain,
-    destinationLabel: row.domain,
-    bytes: 0,
-    total_bytes: 0,
-    flows: Number(row.count || 0),
-    route: "dns-interest",
-    laneLabel: "DNS interest",
-    confidence: "dns-interest",
-    dnsOnly: true,
-  }));
-}
-
 function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>> }) {
   const residualRows = counterFallback || [];
-  const visible: Array<Record<string, any>> = composePopularSiteRows(rows, dnsFallback || [], residualRows);
-  const hasEstimatedDns = visible.some((row) => row.dnsEstimated);
-  const evidenceLabel = hasEstimatedDns
-    ? "byte-attributed + DNS-estimated"
-    : rows.length && residualRows.length
-    ? "byte-attributed + counter residual"
+  const visible: Array<Record<string, any>> = composePopularSiteRows(rows, dnsFallback || [], []);
+  const evidenceLabel = rows.length && residualRows.length
+    ? "byte-attributed + unmapped residual"
     : rows.length ? "byte-attributed traffic" : "fallback evidence";
   return (
     <section className="card client-popular-sites-list">
@@ -284,12 +316,48 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
             <div className="detail-row popular-site-row" key={`${row.id || row.label}-${row.rank}`}>
               <span>
                 <strong>{row.rank}. {row.label}</strong>
-                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : row.dnsEstimated ? "DNS-weighted signals" : "flows"}</small>
+                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : "flows"}</small>
               </span>
               <strong>
                 {row.dnsOnly ? "not byte-attributed" : bytes(siteBytes(row))}
                 <RouteBadge value={row.route || routeFromBytes(row)} />
               </strong>
+            </div>
+          ))}
+          {residualRows.map((row) => (
+            <div className="detail-row popular-site-row" key={row.id || row.label}>
+              <span>
+                <strong>{row.label}</strong>
+                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} counter flows</small>
+              </span>
+              <strong>{bytes(siteBytes(row))} <RouteBadge value={row.route || routeFromBytes(row)} /></strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DnsDomainsList({ title: heading, rows, limit = 25 }: { title: string; rows: Array<Record<string, any>>; limit?: number }) {
+  const visible = rows.slice(0, limit);
+  return (
+    <section className="card client-popular-sites-list">
+      <div className="toolbar">
+        <h3>{heading}</h3>
+        <span className="subtle">DNS queries for selected device</span>
+      </div>
+      {visible.length === 0 ? (
+        <EmptyState title="No DNS domains for this device" detail="No DNS rows were tied to this selected device in the current window." />
+      ) : (
+        <div className="detail-list">
+          {visible.map((row, index) => (
+            <div className="detail-row popular-site-row" key={`${row.domain}-${index}`}>
+              <span>
+                <strong>{index + 1}. {row.domain}</strong>
+                <small className="subtle block-detail">latest DNS evidence</small>
+              </span>
+              <strong>{row.count || 0} queries</strong>
             </div>
           ))}
         </div>
@@ -314,7 +382,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     row.attribution_state === "needs_attribution" ||
     row.role === "Needs attribution" ||
     row.role === "Unattributed mobile ingress source" ||
-    (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
+    (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024) ||
+    (!row.registry_registered && (isIpLiteral(row.label) || isIpLiteral(row.client_label) || isIpLiteral(row.device_label)));
   const inventoryRows = clientsPage.rows as Array<Record<string, any>>;
   const primaryRows = inventoryRows.filter((row) => !isUnattributed(row));
   const unattributedRows = inventoryRows.filter((row) => isUnattributed(row));
@@ -325,13 +394,11 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     primaryRows[0] ||
     inventoryRows[0];
   const selectedClientId = selectedClientValue(selected);
-  const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...listFilters, client: selectedClientId } }).rows : [];
-  const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
+  const model = buildShellModel(filters, { devices: clientsPage.rows });
   const tokens = clientTokens(selected);
-  const allSelectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)) : [];
-  const selectedFlows = allSelectedFlows.slice(0, 8);
-  const selectedDns = selected ? aggregateDnsInterest(model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)), 30) : [];
-  const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
+  const selectedDnsRows = selected ? listDnsQueryLog({ page: 1, pageSize: 500, filters: { ...filters, trafficClass: "all", client: selectedClientId } }).rows : [];
+  const selectedDns = selected ? aggregateDnsInterest(selectedDnsRows, 30) : [];
+  const selectedAlerts = selected ? listAlarmEvents({ page: 1, pageSize: 5, filters: { ...filters, search: selectedClientId } }).rows : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const rawSelectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
   const selectedActivity = rawSelectedActivity.length ? rawSelectedActivity : fallbackClientActivityRows(selected, selectedRoute);
@@ -358,9 +425,14 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8, { excludeLabels: excludedSiteLabels });
   const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
   const attributedSiteBytes = [...selectedClientSites, ...selectedServiceSites, ...selectedServiceCounterSites].reduce((sum, row) => sum + siteBytes(row), 0);
-  const selectedDnsEstimatedSites = selected ? dnsEstimatedRows(selectedDns, Math.max(0, siteBytes(selected) - attributedSiteBytes), selectedRoute, 15, { excludeLabels: excludedSiteLabels }) : [];
-  const selectedClientFallbackSites = selectedDnsEstimatedSites.length ? [] : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes);
-  const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
+  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes)
+    .map((row) => ({
+      ...row,
+      label: "Unattributed traffic not mapped to sites",
+      destination: "Unattributed traffic not mapped to sites",
+      destinationLabel: "Unattributed traffic not mapped to sites",
+      laneLabel: "counter-only · not mapped to a site",
+    }));
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
   const filterParams = {
@@ -443,7 +515,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   <tbody>
                     {primaryRows.map((row) => (
                       <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
-                        <td><a className="row-link" href={clientHref(row)}>{row.device_label || row.label || row.id}</a></td>
+                        <td><a className="row-link" href={clientHref(row)}>{inventoryDeviceLabel(row)}</a></td>
                         <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
                         <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
                         <td><a className="row-link" href={clientHref(row)}>{row.owner || row.client_label || "Inventory"}</a></td>
@@ -475,7 +547,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                       <tbody>
                         {unattributedRows.map((row) => (
                           <tr key={row.id || row.label} className={`clickable-row ${isSelectedRow(row) ? "selected" : ""}`}>
-                            <td><a className="row-link" href={clientHref(row)}>{row.label || row.id}</a></td>
+                            <td><a className="row-link" href={clientHref(row)}>{row.label || "Unknown LAN device"}</a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
                             <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
                             <td><a className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</a></td>
@@ -596,7 +668,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   ))}
                 </div>
               )}
-              <h3 style={{ marginTop: 16 }}>DNS interest</h3>
+              <h3 style={{ marginTop: 16 }}>Latest DNS domains</h3>
               {selectedDns.length === 0 ? (
                 <div className="subtle">No DNS rows tied to this client in the latest snapshots.</div>
               ) : (
@@ -604,7 +676,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   {selectedDns.slice(0, 8).map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
                       <span>{row.domain}</span>
-                      <strong>{row.count}</strong>
+                      <strong>{row.count} queries</strong>
                     </div>
                   ))}
                 </div>
@@ -627,14 +699,18 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               )}
               <ConfidenceHelp />
               <RawEvidence value={{
-                client: selected,
-                laneSummary: selectedLaneRows,
-                laneDestinations: selectedLaneDestinations,
-                routeEvidence: selectedRouteEvidence,
-                activity: selectedActivity,
-                flows: selectedFlows,
-                dns: selectedDns,
-                alerts: selectedAlerts,
+                client: compactClientEvidence(selected),
+                laneSummary: selectedLaneRows.slice(0, 8).map(compactTrafficEvidence),
+                laneDestinations: selectedLaneDestinations.slice(0, 8).map(compactTrafficEvidence),
+                routeEvidence: selectedRouteEvidence.slice(0, 8).map(compactTrafficEvidence),
+                activity: selectedActivity.slice(-8).map((row) => ({
+                  hour_key: row.hour_key,
+                  bytes: row.bytes,
+                  route: row.route,
+                  mode: row.mode,
+                })),
+                dns: selectedDns.slice(0, 5).map(compactDnsEvidence),
+                alerts: selectedAlerts.slice(0, 5).map(compactAlertEvidence),
               }} />
             </>
           )}
@@ -644,11 +720,14 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
         <section className="client-popular-sites-section" style={{ marginTop: 14 }}>
           <div className="toolbar">
             <h2>Most popular sites for {selected.label || selected.client_label || selected.id}</h2>
-            <span className="subtle">{filters.period || "today"} · traffic and DNS interest for selected client</span>
+            <span className="subtle">{filters.period || "today"} · byte-attributed traffic for selected client</span>
           </div>
           <div className="grid two">
-            <PopularSitesList title="Client sites" rows={[...selectedClientSites, ...selectedDnsEstimatedSites]} dnsFallback={selectedDnsFallback} counterFallback={selectedClientFallbackSites} />
+            <PopularSitesList title="Client sites" rows={selectedClientSites} counterFallback={selectedClientFallbackSites} />
             <PopularSitesList title="Service/system sites" rows={selectedServiceSites} counterFallback={selectedServiceCounterSites} />
+          </div>
+          <div className="grid one" style={{ marginTop: 14 }}>
+            <DnsDomainsList title={`Latest DNS domains for ${selected.label || selected.client_label || selected.id}`} rows={selectedDns} />
           </div>
         </section>
       ) : null}

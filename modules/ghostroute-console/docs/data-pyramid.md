@@ -143,10 +143,18 @@ historical normalized devices and the private device-attribution registry.
 Default inventory pages show traffic-active rows for the selected window,
 including unresolved active rows as Needs attribution; inactive registry rows
 are hidden until the operator enables `showInactive=1`.
+Rows resolved through the private registry use the canonical registry label and
+device type. Unresolved IP-only LAN sources remain attribution debt as Unknown
+LAN devices, with the raw IP preserved in evidence fields rather than promoted
+to a trusted client name.
 
 DNS Query Log is factual evidence. DNS rows may be visible even when the source
 is not yet registry-attributed, but only registry-backed clients participate in
 DNS top-client grouping or client inventory rows.
+
+The Clients page may show Latest DNS domains for the selected device, but those
+rows are query counts only. They must not be used to allocate byte residuals in
+the popular-sites traffic ranking.
 
 Unresolved loopback, router-local and private source addresses are not displayed
 as normal clients. Registry-backed DNS sources use the canonical device label;

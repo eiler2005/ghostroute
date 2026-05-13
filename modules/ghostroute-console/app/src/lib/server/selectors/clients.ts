@@ -3,6 +3,8 @@ export {
   listClientDomainBreakdown,
   listClientDestinationsByLane,
   listClientLaneSummary,
+  listAlarmEvents,
+  listDnsQueryLog,
   listRouteEvidenceDefects,
   listClientActivity,
   listClientInventory,

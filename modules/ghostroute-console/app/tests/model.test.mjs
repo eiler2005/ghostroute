@@ -22,7 +22,7 @@ const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor 
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
 const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
-const { composePopularSiteRows, counterFallbackRows, dnsEstimatedRows, groupPopularSites, siteBytes } = popularSitesModule;
+const { composePopularSiteRows, counterFallbackRows, groupPopularSites, siteBytes } = popularSitesModule;
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
@@ -1628,16 +1628,17 @@ test("client popular sites include residual counter traffic when site attributio
   ], "client", 15, { excludeLabels: [selected.id, selected.label] });
   const attributedBytes = siteRows.reduce((sum, row) => sum + siteBytes(row), 0);
   const residualRows = counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
-  const visible = composePopularSiteRows(siteRows, [{ label: "dns-only.example", flows: 20, dnsOnly: true }], residualRows);
+  const visible = composePopularSiteRows(siteRows, [{ label: "dns-only.example", flows: 20, dnsOnly: true }], []);
   assert.equal(siteBytes(residualRows[0]), 4_400_000_000);
-  assert.equal(visible[0].label, "Traffic without site attribution");
-  assert.equal(siteBytes(visible[0]), 4_400_000_000);
+  assert.equal(residualRows[0].label, "Unattributed traffic not mapped to sites");
+  assert.equal(visible[0].label, "Cloudflare network");
+  assert.equal(siteBytes(visible[0]), 90_000_000);
   assert.equal(visible.some((row) => row.label === "lan-host-13 (MacBook Denis 23)"), false);
   assert.equal(visible.some((row) => row.dnsOnly), false);
-  assert.equal(visible.find((row) => row.label === "Cloudflare network").rank, 2);
+  assert.equal(visible.find((row) => row.label === "Cloudflare network").rank, 1);
 });
 
-test("client popular sites allocate residual traffic to DNS-estimated domains when byte detail undercounts", () => {
+test("client popular sites do not allocate residual traffic to DNS domains when byte detail undercounts", () => {
   const selected = {
     id: "lan-host-02",
     label: "lan-host-02 (iPhone)",
@@ -1656,21 +1657,23 @@ test("client popular sites allocate residual traffic to DNS-estimated domains wh
     },
   ], "client", 15, { excludeLabels: [selected.id, selected.label] });
   const attributedBytes = byteRows.reduce((sum, row) => sum + siteBytes(row), 0);
-  const dnsRows = dnsEstimatedRows([
+  const fallbackRows = counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
+  const visible = composePopularSiteRows(byteRows, [], []);
+  const dnsInterest = [
     { domain: "www.youtube.com", count: 80 },
     { domain: "Apple network", count: 40 },
     { domain: "docs.google.com", count: 30 },
-  ], siteBytes(selected) - attributedBytes, "Mixed", 15, { excludeLabels: [selected.id, selected.label] });
-  const fallbackRows = dnsRows.length ? [] : counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
-  const visible = composePopularSiteRows([...byteRows, ...dnsRows], [], fallbackRows);
-  assert.equal(visible[0].label, "www.youtube.com");
-  assert.equal(visible.some((row) => row.label === "Traffic without site attribution"), false);
-  assert.equal(visible.some((row) => row.dnsEstimated), true);
-  assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), siteBytes(selected));
-  assert.equal(siteBytes(visible.find((row) => row.label === "Apple network")), 286_066_666);
+  ];
+  assert.equal(visible[0].label, "Apple network");
+  assert.equal(visible.some((row) => row.label === "Unattributed traffic not mapped to sites"), false);
+  assert.equal(visible.some((row) => row.label === "www.youtube.com"), false);
+  assert.equal(visible.some((row) => row.dnsEstimated), false);
+  assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), attributedBytes);
+  assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected) - attributedBytes);
+  assert.equal(dnsInterest[0].count, 80);
 });
 
-test("client popular sites keep residual traffic only when no DNS interest can explain it", () => {
+test("client popular sites keep unmapped residual separate from ranked sites", () => {
   const selected = {
     id: "lan-host-04",
     label: "lan-host-04 (Sofi)",
@@ -1678,12 +1681,11 @@ test("client popular sites keep residual traffic only when no DNS interest can e
     flows: 9,
   };
   const byteRows = groupPopularSites([], "client", 15, { excludeLabels: [selected.id, selected.label] });
-  const dnsRows = dnsEstimatedRows([], siteBytes(selected), "Mixed", 15, { excludeLabels: [selected.id, selected.label] });
-  const fallbackRows = dnsRows.length ? [] : counterFallbackRows(selected, [], "Mixed", "client", 0);
-  const visible = composePopularSiteRows(byteRows, [], fallbackRows);
-  assert.equal(dnsRows.length, 0);
-  assert.equal(visible[0].label, "Traffic without site attribution");
-  assert.equal(siteBytes(visible[0]), siteBytes(selected));
+  const fallbackRows = counterFallbackRows(selected, [], "Mixed", "client", 0);
+  const visible = composePopularSiteRows(byteRows, [], []);
+  assert.equal(visible.length, 0);
+  assert.equal(fallbackRows[0].label, "Unattributed traffic not mapped to sites");
+  assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected));
 });
 
 test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {
@@ -1875,6 +1877,7 @@ test("operator-local device attribution labels known devices and marks unknown s
   assert.equal(displayDeviceLabel("mobile-client-01 / B", registry), "mobile-client-01 (Owner A) / B");
   assert.equal(displayDeviceLabel("lan-host-99", registry), "lan-host-99 (Unknown device)");
   assert.equal(displayDeviceLabel("mobile-source-08", registry), "mobile-source-08 (Unattributed source)");
+  assert.equal(displayDeviceLabel("192.168.50.68", registry), "Unknown LAN device");
   assert.equal(displayDeviceLabel({ device_id: "macbook", label: "mobile-client-05" }, registry), "MacBook Owner");
   const attributed = applyDeviceAttribution({ id: "lan-host-08", label: "lan-host-08", role: "Home LAN device", total_bytes: 1 }, registry);
   assert.equal(attributed.id, "lan-host-08");

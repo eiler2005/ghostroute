@@ -92,9 +92,9 @@ export function counterOnlyRows(rows = [], kind = "client", limit = 1) {
     const current = grouped.get(key) || {
       ...row,
       id: key,
-      label: "Traffic without site attribution",
-      destination: "Traffic without site attribution",
-      destinationLabel: "Traffic without site attribution",
+      label: "Unattributed traffic not mapped to sites",
+      destination: "Unattributed traffic not mapped to sites",
+      destinationLabel: "Unattributed traffic not mapped to sites",
       bytes: 0,
       total_bytes: 0,
       flows: 0,
@@ -133,9 +133,9 @@ export function counterFallbackRows(selected, rows = [], route = "Unknown", kind
   return [{
     id: "client-counter-fallback",
     rank: 1,
-    label: "Traffic without site attribution",
-    destination: "Traffic without site attribution",
-    destinationLabel: "Traffic without site attribution",
+    label: "Unattributed traffic not mapped to sites",
+    destination: "Unattributed traffic not mapped to sites",
+    destinationLabel: "Unattributed traffic not mapped to sites",
     bytes: residualBytes,
     total_bytes: residualBytes,
     flows: selectedFlows,
@@ -143,48 +143,6 @@ export function counterFallbackRows(selected, rows = [], route = "Unknown", kind
     laneLabel: "counter-only · residual traffic",
     counterOnly: true,
   }];
-}
-
-export function dnsEstimatedRows(dnsRows = [], residualBytes = 0, route = "Unknown", limit = 15, options = {}) {
-  const excludedLabels = new Set((options.excludeLabels || []).map(normalizeSiteLabel).filter(Boolean));
-  const candidates = [];
-  for (const row of dnsRows || []) {
-    const label = text(row.domain || row.label || row.destination || row.destinationLabel);
-    if (!isUsefulSiteLabel(label, excludedLabels)) continue;
-    candidates.push({
-      ...row,
-      label,
-      destination: label,
-      destinationLabel: label,
-      weight: Math.max(1, Number(row.count || row.flows || 1)),
-    });
-  }
-  const visible = candidates.slice(0, limit);
-  const totalWeight = visible.reduce((sum, row) => sum + row.weight, 0);
-  const totalResidual = Math.max(0, Number(residualBytes || 0));
-  if (totalWeight <= 0 || totalResidual <= 0) return [];
-  let allocated = 0;
-  return visible.map((row, index) => {
-    const isLast = index === visible.length - 1;
-    const share = isLast ? Math.max(0, totalResidual - allocated) : Math.floor((totalResidual * row.weight) / totalWeight);
-    allocated += share;
-    return {
-      id: `dns-estimated-${index}-${normalizeSiteLabel(row.label)}`,
-      rank: index + 1,
-      label: row.label,
-      destination: row.label,
-      destinationLabel: row.label,
-      bytes: share,
-      total_bytes: share,
-      flows: row.weight,
-      route,
-      laneLabel: "DNS-estimated · residual traffic",
-      confidence: "estimated/dns-interest",
-      dnsEstimated: true,
-      allocationBasis: "dns-interest-residual",
-      destinationEvidence: "dns_interest",
-    };
-  }).filter((row) => siteBytes(row) > 0);
 }
 
 function mergeVisibleRows(rows = []) {
@@ -209,7 +167,6 @@ function mergeVisibleRows(rows = []) {
     current.flows += Number(row.flows || row.connections || 0);
     current.counterOnly = Boolean(current.counterOnly || row.counterOnly);
     current.dnsOnly = Boolean(current.dnsOnly || row.dnsOnly);
-    current.dnsEstimated = Boolean(current.dnsEstimated || row.dnsEstimated);
     if (row.allocationBasis) current.allocationBasis = row.allocationBasis;
     if (row.destinationEvidence) current.destinationEvidence = row.destinationEvidence;
     if (row.confidence) current.confidence = row.confidence;
