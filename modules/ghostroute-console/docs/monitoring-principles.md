@@ -40,6 +40,9 @@ available from this contract.
 
 - Dashboard traffic KPI uses lightweight `traffic-summary today`: current local
   day from 00:00 to the latest summary snapshot, collected about every 5 minutes.
+  The Dashboard `today` route chart uses the same cumulative summary snapshots
+  when available, turning summary deltas into Moscow-hour buckets so the chart
+  and KPI keep the same accounting scope.
 - Detailed traffic views use saved `traffic-report` snapshots. These are heavier
   and refresh less often: about every 30 minutes during the day and every 3
   hours overnight.
@@ -71,6 +74,10 @@ available from this contract.
 - DNS Query Log may show factual DNS rows that do not yet resolve to a private
   registry client. Those rows are attribution diagnostics; they are excluded
   from DNS top-client grouping until a registry alias exists.
+- Client popular-site panels prefer byte-attributed destination rows, but must
+  keep any remaining selected-client counter bytes visible as residual
+  `Traffic without site attribution` instead of hiding the bulk total behind a
+  small partial destination list.
 - Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
   aggregates around the monthly window. Raw operational rows remain bounded
   troubleshooting data.

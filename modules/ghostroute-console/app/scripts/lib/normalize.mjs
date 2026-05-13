@@ -2545,6 +2545,83 @@ function totalsForFacts(facts) {
   }, { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 });
 }
 
+function zeroTrafficTodayPoints() {
+  return Array.from({ length: 24 }, (_, hour) => ({
+    hour: `${String(hour).padStart(2, "0")}:00`,
+    totalBytes: 0,
+    viaVpsBytes: 0,
+    directBytes: 0,
+    unknownBytes: 0,
+  }));
+}
+
+function reconcileTrafficTodaySeries(points, key, targetBytes, fallbackHour) {
+  const target = number(targetBytes);
+  const source = points.reduce((sum, point) => sum + number(point[key]), 0);
+  if (target <= 0) {
+    for (const point of points) point[key] = 0;
+    return;
+  }
+  if (source <= 0) {
+    const bucket = points.find((point) => point.hour === fallbackHour) || points[points.length - 1];
+    if (bucket) bucket[key] = target;
+    return;
+  }
+  let applied = 0;
+  let bestIndex = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    if (number(points[index][key]) >= number(points[bestIndex][key])) bestIndex = index;
+    const scaled = Math.round((number(points[index][key]) * target) / source);
+    points[index][key] = scaled;
+    applied += scaled;
+  }
+  const drift = target - applied;
+  if (drift !== 0 && points[bestIndex]) points[bestIndex][key] += drift;
+}
+
+function trafficTodayFromSummarySnapshots(db, now) {
+  const today = toMskKey(now, "day");
+  const rows = db
+    .prepare("select collected_at, payload_json from snapshots where type = 'traffic_summary' order by collected_at asc")
+    .all()
+    .filter((row) => toMskKey(row.collected_at, "day") === today);
+  if (rows.length === 0) return [];
+  const points = zeroTrafficTodayPoints();
+  let previous = { totalBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 };
+  let observed = false;
+  let fallbackHour = "00:00";
+  for (const row of rows) {
+    const totals = parseJson(row.payload_json, {})?.totals || {};
+    const current = {
+      totalBytes: number(totals.client_observed_bytes),
+      viaVpsBytes: number(totals.via_vps_bytes),
+      directBytes: number(totals.direct_bytes),
+      unknownBytes: number(totals.unknown_bytes),
+    };
+    const delta = {
+      totalBytes: Math.max(0, current.totalBytes - previous.totalBytes),
+      viaVpsBytes: Math.max(0, current.viaVpsBytes - previous.viaVpsBytes),
+      directBytes: Math.max(0, current.directBytes - previous.directBytes),
+      unknownBytes: Math.max(0, current.unknownBytes - previous.unknownBytes),
+    };
+    fallbackHour = `${toMskKey(row.collected_at, "hour").slice(-2)}:00`;
+    const bucket = points.find((point) => point.hour === fallbackHour);
+    if (bucket) {
+      bucket.totalBytes += delta.totalBytes;
+      bucket.viaVpsBytes += delta.viaVpsBytes;
+      bucket.directBytes += delta.directBytes;
+      bucket.unknownBytes += delta.unknownBytes;
+    }
+    if (delta.totalBytes > 0 || delta.viaVpsBytes > 0 || delta.directBytes > 0 || delta.unknownBytes > 0) observed = true;
+    previous = current;
+  }
+  reconcileTrafficTodaySeries(points, "totalBytes", previous.totalBytes, fallbackHour);
+  reconcileTrafficTodaySeries(points, "viaVpsBytes", previous.viaVpsBytes, fallbackHour);
+  reconcileTrafficTodaySeries(points, "directBytes", previous.directBytes, fallbackHour);
+  reconcileTrafficTodaySeries(points, "unknownBytes", previous.unknownBytes, fallbackHour);
+  return observed ? points : [];
+}
+
 function isoPlusMs(iso, ms) {
   return new Date(Date.parse(iso) + ms).toISOString();
 }
@@ -2858,6 +2935,13 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
     lteQuotaGb: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_GB,
     resetDay: process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY,
   });
+  const summaryTrafficToday = trafficClass === "all" && window === "today" ? trafficTodayFromSummarySnapshots(db, now) : [];
+  if (summaryTrafficToday.length > 0) {
+    dashboardAnalytics.trafficToday = {
+      points: summaryTrafficToday,
+      totalBytes: summaryTrafficToday.reduce((sum, point) => sum + number(point.totalBytes), 0),
+    };
+  }
   dashboardAnalytics.topClients = topClientAnalyticsFromRows(clientRows);
   dashboardAnalytics.topDestinations = buildDashboardAnalyticsFromRows(destinationRows, {
     now,

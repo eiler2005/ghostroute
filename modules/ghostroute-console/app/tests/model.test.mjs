@@ -21,6 +21,8 @@ const classificationModule = await import(new URL("../src/lib/traffic-classifica
 const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
+const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
+const { composePopularSiteRows, counterFallbackRows, groupPopularSites, siteBytes } = popularSitesModule;
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
@@ -1497,11 +1499,22 @@ test("prepared dashboard all traffic totals prefer authoritative router summary"
     ensureConsoleSchema(db);
     db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)").run(
       "traffic_summary",
-      "2026-05-13T07:00:00.000Z",
+      "2026-05-13T00:05:00.000Z",
+      "test",
+      "traffic_summary-early.json",
+      JSON.stringify({
+        generated_at: "2026-05-13T00:05:00.000Z",
+        source: { command: "traffic-summary", period: "today" },
+        totals: { client_observed_bytes: 800_000, via_vps_bytes: 600_000, direct_bytes: 200_000, unknown_bytes: 0 },
+      })
+    );
+    db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)").run(
+      "traffic_summary",
+      "2026-05-13T01:05:00.000Z",
       "test",
       "traffic_summary.json",
       JSON.stringify({
-        generated_at: "2026-05-13T07:00:00.000Z",
+        generated_at: "2026-05-13T01:05:00.000Z",
         source: { command: "traffic-summary", period: "today" },
         totals: { client_observed_bytes: 2_000_000, via_vps_bytes: 1_500_000, direct_bytes: 500_000, unknown_bytes: 0 },
       })
@@ -1520,11 +1533,108 @@ test("prepared dashboard all traffic totals prefer authoritative router summary"
     assert.equal(allDashboard.totals.viaVpsBytes, 1_500_000);
     assert.equal(allDashboard.totals.directBytes, 500_000);
     assert.equal(clientDashboard.totals.observedBytes, 100_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 800_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "04:00").totalBytes, 1_200_000);
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
     else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
   }
+});
+
+test("prepared dashboard traffic chart reconciles non-monotonic summary snapshots to latest total", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-summary-chart-"));
+  fs.writeFileSync(path.join(tmp, "device-attribution.json"), JSON.stringify({ clients: {} }));
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    for (const sample of [
+      ["2026-05-13T00:05:00.000Z", 800_000, 600_000, 200_000, 0],
+      ["2026-05-13T01:05:00.000Z", 5_000_000, 4_600_000, 400_000, 0],
+      ["2026-05-13T02:05:00.000Z", 2_000_000, 1_500_000, 500_000, 0],
+    ]) {
+      db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)").run(
+        "traffic_summary",
+        sample[0],
+        "test",
+        `traffic_summary-${sample[0]}.json`,
+        JSON.stringify({
+          generated_at: sample[0],
+          source: { command: "traffic-summary", period: "today" },
+          totals: {
+            client_observed_bytes: sample[1],
+            via_vps_bytes: sample[2],
+            direct_bytes: sample[3],
+            unknown_bytes: sample[4],
+          },
+        })
+      );
+    }
+    rebuildPreparedWindows(db, "2026-05-13T07:05:00.000Z");
+    const allDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
+    const points = allDashboard.dashboardAnalytics.trafficToday.points;
+    assert.equal(allDashboard.totals.observedBytes, 2_000_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
+    assert.equal(points.reduce((sum, row) => sum + row.totalBytes, 0), 2_000_000);
+    assert.equal(points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 1_500_000);
+    assert.equal(points.reduce((sum, row) => sum + row.directBytes, 0), 500_000);
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+});
+
+test("client popular sites include residual counter traffic when site attribution is partial", () => {
+  const selected = {
+    id: "lan-host-13",
+    label: "lan-host-13 (MacBook Denis 23)",
+    total_bytes: 4_500_000_000,
+    via_vps_bytes: 4_300_000_000,
+    direct_bytes: 200_000_000,
+    flows: 120,
+  };
+  const siteRows = groupPopularSites([
+    {
+      destination: "lan-host-13 (MacBook Denis 23)",
+      destination_label: "lan-host-13 (MacBook Denis 23)",
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 4_300_000_000,
+      flows: 1,
+    },
+    {
+      destination: "Cloudflare network",
+      destination_label: "Cloudflare network",
+      traffic_lane: "shared_infra",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 90_000_000,
+      flows: 15,
+    },
+    {
+      destination: "Google network",
+      destination_label: "Google network",
+      traffic_lane: "shared_infra",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 10_000_000,
+      flows: 4,
+    },
+  ], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const attributedBytes = siteRows.reduce((sum, row) => sum + siteBytes(row), 0);
+  const residualRows = counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
+  const visible = composePopularSiteRows(siteRows, [{ label: "dns-only.example", flows: 20, dnsOnly: true }], residualRows);
+  assert.equal(siteBytes(residualRows[0]), 4_400_000_000);
+  assert.equal(visible[0].label, "Traffic without site attribution");
+  assert.equal(siteBytes(visible[0]), 4_400_000_000);
+  assert.equal(visible.some((row) => row.label === "lan-host-13 (MacBook Denis 23)"), false);
+  assert.equal(visible.some((row) => row.dnsOnly), false);
+  assert.equal(visible.find((row) => row.label === "Cloudflare network").rank, 2);
 });
 
 test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {

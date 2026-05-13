@@ -27,6 +27,7 @@ import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -153,25 +154,6 @@ function evidenceSummary(rows: Array<Record<string, any>>, totalBytes: number) {
   return result;
 }
 
-function siteBytes(row: Record<string, any>) {
-  return Number(row.bytes || row.total_bytes || row.totalBytes || row.observed_bytes || 0);
-}
-
-function siteLane(row: Record<string, any>) {
-  return String(row.traffic_lane || row.trafficClass || row.traffic_class || "unknown_review");
-}
-
-function isServiceSite(row: Record<string, any>) {
-  const lane = siteLane(row);
-  return lane === "service_system" || String(row.trafficClass || row.traffic_class || "") === "service_background";
-}
-
-function isUsefulSiteLabel(label: string) {
-  return Boolean(label)
-    && !["n/a", "Client", "No site evidence"].includes(label)
-    && !label.toLowerCase().includes("destination aggregate");
-}
-
 function inferredClientLane(selected?: Record<string, any>) {
   const channel = String(selected?.channel || "");
   if (channel.includes("A/Home") || channel.includes("Reality")) return "client_observed";
@@ -249,52 +231,6 @@ function fallbackClientActivityRows(selected: Record<string, any> | undefined, r
   }];
 }
 
-function routeFromSiteRoutes(routes: Set<string>) {
-  const clean = Array.from(routes).filter(Boolean);
-  if (clean.length === 0) return "Unknown";
-  if (clean.length === 1) return clean[0];
-  return "Mixed";
-}
-
-function groupPopularSites(rows: Array<Record<string, any>>, kind: "client" | "service", limit: number) {
-  const grouped = new Map<string, Record<string, any>>();
-  for (const row of rows) {
-    if ((kind === "service") !== isServiceSite(row)) continue;
-    const label = trafficDisplayDestination(row);
-    if (!isUsefulSiteLabel(label)) continue;
-    const key = label.toLowerCase();
-    const current = grouped.get(key) || {
-      ...row,
-      label,
-      destinationLabel: label,
-      bytes: 0,
-      total_bytes: 0,
-      flows: 0,
-      routes: new Set<string>(),
-      lanes: new Set<string>(),
-      last_seen_utc: row.last_seen_utc || row.collected_at || "",
-    };
-    current.bytes += siteBytes(row);
-    current.total_bytes += siteBytes(row);
-    current.flows += Number(row.flows || row.connections || 0);
-    if (row.route) current.routes.add(String(row.route));
-    current.lanes.add(siteLane(row));
-    if (String(row.last_seen_utc || row.collected_at || "") > String(current.last_seen_utc || "")) {
-      current.last_seen_utc = row.last_seen_utc || row.collected_at || "";
-    }
-    grouped.set(key, current);
-  }
-  return Array.from(grouped.values())
-    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || String(a.label).localeCompare(String(b.label)))
-    .slice(0, limit)
-    .map((row, index) => ({
-      ...row,
-      rank: index + 1,
-      route: routeFromSiteRoutes(row.routes || new Set()),
-      laneLabel: Array.from(row.lanes || []).filter(Boolean).map((lane) => title(String(lane))).slice(0, 2).join(", ") || title(siteLane(row)),
-    }));
-}
-
 function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
   return rows.slice(0, limit).map((row, index) => ({
     id: `dns-interest-${index}`,
@@ -312,84 +248,24 @@ function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
   }));
 }
 
-function counterOnlyRows(rows: Array<Record<string, any>>, kind: "client" | "service", limit: number) {
-  const grouped = new Map<string, Record<string, any>>();
-  for (const row of rows) {
-    if ((kind === "service") !== isServiceSite(row)) continue;
-    if (siteBytes(row) <= 0 && !row.accounting_bucket && !row.raw?.accounting_bucket) continue;
-    const label = trafficDisplayDestination(row);
-    if (isUsefulSiteLabel(label)) continue;
-    const key = isServiceSite(row) ? "service-counter-only" : "client-counter-only";
-    const current = grouped.get(key) || {
-      ...row,
-      id: key,
-      label: "Traffic without site attribution",
-      destination: "Traffic without site attribution",
-      destinationLabel: "Traffic without site attribution",
-      bytes: 0,
-      total_bytes: 0,
-      flows: 0,
-      routes: new Set<string>(),
-      laneLabel: "counter-only · destination not observed",
-      counterOnly: true,
-    };
-    current.bytes += siteBytes(row);
-    current.total_bytes += siteBytes(row);
-    current.flows += Number(row.flows || row.connections || 0);
-    if (row.route) current.routes.add(String(row.route));
-    grouped.set(key, current);
-  }
-  return Array.from(grouped.values())
-    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0))
-    .slice(0, limit)
-    .map((row, index) => ({
-      ...row,
-      rank: index + 1,
-      route: routeFromSiteRoutes(row.routes || new Set()),
-    }));
-}
-
-function counterFallbackRows(selected: Record<string, any> | undefined, rows: Array<Record<string, any>>, route: string, kind: "client" | "service") {
-  if (!selected || kind === "service") return [];
-  const selectedBytes = Math.max(
-    siteBytes(selected),
-    rows.reduce((max, row) => Math.max(max, siteBytes(row)), 0)
-  );
-  if (selectedBytes <= 0) return [];
-  const selectedFlows = Math.max(
-    Number(selected.flows || selected.connections || 0),
-    rows.reduce((max, row) => Math.max(max, Number(row.flows || row.connections || 0)), 0)
-  );
-  return [{
-    id: "client-counter-fallback",
-    rank: 1,
-    label: "Traffic without site attribution",
-    destination: "Traffic without site attribution",
-    destinationLabel: "Traffic without site attribution",
-    bytes: selectedBytes,
-    total_bytes: selectedBytes,
-    flows: selectedFlows,
-    route,
-    laneLabel: "counter-only · destination not observed",
-    counterOnly: true,
-  }];
-}
-
 function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>> }) {
-  const fallbackRows = [...(dnsFallback || []), ...(counterFallback || [])];
-  const visible = rows.length ? rows : fallbackRows;
+  const residualRows = counterFallback || [];
+  const visible: Array<Record<string, any>> = composePopularSiteRows(rows, dnsFallback || [], residualRows);
+  const evidenceLabel = rows.length && residualRows.length
+    ? "byte-attributed + counter residual"
+    : rows.length ? "byte-attributed traffic" : "fallback evidence";
   return (
     <section className="card client-popular-sites-list">
       <div className="toolbar">
         <h3>{heading}</h3>
-        <span className="subtle">{rows.length ? "byte-attributed traffic" : "fallback evidence"}</span>
+        <span className="subtle">{evidenceLabel}</span>
       </div>
       {visible.length === 0 ? (
         <EmptyState title="No site-level traffic for this client" detail="Only client/channel counters were observed in the selected day." />
       ) : (
         <div className="detail-list">
           {visible.map((row) => (
-            <div className="detail-row popular-site-row" key={`${row.label}-${row.rank}`}>
+            <div className="detail-row popular-site-row" key={`${row.id || row.label}-${row.rank}`}>
               <span>
                 <strong>{row.rank}. {row.label}</strong>
                 <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : "flows"}</small>
@@ -452,10 +328,21 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedAllDestinations = rawSelectedAllDestinations.length ? rawSelectedAllDestinations : fallbackClientDestinationRows(selected, selectedRoute, "all");
   const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
   const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
-  const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15);
-  const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8);
-  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client");
+  const excludedSiteLabels = selected ? [
+    selected.id,
+    selected.label,
+    selected.client,
+    selected.client_key,
+    selected.device_key,
+    selected.owner,
+    selected.owner_profile,
+    ...(tokens || []),
+  ] : [];
+  const selectedClientSites = groupPopularSites(selectedSiteRows, "client", 15, { excludeLabels: excludedSiteLabels });
+  const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8, { excludeLabels: excludedSiteLabels });
   const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
+  const attributedSiteBytes = [...selectedClientSites, ...selectedServiceSites, ...selectedServiceCounterSites].reduce((sum, row) => sum + siteBytes(row), 0);
+  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes);
   const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
