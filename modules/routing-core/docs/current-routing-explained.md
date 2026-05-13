@@ -106,7 +106,7 @@ Wi-Fi/LAN device
   -> dnsmasq резолвит managed-домен
   -> кладёт IP в STEALTH_DOMAINS
   -> iptables REDIRECT отправляет TCP в sing-box redirect-in
-  -> reality-out -> VPS
+  -> reality-out -> active managed egress
 ```
 
 Это нужно потому, что обычный LAN-трафик изначально ещё не внутри sing-box.
@@ -119,7 +119,7 @@ iPhone LTE / selected endpoint
   -> Channel A/B/C ingress on router
   -> sing-box sniff: TLS SNI / HTTP Host
   -> match stealth-domains.json / stealth-static.json
-  -> reality-out -> VPS
+  -> reality-out -> active managed egress
 ```
 
 Это не ручное дублирование политики. Оператор ведёт один managed catalog, а

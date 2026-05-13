@@ -88,6 +88,22 @@ vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1'
 vps_unbound_listen_port: "{{ vault_vps_unbound_listen_port | default(15353) }}"
 vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | default(vps_ssh_host, true) }}"
 
+# Managed egress backend for the stable router-side reality-out tag.
+# primary_vps keeps the owned VPS Reality/Vision path. backup_reality is a
+# manual reserve mode for a Vault-backed router-only VLESS/Reality provider
+# profile for emergency managed egress.
+router_managed_egress_mode: "{{ vault_router_managed_egress_mode | default('primary_vps') }}"
+router_backup_dns_mode: "{{ vault_router_backup_dns_mode | default('cover_dns') }}"
+router_backup_reality_server: "{{ vault_router_backup_reality_server | default('') }}"
+router_backup_reality_server_port: "{{ vault_router_backup_reality_server_port | default(443) }}"
+router_backup_reality_uuid: "{{ vault_router_backup_reality_uuid | default('') }}"
+router_backup_reality_flow: "{{ vault_router_backup_reality_flow | default('xtls-rprx-vision') }}"
+router_backup_reality_packet_encoding: "{{ vault_router_backup_reality_packet_encoding | default('xudp') }}"
+router_backup_reality_server_name: "{{ vault_router_backup_reality_server_name | default('') }}"
+router_backup_reality_utls_fingerprint: "{{ vault_router_backup_reality_utls_fingerprint | default('chrome') }}"
+router_backup_reality_public_key: "{{ vault_router_backup_reality_public_key | default('') }}"
+router_backup_reality_short_id: "{{ vault_router_backup_reality_short_id | default('') }}"
+
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add
 stealth_test_domain: ifconfig.me

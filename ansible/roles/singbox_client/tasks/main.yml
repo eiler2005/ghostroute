@@ -82,6 +82,30 @@
       - router_vps_dns_forward_port | string != home_reality_ingress_port | string
     fail_msg: "Channel A router ports must resolve before rendering sing-box config."
 
+- name: Validate managed egress mode before rendering config
+  ansible.builtin.assert:
+    that:
+      - router_managed_egress_mode in ['primary_vps', 'backup_reality']
+      - router_backup_dns_mode in ['cover_dns', 'managed_vps_dns']
+    fail_msg: "router_managed_egress_mode must be primary_vps or backup_reality."
+
+- name: Validate backup Reality managed egress settings
+  ansible.builtin.assert:
+    that:
+      - router_backup_reality_server | string | length > 0
+      - router_backup_reality_server_port | int > 0
+      - router_backup_reality_server_port | int <= 65535
+      - router_backup_reality_uuid | string | length > 0
+      - router_backup_reality_flow | string | length > 0
+      - router_backup_reality_packet_encoding | string | length > 0
+      - router_backup_reality_server_name | string | length > 0
+      - router_backup_reality_utls_fingerprint | string | length > 0
+      - router_backup_reality_public_key | string | length > 0
+      - router_backup_reality_short_id | string | length > 0
+    fail_msg: "backup_reality mode needs a complete router-only VLESS/Reality provider profile in Vault."
+  when: router_managed_egress_mode == 'backup_reality'
+  no_log: true
+
 - name: Validate Channel C1 home Naive settings
   ansible.builtin.assert:
     that:

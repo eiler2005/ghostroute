@@ -33,14 +33,16 @@ intended source of truth. For deeper context, follow the cross-references.
   for direct-IP services); its TCP traffic egresses through the VPS.
 - **Reality ingress** — sing-box `reality-in` listener on the home router,
   TCP/`<home-reality-port>`, accepting VLESS+Reality from remote QR clients.
-- **Reality egress / `reality-out`** — sing-box outbound on the router that
-  forwards managed traffic to VPS Caddy `:443`.
+- **Reality egress / `reality-out`** — stable sing-box outbound tag on the
+  router for managed traffic. In normal mode it points at the owned VPS
+  Reality/Vision edge; in explicit reserve mode it can point at a Vault-backed
+  router-only backup Reality provider profile.
 - **Direct out / `direct-out`** — non-managed traffic exits via the home WAN
   link without going through Reality.
 - **WAN exit** — the home internet uplink as seen by the public internet for
   non-managed traffic. Distinct from VPS exit.
-- **VPS exit** — the public IP the internet sees for managed traffic; a single
-  Reality-fronted Ubuntu host.
+- **VPS exit** — the public IP the internet sees for managed traffic in normal
+  primary mode; a single Reality-fronted Ubuntu host.
 - **Home Reality QR client** — a remote endpoint (iPhone/iPad/MacBook) that
   imports a generated `iphone-*.png` / `macbook.png` profile and connects to
   the home public IP on the Reality port.

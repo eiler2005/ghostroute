@@ -169,7 +169,7 @@ selected endpoint
   -> router local Xray channel-b-home-in
   -> local relay to sing-box channel-b-relay-socks
   -> sing-box route rule:
-       managed catalog/static match -> reality-out -> VPS
+       managed catalog/static match -> reality-out -> active managed egress
        no managed match             -> direct-out -> home WAN
 ```
 
@@ -185,7 +185,7 @@ iPhone LTE / Shadowrocket
   -> optional WAN REDIRECT to router internal TCP/<channel-c-shadowrocket-ingress-port>
   -> ASUS sing-box channel-c-shadowrocket-http-in
   -> sing-box route rule:
-       managed catalog/static match -> reality-out -> VPS
+       managed catalog/static match -> reality-out -> active managed egress
        no managed match             -> direct-out -> home WAN
 ```
 

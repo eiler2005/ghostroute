@@ -583,7 +583,7 @@ Channel A RF-like profile
 Идея: если primary Hetzner/VPS как foreign managed egress недоступен, роутер
 может полуавтоматически переключить только managed destinations на резервный
 foreign egress. Первый практический v1-кандидат для proof-of-logic теперь
-зафиксирован как Red Shield `VLESS (XTLS)` provider profile; долгосрочный
+зафиксирован как external backup `VLESS/Reality` provider profile; долгосрочный
 вариант собственного второго `VLESS + Reality/Vision` VPS у другого
 провайдера/ASN остаётся совместимым с тем же router-side contract.
 Router-managed split остается владельцем policy: `STEALTH_DOMAINS` /

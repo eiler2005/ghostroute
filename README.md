@@ -19,8 +19,9 @@ Russian README is an operator-facing summary.
 
 GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
 It keeps home LAN devices app-free, gives selected remote clients a home-first
-entrypoint, and sends only managed destinations through a VPS Reality/Vision
-egress. The repo is intentionally module-native: routing, health, traffic,
+entrypoint, and sends only managed destinations through the active managed
+Reality egress: normally the owned VPS, or an explicit reserve provider during
+incidents. The repo is intentionally module-native: routing, health, traffic,
 catalog, client profiles, secrets and recovery all have separate ownership and
 tests.
 
@@ -30,7 +31,7 @@ tests.
 
 | Channel | Status | First hop | Scope | Automatic failover |
 |---|---|---|---|---|
-| A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | No |
+| A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, active managed Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
@@ -123,10 +124,12 @@ diagnostic.
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
 - Optional Layer 0 endpoint/client-side routing for devices that support
   rule-based client profiles such as Shadowrocket-style configs.
-- Channel A VLESS+Reality+Vision egress through a VPS host behind shared Caddy L4 on TCP/443.
+- Channel A managed egress through the stable `reality-out` tag: normally the
+  owned VPS Reality/Vision host behind shared Caddy L4 on TCP/443, with an
+  explicit Vault-backed backup Reality provider mode for incidents.
 - Channel B selected-client production home-first lane: selected devices connect
   to the home router first via XHTTP/TLS, then the router relays into local
-  sing-box SOCKS and reuses the Reality/Vision upstream to VPS `:443`.
+  sing-box SOCKS and reuses the active managed `reality-out` upstream.
 - Channel C home-first lane: C1-Shadowrocket uses authenticated HTTPS
   CONNECT/TLS for Shadowrocket compatibility and is live-proven. C1-sing-box
   uses sing-box Naive on the home endpoint as the native design, but current
@@ -240,7 +243,7 @@ Layer 2 home router
                               |     STEALTH_DOMAINS / VPN_STATIC_NETS
                               |     -> sing-box REDIRECT / reality-in
                               |     -> VLESS+Reality outbound
-                              |     -> Layer 3 VPS Caddy L4 -> Xray -> Internet
+                              |     -> active managed egress -> Internet
                               |
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
@@ -331,7 +334,7 @@ ASUS Router / Merlin
 +-- managed destination
 |     +-- STEALTH_DOMAINS / VPN_STATIC_NETS
 |     +-- sing-box Reality outbound
-|     +-- VPS host / Caddy / Xray
+|     +-- active managed egress
 |     +-- Internet
 +-- non-managed destination
       +-- sing-box direct outbound
@@ -340,9 +343,10 @@ ASUS Router / Merlin
 ```
 
 For Channel A/B managed traffic, the first network sees the endpoint connecting
-to the home endpoint, not directly to the VPS. The home ISP sees the home router
-connecting to the VPS tunnel. Managed websites/checkers see the VPS exit IP;
-non-managed websites see the home WAN IP.
+to the home endpoint, not directly to the active managed egress. The home ISP
+sees the home router connecting to the active managed egress. Managed
+websites/checkers see that active managed exit; non-managed websites see the
+home WAN IP.
 
 Detailed workflow, ports, components and observer model:
 [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).

@@ -77,7 +77,7 @@ These entries might be valid, but they need live evidence before any cleanup.
 | `x.com`, `twitter.com`, `twimg.com`, `t.co` | Social path may be desired managed, but not always required for every device. | `needs-live-evidence` |
 | `linkedin.com` | Professional network; often direct-capable. | `needs-live-evidence`; possible `move-to-no-vpn` |
 | `example-provider.invalid`, `example-provider-cloud.invalid` | Provider/admin domains; not ordinary user traffic. | `needs-live-evidence`; possible `move-to-no-vpn` |
-| `cobalt.tools`, `smithery.ai`, `usercontent.dev`, `redshieldvpn.com`, `imo.im`, `livetv.sx` | Specific service entries; keep only if still used. | `needs-live-evidence` |
+| `cobalt.tools`, `smithery.ai`, `usercontent.dev`, `<provider-site-domain>`, `imo.im`, `livetv.sx` | Specific service entries; keep only if still used. | `needs-live-evidence` |
 | `wisprflow.ai`, `api.wisprflow.com`, `wisprflow.onelink.me` | App-specific traffic; may be direct-capable but currently observed/needed. | `needs-live-evidence` |
 
 ## Candidate Direct / Remove Later

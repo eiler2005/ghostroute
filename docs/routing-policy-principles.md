@@ -14,7 +14,7 @@ endpoint / LAN device
   -> home router
   -> router-side ingress
   -> shared managed split
-       managed destinations     -> reality-out / Vision -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 ```
 
@@ -58,8 +58,10 @@ Layer 2 is the shared router managed split.
 
 Layer 3 is the upstream exit.
 
-- `reality-out` uses Reality/Vision toward the VPS; target sites see the VPS
-  exit IP.
+- `reality-out` is the stable logical managed egress tag. In normal mode it
+  uses Reality/Vision toward the owned VPS; in explicit reserve mode it can use
+  a Vault-backed router-only backup Reality provider profile. Target sites see
+  the active managed egress, not the home WAN.
 - `direct-out` uses the home WAN; target sites see the home Russian IP.
 - The VPS should not be visible to the mobile operator as the first hop for
   home-first mobile channels.
@@ -73,7 +75,7 @@ historical, but the behavior is current:
 managed domain or static CIDR
   -> router managed split
   -> reality-out
-  -> VPS exit
+  -> active managed egress
 ```
 
 This is true for LAN/Wi-Fi and for mobile Channels A/B/C after the endpoint has
@@ -131,7 +133,7 @@ Wi-Fi/LAN device
   -> dnsmasq resolves a managed domain
   -> dnsmasq adds the resolved IPv4 address to STEALTH_DOMAINS
   -> iptables REDIRECT sends matching TCP to sing-box redirect-in
-  -> reality-out -> VPS
+  -> reality-out -> active managed egress
 ```
 
 This is necessary because ordinary LAN clients are not inside sing-box when the
@@ -145,7 +147,7 @@ iPhone / selected endpoint
   -> Channel A/B/C ingress on the router
   -> sing-box sniffs TLS SNI / HTTP Host where available
   -> matches stealth-domains.json / stealth-static.json
-  -> reality-out -> VPS
+  -> reality-out -> active managed egress
 ```
 
 This is necessary because selected-client traffic is already inside sing-box
@@ -169,7 +171,7 @@ DNS selection is intentionally separate from traffic selection:
 managed foreign domain
   -> DNS via router dnscrypt-proxy -> sing-box SOCKS
   -> reality-out
-  -> traffic via reality-out -> VPS
+  -> traffic via reality-out -> active managed egress
 
 RU/direct/default domain
   -> DNS via home/RF/default resolver

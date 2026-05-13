@@ -33,25 +33,24 @@ Layer 0 endpoint/client routing
        FINAL                                  -> MANAGED/PROXY
 
 Layer 1 managed channels
-  Channel A -> endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-  Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-  Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+  Channel A -> endpoint -> home endpoint -> router -> managed egress
+  Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
+  Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
 
 Layer 2 home router
   LAN/Wi-Fi clients
     -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
     -> br0 TCP nat REDIRECT :<lan-redirect-port>
     -> ASUS sing-box redirect inbound
-    -> Channel A VLESS+Reality+Vision outbound
-    -> VPS Caddy :443
-    -> Xray Reality inbound
+    -> Channel A reality-out managed egress
+    -> active managed egress
     -> Internet
 
   Remote QR clients
     -> home public IP :<home-reality-port>
     -> ASUS sing-box Reality inbound
     -> managed split:
-         STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to VPS
+         STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to active managed egress
          other destinations              -> direct-out via home WAN
 
   Channel B selected device-client traffic
@@ -59,7 +58,7 @@ Layer 2 home router
     -> router local Xray Channel B ingress
     -> local sing-box SOCKS inbound
     -> managed split (same rule-sets as Channel A)
-    -> Channel A Reality outbound to VPS
+    -> Channel A Reality outbound to active managed egress
     -> Caddy :443 -> Xray Reality inbound
     -> Internet
 
@@ -67,7 +66,7 @@ Layer 2 home router
     -> Naive/HTTPS-H2-CONNECT-like profile to home public IP :<home-channel-c-public-port>
     -> router sing-box Naive inbound `channel-c-naive-in`
     -> managed split (same rule-sets as Channel A)
-    -> Channel A Reality outbound to VPS
+    -> Channel A Reality outbound to active managed egress
     -> Caddy :443 -> Xray Reality inbound
     -> Internet
 
@@ -75,7 +74,7 @@ Layer 2 home router
     -> HTTPS CONNECT/TLS profile to home public IP :4443
     -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in`
     -> managed split (same rule-sets as Channel A)
-    -> Channel A Reality outbound to VPS
+    -> Channel A Reality outbound to active managed egress
     -> Caddy :443 -> Xray Reality inbound
     -> Internet
 
@@ -114,10 +113,10 @@ choice. Channel A and B are production paths with different client scopes.
 Channel C is split into C1-sing-box Naive and C1-Shadowrocket compatibility:
 
 ```text
-Channel A: endpoint -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel C1-Shadowrocket: endpoint -> HTTPS CONNECT/TLS -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
-Channel C1-sing-box: endpoint -> Native Naive -> home endpoint -> router -> VLESS+Reality+Vision -> VPS
+Channel A: endpoint -> home endpoint -> router -> managed egress
+Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
+Channel C1-Shadowrocket: endpoint -> HTTPS CONNECT/TLS -> home endpoint -> router -> managed egress
+Channel C1-sing-box: endpoint -> Native Naive -> home endpoint -> router -> managed egress
 ```
 
 Channel A/B/C are home-first for managed traffic: the first network sees
@@ -267,7 +266,7 @@ Endpoint QR-клиент
   -> home public IP :<home-reality-port>
   -> ASUS sing-box Reality inbound
   -> managed split:
-       STEALTH_DOMAINS / VPN_STATIC_NETS -> Reality outbound to VPS
+       STEALTH_DOMAINS / VPN_STATIC_NETS -> Reality outbound to active managed egress
        other destinations                 -> direct home WAN
   -> Интернет
 ```
@@ -293,7 +292,7 @@ Endpoint client
   -> router local Xray ingress `channel-b-home-in`
   -> local sing-box SOCKS (inbound `channel-b-relay-socks`)
   -> managed split по `stealth-domains` / `stealth-static`
-       - managed    -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - managed    -> reality-out -> active managed egress
        - non-managed -> direct-out -> home WAN
   -> Интернет
 ```
@@ -331,7 +330,7 @@ Endpoint Shadowrocket client
   -> WAN REDIRECT to router internal :41956
   -> ASUS sing-box HTTP inbound `channel-c-shadowrocket-http-in`
   -> managed split по `stealth-domains` / `stealth-static`
-       - managed     -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - managed     -> reality-out -> active managed egress
        - non-managed -> direct-out -> home WAN
   -> Интернет
 ```
@@ -350,7 +349,7 @@ Endpoint SFI/sing-box client with outbound "type": "naive"
   -> optional WAN REDIRECT to router internal :<home-channel-c-ingress-port>
   -> ASUS sing-box Naive inbound `channel-c-naive-in`
   -> managed split по `stealth-domains` / `stealth-static`
-       - managed     -> reality-out -> VPS Caddy :443 -> Xray Reality
+       - managed     -> reality-out -> active managed egress
        - non-managed -> direct-out -> home WAN
   -> Интернет
 ```
@@ -418,7 +417,7 @@ preserved only as the cold fallback documented above.
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the dnscrypt-backed local forwarder |
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`; its DoH traffic goes through sing-box SOCKS/Reality |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to VPS |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to active managed egress |
 | VPS host | Caddy :443, existing 3x-ui/Xray Docker container, optional restricted/private DNS resolver support |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
@@ -513,7 +512,7 @@ client TCP connection
   -> REDIRECT :<lan-redirect-port>
   -> sing-box redirect inbound
   -> Reality outbound
-  -> VPS exit
+  -> active managed egress exit
 ```
 
 ### Endpoint Home QR
@@ -523,13 +522,13 @@ client app
   -> VLESS+Reality to home public IP :<home-reality-port>
   -> router Reality inbound validates router-side UUID/key/short_id
   -> if destination matches STEALTH_DOMAINS or VPN_STATIC_NETS:
-       sing-box Reality outbound to VPS -> VPS exit
+       sing-box Reality outbound -> active managed egress exit
   -> otherwise:
        sing-box direct-out -> home WAN exit
 ```
 
 The first network sees endpoint -> home endpoint traffic for Channel A/B managed
-sessions. Websites still see the VPS exit IP for managed traffic; non-managed
+sessions. Websites still see the active managed egress exit for managed traffic; non-managed
 destinations see the home WAN IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md)
 for the full workflow and observer table.
 
@@ -555,7 +554,7 @@ client app
   -> router local Xray Channel B ingress
   -> router local relay -> sing-box SOCKS inbound
   -> managed split (same rule-sets as Channel A)
-  -> sing-box Reality outbound -> VPS Caddy/Xray Reality
+  -> sing-box Reality outbound -> active managed egress
   -> Internet
 ```
 
@@ -569,7 +568,7 @@ client app
   -> HTTPS CONNECT/TLS to home public IP :4443
   -> router sing-box HTTP inbound channel-c-shadowrocket-http-in
   -> managed split (same rule-sets as Channel A)
-  -> sing-box Reality outbound -> VPS Caddy/Xray Reality
+  -> sing-box Reality outbound -> active managed egress
   -> Internet
 ```
 
@@ -580,7 +579,7 @@ client app
   -> Naive/HTTPS-H2-CONNECT-like to home public IP :<home-channel-c-public-port>
   -> router sing-box Naive inbound
   -> managed split (same rule-sets as Channel A)
-  -> sing-box Reality outbound -> VPS Caddy/Xray Reality
+  -> sing-box Reality outbound -> active managed egress
   -> Internet
 ```
 

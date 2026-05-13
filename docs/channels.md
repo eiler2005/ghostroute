@@ -22,7 +22,7 @@ Home LAN/Wi-Fi device or home Reality endpoint client
   -> home router
   -> ASUS sing-box REDIRECT or Reality inbound
   -> managed split
-       managed destinations     -> reality-out / Vision -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 ```
 
@@ -42,7 +42,7 @@ remote mobile DNS must not use the LTE carrier resolver
 What target sites see for managed traffic:
 
 ```text
-VPS exit IP
+active managed egress exit IP
 ```
 
 Main role:
@@ -61,7 +61,7 @@ Isolation rule:
 
 Channel B is production for selected device-client profiles. It gives those
 clients a different first-hop protocol while reusing the same managed split and
-Reality/Vision upstream as Channel A.
+managed egress upstream as Channel A.
 
 ```text
 iPhone / selected endpoint
@@ -70,7 +70,7 @@ iPhone / selected endpoint
   -> router local Xray ingress `channel-b-home-in`
   -> local sing-box SOCKS inbound `channel-b-relay-socks`
   -> managed split
-       managed destinations     -> reality-out / Vision -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 ```
 
@@ -116,7 +116,7 @@ iPhone Shadowrocket
   -> home public IP/DDNS :4443
   -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in` :41956
   -> managed split
-       managed destinations     -> reality-out / Vision -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 ```
 
@@ -162,7 +162,7 @@ iPhone SFI / sing-box client with outbound type `naive`
   -> home public IP/DDNS
   -> router sing-box naive inbound `channel-c-naive-in` :41955
   -> managed split
-       managed destinations     -> reality-out / Vision -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 ```
 
