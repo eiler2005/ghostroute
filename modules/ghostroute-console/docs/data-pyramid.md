@@ -137,9 +137,21 @@ private device-attribution registry. Service channels, DNS-interest rows,
 accounting buckets and pseudo clients such as channel labels are retained for
 diagnostics, but they are not ranked as clients.
 
+Device Inventory is a union view, not a direct dump of the prepared `clients`
+payload. It combines active prepared rows, client lane/destination aggregates,
+historical normalized devices and the private device-attribution registry.
+Default inventory pages show traffic-active rows for the selected window,
+including unresolved active rows as Needs attribution; inactive registry rows
+are hidden until the operator enables `showInactive=1`.
+
 DNS Query Log is factual evidence. DNS rows may be visible even when the source
 is not yet registry-attributed, but only registry-backed clients participate in
 DNS top-client grouping or client inventory rows.
+
+Unresolved loopback, router-local and private source addresses are not displayed
+as normal clients. Registry-backed DNS sources use the canonical device label;
+service/router DNS evidence is displayed as a service source and keeps raw
+addresses only in detail/title evidence.
 
 Destination rankings are built from destination-bearing chunks. Unknown or
 accounting-only traffic contributes to coverage, not to concrete Top
@@ -169,6 +181,11 @@ The router edge layer is a bounded cache/spool, not the primary warehouse.
 
 Router chunk starts are aligned to Moscow time: 5-minute buckets, `HH:00:00`,
 MSK day start, MSK Monday week start and MSK month start.
+
+Prepared Dashboard totals for `traffic_class=all` prefer the latest
+authoritative current-day router summary. Client-ranked rows and class-specific
+client views remain registry/operator-scoped, but the top-level all-traffic KPI
+must not be reduced to only the subset that has concrete client attribution.
 
 ## Collector Contract
 

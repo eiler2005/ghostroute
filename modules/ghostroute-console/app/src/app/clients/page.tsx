@@ -412,21 +412,26 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const selectedClientParam = scalar(params.client) || "";
   const selectedLane = laneTabs.some((tab) => tab.value === scalar(params.lane)) ? String(scalar(params.lane)) : "all";
+  const showInactive = scalar(params.showInactive) === "1";
   const listFilters = { ...filters, client: "all" };
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
-  const clientsPage = listClientInventory({ page, pageSize, filters: listFilters });
+  const clientsPage = listClientInventory({ page, pageSize, filters: listFilters, showInactive });
   const isUnattributed = (row: Record<string, any>) =>
+    row.client_attributed === false ||
+    row.attribution_state === "needs_attribution" ||
+    row.role === "Needs attribution" ||
     row.role === "Unattributed mobile ingress source" ||
     (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024);
-  const primaryRows = clientsPage.rows.filter((row) => !isUnattributed(row));
-  const unattributedRows = clientsPage.rows.filter((row) => isUnattributed(row));
-  const activeRows = clientsPage.rows.filter((row) => Number(row.total_bytes || 0) > 0 || ["Online", "Recently seen"].includes(String(row.status || "")));
-  const knownRows = primaryRows.filter((row) => !String(row.role || row.label || "").toLowerCase().includes("unknown"));
-  const selected =
-    clientsPage.rows.find((row) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
+  const inventoryRows = clientsPage.rows as Array<Record<string, any>>;
+  const primaryRows = inventoryRows.filter((row) => !isUnattributed(row));
+  const unattributedRows = inventoryRows.filter((row) => isUnattributed(row));
+  const activeRows = inventoryRows.filter((row) => Number(row.total_bytes || 0) > 0);
+  const knownRows = primaryRows.filter((row: Record<string, any>) => row.client_attributed !== false && !String(row.role || row.label || "").toLowerCase().includes("unknown"));
+  const selected: Record<string, any> | undefined =
+    inventoryRows.find((row) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
     primaryRows[0] ||
-    clientsPage.rows[0];
+    inventoryRows[0];
   const selectedClientId = selectedClientValue(selected);
   const trafficRows = selected ? listFlowSessions({ page: 1, pageSize: mobile ? 25 : 80, filters: { ...listFilters, client: selectedClientId } }).rows : [];
   const model = buildClientsModel(filters, clientsPage.rows, trafficRows);
@@ -461,6 +466,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     confidence: filters.confidence !== "all" ? filters.confidence : undefined,
     trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     search: filters.search,
+    showInactive: showInactive ? "1" : undefined,
   };
   const laneHref = (lane: string) => {
     const next = new URLSearchParams();
@@ -488,16 +494,29 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   return (
     <ConsoleShell active="/clients" model={model} filters={filters}>
       <div className="grid cards" style={{ marginBottom: 14 }}>
-        <MetricCard label="Devices" value={String(clientsPage.total)} detail="inventory rows in selected view" />
+        <MetricCard label="Traffic-active" value={String(activeRows.length)} detail="clients with traffic in selected window" />
         <MetricCard label="Known/trusted" value={String(knownRows.length)} detail="operator-attributed or inferred" />
-        <MetricCard label="Unknown" value={String(unattributedRows.length)} detail="needs attribution review" />
-        <MetricCard label="Active now" value={String(activeRows.length)} detail="traffic or recent status" />
+        <MetricCard label="Needs attribution" value={String(unattributedRows.length)} detail="active traffic not in client repo" />
+        <MetricCard label="Inactive hidden" value={String((clientsPage as any).hiddenInactive || 0)} detail={showInactive ? "shown from client repo" : "registered clients without window traffic"} />
       </div>
       <div className="grid two clients-layout">
         <section className="card clients-card">
           <div className="toolbar">
             <h2>Device Inventory</h2>
-            <span className="subtle">{clientsPage.total} devices · traffic for selected window</span>
+            <div className="clients-toolbar-meta">
+              <span className="subtle">{clientsPage.total} devices · traffic for selected window</span>
+              <form className="inline-check-form" action="/clients">
+                {Object.entries(filterParams).filter(([key, value]) => key !== "showInactive" && value).map(([key, value]) => (
+                  <input key={key} type="hidden" name={key} value={String(value)} />
+                ))}
+                <input type="hidden" name="pageSize" value={String(clientsPage.pageSize)} />
+                <label>
+                  <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} />
+                  Show inactive registered clients
+                </label>
+                <button type="submit">Apply</button>
+              </form>
+            </div>
           </div>
           {clientsPage.rows.length === 0 ? (
             <EmptyState title="No factual inventory" />
@@ -535,7 +554,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               </div>
               {unattributedRows.length > 0 ? (
                 <>
-                  <h3 style={{ marginTop: 16 }}>Unattributed ingress / low-signal sources</h3>
+                  <h3 style={{ marginTop: 16 }}>Needs attribution / low-signal sources</h3>
                   <div className="clients-table-scroll">
                     <table className="table clients-table">
                       <thead>

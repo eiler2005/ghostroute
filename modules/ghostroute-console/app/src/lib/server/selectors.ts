@@ -594,6 +594,23 @@ function normalizedNetworkHint(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/-/g, ":");
 }
 
+function isLocalServiceAddress(value: unknown) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return false;
+  if (text === "localhost" || text === "::1" || text.startsWith("127.")) return true;
+  return text === "0.0.0.0";
+}
+
+function isPrivateAddress(value: unknown) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return false;
+  return isLocalServiceAddress(text)
+    || text.startsWith("10.")
+    || text.startsWith("192.168.")
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(text)
+    || text.startsWith("169.254.");
+}
+
 let inventoryHintCacheKey = "";
 let inventoryHintCache = new Map<string, string>();
 
@@ -757,13 +774,22 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
   if (!resolved) {
     const trafficClass = row.trafficClass || row.traffic_class || trafficClassFor(row);
     const rawClient = row.raw_client || row.client || row.client_label || row.device_key || row.client_ip || "";
-    const serviceLabel = trafficClass === "service_background" ? "Service DNS source" : "Unattributed DNS source";
-    const clientLabel = row.client_label || row.client || row.device_key || row.client_ip || serviceLabel;
+    const sourceHints = [row.client_ip, row.client, row.client_label, row.device_key, row.raw?.client_ip, row.raw?.client];
+    const localServiceSource = sourceHints.some(isLocalServiceAddress);
+    const privateUnresolvedSource = sourceHints.some(isPrivateAddress);
+    const serviceLabel = localServiceSource
+      ? "Router DNS service"
+      : trafficClass === "service_background"
+        ? "Service DNS source"
+        : "Unattributed DNS source";
+    const clientLabel = privateUnresolvedSource || trafficClass === "service_background"
+      ? serviceLabel
+      : row.client_label || row.client || row.device_key || row.client_ip || serviceLabel;
     return {
       ...row,
       raw_client: rawClient,
       client: clientLabel,
-      client_key: row.client_key || row.device_key || row.client || row.client_ip || "",
+      client_key: "",
       client_label: clientLabel,
       device_key: "",
       device_label: clientLabel,
@@ -1656,6 +1682,7 @@ type PageArgs = {
   maxRows?: number;
   filters?: ConsoleFilters;
   diagnostics?: boolean;
+  showInactive?: boolean;
 };
 
 type DnsPageArgs = PageArgs & {
@@ -3198,13 +3225,245 @@ function clientSearch(row: Record<string, any>, search?: string) {
   return [row.label, row.client_label, row.id, row.client_key, row.ip, row.channel, row.route, ...(row.aliases || [])].filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
+function registeredInventoryRows() {
+  const registry = loadDeviceAttributions();
+  const clients = registry.clients as Record<string, Record<string, any>>;
+  return Object.entries(clients).map(([key, entry]) => ({
+    id: entry.device_key || entry.client_key || key,
+    label: entry.label || entry.device_label || key,
+    client: entry.label || key,
+    client_key: entry.client_key || key,
+    client_label: entry.label || key,
+    device_key: entry.device_key || entry.client_key || key,
+    device_label: entry.device_label || entry.label || key,
+    owner: entry.owner || "",
+    role: entry.role || "",
+    device_type: entry.device_type || entry.profile_type || "",
+    channel: entry.primary_channel || entry.channel || "Unknown",
+    channels: [entry.primary_channel || entry.channel || "Unknown"].filter((value) => value && value !== "Unknown"),
+    confidence: entry.confidence || "operator-local",
+    total_bytes: 0,
+    bytes: 0,
+    via_vps_bytes: 0,
+    direct_bytes: 0,
+    unknown_bytes: 0,
+    route: "Unknown",
+    trafficClass: "client",
+    traffic_class: "client",
+    last_seen: "",
+    status: "Inactive",
+    client_attributed: true,
+    registry_registered: true,
+    traffic_window_active: false,
+    aliases: Array.from(new Set([...(entry.aliases || []), ...(entry.ip_aliases || []), ...(entry.mac_aliases || [])].filter(Boolean).map(String))).slice(0, 16),
+  }));
+}
+
+function inactiveHistoryRows() {
+  return mergeKnownDevices(knownDeviceRows(2000), false).map((row) => ({
+    ...row,
+    total_bytes: 0,
+    bytes: 0,
+    via_vps_bytes: 0,
+    direct_bytes: 0,
+    unknown_bytes: 0,
+    traffic_window_active: false,
+    traffic_collected_at: "",
+    status: statusFromLastSeen(row.last_seen || row.collected_at),
+  }));
+}
+
+function needsAttributionClientRow(row: Record<string, any>) {
+  const total = observedByteValue(row);
+  if (total <= 0) return null;
+  const clientKey = String(row.client_key || row.client || row.client_label || row.ip || row.client_ip || row.device_key || "").trim();
+  if (!clientKey) return null;
+  const viaVpsBytes = Number(row.via_vps_bytes || row.vps_bytes || row.reality_bytes || 0);
+  const directBytes = Number(row.direct_bytes || row.wan_bytes || 0);
+  const unknownBytes = Number(row.unknown_bytes || Math.max(0, total - viaVpsBytes - directBytes));
+  const label = String(row.client_label || row.client || row.label || clientKey);
+  return {
+    ...row,
+    id: clientKey,
+    label,
+    client: label,
+    client_key: clientKey,
+    client_label: label,
+    device_key: row.device_key || clientKey,
+    device_label: row.device_label || label,
+    role: "Needs attribution",
+    owner: "",
+    device_type: "Needs attribution",
+    channel: row.channel || "Unknown",
+    confidence: row.confidence || "estimated",
+    total_bytes: total,
+    bytes: total,
+    via_vps_bytes: viaVpsBytes,
+    direct_bytes: directBytes,
+    unknown_bytes: unknownBytes,
+    route: row.route && row.route !== "Unknown" ? row.route : routeFromCounters({ via_vps_bytes: viaVpsBytes, direct_bytes: directBytes }),
+    trafficClass: row.trafficClass || row.traffic_class || "client",
+    traffic_class: row.traffic_class || row.trafficClass || "client",
+    last_seen: row.last_seen || row.last_seen_utc || row.collected_at || row.traffic_collected_at || "",
+    status: statusFromLastSeen(row.last_seen || row.last_seen_utc || row.collected_at || row.traffic_collected_at),
+    traffic_window_active: true,
+    traffic_collected_at: row.last_seen || row.last_seen_utc || row.collected_at || row.traffic_collected_at || "",
+    client_attributed: false,
+    attribution_state: "needs_attribution",
+    observed_aliases: Array.from(new Set([row.client_key, row.client_label, row.client, row.ip, row.client_ip].filter(Boolean).map(String))).slice(0, 16),
+  };
+}
+
+function inventoryRowFromTraffic(row: Record<string, any>) {
+  return operatorClientRow(row) || needsAttributionClientRow(row);
+}
+
+function aggregateClientRowsForPeriod(period = "today") {
+  const db = getDb();
+  const byKey = new Map<string, Record<string, any>>();
+  const remember = (row: Record<string, any>) => {
+    const key = String(row.client_key || row.client_label || row.client || "").trim();
+    if (!key) return;
+    const current = byKey.get(key) || {
+      client_key: key,
+      client_label: row.client_label || key,
+      client: row.client_label || key,
+      label: row.client_label || key,
+      channel: row.channel || "Unknown",
+      confidence: row.confidence || "estimated",
+      traffic_class: row.traffic_class || "client",
+      total_bytes: 0,
+      bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      flows: 0,
+      destinations_count: 0,
+      last_seen: row.last_seen_utc || row.collected_at || "",
+    };
+    current.total_bytes += Number(row.bytes || row.total_bytes || 0);
+    current.bytes = current.total_bytes;
+    current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+    current.direct_bytes += Number(row.direct_bytes || 0);
+    current.unknown_bytes += Number(row.unknown_bytes || 0);
+    current.flows += Number(row.flows || 0);
+    current.destinations_count += Number(row.destinations_count || 0);
+    if (String(row.last_seen_utc || row.collected_at || "") > String(current.last_seen || "")) current.last_seen = row.last_seen_utc || row.collected_at || "";
+    if (row.channel && row.channel !== "Unknown") current.channel = row.channel;
+    current.route = routeFromCounters(current);
+    byKey.set(key, current);
+  };
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const laneRows = db.prepare(`
+      select client_key,
+             max(client_label) as client_label,
+             max(channel) as channel,
+             max(confidence) as confidence,
+             max(traffic_class) as traffic_class,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             sum(destinations_count) as destinations_count,
+             max(last_seen_utc) as last_seen_utc
+        from client_traffic_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         and traffic_lane = 'all'
+       group by client_key
+    `).all(granularity, segment.start, segment.end) as Array<Record<string, any>>;
+    for (const row of laneRows) remember(row);
+  }
+  const existing = new Set(byKey.keys());
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const destinationRows = db.prepare(`
+      select client_key,
+             max(client_label) as client_label,
+             max(channel) as channel,
+             max(confidence) as confidence,
+             max(traffic_class) as traffic_class,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             count(distinct destination_key) as destinations_count,
+             max(last_seen_utc) as last_seen_utc
+        from client_destination_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+       group by client_key
+    `).all(granularity, segment.start, segment.end) as Array<Record<string, any>>;
+    for (const row of destinationRows) {
+      if (existing.has(String(row.client_key || ""))) continue;
+      remember(row);
+    }
+  }
+  return Array.from(byKey.values()).map(inventoryRowFromTraffic).filter((row): row is Record<string, any> => Boolean(row));
+}
+
+function mergeInventoryRows(rows: Array<Record<string, any>>): Array<Record<string, any>> {
+  const byKey = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    const key = String(row.client_key || row.id || row.device_key || row.label || "").trim();
+    if (!key) continue;
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, { ...row });
+      continue;
+    }
+    const rowBytes = observedByteValue(row);
+    const currentBytes = observedByteValue(current);
+    const preferIdentity = row.client_attributed !== false && (current.client_attributed === false || labelScore(row.label) >= labelScore(current.label));
+    if (preferIdentity) {
+      current.label = row.label || current.label;
+      current.client = row.client || current.client;
+      current.client_label = row.client_label || current.client_label;
+      current.device_label = row.device_label || current.device_label;
+      current.owner = row.owner || current.owner;
+      current.role = row.role || current.role;
+      current.device_type = row.device_type || current.device_type;
+      current.client_attributed = true;
+      current.registry_registered = row.registry_registered || current.registry_registered;
+    }
+    if (rowBytes > currentBytes) {
+      current.total_bytes = row.total_bytes || row.bytes || 0;
+      current.bytes = current.total_bytes;
+      current.via_vps_bytes = row.via_vps_bytes || 0;
+      current.direct_bytes = row.direct_bytes || 0;
+      current.unknown_bytes = row.unknown_bytes || 0;
+      current.route = row.route || current.route;
+      current.confidence = row.confidence || current.confidence;
+      current.traffic_window_active = rowBytes > 0;
+      current.traffic_collected_at = row.traffic_collected_at || row.last_seen || row.last_seen_utc || row.collected_at || current.traffic_collected_at || "";
+    }
+    const lastSeen = row.last_seen || row.last_seen_utc || row.collected_at || "";
+    if (String(lastSeen) > String(current.last_seen || "")) current.last_seen = lastSeen;
+    current.status = current.traffic_window_active ? (current.status || "Recently seen") : statusFromLastSeen(current.last_seen);
+    current.channel = channelLabel([...(current.channels || []), current.channel, ...(row.channels || []), row.channel]);
+    current.channels = Array.from(new Set([...(current.channels || []), ...(row.channels || []), row.channel].filter((value) => value && value !== "Unknown")));
+    current.aliases = Array.from(new Set([...(current.aliases || []), ...(row.aliases || [])].filter(Boolean).map(String))).slice(0, 16);
+    current.observed_aliases = Array.from(new Set([...(current.observed_aliases || []), ...(row.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16);
+    byKey.set(key, current);
+  }
+  return Array.from(byKey.values()).map((row: Record<string, any>) => ({
+    ...row,
+    status: Number(row.total_bytes || 0) > 0 ? (row.status || "Recently seen") : statusFromLastSeen(row.last_seen),
+  }));
+}
+
 function clientInventoryRows(filters: ConsoleFilters = {}) {
   const period = filters.period || "today";
   const trafficClass = filters.trafficClass || "all";
   return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}:${trafficClass}`, () => {
   const prepared = getPreparedWindowSnapshot("clients", period, trafficClass)?.payload;
-  if (prepared?.rows) {
-    return (prepared.rows as Array<Record<string, any>>).map((row) => {
+  const preparedRows = prepared?.rows
+    ? (prepared.rows as Array<Record<string, any>>).map((row) => {
       const total = observedByteValue(row);
       const split = splitCounters(row, total);
       return operatorClientRow({
@@ -3217,9 +3476,8 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       route: routeFromCounters(split),
       traffic_window_active: total > 0,
       });
-    }).filter((row): row is Record<string, any> => Boolean(row));
-  }
-  if (USE_PREPARED_WINDOWS && period !== "today") return [];
+    }).filter((row): row is Record<string, any> => Boolean(row))
+    : [];
   const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
   const currentRows = deviceDeltaRowsForPeriod(period);
   const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));
@@ -3251,9 +3509,16 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       traffic_collected_at: row.last_seen || row.collected_at || "",
     });
   }
-    return (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period, trafficClass)) as Array<Record<string, any>>)
-    .map((row) => operatorClientRow(row))
-    .filter((row): row is Record<string, any> => Boolean(row))
+    const currentDeviceRows = (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period, trafficClass)) as Array<Record<string, any>>)
+    .map(inventoryRowFromTraffic)
+    .filter((row): row is Record<string, any> => Boolean(row));
+    return (mergeInventoryRows([
+      ...registeredInventoryRows(),
+      ...inactiveHistoryRows(),
+      ...preparedRows,
+      ...aggregateClientRowsForPeriod(period),
+      ...currentDeviceRows,
+    ]) as Array<Record<string, any>>)
     .sort((a, b) => {
     const trafficDelta = Number(b.total_bytes || 0) - Number(a.total_bytes || 0);
     if (trafficDelta !== 0) return trafficDelta;
@@ -3272,7 +3537,8 @@ export function listClientInventory(args: PageArgs = {}) {
 function listClientInventoryUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
-  const rows = clientInventoryRows(args.filters || {})
+  const showInactive = Boolean(args.showInactive);
+  const allRows = clientInventoryRows(args.filters || {})
     .filter((row) => {
       const total = Number(row.total_bytes || 0);
       const confidence = String(row.confidence || "");
@@ -3289,12 +3555,15 @@ function listClientInventoryUncached(args: PageArgs = {}) {
       if (args.filters?.client && args.filters.client !== "all" && filterRows([row], args.filters).length === 0) return false;
       return clientSearch(row, args.filters?.search);
     });
+  const hiddenInactive = allRows.filter((row) => Number(row.total_bytes || 0) <= 0 && row.registry_registered).length;
+  const rows = allRows.filter((row) => Number(row.total_bytes || 0) > 0 || (showInactive && row.registry_registered));
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const effectivePage = Math.min(page, totalPages);
   const offset = (effectivePage - 1) * pageSize;
   return {
     rows: rows.slice(offset, offset + pageSize),
     total: rows.length,
+    hiddenInactive,
     page: effectivePage,
     pageSize,
     totalPages,
