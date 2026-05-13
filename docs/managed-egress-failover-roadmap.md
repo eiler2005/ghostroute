@@ -39,6 +39,18 @@ router_managed_egress_mode=backup_reality
   -> Vault-backed router-only VLESS/Reality backup profile
 ```
 
+Current operating stance:
+
+```text
+active managed egress = backup_reality
+primary VPS           = observed recovery candidate, not active switchback target
+```
+
+This means the external reserve provider is the working managed egress for now.
+The owned VPS remains the preferred long-term egress, but it should not be
+restored as active until primary path checks prove that router -> primary
+TLS/SNI/Reality traffic is no longer filtered or blackholed.
+
 The first live reserve profile is an external backup VLESS/Reality profile dedicated
 to the router. This is an availability reserve, not a replacement for the owned
 VPS architecture. The route contract is intentionally unchanged: LAN/Wi-Fi,
@@ -105,6 +117,38 @@ The current operator check for this layer is:
 
 It compares primary and active managed egress reachability without printing real
 hosts, IPs or provider names.
+
+## Live Managed Egress Switching Model
+
+`reality-out` is the stable router-side contract. The active backend can change
+without changing endpoint profiles, QR artifacts, Channel A/B/C ingress ports,
+dnsmasq catalogs, ipsets or route rules:
+
+```text
+STEALTH_DOMAINS / VPN_STATIC_NETS
+  -> router managed split
+  -> reality-out
+  -> active backend selected by Vault + Ansible
+```
+
+This is intentionally a live operator switch, not automatic failover. The
+procedure is:
+
+```bash
+cd ansible
+ansible-vault edit secrets/stealth.yml
+# update vault_router_managed_egress_mode
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook playbooks/20-stealth-router.yml
+../modules/ghostroute-health-monitor/bin/managed-egress-check
+../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+Future managed egress backends can use the same pattern if they can be rendered
+behind the logical `reality-out` tag and prove application canaries. This should
+not be confused with Channel B or Channel C failover: B/C are ingress lanes for
+selected clients, while this switch changes only the upstream managed egress
+after the router has already made the managed-vs-direct decision.
 
 ## Primary VPS Path Recovery Checks
 
