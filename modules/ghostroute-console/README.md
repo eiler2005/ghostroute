@@ -261,21 +261,19 @@ Total = Via VPS + Direct + Unknown
 `Mixed` rows are split only when explicit VPS/direct evidence exists; remaining
 unproven bytes stay `Unknown`. Destination views keep concrete destination rows
 separate from explicit unattributed buckets. Selected-client popular-sites views
-may add a clearly marked DNS-estimated layer when destination bytes undercount
-the selected client window; those rows are investigation estimates, not exact
-byte evidence.
+rank byte-attributed destinations only; DNS query popularity is rendered in its
+own selected-device DNS panel so query volume is not confused with traffic
+volume.
 
 The client lane layer is rebuilt after the normal traffic pyramid. It lets the
 operator inspect client traffic by lane locally before changing GUI filters:
 for example a device can have non-zero `all` traffic while `client_observed`
 is small and most bytes sit in `service_system` or `unknown_review`.
-The Clients page also renders a selected-device popular-sites panel from the
-same per-client destination layer. Byte-attributed client sites are shown first
-and service/system sites separately. When the per-destination byte layer is
-known to undercount the selected client window but DNS/domain interest exists,
-the missing counter bytes are distributed across those domains as explicitly
-marked DNS-estimated rows; a raw unattributed residual is shown only when no
-domain evidence exists for the selected client.
+The Clients page also renders selected-device drilldowns. Popular sites come
+from byte-attributed client destinations, service/system sites remain separate,
+and unmapped counter residual is shown as a summary rather than ranked as a
+site. The separate Latest DNS domains block lists DNS query counts for the
+selected device without turning those counts into byte estimates.
 
 IP-only destinations can be enriched locally from an iptoasn TSV snapshot. For
 the current IPv4 traffic, download `ip2asn-v4-u32.tsv.gz` and run:

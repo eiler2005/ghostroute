@@ -3281,7 +3281,9 @@ function needsAttributionClientRow(row: Record<string, any>) {
   const viaVpsBytes = Number(row.via_vps_bytes || row.vps_bytes || row.reality_bytes || 0);
   const directBytes = Number(row.direct_bytes || row.wan_bytes || 0);
   const unknownBytes = Number(row.unknown_bytes || Math.max(0, total - viaVpsBytes - directBytes));
-  const label = String(row.client_label || row.client || row.label || clientKey);
+  const rawLabel = String(row.client_label || row.client || row.label || clientKey);
+  const rawLooksLikeIp = isIpv4Literal(rawLabel) || isIpv4Literal(clientKey) || isIpv4Literal(row.ip) || isIpv4Literal(row.client_ip);
+  const label = rawLooksLikeIp ? "Unknown LAN device" : rawLabel;
   return {
     ...row,
     id: clientKey,
@@ -3290,7 +3292,7 @@ function needsAttributionClientRow(row: Record<string, any>) {
     client_key: clientKey,
     client_label: label,
     device_key: row.device_key || clientKey,
-    device_label: row.device_label || label,
+    device_label: rawLooksLikeIp ? "Unknown LAN device" : (row.device_label || label),
     role: "Needs attribution",
     owner: "",
     device_type: "Needs attribution",
@@ -3310,7 +3312,7 @@ function needsAttributionClientRow(row: Record<string, any>) {
     traffic_collected_at: row.last_seen || row.last_seen_utc || row.collected_at || row.traffic_collected_at || "",
     client_attributed: false,
     attribution_state: "needs_attribution",
-    observed_aliases: Array.from(new Set([row.client_key, row.client_label, row.client, row.ip, row.client_ip].filter(Boolean).map(String))).slice(0, 16),
+    observed_aliases: Array.from(new Set([row.client_key, row.client_label, row.client, row.label, row.ip, row.client_ip].filter(Boolean).map(String))).slice(0, 16),
   };
 }
 

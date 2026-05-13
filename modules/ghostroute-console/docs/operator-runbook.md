@@ -251,11 +251,10 @@ Destination views share the `traffic-report --json`
 explicit `Unknown/Unattributed ...` accounting buckets must add back to the
 observed client/channel total for the selected window. The unknown buckets carry
 real counter bytes, `destination_evidence=none` and
-`allocation_basis=unattributed_bucket`. On the selected-client popular-sites
-panel only, Console may distribute a selected-window residual across
-DNS-interest families as `estimated/dns-interest` investigation rows when the
-byte-attributed destination layer is incomplete; those rows do not replace the
-raw counter evidence.
+`allocation_basis=unattributed_bucket`. Selected-client popular-sites panels do
+not convert DNS-interest into byte accounting. If the destination layer is
+incomplete, Console shows the unmapped residual separately and lists
+device-specific DNS domains in a query-count panel.
 
 Dashboard, Flow Explorer, Clients and Live all read the same normalized
 accounting rows, so an attribution gap is visible consistently instead of

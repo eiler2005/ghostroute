@@ -76,8 +76,9 @@ available from this contract.
   from DNS top-client grouping until a registry alias exists.
 - Client popular-site panels prefer byte-attributed destination rows, but must
   keep any remaining selected-client counter bytes visible as residual
-  `Traffic without site attribution` instead of hiding the bulk total behind a
-  small partial destination list.
+  `Unattributed traffic not mapped to sites` instead of ranking the residual as
+  a popular site or hiding the bulk total behind a small partial destination
+  list.
 - Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
   aggregates around the monthly window. Raw operational rows remain bounded
   troubleshooting data.

@@ -58,7 +58,9 @@ function suffixFor(value) {
 }
 
 function fallbackLabelFor(key, text = "") {
+  if (IP_RE.test(clean(text))) return "Unknown LAN device";
   if (!key) return text || "Unknown device";
+  if (IP_RE.test(key) || IP_RE.test(clean(text))) return "Unknown LAN device";
   if (/\([^)]{2,}\)/.test(text) && !/unknown/i.test(text)) return text;
   if (key.startsWith("lan-host-")) return `${key} (Unknown device)`;
   if (key.startsWith("mobile-client-")) return `${key} (Unknown Home Reality profile)${suffixFor(text)}`;
