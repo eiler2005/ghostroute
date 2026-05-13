@@ -119,6 +119,10 @@ same managed split and the same `reality-out` route target, while
 `primary_vps` for the owned VPS, or `backup_reality` for a Vault-backed
 router-only provider profile. See
 [`docs/managed-egress-failover-roadmap.md`](/docs/managed-egress-failover-roadmap.md).
+During an incident, the operator can treat `backup_reality` as the active
+managed egress while the owned VPS remains an observed switchback candidate.
+This changes only the router upstream behind `reality-out`; client profiles,
+Channel A/B/C ingress and catalog policy stay unchanged.
 
 ## Directory Map
 
