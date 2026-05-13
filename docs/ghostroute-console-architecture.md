@@ -401,8 +401,8 @@ content lanes answer "what kind of traffic is this?", while route evidence
 answers "how well was VPS/direct proven?".
 Below the inventory, the selected-client popular-sites panel reads the same
 destination layer and splits byte-attributed destinations into client traffic
-and service/system traffic. DNS-interest rows are displayed only as a fallback
-when no byte-level destination rows exist for the selected client/day.
+and service/system traffic. DNS-interest rows are rendered in a separate
+selected-device panel and are never converted into byte-ranked popular sites.
 
 Destination presentation is intentionally split from raw evidence. Default
 HTML views render DNS/SNI/domain, platform or category labels first and collapse
@@ -410,7 +410,11 @@ IP-only rows to a type or provider/source label when local IP-ASN enrichment is
 available. Raw IP addresses remain in DNS answer columns, route diagnostics,
 exports and raw evidence, but are not primary destination labels or Top
 destinations. Channel/accounting labels such as Home Reality ingress describe
-ingress context and are excluded from destination rankings.
+ingress context and are excluded from destination rankings. During import and
+read-model rebuilds, concrete `dns_qname`, SNI, explicit domain and DNS-link
+evidence wins over pseudo labels such as `not observed`, `Client` or `Home
+Reality ingress`; if no concrete evidence exists, the pseudo label can remain
+as route context but not as a ranked destination.
 
 Append-only live events use `events`, `route_decisions` and `live_cursors`.
 `event_id` is used for idempotent live-tail ingestion.

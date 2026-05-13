@@ -16,6 +16,8 @@ const {
   rebuildObservabilityReadModels,
   rebuildAllTrafficReadModels,
   rebuildPreparedWindows,
+  resolvedDnsQname,
+  resolvedTrafficDestination,
 } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
 const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
@@ -198,7 +200,7 @@ test("traffic facts v2 normalize facts, clients and gaps without synthetic flow 
   assert.deepEqual(flow, {
     client: "Operator Phone",
     channel: "Home Wi-Fi/LAN",
-    destination: "Telegram",
+    destination: "telegram.org",
     traffic_class: "client",
     via_vps_bytes: 1500,
   });
@@ -1760,6 +1762,11 @@ test("traffic presentation prefers concrete destinations over generic categories
     kind: "category",
     exact: false,
   });
+  assert.equal(trafficDisplayDestination({ destination: "not observed", dns_qname: "www.youtube.com" }), "www.youtube.com");
+  assert.equal(trafficDisplayDestination({ destination: "Home Reality ingress", dns_qname: "www.youtube.com", category: "client.home_reality_ingress" }), "www.youtube.com");
+  assert.equal(resolvedTrafficDestination({ destination: "not observed", dns_qname: "www.youtube.com" }), "www.youtube.com");
+  assert.equal(resolvedTrafficDestination({ destination: "Home Reality ingress", destination_ip: "198.51.100.5" }, { domain: "setup.icloud.com" }), "setup.icloud.com");
+  assert.equal(resolvedDnsQname({ destination: "Home Reality ingress" }, { domain: "setup.icloud.com" }), "setup.icloud.com");
   assert.equal(concreteTrafficDestination({ destination_ip: "203.0.113.10" }), "");
   assert.equal(trafficDisplayDestination({ destination: "203.0.113.10", destination_ip: "203.0.113.10" }), "IP-only destination");
   assert.equal(trafficDisplayDestination({ destination: "198.51.100.63", destination_ip: "198.51.100.63", provider: "FACEBOOK", category: "ip_asn.social_platform.facebook" }), "Facebook network");
