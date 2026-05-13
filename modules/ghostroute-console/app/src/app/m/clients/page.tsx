@@ -22,7 +22,7 @@ export default async function MobileClientsPage({ searchParams }: { searchParams
     <MobileShell active="/m/clients" model={model} filters={filters} desktopPath="/clients">
       <MobileSection title="Clients" detail={`${clientsPage.total} devices`}>
         <form className="mobile-filter" action="/m/clients">
-          <input type="hidden" name="search" value={filters.search || ""} />
+          {filters.search ? <input type="hidden" name="search" value={filters.search} /> : null}
           <label className="mobile-check-label">
             <input type="checkbox" name="showInactive" value="1" defaultChecked={showInactive} />
             Show inactive registered clients
