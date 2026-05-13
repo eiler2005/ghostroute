@@ -16,6 +16,8 @@ digests and disk-based alert ledgers without changing production routing state.
 - Compact daily status and active leak-check commands for operator triage.
 - Short live A/B/C runtime-chain check with text/JSON output, local logging and
   optional active probes.
+- Managed egress path comparison for the owned primary VPS and the active
+  router `reality-out` backend.
 - Local-only alert ledgers and merged control-machine reports.
 - Rolling baseline learning for RTT and retransmit degradation.
 
@@ -49,6 +51,7 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/status`
 - `./modules/ghostroute-health-monitor/bin/leak-check`
 - `./modules/ghostroute-health-monitor/bin/live-check`
+- `./modules/ghostroute-health-monitor/bin/managed-egress-check`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
 
 `status` is the compact daily view: overall drift count, STEALTH capacity,
@@ -64,6 +67,13 @@ validates that the static raw-IP mirror exists. Both commands sanitize IP/port
 evidence and never mutate routing, services, catalogs or secrets. `leak-check`
 may append health probe evidence to the router health-monitor log directory,
 which is the module-owned monitoring state.
+
+`managed-egress-check` compares the primary owned VPS path with the active
+router managed egress. It checks router TCP/TLS reachability to the primary
+cover endpoint, raw backup TCP/TLS reachability when a backup profile is
+configured, and the real application path through router SOCKS canaries. It
+sanitizes endpoint evidence and treats backup raw TLS as advisory because some
+Reality endpoints intentionally close generic TLS handshakes.
 
 `live-check` is the canonical short "are A/B/C alive now?" check. Default mode
 is config/log based and normally takes 1-8 seconds: listeners, firewall rules,

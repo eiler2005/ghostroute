@@ -86,7 +86,7 @@ described in the root README and `docs/architecture.md`.
 | Zone | What Ansible manages | Why it exists |
 |---|---|---|
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
-| Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence and router health monitor scripts. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the VPS, while ordinary traffic stays direct. |
+| Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the primary VPS or an explicitly selected backup Reality egress, while ordinary traffic stays direct. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
 | Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
@@ -112,6 +112,13 @@ router-side sing-box applies the same managed split. The live-proven
 Shadowrocket path is C1-Shadowrocket HTTPS CONNECT compatibility and is
 persisted by the Channel C router playbook when enabled. Neither channel may
 mutate Channel A REDIRECT ownership or introduce automatic failover.
+
+Managed egress reserve mode is separate from Channel B/C. The router keeps the
+same managed split and the same `reality-out` route target, while
+`router_managed_egress_mode` chooses which backend is rendered behind that tag:
+`primary_vps` for the owned VPS, or `backup_reality` for a Vault-backed
+router-only provider profile. See
+[`docs/managed-egress-failover-roadmap.md`](/docs/managed-egress-failover-roadmap.md).
 
 ## Directory Map
 
@@ -241,6 +248,21 @@ cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 ```
 
+Switch managed egress backend during an incident or drill:
+
+```bash
+cd ansible
+ansible-vault edit secrets/stealth.yml
+# Set vault_router_managed_egress_mode to primary_vps or backup_reality.
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook playbooks/20-stealth-router.yml
+../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+`backup_reality` must use a dedicated router-only profile stored in Vault. It
+does not change client profiles, Channel A/B/C ingress ports, managed catalogs
+or direct traffic policy.
+
 Generate local client profiles:
 
 ```bash
@@ -288,5 +310,6 @@ them explicitly with:
 - [Secrets management](/modules/secrets-management/docs/secrets-management.md)
 - [Client profile workflow](/modules/client-profile-factory/docs/client-profiles.md)
 - [Routing core guide](/modules/routing-core/docs/stealth-channel-implementation-guide.md)
+- [Managed egress reserve mode](/docs/managed-egress-failover-roadmap.md)
 - [Health monitor guide](/modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md)
 - [Recovery and verification](/modules/recovery-verification/docs/failure-modes.md)

@@ -96,17 +96,19 @@ target is paired with the specific local check that measures it.
 - **Action threshold**: any leak observation → see
   [`docs/dns-policy.md`](dns-policy.md) recovery section.
 
-### C2. Managed websites see the VPS exit IP, not the home WAN IP
+### C2. Managed websites see the active managed exit, not the home WAN IP
 
-- **Target**: external IP-checker returns the configured VPS public IP for
-  any managed-domain request from any production endpoint.
+- **Target**: external IP-checker returns the active managed egress public IP
+  for any managed-domain request from any production endpoint. In normal mode
+  this is the configured VPS public IP; in explicit reserve mode it is the
+  selected backup provider exit.
 - **Measure**: `traffic-report today` shows VPS-vs-direct ratios; manual
   spot-check via the test client.
 - **Action threshold**: any "managed→direct" mistake in `traffic-report
   check` → investigate routing-mistake check evidence; do not deploy on top
   of an unresolved mistake.
 
-### C3. Non-managed websites see the home WAN IP, not the VPS exit IP
+### C3. Non-managed websites see the home WAN IP, not the managed exit
 
 - **Target**: managed split correctly sends non-managed traffic out the
   home WAN; no accidental tunneling of "everything".

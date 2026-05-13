@@ -13,7 +13,7 @@ iPhone LTE
   -> home DDNS / home public IP
   -> ASUS router
   -> sing-box managed split
-       managed destinations     -> reality-out -> VPS -> internet
+       managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN
 ```
 

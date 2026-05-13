@@ -14,6 +14,7 @@
 ./modules/ghostroute-health-monitor/bin/status
 ./modules/ghostroute-health-monitor/bin/live-check
 ./modules/ghostroute-health-monitor/bin/leak-check
+./modules/ghostroute-health-monitor/bin/managed-egress-check
 ```
 
 `status` подходит для ежедневной проверки: общий статус, drift count, емкость
@@ -79,6 +80,14 @@ GHOSTROUTE_STATUS_WITH_TRAFFIC=1 ./modules/ghostroute-health-monitor/bin/status
 DNS/IPv6 policy и rule-set sync. Если router curl не умеет сделать активный
 SOCKS exit-IP probe, результат будет `SKIP` с fallback evidence по recent
 `reality-out`, а не ложный `CRIT`.
+
+`managed-egress-check` запускай при подозрении, что primary VPS path заблокирован
+провайдером или upstream-сетью, и после переключения `reality-out` на резервный
+backend. Он сравнивает primary VPS TCP/TLS path с текущим active managed egress,
+проверяет application canaries через router SOCKS и не печатает реальные
+endpoint/IP/provider значения. В backup mode падение `primary_tls` остаётся
+`WARN`, пока active canaries зелёные; switchback на primary делай только после
+нескольких зелёных `primary_tls`.
 
 На роутере primary path:
 

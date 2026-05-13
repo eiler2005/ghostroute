@@ -1,0 +1,270 @@
+#!/bin/bash
+# Read-only managed-egress path check.
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+JSON_MODE=0
+
+usage() {
+  cat <<'USAGE'
+Usage: ./modules/ghostroute-health-monitor/bin/managed-egress-check [--json]
+
+Compare the owned primary VPS path with the currently active router managed
+egress. The output is sanitized: real hosts, IPs, UUIDs and provider names are
+not printed.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON_MODE=1
+      shift
+      ;;
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+emit() {
+  local probe="$1"
+  local status="$2"
+  local message="$3"
+  local evidence="$4"
+  local action="$5"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$probe" "$status" "$message" "$evidence" "$action" >>"$TMPDIR/results.tsv"
+}
+
+json_escape() {
+  ruby -rjson -e 'print JSON.generate(ARGV[0])' "${1:-}"
+}
+
+read_vault() {
+  (cd "$PROJECT_ROOT/ansible" && ANSIBLE_CONFIG="$PROJECT_ROOT/ansible/ansible.cfg" ansible-vault view secrets/stealth.yml) >"$TMPDIR/vault.yml"
+}
+
+vault_scalar() {
+  local key="$1"
+  local default="${2:-}"
+  awk -v key="$key" -v default="$default" '
+    $1 == key ":" {
+      sub(/^[^:]+:[[:space:]]*/, "")
+      gsub(/^["'\'']|["'\'']$/, "")
+      print
+      found = 1
+      exit
+    }
+    END { if (!found && default != "") print default }
+  ' "$TMPDIR/vault.yml"
+}
+
+vault_list_first() {
+  local key="$1"
+  local default="${2:-}"
+  awk -v key="$key" -v default="$default" '
+    $1 == key ":" { in_list = 1; next }
+    in_list && $1 == "-" {
+      sub(/^[[:space:]]*-[[:space:]]*/, "")
+      gsub(/^["'\'']|["'\'']$/, "")
+      print
+      found = 1
+      exit
+    }
+    in_list && $0 !~ /^[[:space:]]/ { in_list = 0 }
+    END { if (!found && default != "") print default }
+  ' "$TMPDIR/vault.yml"
+}
+
+run_router_endpoint_probes() {
+  local primary_host="$1"
+  local primary_sni="$2"
+  local backup_host="$3"
+  local backup_port="$4"
+  local backup_sni="$5"
+
+  router_ssh \
+    "PRIMARY_HOST='$primary_host' PRIMARY_SNI='$primary_sni' BACKUP_HOST='$backup_host' BACKUP_PORT='$backup_port' BACKUP_SNI='$backup_sni' sh -s" \
+    >"$TMPDIR/router-probes.tsv" <<'REMOTE'
+set -u
+
+has_ncat=0
+[ -x /opt/bin/ncat ] && has_ncat=1
+has_openssl=0
+[ -x /opt/bin/openssl ] && has_openssl=1
+
+tcp_probe() {
+  label="$1"
+  host="$2"
+  port="$3"
+  if [ "$has_ncat" != "1" ]; then
+    printf '%s_tcp\tUNKNOWN\tncat_missing\n' "$label"
+    return 0
+  fi
+  if /opt/bin/ncat -z -w 5 "$host" "$port" >/dev/null 2>&1; then
+    printf '%s_tcp\tOK\tconnect_ok\n' "$label"
+  else
+    printf '%s_tcp\tCRIT\tconnect_failed\n' "$label"
+  fi
+}
+
+tls_probe() {
+  label="$1"
+  host="$2"
+  port="$3"
+  sni="$4"
+  if [ "$has_openssl" != "1" ]; then
+    printf '%s_tls\tUNKNOWN\topenssl_missing\n' "$label"
+    return 0
+  fi
+  out="/tmp/managed-egress-${label}-tls.out.$$"
+  err="/tmp/managed-egress-${label}-tls.err.$$"
+  printf '' | timeout 8 /opt/bin/openssl s_client -connect "$host:$port" -servername "$sni" -brief >"$out" 2>"$err" || true
+  if grep -q 'CONNECTION ESTABLISHED' "$out"; then
+    protocol="$(awk -F: '/Protocol version:/ { gsub(/^[ \t]+/, "", $2); print $2; exit }' "$out")"
+    printf '%s_tls\tOK\t%s\n' "$label" "${protocol:-tls_established}"
+  else
+    reason="$(head -1 "$err" | sed 's/[0-9]\{1,3\}\(\.[0-9]\{1,3\}\)\{3\}/<ip>/g')"
+    [ -n "$reason" ] || reason="tls_not_established"
+    printf '%s_tls\tCRIT\t%s\n' "$label" "$reason"
+  fi
+  rm -f "$out" "$err"
+}
+
+tcp_probe primary "$PRIMARY_HOST" 443
+tls_probe primary "$PRIMARY_HOST" 443 "$PRIMARY_SNI"
+
+if [ -n "$BACKUP_HOST" ] && [ -n "$BACKUP_SNI" ]; then
+  tcp_probe backup "$BACKUP_HOST" "${BACKUP_PORT:-443}"
+  tls_probe backup "$BACKUP_HOST" "${BACKUP_PORT:-443}" "$BACKUP_SNI"
+else
+  printf 'backup_tcp\tUNKNOWN\tbackup_not_configured\n'
+  printf 'backup_tls\tUNKNOWN\tbackup_not_configured\n'
+fi
+REMOTE
+}
+
+run_active_application_probe() {
+  local local_port
+  local tunnel_pid
+  local urls
+
+  local_port=$((19000 + ($$ % 1000)))
+  urls="${GHOSTROUTE_MANAGED_EGRESS_CANARIES:-https://www.google.com/generate_204 https://chatgpt.com/cdn-cgi/trace}"
+
+  ssh "${SSH_OPTS[@]}" -N -L "127.0.0.1:${local_port}:127.0.0.1:${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-1080}" "${ROUTER_USER}@${ROUTER}" >/dev/null 2>&1 &
+  tunnel_pid=$!
+  sleep 1
+
+  local ok=0
+  local total=0
+  local code
+  for url in $urls; do
+    total=$((total + 1))
+    code="$(curl -x "socks5h://127.0.0.1:${local_port}" --connect-timeout 8 --max-time 25 -o /dev/null -sS -w '%{http_code}' "$url" 2>/dev/null || printf '000')"
+    case "$code" in
+      2*|3*) ok=$((ok + 1)) ;;
+    esac
+  done
+
+  kill "$tunnel_pid" >/dev/null 2>&1 || true
+  wait "$tunnel_pid" >/dev/null 2>&1 || true
+
+  if [ "$ok" -eq "$total" ] && [ "$total" -gt 0 ]; then
+    emit active_managed_app OK "Active managed egress can reach application canaries." "ok=$ok total=$total" "No action."
+  else
+    emit active_managed_app CRIT "Active managed egress failed application canaries." "ok=$ok total=$total" "Check the active router reality-out backend before switching modes."
+  fi
+}
+
+render_human() {
+  while IFS=$'\t' read -r probe status message evidence action; do
+    printf '[%s] %s - %s\n' "$status" "$probe" "$message"
+    printf 'evidence: %s\n' "$evidence"
+    printf 'action: %s\n' "$action"
+  done <"$TMPDIR/results.tsv"
+}
+
+render_json() {
+  ruby -rjson - "$TMPDIR/results.tsv" <<'RUBY'
+rows = []
+File.foreach(ARGV[0], chomp: true) do |line|
+  probe, status, message, evidence, action = line.split("\t", 5)
+  rows << {
+    "probe" => probe,
+    "status" => status,
+    "message" => message,
+    "evidence" => evidence,
+    "action" => action
+  }
+end
+overall =
+  if rows.any? { |r| r["status"] == "CRIT" }
+    "CRIT"
+  elsif rows.any? { |r| ["WARN", "UNKNOWN"].include?(r["status"]) }
+    "WARN"
+  else
+    "OK"
+  end
+puts JSON.pretty_generate({ "overall" => overall, "checks" => rows })
+RUBY
+}
+
+: >"$TMPDIR/results.tsv"
+router_health_load_env
+read_vault
+
+mode="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
+primary_host="$(vault_scalar vps_ssh_host)"
+primary_sni="$(vault_list_first reality_server_names gateway.icloud.com)"
+backup_host="$(vault_scalar vault_router_backup_reality_server)"
+backup_port="$(vault_scalar vault_router_backup_reality_server_port 443)"
+backup_sni="$(vault_scalar vault_router_backup_reality_server_name)"
+
+emit active_mode OK "Router managed egress mode is recorded in Vault." "mode=$mode" "Use ansible-vault edit for manual switchback or incident cutover."
+
+run_router_endpoint_probes "$primary_host" "$primary_sni" "$backup_host" "$backup_port" "$backup_sni"
+
+while IFS=$'\t' read -r probe status detail; do
+  case "$probe" in
+    primary_tcp)
+      emit primary_tcp "$status" "Router can open TCP to primary VPS :443." "endpoint=primary detail=$detail" "If OK but TLS fails, investigate path/DPI rather than VPS firewall."
+      ;;
+    primary_tls)
+      if [ "$status" = "CRIT" ] && [ "$mode" != "primary_vps" ]; then
+        emit primary_tls WARN "Router TLS/SNI handshake to primary cover endpoint is not currently healthy." "endpoint=primary detail=$detail" "Keep the active backup mode; switch back only after this is repeatedly OK."
+      else
+        emit primary_tls "$status" "Router TLS/SNI handshake to primary cover endpoint." "endpoint=primary detail=$detail" "Switch back only after this is repeatedly OK."
+      fi
+      ;;
+    backup_tcp)
+      emit backup_tcp "$status" "Router can open TCP to backup managed egress." "endpoint=backup detail=$detail" "If CRIT, keep primary or investigate backup provider reachability."
+      ;;
+    backup_tls)
+      if [ "$status" = "CRIT" ]; then
+        emit backup_tls WARN "Raw TLS probe to backup endpoint is not definitive for Reality." "endpoint=backup detail=$detail" "Use active_managed_app as canonical backup proof."
+      else
+        emit backup_tls "$status" "Router raw TLS/SNI probe to backup endpoint." "endpoint=backup detail=$detail" "Use active_managed_app as canonical backup proof."
+      fi
+      ;;
+  esac
+done <"$TMPDIR/router-probes.tsv"
+
+run_active_application_probe
+
+if [ "$JSON_MODE" = "1" ]; then
+  render_json
+else
+  render_human
+fi

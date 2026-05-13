@@ -1,4 +1,5 @@
 {% set modern_sniff = (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool) %}
+{% set managed_egress_mode = router_managed_egress_mode | default('primary_vps') %}
 {
   "log": {
     "level": "info",
@@ -27,7 +28,7 @@
         "server": "cover-dns-server"
       }
     ],
-    "final": "vps-dns-server"
+    "final": "{% if managed_egress_mode == 'backup_reality' and router_backup_dns_mode | default('cover_dns') == 'cover_dns' %}cover-dns-server{% else %}vps-dns-server{% endif %}"
   }{% endif %},
   "inbounds": [
     {
@@ -139,6 +140,32 @@
     {
       "type": "vless",
       "tag": "reality-out",
+{% if managed_egress_mode == 'backup_reality' %}
+      "server": "{{ router_backup_reality_server }}",
+      "server_port": {{ router_backup_reality_server_port }},
+      "uuid": "{{ router_backup_reality_uuid }}",
+      "flow": "{{ router_backup_reality_flow | default('xtls-rprx-vision') }}",
+      "packet_encoding": "{{ router_backup_reality_packet_encoding | default('xudp') }}",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ router_backup_reality_server_name }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "{{ router_backup_reality_utls_fingerprint | default('chrome') }}"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ router_backup_reality_public_key }}",
+          "short_id": "{{ router_backup_reality_short_id }}"
+        }
+      }
+{% else %}
       "server": "{{ vps_ssh_host }}",
       "server_port": 443,
       "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
@@ -163,6 +190,7 @@
           "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
         }
       }
+{% endif %}
     },
     { "type": "direct", "tag": "direct-out" }
   ],

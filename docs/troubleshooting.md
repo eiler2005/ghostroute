@@ -223,6 +223,51 @@ ssh admin@<router_lan_ip> '
 Если DNS зелёный, но managed egress через Reality падает, это уже другой слой:
 проверьте Caddy/VPS public TCP/443 и provider + host firewall.
 
+## Managed Egress Падает Только До Primary VPS
+
+Симптом: LAN/Wi-Fi и Channel A/B/C одновременно перестали открывать managed
+HTTPS, `sing-box.log` показывает timeouts на `outbound/vless[reality-out]`, а
+plain HTTP или SSH/admin-доступ к VPS ещё живы. Это может быть блокировка или
+DPI-фильтрация именно router -> primary VPS Reality/TLS пути.
+
+Резервная схема не меняет клиентов. Она меняет только backend за стабильным
+router-side тегом `reality-out`:
+
+```text
+vault_router_managed_egress_mode: "primary_vps"     # normal owned VPS
+vault_router_managed_egress_mode: "backup_reality" # router-only reserve profile
+```
+
+Аварийное включение:
+
+```sh
+cd ansible
+ansible-vault edit secrets/stealth.yml
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook playbooks/20-stealth-router.yml
+../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+Для проверки восстановления primary VPS, пока reserve mode активен:
+
+```sh
+cd ansible
+ansible vps_stealth -e @secrets/stealth.yml -m ping
+ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a \
+  'systemctl is-active caddy && docker ps --format "{{.Names}}" | grep -E "^xray$"'
+ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a \
+  'journalctl -u caddy --since "15 minutes ago" --no-pager | grep -E "layer4|aborted matching" | tail -40 || true'
+
+source modules/shared/lib/router-health-common.sh
+router_ssh 'curl -k --connect-timeout 5 --max-time 12 \
+  --resolve <cover-sni>:443:<primary-vps-ip> https://<cover-sni>/ \
+  -o /dev/null -sS -w "code=%{http_code} app=%{time_appconnect} total=%{time_total}\n"'
+```
+
+Возврат на primary делайте только вручную: выставьте
+`vault_router_managed_egress_mode: "primary_vps"`, redeploy router playbook и
+снова запустите `live-check --active-probe channel-a`.
+
 ## VPS TCP/443 Или Public DNS 53 Настроены Неверно
 
 Правило простое:

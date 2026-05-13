@@ -1,35 +1,196 @@
-# Managed Egress Failover Roadmap
+# Managed Egress Failover And Reserve Egress
 
-Status: future roadmap only. This document does not describe an implemented
-runtime failover path.
+Status: implemented manual reserve mode, with semi-automatic failover still a
+future phase.
 
 ## Summary
 
-GhostRoute currently has one production managed foreign egress: router
-`sing-box` sends managed destinations through `reality-out` to the primary VPS.
-If that VPS becomes unavailable, the router-managed path for foreign managed
-domains can fail even though the home router, LAN and direct home-WAN traffic
-are still healthy.
+GhostRoute normally has one owned production managed foreign egress: router
+`sing-box` sends managed destinations through the stable logical
+`reality-out` tag to the primary VPS. If that VPS path becomes unavailable, the
+router-managed path for foreign managed domains can fail even though the home
+router, LAN and direct home-WAN traffic are still healthy.
 
-The future target is a semi-automatic backup egress for managed domains:
+The implemented v1 reserve mode keeps the router as policy owner and changes
+only the backend rendered behind `reality-out`:
 
 ```text
 Home LAN / Home Reality / Channel B / Channel C
   -> home router
   -> existing managed split
-       managed destinations     -> active Reality egress -> foreign VPS
+       managed destinations     -> reality-out -> active managed egress
        non-managed destinations -> direct-out via home WAN
 ```
 
 The router remains the policy owner. `STEALTH_DOMAINS` and `VPN_STATIC_NETS`
-continue to define what is managed; failover only changes which foreign egress
-is used for managed traffic.
+continue to define what is managed; reserve mode only changes which foreign
+egress is used for managed traffic.
 
-## Target V1
+## Implemented Manual Reserve Mode
+
+Ansible now renders the router `sing-box` `reality-out` outbound from one of
+two sources:
+
+```text
+router_managed_egress_mode=primary_vps
+  -> owned VPS Reality/Vision backend
+
+router_managed_egress_mode=backup_reality
+  -> Vault-backed router-only VLESS/Reality backup profile
+```
+
+The first live reserve profile is an external backup VLESS/Reality profile dedicated
+to the router. This is an availability reserve, not a replacement for the owned
+VPS architecture. The route contract is intentionally unchanged: LAN/Wi-Fi,
+Home Reality, Channel B and Channel C still route managed destinations to
+`reality-out`; client profiles do not change.
+
+Backup mode uses `router_backup_dns_mode: cover_dns` by default so the router
+does not depend on the primary VPS Unbound path while the primary VPS path is
+suspect. This is availability-first emergency behavior; resolver geography may
+be less tidy than normal primary mode.
+
+Vault variables:
+
+```yaml
+vault_router_managed_egress_mode: "primary_vps"   # or "backup_reality"
+vault_router_backup_dns_mode: "cover_dns"         # or "managed_vps_dns"
+vault_router_backup_reality_server: "<backup_reality_host_or_ip>"
+vault_router_backup_reality_server_port: 443
+vault_router_backup_reality_uuid: "<router_only_uuid>"
+vault_router_backup_reality_flow: "xtls-rprx-vision"
+vault_router_backup_reality_packet_encoding: "xudp"
+vault_router_backup_reality_server_name: "<backup_reality_sni>"
+vault_router_backup_reality_utls_fingerprint: "chrome"
+vault_router_backup_reality_public_key: "<backup_reality_public_key>"
+vault_router_backup_reality_short_id: "<backup_reality_short_id>"
+```
+
+Do not store the original provider URI in tracked files. Keep the generated
+provider profile in Vault or another gitignored secret store, and keep it
+router-only.
+
+Manual activation flow:
+
+```bash
+cd ansible
+ansible-vault edit secrets/stealth.yml
+# set vault_router_managed_egress_mode: "backup_reality"
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook playbooks/20-stealth-router.yml
+../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+Manual return to primary:
+
+```bash
+cd ansible
+ansible-vault edit secrets/stealth.yml
+# set vault_router_managed_egress_mode: "primary_vps"
+ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+ansible-playbook playbooks/20-stealth-router.yml
+../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+During incident recovery, run the live check before and after a switch. If the
+post-switch check fails, restore the previous Vault mode and redeploy the router
+role.
+
+The current operator check for this layer is:
+
+```bash
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/managed-egress-check --json
+```
+
+It compares primary and active managed egress reachability without printing real
+hosts, IPs or provider names.
+
+## Primary VPS Path Recovery Checks
+
+While backup mode is active, keep checking whether the owned VPS path has
+recovered before switching back:
+
+```bash
+# Control machine: SSH/API reachability to the VPS.
+cd ansible
+ansible vps_stealth -e @secrets/stealth.yml -m ping
+
+# VPS: Caddy and Xray are alive.
+ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a \
+  'systemctl is-active caddy && docker ps --format "{{.Names}}" | grep -E "^xray$"'
+
+# VPS: recent layer4 matching timeouts from the home router should stop.
+ansible vps_stealth -e @secrets/stealth.yml -b -m shell -a \
+  'journalctl -u caddy --since "15 minutes ago" --no-pager | grep -E "layer4|aborted matching" | tail -40 || true'
+
+# Router: direct TCP/TLS to the primary VPS cover endpoint should complete.
+# Use placeholders; do not paste the real endpoint into docs or tickets.
+source modules/shared/lib/router-health-common.sh
+router_ssh 'curl -k --connect-timeout 5 --max-time 12 \
+  --resolve <cover-sni>:443:<primary-vps-ip> https://<cover-sni>/ \
+  -o /dev/null -sS -w "code=%{http_code} app=%{time_appconnect} total=%{time_total}\n"'
+```
+
+Switch back only after the primary path has repeated positive evidence and the
+normal `live-check --active-probe channel-a` passes after a primary-mode deploy.
+
+## Provider / Path Blocking Probe Matrix
+
+When managed traffic is healthy on backup but primary remains suspect, compare
+the paths instead of restarting services repeatedly.
+
+Primary checks:
+
+```text
+VPS local TLS to Caddy cover endpoint        -> proves Caddy/layer4 is alive
+control machine TLS to primary cover endpoint -> tests one non-home internet path
+router plain HTTP to primary :443             -> proves TCP/payload can pass
+router TLS to primary cover endpoint          -> tests the failing Reality-like layer
+VPS Caddy layer4 timeout logs from home IP    -> confirms ClientHello/SNI is not matched
+```
+
+Interpretation:
+
+```text
+VPS local TLS OK
+router plain HTTP :443 OK
+router TLS cover probe timeout
+recent Caddy layer4 matching timeouts from home
+```
+
+This pattern points away from an Xray/Caddy service outage and toward path/DPI
+filtering of TLS/Reality-like traffic between the home router and the primary
+VPS endpoint.
+
+Backup checks:
+
+```text
+managed-egress-check
+live-check --active-probe channel-a
+curl through router SOCKS 127.0.0.1:<router-socks-port> to managed canaries
+router sing-box config still has only the normal production inbounds
+```
+
+Optional router diagnostic packages:
+
+```sh
+/opt/bin/opkg install openssl-util ncat
+```
+
+After that, `/opt/bin/ncat -z -w 5 <host> <port>` is useful as a generic TCP
+connect probe and `/opt/bin/openssl s_client -connect <host>:<port> -servername
+<sni> -brief` can test an ordinary TLS/SNI handshake. Do not overinterpret a
+raw TLS failure against a Reality provider endpoint: some endpoints close
+non-client handshakes by design. Treat the real application path through router
+`sing-box` as the canonical backup proof unless a dedicated backup probe tool is
+added later.
+
+## Future Target
 
 - Add a second managed outbound on the router. The long-term owned target is a
   backup `VLESS + Reality/Vision` VPS, but the first practical v1 candidate is
-  a Red Shield `VLESS (XTLS)` profile if the router's `sing-box` accepts it.
+  an external backup `VLESS/Reality` profile if the router's `sing-box` accepts it.
 - Keep the current primary VPS as the normal default egress.
 - Prefer a backup VPS on a different provider and ASN from the primary Hetzner
   host for the owned long-term target.
@@ -42,7 +203,7 @@ Recommended logical shape:
 
 ```text
 reality-primary -> current primary VPS
-reality-backup  -> backup managed egress, initially Red Shield VLESS (XTLS)
+reality-backup  -> backup managed egress, initially external backup VLESS/Reality
 reality-out     -> stable logical managed-egress tag used by route rules
 ```
 
@@ -50,16 +211,16 @@ The exact sing-box implementation can use a selector, generated active tag or a
 small controlled config switch, but the operator-facing contract should be the
 same: one active managed egress at a time, with explicit state and rollback.
 
-## Concrete V1 Direction: Red Shield VLESS Backup
+## Concrete V1 Direction: External Backup VLESS/Reality
 
-The first implementation plan should evaluate Red Shield `VLESS (XTLS)` as the
-fastest backup egress candidate. This is not because Red Shield is the final
-architecture, but because it can prove the router-side failover logic before
+The first implementation plan should evaluate an external backup `VLESS/Reality`
+profile as the fastest backup egress candidate. This is not the final owned
+architecture, but it can prove the router-side failover logic before
 provisioning and operating a second owned VPS.
 
 Protocol choice:
 
-- Prefer Red Shield `VLESS (XTLS)` over AmneziaWG, WireGuard, OpenVPN,
+- Prefer external backup `VLESS/Reality` over AmneziaWG, WireGuard, OpenVPN,
   AmneziaWG legacy and PPTP for v1.
 - Reason: VLESS-like client profiles map naturally to router `sing-box`
   outbounds, while WireGuard/OpenVPN-style options would reintroduce kernel VPN
@@ -103,7 +264,7 @@ Operator surface:
 
 Secrets and public docs:
 
-- Store Red Shield URI/profile material only in Ansible Vault or another
+- Store backup provider URI/profile material only in Ansible Vault or another
   gitignored secret store.
 - Public docs must use placeholders only. Do not commit real provider hostnames,
   UUIDs, short IDs, keys, ports, subscription URLs, generated VLESS URIs or
@@ -173,30 +334,31 @@ restore the normal generated include during manual switchback to primary.
 - Do not open a public DNS resolver on the backup VPS.
 - Do not move managed-vs-direct policy from the router to endpoint profiles.
 - Do not treat this as a replacement for the existing home-first channel model.
-- Do not commit or paste real Red Shield account, subscription or VLESS profile
+- Do not commit or paste real backup provider account, subscription or VLESS profile
   details into tracked docs, tests, commits or chat transcripts.
 
 ## Future Implementation Phases
 
-1. Document and store backup provider profile material outside git.
-2. Validate that the router `sing-box` version accepts the Red Shield
+1. Document and store backup provider profile material outside git. Done for
+   manual reserve mode.
+2. Validate that the router `sing-box` version accepts the external backup provider
    `VLESS (XTLS)` profile shape. If not, stop and reassess Xray sidecar or an
-   owned second VPS.
+   owned second VPS. Done for the first router-only profile.
 3. Add router-side backup outbound rendering while keeping managed split rules
-   unchanged.
+   unchanged. Done for manual `backup_reality` mode.
 4. Extend health monitor probes for primary and backup egress evidence.
 5. Add a dry-run switch report that explains whether failover would happen.
 6. Add the latched semi-auto switch command and explicit manual switchback.
 7. Add availability-first backup DNS handling.
 8. Run a live drill by blocking the primary VPS path and confirming backup
    managed egress without changing direct/RU/default traffic.
-9. Later, if desired, replace or supplement Red Shield with an owned second
+9. Later, if desired, replace or supplement external backup provider with an owned second
    `VLESS + Reality/Vision` VPS on a different provider/ASN.
 
 ## Acceptance Scenarios
 
 - Primary healthy: managed traffic uses the primary VPS.
-- Primary down and Red Shield backup healthy: managed traffic switches to
+- Primary down and backup provider healthy: managed traffic switches to
   backup.
 - Primary and backup down: no unsafe switch; clear critical alert is emitted.
 - Direct, RU and default traffic remain on home WAN unless explicitly managed.

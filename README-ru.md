@@ -1,6 +1,6 @@
 # GhostRoute
 
-### Reality-маршрутизация на ASUS Merlin: домашний ingress для мобильных клиентов, Reality egress на VPS
+### Reality-маршрутизация на ASUS Merlin: домашний ingress для мобильных клиентов и управляемый Reality egress
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/eiler2005/ghostroute/actions/workflows/ci.yml/badge.svg)](https://github.com/eiler2005/ghostroute/actions/workflows/ci.yml)
@@ -21,7 +21,7 @@ EN. Расширенные технические разделы (Quick Start, A
 
 | Канал | Статус | Первый hop | Scope | Автоматический failover |
 |---|---|---|---|---|
-| A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, Home Reality clients, VPS Reality egress | Нет |
+| A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, Home Reality clients, active managed Reality egress | Нет |
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
@@ -215,7 +215,7 @@ Layer 2 home router
                               |     STEALTH_DOMAINS / VPN_STATIC_NETS
                               |     -> sing-box REDIRECT / reality-in
                               |     -> VLESS+Reality outbound
-                              |     -> Layer 3 VPS Caddy L4 -> Xray -> Internet
+                              |     -> active managed egress -> Internet
                               |
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
@@ -307,7 +307,7 @@ ASUS Router / Merlin
 +-- managed destination
 |     +-- STEALTH_DOMAINS / VPN_STATIC_NETS
 |     +-- sing-box Reality outbound
-|     +-- VPS host / Caddy / Xray
+|     +-- active managed egress
 |     +-- Internet
 +-- non-managed destination
       +-- sing-box direct outbound
@@ -316,8 +316,9 @@ ASUS Router / Merlin
 ```
 
 Для Channel A/B managed traffic первая сеть видит подключение endpoint к home
-endpoint, а не напрямую к VPS. Home ISP видит tunnel home router -> VPS.
-Managed-сайты/checker видят VPS exit IP. Non-managed сайты видят home WAN IP.
+endpoint, а не напрямую к active managed egress. Home ISP видит tunnel home
+router -> active managed egress. Managed-сайты/checker видят active managed
+exit. Non-managed сайты видят home WAN IP.
 
 Подробная схема с полным workflow, портами, компонентами и таблицей "кто что
 видит": [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
