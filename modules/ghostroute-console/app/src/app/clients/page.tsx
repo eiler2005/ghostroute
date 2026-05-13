@@ -27,7 +27,7 @@ import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
-import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
+import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, dnsEstimatedRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
 
 function scalar(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -137,6 +137,19 @@ function summarizeLaneRows(rows: Array<Record<string, any>>) {
       summary.all.destinations += Number(row.destinations_count || 0);
     }
   }
+  return summary;
+}
+
+function reconcileLaneSummary(summary: Record<string, Record<string, any>>, selected: Record<string, any> | undefined) {
+  const total = siteBytes(selected || {});
+  if (!selected || total <= 0) return summary;
+  const all = summary.all || (summary.all = { bytes: 0, flows: 0, destinations: 0, decisionHints: new Map<string, number>() });
+  if (Number(all.bytes || 0) >= total) return summary;
+  all.bytes = total;
+  all.flows = Math.max(Number(all.flows || 0), Number(selected.flows || selected.connections || selected.snapshot_samples || 0));
+  all.destinations = Math.max(Number(all.destinations || 0), Number(selected.destinations_count || 0), 1);
+  all.reconciled = true;
+  all.reconciliationLabel = "window total reconciled";
   return summary;
 }
 
@@ -251,7 +264,10 @@ function dnsInterestRows(rows: Array<Record<string, any>>, limit: number) {
 function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>> }) {
   const residualRows = counterFallback || [];
   const visible: Array<Record<string, any>> = composePopularSiteRows(rows, dnsFallback || [], residualRows);
-  const evidenceLabel = rows.length && residualRows.length
+  const hasEstimatedDns = visible.some((row) => row.dnsEstimated);
+  const evidenceLabel = hasEstimatedDns
+    ? "byte-attributed + DNS-estimated"
+    : rows.length && residualRows.length
     ? "byte-attributed + counter residual"
     : rows.length ? "byte-attributed traffic" : "fallback evidence";
   return (
@@ -268,7 +284,7 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
             <div className="detail-row popular-site-row" key={`${row.id || row.label}-${row.rank}`}>
               <span>
                 <strong>{row.rank}. {row.label}</strong>
-                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : "flows"}</small>
+                <small className="subtle block-detail">{row.laneLabel} · {row.flows || 0} {row.dnsOnly ? "DNS hits" : row.counterOnly ? "counter flows" : row.dnsEstimated ? "DNS-weighted signals" : "flows"}</small>
               </span>
               <strong>
                 {row.dnsOnly ? "not byte-attributed" : bytes(siteBytes(row))}
@@ -314,14 +330,14 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const tokens = clientTokens(selected);
   const allSelectedFlows = selected ? trafficRows.filter((row: Record<string, any>) => belongsToClient(row, tokens)) : [];
   const selectedFlows = allSelectedFlows.slice(0, 8);
-  const selectedDns = selected ? aggregateDnsInterest(model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)), 8) : [];
+  const selectedDns = selected ? aggregateDnsInterest(model.dnsQueries.filter((row: Record<string, any>) => belongsToClient(row, tokens)), 30) : [];
   const selectedAlerts = selected ? model.alerts.filter((row: Record<string, any>) => belongsToClient(row, tokens)).slice(0, 5) : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const rawSelectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
   const selectedActivity = rawSelectedActivity.length ? rawSelectedActivity : fallbackClientActivityRows(selected, selectedRoute);
   const rawSelectedLaneRows = selected ? listClientLaneSummary(selected, filters.period || "today", { limit: 80 }) : [];
   const selectedLaneRows = rawSelectedLaneRows.length ? rawSelectedLaneRows : fallbackClientLaneRows(selected, selectedRoute);
-  const selectedLaneSummary = summarizeLaneRows(selectedLaneRows);
+  const selectedLaneSummary = reconcileLaneSummary(summarizeLaneRows(selectedLaneRows), selected);
   const rawSelectedLaneDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: selectedLane, limit: 16 }) : [];
   const selectedLaneDestinations = rawSelectedLaneDestinations.length ? rawSelectedLaneDestinations : fallbackClientDestinationRows(selected, selectedRoute, selectedLane);
   const rawSelectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
@@ -342,7 +358,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8, { excludeLabels: excludedSiteLabels });
   const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
   const attributedSiteBytes = [...selectedClientSites, ...selectedServiceSites, ...selectedServiceCounterSites].reduce((sum, row) => sum + siteBytes(row), 0);
-  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes);
+  const selectedDnsEstimatedSites = selected ? dnsEstimatedRows(selectedDns, Math.max(0, siteBytes(selected) - attributedSiteBytes), selectedRoute, 15, { excludeLabels: excludedSiteLabels }) : [];
+  const selectedClientFallbackSites = selectedDnsEstimatedSites.length ? [] : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes);
   const selectedDnsFallback = dnsInterestRows(selectedDns, 15);
   const selectedRouteEvidence = selected ? listRouteEvidenceDefects(filters.period || "today", { client: selected, limit: 12 }) : [];
   const selectedEvidenceSummary = evidenceSummary(selectedRouteEvidence, Number(selected?.total_bytes || 0));
@@ -524,7 +541,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                     <span>
                       <a href={laneHref(tab.value)}>{tab.label}</a>
                       <small className="subtle block-detail">
-                        {(selectedLaneSummary[tab.value]?.flows || 0)} flows · {(selectedLaneSummary[tab.value]?.destinations || 0)} destinations
+                        {(selectedLaneSummary[tab.value]?.flows || 0)} flows · {(selectedLaneSummary[tab.value]?.destinations || 0)} destinations{selectedLaneSummary[tab.value]?.reconciled ? " · window total reconciled" : ""}
                       </small>
                     </span>
                     <strong>{bytes(selectedLaneSummary[tab.value]?.bytes || 0)}</strong>
@@ -584,7 +601,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="subtle">No DNS rows tied to this client in the latest snapshots.</div>
               ) : (
                 <div className="detail-list">
-                  {selectedDns.map((row: Record<string, any>, idx: number) => (
+                  {selectedDns.slice(0, 8).map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
                       <span>{row.domain}</span>
                       <strong>{row.count}</strong>
@@ -630,7 +647,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <span className="subtle">{filters.period || "today"} · traffic and DNS interest for selected client</span>
           </div>
           <div className="grid two">
-            <PopularSitesList title="Client sites" rows={selectedClientSites} dnsFallback={selectedDnsFallback} counterFallback={selectedClientFallbackSites} />
+            <PopularSitesList title="Client sites" rows={[...selectedClientSites, ...selectedDnsEstimatedSites]} dnsFallback={selectedDnsFallback} counterFallback={selectedClientFallbackSites} />
             <PopularSitesList title="Service/system sites" rows={selectedServiceSites} counterFallback={selectedServiceCounterSites} />
           </div>
         </section>
