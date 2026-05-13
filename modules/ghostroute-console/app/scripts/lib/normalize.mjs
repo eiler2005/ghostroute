@@ -141,6 +141,67 @@ function destinationIp(row) {
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(candidate) ? candidate : "";
 }
 
+function isIpLiteral(value) {
+  const candidate = text(value).trim();
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(candidate) || (candidate.includes(":") && /^[0-9a-f:.]+$/i.test(candidate));
+}
+
+function isPseudoDestination(value) {
+  const candidate = text(value).trim();
+  if (!candidate) return true;
+  const lowerValue = candidate.toLowerCase();
+  if (["n/a", "not observed", "unknown", "unknown destination", "client", "no site evidence"].includes(lowerValue)) return true;
+  if (["home reality ingress", "a/home reality", "b/xhttp relay", "c/naive ingress"].includes(lowerValue)) return true;
+  if (lowerValue.endsWith(" ingress") || lowerValue.includes(" ingress ") || lowerValue.includes(" relay")) return true;
+  return false;
+}
+
+function isEmptyDestinationValue(value) {
+  const lowerValue = text(value).trim().toLowerCase();
+  return !lowerValue || ["n/a", "not observed", "unknown", "unknown destination", "client", "no site evidence"].includes(lowerValue);
+}
+
+function firstDomainLike(...values) {
+  for (const value of values) {
+    const candidate = text(value).trim();
+    if (!candidate || isIpLiteral(candidate) || isPseudoDestination(candidate)) continue;
+    if (candidate.includes(".")) return candidate;
+  }
+  return "";
+}
+
+export function resolvedDnsQname(row = {}, linkedDns = {}) {
+  return firstDomainLike(
+    row.dns_qname,
+    row.qname,
+    row.domain,
+    linkedDns.domain,
+    linkedDns.dns_qname,
+    linkedDns.qname
+  );
+}
+
+export function resolvedTrafficDestination(row = {}, linkedDns = {}) {
+  const exactDomain = firstDomainLike(
+    row.dns_qname,
+    row.qname,
+    row.domain,
+    linkedDns.domain,
+    linkedDns.dns_qname,
+    linkedDns.qname,
+    row.sni,
+    linkedDns.sni
+  );
+  if (exactDomain) return exactDomain;
+  const explicitDestination = firstDomainLike(row.destination, row.app, row.family, linkedDns.destination);
+  if (explicitDestination) return explicitDestination;
+  const ip = destinationIp(row) || text(linkedDns.destination_ip || linkedDns.answer_ip || row.dns_answer_ip || row.answer_ip || "").trim();
+  if (ip) return ip;
+  const rawDestination = text(row.destination || linkedDns.destination || "").trim();
+  if (rawDestination && !isEmptyDestinationValue(rawDestination)) return rawDestination;
+  return "unknown destination";
+}
+
 function eventTimestamp(row, collectedAt) {
   return parseSourceTimestamp(row.ts || row.timestamp || row.occurred_at || collectedAt);
 }
@@ -343,7 +404,7 @@ function dnsTsSource(row) {
 }
 
 function destinationKeyFor(row) {
-  const value = text(row?.dns_qname || row?.domain || row?.destination || row?.destination_ip || row?.ip || "").trim().toLowerCase();
+  const value = resolvedTrafficDestination(row).trim().toLowerCase();
   return value || "unknown";
 }
 
@@ -2018,7 +2079,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const eligibility = trafficAggregateEligibility(row, raw, split);
       if (!eligibility.eligible) return null;
-      const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || raw.destination || raw.domain, "unknown destination");
+      const destination = resolvedTrafficDestination({ ...raw, ...row });
       const clientKey = text(raw.client_key || row.device_key || raw.device_key || raw.profile || raw.client || row.client || row.client_ip || "Unknown client");
       const resolved = resolveOperatorClient({
         ...row,
@@ -3774,7 +3835,8 @@ export function rebuildObservabilityReadModels(db) {
       };
       const risk = riskForFlow(row);
       const key = identityKey(row);
-      const destination = text(row.destination || row.dns_qname || row.destination_ip, "unknown destination");
+      const destination = resolvedTrafficDestination({ ...raw, ...row });
+      const dnsQname = resolvedDnsQname({ ...raw, ...row });
       const rawSplit = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       flowInsert.run(
@@ -3800,7 +3862,7 @@ export function rebuildObservabilityReadModels(db) {
         policyForFlow(row),
         text(row.matched_rule),
         text(row.outbound),
-        text(row.dns_qname),
+        dnsQname,
         text(row.dns_answer_ip),
         text(row.sni),
         text(row.egress_ip),
@@ -4173,10 +4235,12 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
     const key = resolved.client_key;
     const label = resolved.client_label;
     const channel = resolved.channel;
-    const destination = text(row.destination || row.dns_qname || row.sni || row.destination_ip || "", "unknown destination");
+      const linkedDns = dnsLinksById.get(text(row.dns_link_id || row.link_id)) || {};
+      const destination = resolvedTrafficDestination(row, linkedDns);
+      const dnsQname = resolvedDnsQname(row, linkedDns);
     const rowConfidence = confidence(row.confidence || row.byte_confidence, "estimated");
     const trafficClass = text(row.traffic_class || flowTrafficClass(row), "client");
-    const factId = text(row.fact_id || `${snapshotId}:${key}:${destination}:${eventTs}`, `${snapshotId}:${key}`);
+      const factId = text(row.fact_id || `${snapshotId}:${key}:${destination}:${eventTs}`, `${snapshotId}:${key}`);
     factInsert.run(
       factId,
       snapshotId,
@@ -4197,7 +4261,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.destination_kind || ""),
       destinationIp(row),
       text(row.destination_port || row.port || ""),
-      text(row.dns_qname || row.qname || row.domain || ""),
+      dnsQname,
       text(row.dns_answer_ip || row.answer_ip || ""),
       text(row.sni || ""),
       text(row.policy || ""),
@@ -4247,7 +4311,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       text(row.client_ip || row.ip || ""),
       destinationIp(row),
       text(row.destination_port || row.port || ""),
-      text(row.dns_qname || row.qname || row.domain || ""),
+      dnsQname,
       text(row.dns_answer_ip || row.answer_ip || ""),
       text(row.sni || ""),
       text(row.outbound || row.sing_box_outbound || ""),
@@ -4288,34 +4352,34 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       client_ip: text(row.client_ip || row.ip || ""),
       destination,
       destination_ip: destinationIp(row),
-      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_qname: dnsQname,
       traffic_class: trafficClass,
       intended_route: intendedRoute(row),
       route_status: routeStatus(row),
       dns_status: dnsStatus(row),
       dns_ts_source: dnsTsSource(row),
     });
-    const domain = text(row.dns_qname || row.domain || "");
+    const domain = dnsQname;
     if (domain) {
-      const linkedDns = dnsLinksById.get(text(row.dns_link_id || row.link_id)) || row;
+      const linkedDnsEvidence = dnsLinksById.get(text(row.dns_link_id || row.link_id)) || row;
       dnsLinkInsert.run(
         snapshotId,
         collectedAt,
         key,
         text(row.client_ip || row.ip || ""),
-        text(linkedDns.domain || domain),
-        text(linkedDns.destination || destination),
-        text(linkedDns.link_type || row.allocation_basis || "dns_link"),
-        text(linkedDns.confidence || row.destination_confidence || row.confidence || "unknown"),
-        json(linkedDns),
+        text(linkedDnsEvidence.domain || domain),
+        text(linkedDnsEvidence.destination || destination),
+        text(linkedDnsEvidence.link_type || row.allocation_basis || "dns_link"),
+        text(linkedDnsEvidence.confidence || row.destination_confidence || row.confidence || "unknown"),
+        json(linkedDnsEvidence),
         text(row.dns_link_id || row.link_id || `${snapshotId}:${key}:${domain}:${destinationIp(row)}`),
-        text(linkedDns.destination_ip || destinationIp(row)),
-        text(linkedDns.destination_port || row.destination_port || row.port || ""),
-        text(linkedDns.protocol || row.protocol || ""),
-        text(linkedDns.dns_answer_ip || row.dns_answer_ip || row.answer_ip || ""),
-        text(linkedDns.dns_event_ts_utc || ""),
-        text(linkedDns.dns_ts_source || row.dns_ts_source || ""),
-        text(linkedDns.flow_event_ts_utc || row.event_ts_utc || "")
+        text(linkedDnsEvidence.destination_ip || destinationIp(row)),
+        text(linkedDnsEvidence.destination_port || row.destination_port || row.port || ""),
+        text(linkedDnsEvidence.protocol || row.protocol || ""),
+        text(linkedDnsEvidence.dns_answer_ip || row.dns_answer_ip || row.answer_ip || ""),
+        text(linkedDnsEvidence.dns_event_ts_utc || ""),
+        text(linkedDnsEvidence.dns_ts_source || row.dns_ts_source || ""),
+        text(linkedDnsEvidence.flow_event_ts_utc || row.event_ts_utc || "")
       );
     }
     insertEvent(db, snapshotId, "traffic.fact", eventTs, {
@@ -4328,7 +4392,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       client_ip: text(row.client_ip || row.ip || ""),
       destination_ip: destinationIp(row),
       destination_port: text(row.destination_port || row.port || ""),
-      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_qname: dnsQname,
       dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
       sni: text(row.sni || ""),
       outbound: text(row.outbound || row.sing_box_outbound || ""),
@@ -4459,7 +4523,8 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
     const route = text(row.route || routeFromTraffic(row));
     const channel = inferChannel(row);
     const client = text(row.canonical_hint || row.profile || row.client || row.label || row.channel || "");
-    const destination = text(row.destination || row.domain || row.app || row.family || "");
+    const destination = resolvedTrafficDestination(row);
+    const dnsQname = resolvedDnsQname(row);
     const rowConfidence = confidence(row.confidence, "estimated");
     const eventTs = eventTimestamp(row, collectedAt);
     const timing = timestampContract(row, collectedAt);
@@ -4483,7 +4548,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       text(row.client_ip || row.ip || ""),
       destinationIp(row),
       text(row.destination_port || row.port || ""),
-      text(row.dns_qname || row.qname || row.domain || ""),
+      dnsQname,
       text(row.dns_answer_ip || row.answer_ip || ""),
       text(row.sni || ""),
       text(row.sing_box_outbound || row.outbound || outboundFor(row)),
@@ -4515,7 +4580,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       client_ip: text(row.client_ip || row.ip || ""),
       destination_ip: destinationIp(row),
       destination_port: text(row.destination_port || row.port || ""),
-      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_qname: dnsQname,
       dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
       sni: text(row.sni || ""),
       outbound: text(row.sing_box_outbound || row.outbound || outboundFor(row)),
@@ -4541,7 +4606,7 @@ function normalizeTraffic(db, snapshotId, type, collectedAt, payload) {
       client_ip: text(row.client_ip || row.ip || ""),
       destination_ip: destinationIp(row),
       destination_port: text(row.destination_port || row.port || ""),
-      dns_qname: text(row.dns_qname || row.qname || row.domain || ""),
+      dns_qname: dnsQname,
       dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
       sni: text(row.sni || ""),
       rule_set: text(row.rule_set || ""),
@@ -4713,7 +4778,8 @@ function normalizeLive(db, snapshotId, type, collectedAt, payload) {
   const events = Array.isArray(payload.events) ? payload.events : [];
   for (const row of events) {
     const route = text(row.route || row.route_decision || "Unknown");
-    const destination = text(row.destination || row.dns_qname || row.domain || "");
+    const destination = resolvedTrafficDestination(row);
+    const dnsQname = resolvedDnsQname(row);
     const occurredAt = eventTimestamp(row, collectedAt);
     const rawRefs = Array.isArray(row.raw_refs) ? row.raw_refs : [];
     insertEvent(db, snapshotId, text(row.event_type || "live.event"), occurredAt, {
@@ -4726,7 +4792,7 @@ function normalizeLive(db, snapshotId, type, collectedAt, payload) {
       destination_port: text(row.destination_port || ""),
       route,
       confidence: confidence(row.confidence, "unknown"),
-      dns_qname: text(row.dns_qname || ""),
+      dns_qname: dnsQname,
       dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
       sni: text(row.sni || ""),
       outbound: text(row.sing_box_outbound || row.outbound || ""),
@@ -4752,7 +4818,7 @@ function normalizeLive(db, snapshotId, type, collectedAt, payload) {
         outbound: text(row.sing_box_outbound || row.outbound || ""),
         matched_rule: text(row.matched_rule || ""),
         visible_ip: text(row.egress_ip || ""),
-        dns_qname: text(row.dns_qname || ""),
+        dns_qname: dnsQname,
         dns_answer_ip: text(row.dns_answer_ip || row.answer_ip || ""),
         sni: text(row.sni || ""),
         rule_set: text(row.rule_set || ""),

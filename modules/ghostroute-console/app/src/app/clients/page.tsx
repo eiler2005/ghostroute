@@ -377,13 +377,20 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
   const clientsPage = listClientInventory({ page, pageSize, filters: listFilters, showInactive });
-  const isUnattributed = (row: Record<string, any>) =>
-    row.client_attributed === false ||
-    row.attribution_state === "needs_attribution" ||
-    row.role === "Needs attribution" ||
-    row.role === "Unattributed mobile ingress source" ||
-    (row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024) ||
-    (!row.registry_registered && (isIpLiteral(row.label) || isIpLiteral(row.client_label) || isIpLiteral(row.device_label)));
+  const isRegistryBacked = (row: Record<string, any>) =>
+    row.registry_registered === true ||
+    row.client_attributed === true ||
+    row.attribution_confidence === "operator-local" ||
+    row.source === "registry";
+  const isUnattributed = (row: Record<string, any>) => {
+    const backed = isRegistryBacked(row);
+    if (!backed && row.client_attributed === false) return true;
+    if (!backed && row.attribution_state === "needs_attribution") return true;
+    if (!backed && row.role === "Needs attribution") return true;
+    if (!backed && row.role === "Unattributed mobile ingress source") return true;
+    if (!backed && row.role === "Unknown device" && Number(row.total_bytes || 0) < 1024 * 1024) return true;
+    return !backed && (isIpLiteral(row.label) || isIpLiteral(row.client_label) || isIpLiteral(row.device_label));
+  };
   const inventoryRows = clientsPage.rows as Array<Record<string, any>>;
   const primaryRows = inventoryRows.filter((row) => !isUnattributed(row));
   const unattributedRows = inventoryRows.filter((row) => isUnattributed(row));
