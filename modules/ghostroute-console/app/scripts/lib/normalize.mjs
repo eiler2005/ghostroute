@@ -2821,7 +2821,9 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   const authoritative = latestAuthoritativeTotals(db, window, now);
   const clientTotals = totalsForFacts(clientRows);
   const factTotals = totalsForFacts(primaryRows.filter((row) => row.accounting_bucket || !text(row.destination_key)));
-  const accountingTotals = clientTotals.observedBytes > 0 ? clientTotals : factTotals.observedBytes > 0 ? factTotals : authoritative;
+  const accountingTotals = trafficClass === "all" && authoritative?.observedBytes > 0
+    ? authoritative
+    : clientTotals.observedBytes > 0 ? clientTotals : factTotals.observedBytes > 0 ? factTotals : authoritative;
   const totals = {
     ...(accountingTotals || { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 }),
     periodLabel: authoritative?.periodLabel || window,

@@ -1474,6 +1474,59 @@ test("prepared traffic windows keep personal-cloud clients visible in all traffi
   }
 });
 
+test("prepared dashboard all traffic totals prefer authoritative router summary", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-authoritative-"));
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.json"),
+    JSON.stringify({
+      clients: {
+        macbook: {
+          label: "lan-host-13 (MacBook Denis 23)",
+          device_key: "operator-macbook",
+          device_label: "MacBook Denis 23",
+          primary_channel: "Home Wi-Fi/LAN",
+          aliases: { lan_wifi: ["lan-host-13", "lan-host-13 (MacBook Denis 23)"] },
+        },
+      },
+    })
+  );
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    db.prepare("insert into snapshots(type, collected_at, source, path, payload_json) values (?, ?, ?, ?, ?)").run(
+      "traffic_summary",
+      "2026-05-13T07:00:00.000Z",
+      "test",
+      "traffic_summary.json",
+      JSON.stringify({
+        generated_at: "2026-05-13T07:00:00.000Z",
+        source: { command: "traffic-summary", period: "today" },
+        totals: { client_observed_bytes: 2_000_000, via_vps_bytes: 1_500_000, direct_bytes: 500_000, unknown_bytes: 0 },
+      })
+    );
+    db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (1, 'traffic_facts', '2026-05-13T06:55:00.000Z', 'lan-host-13 (MacBook Denis 23)', 'Home Wi-Fi/LAN',
+        'example.invalid', 'Direct', 'exact', 100_000, 1, 'TCP', '192.0.2.13', 'client', 0, 100_000, 0, ?)
+    `).run(JSON.stringify({ fact_id: "small-attributed-flow", schema_version: 3 }));
+
+    rebuildPreparedWindows(db, "2026-05-13T07:05:00.000Z");
+    const allDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
+    const clientDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'client'").get().payload_json);
+    assert.equal(allDashboard.totals.observedBytes, 2_000_000);
+    assert.equal(allDashboard.totals.viaVpsBytes, 1_500_000);
+    assert.equal(allDashboard.totals.directBytes, 500_000);
+    assert.equal(clientDashboard.totals.observedBytes, 100_000);
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+});
+
 test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {
   const db = new Database(":memory:");
   try {

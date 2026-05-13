@@ -35,6 +35,11 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .filters select { max-width: 196px; }
 .filters button { display: inline-flex; align-items: center; gap: 7px; background: #123d75; border-color: #2563eb; cursor: pointer; }
 .filters button svg { color: #b9d6ff; }
+.clients-toolbar-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.inline-check-form { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.inline-check-form label { display: inline-flex; align-items: center; gap: 7px; color: #b7c6d8; font-size: 13px; font-weight: 700; }
+.inline-check-form input[type="checkbox"] { width: 16px; height: 16px; accent-color: #60a5fa; }
+.inline-check-form button { min-height: 30px; border-radius: 7px; border: 1px solid #2a405c; background: #0d1b2e; color: #cfe0f5; padding: 0 10px; font-weight: 800; cursor: pointer; }
 .freshness { min-height: 34px; display: inline-flex; flex-direction: column; justify-content: center; gap: 0; border: 1px solid #2a405c; border-radius: 7px; padding: 3px 10px; color: #e6edf7; background: #0d1b2e; font-weight: 800; text-transform: uppercase; font-size: 10px; line-height: 1.05; }
 .freshness small { color: #8da2bb; text-transform: none; font-weight: 600; }
 .freshness-fresh { border-color: rgba(88,214,141,.45); color: #65e89b; }
@@ -236,6 +241,8 @@ p { margin: 5px 0 0; color: #a9bad0; }
 .mobile-filter-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(92px, .6fr); }
 .mobile-filter input, .mobile-filter select, .mobile-filter button { min-width: 0; min-height: 38px; border-radius: 8px; border: 1px solid #2a405c; background: #0d1b2e; color: #f2f6fb; padding: 0 10px; }
 .mobile-filter button { border-color: #2563eb; background: #123d75; font-weight: 800; }
+.mobile-check-label { display: flex; align-items: center; gap: 8px; min-height: 38px; border-radius: 8px; border: 1px solid #2a405c; background: #0d1b2e; color: #d8e5f7; padding: 0 10px; font-weight: 800; flex: 1 1 auto; }
+.mobile-check-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: #60a5fa; }
 .mobile-card { border: 1px solid #243954; border-radius: 8px; background: linear-gradient(180deg, rgba(16,35,57,.96), rgba(9,22,38,.96)); padding: 12px; margin-bottom: 10px; }
 .mobile-card-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .mobile-card-title h2 { margin: 0; font-size: 18px; }

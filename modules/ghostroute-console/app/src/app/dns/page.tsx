@@ -135,6 +135,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                     const statusSlug = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
                     const clientLabel = row.device_label || row.client_label || row.client || "Unknown";
                     const clientDetail = [row.client_ip, row.raw_client && row.raw_client !== row.client ? row.raw_client : ""].filter(Boolean).join(" · ");
+                    const clientHref = row.client_attributed ? `/clients?client=${encodeURIComponent(row.client_key || row.client || "")}` : "";
                     const domain = row.domain || row.dns_qname || "n/a";
                     const answer = row.answer_ip || row.dns_answer_ip || "n/a";
                     const intel = trafficIntelligenceFor({ ...row, destination: domain, destination_ip: answer });
@@ -142,7 +143,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
                       <tr key={row.id}>
                         <td className="live-col-time">{dnsTime(row)}</td>
                         <td className="live-col-client dns-col-client" title={clientDetail || clientLabel}>
-                          <Link href={`/clients?client=${encodeURIComponent(row.client_key || row.client || "")}`}>{clientLabel}</Link>
+                          {clientHref ? <Link href={clientHref}>{clientLabel}</Link> : clientLabel}
                         </td>
                         <td className="live-col-destination dns-col-domain" title={`${domain} · count ${row.count || 1}`}>
                           <span className="event-dot event-dns" />
