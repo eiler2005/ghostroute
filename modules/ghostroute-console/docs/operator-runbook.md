@@ -274,7 +274,9 @@ If `/health` or another Console page appears blank or takes much longer than the
 usual first render, do not tune nginx, Caddy, Next.js or router runtime blindly.
 First collect browser evidence, then compare it with the server-side baseline.
 If the page is currently fast, leave runtime unchanged and treat the existing
-`nginx -> buffer proxy -> Next.js` path as healthy.
+`nginx -> buffer proxy -> Next.js` path as healthy. The buffer proxy requests
+close-delimited upstream HTML so Next.js streaming responses have a deterministic
+end before nginx forwards them to browsers.
 
 Browser evidence:
 
