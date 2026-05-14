@@ -348,9 +348,11 @@ not infer egress IP/ASN/country from the public Console URL.
 - `/traffic` keeps wide flow tables horizontally scrollable and treats
   category-only rows as aggregates in the route explanation instead of implying
   a concrete site saw the category label.
-- `/traffic` labels destination evidence as `DNS`, `SNI`, `IP`, `category`,
-  `counter` or `not observed` so exact visited-site evidence stays separate from
-  aggregate traffic groups.
+- `/traffic` labels destination evidence as `DNS`, `SNI`, `DNS-linked`, `IP`,
+  `category`, `counter` or `not observed` so exact visited-site evidence stays
+  separate from DNS-linked and aggregate traffic groups. Pseudo traffic buckets
+  such as encrypted ingress are not shown as primary site names when DNS/SNI or
+  linked DNS evidence exists.
 - `/dns?page=&pageSize=` can page up to 500 rows for larger troubleshooting
   windows.
 - `/catalog?page=&pageSize=` pages the read-only catalog snapshot up to 1,000

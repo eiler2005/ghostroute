@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
+import { listClientInventory } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
@@ -260,7 +261,7 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
               <div className="rank-title"><strong>{row.label}</strong><small>{row.channel || "not observed"}</small></div>
               <div className="rank-meter">
                 <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || 0}%</span>
-                <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
+                <small>VPS {compactBytes(row.viaVpsBytes || row.via_vps_bytes || 0)} · Direct {compactBytes(row.directBytes || row.direct_bytes || 0)} · Unknown {compactBytes(row.unknownBytes || unknownBytes(row))}</small>
                 <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
               </div>
               <span className={`rank-status status-${String(row.status || "OK").toLowerCase()}`}>{row.status || "OK"}</span>
@@ -338,11 +339,25 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "today, window not observed";
   const analytics = model.dashboardAnalytics || {};
-  const inventoryTopClients = [...(analytics.topClients || [])]
-    .filter((row) => observedBytes(row) > 0)
-    .sort((a, b) => observedBytes(b) - observedBytes(a))
-    .slice(0, 8);
-  const coverage = model.destinationAttributionCoverage || {};
+  const inventoryTopClientsRaw = listClientInventory({
+    page: 1,
+    pageSize: 5,
+    filters: { ...filters, trafficClass: "all" },
+  }).rows.filter((row) => observedBytes(row) > 0);
+  const inventoryTopTotal = inventoryTopClientsRaw.reduce((sum, row) => sum + observedBytes(row), 0) || 1;
+  const inventoryTopClients = inventoryTopClientsRaw.map((row, idx) => ({
+    ...row,
+    rank: idx + 1,
+    key: row.client_key || row.id || row.label,
+    label: row.label || row.client_label || row.id || "Unknown client",
+    bytes: observedBytes(row),
+    total_bytes: observedBytes(row),
+    viaVpsBytes: Number(row.via_vps_bytes || 0),
+    directBytes: Number(row.direct_bytes || 0),
+    unknownBytes: unknownBytes(row),
+    sharePct: share(observedBytes(row), inventoryTopTotal),
+    status: Number(row.total_bytes || 0) > 0 ? "OK" : "Inactive",
+  }));
   const detailFlowRows = listFlowSessions({
     page: 1,
     pageSize: 500,
@@ -354,11 +369,6 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const observedFlowRows = [...(detailFlowRows.length ? detailFlowRows : model.flows)]
     .filter((row) => observedBytes(row) > 0)
     .sort((a, b) => observedBytes(b) - observedBytes(a));
-  const clientTrafficRows = [...model.flows]
-    .filter((row) => (trafficClassOf(row) === "client" || trafficClassOf(row) === "personal_cloud" || row.accounting_bucket) && observedBytes(row) > 0)
-    .sort((a, b) => observedBytes(b) - observedBytes(a));
-  const destinationAttributedBytes = Number(coverage.attributed_bytes ?? clientTrafficRows.filter((row) => !row.accounting_bucket).reduce((sum, row) => sum + observedBytes(row), 0));
-  const destinationAttributionGap = Number(coverage.unattributed_bytes ?? Math.max(0, model.totals.observedBytes - destinationAttributedBytes));
   const topDestinations = groupDashboardDestinations(observedFlowRows, 10);
   const serviceTraffic = groupDashboardDestinations(
     observedFlowRows.filter((row) => destinationSection(row) === "service"),
@@ -384,7 +394,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
           <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
         </div>
         <div className="dashboard-rank-grid">
-          <RankedClients rows={analytics.topClients || []} />
+          <RankedClients rows={inventoryTopClients} />
           <RankedDestinations rows={topDestinations} />
         </div>
         <UsageChart points={analytics.usage?.points || []} note={analytics.usage?.note} />
@@ -444,54 +454,6 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
             </div>
           )}
       </section>
-
-      <div className="grid two" style={{ marginTop: 14 }}>
-        <section className="card">
-          <div className="toolbar">
-            <h2>Top clients</h2>
-            <Link className="muted-button" href="/clients">Open clients</Link>
-          </div>
-          {inventoryTopClients.length === 0 ? (
-            <EmptyState title="No factual devices" />
-          ) : (
-            <table className="table">
-              <thead>
-                <tr><th>Client</th><th>Total</th><th>VPS</th><th>Direct</th><th>Unknown</th><th>Confidence</th></tr>
-              </thead>
-              <tbody>
-                {inventoryTopClients.map((row) => (
-                  <tr key={row.id || row.label}>
-                    <td><Link href={`/clients?client=${encodeURIComponent(row.label || row.id)}`}>{row.label || row.id}</Link></td>
-                    <td>{bytes(row.total_bytes || 0)}</td>
-                    <td>{bytes(row.via_vps_bytes || 0)}</td>
-                    <td>{bytes(row.direct_bytes || 0)}</td>
-                    <td>{bytes(unknownBytes(row))}</td>
-                    <td><ConfidenceBadge value={row.confidence} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        <section className="card">
-          <div className="toolbar">
-            <h2>Destination coverage</h2>
-            <Link className="muted-button" href="/clients">Open clients</Link>
-          </div>
-          <p className="subtle">
-            Attributed {bytes(destinationAttributedBytes)} of {bytes(model.totals.observedBytes)} observed client and personal cloud traffic;
-            {destinationAttributionGap > 0
-              ? ` ${bytes(destinationAttributionGap)} currently has client counters without destination-byte attribution.`
-              : " destination attribution covers the observed client total."}
-          </p>
-          <div className="detail-list">
-            <div className="detail-row"><span>Attributed destination bytes</span><strong>{bytes(destinationAttributedBytes)}</strong></div>
-            <div className="detail-row"><span>Counter-only / no site evidence</span><strong>{bytes(destinationAttributionGap)}</strong></div>
-            <div className="detail-row"><span>Visible destination groups</span><strong>{topDestinations.length}</strong></div>
-          </div>
-        </section>
-      </div>
 
       <section className="card" style={{ marginTop: 14 }}>
         <div className="toolbar">
