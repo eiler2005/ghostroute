@@ -254,7 +254,9 @@ real counter bytes, `destination_evidence=none` and
 `allocation_basis=unattributed_bucket`. Selected-client popular-sites panels do
 not convert DNS-interest into byte accounting. If the destination layer is
 incomplete, Console shows the unmapped residual separately and lists
-device-specific DNS domains in a query-count panel.
+device-specific DNS domains in a query-count panel. The selected-client DNS
+panel defaults to client-facing domains; the operator can explicitly include
+service/system domains without changing the `/dns` query log.
 
 Dashboard, Flow Explorer, Clients and Live all read the same normalized
 accounting rows, so an attribution gap is visible consistently instead of

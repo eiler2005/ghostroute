@@ -27,7 +27,7 @@ import {
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { aggregateDnsInterest, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { aggregateDnsInterest, dnsInterestTrafficClass, filterDnsInterestRows, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { composePopularSiteRows, counterFallbackRows, counterOnlyRows, groupPopularSites, siteBytes } from "@/lib/client-popular-sites.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -339,13 +339,32 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
   );
 }
 
-function DnsDomainsList({ title: heading, rows, limit = 25 }: { title: string; rows: Array<Record<string, any>>; limit?: number }) {
+function DnsDomainsList({
+  title: heading,
+  rows,
+  limit = 25,
+  includeServiceDns,
+  hrefForIncludeService,
+}: {
+  title: string;
+  rows: Array<Record<string, any>>;
+  limit?: number;
+  includeServiceDns?: boolean;
+  hrefForIncludeService?: (include: boolean) => string;
+}) {
   const visible = rows.slice(0, limit);
   return (
     <section className="card client-popular-sites-list">
       <div className="toolbar">
         <h3>{heading}</h3>
-        <span className="subtle">DNS queries for selected device</span>
+        <div className="clients-toolbar-meta">
+          <span className="subtle">{includeServiceDns ? "Client + service DNS queries" : "Client-facing DNS queries"}</span>
+          {hrefForIncludeService ? (
+            <a className={`muted-button ${includeServiceDns ? "active" : ""}`} href={hrefForIncludeService(!includeServiceDns)}>
+              {includeServiceDns ? "Hide service DNS" : "Include service DNS"}
+            </a>
+          ) : null}
+        </div>
       </div>
       {visible.length === 0 ? (
         <EmptyState title="No DNS domains for this device" detail="No DNS rows were tied to this selected device in the current window." />
@@ -355,7 +374,7 @@ function DnsDomainsList({ title: heading, rows, limit = 25 }: { title: string; r
             <div className="detail-row popular-site-row" key={`${row.domain}-${index}`}>
               <span>
                 <strong>{index + 1}. {row.domain}</strong>
-                <small className="subtle block-detail">latest DNS evidence</small>
+                <small className="subtle block-detail">{dnsInterestTrafficClass(row) === "service_background" ? "service/system DNS evidence" : "client-facing DNS evidence"}</small>
               </span>
               <strong>{row.count || 0} queries</strong>
             </div>
@@ -373,6 +392,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedClientParam = scalar(params.client) || "";
   const selectedLane = laneTabs.some((tab) => tab.value === scalar(params.lane)) ? String(scalar(params.lane)) : "all";
   const showInactive = scalar(params.showInactive) === "1";
+  const includeServiceDns = scalar(params.showServiceDns) === "1";
   const listFilters = { ...filters, client: "all" };
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 10, min: 10, desktopMax: 100, mobileMax: 10 }, mobile);
@@ -404,7 +424,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const model = buildShellModel(filters, { devices: clientsPage.rows });
   const tokens = clientTokens(selected);
   const selectedDnsRows = selected ? listDnsQueryLog({ page: 1, pageSize: 500, filters: { ...filters, trafficClass: "all", client: selectedClientId } }).rows : [];
-  const selectedDns = selected ? aggregateDnsInterest(selectedDnsRows, 30) : [];
+  const selectedDnsAll = selected ? aggregateDnsInterest(selectedDnsRows, 200) : [];
+  const selectedDns = filterDnsInterestRows(selectedDnsAll, { includeService: includeServiceDns }).slice(0, 30);
   const selectedAlerts = selected ? listAlarmEvents({ page: 1, pageSize: 5, filters: { ...filters, search: selectedClientId } }).rows : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
   const rawSelectedActivity = selected ? listClientActivity(selected, filters.period || "today") : [];
@@ -450,6 +471,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     trafficClass: filters.trafficClass !== "client" ? filters.trafficClass : undefined,
     search: filters.search,
     showInactive: showInactive ? "1" : undefined,
+    showServiceDns: includeServiceDns ? "1" : undefined,
   };
   const laneHref = (lane: string) => {
     const next = new URLSearchParams();
@@ -460,6 +482,18 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     next.set("pageSize", String(clientsPage.pageSize));
     if (selected) next.set("client", String(selectedClientId));
     if (lane !== "all") next.set("lane", lane);
+    return `/clients?${next.toString()}`;
+  };
+  const dnsModeHref = (includeService: boolean) => {
+    const next = new URLSearchParams();
+    Object.entries(filterParams).forEach(([key, value]) => {
+      if (value && key !== "showServiceDns") next.set(key, String(value));
+    });
+    next.set("page", String(clientsPage.page));
+    next.set("pageSize", String(clientsPage.pageSize));
+    if (selected) next.set("client", String(selectedClientId));
+    if (selectedLane !== "all") next.set("lane", selectedLane);
+    if (includeService) next.set("showServiceDns", "1");
     return `/clients?${next.toString()}`;
   };
   const clientHref = (row: Record<string, any>) => {
@@ -675,14 +709,22 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   ))}
                 </div>
               )}
-              <h3 style={{ marginTop: 16 }}>Latest DNS domains</h3>
+              <div className="toolbar compact-toolbar" style={{ marginTop: 16 }}>
+                <h3>Latest DNS domains</h3>
+                <a className={`muted-button ${includeServiceDns ? "active" : ""}`} href={dnsModeHref(!includeServiceDns)}>
+                  {includeServiceDns ? "Hide service DNS" : "Include service DNS"}
+                </a>
+              </div>
               {selectedDns.length === 0 ? (
                 <div className="subtle">No DNS rows tied to this client in the latest snapshots.</div>
               ) : (
                 <div className="detail-list">
                   {selectedDns.slice(0, 8).map((row: Record<string, any>, idx: number) => (
                     <div className="detail-row" key={idx}>
-                      <span>{row.domain}</span>
+                      <span>
+                        {row.domain}
+                        <small className="subtle block-detail">{dnsInterestTrafficClass(row) === "service_background" ? "service/system" : "client-facing"}</small>
+                      </span>
                       <strong>{row.count} queries</strong>
                     </div>
                   ))}
@@ -734,7 +776,12 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <PopularSitesList title="Service/system sites" rows={selectedServiceSites} counterFallback={selectedServiceCounterSites} />
           </div>
           <div className="grid one" style={{ marginTop: 14 }}>
-            <DnsDomainsList title={`Latest DNS domains for ${selected.label || selected.client_label || selected.id}`} rows={selectedDns} />
+            <DnsDomainsList
+              title={`Latest DNS domains for ${selected.label || selected.client_label || selected.id}`}
+              rows={selectedDns}
+              includeServiceDns={includeServiceDns}
+              hrefForIncludeService={dnsModeHref}
+            />
           </div>
         </section>
       ) : null}

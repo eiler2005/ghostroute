@@ -1,3 +1,5 @@
+import { trafficClassForDomain } from "./domain-attribution.mjs";
+
 const GENERIC_DESTINATIONS = new Set([
   "AI services",
   "Apple/iCloud",
@@ -294,6 +296,23 @@ export function aggregateDnsInterest(rows, limit = 8) {
   return [...grouped.values()]
     .sort((a, b) => b.count - a.count || timestampMs(b.latest) - timestampMs(a.latest) || a.domain.localeCompare(b.domain))
     .slice(0, Math.max(1, number(limit) || 8));
+}
+
+export function dnsInterestTrafficClass(row) {
+  const evidence = Array.isArray(row?.rows) && row.rows.length ? row.rows[0] : row || {};
+  const domain = text(row?.domain || evidence.domain || evidence.qname || evidence.dns_qname || evidence.query || evidence.destination).trim();
+  return trafficClassForDomain({
+    ...evidence,
+    domain,
+    dns_qname: domain || evidence.dns_qname,
+    destination: domain || evidence.destination,
+    confidence: evidence.confidence || row?.confidence || "dns-interest",
+  });
+}
+
+export function filterDnsInterestRows(rows, options = {}) {
+  const includeService = Boolean(options.includeService);
+  return (rows || []).filter((row) => includeService || dnsInterestTrafficClass(row) !== "service_background");
 }
 
 function routeValue(row) {
