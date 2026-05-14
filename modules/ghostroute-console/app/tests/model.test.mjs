@@ -30,7 +30,9 @@ const {
   concreteTrafficDestination,
   destinationEvidence,
   aggregateDnsInterest,
+  dnsInterestTrafficClass,
   dedupeAlerts,
+  filterDnsInterestRows,
   groupAttributionRows,
   groupDestinationRows,
   isPrimaryTrafficDestinationLabel,
@@ -1812,6 +1814,18 @@ test("dns interest aggregation groups duplicate domains", () => {
   assert.equal(rows[0].count, 5);
   assert.equal(rows[1].domain, "setup.fe2.apple-dns.net");
   assert.equal(rows[1].count, 1);
+});
+
+test("client DNS interest defaults to client-facing domains and can include service domains", () => {
+  const rows = aggregateDnsInterest([
+    { domain: "www.youtube.com", count: 4, confidence: "dns-interest" },
+    { domain: "app-measurement.com", count: 3, confidence: "dns-interest" },
+    { domain: "miro.com", count: 2, confidence: "dns-interest" },
+    { domain: "dns.msftncsi.com", count: 1, confidence: "dns-interest" },
+  ], 10);
+  assert.equal(dnsInterestTrafficClass(rows.find((row) => row.domain === "app-measurement.com")), "service_background");
+  assert.deepEqual(filterDnsInterestRows(rows).map((row) => row.domain), ["www.youtube.com", "miro.com"]);
+  assert.deepEqual(filterDnsInterestRows(rows, { includeService: true }).map((row) => row.domain), ["www.youtube.com", "app-measurement.com", "miro.com", "dns.msftncsi.com"]);
 });
 
 test("traffic rows reconcile cumulative source totals to authoritative current-day KPI", () => {

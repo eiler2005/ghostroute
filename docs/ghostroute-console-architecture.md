@@ -521,6 +521,9 @@ Dashboard `Top clients` uses the same union Device Inventory selector as
 `/clients`, so the card and the Clients page share client labels, active-window
 traffic totals and route splits. The older lower duplicate `Top clients` and
 `Destination coverage` tables are intentionally omitted from the Dashboard.
+Clients selected-device DNS panels default to client-facing query domains and
+offer an explicit service/system toggle on both desktop and mobile; DNS counts
+remain separate from byte-ranked popular sites.
 Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and
