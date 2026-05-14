@@ -517,6 +517,10 @@ uses cumulative `traffic_summary` deltas when available so it stays in the same
 accounting scope as the Dashboard KPI. The route series use explicit read-model
 split evidence, so `Total` is always the sum of `Via VPS`, `Direct` and
 `Unknown`, including rows whose route badge is `Mixed`.
+Dashboard `Top clients` uses the same union Device Inventory selector as
+`/clients`, so the card and the Clients page share client labels, active-window
+traffic totals and route splits. The older lower duplicate `Top clients` and
+`Destination coverage` tables are intentionally omitted from the Dashboard.
 Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and

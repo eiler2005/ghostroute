@@ -1767,6 +1767,11 @@ test("traffic presentation prefers concrete destinations over generic categories
   assert.equal(resolvedTrafficDestination({ destination: "not observed", dns_qname: "www.youtube.com" }), "www.youtube.com");
   assert.equal(resolvedTrafficDestination({ destination: "Home Reality ingress", destination_ip: "198.51.100.5" }, { domain: "setup.icloud.com" }), "setup.icloud.com");
   assert.equal(resolvedDnsQname({ destination: "Home Reality ingress" }, { domain: "setup.icloud.com" }), "setup.icloud.com");
+  assert.deepEqual(destinationEvidence({ destination: "Home Reality ingress", dns_qname: "www.youtube.com", dns_status: "linked" }), {
+    label: "www.youtube.com",
+    kind: "DNS-linked",
+    exact: false,
+  });
   assert.equal(concreteTrafficDestination({ destination_ip: "203.0.113.10" }), "");
   assert.equal(trafficDisplayDestination({ destination: "203.0.113.10", destination_ip: "203.0.113.10" }), "IP-only destination");
   assert.equal(trafficDisplayDestination({ destination: "198.51.100.63", destination_ip: "198.51.100.63", provider: "FACEBOOK", category: "ip_asn.social_platform.facebook" }), "Facebook network");
@@ -1777,6 +1782,11 @@ test("traffic presentation prefers concrete destinations over generic categories
     technical: "198.51.100.8",
   });
   assert.equal(trafficDisplayDestination({ destination: "Home Reality ingress", category: "client.home_reality_ingress" }), "Encrypted ingress traffic");
+  assert.deepEqual(destinationEvidence({ destination: "Home Reality ingress" }), {
+    label: "Encrypted ingress traffic",
+    kind: "counter",
+    exact: false,
+  });
   assert.equal(isPrimaryTrafficDestinationLabel("203.0.113.10"), false);
   assert.equal(isPrimaryTrafficDestinationLabel("Home Reality ingress"), false);
 });

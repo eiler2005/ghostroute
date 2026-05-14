@@ -1821,6 +1821,109 @@ function flowSelect() {
     traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, dns_link_id, dns_link_confidence, dns_status, dns_ts_source, accounting_status, raw_json`;
 }
 
+function isDomainLikeValue(value: unknown) {
+  const text = String(value || "").trim();
+  return Boolean(text)
+    && text.includes(".")
+    && !/^(\d{1,3}\.){3}\d{1,3}$/.test(text)
+    && !/^[0-9a-f:.]+$/i.test(text)
+    && !text.includes(" ");
+}
+
+function isPseudoDestinationValue(value: unknown) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return true;
+  return ["n/a", "not observed", "unknown", "unknown destination", "client", "home reality ingress"].includes(text)
+    || text.endsWith(" ingress")
+    || text.includes(" ingress ")
+    || text.includes(" relay");
+}
+
+let flowDnsFallbackCacheKey = "";
+const flowDnsFallbackCache = new Map<string, Record<string, any> | null>();
+
+function flowDnsFallback(row: Record<string, any>) {
+  if (isDomainLikeValue(row.dns_qname) || isDomainLikeValue(row.sni) || isDomainLikeValue(row.domain)) return null;
+  const destination = String(row.destination || "").trim();
+  if (isDomainLikeValue(destination) && !isPseudoDestinationValue(destination)) return null;
+  const cacheKeyVersion = latestSnapshotVersion();
+  if (flowDnsFallbackCacheKey !== cacheKeyVersion) {
+    flowDnsFallbackCacheKey = cacheKeyVersion;
+    flowDnsFallbackCache.clear();
+  }
+  const client = String(row.client || row.client_label || row.device_key || "").trim();
+  const clientIp = String(row.client_ip || "").trim();
+  const destinationIp = String(row.destination_ip || "").trim();
+  const eventAt = String(row.display_ts_utc || row.event_ts_utc || row.last_seen || row.first_seen || row.collected_at || "").trim();
+  const key = [client.toLowerCase(), clientIp, destinationIp, eventAt.slice(0, 13)].join("|");
+  if (flowDnsFallbackCache.has(key)) return flowDnsFallbackCache.get(key) || null;
+  const db = getDb();
+  let linked: Record<string, any> | undefined;
+  if (row.dns_link_id) {
+    linked = db.prepare(`
+      select domain, dns_answer_ip as answer_ip, destination_ip, confidence, link_type
+        from traffic_dns_links
+       where id = ?
+       order by collected_at desc
+       limit 1
+    `).get(row.dns_link_id) as Record<string, any> | undefined;
+  }
+  if (!linked && destinationIp) {
+    linked = db.prepare(`
+      select domain, dns_answer_ip as answer_ip, destination_ip, confidence, link_type
+        from traffic_dns_links
+       where destination_ip = ?
+         and coalesce(domain, '') != ''
+       order by collected_at desc
+       limit 1
+    `).get(destinationIp) as Record<string, any> | undefined;
+  }
+  if (!linked && (client || clientIp)) {
+    const params: any[] = [];
+    const predicates: string[] = [];
+    if (client) {
+      predicates.push("lower(client) = lower(?)");
+      params.push(client);
+    }
+    if (clientIp) {
+      predicates.push("client_ip = ?");
+      params.push(clientIp);
+    }
+    const timeExpr = "coalesce(nullif(event_ts, ''), nullif(collected_at, ''), '')";
+    const orderExpr = eventAt
+      ? `abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) asc, count desc, ${timeExpr} desc`
+      : `count desc, ${timeExpr} desc`;
+    if (eventAt) params.push(eventAt);
+    linked = db.prepare(`
+      select domain, answer_ip, confidence, 'client-nearby-dns' as link_type
+        from dns_query_log
+       where (${predicates.join(" or ")})
+         and coalesce(domain, '') != ''
+       order by ${orderExpr}
+       limit 1
+    `).get(...params) as Record<string, any> | undefined;
+  }
+  const result = linked && isDomainLikeValue(linked.domain) ? linked : null;
+  flowDnsFallbackCache.set(key, result);
+  return result;
+}
+
+function applyFlowDnsFallback(row: Record<string, any>) {
+  const linked = flowDnsFallback(row);
+  if (!linked?.domain) return row;
+  const destination = String(row.destination || "").trim();
+  const shouldReplaceDestination = !destination || isPseudoDestinationValue(destination);
+  return {
+    ...row,
+    destination: shouldReplaceDestination ? linked.domain : row.destination,
+    dns_qname: row.dns_qname || linked.domain,
+    dns_answer_ip: row.dns_answer_ip || linked.answer_ip || "",
+    dns_status: row.dns_status || "linked",
+    dns_link_confidence: row.dns_link_confidence || linked.confidence || "client-nearby",
+    dns_ts_source: row.dns_ts_source || linked.link_type || "client-nearby-dns",
+  };
+}
+
 function ipv4Literal(value?: string) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
 }
@@ -1898,6 +2001,7 @@ function destinationContextFromIp(row: Record<string, any>) {
 }
 
 function mapFlowRow(row: any) {
+  row = applyFlowDnsFallback(row);
   return destinationContextFromIp(decorateTrafficRow({
     id: row.id,
     rowid: row.rowid,
@@ -1955,6 +2059,7 @@ function flowSessionSelect() {
 
 function mapFlowSessionRow(row: any) {
   const raw = evidenceJson(row);
+  row = applyFlowDnsFallback({ ...row, raw });
   const rowid = String(row.id || "").replace(/^flow:/, "");
   return destinationContextFromIp(decorateTrafficRow({
     id: row.id,

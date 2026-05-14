@@ -224,7 +224,10 @@ function isClientOnlyDestination(value) {
 
 export function destinationEvidence(row) {
   const dns = text(row?.dns_qname || row?.raw?.dns_qname).trim();
-  if (dns) return { label: dns, kind: "DNS", exact: true };
+  if (dns) {
+    const linked = Boolean(text(row?.dns_link_confidence || row?.dns_status || row?.raw?.dns_link_confidence || row?.raw?.dns_status).trim());
+    return { label: dns, kind: linked ? "DNS-linked" : "DNS", exact: !linked };
+  }
   const sni = text(row?.sni || row?.raw?.sni).trim();
   if (sni && !isGenericTrafficDestination(sni)) return { label: sni, kind: "SNI", exact: true };
   const ip = text(row?.destination_ip || row?.raw?.destination_ip || (isIpLiteral(row?.destination) ? row?.destination : "")).trim();
@@ -247,6 +250,17 @@ export function destinationEvidence(row) {
       kind: isGenericTrafficDestination(destination) ? "category" : "counter",
       exact: false,
     };
+  }
+  const pseudoDestination = text(row?.destination || row?.raw?.destination).trim();
+  if (isPseudoTrafficDestination(pseudoDestination)) {
+    return {
+      label: categoryLabel({ ...row, category: row?.category || row?.raw?.category || "client.home_reality_ingress" }) || "Encrypted ingress traffic",
+      kind: "counter",
+      exact: false,
+    };
+  }
+  if (row?.accounting_bucket || row?.raw?.accounting_bucket) {
+    return { label: "No site evidence", kind: "counter", exact: false };
   }
   return { label: "not observed", kind: "not observed", exact: false };
 }
