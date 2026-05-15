@@ -74,15 +74,17 @@ available from this contract.
 - DNS Query Log may show factual DNS rows that do not yet resolve to a private
   registry client. Those rows are attribution diagnostics; they are excluded
   from DNS top-client grouping until a registry alias exists.
-- Apps and Clients use the same selected-client DNS evidence selector over the
-  prepared DNS pyramid, falling back to raw DNS rows only when the prepared DNS
-  layer is absent. DNS query counts are evidence for labels and recent domains;
-  they never allocate bytes to app families.
-- Client popular-site panels prefer byte-attributed destination rows, but must
-  keep any remaining selected-client counter bytes visible as residual
-  `Unattributed traffic not mapped to sites` instead of ranking the residual as
-  a popular site or hiding the bulk total behind a small partial destination
-  list.
+- Apps and Clients use the same selected-client site/DNS evidence selector over
+  the prepared DNS pyramid, falling back to raw DNS rows only when the prepared
+  DNS layer is absent. Exact domain/SNI byte rows remain factual. IP/provider
+  residual may be distributed across client-facing DNS domains by query count
+  only when it is explicitly marked as inferred/estimated. Without DNS evidence,
+  residual stays as `Other / uncategorized`.
+- Client popular-site panels rank by `effective_bytes` first, then DNS query
+  count and recency. Inferred DNS rows are allowed to cover aggregate residual
+  so the panel does not hide a GB-scale selected-client total behind a tiny
+  IP-only row, but the UI must not label that allocation as exact factual byte
+  accounting.
 - Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
   aggregates around the monthly window. Raw operational rows remain bounded
   troubleshooting data.

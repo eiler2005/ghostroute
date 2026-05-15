@@ -18,6 +18,7 @@ import {
   listClientDomainBreakdown,
   listClientActivity,
   listClientDestinationsByLane,
+  listClientSiteEvidence,
   listClientInventory,
   listClientLaneSummary,
   listAlarmEvents,
@@ -406,7 +407,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const rawSelectedAllDestinations = selected ? listClientDestinationsByLane(selected, filters.period || "today", { lane: "all", limit: 120 }) : [];
   const selectedAllDestinations = rawSelectedAllDestinations.length ? rawSelectedAllDestinations : fallbackClientDestinationRows(selected, selectedRoute, "all");
   const selectedDomainBreakdown = selected ? listClientDomainBreakdown(selected, filters.period || "today", { limit: 120 }) : [];
-  const selectedSiteRows = [...selectedAllDestinations, ...selectedDomainBreakdown];
+  const selectedSiteEvidence = selected ? listClientSiteEvidence(selected, filters.period || "today", { limit: 160 }) : [];
+  const selectedSiteRows = selectedSiteEvidence.length ? selectedSiteEvidence : [...selectedAllDestinations, ...selectedDomainBreakdown];
   const excludedSiteLabels = selected ? [
     selected.id,
     selected.label,
@@ -421,7 +423,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8, { excludeLabels: excludedSiteLabels });
   const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
   const attributedSiteBytes = [...selectedClientSites, ...selectedServiceSites, ...selectedServiceCounterSites].reduce((sum, row) => sum + siteBytes(row), 0);
-  const selectedClientFallbackSites = counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes)
+  const selectedClientFallbackSites = selectedSiteEvidence.length ? [] : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes)
     .map((row) => ({
       ...row,
       label: "Unattributed traffic not mapped to sites",

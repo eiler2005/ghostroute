@@ -10,7 +10,7 @@ export function title(value = "") {
 }
 
 export function siteBytes(row = {}) {
-  return Number(row.bytes || row.total_bytes || row.totalBytes || row.observed_bytes || 0);
+  return Number(row.effective_bytes || row.bytes || row.total_bytes || row.totalBytes || row.observed_bytes || 0);
 }
 
 function siteLane(row = {}) {
@@ -46,7 +46,7 @@ export function groupPopularSites(rows = [], kind = "client", limit = 15, option
   const excludedLabels = new Set((options.excludeLabels || []).map(normalizeSiteLabel).filter(Boolean));
   for (const row of rows) {
     if ((kind === "service") !== isServiceSite(row)) continue;
-    const label = trafficDisplayDestination(row);
+    const label = text(row.domain || row.url_label || row.label || row.destinationLabel || row.destination) || trafficDisplayDestination(row);
     if (!isUsefulSiteLabel(label, excludedLabels)) continue;
     const key = label.toLowerCase();
     const current = grouped.get(key) || {
@@ -55,6 +55,10 @@ export function groupPopularSites(rows = [], kind = "client", limit = 15, option
       destinationLabel: label,
       bytes: 0,
       total_bytes: 0,
+      effective_bytes: 0,
+      factual_bytes: 0,
+      inferred_bytes: 0,
+      dns_queries: 0,
       flows: 0,
       routes: new Set(),
       lanes: new Set(),
@@ -62,6 +66,10 @@ export function groupPopularSites(rows = [], kind = "client", limit = 15, option
     };
     current.bytes += siteBytes(row);
     current.total_bytes += siteBytes(row);
+    current.effective_bytes = Number(current.effective_bytes || 0) + siteBytes(row);
+    current.factual_bytes = Number(current.factual_bytes || 0) + Number(row.factual_bytes || 0);
+    current.inferred_bytes = Number(current.inferred_bytes || 0) + Number(row.inferred_bytes || 0);
+    current.dns_queries = Number(current.dns_queries || 0) + Number(row.dns_queries || row.count || 0);
     current.flows += Number(row.flows || row.connections || 0);
     if (row.route) current.routes.add(String(row.route));
     current.lanes.add(siteLane(row));
@@ -71,7 +79,7 @@ export function groupPopularSites(rows = [], kind = "client", limit = 15, option
     grouped.set(key, current);
   }
   return Array.from(grouped.values())
-    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || String(a.label).localeCompare(String(b.label)))
+    .sort((a, b) => siteBytes(b) - siteBytes(a) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0) || String(a.label).localeCompare(String(b.label)))
     .slice(0, limit)
     .map((row, index) => ({
       ...row,
@@ -148,7 +156,7 @@ export function counterFallbackRows(selected, rows = [], route = "Unknown", kind
 function mergeVisibleRows(rows = []) {
   const grouped = new Map();
   for (const row of rows) {
-    const label = text(row.label || row.destinationLabel || row.destination);
+    const label = text(row.domain || row.url_label || row.label || row.destinationLabel || row.destination);
     if (!label) continue;
     const key = normalizeSiteLabel(label);
     const current = grouped.get(key) || {
@@ -158,12 +166,20 @@ function mergeVisibleRows(rows = []) {
       destinationLabel: label,
       bytes: 0,
       total_bytes: 0,
+      effective_bytes: 0,
+      factual_bytes: 0,
+      inferred_bytes: 0,
+      dns_queries: 0,
       flows: 0,
       laneLabels: new Set(),
       routes: new Set(),
     };
     current.bytes += siteBytes(row);
     current.total_bytes += siteBytes(row);
+    current.effective_bytes = Number(current.effective_bytes || 0) + siteBytes(row);
+    current.factual_bytes = Number(current.factual_bytes || 0) + Number(row.factual_bytes || 0);
+    current.inferred_bytes = Number(current.inferred_bytes || 0) + Number(row.inferred_bytes || 0);
+    current.dns_queries = Number(current.dns_queries || 0) + Number(row.dns_queries || row.count || 0);
     current.flows += Number(row.flows || row.connections || 0);
     current.counterOnly = Boolean(current.counterOnly || row.counterOnly);
     current.dnsOnly = Boolean(current.dnsOnly || row.dnsOnly);
@@ -185,6 +201,6 @@ export function composePopularSiteRows(rows = [], dnsFallback = [], counterFallb
   const residualRows = counterFallback || [];
   const dnsRows = rows.length || residualRows.length ? [] : (dnsFallback || []);
   return mergeVisibleRows([...rows, ...residualRows, ...dnsRows])
-    .sort((a, b) => siteBytes(b) - siteBytes(a) || text(a.label).localeCompare(text(b.label)))
+    .sort((a, b) => siteBytes(b) - siteBytes(a) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0) || text(a.label).localeCompare(text(b.label)))
     .map((row, index) => ({ ...row, rank: index + 1 }));
 }

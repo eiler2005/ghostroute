@@ -1646,7 +1646,69 @@ test("client popular sites include residual counter traffic when site attributio
   assert.equal(visible.find((row) => row.label === "Cloudflare network").rank, 1);
 });
 
-test("client popular sites do not allocate residual traffic to DNS domains when byte detail undercounts", () => {
+test("client popular sites rank explicit inferred DNS attribution when byte detail undercounts", () => {
+  const selected = {
+    id: "lan-host-02",
+    label: "lan-host-02 (iPhone)",
+    total_bytes: 1_070_000_000,
+    flows: 150,
+  };
+  const byteRows = groupPopularSites([
+    {
+      destination: "Apple network",
+      destination_label: "Apple network",
+      traffic_lane: "shared_infra",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 1_000_000,
+      flows: 9,
+    },
+  ], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const attributedBytes = byteRows.reduce((sum, row) => sum + siteBytes(row), 0);
+  const fallbackRows = counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
+  const inferredRows = groupPopularSites([
+    {
+      domain: "www.youtube.com",
+      url_label: "www.youtube.com",
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: "Mixed",
+      effective_bytes: 700_000_000,
+      inferred_bytes: 700_000_000,
+      dns_queries: 80,
+      attribution_source: "dns_inferred",
+      byte_confidence: "estimated",
+    },
+    {
+      domain: "docs.google.com",
+      url_label: "docs.google.com",
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: "Mixed",
+      effective_bytes: 369_000_000,
+      inferred_bytes: 369_000_000,
+      dns_queries: 30,
+      attribution_source: "dns_inferred",
+      byte_confidence: "estimated",
+    },
+  ], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const visible = composePopularSiteRows(inferredRows, [], []);
+  assert.equal(visible[0].label, "www.youtube.com");
+  assert.equal(siteBytes(visible[0]), 700_000_000);
+  assert.equal(visible.some((row) => row.label === "Apple network"), false);
+  assert.equal(visible.some((row) => row.label === "Unattributed traffic not mapped to sites"), false);
+  assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), 1_069_000_000);
+  assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected) - attributedBytes);
+  assert.deepEqual(
+    inferredRows.map((row) => ({ label: row.label, source: row.attribution_source, confidence: row.byte_confidence })),
+    [
+      { label: "www.youtube.com", source: "dns_inferred", confidence: "estimated" },
+      { label: "docs.google.com", source: "dns_inferred", confidence: "estimated" },
+    ]
+  );
+});
+
+test("client popular sites keep residual unmapped when no DNS attribution exists", () => {
   const selected = {
     id: "lan-host-02",
     label: "lan-host-02 (iPhone)",
@@ -1667,25 +1729,22 @@ test("client popular sites do not allocate residual traffic to DNS domains when 
   const attributedBytes = byteRows.reduce((sum, row) => sum + siteBytes(row), 0);
   const fallbackRows = counterFallbackRows(selected, [], "Mixed", "client", attributedBytes);
   const visible = composePopularSiteRows(byteRows, [], []);
-  const dnsInterest = [
-    { domain: "www.youtube.com", count: 80 },
-    { domain: "Apple network", count: 40 },
-    { domain: "docs.google.com", count: 30 },
-  ];
   assert.equal(visible[0].label, "Apple network");
   assert.equal(visible.some((row) => row.label === "Unattributed traffic not mapped to sites"), false);
-  assert.equal(visible.some((row) => row.label === "www.youtube.com"), false);
-  assert.equal(visible.some((row) => row.dnsEstimated), false);
   assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), attributedBytes);
   assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected) - attributedBytes);
-  assert.equal(dnsInterest[0].count, 80);
 });
 
-test("app-family catalog classifies client apps without turning DNS counts into bytes", () => {
+test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily("rr4---sn-n8v7kn7r.googlevideo.com").app_family, "YouTube");
   assert.equal(classifyAppFamily("youtubei.googleapis.com").app_family, "YouTube");
   assert.equal(classifyAppFamily("scontent.cdninstagram.com").app_family, "Instagram / Meta");
   assert.equal(classifyAppFamily("cdn.openai.com").app_family, "OpenAI / ChatGPT");
+  assert.equal(classifyAppFamily("api.ozon.ru").app_family, "Shopping / marketplaces");
+  assert.equal(classifyAppFamily("static-basket-01.wbbasket.ru").app_family, "Shopping / marketplaces");
+  assert.equal(classifyAppFamily("m.vk.com").app_family, "VK / Mail.ru");
+  assert.equal(classifyAppFamily("mc.yandex.ru").app_family, "Yandex");
+  assert.equal(classifyAppFamily("rutube.ru").app_family, "Media / streaming");
   assert.equal(isClientFacingAppFamily(classifyAppFamily("app-measurement.com")), false);
   assert.deepEqual(
     {

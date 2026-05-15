@@ -155,15 +155,20 @@ DNS Query Log is factual evidence. DNS rows may be visible even when the source
 is not yet registry-attributed, but only registry-backed clients participate in
 DNS top-client grouping or client inventory rows.
 
-The Clients page may show Latest DNS domains for the selected device, but those
-rows are query counts only. They must not be used to allocate byte residuals in
-the popular-sites traffic ranking.
+The Clients page and Apps page use one selected-client site/DNS evidence
+selector. Exact domain/SNI byte rows stay factual. Provider/category byte rows
+can provide coarse families when no better evidence exists. When the selected
+client has aggregate bytes that are otherwise only IP/provider residual, the
+selector may distribute that residual across client-facing DNS domains by query
+count so popular-site and app-family views cover the visible client total. Those
+rows are marked as inferred (`attribution_source=dns_inferred`,
+`byte_confidence=estimated`) and must not be presented as exact per-domain byte
+accounting. If no client-facing DNS evidence exists, the residual remains
+`Other / uncategorized`.
 
-Apps uses the same selected-client DNS evidence selector as Clients. App-family
-rows remain byte-ranked from `client_destination_by_lane`; DNS/SNI/domain
-evidence may name a family, provider/category hints may provide a coarse family
-for IP/provider-only byte rows, and DNS-only domains stay in Latest DNS without
-creating byte rows or absorbing residual bytes.
+Latest DNS domains uses the same selector, but ranks by recency/query count and
+keeps DNS query counts visible as evidence. Service DNS stays excluded unless
+the operator explicitly enables it.
 
 Unresolved loopback, router-local and private source addresses are not displayed
 as normal clients. Registry-backed DNS sources use the canonical device label;
