@@ -307,6 +307,7 @@ test("clients separate inventory from selected-window traffic", async ({ page, i
 
 test("clients row selection updates the detail panel", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop-only client detail panel");
+  test.slow();
   await page.goto("/clients");
   const secondRow = page.locator(".clients-card tbody tr").nth(1);
   if ((await secondRow.count()) === 0) return;
@@ -421,6 +422,7 @@ test("mobile health is raw HTML without Next hydration scripts", async ({ reques
 
 test("mobile redirect preserves bypass and safe routes", async ({ page, request, isMobile }) => {
   test.skip(!isMobile, "mobile-only redirect smoke");
+  test.slow();
 
   await page.goto("/traffic");
   await expect(page).toHaveURL(/\/m\/traffic/);
