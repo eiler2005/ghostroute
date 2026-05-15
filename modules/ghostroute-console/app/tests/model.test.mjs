@@ -1979,12 +1979,14 @@ test("traffic presentation prefers concrete destinations over generic categories
   });
   assert.equal(isPrimaryTrafficDestinationLabel("203.0.113.10"), false);
   assert.equal(isPrimaryTrafficDestinationLabel("Home Reality ingress"), false);
+  assert.equal(isPrimaryTrafficDestinationLabel("Client"), false);
 });
 
 test("dashboard top destinations exclude raw IP and pseudo ingress labels", () => {
   const analytics = buildDashboardAnalyticsFromRows([
     { client: "lan-host-01", destination: "Home Reality ingress", category: "client.home_reality_ingress", bytes: 500, unknown_bytes: 500, collected_at: "2026-05-12T09:00:00Z" },
     { client: "lan-host-02", destination: "203.0.113.10", destination_ip: "203.0.113.10", bytes: 400, direct_bytes: 400, collected_at: "2026-05-12T09:01:00Z" },
+    { client: "lan-host-04", destination: "Client", bytes: 350, direct_bytes: 350, collected_at: "2026-05-12T09:01:30Z" },
     { client: "lan-host-03", dns_qname: "video.example.invalid", destination: "Media", bytes: 300, via_vps_bytes: 300, collected_at: "2026-05-12T09:02:00Z" },
   ], { now: "2026-05-12T10:00:00Z" });
   assert.deepEqual(analytics.topDestinations.map((row) => row.label), ["video.example.invalid"]);

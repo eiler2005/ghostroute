@@ -217,6 +217,7 @@ export function isPrimaryTrafficDestinationLabel(value) {
   if (!label || label === "n/a" || label === "unknown destination") return false;
   if (isIpLiteral(label)) return false;
   if (label === "IP-only destination" || label === "No site evidence") return false;
+  if (["Client", "Other", "Other/IP", "Unclassified domain"].includes(label)) return false;
   return !isPseudoTrafficDestination(label);
 }
 
