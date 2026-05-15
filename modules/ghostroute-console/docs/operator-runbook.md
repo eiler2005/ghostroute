@@ -130,7 +130,9 @@ tables as the collection contract.
 
 The `flow_sessions` read model includes the safe DNS/SNI and egress evidence
 fields needed by the Flow Explorer inline detail panel. Missing source evidence
-is rendered as `not observed`, not inferred.
+is rendered as `not observed`; when a flow has nearby same-client DNS evidence
+or a prepared DNS link, the UI may show the linked domain as `DNS-linked` rather
+than promoting pseudo buckets such as encrypted ingress to primary site names.
 
 GUI request paths should read prepared tables and small snapshot payloads only.
 Health, Live, mobile pages and JSON APIs use snapshot metadata for cache
@@ -366,6 +368,17 @@ not infer egress IP/ASN/country from the public Console URL.
   filtering the table, and each row uses plain document links so the detail
   panel follows the selected device even when browser-side navigation is
   unreliable.
+- `/clients` stays a lightweight inventory and selected-client traffic view.
+  Heavy selected-device application and DNS evidence is intentionally kept out
+  of this render path so the inventory remains fast on the live database.
+- `/apps` is a read-only app-family explanation page backed by prepared
+  destination bytes and DNS signal counts. It includes the same active Device
+  Inventory selector, then renders selected-device app families and latest DNS
+  domains. DNS popularity never becomes traffic bytes; unmapped traffic stays
+  visible as unmapped/residual evidence. The nDPI column is a diagnostic
+  prototype only: it shows expected/offline nDPI protocol comparison when
+  samples exist and never changes routing or accounting. Mobile `/m/apps`
+  follows the same selected-device default and service-DNS include toggle.
 - `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
   client and service/background live events separately, with millisecond event
   times and page sizes up to 500 rows.

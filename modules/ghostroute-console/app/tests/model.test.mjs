@@ -44,6 +44,10 @@ const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-anal
 const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
 const domainAttributionModule = await import(new URL("../src/lib/domain-attribution.mjs", import.meta.url));
 const { isPersonalCloudDomain, isServiceDomain, isUnclassifiedDomain, normalizeDomainBreakdown, trafficClassForDomain, trafficDomainLabel } = domainAttributionModule;
+const appFamilyModule = await import(new URL("../../../traffic-intelligence/lib/app-family.mjs", import.meta.url));
+const { classifyAppFamily, isClientFacingAppFamily } = appFamilyModule;
+const ndpiModule = await import(new URL("../src/lib/ndpi-diagnostics.mjs", import.meta.url));
+const { expectedNdpiProtocol, ndpiDiagnosticForApp } = ndpiModule;
 const timeWindowModule = await import(new URL("../src/lib/time/window.mjs", import.meta.url));
 const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
@@ -1675,6 +1679,35 @@ test("client popular sites do not allocate residual traffic to DNS domains when 
   assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), attributedBytes);
   assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected) - attributedBytes);
   assert.equal(dnsInterest[0].count, 80);
+});
+
+test("app-family catalog classifies client apps without turning DNS counts into bytes", () => {
+  assert.equal(classifyAppFamily("rr4---sn-n8v7kn7r.googlevideo.com").app_family, "YouTube");
+  assert.equal(classifyAppFamily("youtubei.googleapis.com").app_family, "YouTube");
+  assert.equal(classifyAppFamily("scontent.cdninstagram.com").app_family, "Instagram / Meta");
+  assert.equal(classifyAppFamily("cdn.openai.com").app_family, "OpenAI / ChatGPT");
+  assert.equal(isClientFacingAppFamily(classifyAppFamily("app-measurement.com")), false);
+  const selected = { id: "lan-host-13", label: "lan-host-13 (MacBook Denis 23)", total_bytes: 3_000_000_000 };
+  const byteRows = groupPopularSites([
+    { destination: "Cloudflare network", traffic_lane: "shared_infra", traffic_class: "client", route: "Mixed", bytes: 20_000_000, flows: 4 },
+  ], "client", 15, { excludeLabels: [selected.id, selected.label] });
+  const visible = composePopularSiteRows(byteRows, [{ label: "youtubei.googleapis.com", flows: 200, dnsOnly: true }], []);
+  assert.equal(visible.some((row) => row.label === "youtubei.googleapis.com"), false);
+  assert.equal(visible[0].label, "Cloudflare network");
+  assert.equal(siteBytes(visible[0]), 20_000_000);
+});
+
+test("nDPI diagnostic prototype compares labels without affecting traffic bytes", () => {
+  const row = { app_family: "YouTube", bytes: 1234, sample_domains: ["r1---sn.googlevideo.com"] };
+  assert.equal(expectedNdpiProtocol(row.app_family), "YouTube");
+  assert.deepEqual(ndpiDiagnosticForApp(row), {
+    status: "not sampled",
+    expected: "YouTube",
+    protocol: "",
+    detail: "nDPI sample not available",
+  });
+  assert.equal(ndpiDiagnosticForApp(row, [{ domain: "r1---sn.googlevideo.com", ndpi_protocol: "YouTube" }]).status, "match");
+  assert.equal(row.bytes, 1234);
 });
 
 test("client popular sites keep unmapped residual separate from ranked sites", () => {

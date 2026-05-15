@@ -9,6 +9,7 @@ const nav = [
   ["DNS Query Log", "/dns", Wifi],
   ["Intelligence", "/intelligence", Brain],
   ["Clients", "/clients", Users],
+  ["Apps", "/apps", BarChart3],
   ["Health Center", "/health", ShieldCheck],
   ["Catalog", "/catalog", Boxes],
   ["Budget", "/budget", Gauge],

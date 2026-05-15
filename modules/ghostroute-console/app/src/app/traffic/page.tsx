@@ -63,11 +63,23 @@ function isIpLiteral(value: unknown) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
 }
 
+function isPseudoTrafficLabel(value: unknown) {
+  const text = String(value || "").trim().toLowerCase();
+  return !text
+    || text === "client"
+    || text === "n/a"
+    || text === "not observed"
+    || text === "unknown destination"
+    || text === "ip-only destination"
+    || text === "home reality ingress"
+    || text.endsWith(" ingress");
+}
+
 function flowDomain(row: Record<string, any>) {
   const usable = (value: unknown) => {
     const text = String(value || "").trim();
     if (!text) return "";
-    if (["Client", "n/a", "not observed", "unknown destination", "IP-only destination"].includes(text)) return "";
+    if (isPseudoTrafficLabel(text)) return "";
     return text;
   };
   const candidates = [row.dns_qname, row.sni, row.domain, row.raw?.dns_qname, row.raw?.sni, row.raw?.domain];
@@ -82,8 +94,21 @@ function flowDomain(row: Record<string, any>) {
   const displayLabel = usable(display);
   if (displayLabel) return displayLabel;
   const rawDestination = String(row.destination || row.raw?.destination || "").trim();
-  if (rawDestination && rawDestination !== "unknown destination" && !isIpLiteral(rawDestination)) return rawDestination;
+  if (rawDestination && !isPseudoTrafficLabel(rawDestination) && !isIpLiteral(rawDestination)) return rawDestination;
   return usable(row.destination_ip || row.raw?.destination_ip) || usable(row.matched_rule || row.rule_set || row.policy) || usable(row.channel) || "not observed";
+}
+
+function presentationDestination(row: Record<string, any>, destination: ReturnType<typeof destinationEvidence>) {
+  if (!isPseudoTrafficLabel(destination.label)) return destination;
+  const domain = flowDomain(row);
+  if (domain && !isPseudoTrafficLabel(domain)) {
+    const kind = String(row.dns_status || row.dns_link_confidence || "").includes("generic") ? "DNS-linked" : destination.kind;
+    return { ...destination, label: domain, kind };
+  }
+  if (String(row.destination || row.raw?.destination || "").toLowerCase().includes("ingress")) {
+    return { ...destination, label: "Encrypted ingress traffic", kind: "counter" };
+  }
+  return destination;
 }
 
 function Sparkline({ values, tone = "ok" }: { values: number[]; tone?: "ok" | "warn" | "danger" }) {
@@ -276,7 +301,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                 <tbody>
                   {rows.map((row) => {
                     const href = flowHref(row.id);
-                    const destination = destinationEvidence(row);
+                    const destination = presentationDestination(row, destinationEvidence(row));
                     const intel = trafficIntelligenceFor(row);
                     return (
                       <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>

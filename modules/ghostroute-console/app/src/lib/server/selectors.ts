@@ -38,10 +38,13 @@ import {
 } from "../device-attribution.mjs";
 import {
   dedupeAlerts,
+  aggregateDnsInterest,
   moscowDateKey,
   reconcileTrafficRows,
   snapshotMatchesPeriod,
+  trafficDisplayDestination,
 } from "../traffic-window.mjs";
+import { classifyAppFamily, isClientFacingAppFamily } from "../app-family.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 import { bucketStartUtc, mskWindowBounds } from "../time/window.mjs";
 
@@ -1842,6 +1845,74 @@ function isPseudoDestinationValue(value: unknown) {
 let flowDnsFallbackCacheKey = "";
 const flowDnsFallbackCache = new Map<string, Record<string, any> | null>();
 
+function sqlIn(column: string, values: Array<string>) {
+  const clean = Array.from(new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean))).slice(0, 80);
+  if (clean.length === 0) return { sql: "", params: [] as Array<string> };
+  return {
+    sql: `lower(${column}) in (${clean.map(() => "?").join(",")})`,
+    params: clean,
+  };
+}
+
+function clientMatchPredicate(columns: Array<string>, values: Array<string>) {
+  const predicates: string[] = [];
+  const params: string[] = [];
+  for (const column of columns) {
+    const clause = sqlIn(column, values);
+    if (!clause.sql) continue;
+    predicates.push(clause.sql);
+    params.push(...clause.params);
+  }
+  return { sql: predicates.length ? `(${predicates.join(" or ")})` : "", params };
+}
+
+function genericDeviceDnsAliases(target: Record<string, any>) {
+  const raw = rawJson(target);
+  return uniqueNonEmpty([
+    target.label,
+    target.client,
+    target.client_label,
+    target.device_label,
+    target.client_key,
+    target.device_key,
+    target.device_type,
+    target.role,
+    raw.label,
+    raw.client,
+    raw.client_label,
+    raw.device_label,
+    raw.device_type,
+    raw.role,
+  ]).flatMap((value) => {
+    const text = value.toLowerCase();
+    if (text.includes("iphone")) return ["iphone", "iPhone"];
+    if (text.includes("ipad")) return ["ipad", "iPad"];
+    if (text.includes("macbook")) return ["macbook", "MacBook"];
+    if (text.includes("windows")) return ["windows", "Windows"];
+    return [];
+  });
+}
+
+function isMobileProfileTarget(target: Record<string, any>) {
+  const raw = rawJson(target);
+  const text = uniqueNonEmpty([
+    target.label,
+    target.client,
+    target.client_label,
+    target.client_key,
+    target.device_type,
+    target.role,
+    target.channel,
+    target.client_channel,
+    raw.label,
+    raw.client,
+    raw.device_type,
+    raw.role,
+    raw.channel,
+  ]).join(" ").toLowerCase();
+  return text.includes("reality") || text.includes("profile") || text.includes("mobile") || text.includes("iphone") || text.includes("ipad");
+}
+
 function flowDnsFallback(row: Record<string, any>) {
   if (isDomainLikeValue(row.dns_qname) || isDomainLikeValue(row.sni) || isDomainLikeValue(row.domain)) return null;
   const destination = String(row.destination || "").trim();
@@ -1852,10 +1923,10 @@ function flowDnsFallback(row: Record<string, any>) {
     flowDnsFallbackCache.clear();
   }
   const client = String(row.client || row.client_label || row.device_key || "").trim();
-  const clientIp = String(row.client_ip || "").trim();
   const destinationIp = String(row.destination_ip || "").trim();
   const eventAt = String(row.display_ts_utc || row.event_ts_utc || row.last_seen || row.first_seen || row.collected_at || "").trim();
-  const key = [client.toLowerCase(), clientIp, destinationIp, eventAt.slice(0, 13)].join("|");
+  const clientCandidates = laneClientKeyCandidates(row);
+  const key = [clientCandidates.join(","), destinationIp, eventAt.slice(0, 16)].join("|");
   if (flowDnsFallbackCache.has(key)) return flowDnsFallbackCache.get(key) || null;
   const db = getDb();
   let linked: Record<string, any> | undefined;
@@ -1868,6 +1939,18 @@ function flowDnsFallback(row: Record<string, any>) {
        limit 1
     `).get(row.dns_link_id) as Record<string, any> | undefined;
   }
+  const linkClientMatch = clientMatchPredicate(["client_key", "client_ip"], clientCandidates);
+  if (!linked && destinationIp && linkClientMatch.sql) {
+    linked = db.prepare(`
+      select domain, dns_answer_ip as answer_ip, destination_ip, confidence, link_type
+        from traffic_dns_links
+       where destination_ip = ?
+         and ${linkClientMatch.sql}
+         and coalesce(domain, '') != ''
+       order by collected_at desc
+       limit 1
+    `).get(destinationIp, ...linkClientMatch.params) as Record<string, any> | undefined;
+  }
   if (!linked && destinationIp) {
     linked = db.prepare(`
       select domain, dns_answer_ip as answer_ip, destination_ip, confidence, link_type
@@ -1878,30 +1961,42 @@ function flowDnsFallback(row: Record<string, any>) {
        limit 1
     `).get(destinationIp) as Record<string, any> | undefined;
   }
-  if (!linked && (client || clientIp)) {
-    const params: any[] = [];
-    const predicates: string[] = [];
-    if (client) {
-      predicates.push("lower(client) = lower(?)");
-      params.push(client);
-    }
-    if (clientIp) {
-      predicates.push("client_ip = ?");
-      params.push(clientIp);
-    }
+  const dnsClientMatch = clientMatchPredicate(["client", "device_key", "client_ip"], clientCandidates);
+  if (!linked && dnsClientMatch.sql) {
+    const params: any[] = [...dnsClientMatch.params];
     const timeExpr = "coalesce(nullif(event_ts, ''), nullif(collected_at, ''), '')";
-    const orderExpr = eventAt
-      ? `abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) asc, count desc, ${timeExpr} desc`
-      : `count desc, ${timeExpr} desc`;
+    const timeWindowSql = eventAt ? `and abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) <= ?` : "";
+    if (eventAt) params.push(eventAt, 15 * 60);
+    const answerPriority = destinationIp ? `case when answer_ip = ? then 0 else 1 end,` : "";
+    if (destinationIp) params.push(destinationIp);
     if (eventAt) params.push(eventAt);
     linked = db.prepare(`
       select domain, answer_ip, confidence, 'client-nearby-dns' as link_type
         from dns_query_log
-       where (${predicates.join(" or ")})
+       where ${dnsClientMatch.sql}
+         ${timeWindowSql}
          and coalesce(domain, '') != ''
-       order by ${orderExpr}
+       order by ${answerPriority} ${eventAt ? `abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) asc,` : ""} count desc, ${timeExpr} desc
+      limit 1
+     `).get(...params) as Record<string, any> | undefined;
+  }
+  const genericDnsMatch = !linked && isMobileProfileTarget(row)
+    ? clientMatchPredicate(["client", "device_key"], genericDeviceDnsAliases(row))
+    : { sql: "", params: [] as Array<string> };
+  if (!linked && genericDnsMatch.sql) {
+    const params: any[] = [...genericDnsMatch.params];
+    const timeExpr = "coalesce(nullif(event_ts, ''), nullif(collected_at, ''), '')";
+    const timeWindowSql = eventAt ? `and abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) <= ?` : "";
+    if (eventAt) params.push(eventAt, 15 * 60);
+    linked = db.prepare(`
+      select domain, answer_ip, 'dns-generic-device' as confidence, 'generic-device-nearby-dns' as link_type
+        from dns_query_log
+       where ${genericDnsMatch.sql}
+         ${timeWindowSql}
+         and coalesce(domain, '') != ''
+       order by ${eventAt ? `abs(strftime('%s', ${timeExpr}) - strftime('%s', ?)) asc,` : ""} count desc, ${timeExpr} desc
        limit 1
-    `).get(...params) as Record<string, any> | undefined;
+    `).get(...params, ...(eventAt ? [eventAt] : [])) as Record<string, any> | undefined;
   }
   const result = linked && isDomainLikeValue(linked.domain) ? linked : null;
   flowDnsFallbackCache.set(key, result);
@@ -2499,6 +2594,59 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
     pageSize,
     totalPages,
   };
+}
+
+function clientDnsRows(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const candidates = laneClientKeyCandidates(target);
+  const limit = Math.max(1, Number(options.limit || 500));
+  if (candidates.length === 0) return [];
+  if (!readModelHasRows("dns_query_log")) {
+    const lookup = new Set(candidates.map((value) => value.toLowerCase()));
+    return listDnsQueryLog({ page: 1, pageSize: limit, filters: { period, trafficClass: "all" } }).rows
+      .filter((row: Record<string, any>) => laneClientKeyCandidates(row).some((value) => lookup.has(value.toLowerCase())))
+      .slice(0, limit);
+  }
+  const latest = idWhereForWindow(period, new Set(["dns", "live"]));
+  const match = clientMatchPredicate(["client", "device_key", "client_ip"], candidates);
+  if (!match.sql) return [];
+  const fetchRows = (matchSql: string, matchParams: Array<string>, fallbackConfidence = "") => getDb()
+    .prepare(
+      `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
+              qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
+         from dns_query_log
+        where (${latest.sql})
+          and ${matchSql}
+          and coalesce(domain, '') != ''
+        order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
+        limit ?`
+    )
+    .all(...latest.params, ...matchParams, limit)
+    .map(mapDnsReadModelRow)
+    .map(operatorDnsRow)
+    .filter((row): row is Record<string, any> => Boolean(row))
+    .map((row) => fallbackConfidence ? { ...row, confidence: fallbackConfidence, dns_link_confidence: fallbackConfidence } : row);
+  const rows = fetchRows(match.sql, match.params);
+  if (rows.length > 0) return rows;
+  const fallbackMatch = isMobileProfileTarget(target)
+    ? clientMatchPredicate(["client", "device_key"], genericDeviceDnsAliases(target))
+    : { sql: "", params: [] as Array<string> };
+  if (fallbackMatch.sql) return fetchRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
+  return rows;
+}
+
+function withAppFamily(row: Record<string, any>) {
+  const app = classifyAppFamily(row.domain || row.dns_qname || row.destination || row.destination_key || row.destination_label);
+  return { ...row, ...app };
+}
+
+export function listClientDnsDomains(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const key = laneClientKeyCandidates(target).join("|");
+  const limit = Math.max(1, Number(options.limit || 200));
+  return cacheGet(`client-dns-domains:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () =>
+    aggregateDnsInterest(clientDnsRows(target, period, { limit: Math.max(limit * 4, 200) }), limit).map(withAppFamily)
+  );
 }
 
 function mapAlarmReadModelRow(row: any) {
@@ -3730,6 +3878,33 @@ function uniqueNonEmpty(values: Array<unknown>) {
   return result;
 }
 
+function registryAliasCandidates(target: Record<string, any>) {
+  const raw = rawJson(target);
+  const registry = loadDeviceAttributions();
+  const resolved = resolveClient({ ...target, raw, profile: target.profile || raw.profile }, registry);
+  const entry = resolved.client_key ? (registry.clients as Record<string, Record<string, any>>)[resolved.client_key] : null;
+  const networkAliases = Object.entries(registry.networkAliases || {})
+    .filter(([, key]) => key === resolved.client_key)
+    .map(([alias]) => alias);
+  return uniqueNonEmpty([
+    resolved.client_key,
+    resolved.client_label,
+    resolved.device_key,
+    resolved.device_label,
+    ...(resolved.observed_aliases || []),
+    entry?.client_key,
+    entry?.label,
+    entry?.device_key,
+    entry?.device_label,
+    entry?.display_name,
+    entry?.owner,
+    ...(entry?.aliases || []),
+    ...(entry?.ip_aliases || []),
+    ...(entry?.mac_aliases || []),
+    ...networkAliases,
+  ]);
+}
+
 function laneClientKeyCandidates(target: Record<string, any>) {
   const raw = rawJson(target);
   const resolved = resolveClient({ ...target, raw, profile: target.profile || raw.profile });
@@ -3754,6 +3929,7 @@ function laneClientKeyCandidates(target: Record<string, any>) {
     ...(resolved.observed_aliases || []),
     ...(target.aliases || []),
     ...(target.observed_aliases || []),
+    ...registryAliasCandidates(target),
     ...rowIdentityTokens(target),
   ]);
   const expanded = [...base];
@@ -3990,6 +4166,170 @@ function clientDestinationLaneRows(clientKey: string, period = "today", trafficL
   return Array.from(grouped.values()).sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0));
 }
 
+function groupAppFamilyRows(rows: Array<Record<string, any>>, dnsRows: Array<Record<string, any>> = []) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    const rowBytes = Number(row.bytes || row.total_bytes || 0);
+    if (rowBytes <= 0) continue;
+    const app = classifyAppFamily({
+      domain: row.dns_qname || row.domain || row.destination_key || row.destination_label || row.destination,
+      destination: row.destination_label || row.destination_key || row.destination,
+    });
+    const key = app.app_family || "Other / uncategorized";
+    const current = grouped.get(key) || {
+      ...app,
+      app_family: key,
+      bytes: 0,
+      total_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      flows: 0,
+      clients: new Set<string>(),
+      routes: new Set<string>(),
+      sample_domains: new Set<string>(),
+      dns_queries: 0,
+      confidence: "estimated",
+    };
+    current.bytes += rowBytes;
+    current.total_bytes += rowBytes;
+    current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+    current.direct_bytes += Number(row.direct_bytes || 0);
+    current.unknown_bytes += Number(row.unknown_bytes || Math.max(0, rowBytes - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0)));
+    current.flows += Number(row.flows || row.connections || 0);
+    if (row.client_key || row.client_label || row.client) current.clients.add(String(row.client_key || row.client_label || row.client));
+    if (row.route) current.routes.add(String(row.route));
+    const sample = trafficDisplayDestination(row);
+    if (sample && sample !== "not observed") current.sample_domains.add(sample);
+    if (row.confidence === "exact") current.confidence = "exact";
+    grouped.set(key, current);
+  }
+  for (const row of dnsRows) {
+    const app = classifyAppFamily(row.domain || row.dns_qname);
+    const key = app.app_family || "Other / uncategorized";
+    const current = grouped.get(key) || {
+      ...app,
+      app_family: key,
+      bytes: 0,
+      total_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      flows: 0,
+      clients: new Set<string>(),
+      routes: new Set<string>(),
+      sample_domains: new Set<string>(),
+      dns_queries: 0,
+      confidence: "dns-interest",
+    };
+    current.dns_queries += Number(row.count || 0);
+    if (row.domain) current.sample_domains.add(String(row.domain));
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
+    .map((row, idx) => ({
+      ...row,
+      rank: idx + 1,
+      client_count: row.clients?.size || 0,
+      route: row.routes?.size === 1 ? Array.from(row.routes)[0] : row.routes?.size > 1 ? "Mixed" : "Unknown",
+      sample_domains: Array.from(row.sample_domains || []).slice(0, 6),
+    }));
+}
+
+export function listClientAppFamilies(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const key = resolveLaneClientKey(target, "client_destination_by_lane");
+  const limit = Math.max(1, Number(options.limit || 10));
+  return cacheGet(`client-app-families:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => {
+    const rows = clientDestinationLaneRows(key, period, "all");
+    const dnsRows = listClientDnsDomains(target, period, { limit: 200 });
+    return groupAppFamilyRows(rows, dnsRows).slice(0, limit);
+  });
+}
+
+function appFamilySourceRows(filters: ConsoleFilters = {}) {
+  const period = filters.period || "today";
+  const target = filters.client && filters.client !== "all" ? { label: filters.client, client_key: filters.client } : null;
+  const clientKey = target ? resolveLaneClientKey(target, "client_destination_by_lane") : "";
+  const rows: Array<Record<string, any>> = [];
+  const db = getDb();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const where = [
+      "bucket_granularity = ?",
+      "bucket_start_utc >= ?",
+      "bucket_start_utc < ?",
+      "bytes > 0",
+    ];
+    const params: Array<any> = [granularity, segment.start, segment.end];
+    if (clientKey) {
+      where.push("client_key = ?");
+      params.push(clientKey);
+    }
+    if (filters.route && filters.route !== "all") {
+      where.push("route = ?");
+      params.push(filters.route);
+    }
+    if (filters.trafficClass && filters.trafficClass !== "all") {
+      where.push("traffic_class = ?");
+      params.push(filters.trafficClass);
+    }
+    const search = filters.search?.trim();
+    if (search) {
+      const needle = `%${search.toLowerCase()}%`;
+      where.push("(lower(client_label) like ? or lower(destination_key) like ? or lower(destination_label) like ?)");
+      params.push(needle, needle, needle);
+    }
+    rows.push(...db.prepare(`
+      select client_key,
+             max(client_label) as client_label,
+             destination_key,
+             max(destination_label) as destination_label,
+             route,
+             confidence,
+             traffic_class,
+             traffic_lane,
+             dns_category,
+             max(category) as category,
+             max(provider) as provider,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows
+        from client_destination_by_lane
+       where ${where.map((item) => `(${item})`).join(" and ")}
+       group by client_key, destination_key, route, confidence, traffic_class, traffic_lane, dns_category
+       order by bytes desc
+       limit 5000
+    `).all(...params) as Array<Record<string, any>>);
+  }
+  return rows;
+}
+
+export function listAppFamilyRows(args: PageArgs = {}) {
+  const page = clampPage(args.page);
+  const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
+  const filters = args.filters || {};
+  return cacheGet(`app-family-rows:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => {
+    const target = filters.client && filters.client !== "all" ? { label: filters.client, client_key: filters.client } : null;
+    const dnsRows = target ? listClientDnsDomains(target, filters.period || "today", { limit: 500 }) : [];
+    const allRows = groupAppFamilyRows(appFamilySourceRows(filters), dnsRows);
+    const total = allRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const offset = (effectivePage - 1) * pageSize;
+    return {
+      rows: allRows.slice(offset, offset + pageSize).map((row, idx) => ({ ...row, rank: offset + idx + 1 })),
+      total,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  });
+}
+
 function routeEvidenceDefectRows(period = "today", options: { clientKey?: string; evidence?: string } = {}) {
   const db = getDb();
   const grouped = new Map<string, Record<string, any>>();
@@ -4087,7 +4427,7 @@ function routeEvidenceDefectRows(period = "today", options: { clientKey?: string
 
 export function listClientDomainBreakdown(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
-  const key = String(target.client_key || target.id || keyForDevice(target) || target.label || "");
+  const key = resolveLaneClientKey(target, "client_destination_by_lane");
   const limit = Math.max(1, Number(options.limit || 20));
   return cacheGet(`client-domain-breakdown:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => clientDomainAggregateRows(key, period).slice(0, limit));
 }
