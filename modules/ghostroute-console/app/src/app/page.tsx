@@ -7,6 +7,7 @@ import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
+import { attributionEligibility, isAttributableSiteRow } from "@/lib/attribution-eligibility.mjs";
 
 function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
@@ -67,6 +68,7 @@ function domainForRow(row: Record<string, any>) {
 
 function hasDashboardDestination(row: Record<string, any>) {
   if (row.accounting_bucket || row.raw?.accounting_bucket) return false;
+  if (!isAttributableSiteRow(row, { includeService: true })) return false;
   const label = destinationLabel(row).trim();
   if (dashboardNonDestinations.has(label.toLowerCase())) return false;
   return isPrimaryTrafficDestinationLabel(label);
@@ -84,6 +86,8 @@ function destinationSection(row: Record<string, any>) {
 }
 
 function isServiceEvidenceRow(row: Record<string, any>) {
+  const eligibility = attributionEligibility(row);
+  if (eligibility.serviceOnly) return true;
   return destinationSection(row) === "service"
     || row.traffic_role === "service_system"
     || row.app_category === "service_system"
