@@ -935,7 +935,33 @@ function addAlias(current: Record<string, any>, label?: string) {
   const value = String(label || "").trim();
   if (!value || value === "Unknown") return;
   const aliases = new Set([...(current.aliases || []), value]);
-  current.aliases = Array.from(aliases).slice(0, 8);
+  current.aliases = Array.from(aliases).slice(0, 24);
+}
+
+function deviceAliasTokens(row: Record<string, any>, key = keyForDevice(row), label = deviceLabel(row)) {
+  const raw = row.raw || {};
+  return Array.from(new Set([
+    label,
+    key,
+    row.id,
+    row.device_id,
+    row.device_key,
+    row.client_key,
+    row.client_label,
+    row.label,
+    row.client,
+    row.ip,
+    row.client_ip,
+    raw.id,
+    raw.device_id,
+    raw.device_key,
+    raw.client_key,
+    raw.client_label,
+    raw.label,
+    raw.client,
+    raw.ip,
+    raw.client_ip,
+  ].filter(Boolean).map(String))).slice(0, 24);
 }
 
 function addObservedIdentity(current: Record<string, any>, row: Record<string, any>) {
@@ -1025,7 +1051,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
         status: statusFromLastSeen(collected),
         from_history: fromHistory,
         channels: preservedChannel(row) !== "Unknown" ? [preservedChannel(row)] : [],
-        aliases: label ? [label] : [],
+        aliases: deviceAliasTokens(row, key, label),
         observed_identities: [],
         source_ids: [sourceId],
         raw: row.raw || row,
@@ -1037,7 +1063,7 @@ function mergeKnownDevices(latest: Array<Record<string, any>>, includeHistory = 
       }
       return;
     }
-    addAlias(current, label);
+    for (const alias of deviceAliasTokens(row, key, label)) addAlias(current, alias);
     addObservedIdentity(current, row);
     const currentTs = Date.parse(current.last_seen || "");
     const rowTs = Date.parse(collected || "");
