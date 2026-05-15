@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
-import { listAppFamilyRows, listClientInventory } from "@/lib/server/selectors/clients";
+import { listAppFamilyRows, listClientInventory, listSiteEvidenceRows } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
@@ -48,7 +48,7 @@ function destinationLabel(row: Record<string, any>) {
   return trafficDisplayDestination(row);
 }
 
-const dashboardNonDestinations = new Set(["client", "no site evidence", "encrypted ingress traffic", "n/a", "unknown destination", "traffic without site attribution"]);
+const dashboardNonDestinations = new Set(["client", "no site evidence", "encrypted ingress traffic", "n/a", "unknown destination", "traffic without site attribution", "other / uncategorized"]);
 
 function isDomainLike(value: unknown) {
   const text = String(value || "").trim();
@@ -81,6 +81,13 @@ function destinationSection(row: Record<string, any>) {
   const lane = laneForRow(row);
   if (lane === "service_system" || trafficClass === "service_background") return "service";
   return "client";
+}
+
+function isServiceEvidenceRow(row: Record<string, any>) {
+  return destinationSection(row) === "service"
+    || row.traffic_role === "service_system"
+    || row.app_category === "service_system"
+    || row.app_family === "Service / system";
 }
 
 function destinationDetailLabel(row: Record<string, any>) {
@@ -405,11 +412,10 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const observedFlowRows = [...(detailFlowRows.length ? detailFlowRows : model.flows)]
     .filter((row) => observedBytes(row) > 0)
     .sort((a, b) => observedBytes(b) - observedBytes(a));
-  const topDestinations = groupDashboardDestinations(observedFlowRows, 10);
-  const serviceTraffic = groupDashboardDestinations(
-    observedFlowRows.filter((row) => destinationSection(row) === "service"),
-    10
-  );
+  const siteEvidenceRows = listSiteEvidenceRows({ ...filters, trafficClass: "all" }, { limit: 5000, perClientLimit: 120, includeService: true })
+    .filter((row) => observedBytes(row) > 0);
+  const topDestinations = groupDashboardDestinations(siteEvidenceRows.filter((row) => !isServiceEvidenceRow(row)), 10);
+  const serviceTraffic = groupDashboardDestinations(siteEvidenceRows.filter(isServiceEvidenceRow), 10);
   const needsAttribution = groupAttributionRows(
     observedFlowRows.filter(isNeedsAttributionRow),
     10

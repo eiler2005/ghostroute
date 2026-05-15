@@ -6,6 +6,7 @@ export {
   listClientDnsEvidence,
   listClientDnsDomains,
   listClientSiteEvidence,
+  listSiteEvidenceRows,
   listClientDestinationsByLane,
   listClientLaneSummary,
   listAlarmEvents,

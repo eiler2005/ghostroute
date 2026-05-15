@@ -3044,6 +3044,42 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
   });
 }
 
+function siteEvidenceRowsForFilters(filters: ConsoleFilters = {}, options: { limit?: number; perClientLimit?: number; includeService?: boolean } = {}) {
+  const period = filters.period || "today";
+  const limit = Math.max(1, Number(options.limit || 5000));
+  const perClientLimit = Math.max(10, Number(options.perClientLimit || 80));
+  const includeService = Boolean(options.includeService);
+  const clients = clientInventoryRows({ ...filters, client: "all", trafficClass: "all" })
+    .filter((row) => observedByteValue(row) > 0)
+    .slice(0, 250);
+  const rows: Array<Record<string, any>> = [];
+  for (const client of clients) {
+    rows.push(...listClientSiteEvidence(client, period, { limit: perClientLimit, includeService }));
+    if (rows.length >= limit * 2) break;
+  }
+  const route = filters.route && filters.route !== "all" ? String(filters.route) : "";
+  const trafficClass = filters.trafficClass && filters.trafficClass !== "all" ? String(filters.trafficClass) : "";
+  const search = filters.search?.trim().toLowerCase() || "";
+  return rows
+    .filter((row) => !route || row.route === route || row.route === "Mixed")
+    .filter((row) => !trafficClass || row.traffic_class === trafficClass || row.trafficClass === trafficClass)
+    .filter((row) => {
+      if (!search) return true;
+      return [row.domain, row.url_label, row.label, row.destination, row.app_family, row.app_category, row.provider, row.category]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    })
+    .slice(0, limit);
+}
+
+export function listSiteEvidenceRows(filters: ConsoleFilters = {}, options: { limit?: number; perClientLimit?: number; includeService?: boolean } = {}) {
+  return cacheGet(`site-evidence-rows:${latestSnapshotVersion()}:${filtersKey(filters)}:${options.limit || 0}:${options.perClientLimit || 0}:${Boolean(options.includeService)}`, () => {
+    return siteEvidenceRowsForFilters(filters, options);
+  });
+}
+
 function mapAlarmReadModelRow(row: any) {
   return {
     id: row.id,
@@ -4242,24 +4278,61 @@ function moscowHourKey(value: string) {
 
 function rowIdentityTokens(row: Record<string, any>) {
   const raw = rawJson(row);
+  const evidence = evidenceJson(row);
   const resolved = resolveClient({ ...row, raw, profile: row.profile || raw.profile });
+  const aliases = [
+    ...safeJson(row.aliases_json, []),
+    ...safeJson(raw.aliases_json, []),
+    ...safeJson(evidence.aliases_json, []),
+    ...safeJson(evidence.aliases, []),
+  ];
   return [
     resolved.client_key,
     resolved.client_label,
+    resolved.device_key,
+    resolved.device_label,
     row.client_key,
     row.client_label,
+    row.client_ip,
+    row.ip,
+    row.hostname,
+    row.mac,
     keyForDevice({ ...row, raw }),
     row.device_id,
+    row.device_key,
+    row.device_label,
     row.id,
     row.label,
     row.client,
     row.profile,
+    raw.id,
+    raw.client_key,
+    raw.client_label,
+    raw.client_ip,
+    raw.device_key,
+    raw.device_label,
+    raw.ip,
+    raw.hostname,
+    raw.mac,
     raw.profile,
     raw.label,
     raw.client,
+    evidence.id,
+    evidence.client_key,
+    evidence.client_label,
+    evidence.client_ip,
+    evidence.device_key,
+    evidence.device_label,
+    evidence.ip,
+    evidence.hostname,
+    evidence.mac,
+    evidence.profile,
+    evidence.label,
+    evidence.client,
     ...(resolved.observed_aliases || []),
     ...(row.aliases || []),
     ...(row.observed_aliases || []),
+    ...aliases,
   ].filter(Boolean).map((value) => String(value).toLowerCase());
 }
 
@@ -4852,7 +4925,7 @@ export function listAppFamilyRows(args: PageArgs = {}) {
     const target = args.clientTarget || (filters.client && filters.client !== "all" ? { label: filters.client, client_key: filters.client } : null);
     const allRows = target
       ? groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, filters.period || "today", { limit: 500 }))
-      : groupAppFamilyRows(appFamilySourceRows(filters), []);
+      : groupAppFamilyRowsFromSiteEvidence(siteEvidenceRowsForFilters(filters, { limit: 5000, perClientLimit: 120 }));
     const total = allRows.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const effectivePage = Math.min(page, totalPages);
