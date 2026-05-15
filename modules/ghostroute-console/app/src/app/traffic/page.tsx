@@ -79,6 +79,7 @@ function flowDomain(row: Record<string, any>) {
   const usable = (value: unknown) => {
     const text = String(value || "").trim();
     if (!text) return "";
+    if (isIpLiteral(text)) return "";
     if (isPseudoTrafficLabel(text)) return "";
     return text;
   };
@@ -100,13 +101,13 @@ function flowDomain(row: Record<string, any>) {
 
 function presentationDestination(row: Record<string, any>, destination: ReturnType<typeof destinationEvidence>) {
   if (!isPseudoTrafficLabel(destination.label)) return destination;
+  if (String(row.destination || row.raw?.destination || "").toLowerCase().includes("ingress")) {
+    return { ...destination, label: "Encrypted ingress traffic", kind: "counter" };
+  }
   const domain = flowDomain(row);
   if (domain && !isPseudoTrafficLabel(domain)) {
     const kind = String(row.dns_status || row.dns_link_confidence || "").includes("generic") ? "DNS-linked" : destination.kind;
     return { ...destination, label: domain, kind };
-  }
-  if (String(row.destination || row.raw?.destination || "").toLowerCase().includes("ingress")) {
-    return { ...destination, label: "Encrypted ingress traffic", kind: "counter" };
   }
   return destination;
 }

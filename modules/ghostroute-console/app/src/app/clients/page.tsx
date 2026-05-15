@@ -116,6 +116,15 @@ function title(value?: string) {
   return String(value || "unknown").replace(/_/g, " ");
 }
 
+function reviewActionLabel(value?: string) {
+  const action = String(value || "manual_review");
+  if (action === "add_registry_alias") return "Add registry alias";
+  if (action === "keep_diagnostic") return "Keep diagnostic";
+  if (action === "collapse_service") return "Collapse service";
+  if (action === "hide_stale") return "Hide stale";
+  return title(action);
+}
+
 function summarizeLaneRows(rows: Array<Record<string, any>>) {
   const summary: Record<string, Record<string, any>> = {};
   for (const tab of laneTabs) {
@@ -182,6 +191,8 @@ function compactClientEvidence(row?: Record<string, any>) {
     route: row.route || routeFromBytes(row),
     confidence: row.confidence,
     traffic_window_active: row.traffic_window_active,
+    review_state: row.review_state,
+    suggested_action: row.suggested_action,
     observed_aliases: (row.observed_aliases || row.aliases || []).slice(0, 8),
   };
 }
@@ -346,6 +357,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     row.attribution_confidence === "operator-local" ||
     row.source === "registry";
   const isUnattributed = (row: Record<string, any>) => {
+    const reviewState = String(row.review_state || "");
+    if (reviewState === "registry_known") return false;
+    if (["active_unattributed", "raw_ip_source", "service_source", "low_signal", "stale_historical"].includes(reviewState)) return true;
     const backed = isRegistryBacked(row);
     if (!backed && row.client_attributed === false) return true;
     if (!backed && row.attribution_state === "needs_attribution") return true;
@@ -357,6 +371,16 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const inventoryRows = clientsPage.rows as Array<Record<string, any>>;
   const primaryRows = inventoryRows.filter((row) => !isUnattributed(row));
   const unattributedRows = inventoryRows.filter((row) => isUnattributed(row));
+  const reviewCounts = unattributedRows.reduce((acc: Record<string, number>, row) => {
+    const state = String(row.review_state || "manual_review");
+    acc[state] = (acc[state] || 0) + 1;
+    return acc;
+  }, {});
+  const actionCounts = unattributedRows.reduce((acc: Record<string, number>, row) => {
+    const action = String(row.suggested_action || "manual_review");
+    acc[action] = (acc[action] || 0) + 1;
+    return acc;
+  }, {});
   const activeRows = inventoryRows.filter((row) => Number(row.total_bytes || 0) > 0);
   const knownRows = primaryRows.filter((row: Record<string, any>) => row.client_attributed !== false && !String(row.role || row.label || "").toLowerCase().includes("unknown"));
   const selectedLookup = selectedClientParam
@@ -452,7 +476,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
       <div className="grid cards" style={{ marginBottom: 14 }}>
         <MetricCard label="Traffic-active" value={String(activeRows.length)} detail="clients with traffic in selected window" />
         <MetricCard label="Known/trusted" value={String(knownRows.length)} detail="operator-attributed or inferred" />
-        <MetricCard label="Needs attribution" value={String(unattributedRows.length)} detail="active traffic not in client repo" />
+        <MetricCard label="Needs attribution" value={String(unattributedRows.length)} detail="review queue: raw, stale, service, low-signal" />
         <MetricCard label="Inactive hidden" value={String((clientsPage as any).hiddenInactive || 0)} detail={showInactive ? "shown from client repo" : "registered clients without window traffic"} />
       </div>
       <div className="grid two clients-layout">
@@ -511,6 +535,18 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
               {unattributedRows.length > 0 ? (
                 <>
                   <h3 style={{ marginTop: 16 }}>Needs attribution / low-signal sources</h3>
+                  <div className="status-grid" style={{ marginBottom: 14 }}>
+                    <div className="status-card">
+                      <span className="subtle">Review states</span>
+                      <strong>{Object.entries(reviewCounts).map(([state, count]) => `${title(state)} ${count}`).join(" · ")}</strong>
+                      <p className="subtle">No automatic deletion. Stale rows can be hidden after review; active raw/mobile rows need registry aliases or a keep-diagnostic decision.</p>
+                    </div>
+                    <div className="status-card">
+                      <span className="subtle">Suggested actions</span>
+                      <strong>{Object.entries(actionCounts).map(([action, count]) => `${reviewActionLabel(action)} ${count}`).join(" · ")}</strong>
+                      <p className="subtle">Raw IP usually means a missing IP/MAC alias. Service sources are diagnostics. Low-signal rows should wait for more traffic evidence.</p>
+                    </div>
+                  </div>
                   <div className="clients-table-scroll">
                     <table className="table clients-table">
                       <thead>
@@ -518,7 +554,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                           <th className="col-client">Device</th>
                           <th>Channel</th>
                           <th className="col-traffic">Window traffic</th>
-                          <th>Role</th>
+                          <th>Review state</th>
+                          <th>Suggested action</th>
+                          <th>Reason</th>
                           <th>Last seen</th>
                           <th>Status</th>
                           <th className="col-route">Route</th>
@@ -530,7 +568,13 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                             <td><a className="row-link" href={clientHref(row)}>{row.label || "Unknown LAN device"}</a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><ChannelBadge value={row.channel} /></a></td>
                             <td><a className="row-link" href={clientHref(row)}>{bytes(row.total_bytes || 0)}</a></td>
-                            <td><a className="row-link" href={clientHref(row)}>{row.role || "Unknown device"}</a></td>
+                            <td>
+                              <a className="row-link" href={clientHref(row)}>
+                                {row.review_state ? title(row.review_state) : row.role || "Unknown device"}
+                              </a>
+                            </td>
+                            <td><a className="row-link" href={clientHref(row)}>{reviewActionLabel(row.suggested_action)}</a></td>
+                            <td><a className="row-link" href={clientHref(row)}><small className="subtle block-detail">{row.review_reason || row.role || "manual review"}</small></a></td>
                             <td><a className="row-link" href={clientHref(row)}>{timeWithMillis(row.display_ts_utc || row.last_seen || row.event_ts_utc || row.collected_at, true)}</a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><StatusBadge value={row.status || "Inactive"} /></a></td>
                             <td><a className="row-link row-link-with-badges" href={clientHref(row)}><RouteBadge value={routeFromBytes(row)} /></a></td>
@@ -580,6 +624,10 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-row"><span>Traffic observed</span><strong>{selected.traffic_collected_at ? timeWithMillis(selected.traffic_collected_at, true) : "not in window"}</strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
                 <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
+                <div className="detail-row"><span>Review state</span><strong>{selected.review_state ? title(selected.review_state) : "registry known"}</strong></div>
+                {selected.review_reason ? (
+                  <div className="detail-row"><span>Review reason</span><strong>{selected.review_reason}</strong></div>
+                ) : null}
               </div>
               <SplitBars
                 vps={selected.via_vps_bytes || 0}

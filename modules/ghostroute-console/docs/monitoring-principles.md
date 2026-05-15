@@ -74,6 +74,10 @@ available from this contract.
 - DNS Query Log may show factual DNS rows that do not yet resolve to a private
   registry client. Those rows are attribution diagnostics; they are excluded
   from DNS top-client grouping until a registry alias exists.
+- Apps and Clients use the same selected-client DNS evidence selector over the
+  prepared DNS pyramid, falling back to raw DNS rows only when the prepared DNS
+  layer is absent. DNS query counts are evidence for labels and recent domains;
+  they never allocate bytes to app families.
 - Client popular-site panels prefer byte-attributed destination rows, but must
   keep any remaining selected-client counter bytes visible as residual
   `Unattributed traffic not mapped to sites` instead of ranking the residual as
@@ -216,6 +220,11 @@ The Clients page shows a role next to each source. Known labels can become
 `Home Reality profile`, Channel B/C profile or `Unattributed mobile ingress
 source`. The Console does not invent real device names; it only uses labels,
 profiles and safe inference from observed metadata.
+
+Device Inventory rows also carry a review state: `registry_known`,
+`active_unattributed`, `raw_ip_source`, `stale_historical`, `service_source` or
+`low_signal`. Primary inventory favors registry/current-window devices; noisy
+states are shown under Needs attribution or exported to the local review queue.
 
 Operators may add a private `device-attribution.json` file in the Console data
 directory to pin the canonical client registry: stable names, roles, primary
