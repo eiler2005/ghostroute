@@ -48,7 +48,7 @@ function destinationLabel(row: Record<string, any>) {
   return trafficDisplayDestination(row);
 }
 
-const dashboardNonDestinations = new Set(["client", "no site evidence", "encrypted ingress traffic", "n/a", "unknown", "unknown destination", "traffic without site attribution", "other / uncategorized"]);
+const dashboardNonDestinations = new Set(["client", "no site evidence", "encrypted ingress traffic", "n/a", "unknown", "unknown ip", "unknown ip only", "ip only", "ip-only destination", "unknown destination", "traffic without site attribution", "other / uncategorized"]);
 
 function isDomainLike(value: unknown) {
   const text = String(value || "").trim();

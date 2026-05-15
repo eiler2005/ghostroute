@@ -2862,8 +2862,9 @@ function isIpOnlyDestinationValue(value: unknown) {
 function coarseSiteLabel(row: Record<string, any>) {
   const provider = String(row.provider || "").trim();
   const category = String(row.category || row.dns_category || "").trim();
-  if (provider && !["unknown", "unknown_provider", "ip-only"].includes(provider.toLowerCase())) return provider;
-  if (category && !["unknown", "unknown_domain", "unclassified"].includes(category.toLowerCase())) return category.replace(/[_.-]+/g, " ");
+  const unusable = new Set(["unknown", "unknown_provider", "unknown_domain", "unclassified", "ip-only", "ip only", "unknown ip", "unknown ip only"]);
+  if (provider && !unusable.has(provider.toLowerCase())) return provider;
+  if (category && !unusable.has(category.toLowerCase().replace(/[_.-]+/g, " "))) return category.replace(/[_.-]+/g, " ");
   return "";
 }
 
