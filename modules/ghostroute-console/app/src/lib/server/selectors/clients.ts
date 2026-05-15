@@ -1,6 +1,9 @@
 export {
   buildClientsModel,
+  listAppFamilyRows,
+  listClientAppFamilies,
   listClientDomainBreakdown,
+  listClientDnsDomains,
   listClientDestinationsByLane,
   listClientLaneSummary,
   listAlarmEvents,

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
-import { listClientInventory } from "@/lib/server/selectors/clients";
+import { listAppFamilyRows, listClientInventory } from "@/lib/server/selectors/clients";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
@@ -302,6 +302,37 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
   );
 }
 
+function RankedApps({ rows }: { rows: Array<Record<string, any>> }) {
+  const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
+  return (
+    <section className="card dashboard-rank-card">
+      <div className="dashboard-card-head">
+        <h2>Top app families</h2>
+        <Link className="dashboard-card-link" href="/apps">Open Apps</Link>
+      </div>
+      {rows.length === 0 ? <EmptyState title="No app-family traffic observed" /> : (
+        <div className="dashboard-rank-list">
+          {rows.map((row) => (
+            <div className="dashboard-rank-row destination-row" key={row.app_family}>
+              <span className="rank-index">{row.rank}</span>
+              <div className="rank-title">
+                <strong>{row.app_family}</strong>
+                <small>{(row.sample_domains || []).slice(0, 3).join(", ") || row.app_category || "not observed"}</small>
+              </div>
+              <RouteBadge value={row.route} />
+              <div className="rank-meter">
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{pct(observedBytes(row), max)}%</span>
+                <small>{row.dns_queries || 0} DNS queries · {row.app_confidence || "estimated"}</small>
+                <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function UsageChart({ points, note }: { points: Array<Record<string, any>>; note?: string }) {
   const max = maxSeries(points, ["vpsBytes", "lteBytes", "vpsForecastBytes"]);
   const labels = points.filter((_, idx) => idx === 0 || idx === Math.floor(points.length / 2) || idx === points.length - 1);
@@ -358,6 +389,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
     sharePct: share(observedBytes(row), inventoryTopTotal),
     status: Number(row.total_bytes || 0) > 0 ? "OK" : "Inactive",
   }));
+  const topApps = listAppFamilyRows({
+    page: 1,
+    pageSize: 5,
+    filters: { ...filters, trafficClass: "all", client: "all" },
+  }).rows;
   const detailFlowRows = listFlowSessions({
     page: 1,
     pageSize: 500,
@@ -396,8 +432,8 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         <div className="dashboard-rank-grid">
           <RankedClients rows={inventoryTopClients} />
           <RankedDestinations rows={topDestinations} />
+          <RankedApps rows={topApps} />
         </div>
-        <UsageChart points={analytics.usage?.points || []} note={analytics.usage?.note} />
       </div>
 
       <div className="grid cards">
