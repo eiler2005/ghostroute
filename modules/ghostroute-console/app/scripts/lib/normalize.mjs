@@ -510,7 +510,21 @@ function syncTrafficIntelligence(db, snapshotId, collectedAt, fact) {
 
 function isConcreteDestination(value) {
   const normalized = lower(value);
-  return Boolean(normalized && normalized !== "unknown destination" && normalized !== "unknown" && normalized !== "n/a");
+  const pseudo = new Set([
+    "unknown destination",
+    "unknown",
+    "n/a",
+    "client",
+    "no site evidence",
+    "other / uncategorized",
+    "ip-only destination",
+    "ip only",
+    "unknown ip",
+    "unknown ip only",
+    "home reality ingress",
+    "encrypted ingress traffic",
+  ]);
+  return Boolean(normalized && !pseudo.has(normalized));
 }
 
 function registryHasClient(registry, key) {
