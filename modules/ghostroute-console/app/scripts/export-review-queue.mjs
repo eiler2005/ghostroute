@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { bucketStartUtc, mskWindowBounds } from "../src/lib/time/window.mjs";
+import { loadDeviceAttributions, resolveClient } from "../src/lib/device-attribution.mjs";
+import { deviceReviewState } from "../src/lib/traffic-classification.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const moduleDir = path.resolve(appDir, "..");
@@ -224,6 +226,125 @@ function routeDefectRows(db, segments, limit) {
   return { rows, totalBytes, unknownBytes };
 }
 
+function registryIdentity(row, registry) {
+  const resolved = resolveClient({
+    client_key: row.client_key || row.device_key,
+    client_label: row.client_label || row.label,
+    device_key: row.device_key || row.client_key,
+    label: row.client_label || row.label,
+    ip: row.ip || row.client_ip,
+    client_ip: row.client_ip || row.ip,
+    profile: row.profile,
+  }, registry);
+  const entry = resolved.client_key ? registry.clients[resolved.client_key] : null;
+  return { resolved, registered: Boolean(entry) };
+}
+
+function deviceReviewRow(row, registry, currentWindowActive) {
+  const { resolved, registered } = registryIdentity(row, registry);
+  const label = resolved.client_label || resolved.device_label || row.client_label || row.label || row.client_key || row.device_key || "Unknown device";
+  const total = currentWindowActive ? number(row.bytes || row.total_bytes) : 0;
+  const base = {
+    ...row,
+    id: row.client_key || row.device_key || label,
+    label,
+    client_key: resolved.client_key || row.client_key || row.device_key || "",
+    client_label: label,
+    device_key: resolved.device_key || row.device_key || row.client_key || "",
+    device_label: resolved.device_label || row.device_label || label,
+    role: registered ? (resolved.role || row.role || "") : (row.role || "Needs attribution"),
+    device_type: resolved.device_type || row.device_type || "",
+    owner: resolved.owner || row.owner || "",
+    total_bytes: total,
+    bytes: total,
+    inventory_total_bytes: currentWindowActive ? 0 : number(row.inventory_total_bytes || row.total_bytes),
+    traffic_window_active: currentWindowActive && total > 0,
+    registry_registered: registered,
+    client_attributed: registered,
+  };
+  const review = deviceReviewState(base);
+  return {
+    client_key: base.client_key || base.id,
+    label: base.label,
+    channel: base.channel || "Unknown",
+    traffic_class: base.traffic_class || "client",
+    traffic_lane: base.traffic_lane || "unknown_review",
+    route: base.route || "Unknown",
+    bytes: total,
+    inventory_total_bytes: base.inventory_total_bytes || 0,
+    flows: number(base.flows),
+    destinations_count: number(base.destinations_count),
+    last_seen_utc: base.last_seen_utc || base.last_seen || "",
+    review_state: review.review_state,
+    review_reason: review.review_reason,
+    suggested_action: review.suggested_action,
+    current_window_active: review.current_window_active,
+  };
+}
+
+function deviceReviewRows(db, segments, limit, registry) {
+  const grouped = new Map();
+  for (const segment of segments) {
+    const rows = db.prepare(`
+      select client_key,
+             max(client_label) as client_label,
+             max(channel) as channel,
+             max(route) as route,
+             max(confidence) as confidence,
+             max(traffic_class) as traffic_class,
+             max(traffic_lane) as traffic_lane,
+             max(dns_category) as dns_category,
+             sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             sum(destinations_count) as destinations_count,
+             max(last_seen_utc) as last_seen_utc
+        from client_traffic_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         and traffic_lane = 'all'
+       group by client_key
+    `).all(segment.granularity, segment.start, segment.end);
+    for (const row of rows) {
+      const current = grouped.get(row.client_key) || { ...row, bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, destinations_count: 0, last_seen_utc: "" };
+      current.bytes += number(row.bytes);
+      current.via_vps_bytes += number(row.via_vps_bytes);
+      current.direct_bytes += number(row.direct_bytes);
+      current.unknown_bytes += number(row.unknown_bytes);
+      current.flows += number(row.flows);
+      current.destinations_count += number(row.destinations_count);
+      if (String(row.last_seen_utc || "") > String(current.last_seen_utc || "")) current.last_seen_utc = row.last_seen_utc;
+      grouped.set(row.client_key, current);
+    }
+  }
+  const currentKeys = new Set(grouped.keys());
+  try {
+    const staleRows = db.prepare(`
+      select device_key, label, ip, hostname, profile, device_type, channel, route, confidence,
+             last_seen, total_bytes as inventory_total_bytes, via_vps_bytes, direct_bytes, unknown_bytes
+        from device_inventory
+       where coalesce(device_key, '') != ''
+       order by last_seen desc
+       limit 500
+    `).all();
+    for (const row of staleRows) {
+      const key = row.device_key || row.label;
+      if (!key || currentKeys.has(key) || grouped.has(key)) continue;
+      grouped.set(key, { ...row, client_key: key, client_label: row.label || key, bytes: 0, total_bytes: 0, flows: 0, destinations_count: 0 });
+    }
+  } catch {
+    // Older local DBs may not have populated device inventory; active lane rows are enough for a queue.
+  }
+  return Array.from(grouped.values())
+    .map((row) => deviceReviewRow(row, registry, number(row.bytes || row.total_bytes) > 0))
+    .filter((row) => row.review_state !== "registry_known")
+    .sort((a, b) => number(b.bytes) - number(a.bytes) || String(a.review_state).localeCompare(String(b.review_state)))
+    .slice(0, limit);
+}
+
 function formatMb(bytes) {
   return `${(number(bytes) / 1024 / 1024).toFixed(1)} MB`;
 }
@@ -239,6 +360,7 @@ function markdown(report) {
     "",
     `Content review: ${formatMb(report.summary.content_review_bytes)} / ${formatMb(report.summary.content_total_bytes)} (${report.summary.content_review_percent}%)`,
     `Route evidence unknown: ${formatMb(report.summary.route_unknown_bytes)} / ${formatMb(report.summary.route_total_bytes)} (${report.summary.route_unknown_percent}%)`,
+    `Device review rows: ${report.summary.device_review_rows}`,
     "",
     "## Unknown Or Weak Content Classification",
     "",
@@ -252,6 +374,10 @@ function markdown(report) {
   for (const row of report.route_evidence_review) {
     lines.push(`| ${row.destination_key} | ${row.traffic_lane}/${row.dns_category} | ${row.route_evidence} | ${row.route} -> ${row.intended_route} | ${formatMb(row.unknown_bytes)} | ${row.clients} |`);
   }
+  lines.push("", "## Device Inventory Review Queue", "", "| Device | State | Suggested action | Current traffic | Reason |", "| --- | --- | --- | ---: | --- |");
+  for (const row of report.device_review) {
+    lines.push(`| ${row.label} | ${row.review_state} | ${row.suggested_action} | ${formatMb(row.bytes)} | ${row.review_reason} |`);
+  }
   lines.push("");
   return `${lines.join("\n")}\n`;
 }
@@ -262,8 +388,10 @@ try {
   db.pragma("busy_timeout = 10000");
   const now = new Date();
   const segments = aggregateSegments(args.window, now);
+  const registry = loadDeviceAttributions(dataDir);
   const destination = destinationReviewRows(db, segments, args.limit);
   const route = routeDefectRows(db, segments, args.limit);
+  const device = deviceReviewRows(db, segments, args.limit, registry);
   const report = {
     schema_version: 1,
     generated_at_utc: now.toISOString(),
@@ -276,9 +404,11 @@ try {
       route_total_bytes: route.totalBytes,
       route_unknown_bytes: route.unknownBytes,
       route_unknown_percent: route.totalBytes > 0 ? Number(((route.unknownBytes * 100) / route.totalBytes).toFixed(2)) : 0,
+      device_review_rows: device.length,
     },
     destination_review: destination.rows,
     route_evidence_review: route.rows,
+    device_review: device,
   };
   fs.mkdirSync(args.outDir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, "-");
@@ -296,6 +426,7 @@ try {
     window: args.window,
     destination_review_rows: report.destination_review.length,
     route_evidence_rows: report.route_evidence_review.length,
+    device_review_rows: report.device_review.length,
     content_review_percent: report.summary.content_review_percent,
     route_unknown_percent: report.summary.route_unknown_percent,
     json: jsonFile,

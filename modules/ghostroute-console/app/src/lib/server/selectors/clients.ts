@@ -3,6 +3,7 @@ export {
   listAppFamilyRows,
   listClientAppFamilies,
   listClientDomainBreakdown,
+  listClientDnsEvidence,
   listClientDnsDomains,
   listClientDestinationsByLane,
   listClientLaneSummary,

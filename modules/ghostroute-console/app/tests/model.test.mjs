@@ -20,7 +20,7 @@ const {
   resolvedTrafficDestination,
 } = normalizeModule;
 const classificationModule = await import(new URL("../src/lib/traffic-classification.mjs", import.meta.url));
-const { deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
+const { deviceReviewState, deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
 const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
@@ -1687,6 +1687,16 @@ test("app-family catalog classifies client apps without turning DNS counts into 
   assert.equal(classifyAppFamily("scontent.cdninstagram.com").app_family, "Instagram / Meta");
   assert.equal(classifyAppFamily("cdn.openai.com").app_family, "OpenAI / ChatGPT");
   assert.equal(isClientFacingAppFamily(classifyAppFamily("app-measurement.com")), false);
+  assert.deepEqual(
+    {
+      family: classifyAppFamily({ destination: "203.0.113.10", category: "ip_asn.social_platform.facebook", provider: "Meta Platforms" }).app_family,
+      source: classifyAppFamily({ destination: "203.0.113.10", category: "ip_asn.social_platform.facebook", provider: "Meta Platforms" }).app_source,
+    },
+    { family: "Instagram / Meta", source: "provider_hint" }
+  );
+  assert.equal(classifyAppFamily({ destination: "203.0.113.11", provider: "Cloudflare", category: "ip_asn.cdn_cloud_hosting" }).app_family, "Provider / CDN");
+  assert.equal(classifyAppFamily({ dns_qname: "youtubei.googleapis.com", provider: "Cloudflare", category: "ip_asn.cdn_cloud_hosting" }).app_family, "YouTube");
+  assert.equal(classifyAppFamily({ destination: "203.0.113.12" }).app_source, "ip_only");
   const selected = { id: "lan-host-13", label: "lan-host-13 (MacBook Denis 23)", total_bytes: 3_000_000_000 };
   const byteRows = groupPopularSites([
     { destination: "Cloudflare network", traffic_lane: "shared_infra", traffic_class: "client", route: "Mixed", bytes: 20_000_000, flows: 4 },
@@ -1921,6 +1931,14 @@ test("device role inference keeps pseudo sources out of normal device meaning", 
   assert.equal(deviceRole({ label: "lan-host-12 (Windows laptop)" }), "Windows laptop");
   assert.equal(deviceRole({ label: "lan-host-09 (Windows PC)" }), "Windows PC");
   assert.equal(deviceRole({ label: "lan-host-07 (Unknown mobile/private MAC)" }), "Private MAC mobile device");
+});
+
+test("device review state keeps noisy sources out of primary inventory", () => {
+  assert.equal(deviceReviewState({ label: "192.0.2.10", total_bytes: 5_000_000, traffic_window_active: true }).review_state, "raw_ip_source");
+  assert.equal(deviceReviewState({ label: "lan-host-99", total_bytes: 32_000, traffic_window_active: true }).review_state, "low_signal");
+  assert.equal(deviceReviewState({ label: "dns resolver", total_bytes: 5_000_000, traffic_window_active: true, traffic_lane: "service_system" }).review_state, "service_source");
+  assert.equal(deviceReviewState({ label: "old private mac", total_bytes: 0, traffic_window_active: false }).review_state, "stale_historical");
+  assert.equal(deviceReviewState({ label: "lan-host-01", registry_registered: true }).review_state, "registry_known");
 });
 
 test("operator-local device attribution labels known devices and marks unknown sources", () => {

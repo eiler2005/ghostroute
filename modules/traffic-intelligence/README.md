@@ -44,6 +44,13 @@ rule is required for stronger purpose labels. External OSINT/API adapters, if
 added, must be disabled by default, rate-limited and cached, and must send only
 IP/prefix values rather than client labels or traffic evidence.
 
+App-family attribution follows the same evidence priority. Exact DNS, SNI or
+domain matches win first. If the byte row is IP/provider-only, local
+`destination_enrichment` or `ip_enrichment_cache` provider/category hints may
+assign a coarse family such as Apple/iCloud, Meta, Google, CDN/provider or
+service/system. DNS-only rows remain query-count evidence; they never create or
+receive byte allocations.
+
 The supported offline bootstrap is iptoasn's `ip2asn-v4-u32.tsv.gz` snapshot.
 Console imports it into `ip_prefix_catalog` and refreshes observed IPv4
 destinations into `ip_enrichment_cache`; IPv6 and external provider adapters are
@@ -59,7 +66,8 @@ npm run export:review-queue -- --window today --limit 100
 
 The gitignored JSON/Markdown output under
 `modules/ghostroute-console/data/review/` contains destination addresses,
-current categories, byte weights, sample clients and route evidence defects.
+current categories, byte weights, sample clients, route evidence defects and
+device review states.
 Use it as the LLM/offline-analysis input, then promote only stable findings into
 deterministic local rules. The GUI should display and filter this queue, not ask
 the operator to classify large traffic volumes one button at a time.

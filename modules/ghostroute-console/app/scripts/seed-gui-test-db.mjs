@@ -258,6 +258,8 @@ function seed(db) {
     { key: "test-office-tablet", label: "Test/Office Tablet", ip: "10.10.0.21", channel: "B/Office Direct", type: "iPad" },
     { key: "test-mobile-lte", label: "Test/Mobile LTE", ip: "10.10.0.31", channel: "C/Mobile LTE", type: "iPhone" },
     { key: "test-home-console", label: "Test/Home Console", ip: "10.10.0.41", channel: "A/Home Reality", type: "Windows PC" },
+    { key: "test-iphone-heavy", label: "Test/iPhone Heavy", ip: "10.10.0.51", channel: "Home Wi-Fi/LAN", type: "iPhone" },
+    { key: "test-macbook-heavy", label: "Test/MacBook Heavy", ip: "10.10.0.61", channel: "Home Wi-Fi/LAN", type: "MacBook" },
   ];
   fs.writeFileSync(
     path.join(dataDir, "device-attribution.json"),
@@ -294,6 +296,38 @@ function seed(db) {
     "assets.test.invalid",
     "auth.test.invalid",
   ];
+  const ipEnrichmentStmt = db.prepare(`insert into ip_enrichment_cache(
+    ip,prefix_cidr,asn,asn_org,provider,category_hint,traffic_lane_hint,dns_category_hint,decision_hint,
+    country,registry,source,confidence,lookup_status,raw_json,first_seen_utc,last_seen_utc,updated_at_utc,expires_at_utc
+  ) values (@ip,@prefix_cidr,@asn,@asn_org,@provider,@category_hint,@traffic_lane_hint,@dns_category_hint,@decision_hint,@country,@registry,@source,@confidence,@lookup_status,@raw_json,@first_seen_utc,@last_seen_utc,@updated_at_utc,@expires_at_utc)`);
+  for (const row of [
+    ["203.0.113.70", "Apple Services", "ip_asn.apple_infra", "shared_infra", "apple_infra"],
+    ["203.0.113.71", "Cloudflare", "ip_asn.cdn_cloud_hosting.cloudflare", "shared_infra", "cdn_shared"],
+    ["203.0.113.72", "Meta Platforms", "ip_asn.social_platform.facebook", "client_observed", "social_platform"],
+    ["203.0.113.73", "Example Hosting", "unknown.ip_only", "unknown_review", "unknown_ip_only"],
+  ]) {
+    ipEnrichmentStmt.run({
+      ip: row[0],
+      prefix_cidr: `${row[0]}/32`,
+      asn: "AS64500",
+      asn_org: row[1],
+      provider: row[1],
+      category_hint: row[2],
+      traffic_lane_hint: row[3],
+      dns_category_hint: row[4],
+      decision_hint: "monitor",
+      country: "ZZ",
+      registry: "test",
+      source: "test-seed",
+      confidence: "synthetic",
+      lookup_status: "hit",
+      raw_json: JSON.stringify({ synthetic: true }),
+      first_seen_utc: iso(now, 120000),
+      last_seen_utc: iso(now, 1000),
+      updated_at_utc: iso(now),
+      expires_at_utc: "",
+    });
+  }
   const trafficSnapshotId = insertSnapshot(db, now, "traffic_facts", 0, {
     schema_version: 3,
     source: { command: "traffic-facts", period: "today" },
@@ -400,6 +434,67 @@ function seed(db) {
       }),
     });
   }
+  const heavyFlows = [
+    ["test-iphone-heavy", "203.0.113.70", "VPS", 1_200_000_000, 1_100_000_000, 60_000_000],
+    ["test-iphone-heavy", "203.0.113.71", "Mixed", 760_000_000, 360_000_000, 280_000_000],
+    ["test-iphone-heavy", "203.0.113.73", "Direct", 280_000_000, 0, 220_000_000],
+    ["test-macbook-heavy", "203.0.113.72", "VPS", 950_000_000, 900_000_000, 0],
+    ["test-macbook-heavy", "203.0.113.71", "Mixed", 640_000_000, 310_000_000, 250_000_000],
+  ];
+  for (const [clientKey, destinationIp, route, bytes, viaVpsBytes, directBytes] of heavyFlows) {
+    const client = clients.find((entry) => entry.key === clientKey);
+    const idx = heavyFlows.findIndex((entry) => entry[0] === clientKey && entry[1] === destinationIp);
+    const unknownBytes = bytes - viaVpsBytes - directBytes;
+    const flow = {
+      id: `test-seed:defect-flow:${String(idx + 1).padStart(2, "0")}`,
+      snapshot_id: trafficSnapshotId,
+      collected_at: iso(now, 45000 + idx * 3000),
+      first_seen: iso(now, 47000 + idx * 3000),
+      last_seen: iso(now, 45000 + idx * 3000),
+      client: client.label,
+      client_ip: client.ip,
+      device_key: client.key,
+      channel: client.channel,
+      destination: destinationIp,
+      destination_ip: destinationIp,
+      destination_port: "443",
+      protocol: "TCP",
+      route,
+      policy: route === "VPS" ? "STEALTH_DOMAINS" : route === "Direct" ? "DEFAULT_DIRECT" : "MIXED_ROUTE",
+      matched_rule: "",
+      outbound: route === "VPS" ? "reality-out" : route === "Direct" ? "direct" : "mixed",
+      dns_qname: "",
+      dns_answer_ip: "",
+      sni: "",
+      egress_ip: route === "VPS" ? "198.51.100.200" : "",
+      egress_asn: route === "VPS" ? "AS64500" : "",
+      egress_country: route === "VPS" ? "Testland" : "",
+      ts_confidence: "estimated",
+      bytes,
+      connections: 24 + idx,
+      duration_seconds: 360,
+      duration_confidence: "estimated",
+      risk: "low",
+      risk_reason: "",
+      confidence: "estimated",
+      source_kind: "local-test-seed",
+      evidence_json: JSON.stringify({ synthetic: true, ip_provider_case: true }),
+    };
+    flowStmt.run(flow);
+    normalizedFlowStmt.run({
+      ...flow,
+      snapshot_type: "traffic_facts",
+      rule_set: flow.policy,
+      source_log: "local-test-seed",
+      traffic_class: "client",
+      via_vps_bytes: viaVpsBytes,
+      direct_bytes: directBytes,
+      unknown_bytes: unknownBytes,
+      route_verification: route === "Mixed" ? "counter_allocated" : route === "VPS" ? "verified_vps" : "verified_direct",
+      route_status: route === "Mixed" ? "counter_allocated" : "verified",
+      raw_json: JSON.stringify({ synthetic: true, ip_provider_case: true }),
+    });
+  }
 
   const dnsStmt = db.prepare(`insert into dns_query_log(
     id, snapshot_id, collected_at, event_ts, client, client_ip, device_key, domain, qtype,
@@ -427,6 +522,37 @@ function seed(db) {
       risk: catalogStatus === "candidate" ? "medium" : "low",
       confidence: i % 4 === 0 ? "dns-interest" : "exact",
       evidence_json: JSON.stringify({ synthetic: true }),
+    });
+  }
+  const heavyDnsRows = [
+    ["test-iphone-heavy", "gs-loc.apple.com", 5],
+    ["test-iphone-heavy", "gs-loc.ls-apple.com.akadns.net", 4],
+    ["test-iphone-heavy", "youtubei.googleapis.com", 3],
+    ["test-macbook-heavy", "graph.instagram.com", 6],
+    ["test-macbook-heavy", "chatgpt.com", 5],
+    ["test-macbook-heavy", "cloudflare.com", 2],
+  ];
+  for (const [clientKey, domain, count] of heavyDnsRows) {
+    const client = clients.find((entry) => entry.key === clientKey);
+    const idx = heavyDnsRows.findIndex((entry) => entry[0] === clientKey && entry[1] === domain);
+    dnsStmt.run({
+      id: `test-seed:defect-dns:${String(idx + 1).padStart(2, "0")}`,
+      snapshot_id: dnsSnapshotId,
+      collected_at: iso(now, 500),
+      event_ts: iso(now, 2000 + idx * 100),
+      client: client.label,
+      client_ip: client.ip,
+      device_key: client.key,
+      domain,
+      qtype: "A",
+      answer_ip: `203.0.113.${70 + (idx % 4)}`,
+      route: "VPS",
+      catalog_status: "managed",
+      status: "OK",
+      count,
+      risk: "low",
+      confidence: "exact",
+      evidence_json: JSON.stringify({ synthetic: true, ip_provider_case: true }),
     });
   }
 
@@ -641,8 +767,8 @@ function seed(db) {
   const stateStmt = db.prepare(
     "insert into read_model_state(model, source_version, rebuilt_at, row_count, duration_ms, status, detail) values (?, ?, ?, ?, ?, ?, ?)"
   );
-  stateStmt.run("flow_sessions", "test-seed", iso(now), 320, 1, "ok", "local synthetic rows");
-  stateStmt.run("dns_query_log", "test-seed", iso(now), 260, 1, "ok", "local synthetic rows");
+  stateStmt.run("flow_sessions", "test-seed", iso(now), 325, 1, "ok", "local synthetic rows");
+  stateStmt.run("dns_query_log", "test-seed", iso(now), 266, 1, "ok", "local synthetic rows");
   stateStmt.run("device_inventory", "test-seed", iso(now), 12, 1, "ok", "local synthetic rows");
   stateStmt.run("alarm_events", "test-seed", iso(now), 4, 1, "ok", "local synthetic rows");
   stateStmt.run("console_page_summaries", "test-seed", iso(now), 3, 1, "ok", "local synthetic rows");
@@ -659,4 +785,4 @@ rebuildPreparedWindows(db);
 db.close();
 
 console.log(`seeded GUI test DB: ${dbFile}`);
-console.log("rows: flow_sessions=320 dns_query_log=260 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3 prepared_windows=today/week/month");
+console.log("rows: flow_sessions=325 dns_query_log=266 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3 prepared_windows=today/week/month");

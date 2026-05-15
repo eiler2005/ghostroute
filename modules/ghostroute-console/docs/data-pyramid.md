@@ -96,6 +96,9 @@ The files land in gitignored `modules/ghostroute-console/data/review/` as JSON
 and Markdown. They are the handoff point for offline/LLM analysis; the GUI
 should primarily display/filter the queue, while durable decisions become local
 deterministic rules and are rechecked by rebuilding aggregates.
+The same export includes a Device Inventory review queue. Raw-IP sources,
+service/system sources, stale historical observations and low-signal active
+rows are review states, not automatic delete decisions.
 
 ## Window Planning
 
@@ -155,6 +158,12 @@ DNS top-client grouping or client inventory rows.
 The Clients page may show Latest DNS domains for the selected device, but those
 rows are query counts only. They must not be used to allocate byte residuals in
 the popular-sites traffic ranking.
+
+Apps uses the same selected-client DNS evidence selector as Clients. App-family
+rows remain byte-ranked from `client_destination_by_lane`; DNS/SNI/domain
+evidence may name a family, provider/category hints may provide a coarse family
+for IP/provider-only byte rows, and DNS-only domains stay in Latest DNS without
+creating byte rows or absorbing residual bytes.
 
 Unresolved loopback, router-local and private source addresses are not displayed
 as normal clients. Registry-backed DNS sources use the canonical device label;

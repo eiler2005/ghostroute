@@ -11,6 +11,13 @@ const mobileRedirects: Record<string, string> = {
   "/catalog": "/m/catalog",
 };
 
+function parseByteText(value: string) {
+  const match = value.replace(/,/g, "").match(/([0-9]+(?:\.[0-9]+)?)\s*(B|KB|MB|GB|TB)/i);
+  if (!match) return 0;
+  const units: Record<string, number> = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 };
+  return Number(match[1]) * (units[match[2].toUpperCase()] || 1);
+}
+
 for (const path of pages) {
   test(`renders ${path}`, async ({ page, isMobile }) => {
     await page.goto(path);
@@ -57,11 +64,10 @@ test("dashboard shows traffic analytics in English", async ({ page, isMobile }) 
   await expect(page.getByRole("heading", { name: "Traffic today" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Top clients" }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Top destinations" }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "VPS traffic this month" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "LTE reserve (mobile internet)" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Traffic usage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "VPS traffic this month" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "LTE reserve (mobile internet)" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Traffic usage" })).toHaveCount(0);
   await expect(page.locator(".chart-legend .legend-vps").first()).toContainText("Via VPS");
-  await expect(page.locator(".chart-legend .legend-forecast").first()).toContainText("VPS forecast");
   await expect(page.locator("body")).not.toContainText("Трафик");
 });
 
@@ -81,6 +87,34 @@ test("dashboard rankings hide pseudo clients and keep destinations populated", a
   await expect(topDestinations).not.toContainText(/No destination traffic observed|No concrete/i);
   await expect(topDestinations).not.toContainText(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
   await expect(topDestinations).not.toContainText("Home Reality ingress");
+});
+
+test("apps selected device keeps byte traffic separate from DNS evidence", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/apps?client=test-iphone-heavy&desktop=1" : "/apps?client=test-iphone-heavy");
+  const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families for Test/iPhone Heavy" }) });
+  await expect(selectedApps).toBeVisible();
+  await expect(selectedApps).toContainText(/\bGB\b/);
+  await expect(selectedApps).not.toContainText("86.3 KB");
+  await expect(page.getByRole("heading", { name: "Latest DNS domains for Test/iPhone Heavy" })).toBeVisible();
+  await expect(page.getByText("gs-loc.apple.com")).toBeVisible();
+});
+
+test("apps selected-device byte totals stay aligned for all visible app devices", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/apps?desktop=1" : "/apps");
+  const deviceRows = page.locator("section").first().locator("tbody tr");
+  const count = Math.min(await deviceRows.count(), 8);
+  expect(count).toBeGreaterThan(0);
+
+  for (let index = 0; index < count; index += 1) {
+    const row = deviceRows.nth(index);
+    const href = await row.locator("a[href^='/apps?']").first().getAttribute("href");
+    const deviceBytes = parseByteText(await row.locator("td").nth(2).innerText());
+    if (!href || deviceBytes < 1024 * 1024) continue;
+    await page.goto(isMobile ? `${href}&desktop=1` : href);
+    const summary = await page.locator("section").nth(1).locator(".toolbar .subtle").last().innerText();
+    const appBytes = parseByteText(summary);
+    expect(appBytes, `${href} app bytes should cover selected device bytes`).toBeGreaterThanOrEqual(deviceBytes * 0.95);
+  }
 });
 
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {

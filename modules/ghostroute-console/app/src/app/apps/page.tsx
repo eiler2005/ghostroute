@@ -1,7 +1,7 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
 import { listAppFamilyRows } from "@/lib/server/selectors/apps";
-import { listClientDnsDomains, listClientInventory } from "@/lib/server/selectors/clients";
+import { listClientDnsEvidence, listClientInventory } from "@/lib/server/selectors/clients";
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { dnsInterestTrafficClass, filterDnsInterestRows } from "@/lib/traffic-window.mjs";
@@ -17,6 +17,10 @@ function compactBytes(value: number) {
 
 function normalizeToken(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function labelToken(value: unknown) {
+  return String(value || "").replace(/[_-]+/g, " ").trim();
 }
 
 function clientTokens(client?: Record<string, any>) {
@@ -43,6 +47,13 @@ function selectedClientValue(client?: Record<string, any>) {
 function matchesClientFilter(client: Record<string, any>, value?: string) {
   const target = normalizeToken(value);
   return Boolean(target) && clientTokens(client).some((token) => normalizeToken(token) === target);
+}
+
+function isPrimaryAppDevice(row: Record<string, any>) {
+  const state = String(row.review_state || "");
+  if (state && state !== "registry_known") return false;
+  if (row.client_attributed === false || row.attribution_state === "needs_attribution") return false;
+  return true;
 }
 
 function appHref(row: Record<string, any>, params: Record<string, string | undefined>) {
@@ -72,17 +83,19 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
   const inventory = listClientInventory({ page: 1, pageSize: 25, filters: { ...filters, client: "all" }, showInactive: false });
+  const appDeviceRows = inventory.rows.filter(isPrimaryAppDevice);
   const selectedLookup = selectedClientParam
     ? listClientInventory({ page: 1, pageSize: 1, filters: { ...filters, client: selectedClientParam }, showInactive: true }).rows[0]
     : undefined;
   const selected =
     selectedLookup ||
-    inventory.rows.find((row: Record<string, any>) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
+    appDeviceRows.find((row: Record<string, any>) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
+    appDeviceRows[0] ||
     inventory.rows[0];
   const selectedClientId = selectedClientValue(selected);
   const appFilters = { ...filters, client: selectedClientId || "all" };
-  const apps = listAppFamilyRows({ page, pageSize, filters: appFilters });
-  const dnsAll = selected ? listClientDnsDomains(selected, filters.period || "today", { limit: 200 }) : [];
+  const apps = listAppFamilyRows({ page, pageSize, filters: appFilters, clientTarget: selected });
+  const dnsAll = selected ? listClientDnsEvidence(selected, filters.period || "today", { limit: 200 }) : [];
   const dnsFiltered = filterDnsInterestRows(dnsAll, { includeService: includeServiceDns });
   const dnsRows = (dnsFiltered.length > 0 || includeServiceDns ? dnsFiltered : dnsAll).slice(0, 25);
   const model = buildShellModel(filters, { devices: inventory.rows });
@@ -122,7 +135,7 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
               </tr>
             </thead>
             <tbody>
-              {inventory.rows.map((row: Record<string, any>) => {
+              {appDeviceRows.map((row: Record<string, any>) => {
                 const isSelected = selectedClientId ? selectedClientValue(row) === selectedClientId || matchesClientFilter(row, selectedClientId) : false;
                 return (
                   <tr key={row.id || row.label} className={`clickable-row ${isSelected ? "selected" : ""}`}>
@@ -183,13 +196,19 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
                     </td>
                     <td>{compactBytes(row.bytes || row.total_bytes || 0)}</td>
                     <td><RouteBadge value={row.route} /></td>
-                    <td>{row.dns_queries || 0} queries</td>
+                    <td>
+                      {row.dns_queries || 0} queries
+                      <small className="subtle block-detail">{row.app_source ? labelToken(row.app_source) : "byte evidence"}</small>
+                    </td>
                     <td>
                       <strong>{ndpi.protocol || ndpi.expected || "n/a"}</strong>
                       <small className="subtle block-detail">{ndpi.status} · {ndpi.detail}</small>
                     </td>
                     <td>{(row.sample_domains || []).join(", ") || "not observed"}</td>
-                    <td>{row.confidence || row.app_confidence || "estimated"}</td>
+                    <td>
+                      {row.confidence || row.app_confidence || "estimated"}
+                      <small className="subtle block-detail">{[row.app_confidence, row.matched_pattern].filter(Boolean).map(labelToken).join(" · ") || "byte-ranked"}</small>
+                    </td>
                   </tr>
                 );
               })}
