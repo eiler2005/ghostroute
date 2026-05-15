@@ -2644,7 +2644,7 @@ function normalizeAppEvidenceSource(app: Record<string, any>, row: Record<string
   };
 }
 
-function withAppFamily(row: Record<string, any>) {
+function withAppFamily(row: Record<string, any>): Record<string, any> {
   const domain = String(row.domain || row.dns_qname || row.destination || row.destination_key || row.destination_label || "").trim();
   const app = normalizeAppEvidenceSource(classifyAppFamily({
     ...row,
@@ -2813,6 +2813,235 @@ export function listClientDnsEvidence(client: Record<string, any> | string, peri
 
 export function listClientDnsDomains(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
   return listClientDnsEvidence(client, period, options);
+}
+
+function normalizedSiteKey(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function siteEvidenceBytes(row: Record<string, any>) {
+  return Number(row.effective_bytes || row.bytes || row.total_bytes || 0);
+}
+
+function isIpOnlyDestinationValue(value: unknown) {
+  const text = String(value || "").trim().toLowerCase();
+  return !text
+    || text === "ip-only destination"
+    || text.includes("ip-only destination")
+    || text.includes("ip only")
+    || /^(\d{1,3}\.){3}\d{1,3}$/.test(text)
+    || /^[0-9a-f:.]+$/i.test(text);
+}
+
+function coarseSiteLabel(row: Record<string, any>) {
+  const provider = String(row.provider || "").trim();
+  const category = String(row.category || row.dns_category || "").trim();
+  if (provider && !["unknown", "unknown_provider", "ip-only"].includes(provider.toLowerCase())) return provider;
+  if (category && !["unknown", "unknown_domain", "unclassified"].includes(category.toLowerCase())) return category.replace(/[_.-]+/g, " ");
+  return "";
+}
+
+function byteSiteLabel(row: Record<string, any>) {
+  for (const value of [row.domain, row.dns_qname, row.sni, row.destination_key, row.destination_label, row.destination]) {
+    if (isDomainLikeValue(value)) return String(value).trim().toLowerCase();
+  }
+  if (!isIpOnlyDestinationValue(row.destination_key) && !isIpOnlyDestinationValue(row.destination_label || row.destination)) {
+    const label = String(row.destination_label || row.destination_key || row.destination || "").trim();
+    if (label && !isPseudoDestinationValue(label)) return label;
+  }
+  return coarseSiteLabel(row);
+}
+
+function clientFacingDnsEvidenceRows(rows: Array<Record<string, any>>, includeService = false) {
+  return rows.filter((row) => {
+    const domain = String(row.domain || row.dns_qname || "").trim();
+    if (!domain || !isDomainLikeValue(domain)) return false;
+    if (includeService) return true;
+    const trafficClass = row.traffic_class || trafficClassFor({
+      ...row,
+      domain,
+      dns_qname: domain,
+      destination: domain,
+      confidence: row.confidence || "dns-interest",
+    });
+    return trafficClass !== "service_background";
+  });
+}
+
+function makeSiteEvidenceRow(base: Record<string, any>) {
+  const domain = String(base.domain || base.dns_qname || "").trim().toLowerCase();
+  const label = String(base.url_label || domain || base.label || base.destinationLabel || base.destination || "Other / uncategorized").trim();
+  const app = withAppFamily({
+    ...base,
+    domain,
+    dns_qname: domain || base.dns_qname,
+    destination: domain || label,
+    category: base.category || base.dns_category,
+    provider: base.provider,
+  });
+  const effective = Number(base.effective_bytes || base.bytes || base.total_bytes || 0);
+  const factual = Number(base.factual_bytes || 0);
+  const inferred = Number(base.inferred_bytes || 0);
+  return {
+    ...base,
+    ...app,
+    domain,
+    url_label: label,
+    label,
+    destination: label,
+    destinationLabel: label,
+    effective_bytes: effective,
+    bytes: effective,
+    total_bytes: effective,
+    factual_bytes: factual,
+    inferred_bytes: inferred,
+    dns_queries: Number(base.dns_queries || base.count || 0),
+    latest: base.latest || base.last_seen_utc || base.collected_at || "",
+    attribution_source: base.attribution_source || (factual > 0 ? "byte_exact" : inferred > 0 ? "dns_inferred" : "aggregate_residual"),
+    byte_confidence: base.byte_confidence || (factual > 0 && inferred <= 0 ? "factual" : inferred > 0 ? "estimated" : "residual"),
+  };
+}
+
+function mergeSiteEvidenceRows(rows: Array<Record<string, any>>, limit = 200) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    const label = String(row.domain || row.url_label || row.label || row.destination || "").trim();
+    if (!label) continue;
+    const key = normalizedSiteKey(label);
+    const current = grouped.get(key) || {
+      ...row,
+      effective_bytes: 0,
+      bytes: 0,
+      total_bytes: 0,
+      factual_bytes: 0,
+      inferred_bytes: 0,
+      dns_queries: 0,
+      flows: 0,
+      routes: new Set<string>(),
+      attributionSources: new Set<string>(),
+      confidences: new Set<string>(),
+    };
+    const effective = siteEvidenceBytes(row);
+    current.effective_bytes += effective;
+    current.bytes += effective;
+    current.total_bytes += effective;
+    current.factual_bytes += Number(row.factual_bytes || 0);
+    current.inferred_bytes += Number(row.inferred_bytes || 0);
+    current.dns_queries += Number(row.dns_queries || row.count || 0);
+    current.flows += Number(row.flows || row.connections || 0);
+    if (row.route) current.routes.add(String(row.route));
+    if (row.attribution_source) current.attributionSources.add(String(row.attribution_source));
+    if (row.byte_confidence || row.confidence) current.confidences.add(String(row.byte_confidence || row.confidence));
+    if (String(row.latest || row.last_seen_utc || row.collected_at || "") > String(current.latest || "")) current.latest = row.latest || row.last_seen_utc || row.collected_at || "";
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.effective_bytes || 0) - Number(a.effective_bytes || 0) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0) || Date.parse(b.latest || "") - Date.parse(a.latest || ""))
+    .slice(0, Math.max(1, Number(limit || 200)))
+    .map((row, idx) => {
+      const routes = Array.from(row.routes || []);
+      const attributionSources = Array.from(row.attributionSources || []);
+      const confidences = Array.from(row.confidences || []);
+      return {
+        ...row,
+        rank: idx + 1,
+        route: routes.length === 1 ? routes[0] : routes.length > 1 ? "Mixed" : row.route || "Unknown",
+        attribution_source: attributionSources.includes("byte_exact") ? "byte_exact" : attributionSources[0] || row.attribution_source || "dns_inferred",
+        byte_confidence: confidences.includes("factual") ? "factual" : confidences.includes("estimated") ? "estimated" : confidences[0] || row.byte_confidence || "estimated",
+        routes: undefined,
+        attributionSources: undefined,
+        confidences: undefined,
+      };
+    });
+}
+
+function distributeResidualBytes(residualBytes: number, dnsRows: Array<Record<string, any>>, target: Record<string, any>) {
+  const totalQueries = dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0);
+  if (residualBytes <= 0 || totalQueries <= 0) return [];
+  let allocated = 0;
+  return dnsRows.map((row, index) => {
+    const count = Number(row.count || row.dns_queries || 0);
+    const inferred = index === dnsRows.length - 1
+      ? Math.max(0, residualBytes - allocated)
+      : Math.round(residualBytes * (count / totalQueries));
+    allocated += inferred;
+    return makeSiteEvidenceRow({
+      ...row,
+      url_label: row.domain,
+      effective_bytes: inferred,
+      factual_bytes: 0,
+      inferred_bytes: inferred,
+      dns_queries: count,
+      flows: count,
+      route: row.route || target.route || "Unknown",
+      attribution_source: "dns_inferred",
+      byte_confidence: "estimated",
+      confidence: row.confidence || "dns-inferred",
+    });
+  }).filter((row) => Number(row.effective_bytes || 0) > 0);
+}
+
+export function listClientSiteEvidence(client: Record<string, any> | string, period = "today", options: { limit?: number; includeService?: boolean } = {}) {
+  const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
+  const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_destination_by_lane"), ...laneClientKeyCandidates(target)]);
+  const limit = Math.max(1, Number(options.limit || 200));
+  const includeService = Boolean(options.includeService);
+  return cacheGet(`client-site-evidence:${latestSnapshotVersion()}:${period}:${keys.join("|")}:${limit}:${includeService}`, () => {
+    const byteRows = clientDestinationLaneRows(keys, period, "all");
+    const dnsRows = clientFacingDnsEvidenceRows(listClientDnsEvidence(target, period, { limit: Math.max(limit * 4, 200) }), includeService);
+    const byDomainDns = new Map(dnsRows.map((row) => [normalizedSiteKey(row.domain), row]));
+    const byteEvidenceRows = byteRows
+      .map((row) => {
+        const label = byteSiteLabel(row);
+        if (!label) return null;
+        const source = isDomainLikeValue(label)
+          ? "byte_exact"
+          : row.provider ? "provider_hint" : row.category || row.dns_category ? "category_hint" : "";
+        if (!source) return null;
+        const dns = byDomainDns.get(normalizedSiteKey(label));
+        return makeSiteEvidenceRow({
+          ...row,
+          domain: isDomainLikeValue(label) ? label : "",
+          url_label: label,
+          effective_bytes: Number(row.bytes || row.total_bytes || 0),
+          factual_bytes: Number(row.bytes || row.total_bytes || 0),
+          inferred_bytes: 0,
+          dns_queries: Number(dns?.count || 0),
+          latest: row.last_seen_utc || dns?.latest || "",
+          attribution_source: source,
+          byte_confidence: source === "byte_exact" ? "factual" : "estimated",
+        });
+      })
+      .filter(Boolean) as Array<Record<string, any>>;
+    const exactRows = byteEvidenceRows.filter((row) => row.attribution_source === "byte_exact");
+    const coarseRows = byteEvidenceRows.filter((row) => row.attribution_source !== "byte_exact");
+    const exactFactualBytes = exactRows
+      .filter((row) => row.attribution_source === "byte_exact")
+      .reduce((sum, row) => sum + Number(row.factual_bytes || 0), 0);
+    const targetBytes = observedByteValue(target);
+    const residualBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes));
+    const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
+    const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
+    const inferredRows = distributeResidualBytes(residualBytes, residualDnsRows.length ? residualDnsRows : dnsRows, target);
+    const coarseEffectiveRows = inferredRows.length > 0 ? [] : coarseRows;
+    const coarseEffectiveBytes = coarseEffectiveRows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || 0), 0);
+    const fallbackBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes - coarseEffectiveBytes));
+    const residualFallback = fallbackBytes > 0 && inferredRows.length === 0
+      ? [makeSiteEvidenceRow({
+        url_label: "Other / uncategorized",
+        effective_bytes: fallbackBytes,
+        factual_bytes: 0,
+        inferred_bytes: fallbackBytes,
+        dns_queries: 0,
+        route: target.route || "Unknown",
+        attribution_source: "aggregate_residual",
+        byte_confidence: "residual",
+        confidence: "estimated",
+      })]
+      : [];
+    const evidence = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit);
+    return evidence;
+  });
 }
 
 function mapAlarmReadModelRow(row: any) {
@@ -4480,14 +4709,75 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
     .map((row, idx) => ({ ...row, rank: idx + 1 }));
 }
 
+function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of siteRows) {
+    const bytes = siteEvidenceBytes(row);
+    if (bytes <= 0) continue;
+    const app = withAppFamily(row);
+    const key = app.app_family || row.app_family || "Other / uncategorized";
+    const current = grouped.get(key) || {
+      ...app,
+      app_family: key,
+      app_category: app.app_category || row.category || "uncategorized",
+      bytes: 0,
+      total_bytes: 0,
+      effective_bytes: 0,
+      factual_bytes: 0,
+      inferred_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      flows: 0,
+      dns_queries: 0,
+      clients: new Set<string>(),
+      routes: new Set<string>(),
+      sample_domains: new Set<string>(),
+      attributionSources: new Set<string>(),
+      confidence: "estimated",
+      app_source: row.attribution_source || app.app_source || "dns_inferred",
+      app_confidence: row.byte_confidence || app.app_confidence || "estimated",
+      matched_pattern: row.matched_pattern || row.attribution_source || "",
+      provider: row.provider || "",
+      category: row.category || row.dns_category || "",
+    };
+    current.bytes += bytes;
+    current.total_bytes += bytes;
+    current.effective_bytes += bytes;
+    current.factual_bytes += Number(row.factual_bytes || 0);
+    current.inferred_bytes += Number(row.inferred_bytes || 0);
+    current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+    current.direct_bytes += Number(row.direct_bytes || 0);
+    current.unknown_bytes += Number(row.unknown_bytes || Math.max(0, bytes - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0)));
+    current.flows += Number(row.flows || row.connections || 0);
+    current.dns_queries += Number(row.dns_queries || row.count || 0);
+    if (row.client_key || row.client_label || row.client) current.clients.add(String(row.client_key || row.client_label || row.client));
+    if (row.route) current.routes.add(String(row.route));
+    if (row.domain || row.url_label || row.label) current.sample_domains.add(String(row.domain || row.url_label || row.label));
+    if (row.attribution_source) current.attributionSources.add(String(row.attribution_source));
+    if (!current.provider && row.provider) current.provider = row.provider;
+    if (!current.category && (row.category || row.dns_category)) current.category = row.category || row.dns_category;
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.effective_bytes || b.bytes || 0) - Number(a.effective_bytes || a.bytes || 0) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
+    .map((row, idx) => ({
+      ...row,
+      rank: idx + 1,
+      client_count: row.clients?.size || 0,
+      route: row.routes?.size === 1 ? Array.from(row.routes)[0] : row.routes?.size > 1 ? "Mixed" : "Unknown",
+      sample_domains: Array.from(row.sample_domains || []).slice(0, 6),
+      app_source: Array.from(row.attributionSources || [])[0] || row.app_source,
+      app_confidence: Number(row.factual_bytes || 0) > 0 && Number(row.inferred_bytes || 0) <= 0 ? "factual" : row.app_confidence,
+    }));
+}
+
 export function listClientAppFamilies(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_destination_by_lane"), ...laneClientKeyCandidates(target)]);
   const limit = Math.max(1, Number(options.limit || 10));
   return cacheGet(`client-app-families:${latestSnapshotVersion()}:${period}:${keys.join("|")}:${limit}`, () => {
-    const rows = clientDestinationLaneRows(keys, period, "all");
-    const dnsRows = listClientDnsDomains(target, period, { limit: 200 });
-    return reconcileAppFamilyRowsToClientTotal(groupAppFamilyRows(rows, dnsRows), target).slice(0, limit);
+    return groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, period, { limit: Math.max(limit * 4, 50) })).slice(0, limit);
   });
 }
 
@@ -4560,8 +4850,9 @@ export function listAppFamilyRows(args: PageArgs = {}) {
   const filters = args.filters || {};
   return cacheGet(`app-family-rows:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => {
     const target = args.clientTarget || (filters.client && filters.client !== "all" ? { label: filters.client, client_key: filters.client } : null);
-    const dnsRows = target ? listClientDnsDomains(target, filters.period || "today", { limit: 500 }) : [];
-    const allRows = reconcileAppFamilyRowsToClientTotal(groupAppFamilyRows(appFamilySourceRows(filters, args.clientTarget), dnsRows), target);
+    const allRows = target
+      ? groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, filters.period || "today", { limit: 500 }))
+      : groupAppFamilyRows(appFamilySourceRows(filters), []);
     const total = allRows.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const effectivePage = Math.min(page, totalPages);

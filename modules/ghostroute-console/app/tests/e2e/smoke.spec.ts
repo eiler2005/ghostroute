@@ -95,8 +95,9 @@ test("apps selected device keeps byte traffic separate from DNS evidence", async
   await expect(selectedApps).toBeVisible();
   await expect(selectedApps).toContainText(/\bGB\b/);
   await expect(selectedApps).not.toContainText("86.3 KB");
-  await expect(page.getByRole("heading", { name: "Latest DNS domains for Test/iPhone Heavy" })).toBeVisible();
-  await expect(page.getByText("gs-loc.apple.com")).toBeVisible();
+  const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains for Test/iPhone Heavy" }) });
+  await expect(latestDns).toBeVisible();
+  await expect(latestDns.getByText("gs-loc.apple.com")).toBeVisible();
 });
 
 test("apps selected-device byte totals stay aligned for all visible app devices", async ({ page, isMobile }) => {
@@ -115,6 +116,20 @@ test("apps selected-device byte totals stay aligned for all visible app devices"
     const appBytes = parseByteText(summary);
     expect(appBytes, `${href} app bytes should cover selected device bytes`).toBeGreaterThanOrEqual(deviceBytes * 0.95);
   }
+});
+
+test("client popular sites expose ranked inferred domains instead of IP-only residual", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only selected client site panel");
+  await page.goto(isMobile ? "/clients?client=test-iphone-heavy&desktop=1" : "/clients?client=test-iphone-heavy");
+  const popular = page.locator("section").filter({ has: page.getByRole("heading", { name: "Most popular sites for Test/iPhone Heavy" }) });
+  await expect(popular).toBeVisible();
+  const rows = popular.locator(".popular-site-row");
+  await expect(rows.nth(9)).toBeVisible();
+  await expect(popular).not.toContainText("IP-only destination");
+  await expect(popular).not.toContainText("Unattributed traffic not mapped to sites");
+  const labels = await rows.locator("strong").evaluateAll((nodes) => nodes.map((node) => node.textContent || ""));
+  const domainLabels = labels.filter((value) => /\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(value));
+  expect(domainLabels.length).toBeGreaterThanOrEqual(10);
 });
 
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {

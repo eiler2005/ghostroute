@@ -1,10 +1,10 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
 import { listAppFamilyRows } from "@/lib/server/selectors/apps";
-import { listClientDnsEvidence, listClientInventory } from "@/lib/server/selectors/clients";
+import { listClientInventory, listClientSiteEvidence } from "@/lib/server/selectors/clients";
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
-import { dnsInterestTrafficClass, filterDnsInterestRows } from "@/lib/traffic-window.mjs";
+import { dnsInterestTrafficClass } from "@/lib/traffic-window.mjs";
 import { ndpiDiagnosticForApp } from "@/lib/ndpi-diagnostics.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -95,9 +95,12 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
   const selectedClientId = selectedClientValue(selected);
   const appFilters = { ...filters, client: selectedClientId || "all" };
   const apps = listAppFamilyRows({ page, pageSize, filters: appFilters, clientTarget: selected });
-  const dnsAll = selected ? listClientDnsEvidence(selected, filters.period || "today", { limit: 200 }) : [];
-  const dnsFiltered = filterDnsInterestRows(dnsAll, { includeService: includeServiceDns });
-  const dnsRows = (dnsFiltered.length > 0 || includeServiceDns ? dnsFiltered : dnsAll).slice(0, 25);
+  const dnsRows = selected
+    ? listClientSiteEvidence(selected, filters.period || "today", { limit: 300, includeService: includeServiceDns })
+      .filter((row: Record<string, any>) => Number(row.dns_queries || row.count || 0) > 0 && row.domain)
+      .sort((a: Record<string, any>, b: Record<string, any>) => Date.parse(String(b.latest || "")) - Date.parse(String(a.latest || "")) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
+      .slice(0, 25)
+    : [];
   const model = buildShellModel(filters, { devices: inventory.rows });
   const totalBytes = apps.rows.reduce((sum: number, row: Record<string, any>) => sum + Number(row.bytes || row.total_bytes || 0), 0);
   const extraParams = {
@@ -245,7 +248,7 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
                   <strong>{index + 1}. {row.domain}</strong>
                   <small className="subtle block-detail">{dnsInterestTrafficClass(row) === "service_background" ? "service/system DNS evidence" : "client-facing DNS evidence"}</small>
                 </span>
-                <strong>{row.count || 0} queries</strong>
+                <strong>{row.dns_queries || row.count || 0} queries</strong>
               </div>
             ))}
           </div>

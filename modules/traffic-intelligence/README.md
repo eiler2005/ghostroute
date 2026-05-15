@@ -48,8 +48,12 @@ App-family attribution follows the same evidence priority. Exact DNS, SNI or
 domain matches win first. If the byte row is IP/provider-only, local
 `destination_enrichment` or `ip_enrichment_cache` provider/category hints may
 assign a coarse family such as Apple/iCloud, Meta, Google, CDN/provider or
-service/system. DNS-only rows remain query-count evidence; they never create or
-receive byte allocations.
+service/system. When selected-client destination bytes are only available as an
+aggregate residual, Console may distribute that residual across client-facing
+DNS evidence by query count. Those rows are explicitly marked as inferred
+(`attribution_source=dns_inferred`, `byte_confidence=estimated`) and are kept
+separate from factual byte rows; if no DNS evidence exists, the residual remains
+`Other / uncategorized`.
 
 The supported offline bootstrap is iptoasn's `ip2asn-v4-u32.tsv.gz` snapshot.
 Console imports it into `ip_prefix_catalog` and refreshes observed IPv4

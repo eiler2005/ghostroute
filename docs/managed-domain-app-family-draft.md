@@ -19,8 +19,10 @@ The intent is to keep routing policy separate from traffic explanation:
 - `confidence`: how safe the attribution is from the domain alone.
 
 The draft covers 243 managed domains from the active catalog. Runtime app-family
-classification must not allocate residual bytes from DNS query counts; byte
-traffic and DNS popularity remain separate signals in the Console UI.
+classification keeps factual byte rows separate from DNS popularity. Console may
+also build an explicitly inferred attribution layer for selected-client
+aggregate residual bytes, but those rows must carry estimated/inferred metadata
+and must not be presented as exact per-domain byte accounting.
 
 ## Families
 
