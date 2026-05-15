@@ -3007,6 +3007,30 @@ function distributeResidualBytes(residualBytes: number, dnsRows: Array<Record<st
   }).filter((row) => Number(row.effective_bytes || 0) > 0);
 }
 
+function scaleCoarseRowsToResidual(rows: Array<Record<string, any>>, targetBytes: number) {
+  const total = rows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || row.bytes || 0), 0);
+  if (targetBytes <= 0 || total <= 0) return rows;
+  let allocated = 0;
+  return rows.map((row, index) => {
+    const base = Number(row.factual_bytes || row.effective_bytes || row.bytes || 0);
+    const effective = index === rows.length - 1
+      ? Math.max(0, Math.round(targetBytes - allocated))
+      : Math.round(targetBytes * (base / total));
+    allocated += effective;
+    return makeSiteEvidenceRow({
+      ...row,
+      effective_bytes: effective,
+      bytes: effective,
+      total_bytes: effective,
+      factual_bytes: base,
+      inferred_bytes: Math.max(0, effective - base),
+      attribution_source: row.attribution_source || (row.provider ? "provider_hint" : "category_hint"),
+      byte_confidence: "estimated",
+      confidence: row.confidence || "estimated",
+    });
+  }).filter((row) => Number(row.effective_bytes || 0) > 0);
+}
+
 export function listClientSiteEvidence(client: Record<string, any> | string, period = "today", options: { limit?: number; includeService?: boolean } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_destination_by_lane"), ...laneClientKeyCandidates(target)]);
@@ -3049,7 +3073,9 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
     const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
     const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
     const inferredRows = distributeResidualBytes(residualBytes, residualDnsRows.length ? residualDnsRows : dnsRows, target);
-    const coarseEffectiveRows = inferredRows.length > 0 ? [] : coarseRows;
+    const coarseEffectiveRows = inferredRows.length > 0
+      ? []
+      : scaleCoarseRowsToResidual(coarseRows, Math.max(0, targetBytes - exactFactualBytes));
     const coarseEffectiveBytes = coarseEffectiveRows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || 0), 0);
     const fallbackBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes - coarseEffectiveBytes));
     const residualFallback = fallbackBytes > 0 && inferredRows.length === 0
