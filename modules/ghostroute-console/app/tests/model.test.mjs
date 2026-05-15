@@ -1384,6 +1384,36 @@ test("prepared traffic windows use operator clients and preserve destination top
   }
 });
 
+test("prepared dashboard top destinations exclude client counter pseudo labels", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-prepared-destinations-"));
+  fs.writeFileSync(path.join(tmp, "device-attribution.json"), JSON.stringify({
+    schema_version: 2,
+    clients: {
+      phone: { label: "phone", aliases: { lan_wifi: ["lan-host-08"] } },
+    },
+  }));
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    const insert = db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (1, 'traffic', ?, 'lan-host-08', 'Home Wi-Fi/LAN', ?, 'Direct', 'estimated', ?, 1, 'TCP', '', 'client', 0, ?, 0, ?)
+    `);
+    insert.run("2026-05-07T08:00:00Z", "Client", 10_000, 10_000, JSON.stringify({ client: "lan-host-08", destination_evidence: "counter" }));
+    insert.run("2026-05-07T08:01:00Z", "media.example.invalid", 1_000, 1_000, JSON.stringify({ client: "lan-host-08" }));
+    rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
+    const payload = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
+    assert.deepEqual(payload.dashboardAnalytics.topDestinations.map((row) => row.label), ["media.example.invalid"]);
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+});
+
 test("prepared traffic windows exclude legacy report-derived facts from current GUI totals", () => {
   const db = new Database(":memory:");
   try {
