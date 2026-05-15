@@ -1745,6 +1745,13 @@ test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily("m.vk.com").app_family, "VK / Mail.ru");
   assert.equal(classifyAppFamily("mc.yandex.ru").app_family, "Yandex");
   assert.equal(classifyAppFamily("rutube.ru").app_family, "Media / streaming");
+  assert.equal(classifyAppFamily("gs-loc.apple.com").app_family, "Apple / iCloud");
+  assert.equal(classifyAppFamily("gs-loc.ls-apple.com.akadns.net").app_family, "Apple / iCloud");
+  assert.equal(classifyAppFamily("ftrr01.finam.ru").app_family, "Finance / banking");
+  assert.equal(classifyAppFamily("discovery-lookup.syncthing.net").app_family, "Personal cloud / sync");
+  assert.equal(classifyAppFamily("www.clarity.ms").app_family, "Service / system");
+  assert.equal(isClientFacingAppFamily(classifyAppFamily("cnam4c.skadsdkless.appsflyersdk.com")), false);
+  assert.equal(isClientFacingAppFamily(classifyAppFamily("firebaselogging-pa.googleapis.com")), false);
   assert.equal(isClientFacingAppFamily(classifyAppFamily("app-measurement.com")), false);
   assert.deepEqual(
     {
