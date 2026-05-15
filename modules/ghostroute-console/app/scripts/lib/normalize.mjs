@@ -2640,6 +2640,37 @@ function reconcileTrafficTodaySeries(points, key, targetBytes, fallbackHour) {
   if (drift !== 0 && points[bestIndex]) points[bestIndex][key] += drift;
 }
 
+function spreadBytesAcrossHours(points, key, targetBytes, throughHour) {
+  const target = number(targetBytes);
+  if (target <= 0) return;
+  const end = Math.max(0, Math.min(points.length - 1, Number.parseInt(String(throughHour || "00:00").slice(0, 2), 10) || 0));
+  const buckets = points.slice(0, end + 1);
+  if (buckets.length === 0) return;
+  const base = Math.floor(target / buckets.length);
+  let applied = 0;
+  for (let index = 0; index < buckets.length; index += 1) {
+    const value = index === buckets.length - 1 ? target - applied : base;
+    buckets[index][key] += value;
+    applied += value;
+  }
+}
+
+function addTrafficTodayDelta(points, delta, hour) {
+  const bucket = points.find((point) => point.hour === hour);
+  if (!bucket) return;
+  bucket.totalBytes += delta.totalBytes;
+  bucket.viaVpsBytes += delta.viaVpsBytes;
+  bucket.directBytes += delta.directBytes;
+  bucket.unknownBytes += delta.unknownBytes;
+}
+
+function spreadInitialTrafficTodaySnapshot(points, current, hour) {
+  spreadBytesAcrossHours(points, "totalBytes", current.totalBytes, hour);
+  spreadBytesAcrossHours(points, "viaVpsBytes", current.viaVpsBytes, hour);
+  spreadBytesAcrossHours(points, "directBytes", current.directBytes, hour);
+  spreadBytesAcrossHours(points, "unknownBytes", current.unknownBytes, hour);
+}
+
 function trafficTodayFromSummarySnapshots(db, now) {
   const today = toMskKey(now, "day");
   const rows = db
@@ -2651,6 +2682,7 @@ function trafficTodayFromSummarySnapshots(db, now) {
   let previous = { totalBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 };
   let observed = false;
   let fallbackHour = "00:00";
+  let hasPreviousSnapshot = false;
   for (const row of rows) {
     const totals = parseJson(row.payload_json, {})?.totals || {};
     const current = {
@@ -2666,15 +2698,14 @@ function trafficTodayFromSummarySnapshots(db, now) {
       unknownBytes: Math.max(0, current.unknownBytes - previous.unknownBytes),
     };
     fallbackHour = `${toMskKey(row.collected_at, "hour").slice(-2)}:00`;
-    const bucket = points.find((point) => point.hour === fallbackHour);
-    if (bucket) {
-      bucket.totalBytes += delta.totalBytes;
-      bucket.viaVpsBytes += delta.viaVpsBytes;
-      bucket.directBytes += delta.directBytes;
-      bucket.unknownBytes += delta.unknownBytes;
+    if (!hasPreviousSnapshot && current.totalBytes > 0) {
+      spreadInitialTrafficTodaySnapshot(points, current, fallbackHour);
+    } else {
+      addTrafficTodayDelta(points, delta, fallbackHour);
     }
     if (delta.totalBytes > 0 || delta.viaVpsBytes > 0 || delta.directBytes > 0 || delta.unknownBytes > 0) observed = true;
     previous = current;
+    hasPreviousSnapshot = true;
   }
   reconcileTrafficTodaySeries(points, "totalBytes", previous.totalBytes, fallbackHour);
   reconcileTrafficTodaySeries(points, "viaVpsBytes", previous.viaVpsBytes, fallbackHour);

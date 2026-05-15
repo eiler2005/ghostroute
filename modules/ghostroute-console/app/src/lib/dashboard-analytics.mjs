@@ -90,6 +90,13 @@ export function routeByteSplit(row) {
   if (splitSum > totalBytes && unknownBytes > 0) {
     const overflow = Math.min(unknownBytes, splitSum - totalBytes);
     unknownBytes -= overflow;
+    splitSum = viaVpsBytes + directBytes + unknownBytes;
+  }
+  if (totalBytes > 0 && splitSum > totalBytes) {
+    const scale = totalBytes / splitSum;
+    viaVpsBytes = Math.round(viaVpsBytes * scale);
+    directBytes = Math.round(directBytes * scale);
+    unknownBytes = Math.max(0, totalBytes - viaVpsBytes - directBytes);
   }
 
   return {

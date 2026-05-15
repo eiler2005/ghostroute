@@ -25,6 +25,8 @@ const attributionModule = await import(new URL("../src/lib/device-attribution.mj
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
 const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
 const { composePopularSiteRows, counterFallbackRows, groupPopularSites, siteBytes } = popularSitesModule;
+const attributionEligibilityModule = await import(new URL("../src/lib/attribution-eligibility.mjs", import.meta.url));
+const { attributionEligibility, isAttributableSiteRow } = attributionEligibilityModule;
 const trafficWindowModule = await import(new URL("../src/lib/traffic-window.mjs", import.meta.url));
 const {
   concreteTrafficDestination,
@@ -1542,7 +1544,8 @@ test("prepared dashboard all traffic totals prefer authoritative router summary"
     assert.equal(allDashboard.totals.directBytes, 500_000);
     assert.equal(clientDashboard.totals.observedBytes, 100_000);
     assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 800_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "00:00").totalBytes, 200_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 200_000);
     assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "04:00").totalBytes, 1_200_000);
   } finally {
     db.close();
@@ -1618,6 +1621,8 @@ test("client popular sites include residual counter traffic when site attributio
     {
       destination: "Cloudflare network",
       destination_label: "Cloudflare network",
+      provider: "Cloudflare",
+      category: "ip_asn.cdn_cloud_hosting",
       traffic_lane: "shared_infra",
       traffic_class: "client",
       route: "Mixed",
@@ -1627,6 +1632,8 @@ test("client popular sites include residual counter traffic when site attributio
     {
       destination: "Google network",
       destination_label: "Google network",
+      provider: "Google",
+      category: "ip_asn.google_infra",
       traffic_lane: "shared_infra",
       traffic_class: "client",
       route: "Mixed",
@@ -1657,6 +1664,8 @@ test("client popular sites rank explicit inferred DNS attribution when byte deta
     {
       destination: "Apple network",
       destination_label: "Apple network",
+      provider: "Apple",
+      category: "ip_asn.apple_infra",
       traffic_lane: "shared_infra",
       traffic_class: "client",
       route: "Mixed",
@@ -1719,6 +1728,8 @@ test("client popular sites keep residual unmapped when no DNS attribution exists
     {
       destination: "Apple network",
       destination_label: "Apple network",
+      provider: "Apple",
+      category: "ip_asn.apple_infra",
       traffic_lane: "shared_infra",
       traffic_class: "client",
       route: "Mixed",
@@ -1733,6 +1744,44 @@ test("client popular sites keep residual unmapped when no DNS attribution exists
   assert.equal(visible.some((row) => row.label === "Unattributed traffic not mapped to sites"), false);
   assert.equal(visible.reduce((sum, row) => sum + siteBytes(row), 0), attributedBytes);
   assert.equal(siteBytes(fallbackRows[0]), siteBytes(selected) - attributedBytes);
+});
+
+test("client popular sites exclude internal GhostRoute ingress and aggregate residual labels", () => {
+  const rows = groupPopularSites([
+    {
+      destination: "Home Reality ingress",
+      destination_label: "Home Reality ingress",
+      provider: "ghostroute",
+      category: "client.home_reality_ingress",
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 857_700_000,
+      flows: 1,
+    },
+    {
+      destination: "Other / uncategorized",
+      destination_label: "Other / uncategorized",
+      attribution_source: "aggregate_residual",
+      traffic_lane: "unknown_review",
+      traffic_class: "client",
+      route: "Mixed",
+      bytes: 857_700_000,
+      flows: 0,
+    },
+    {
+      domain: "video.example.invalid",
+      url_label: "video.example.invalid",
+      traffic_lane: "client_observed",
+      traffic_class: "client",
+      route: "VPS",
+      effective_bytes: 120_000_000,
+      flows: 12,
+    },
+  ], "client", 15);
+  assert.deepEqual(rows.map((row) => row.label), ["video.example.invalid"]);
+  assert.equal(attributionEligibility({ destination: "Home Reality ingress", provider: "ghostroute", category: "client.home_reality_ingress" }).state, "service_only");
+  assert.equal(isAttributableSiteRow({ destination: "Other / uncategorized", attribution_source: "aggregate_residual" }), false);
 });
 
 test("app-family catalog classifies managed and observed client apps", () => {
@@ -1765,7 +1814,7 @@ test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily({ destination: "203.0.113.12" }).app_source, "ip_only");
   const selected = { id: "lan-host-13", label: "lan-host-13 (MacBook Denis 23)", total_bytes: 3_000_000_000 };
   const byteRows = groupPopularSites([
-    { destination: "Cloudflare network", traffic_lane: "shared_infra", traffic_class: "client", route: "Mixed", bytes: 20_000_000, flows: 4 },
+    { destination: "Cloudflare network", provider: "Cloudflare", category: "ip_asn.cdn_cloud_hosting", traffic_lane: "shared_infra", traffic_class: "client", route: "Mixed", bytes: 20_000_000, flows: 4 },
   ], "client", 15, { excludeLabels: [selected.id, selected.label] });
   const visible = composePopularSiteRows(byteRows, [{ label: "youtubei.googleapis.com", flows: 200, dnsOnly: true }], []);
   assert.equal(visible.some((row) => row.label === "youtubei.googleapis.com"), false);
@@ -1909,6 +1958,18 @@ test("dashboard top destinations exclude raw IP and pseudo ingress labels", () =
     { client: "lan-host-03", dns_qname: "video.example.invalid", destination: "Media", bytes: 300, via_vps_bytes: 300, collected_at: "2026-05-12T09:02:00Z" },
   ], { now: "2026-05-12T10:00:00Z" });
   assert.deepEqual(analytics.topDestinations.map((row) => row.label), ["video.example.invalid"]);
+});
+
+test("dashboard route byte split clamps explicit counters to factual total", () => {
+  const split = routeByteSplit({
+    destination: "video.example.invalid",
+    bytes: 1000,
+    via_vps_bytes: 900,
+    direct_bytes: 900,
+    unknown_bytes: 0,
+  });
+  assert.equal(split.totalBytes, 1000);
+  assert.equal(split.viaVpsBytes + split.directBytes + split.unknownBytes, 1000);
 });
 
 test("dns interest aggregation groups duplicate domains", () => {

@@ -45,6 +45,15 @@ import {
   trafficDisplayDestination,
 } from "../traffic-window.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "../app-family.mjs";
+import {
+  attributionEligibility,
+  decorateAttributionEligibility,
+  isAggregateResidualLabel,
+  isAttributableSiteRow,
+  isInternalGhostRouteRow,
+  isIpOnlyAttributionLabel,
+  isUsefulCoarseAttribution,
+} from "../attribution-eligibility.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 import { bucketStartUtc, mskWindowBounds } from "../time/window.mjs";
 
@@ -2860,6 +2869,7 @@ function isIpOnlyDestinationValue(value: unknown) {
 }
 
 function coarseSiteLabel(row: Record<string, any>) {
+  if (!isUsefulCoarseAttribution(row)) return "";
   const provider = String(row.provider || "").trim();
   const category = String(row.category || row.dns_category || "").trim();
   const unusable = new Set(["unknown", "unknown_provider", "unknown_domain", "unclassified", "ip-only", "ip only", "unknown ip", "unknown ip only"]);
@@ -2869,12 +2879,13 @@ function coarseSiteLabel(row: Record<string, any>) {
 }
 
 function byteSiteLabel(row: Record<string, any>) {
+  if (isInternalGhostRouteRow(row)) return "";
   for (const value of [row.domain, row.dns_qname, row.sni, row.destination_key, row.destination_label, row.destination]) {
     if (isDomainLikeValue(value)) return String(value).trim().toLowerCase();
   }
   if (!isIpOnlyDestinationValue(row.destination_key) && !isIpOnlyDestinationValue(row.destination_label || row.destination)) {
     const label = String(row.destination_label || row.destination_key || row.destination || "").trim();
-    if (label && !isPseudoDestinationValue(label)) return label;
+    if (label && !isPseudoDestinationValue(label) && !isAggregateResidualLabel(label) && !isIpOnlyAttributionLabel(label)) return label;
   }
   return coarseSiteLabel(row);
 }
@@ -2895,7 +2906,7 @@ function clientFacingDnsEvidenceRows(rows: Array<Record<string, any>>, includeSe
   });
 }
 
-function makeSiteEvidenceRow(base: Record<string, any>) {
+function makeSiteEvidenceRow(base: Record<string, any>): Record<string, any> {
   const domain = String(base.domain || base.dns_qname || "").trim().toLowerCase();
   const label = String(base.url_label || domain || base.label || base.destinationLabel || base.destination || "Other / uncategorized").trim();
   const app = withAppFamily({
@@ -2909,7 +2920,7 @@ function makeSiteEvidenceRow(base: Record<string, any>) {
   const effective = Number(base.effective_bytes || base.bytes || base.total_bytes || 0);
   const factual = Number(base.factual_bytes || 0);
   const inferred = Number(base.inferred_bytes || 0);
-  return {
+  return decorateAttributionEligibility({
     ...base,
     ...app,
     domain,
@@ -2926,7 +2937,7 @@ function makeSiteEvidenceRow(base: Record<string, any>) {
     latest: base.latest || base.last_seen_utc || base.collected_at || "",
     attribution_source: base.attribution_source || (factual > 0 ? "byte_exact" : inferred > 0 ? "dns_inferred" : "aggregate_residual"),
     byte_confidence: base.byte_confidence || (factual > 0 && inferred <= 0 ? "factual" : inferred > 0 ? "estimated" : "residual"),
-  };
+  });
 }
 
 function mergeSiteEvidenceRows(rows: Array<Record<string, any>>, limit = 200) {
@@ -3063,6 +3074,7 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
           byte_confidence: source === "byte_exact" ? "factual" : "estimated",
         });
       })
+      .filter((row) => row && isAttributableSiteRow(row, { includeService }))
       .filter(Boolean) as Array<Record<string, any>>;
     const exactRows = byteEvidenceRows.filter((row) => row.attribution_source === "byte_exact");
     const coarseRows = byteEvidenceRows.filter((row) => row.attribution_source !== "byte_exact");
@@ -3079,7 +3091,8 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
       : scaleCoarseRowsToResidual(coarseRows, Math.max(0, targetBytes - exactFactualBytes));
     const coarseEffectiveBytes = coarseEffectiveRows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || 0), 0);
     const fallbackBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes - coarseEffectiveBytes));
-    const residualFallback = fallbackBytes > 0 && inferredRows.length === 0
+    const hasUsefulEvidence = exactRows.length > 0 || coarseEffectiveRows.length > 0 || dnsRows.length > 0;
+    const residualFallback = fallbackBytes > 0 && inferredRows.length === 0 && hasUsefulEvidence
       ? [makeSiteEvidenceRow({
         url_label: "Other / uncategorized",
         effective_bytes: fallbackBytes,
@@ -3092,7 +3105,8 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
         confidence: "estimated",
       })]
       : [];
-    const evidence = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit);
+    const evidence = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit)
+      .filter((row) => isAttributableSiteRow(row, { includeService }) || String(row.attribution_source || "") === "aggregate_residual");
     return evidence;
   });
 }

@@ -1,4 +1,11 @@
 import { trafficDisplayDestination } from "./traffic-window.mjs";
+import {
+  attributionEligibility,
+  isAggregateResidualLabel,
+  isAttributableSiteRow,
+  isInternalGhostRouteLabel,
+  isIpOnlyAttributionLabel,
+} from "./attribution-eligibility.mjs";
 
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;
@@ -18,6 +25,8 @@ function siteLane(row = {}) {
 }
 
 function isServiceSite(row = {}) {
+  const eligibility = attributionEligibility(row);
+  if (eligibility.serviceOnly) return true;
   const lane = siteLane(row);
   return lane === "service_system" || String(row.trafficClass || row.traffic_class || "") === "service_background";
 }
@@ -30,6 +39,9 @@ function isUsefulSiteLabel(label, excludedLabels = new Set()) {
   const normalized = normalizeSiteLabel(label);
   return Boolean(label)
     && !["n/a", "client", "no site evidence"].includes(normalized)
+    && !isIpOnlyAttributionLabel(normalized)
+    && !isAggregateResidualLabel(normalized)
+    && !isInternalGhostRouteLabel(normalized)
     && !normalized.includes("destination aggregate")
     && !excludedLabels.has(normalized);
 }
@@ -46,6 +58,7 @@ export function groupPopularSites(rows = [], kind = "client", limit = 15, option
   const excludedLabels = new Set((options.excludeLabels || []).map(normalizeSiteLabel).filter(Boolean));
   for (const row of rows) {
     if ((kind === "service") !== isServiceSite(row)) continue;
+    if (!isAttributableSiteRow(row, { includeService: kind === "service" })) continue;
     const label = text(row.domain || row.url_label || row.label || row.destinationLabel || row.destination) || trafficDisplayDestination(row);
     if (!isUsefulSiteLabel(label, excludedLabels)) continue;
     const key = label.toLowerCase();

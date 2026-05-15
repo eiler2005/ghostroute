@@ -341,6 +341,19 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
   );
 }
 
+function ReviewSummaryBadges({ rows, labelFor }: { rows: Array<[string, number]>; labelFor: (value: string) => string }) {
+  if (rows.length === 0) return <span className="subtle">No rows</span>;
+  return (
+    <div className="review-summary-badges">
+      {rows.map(([value, count]) => (
+        <span className="badge confidence-dns-interest" key={value}>
+          {labelFor(value)} <strong>{count}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default async function ClientsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const mobile = await isMobileRequest();
@@ -540,12 +553,12 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                   <div className="status-grid" style={{ marginBottom: 14 }}>
                     <div className="status-card">
                       <span className="subtle">Review states</span>
-                      <strong>{Object.entries(reviewCounts).map(([state, count]) => `${title(state)} ${count}`).join(" · ")}</strong>
+                      <ReviewSummaryBadges rows={Object.entries(reviewCounts)} labelFor={title} />
                       <p className="subtle">No automatic deletion. Stale rows can be hidden after review; active raw/mobile rows need registry aliases or a keep-diagnostic decision.</p>
                     </div>
                     <div className="status-card">
                       <span className="subtle">Suggested actions</span>
-                      <strong>{Object.entries(actionCounts).map(([action, count]) => `${reviewActionLabel(action)} ${count}`).join(" · ")}</strong>
+                      <ReviewSummaryBadges rows={Object.entries(actionCounts)} labelFor={reviewActionLabel} />
                       <p className="subtle">Raw IP usually means a missing IP/MAC alias. Service sources are diagnostics. Low-signal rows should wait for more traffic evidence.</p>
                     </div>
                   </div>
