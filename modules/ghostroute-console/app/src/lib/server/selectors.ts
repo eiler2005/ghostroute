@@ -4404,6 +4404,70 @@ function registryAliasCandidates(target: Record<string, any>) {
   ]);
 }
 
+function inventoryAliasCandidates(target: Record<string, any>) {
+  const raw = rawJson(target);
+  const seed = uniqueNonEmpty([
+    target.client_key,
+    target.device_key,
+    target.id,
+    target.label,
+    target.client_label,
+    target.device_label,
+    target.client,
+    target.ip,
+    target.client_ip,
+    raw.client_key,
+    raw.device_key,
+    raw.id,
+    raw.label,
+    raw.client,
+    raw.ip,
+    raw.client_ip,
+  ]);
+  if (seed.length === 0 || !readModelHasRows("device_inventory")) return [];
+  const db = getDb();
+  const rows: Array<Record<string, any>> = [];
+  const exact = db.prepare(`
+    select device_key, label, ip, hostname, profile, aliases_json, evidence_json
+      from device_inventory
+     where lower(device_key) = lower(?)
+        or lower(label) = lower(?)
+        or lower(ip) = lower(?)
+        or lower(hostname) = lower(?)
+     limit 5
+  `);
+  const aliasLike = db.prepare(`
+    select device_key, label, ip, hostname, profile, aliases_json, evidence_json
+      from device_inventory
+     where aliases_json like ?
+     limit 5
+  `);
+  for (const value of seed) {
+    rows.push(...exact.all(value, value, value, value) as Array<Record<string, any>>);
+    rows.push(...aliasLike.all(`%"${String(value).replace(/"/g, "")}"%`) as Array<Record<string, any>>);
+  }
+  return uniqueNonEmpty(rows.flatMap((row) => {
+    const evidence = safeJson(row.evidence_json, {});
+    return [
+      row.device_key,
+      row.label,
+      row.ip,
+      row.hostname,
+      row.profile,
+      evidence.client_key,
+      evidence.client_label,
+      evidence.client_ip,
+      evidence.device_key,
+      evidence.device_label,
+      evidence.ip,
+      evidence.label,
+      evidence.client,
+      ...safeJson(row.aliases_json, []),
+      ...safeJson(evidence.aliases, []),
+    ];
+  }));
+}
+
 function laneClientKeyCandidates(target: Record<string, any>) {
   const raw = rawJson(target);
   const resolved = resolveClient({ ...target, raw, profile: target.profile || raw.profile });
@@ -4428,6 +4492,7 @@ function laneClientKeyCandidates(target: Record<string, any>) {
     ...(resolved.observed_aliases || []),
     ...(target.aliases || []),
     ...(target.observed_aliases || []),
+    ...inventoryAliasCandidates(target),
     ...registryAliasCandidates(target),
     ...rowIdentityTokens(target),
   ]);
