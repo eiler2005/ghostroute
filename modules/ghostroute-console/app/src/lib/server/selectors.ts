@@ -5073,6 +5073,8 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
     const current = grouped.get(key) || {
       ...app,
       app_family: key,
+      label: key,
+      destinationLabel: key,
       app_category: app.app_category || row.category || "uncategorized",
       bytes: 0,
       total_bytes: 0,
@@ -5118,6 +5120,8 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
     .map((row, idx) => ({
       ...row,
       rank: idx + 1,
+      label: row.app_family,
+      destinationLabel: row.app_family,
       client_count: row.clients?.size || 0,
       route: row.routes?.size === 1 ? Array.from(row.routes)[0] : row.routes?.size > 1 ? "Mixed" : "Unknown",
       sample_domains: Array.from(row.sample_domains || []).slice(0, 6),
