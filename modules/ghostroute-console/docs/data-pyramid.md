@@ -176,6 +176,12 @@ rows are marked as inferred
 presented as exact per-domain byte accounting. If no client-facing DNS evidence
 exists, the residual remains `Other / uncategorized`.
 
+When one registry client is seen through several lanes, channel labels are
+normalized as a small deduplicated set such as
+`A/Home Reality + Home Wi-Fi/LAN`. Compound labels from older prepared rows are
+split before merging, so repeated evidence cannot grow into long synthetic
+channel strings.
+
 `verify:aggregates` includes a coarse traffic-conservation guardrail for the
 current day: prepared client totals should stay close to Dashboard observed
 traffic, with `GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE` available for
