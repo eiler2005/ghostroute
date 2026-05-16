@@ -63,6 +63,18 @@ const { validateSnapshotPayload, withSnapshotContractDefaults } = snapshotContra
 const routerRollupsModule = await import(new URL("../scr" + "ipts/lib/router-rollups.mjs", import.meta.url));
 const { routerMskKey, routerMskTimestampToUtc } = routerRollupsModule;
 
+async function withTempConsoleDataDir(prefix, callback) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  try {
+    return await callback(tmp);
+  } finally {
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+}
+
 test("console data directory can hold factual snapshots", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-"));
   const snapshots = path.join(tmp, "snapshots");
@@ -1498,6 +1510,76 @@ test("prepared DNS and client totals share canonical operator identity", () => {
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
     else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
   }
+});
+
+test("prepared counters preserve canonical client totals when flow detail is sampled", async () => {
+  await withTempConsoleDataDir("ghostroute-console-client-counter-coverage-", async (tmp) => {
+    fs.writeFileSync(
+      path.join(tmp, "device-attribution.json"),
+      JSON.stringify({
+        schema_version: 2,
+        clients: {
+          macbook: {
+            label: "MacBook Owner",
+            device_key: "operator-macbook",
+            aliases: { lan_wifi: ["lan-host-11"], hostnames: ["operator-macbook.local"] },
+            ip_aliases: ["192.0.2.44"],
+          },
+        },
+      })
+    );
+    const db = new Database(path.join(tmp, "ghostroute.db"));
+    try {
+      ensureConsoleSchema(db);
+      const deviceStmt = db.prepare(`
+        insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, route, confidence,
+          total_bytes, via_vps_bytes, direct_bytes, raw_json, channel)
+        values (?, 'traffic_summary', ?, '192.0.2.44', 'lan-host-11', '192.0.2.44', 'Mixed', 'exact', ?, ?, ?, ?, 'Home Wi-Fi/LAN')
+      `);
+      deviceStmt.run(1, "2026-05-07T08:00:00Z", 1_000_000_000, 900_000_000, 100_000_000, JSON.stringify({ id: "192.0.2.44", label: "lan-host-11", ip: "192.0.2.44" }));
+      deviceStmt.run(2, "2026-05-07T09:00:00Z", 8_000_000_000, 7_200_000_000, 800_000_000, JSON.stringify({ id: "192.0.2.44", label: "lan-host-11", ip: "192.0.2.44" }));
+      const flowStmt = db.prepare(`
+        insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+          bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+        values (3, 'traffic_facts', ?, '192.0.2.44', 'Home Wi-Fi/LAN', 'unknown destination',
+          'Mixed', 'estimated', 100000000, 12, 'TCP', '192.0.2.44', 'client', 90000000, 10000000, 0,
+          '{"client":"192.0.2.44","client_ip":"192.0.2.44","device_key":"192.0.2.44"}')
+      `);
+      flowStmt.run("2026-05-07T09:02:00Z");
+      const dnsStmt = db.prepare(`
+        insert into normalized_dns(snapshot_id, collected_at, client, client_ip, domain, qtype, count, answer_ip,
+          event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, confidence, raw_json)
+        values (4, ?, ?, ?, ?, 'A', ?, '', ?, ?, ?, ?, 'collector_ms', 'exact', 'dns-interest', ?)
+      `);
+      const dnsRows = [
+        ["chatgpt.com", 50],
+        ["www.youtube.com", 40],
+        ["github.com", 30],
+        ["api.github.com", 20],
+        ["dropbox.com", 10],
+      ];
+      for (const [domain, count] of dnsRows) {
+        dnsStmt.run("2026-05-07T09:03:00Z", "unattributed source", "", domain, count,
+          "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z",
+          JSON.stringify({ client_ip: "192.0.2.44", device_key: "192.0.2.44" }));
+      }
+
+      rebuildPreparedWindows(db, "2026-05-07T10:00:00Z");
+    } finally {
+      db.close();
+    }
+
+    const checkDb = new Database(path.join(tmp, "ghostroute.db"), { readonly: true });
+    try {
+      const prepared = JSON.parse(checkDb.prepare("select payload_json from traffic_window_snapshots where kind = 'clients' and window = 'today' and traffic_class = 'all'").get().payload_json);
+      const macbook = prepared.rows.find((row) => row.client_key === "macbook");
+      assert.ok(macbook, "canonical MacBook row should be visible");
+      assert.ok(Number(macbook.total_bytes || macbook.bytes || 0) >= 6_900_000_000, `MacBook current total too low: ${macbook.total_bytes || macbook.bytes}`);
+      assert.equal(checkDb.prepare("select sum(query_count) as count from dns_log_5min where client_key = 'macbook'").get().count, 150);
+    } finally {
+      checkDb.close();
+    }
+  });
 });
 
 test("prepared dashboard top destinations exclude client counter pseudo labels", () => {

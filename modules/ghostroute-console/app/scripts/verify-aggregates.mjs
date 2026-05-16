@@ -14,6 +14,7 @@ const db = new Database(dbFile, { readonly: true, fileMustExist: true });
 const registry = loadDeviceAttributions(dataDir);
 const trafficClasses = ["all", "client", "personal_cloud", "service_background", "unclassified"];
 const driftCheckedClasses = new Set(["all", "client"]);
+const trafficDriftTolerance = Number(process.env.GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE || 0.2);
 
 function number(value) {
   const parsed = Number(value || 0);
@@ -146,6 +147,30 @@ function rowTotalBytes(row) {
     + number(row.unknown_bytes || row.unknownBytes);
 }
 
+function byteValue(row) {
+  return number(row?.total_bytes ?? row?.bytes ?? row?.effective_bytes)
+    || number(row?.via_vps_bytes ?? row?.viaVpsBytes)
+      + number(row?.direct_bytes ?? row?.directBytes)
+      + number(row?.unknown_bytes ?? row?.unknownBytes);
+}
+
+function assertWithinRatio(actual, expected, tolerance, message) {
+  if (expected <= 0) return;
+  const drift = Math.abs(actual - expected) / expected;
+  assert.ok(drift <= tolerance, `${message}: actual=${actual} expected=${expected} drift=${Math.round(drift * 1000) / 10}% tolerance=${Math.round(tolerance * 100)}%`);
+}
+
+function preparedClientRows(...payloads) {
+  for (const value of payloads) {
+    if (!value || typeof value !== "object") continue;
+    for (const key of ["rows", "devices", "clients"]) {
+      if (Array.isArray(value[key]) && value[key].length > 0) return value[key];
+    }
+    if (Array.isArray(value.inventory?.rows) && value.inventory.rows.length > 0) return value.inventory.rows;
+  }
+  return [];
+}
+
 function repairHint(window, dashboard) {
   return `./modules/ghostroute-console/bin/ghostroute-console repair-aggregates --from ${dashboard.windowStartUtc} --to ${dashboard.windowEndUtc}`;
 }
@@ -215,6 +240,13 @@ assert.equal(laneAllBytes, laneDetailBytes, "client_traffic_by_lane all rows do 
 for (const model of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects"]) {
   assert.ok(db.prepare("select 1 from aggregate_state where model = ? and window_key = 'all'").get(model), `missing aggregate_state ${model}/all`);
 }
+
+const todayDashboard = payload("dashboard", "today", "all");
+const todayClients = payload("clients", "today", "all");
+const dashboardObserved = number(todayDashboard?.totals?.observedBytes || todayDashboard?.dashboardAnalytics?.trafficToday?.totalBytes);
+const inventoryRows = preparedClientRows(todayClients, todayDashboard).filter((row) => byteValue(row) > 0);
+const inventoryBytes = inventoryRows.reduce((sum, row) => sum + byteValue(row), 0);
+assertWithinRatio(inventoryBytes, dashboardObserved, trafficDriftTolerance, "today client inventory total does not match dashboard observed traffic");
 
 db.close();
 console.log("aggregate windows ok");

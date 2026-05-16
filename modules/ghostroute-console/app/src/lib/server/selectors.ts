@@ -3078,7 +3078,7 @@ function scaleCoarseRowsToResidual(rows: Array<Record<string, any>>, targetBytes
 function clientWindowTrafficSummary(target: Record<string, any>, period = "today") {
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_traffic_by_lane"), ...laneClientKeyCandidates(target)]);
   const match = clientMatchPredicate(["client_key", "client_label"], keys);
-  const summary = {
+  const laneSummary = {
     bytes: 0,
     total_bytes: 0,
     via_vps_bytes: 0,
@@ -3087,7 +3087,7 @@ function clientWindowTrafficSummary(target: Record<string, any>, period = "today
     flows: 0,
     last_seen_utc: "",
   };
-  if (!match.sql) return summary;
+  if (!match.sql) return laneSummary;
   const db = getDb();
   for (const segment of windowAggregateSegmentsForSelector(period)) {
     const granularity = laneGranularity(segment.layer);
@@ -3106,15 +3106,42 @@ function clientWindowTrafficSummary(target: Record<string, any>, period = "today
          and ${match.sql}
     `).get(granularity, segment.start, segment.end, ...match.params) as Record<string, any> | undefined;
     const bytes = Number(rows?.bytes || 0);
-    summary.bytes += bytes;
-    summary.total_bytes += bytes;
-    summary.via_vps_bytes += Number(rows?.via_vps_bytes || 0);
-    summary.direct_bytes += Number(rows?.direct_bytes || 0);
-    summary.unknown_bytes += Number(rows?.unknown_bytes || 0);
-    summary.flows += Number(rows?.flows || 0);
-    if (String(rows?.last_seen_utc || "") > summary.last_seen_utc) summary.last_seen_utc = String(rows?.last_seen_utc || "");
+    laneSummary.bytes += bytes;
+    laneSummary.total_bytes += bytes;
+    laneSummary.via_vps_bytes += Number(rows?.via_vps_bytes || 0);
+    laneSummary.direct_bytes += Number(rows?.direct_bytes || 0);
+    laneSummary.unknown_bytes += Number(rows?.unknown_bytes || 0);
+    laneSummary.flows += Number(rows?.flows || 0);
+    if (String(rows?.last_seen_utc || "") > laneSummary.last_seen_utc) laneSummary.last_seen_utc = String(rows?.last_seen_utc || "");
   }
-  return summary;
+  const lookup = new Set(keys.map((value) => value.toLowerCase()));
+  const deviceSummary = {
+    bytes: 0,
+    total_bytes: 0,
+    via_vps_bytes: 0,
+    direct_bytes: 0,
+    unknown_bytes: 0,
+    flows: laneSummary.flows,
+    last_seen_utc: laneSummary.last_seen_utc,
+  };
+  const seen = new Set<string>();
+  for (const rawRow of deviceDeltaRowsForPeriod(period)) {
+    const row = inventoryRowFromTraffic(rawRow) || rawRow;
+    const rowCandidates = laneClientKeyCandidates(row);
+    if (!rowCandidates.some((value) => lookup.has(value.toLowerCase()))) continue;
+    const rowKey = String(row.client_key || row.id || row.device_key || rawRow.id || rawRow.device_id || row.label || "").trim();
+    if (rowKey && seen.has(rowKey)) continue;
+    if (rowKey) seen.add(rowKey);
+    const bytes = observedByteValue(row);
+    deviceSummary.bytes += bytes;
+    deviceSummary.total_bytes += bytes;
+    deviceSummary.via_vps_bytes += Number(row.via_vps_bytes || 0);
+    deviceSummary.direct_bytes += Number(row.direct_bytes || 0);
+    deviceSummary.unknown_bytes += Number(row.unknown_bytes || Math.max(0, bytes - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0)));
+    const seenAt = String(row.last_seen || row.last_seen_utc || row.collected_at || row.traffic_collected_at || "");
+    if (seenAt > deviceSummary.last_seen_utc) deviceSummary.last_seen_utc = seenAt;
+  }
+  return observedByteValue(deviceSummary) > observedByteValue(laneSummary) ? deviceSummary : laneSummary;
 }
 
 export function listClientSiteEvidence(client: Record<string, any> | string, period = "today", options: { limit?: number; includeService?: boolean } = {}) {
