@@ -179,9 +179,11 @@ exists, the residual remains `Other / uncategorized`.
 `verify:aggregates` includes a coarse traffic-conservation guardrail for the
 current day: prepared client totals should stay close to Dashboard observed
 traffic, with `GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE` available for
-stricter operator checks. The default leaves room for mixed Channel A/B/C
-ingress evidence while still catching order-of-magnitude drift or accidental
-double counting.
+stricter operator checks. The default warns because live global observed traffic
+can include unattributed Channel A/B/C ingress or router-level residual that is
+not yet safe to assign to registered devices. Set
+`GHOSTROUTE_AGGREGATE_STRICT_TRAFFIC_DRIFT=1` when deliberately investigating
+traffic-conservation regressions and wanting the check to fail hard.
 
 Latest DNS domains uses the same selector, but ranks by recency/query count and
 keeps DNS query counts visible as evidence. Service DNS stays excluded unless
