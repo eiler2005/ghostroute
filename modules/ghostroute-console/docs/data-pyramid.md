@@ -166,12 +166,22 @@ domains by query count so popular-site, app-family and dashboard ranking views
 cover that canonical client's current-window total. The selected-client total is
 the fuller current-window canonical source: detailed lane rows when they carry
 the whole client, or device counter deltas when flow detail is only a sampled
-explanation layer. Per-client inference never uses Dashboard/global totals, and
-synthetic `all` lanes are not summed together with class-specific lanes. Those
+explanation layer. Device-counter fallback is limited to trusted local/LAN
+device counters; public Channel A/B/C source counters remain ingress evidence so
+they are not double-counted against LAN device counters. Per-client inference
+never uses Dashboard/global totals, and synthetic `all` lanes are not summed
+together with class-specific lanes. Those
 rows are marked as inferred
 (`attribution_source=dns_inferred`, `byte_confidence=estimated`) and must not be
 presented as exact per-domain byte accounting. If no client-facing DNS evidence
 exists, the residual remains `Other / uncategorized`.
+
+`verify:aggregates` includes a coarse traffic-conservation guardrail for the
+current day: prepared client totals should stay close to Dashboard observed
+traffic, with `GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE` available for
+stricter operator checks. The default leaves room for mixed Channel A/B/C
+ingress evidence while still catching order-of-magnitude drift or accidental
+double counting.
 
 Latest DNS domains uses the same selector, but ranks by recency/query count and
 keeps DNS query counts visible as evidence. Service DNS stays excluded unless
