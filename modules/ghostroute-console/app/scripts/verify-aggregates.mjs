@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { isAttributableSiteRow } from "../src/lib/attribution-eligibility.mjs";
 import { loadDeviceAttributions } from "../src/lib/device-attribution.mjs";
 import { bucketStartUtc, mskWindowBounds } from "../src/lib/time/window.mjs";
+import { deviceCounterRowsForWindow } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const moduleDir = path.resolve(appDir, "..");
@@ -132,12 +133,13 @@ function observedBytes(rows, allowedClientKeys = null) {
     if (allowedClientKeys && !allowedClientKeys.has(row.client_key)) continue;
     if (String(row.confidence || "").toLowerCase() === "dns-interest") continue;
     const key = [row.client_key, row.channel || ""].join("|");
-    const current = groups.get(key) || { accounting: 0, detail: 0 };
-    if (row.accounting_bucket) current.accounting += number(row.bytes);
+    const current = groups.get(key) || { counter: 0, accounting: 0, detail: 0 };
+    if (row.accounting_source === "device_counter_delta") current.counter += number(row.bytes);
+    else if (row.accounting_bucket) current.accounting += number(row.bytes);
     else current.detail += number(row.bytes);
     groups.set(key, current);
   }
-  return Array.from(groups.values()).reduce((sum, row) => sum + (row.accounting > 0 ? row.accounting : row.detail), 0);
+  return Array.from(groups.values()).reduce((sum, row) => sum + (row.counter > 0 ? row.counter : row.accounting > 0 ? row.accounting : row.detail), 0);
 }
 
 function rowTotalBytes(row) {
@@ -189,7 +191,10 @@ for (const window of ["today", "week", "month"]) {
     if (driftCheckedClasses.has(trafficClass)) {
       const preparedDevices = dashboard.devices || [];
       const preparedClientKeys = new Set(preparedDevices.map((row) => row.client_key).filter(Boolean));
-      const aggregateBytes = observedBytes(rows, preparedClientKeys);
+      const counterRows = window === "today" && ["all", "client"].includes(trafficClass)
+        ? deviceCounterRowsForWindow(db, window, dashboard.windowEndUtc, registry)
+        : [];
+      const aggregateBytes = observedBytes([...rows, ...counterRows], preparedClientKeys);
       const preparedBytes = preparedDevices.reduce((sum, row) => sum + rowTotalBytes(row), 0)
         || number(dashboard.destinationAttributionCoverage?.observed_bytes || dashboard.totals?.observedBytes);
       const allowed = Math.max(1, aggregateBytes * 0.01);

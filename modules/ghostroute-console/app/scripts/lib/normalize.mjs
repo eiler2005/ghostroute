@@ -2984,7 +2984,7 @@ function clientChannelObservedRows(rows) {
   }).filter((row) => number(row.bytes) > 0);
 }
 
-function deviceCounterRowsForWindow(db, window, now, registry = loadDeviceAttributions()) {
+export function deviceCounterRowsForWindow(db, window, now, registry = loadDeviceAttributions()) {
   const bounds = mskWindowBounds(window, now);
   const rows = db.prepare(`
     select rowid, snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, route, confidence,
@@ -3094,7 +3094,7 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   const allRows = rows.filter((row) => aggregateTotalBytes(row) > 0);
   const primaryRows = preparedRowsForWindow(rows, "primary_client").filter((row) => aggregateTotalBytes(row) > 0);
   const operatorRows = allRows.filter((row) => isOperatorTrafficRow(row, registry));
-  const counterRows = trafficClass === "all" || trafficClass === "client"
+  const counterRows = window === "today" && (trafficClass === "all" || trafficClass === "client")
     ? deviceCounterRowsForWindow(db, window, now, registry)
     : [];
   const clientRows = clientObservedRows([...operatorRows, ...counterRows]).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
