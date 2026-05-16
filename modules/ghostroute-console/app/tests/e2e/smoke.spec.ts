@@ -9,6 +9,7 @@ const mobileRedirects: Record<string, string> = {
   "/health": "/m/health",
   "/live": "/m/live",
   "/catalog": "/m/catalog",
+  "/settings": "/m/settings",
 };
 
 function parseByteText(value: string) {
@@ -217,6 +218,33 @@ test("traffic intelligence is read-only and honors traffic class filters", async
   await expect(page.getByText("Dry-run only")).toBeVisible();
   await expect(page.getByText("Destination intelligence")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Runtime deploy");
+});
+
+test("settings exposes sanitized routing policy on desktop and mobile", async ({ page, request, isMobile }) => {
+  await page.goto(isMobile ? "/m/settings" : "/settings");
+  await expect(page.getByRole("heading", { name: "Routing policy" }).first()).toBeVisible();
+  await expect(page.getByText("Test/Home Laptop").first()).toBeVisible();
+  await expect(page.getByText("Test/Channel A Full").first()).toBeVisible();
+  await expect(page.getByText("Test/Channel B").first()).toBeVisible();
+  await expect(page.getByText("Test/Channel C").first()).toBeVisible();
+  await expect(page.getByText("ip-0f0a4411").first()).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("192.0.2.44");
+  await expect(page.locator("body")).not.toContainText("02:00:5e:10:00:44");
+  if (isMobile) {
+    await expect(page.locator(".mobile-nav a[href='/m/settings']")).toHaveCount(1);
+  }
+
+  const response = await request.get("/api/settings");
+  expect(response.ok()).toBeTruthy();
+  const body = await response.json();
+  expect(body.routing_policy.summary.home_full_vps).toBe(2);
+  expect(body.routing_policy.summary.channel_a_full_vps).toBe(1);
+  expect(body.routing_policy.summary.channel_b_profiles).toBe(1);
+  expect(body.routing_policy.summary.channel_c_profiles).toBe(1);
+  const serialized = JSON.stringify(body.routing_policy);
+  expect(serialized).toContain("ip-0f0a4411");
+  expect(serialized).not.toContain("192.0.2.44");
+  expect(serialized).not.toContain("02:00:5e:10:00:44");
 });
 
 test("traffic pages expose channel context without hiding mobile rows", async ({ page, isMobile }) => {

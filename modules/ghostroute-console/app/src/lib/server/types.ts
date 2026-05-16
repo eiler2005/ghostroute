@@ -2,12 +2,15 @@ export type SnapshotType =
   | "traffic"
   | "traffic_summary"
   | "traffic_facts"
+  | "traffic_evidence"
+  | "router_rollups"
   | "health"
   | "leaks"
   | "domains"
   | "dns"
   | "live"
-  | "deploy_gate";
+  | "deploy_gate"
+  | "routing_policy";
 export type Confidence = "exact" | "estimated" | "dns-interest" | "unknown" | "mixed";
 
 export type SnapshotRecord = {
@@ -72,6 +75,7 @@ export type ConsoleModel = {
   dnsQueries: Array<Record<string, any>>;
   alerts: Array<Record<string, any>>;
   catalog: Array<Record<string, any>>;
+  routingPolicy?: Record<string, any>;
   settingsInventory?: Record<string, any>;
   trafficIntelligence?: {
     enrichments: Array<Record<string, any>>;

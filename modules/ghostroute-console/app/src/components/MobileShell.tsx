@@ -10,6 +10,7 @@ const nav = [
   ["Health", "/m/health"],
   ["Live", "/m/live"],
   ["Catalog", "/m/catalog"],
+  ["Settings", "/m/settings"],
 ] as const;
 
 function withDesktopBypass(path: string) {

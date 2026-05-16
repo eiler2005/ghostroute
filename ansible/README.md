@@ -141,6 +141,12 @@ roles/                           # reusable target-specific configuration
 scripts/                         # Ansible-local helper scripts
 ```
 
+Console can also consume a sanitized, gitignored
+`modules/ghostroute-console/data/policy-snapshot.local.json` file for Settings.
+It is operator/Ansible-derived display state for selected Home Wi-Fi/LAN
+full-VPS clients and Channel A/B/C profiles; keep raw MAC/IP/DNS/Vault values
+out of that file and use masked tokens instead.
+
 ## Playbooks
 
 | Playbook | Target | Mode | Purpose |

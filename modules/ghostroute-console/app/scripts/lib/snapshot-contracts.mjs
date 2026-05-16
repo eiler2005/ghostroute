@@ -70,6 +70,13 @@ const schemas = {
     checks: z.array(z.unknown()).optional(),
     status: z.string().optional(),
   }),
+  routing_policy: common.extend({
+    schema_version: z.literal(1),
+    home_wifi_lan_full_vps: z.array(z.record(z.string(), z.unknown())),
+    channel_profiles: z.array(z.record(z.string(), z.unknown())),
+    summary: z.record(z.string(), z.unknown()).optional(),
+    warnings: z.array(z.unknown()).optional(),
+  }),
 };
 
 function issuePath(issue) {

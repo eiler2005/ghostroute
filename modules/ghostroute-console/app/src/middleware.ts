@@ -8,6 +8,7 @@ const mobileRoutes: Record<string, string> = {
   "/health": "/m/health",
   "/live": "/m/live",
   "/catalog": "/m/catalog",
+  "/settings": "/m/settings",
 };
 
 function isMobile(request: NextRequest) {

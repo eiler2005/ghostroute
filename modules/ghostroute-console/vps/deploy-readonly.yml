@@ -250,6 +250,7 @@
           --include='device-attribution.json' \
           --include='device-attribution.local.json' \
           --include='device-aliases.json' \
+          --include='policy-snapshot.local.json' \
           --exclude='*' \
           "$src/" "{{ ansible_user }}@{{ ansible_host }}:{{ console_root }}/data/"
       delegate_to: localhost
