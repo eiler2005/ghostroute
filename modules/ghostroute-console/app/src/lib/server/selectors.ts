@@ -3215,9 +3215,27 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
         confidence: "estimated",
       })]
       : [];
-    const evidence = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit)
+    const evidence: Array<Record<string, any>> = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit)
       .filter((row) => isAttributableSiteRow(row, { includeService }) || String(row.attribution_source || "") === "aggregate_residual");
-    return evidence;
+    const returnedBytes = evidence.reduce((sum, row) => sum + siteEvidenceBytes(row), 0);
+    const hiddenTailBytes = Math.max(0, Math.round(targetBytes - returnedBytes));
+    if (hiddenTailBytes > Math.max(64 * 1024, targetBytes * 0.02)) {
+      evidence.push(makeSiteEvidenceRow({
+        url_label: "Other / uncategorized",
+        effective_bytes: hiddenTailBytes,
+        factual_bytes: 0,
+        inferred_bytes: hiddenTailBytes,
+        dns_queries: Math.max(0, dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0) - evidence.reduce((sum, row) => sum + Number(row.dns_queries || 0), 0)),
+        route: target.route || "Unknown",
+        attribution_source: "aggregate_residual",
+        byte_confidence: "residual",
+        confidence: "estimated",
+        matched_pattern: "truncated DNS evidence tail",
+      }));
+    }
+    return evidence
+      .sort((a, b) => siteEvidenceBytes(b) - siteEvidenceBytes(a) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
+      .map((row, idx) => ({ ...row, rank: idx + 1 }));
   });
 }
 
