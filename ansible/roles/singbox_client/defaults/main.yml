@@ -39,3 +39,11 @@ channel_c_shadowrocket_mss: 1360
 clients: []
 home_clients: []
 emergency_clients: []
+channel_a_selected_full_vps_enabled: false
+channel_a_selected_full_vps_lan_clients: []
+channel_a_selected_full_vps_home_reality_users: []
+channel_a_selected_full_vps_dns_servers: []
+channel_a_selected_full_vps_tproxy_port: ""
+channel_a_selected_full_vps_fwmark: "0x4100"
+channel_a_selected_full_vps_route_table: 410
+channel_a_selected_full_vps_inbound_tag: channel-a-selected-lan-full-vps-in

@@ -82,6 +82,29 @@
       - router_vps_dns_forward_port | string != home_reality_ingress_port | string
     fail_msg: "Channel A router ports must resolve before rendering sing-box config."
 
+- name: Validate Channel A selected full-VPS settings
+  ansible.builtin.assert:
+    that:
+      - not (channel_a_selected_full_vps_enabled | default(false) | bool) or ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0 or (channel_a_selected_full_vps_home_reality_users | default([]) | length) > 0)
+      - (channel_a_selected_full_vps_lan_clients | default([]) | selectattr('name', 'defined') | list | length) == (channel_a_selected_full_vps_lan_clients | default([]) | length)
+      - (channel_a_selected_full_vps_lan_clients | default([]) | selectattr('mac', 'defined') | list | length) == (channel_a_selected_full_vps_lan_clients | default([]) | length)
+      - (channel_a_selected_full_vps_lan_clients | default([]) | selectattr('ip', 'defined') | list | length) == (channel_a_selected_full_vps_lan_clients | default([]) | length)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_dns_servers | default([]) | length) > 0
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | int) > 0
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | int) <= 65535
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != singbox_redirect_port | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != singbox_dnscrypt_socks_port | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != dnscrypt_port | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != home_reality_ingress_port | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != channel_b_home_ingress_port | default('') | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != channel_c_home_ingress_port | default('') | string)
+      - not ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([]) | length) > 0)) or (channel_a_selected_full_vps_tproxy_port | string != channel_c_shadowrocket_ingress_port | default('') | string)
+      - channel_a_selected_full_vps_fwmark | string not in ['0x1000', '0x2000']
+      - channel_a_selected_full_vps_route_table | int not in [200]
+      - ((channel_a_selected_full_vps_home_reality_users | default([])) | difference(home_clients | default([]) | map(attribute='name') | list)) | length == 0
+    fail_msg: "Channel A selected full-VPS needs explicit selected sets, strict DNS for LAN clients, unique TPROXY port/mark/table, and valid Home Reality user names."
+  no_log: true
+
 - name: Validate managed egress mode before rendering config
   ansible.builtin.assert:
     that:

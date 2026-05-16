@@ -30,3 +30,4 @@ Long implementation details stay in module docs and runbooks.
 - `0007-channel-b-production-channel-c-planned.md`
 - `0008-channel-c-live-compatibility-and-native-naive-blocker.md`
 - `0009-managed-dns-dnscrypt-backed-forwarder.md`
+- `0010-channel-a-selected-full-vps.md`

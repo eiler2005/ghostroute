@@ -10,8 +10,10 @@ resolver geography is a secondary fingerprint-consistency signal.
 
 The shared routing principles for all channels are documented in
 [routing-policy-principles.md](/docs/routing-policy-principles.md). In short:
-the endpoint selects the first-hop channel, then the router owns the
-managed-vs-direct decision.
+the endpoint selects the first-hop channel, then the router owns the route
+decision. The default decision is managed-vs-direct split; Channel A also has an
+explicit selected full-VPS override for home Wi-Fi/LAN devices and Home Reality
+profiles.
 
 ## Channel A - Production Router Data Plane
 
@@ -20,10 +22,11 @@ Channel A is the primary production path owned by the router.
 ```text
 Home LAN/Wi-Fi device or home Reality endpoint client
   -> home router
-  -> ASUS sing-box REDIRECT or Reality inbound
-  -> managed split
+  -> ASUS sing-box REDIRECT, TPROXY or Reality inbound
+  -> managed split or selected full-VPS override
        managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
+       selected full-VPS internet traffic -> reality-out -> active managed egress -> internet
 ```
 
 What the first network sees:
@@ -39,7 +42,7 @@ DNS proof target:
 remote mobile DNS must not use the LTE carrier resolver
 ```
 
-What target sites see for managed traffic:
+What target sites see for managed traffic and selected full-VPS internet traffic:
 
 ```text
 active managed egress exit IP
@@ -50,7 +53,25 @@ Main role:
 - Production router data plane.
 - Home LAN devices do not need VPN apps.
 - Managed routing is driven by `STEALTH_DOMAINS` and `VPN_STATIC_NETS`.
+- Selected full-VPS routing is driven by two explicit sets:
+  reserved home Wi-Fi/LAN source IPs and Home Reality `auth_user` profile names.
 - Channel A owns router REDIRECT/DNS/catalog behavior.
+
+Selected full-VPS is not a separate channel:
+
+```text
+Home Wi-Fi/LAN full-VPS set
+  reserved source IP -> TPROXY -> channel-a-selected-lan-full-vps-in
+  -> local/private direct
+  -> other internet traffic -> reality-out
+
+Home Reality full-VPS set
+  reality-in auth_user -> local/private direct
+  -> other internet traffic -> reality-out
+```
+
+Non-selected home devices and non-selected Home Reality profiles keep the normal
+managed-domain split.
 
 Isolation rule:
 

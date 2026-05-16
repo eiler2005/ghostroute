@@ -86,7 +86,7 @@ described in the root README and `docs/architecture.md`.
 | Zone | What Ansible manages | Why it exists |
 |---|---|---|
 | Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
-| Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: home LAN/Wi-Fi managed traffic is transparently redirected through VLESS+Reality+Vision to the primary VPS or an explicitly selected backup Reality egress, while ordinary traffic stays direct. |
+| Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, optional selected full-VPS TPROXY/dnsmasq policy, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: non-selected home LAN/Wi-Fi traffic uses managed split, while selected home Wi-Fi/LAN devices or Home Reality profiles can send all internet-bound traffic through VLESS+Reality+Vision to the active managed egress. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
 | Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
@@ -97,7 +97,7 @@ Playbook ownership is intentionally narrow:
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, optional restricted DNS support, UFW and VPS health monitor. | Refresh the public Reality edge, firewall boundary and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
-| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
+| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
@@ -122,7 +122,7 @@ router-only provider profile. See
 During an incident, the operator can treat `backup_reality` as the active
 managed egress while the owned VPS remains an observed switchback candidate.
 This changes only the router upstream behind `reality-out`; client profiles,
-Channel A/B/C ingress and catalog policy stay unchanged.
+Channel A/B/C ingress, selected full-VPS sets and catalog policy stay unchanged.
 
 ## Directory Map
 
@@ -314,6 +314,7 @@ them explicitly with:
 - [Secrets management](/modules/secrets-management/docs/secrets-management.md)
 - [Client profile workflow](/modules/client-profile-factory/docs/client-profiles.md)
 - [Routing core guide](/modules/routing-core/docs/stealth-channel-implementation-guide.md)
+- [Channel A selected full-VPS](/docs/channel-a-selected-full-vps.md)
 - [Managed egress reserve mode](/docs/managed-egress-failover-roadmap.md)
 - [Health monitor guide](/modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md)
 - [Recovery and verification](/modules/recovery-verification/docs/failure-modes.md)

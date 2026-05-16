@@ -7,15 +7,23 @@ domain catalogs listed below.
 
 ## Core Contract
 
-All managed channels are home-first.
+All managed channels are home-first. The default router policy is managed split;
+selected home Wi-Fi/LAN devices and selected Channel A Home Reality profiles can
+opt into Channel A selected full-VPS mode.
 
 ```text
 endpoint / LAN device
   -> home router
   -> router-side ingress
-  -> shared managed split
+  -> default shared managed split
        managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
+
+selected Channel A full-VPS set
+  -> home router
+  -> TPROXY or reality-in auth_user rule
+  -> local/private destinations stay direct
+  -> other internet destinations -> reality-out -> active managed egress -> internet
 ```
 
 The endpoint client may choose the first-hop channel, but it must not become the
@@ -45,10 +53,13 @@ Layer 1 is channel ingress.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
 
-Layer 2 is the shared router managed split.
+Layer 2 is the shared router managed split plus the selected full-VPS override.
 
 - Managed domains and static CIDRs go to `reality-out`.
 - Non-managed destinations go to `direct-out` through the home WAN.
+- Selected home Wi-Fi/LAN source IPs and selected Channel A Home Reality
+  `auth_user` values can bypass the catalog decision for internet-bound traffic
+  and go straight to `reality-out`. Local/private destinations remain direct.
 - Plain DNS port `53` from remote selected-client inbounds is sent to
   router-local dnsmasq. dnsmasq then applies the same policy-based DNS split as
   Wi-Fi/LAN: managed/foreign names use the dnscrypt-over-Reality path, while
@@ -78,9 +89,10 @@ managed domain or static CIDR
   -> active managed egress
 ```
 
-This is true for LAN/Wi-Fi and for mobile Channels A/B/C after the endpoint has
-entered the router. `api.ipify.org` is only a canary for this contract. The real
-requirement is that every managed catalog destination behaves the same way.
+This is true for non-selected LAN/Wi-Fi and for mobile Channels A/B/C after the
+endpoint has entered the router. `api.ipify.org` is only a canary for this
+contract. The real requirement is that every managed catalog destination behaves
+the same way unless a Channel A selected full-VPS override explicitly applies.
 
 Manual, automatic and static policy sources must stay distinct:
 
@@ -227,8 +239,13 @@ Channel A owns the router data plane.
 
 - LAN/Wi-Fi managed TCP is transparently redirected to sing-box.
 - Remote Home Reality clients land in `reality-in`.
-- After ingress, managed destinations go through `reality-out`; non-managed
-  destinations go through `direct-out`.
+- Non-selected devices/profiles keep the managed split: managed destinations go
+  through `reality-out`; non-managed destinations go through `direct-out`.
+- Optional selected full-VPS sets are still Channel A: selected home Wi-Fi/LAN
+  source IPs use TPROXY into `channel-a-selected-lan-full-vps-in`, and selected
+  Home Reality `auth_user` profiles route to `reality-out` before the normal
+  managed/direct split. This does not change non-selected devices or Channel B/C
+  ownership.
 
 Channel B is selected-client production.
 

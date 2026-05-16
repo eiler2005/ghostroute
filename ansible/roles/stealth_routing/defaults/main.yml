@@ -12,6 +12,32 @@ router_dns_egress_mode: policy_split
 router_managed_dns_forward_host: 127.0.0.1
 router_managed_dns_forward_port: 5354
 router_dns_capture_lan_plain_53: true
+channel_a_selected_full_vps_enabled: false
+channel_a_selected_full_vps_lan_clients: []
+channel_a_selected_full_vps_home_reality_users: []
+channel_a_selected_full_vps_dns_servers: []
+channel_a_selected_full_vps_interfaces:
+  - br0
+channel_a_selected_full_vps_tproxy_port: ""
+channel_a_selected_full_vps_fwmark: "0x4100"
+channel_a_selected_full_vps_route_table: 410
+channel_a_selected_full_vps_ipset_name: GR_A_FULL_VPS
+channel_a_selected_full_vps_chain_name: GR_A_FULL_VPS
+channel_a_selected_full_vps_dnsmasq_tag: ghostroute-channel-a-full-vps
+channel_a_selected_full_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-channel-a-full-vps.conf.add
+channel_a_selected_full_vps_bypass_cidrs:
+  - 0.0.0.0/8
+  - 10.0.0.0/8
+  - 127.0.0.0/8
+  - 169.254.0.0/16
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - octets: [224, 0, 0, 0]
+    prefix: 4
+  - octets: [240, 0, 0, 0]
+    prefix: 4
+  - octets: [255, 255, 255, 255]
+    prefix: 32
 static_networks_path: /jffs/configs/router_configuration.static_nets
 no_vpn_ip_ports_path: /jffs/configs/router_configuration.no_vpn_ip_ports
 domains_no_vpn_path: /jffs/configs/domains-no-vpn.txt
