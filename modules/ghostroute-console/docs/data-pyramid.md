@@ -163,9 +163,12 @@ byte rows can provide coarse families when no better evidence exists. When the
 selected client has aggregate bytes that are otherwise only IP/provider
 residual, the selector may distribute that residual across client-facing DNS
 domains by query count so popular-site, app-family and dashboard ranking views
-cover that canonical client's current-window total. Per-client inference never
-uses Dashboard/global totals, and synthetic `all` lanes are not summed together
-with class-specific lanes. Those rows are marked as inferred
+cover that canonical client's current-window total. The selected-client total is
+the fuller current-window canonical source: detailed lane rows when they carry
+the whole client, or device counter deltas when flow detail is only a sampled
+explanation layer. Per-client inference never uses Dashboard/global totals, and
+synthetic `all` lanes are not summed together with class-specific lanes. Those
+rows are marked as inferred
 (`attribution_source=dns_inferred`, `byte_confidence=estimated`) and must not be
 presented as exact per-domain byte accounting. If no client-facing DNS evidence
 exists, the residual remains `Other / uncategorized`.

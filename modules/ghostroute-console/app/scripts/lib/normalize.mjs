@@ -2931,10 +2931,13 @@ function clientChannelObservedRows(rows) {
       last_seen: row.last_seen || row.collected_at,
       traffic_window_active: true,
       traffic_collected_at: row.last_seen || row.collected_at,
+      counter: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
       accounting: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
       detail: { bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0, connections: 0 },
     };
-    const target = row.accounting_bucket || !text(row.destination_key) ? current.accounting : current.detail;
+    const target = row.accounting_source === "device_counter_delta"
+      ? current.counter
+      : row.accounting_bucket || !text(row.destination_key) ? current.accounting : current.detail;
     target.bytes += aggregateTotalBytes(row);
     target.via_vps_bytes += number(row.via_vps_bytes);
     target.direct_bytes += number(row.direct_bytes);
@@ -2948,7 +2951,7 @@ function clientChannelObservedRows(rows) {
     groups.set(key, current);
   }
   return Array.from(groups.values()).map((row) => {
-    const source = row.accounting.bytes > 0 ? row.accounting : row.detail;
+    const source = row.counter.bytes > 0 ? row.counter : row.accounting.bytes > 0 ? row.accounting : row.detail;
     return {
       ...row,
       bytes: source.bytes,
@@ -2959,9 +2962,92 @@ function clientChannelObservedRows(rows) {
       flows: source.flows,
       connections: source.connections,
       route: routeFromAggregate(source),
-      accounting_bucket: row.accounting.bytes > 0,
+      accounting_bucket: row.counter.bytes > 0 || row.accounting.bytes > 0,
     };
   }).filter((row) => number(row.bytes) > 0);
+}
+
+function deviceCounterRowsForWindow(db, window, now, registry = loadDeviceAttributions()) {
+  const bounds = mskWindowBounds(window, now);
+  const rows = db.prepare(`
+    select rowid, snapshot_id, snapshot_type, collected_at, device_id, label, ip, hostname, mac, route, confidence,
+           total_bytes, via_vps_bytes, direct_bytes, raw_json, channel
+      from normalized_devices
+     where collected_at >= ?
+       and collected_at < ?
+       and coalesce(total_bytes, 0) > 0
+     order by collected_at asc, rowid asc
+  `).all(bounds.startUtc, bounds.endUtc);
+  const networkHints = buildInventoryNetworkHints(db, registry);
+  const grouped = new Map();
+  for (const row of rows) {
+    const raw = parseJson(row.raw_json, {});
+    const resolved = resolveOperatorClient({
+      ...row,
+      raw,
+      client_key: row.device_id || row.ip || raw.client_key || raw.device_key || "",
+      client_label: row.label || raw.client_label || raw.label || "",
+      device_key: row.device_id || raw.device_key || "",
+      client_ip: row.ip || raw.client_ip || "",
+      ip: row.ip || raw.ip || "",
+      mac: row.mac || raw.mac || raw.mac_address || "",
+    }, registry, networkHints);
+    if (!resolved.registered) continue;
+    const sourceKey = text(row.device_id || row.ip || raw.device_key || raw.client_ip || resolved.client_key);
+    const key = [resolved.client_key, sourceKey].join("|");
+    const list = grouped.get(key) || [];
+    list.push({ ...row, raw, resolved });
+    grouped.set(key, list);
+  }
+  const output = [];
+  for (const list of grouped.values()) {
+    const ordered = list.sort((a, b) => Date.parse(a.collected_at || "") - Date.parse(b.collected_at || ""));
+    let previous = null;
+    let latest = ordered[ordered.length - 1];
+    const acc = { total_bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0 };
+    for (const sample of ordered) {
+      const first = !previous;
+      const deltaTotal = first ? number(sample.total_bytes) : Math.max(0, number(sample.total_bytes) - number(previous?.total_bytes));
+      const deltaVps = first ? number(sample.via_vps_bytes) : Math.max(0, number(sample.via_vps_bytes) - number(previous?.via_vps_bytes));
+      const deltaDirect = first ? number(sample.direct_bytes) : Math.max(0, number(sample.direct_bytes) - number(previous?.direct_bytes));
+      const deltaUnknown = Math.max(0, deltaTotal - deltaVps - deltaDirect);
+      if (deltaTotal > 0 || deltaVps > 0 || deltaDirect > 0) {
+        acc.total_bytes += deltaTotal;
+        acc.via_vps_bytes += deltaVps;
+        acc.direct_bytes += deltaDirect;
+        acc.unknown_bytes += deltaUnknown;
+        acc.flows += 1;
+      }
+      previous = sample;
+      latest = sample;
+    }
+    if (acc.total_bytes <= 0 || !latest?.resolved) continue;
+    output.push({
+      id: `device-counter:${window}:${latest.resolved.client_key}:${latest.device_id || latest.ip || latest.rowid}`,
+      client_key: latest.resolved.client_key,
+      client_label: latest.resolved.client_label,
+      label: latest.resolved.client_label,
+      channel: text(latest.resolved.channel || latest.channel, "Unknown"),
+      route: routeFromAggregate(acc),
+      confidence: latest.confidence || "exact",
+      traffic_class: "client",
+      destination_key: "",
+      accounting_bucket: true,
+      accounting_source: "device_counter_delta",
+      bytes: acc.total_bytes,
+      total_bytes: acc.total_bytes,
+      via_vps_bytes: acc.via_vps_bytes,
+      direct_bytes: acc.direct_bytes,
+      unknown_bytes: acc.unknown_bytes,
+      observed_bytes: acc.total_bytes,
+      attributed_bytes: 0,
+      flows: acc.flows,
+      connections: 0,
+      collected_at: latest.collected_at,
+      last_seen: latest.collected_at,
+    });
+  }
+  return output;
 }
 
 function clientObservedRows(rows) {
@@ -2990,7 +3076,10 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   const allRows = rows.filter((row) => aggregateTotalBytes(row) > 0);
   const primaryRows = preparedRowsForWindow(rows, "primary_client").filter((row) => aggregateTotalBytes(row) > 0);
   const operatorRows = allRows.filter((row) => isOperatorTrafficRow(row, registry));
-  const clientRows = clientObservedRows(operatorRows).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
+  const counterRows = trafficClass === "all" || trafficClass === "client"
+    ? deviceCounterRowsForWindow(db, window, now, registry)
+    : [];
+  const clientRows = clientObservedRows([...operatorRows, ...counterRows]).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
   const supportRows = allRows.filter((row) => !isOperatorTrafficRow(row, registry) && ["service_background", "unclassified"].includes(row.traffic_class));
   const modelRows = trafficClass === "client" || trafficClass === "personal_cloud"
     ? operatorRows

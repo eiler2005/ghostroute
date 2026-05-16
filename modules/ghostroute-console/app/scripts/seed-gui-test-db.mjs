@@ -9,6 +9,10 @@ const defaultDataDir = path.resolve(appDir, "..", "data", "gui-test");
 const dataDir = path.resolve(process.env.GHOSTROUTE_CONSOLE_DATA_DIR || defaultDataDir);
 const dbFile = path.join(dataDir, "ghostroute.db");
 const snapshotsDir = path.join(dataDir, "snapshots");
+const seededObservedBytes = 3_750_000_000;
+const seededViaVpsBytes = 1_800_000_000;
+const seededDirectBytes = 1_450_000_000;
+const seededUnknownBytes = seededObservedBytes - seededViaVpsBytes - seededDirectBytes;
 
 process.env.GHOSTROUTE_CONSOLE_DATA_DIR = dataDir;
 
@@ -412,9 +416,9 @@ function seed(db) {
     schema_version: 3,
     source: { command: "traffic-facts", period: "today" },
     coverage: {
-      observed_bytes: 734003200,
-      attributed_bytes: 608174080,
-      unattributed_bytes: 125829120,
+      observed_bytes: seededObservedBytes,
+      attributed_bytes: seededObservedBytes - seededUnknownBytes,
+      unattributed_bytes: seededUnknownBytes,
     },
     clients: [],
     traffic_facts: [],
@@ -423,10 +427,10 @@ function seed(db) {
   });
   const summarySnapshotId = insertSnapshot(db, now, "traffic_summary", 500, {
     totals: {
-      client_observed_bytes: 734003200,
-      via_vps_bytes: 356515840,
-      direct_bytes: 251658240,
-      unknown_bytes: 125829120,
+      client_observed_bytes: seededObservedBytes,
+      via_vps_bytes: seededViaVpsBytes,
+      direct_bytes: seededDirectBytes,
+      unknown_bytes: seededUnknownBytes,
     },
   });
   const dnsSnapshotId = insertSnapshot(db, now, "dns", 700, { queries: [] });
