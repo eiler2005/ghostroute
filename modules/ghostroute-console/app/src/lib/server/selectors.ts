@@ -1019,7 +1019,10 @@ function preservedChannel(row: Record<string, any>) {
 }
 
 function channelLabel(channels?: Array<string>) {
-  const clean = Array.from(new Set((channels || []).filter((value) => value && value !== "Unknown")));
+  const clean = Array.from(new Set((channels || [])
+    .flatMap((value) => String(value || "").split(/\s+\+\s+/))
+    .map((value) => value.trim())
+    .filter((value) => value && value !== "Unknown")));
   if (clean.length === 0) return "Unknown";
   const rank = (value: string) => {
     if (value.includes("A/Home")) return 0;
@@ -4547,7 +4550,10 @@ function mergeInventoryRows(rows: Array<Record<string, any>>): Array<Record<stri
     if (String(lastSeen) > String(current.last_seen || "")) current.last_seen = lastSeen;
     current.status = current.traffic_window_active ? (current.status || "Recently seen") : statusFromLastSeen(current.last_seen);
     current.channel = channelLabel([...(current.channels || []), current.channel, ...(row.channels || []), row.channel]);
-    current.channels = Array.from(new Set([...(current.channels || []), ...(row.channels || []), row.channel].filter((value) => value && value !== "Unknown")));
+    current.channels = Array.from(new Set([...(current.channels || []), ...(row.channels || []), row.channel]
+      .flatMap((value) => String(value || "").split(/\s+\+\s+/))
+      .map((value) => value.trim())
+      .filter((value) => value && value !== "Unknown")));
     current.aliases = Array.from(new Set([...(current.aliases || []), ...(row.aliases || [])].filter(Boolean).map(String))).slice(0, 16);
     current.observed_aliases = Array.from(new Set([...(current.observed_aliases || []), ...(row.observed_aliases || [])].filter(Boolean).map(String))).slice(0, 16);
     byKey.set(key, current);
