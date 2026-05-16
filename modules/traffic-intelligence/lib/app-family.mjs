@@ -67,6 +67,18 @@ const RULES = [
     "messenger.com",
     "meta.com",
   ]),
+  rule("X / Twitter", "social_media", "client", "high", [
+    "x.com",
+    "twitter.com",
+    "twitter.co",
+    "t.co",
+    "twimg.com",
+    "tweetdeck.com",
+  ]),
+  rule("LinkedIn", "social_professional", "client", "high", [
+    "linkedin.com",
+    "licdn.com",
+  ]),
   rule("Telegram", "messenger", "client", "high", [
     "telegram.org",
     "telegram.com",
@@ -213,6 +225,15 @@ const RULES = [
     "claude.ai",
     "claude.com",
   ]),
+  rule("Other AI tools", "ai_assistant", "client", "high", [
+    "copilot.microsoft.com",
+    "deepl.com",
+    "elevenlabs.io",
+    "grok.com",
+    "manus.im",
+    "x.ai",
+    "composer.opera-api.com",
+  ]),
   rule("Dropbox / cloud", "personal_cloud", "client", "high", [
     "dropbox.com",
     "dropboxapi.com",
@@ -262,8 +283,17 @@ const RULES = [
   rule("Productivity / knowledge tools", "productivity", "client", "high", [
     "canva.com",
     "canva.dev",
+    "miro.com",
+    "mirostatic.com",
+    "mirocdn.com",
+    "realtimeboard.com",
     "medium.com",
     "quora.com",
+    "kahoot.com",
+    "kahoot.it",
+  ]),
+  rule("Corporate mail / OWA", "productivity_mail", "client", "medium", [
+    "owa.",
   ]),
   rule("Discord", "messenger", "client", "high", [
     "discord.com",

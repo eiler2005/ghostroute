@@ -1823,6 +1823,10 @@ test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily("static-basket-01.wbbasket.ru").app_family, "Shopping / marketplaces");
   assert.equal(classifyAppFamily("m.vk.com").app_family, "VK / Mail.ru");
   assert.equal(classifyAppFamily("mc.yandex.ru").app_family, "Yandex");
+  assert.equal(classifyAppFamily("api.x.com").app_family, "X / Twitter");
+  assert.equal(classifyAppFamily("pbs.twimg.com").app_family, "X / Twitter");
+  assert.equal(classifyAppFamily("miro.com").app_family, "Productivity / knowledge tools");
+  assert.equal(classifyAppFamily("owa.cinimex.ru").app_family, "Corporate mail / OWA");
   assert.equal(classifyAppFamily("rutube.ru").app_family, "Media / streaming");
   assert.equal(classifyAppFamily("gs-loc.apple.com").app_family, "Apple / iCloud");
   assert.equal(classifyAppFamily("gs-loc.ls-apple.com.akadns.net").app_family, "Apple / iCloud");

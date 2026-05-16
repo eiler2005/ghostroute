@@ -42,6 +42,7 @@ import {
   moscowDateKey,
   reconcileTrafficRows,
   snapshotMatchesPeriod,
+  isPrimaryTrafficDestinationLabel,
   trafficDisplayDestination,
 } from "../traffic-window.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "../app-family.mjs";
@@ -3522,6 +3523,154 @@ export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrid
   return { ...model, ...definedOverrides(overrides) };
 }
 
+const dashboardNonDestinations = new Set([
+  "client",
+  "no site evidence",
+  "encrypted ingress traffic",
+  "n/a",
+  "unknown",
+  "unknown ip",
+  "unknown ip only",
+  "ip only",
+  "ip-only destination",
+  "unknown destination",
+  "traffic without site attribution",
+  "other / uncategorized",
+]);
+
+function dashboardRouteSplit(row: Record<string, any>) {
+  const bytes = siteEvidenceBytes(row);
+  const viaVps = Number(row.via_vps_bytes || row.viaVpsBytes || (row.route === "VPS" ? bytes : 0) || 0);
+  const direct = Number(row.direct_bytes || row.directBytes || (row.route === "Direct" ? bytes : 0) || 0);
+  const unknown = Math.max(0, bytes - viaVps - direct);
+  return { viaVps, direct, unknown };
+}
+
+function dashboardRouteFromRoutes(routes: Set<string>) {
+  const clean = Array.from(routes).filter(Boolean);
+  if (clean.length === 0) return "Unknown";
+  if (clean.length === 1) return clean[0];
+  return "Mixed";
+}
+
+function dashboardDestinationSection(row: Record<string, any>) {
+  const trafficClass = String(row.trafficClass || row.traffic_class || "").trim();
+  const lane = String(row.traffic_lane || row.lane || "").trim();
+  if (lane === "service_system" || trafficClass === "service_background") return "service";
+  return "client";
+}
+
+function dashboardIsServiceEvidenceRow(row: Record<string, any>) {
+  const eligibility = attributionEligibility(row);
+  if (eligibility.serviceOnly) return true;
+  return dashboardDestinationSection(row) === "service"
+    || row.traffic_role === "service_system"
+    || row.app_category === "service_system"
+    || row.app_family === "Service / system";
+}
+
+function dashboardDomainForRow(row: Record<string, any>) {
+  for (const candidate of [row.dns_qname, row.sni, row.domain, row.destination, row.raw?.dns_qname, row.raw?.sni, row.raw?.domain]) {
+    if (isDomainLikeValue(candidate)) return String(candidate).trim();
+  }
+  return "";
+}
+
+function hasDashboardEvidenceDestination(row: Record<string, any>) {
+  if (row.accounting_bucket || row.raw?.accounting_bucket) return false;
+  if (!isAttributableSiteRow(row, { includeService: true })) return false;
+  const label = trafficDisplayDestination(row).trim();
+  if (dashboardNonDestinations.has(label.toLowerCase())) return false;
+  return isPrimaryTrafficDestinationLabel(label);
+}
+
+function dashboardDestinationDetail(row: Record<string, any>) {
+  const domains = row.domains instanceof Set ? Array.from(row.domains) : [];
+  const domain = domains.length ? String(domains[0]).trim() : "";
+  return domain || String(row.destinationLabel || row.label || "").trim();
+}
+
+function groupDashboardEvidenceDestinations(rows: Array<Record<string, any>>, limit = 10) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    const bytes = siteEvidenceBytes(row);
+    if (bytes <= 0 || !hasDashboardEvidenceDestination(row)) continue;
+    const label = trafficDisplayDestination(row).trim();
+    const section = dashboardDestinationSection(row);
+    const key = `${section}|${label.toLowerCase()}`;
+    const current = grouped.get(key) || {
+      ...row,
+      destinationLabel: label,
+      label,
+      section,
+      bytes: 0,
+      total_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
+      viaVpsBytes: 0,
+      directBytes: 0,
+      unknownBytes: 0,
+      connections: 0,
+      clients: new Set<string>(),
+      routes: new Set<string>(),
+      domains: new Set<string>(),
+    };
+    const split = dashboardRouteSplit(row);
+    current.bytes += bytes;
+    current.total_bytes += bytes;
+    current.via_vps_bytes += split.viaVps;
+    current.direct_bytes += split.direct;
+    current.unknown_bytes += split.unknown;
+    current.viaVpsBytes += split.viaVps;
+    current.directBytes += split.direct;
+    current.unknownBytes += split.unknown;
+    current.connections += Number(row.connections || row.flows || 0);
+    if (row.client_key || row.client_label || row.client) current.clients.add(String(row.client_key || row.client_label || row.client));
+    if (row.route) current.routes.add(String(row.route));
+    const domain = dashboardDomainForRow(row);
+    if (domain) current.domains.add(domain);
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || Number(b.connections || 0) - Number(a.connections || 0))
+    .slice(0, limit)
+    .map((row, idx) => ({
+      ...row,
+      rank: idx + 1,
+      route: dashboardRouteFromRoutes(row.routes || new Set()),
+      detail: [
+        dashboardDestinationDetail(row),
+        row.clients?.size ? `${row.clients.size} client${row.clients.size === 1 ? "" : "s"}` : "",
+        row.connections ? `${row.connections} sessions` : "",
+      ].filter(Boolean).join(" · "),
+    }));
+}
+
+function dashboardEvidenceAnalytics(filters: ConsoleFilters = {}) {
+  const siteRows = siteEvidenceRowsForFilters(
+    { ...filters, trafficClass: "all", client: "all" },
+    { limit: 5000, perClientLimit: 120, includeService: true }
+  ).filter((row) => siteEvidenceBytes(row) > 0);
+  const clientRows = siteRows.filter((row) => !dashboardIsServiceEvidenceRow(row));
+  const serviceRows = siteRows.filter(dashboardIsServiceEvidenceRow);
+  return {
+    topDestinations: groupDashboardEvidenceDestinations(clientRows, 10),
+    topAppFamilies: groupAppFamilyRowsFromSiteEvidence(clientRows).slice(0, 10),
+    serviceBackgroundTraffic: groupDashboardEvidenceDestinations(serviceRows, 10),
+  };
+}
+
+function mergeDashboardAnalyticsWithEvidence(base: Record<string, any> = {}, filters: ConsoleFilters = {}) {
+  const evidence = dashboardEvidenceAnalytics(filters);
+  return {
+    ...base,
+    topDestinations: evidence.topDestinations.length ? evidence.topDestinations : base.topDestinations || [],
+    topAppFamilies: evidence.topAppFamilies,
+    serviceBackgroundTraffic: evidence.serviceBackgroundTraffic,
+  };
+}
+
 export function buildDashboardModel(filters: ConsoleFilters = {}): ConsoleModel {
   return cacheGet(`build-dashboard-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildDashboardModelUncached(filters));
 }
@@ -3541,11 +3690,11 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
       generatedAt: prepared.generatedAt || shell.generatedAt,
       totals: prepared.totals || shell.totals,
       destinationAttributionCoverage: prepared.destinationAttributionCoverage || shell.destinationAttributionCoverage,
-      dashboardAnalytics: prepared.dashboardAnalytics || {},
+      dashboardAnalytics: mergeDashboardAnalyticsWithEvidence(prepared.dashboardAnalytics || {}, filters),
     };
   }
   if (USE_PREPARED_WINDOWS && period !== "today") {
-    return { ...buildShellModel(filters), dashboardAnalytics: {} };
+    return { ...buildShellModel(filters), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence({}, filters) };
   }
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
@@ -3558,7 +3707,7 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
     lteQuotaGb: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_GB,
     resetDay: process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY,
   });
-  return { ...buildShellModel(filters, { devices, flows }), dashboardAnalytics };
+  return { ...buildShellModel(filters, { devices, flows }), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence(dashboardAnalytics, filters) };
 }
 
 export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
