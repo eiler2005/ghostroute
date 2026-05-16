@@ -41,6 +41,8 @@ const {
   reconcileTrafficRows,
   snapshotMatchesPeriod,
   trafficDisplayDestination,
+  noisyDomainRule,
+  trafficPresentationBytes,
 } = trafficWindowModule;
 const dashboardAnalyticsModule = await import(new URL("../src/lib/dashboard-analytics.mjs", import.meta.url));
 const { buildDashboardAnalyticsFromRows, isMobileTrafficRow, routeByteSplit } = dashboardAnalyticsModule;
@@ -2006,6 +2008,19 @@ test("traffic presentation prefers concrete destinations over generic categories
   assert.equal(isPrimaryTrafficDestinationLabel("203.0.113.10"), false);
   assert.equal(isPrimaryTrafficDestinationLabel("Home Reality ingress"), false);
   assert.equal(isPrimaryTrafficDestinationLabel("Client"), false);
+});
+
+test("traffic presentation down-ranks known noisy domains without changing factual bytes", () => {
+  const direct = { destination: "miro.com", bytes: 25_000, route: "VPS" };
+  const subdomain = { dns_qname: "api.miro.com", total_bytes: 50_000, route: "VPS" };
+  const normal = { dns_qname: "docs.example.invalid", bytes: 25_000, route: "VPS" };
+  assert.equal(noisyDomainRule(direct)?.factor, 25);
+  assert.equal(noisyDomainRule(subdomain)?.factor, 25);
+  assert.equal(noisyDomainRule(normal), null);
+  assert.equal(trafficPresentationBytes(direct), 1_000);
+  assert.equal(trafficPresentationBytes(subdomain), 2_000);
+  assert.equal(trafficPresentationBytes(normal), 25_000);
+  assert.equal(direct.bytes, 25_000);
 });
 
 test("dashboard top destinations exclude raw IP and pseudo ingress labels", () => {

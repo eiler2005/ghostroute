@@ -100,6 +100,17 @@ test("apps selected device keeps byte traffic separate from DNS evidence", async
   await expect(latestDns.getByText("gs-loc.apple.com")).toBeVisible();
 });
 
+test("mobile apps uses the same selected-client attribution as desktop", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "mobile-only compact Apps surface");
+  await page.goto("/m/apps?client=test-iphone-heavy");
+  const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families" }) });
+  await expect(selectedApps).toBeVisible();
+  await expect(selectedApps).toContainText(/GB/);
+  await expect(selectedApps).not.toContainText("No app-family rows");
+  const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains" }) });
+  await expect(latestDns).toContainText("gs-loc.apple.com");
+});
+
 test("apps selected-device byte totals stay aligned for all visible app devices", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/apps?desktop=1" : "/apps");
   const deviceRows = page.locator("section").first().locator("tbody tr");

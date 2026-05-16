@@ -43,6 +43,7 @@ import {
   reconcileTrafficRows,
   snapshotMatchesPeriod,
   isPrimaryTrafficDestinationLabel,
+  trafficPresentationBytes,
   trafficDisplayDestination,
 } from "../traffic-window.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "../app-family.mjs";
@@ -269,6 +270,7 @@ function pageArgsKey(args: PageArgs = {}) {
     maxPageSize: args.maxPageSize,
     maxRows: args.maxRows,
     diagnostics: Boolean(args.diagnostics),
+    presentationWeight: Boolean(args.presentationWeight),
     clientTarget: args.clientTarget ? {
       id: args.clientTarget.id,
       label: args.clientTarget.label,
@@ -1734,6 +1736,7 @@ type PageArgs = {
   diagnostics?: boolean;
   showInactive?: boolean;
   clientTarget?: Record<string, any>;
+  presentationWeight?: boolean;
 };
 
 type DnsPageArgs = PageArgs & {
@@ -2414,6 +2417,12 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
   const trafficClass = filters.trafficClass || "client";
   const fetchLimit = Math.min(maxRows, Math.max(offset + pageSize * 8, 500));
   const db = getDb();
+  const sortBytes = (row: Record<string, any>) => args.presentationWeight
+    ? trafficPresentationBytes(row)
+    : Number(row.bytes || row.total_bytes || 0);
+  const compareFlowRows = (a: Record<string, any>, b: Record<string, any>) =>
+    sortBytes(b) - sortBytes(a)
+      || Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0);
   const sqlTotal = Math.min(maxRows, Number((db.prepare(`select count(*) as count from flow_sessions where ${whereSql}`).get(...params) as any)?.count || 0));
   const rawRows = db
     .prepare(
@@ -2429,9 +2438,9 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], filters).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
-    .sort((a, b) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+    .sort(compareFlowRows);
   const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today", trafficClass)) as Array<Record<string, any>>)
-    .sort((a: Record<string, any>, b: Record<string, any>) => Number(b.bytes || b.total_bytes || 0) - Number(a.bytes || a.total_bytes || 0));
+    .sort(compareFlowRows);
   const total = Math.min(maxRows, Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length));
   const rows = allRows.slice(offset, offset + pageSize);
   return {

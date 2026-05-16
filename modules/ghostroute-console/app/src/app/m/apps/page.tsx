@@ -1,7 +1,7 @@
 import { MobileShell } from "@/components/MobileShell";
 import { bytes, ChannelBadge, RouteBadge } from "@/components/Widgets";
 import { listAppFamilyRows } from "@/lib/server/selectors/apps";
-import { listClientDnsDomains, listClientInventory } from "@/lib/server/selectors/clients";
+import { listClientInventory, listClientSiteEvidence } from "@/lib/server/selectors/clients";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { dnsInterestTrafficClass, filterDnsInterestRows } from "@/lib/traffic-window.mjs";
@@ -61,8 +61,13 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
     inventory.rows.find((row: Record<string, any>) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
     inventory.rows[0];
   const selectedClientId = selectedClientValue(selected);
-  const apps = listAppFamilyRows({ page, pageSize, filters: { ...filters, client: selectedClientId || "all" } });
-  const dnsAll = selected ? listClientDnsDomains(selected, filters.period || "today", { limit: 120 }) : [];
+  const apps = listAppFamilyRows({
+    page,
+    pageSize,
+    filters: { ...filters, client: selectedClientId || "all" },
+    clientTarget: selected,
+  });
+  const dnsAll = selected ? listClientSiteEvidence(selected, filters.period || "today", { limit: 120, includeService: includeServiceDns }) : [];
   const dnsFiltered = filterDnsInterestRows(dnsAll, { includeService: includeServiceDns });
   const dnsRows = (dnsFiltered.length > 0 || includeServiceDns ? dnsFiltered : dnsAll).slice(0, 12);
   const model = buildLightweightShellModel(filters, { devices: inventory.rows });
