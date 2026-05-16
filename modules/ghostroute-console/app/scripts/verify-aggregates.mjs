@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { isAttributableSiteRow } from "../src/lib/attribution-eligibility.mjs";
 import { loadDeviceAttributions } from "../src/lib/device-attribution.mjs";
 import { bucketStartUtc, mskWindowBounds } from "../src/lib/time/window.mjs";
 
@@ -31,9 +32,13 @@ function maxIso(...values) {
   return values.filter(Boolean).sort((a, b) => Date.parse(b) - Date.parse(a))[0] || "";
 }
 
-function concreteDestination(value) {
-  const text = String(value || "").toLowerCase();
-  return Boolean(text && text !== "unknown" && text !== "unknown destination" && text !== "n/a");
+function concreteDestination(row) {
+  return isAttributableSiteRow({
+    destination: row.destination_key,
+    destination_key: row.destination_key,
+    destination_label: row.destination_key,
+    traffic_class: row.traffic_class,
+  });
 }
 
 function payload(kind, window, trafficClass = "client") {
@@ -171,7 +176,7 @@ for (const window of ["today", "week", "month"]) {
     assert.ok(["ok", "partial"].includes(state.status), `aggregate_state dashboard/${window} status=${state.status}; repair: ${repairHint(window, dashboard)}`);
 
     const concreteOperatorBytes = rows
-      .filter((row) => registry.clients[row.client_key] && concreteDestination(row.destination_key) && number(row.attributed_bytes) > 0)
+      .filter((row) => registry.clients[row.client_key] && concreteDestination(row) && number(row.attributed_bytes) > 0)
       .reduce((sum, row) => sum + number(row.attributed_bytes), 0);
     const topDestinations = dashboard.dashboardAnalytics?.topDestinations || [];
     assert.ok(

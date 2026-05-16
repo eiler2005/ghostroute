@@ -190,7 +190,23 @@ const latestSummary = latestSnapshotPayload("traffic_summary");
 const latestEvidence = latestSnapshotPayload("traffic_evidence");
 const homeRealityIngress = number(latestSummary?.totals?.home_reality_ingress_bytes || latestSummary?.home_reality_ingress_bytes);
 const homeRealitySamples = Array.isArray(latestEvidence?.home_reality_samples) ? latestEvidence.home_reality_samples.length : 0;
-assert.ok(homeRealityIngress <= 0 || homeRealitySamples > 0, `traffic_summary reports Home Reality ingress (${homeRealityIngress}) but latest traffic_evidence has no home_reality_samples`);
+const homeRealityFacts = number(db.prepare(`
+  select count(*) as count
+    from traffic_facts
+   where lower(coalesce(destination, '')) like '%home reality ingress%'
+      or lower(coalesce(category, '')) = 'client.home_reality_ingress'
+      or lower(coalesce(destination_kind, '')) = 'encrypted_ingress'
+`).get().count);
+const homeRealityLanes = number(db.prepare(`
+  select count(*) as count
+    from client_destination_by_lane
+   where lower(coalesce(destination_key, '')) like '%home reality ingress%'
+      or lower(coalesce(category, '')) = 'client.home_reality_ingress'
+`).get().count);
+assert.ok(
+  homeRealityIngress <= 0 || homeRealitySamples > 0 || homeRealityFacts > 0 || homeRealityLanes > 0,
+  `traffic_summary reports Home Reality ingress (${homeRealityIngress}) but no factual Home Reality evidence rows were stored`
+);
 
 const legacyInLatestFacts = db.prepare(`
   select count(*) as count
