@@ -112,6 +112,32 @@ managed_split_checker_host: api.ipify.org
 stealth_test_upstream: 1.1.1.1
 stealth_static_source_ipset: VPN_STATIC_NETS
 stealth_channel_a_lan_enabled: true
+channel_a_selected_full_vps_enabled: "{{ vault_channel_a_selected_full_vps_enabled | default(false) }}"
+channel_a_selected_full_vps_lan_clients: "{{ vault_channel_a_selected_full_vps_lan_clients | default([]) }}"
+channel_a_selected_full_vps_home_reality_users: "{{ vault_channel_a_selected_full_vps_home_reality_users | default([]) }}"
+channel_a_selected_full_vps_dns_servers: "{{ vault_channel_a_selected_full_vps_dns_servers | default([]) }}"
+channel_a_selected_full_vps_interfaces: "{{ vault_channel_a_selected_full_vps_interfaces | default(['br0']) }}"
+channel_a_selected_full_vps_tproxy_port: "{{ vault_channel_a_selected_full_vps_tproxy_port | default((singbox_redirect_port | int) + 10, true) }}"
+channel_a_selected_full_vps_fwmark: "{{ vault_channel_a_selected_full_vps_fwmark | default('0x4100') }}"
+channel_a_selected_full_vps_route_table: "{{ vault_channel_a_selected_full_vps_route_table | default(410) }}"
+channel_a_selected_full_vps_ipset_name: GR_A_FULL_VPS
+channel_a_selected_full_vps_chain_name: GR_A_FULL_VPS
+channel_a_selected_full_vps_inbound_tag: channel-a-selected-lan-full-vps-in
+channel_a_selected_full_vps_dnsmasq_tag: ghostroute-channel-a-full-vps
+channel_a_selected_full_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-channel-a-full-vps.conf.add
+channel_a_selected_full_vps_bypass_cidrs:
+  - 0.0.0.0/8
+  - 10.0.0.0/8
+  - 127.0.0.0/8
+  - 169.254.0.0/16
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - octets: [224, 0, 0, 0]
+    prefix: 4
+  - octets: [240, 0, 0, 0]
+    prefix: 4
+  - octets: [255, 255, 255, 255]
+    prefix: 32
 router_tcp_perf_tuning_enabled: true
 router_tcp_rmem: "4096 262144 16777216"
 router_tcp_wmem: "4096 65536 16777216"

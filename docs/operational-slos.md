@@ -108,16 +108,18 @@ target is paired with the specific local check that measures it.
   check` → investigate routing-mistake check evidence; do not deploy on top
   of an unresolved mistake.
 
-### C3. Non-managed websites see the home WAN IP, not the managed exit
+### C3. Non-selected non-managed websites see the home WAN IP
 
-- **Target**: managed split correctly sends non-managed traffic out the
-  home WAN; no accidental tunneling of "everything".
+- **Target**: managed split correctly sends non-managed traffic from
+  non-selected devices/profiles out the home WAN. Selected Channel A full-VPS
+  devices/profiles are the explicit exception and intentionally tunnel
+  internet-bound traffic through `reality-out`.
 - **Measure**: `traffic-report today` direct-bytes share matches the
   expected fraction for the operator's usage; manual spot-check shows the
   home ISP IP for a non-managed domain.
-- **Action threshold**: ratio drifts toward "100% via VPS" → suspect a
-  catalog miscurate or a `RC_VPN_ROUTE`-style regression; the latter is a
-  hard architecture invariant violation.
+- **Action threshold**: ratio drifts toward unexpected "100% via VPS" for
+  non-selected traffic → suspect a catalog miscurate or a `RC_VPN_ROUTE`-style
+  regression; the latter is a hard architecture invariant violation.
 
 ### C4. Channel B/C never silently mutates Channel A
 

@@ -29,6 +29,12 @@ intended source of truth. For deeper context, follow the cross-references.
   endpoint`, not `endpoint -> VPS`. Applies to all production channels.
 - **Managed split** — the router decision that sends `STEALTH_DOMAINS` /
   `VPN_STATIC_NETS` matches through Reality and everything else direct.
+- **Channel A selected full-VPS / Selected full-VPS** — opt-in Channel A
+  override for selected home Wi-Fi/LAN devices or selected Home Reality
+  profiles. Home Wi-Fi/LAN selection uses reserved source IPs and TPROXY into
+  `channel-a-selected-lan-full-vps-in`; Home Reality selection uses `reality-in`
+  `auth_user`. Local/private destinations stay direct, while other
+  internet-bound traffic exits through `reality-out`.
 - **Managed domain** — a domain in `STEALTH_DOMAINS` (or via `VPN_STATIC_NETS`
   for direct-IP services); its TCP traffic egresses through the VPS.
 - **Reality ingress** — sing-box `reality-in` listener on the home router,

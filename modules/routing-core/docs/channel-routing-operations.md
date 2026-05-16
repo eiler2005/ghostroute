@@ -7,7 +7,9 @@ Operational runbook for checking, switching and debugging GhostRoute channels.
 | Source | Match sets | Mechanism | Egress |
 |---|---|---|---|
 | LAN clients (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | TCP nat `REDIRECT :<lan-redirect-port>`; UDP/443 DROP | sing-box redirect -> VLESS+Reality |
+| Selected home Wi-Fi/LAN full-VPS clients | reserved source IPs in `GR_A_FULL_VPS` | TCP/UDP TPROXY to `channel-a-selected-lan-full-vps-in`; local/private bypass; local/private DNS `:53` captured and overridden to strict DNS | `reality-out` for internet-bound traffic |
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
+| Selected Home Reality full-VPS profiles | `reality-in` `auth_user` set | selected-user rule before managed split; private/local bypass | `reality-out` for internet-bound traffic |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Channel A WireGuard | n/a | inactive in steady state | cold fallback only |
 
@@ -19,6 +21,12 @@ managed/foreign names -> dnsmasq -> dnscrypt-proxy
 
 RU/direct/default names -> dnsmasq -> home/RF/default resolver
 ```
+
+Selected home Wi-Fi/LAN full-VPS clients are the explicit exception to the
+normal LAN DNS and managed REDIRECT path: their source IPs return early from
+normal NAT `PREROUTING`, DHCP advertises a strict resolver, and plain DNS `:53`
+to a local/private resolver is captured by the selected TPROXY path and sent
+through `reality-out`.
 
 Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
 steady state; `wgc1_*` NVRAM is preserved only for cold fallback. New mobile
@@ -104,6 +112,37 @@ Expected:
 ```
 
 Generated mobile QR profiles (`iphone-*`, `macbook`) must point at the home public IP or home DNS name. The `router` profile is the exception: it points directly at the VPS because it is the router's outbound identity.
+
+### Channel A Selected Full-VPS
+
+Use this only for generic runtime verification. Keep real MACs, reserved IPs,
+resolver IPs and profile names in Vault or gitignored local notes.
+
+```sh
+ipset list GR_A_FULL_VPS
+iptables -t mangle -S GR_A_FULL_VPS
+iptables -t mangle -S GR_A_FULL_VPS | grep -- '--dport 53 .*TPROXY'
+iptables -t nat -S PREROUTING | grep 'GR_A_FULL_VPS.*src.*RETURN'
+ip rule show | grep '<full_vps_fwmark>'
+ip route show table <full_vps_route_table>
+netstat -nlp 2>/dev/null | grep ':<full_vps_tproxy_port> '
+grep 'channel-a-selected-lan-full-vps-in' /opt/etc/sing-box/config.json
+grep '"override_address"' /opt/etc/sing-box/config.json
+grep '"auth_user"' /opt/etc/sing-box/config.json
+```
+
+Expected:
+
+```text
+selected home Wi-Fi/LAN source IPs are present in GR_A_FULL_VPS
+GR_A_FULL_VPS has TPROXY rules for TCP, UDP and selected-client DNS :53
+selected source IPs return before normal NAT REDIRECT/DNS capture
+the full-VPS fwmark has a local route table
+sing-box has channel-a-selected-lan-full-vps-in when LAN set is non-empty
+sing-box overrides selected-client DNS :53 to the strict resolver before reality-out
+selected Home Reality profiles have auth_user rules before the managed split
+non-selected devices and profiles keep the managed-domain split
+```
 
 ### Channel A Cold Fallback Absence
 
@@ -281,7 +320,11 @@ Do not leave both `RC_VPN_ROUTE` and REDIRECT rules active for the same LAN sour
 
 Not the current baseline.
 
-Because this router supports `REDIRECT` but not `TPROXY`, moving `wgs1` to Channel A should be designed carefully. A naive mangle mark is not enough in the current REDIRECT model.
+Channel A now has a narrow TPROXY path for selected home Wi-Fi/LAN full-VPS
+source IPs, but active `wgs1` remains outside the production baseline. Moving
+`wgs1` to Channel A should be designed separately instead of reusing the LAN
+selected-device override by accident. A naive mangle mark is not enough in the
+current REDIRECT model.
 
 Implementation options:
 

@@ -30,6 +30,13 @@ CHANNEL_C_SHADOWROCKET_CONNLIMIT_ABOVE={{ channel_c_shadowrocket_connlimit_above
 CHANNEL_C_SHADOWROCKET_MSS={{ channel_c_shadowrocket_mss | default(1360) }}
 ROUTER_TCP_PERF_TUNING={{ router_tcp_perf_tuning_enabled | default(true) | ternary('1', '0') }}
 ROUTER_DNS_CAPTURE_LAN_PLAIN_53={{ router_dns_capture_lan_plain_53 | default(true) | ternary('1', '0') }}
+CHANNEL_A_SELECTED_FULL_VPS_ENABLED={{ channel_a_selected_full_vps_enabled | default(false) | ternary('1', '0') }}
+CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED={{ ((channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([])) | length > 0)) | ternary('1', '0') }}
+FULL_VPS_IPSET={{ channel_a_selected_full_vps_ipset_name | default('GR_A_FULL_VPS') }}
+FULL_VPS_CHAIN={{ channel_a_selected_full_vps_chain_name | default('GR_A_FULL_VPS') }}
+FULL_VPS_MARK={{ channel_a_selected_full_vps_fwmark | default('0x4100') }}
+FULL_VPS_TABLE={{ channel_a_selected_full_vps_route_table | default(410) }}
+FULL_VPS_TPROXY_PORT={{ channel_a_selected_full_vps_tproxy_port | default(0) }}
 VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
 WAN_GW={{ wan_gw }}
@@ -64,6 +71,14 @@ done
 # against the restored set and prevents REDIRECT rules from being installed.
 ipset create "$IPSET" hash:ip family inet -exist
 ipset create "$STATIC_IPSET" hash:net family inet -exist
+ipset create "$FULL_VPS_IPSET" hash:ip family inet -exist
+ipset flush "$FULL_VPS_IPSET" 2>/dev/null || true
+if [ "$CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED" = "1" ]; then
+  :
+{% for client in channel_a_selected_full_vps_lan_clients | default([]) %}
+  ipset add "$FULL_VPS_IPSET" "{{ client.ip }}" -exist
+{% endfor %}
+fi
 
 # 2. mangle cleanup: remove the previous TUN/policy-routing hooks.
 iptables -t mangle -D PREROUTING -m set --match-set "$IPSET" dst -j MARK --set-mark "$MARK" 2>/dev/null || true
@@ -76,8 +91,55 @@ iptables -t mangle -D OUTPUT -m set --match-set "$STATIC_IPSET" dst -j MARK --se
 while ip rule del fwmark "$MARK" table "$TABLE" 2>/dev/null; do :; done
 ip route flush table "$TABLE" 2>/dev/null || true
 
+# Channel A selected full-VPS LAN/Wi-Fi mode is opt-in and isolated from the
+# historical TUN cleanup values above. It uses TPROXY only for selected source
+# IPs and leaves the ordinary STEALTH_DOMAINS/VPN_STATIC_NETS path untouched.
+iptables -t mangle -D PREROUTING -j "$FULL_VPS_CHAIN" 2>/dev/null || true
+iptables -t mangle -F "$FULL_VPS_CHAIN" 2>/dev/null || true
+iptables -t mangle -X "$FULL_VPS_CHAIN" 2>/dev/null || true
+while ip rule del fwmark "$FULL_VPS_MARK" table "$FULL_VPS_TABLE" 2>/dev/null; do :; done
+ip route flush table "$FULL_VPS_TABLE" 2>/dev/null || true
+
+if [ "$CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED" = "1" ]; then
+  modprobe xt_socket 2>/dev/null || true
+  modprobe xt_TPROXY 2>/dev/null || true
+  iptables -t mangle -N "$FULL_VPS_CHAIN"
+  iptables -t mangle -A "$FULL_VPS_CHAIN" -p udp --dport 67:68 -j RETURN
+{% set client_interfaces = channel_a_selected_full_vps_lan_clients | default([]) | selectattr('interface', 'defined') | map(attribute='interface') | list %}
+{% set full_vps_interfaces = ((channel_a_selected_full_vps_interfaces | default(['br0'])) + client_interfaces) | unique | list %}
+{% for iface in full_vps_interfaces %}
+  for DNS_LOCAL_CIDR in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+    iptables -t mangle -A "$FULL_VPS_CHAIN" -i "{{ iface }}" -m set --match-set "$FULL_VPS_IPSET" src -d "$DNS_LOCAL_CIDR" -p udp --dport 53 -j TPROXY --on-port "$FULL_VPS_TPROXY_PORT" --tproxy-mark "$FULL_VPS_MARK"
+    iptables -t mangle -A "$FULL_VPS_CHAIN" -i "{{ iface }}" -m set --match-set "$FULL_VPS_IPSET" src -d "$DNS_LOCAL_CIDR" -p tcp --dport 53 -j TPROXY --on-port "$FULL_VPS_TPROXY_PORT" --tproxy-mark "$FULL_VPS_MARK"
+  done
+{% endfor %}
+{% for cidr in channel_a_selected_full_vps_bypass_cidrs | default([]) %}
+{% if cidr is mapping %}
+{% set bypass_cidr = (cidr.octets | join('.')) ~ '/' ~ cidr.prefix %}
+{% else %}
+{% set bypass_cidr = cidr %}
+{% endif %}
+  iptables -t mangle -A "$FULL_VPS_CHAIN" -d "{{ bypass_cidr }}" -j RETURN
+{% endfor %}
+{% for iface in full_vps_interfaces %}
+  iptables -t mangle -A "$FULL_VPS_CHAIN" -i "{{ iface }}" -m set --match-set "$FULL_VPS_IPSET" src -p tcp -j TPROXY --on-port "$FULL_VPS_TPROXY_PORT" --tproxy-mark "$FULL_VPS_MARK"
+  iptables -t mangle -A "$FULL_VPS_CHAIN" -i "{{ iface }}" -m set --match-set "$FULL_VPS_IPSET" src -p udp -j TPROXY --on-port "$FULL_VPS_TPROXY_PORT" --tproxy-mark "$FULL_VPS_MARK"
+{% endfor %}
+  iptables -t mangle -A "$FULL_VPS_CHAIN" -j RETURN
+  ip rule add fwmark "$FULL_VPS_MARK" table "$FULL_VPS_TABLE"
+  ip route add local 0.0.0.0/0 dev lo table "$FULL_VPS_TABLE"
+  iptables -t mangle -I PREROUTING 1 -j "$FULL_VPS_CHAIN"
+fi
+
 # 3. nat: Channel A owns LAN TCP by redirecting selected destinations into
 # sing-box. This avoids Merlin TUN/TUNSETIFF races.
+iptables -t nat -D PREROUTING -i br0 -m set --match-set "$FULL_VPS_IPSET" src -j RETURN 2>/dev/null || true
+if [ "$CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED" = "1" ]; then
+  # Selected full-VPS clients are owned by the TPROXY path above. Stop NAT
+  # processing early so managed REDIRECT and LAN DNS capture cannot steal those
+  # flows into the normal split path.
+  iptables -t nat -I PREROUTING 1 -i br0 -m set --match-set "$FULL_VPS_IPSET" src -j RETURN
+fi
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
 iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"

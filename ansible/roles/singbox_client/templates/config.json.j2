@@ -1,5 +1,8 @@
 {% set modern_sniff = (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool) %}
 {% set managed_egress_mode = router_managed_egress_mode | default('primary_vps') %}
+{% set selected_full_vps_lan_enabled = (channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([])) | length > 0) %}
+{% set selected_full_vps_home_users = channel_a_selected_full_vps_home_reality_users | default([]) %}
+{% set selected_full_vps_home_enabled = (channel_a_selected_full_vps_enabled | default(false) | bool) and (selected_full_vps_home_users | length > 0) %}
 {
   "log": {
     "level": "info",
@@ -37,7 +40,14 @@
       "listen": "0.0.0.0",
       "listen_port": {{ singbox_redirect_port }}{% if not modern_sniff %},
       "sniff": true{% endif %}
-    },
+    }{% if selected_full_vps_lan_enabled %},
+    {
+      "type": "tproxy",
+      "tag": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}",
+      "listen": "0.0.0.0",
+      "listen_port": {{ channel_a_selected_full_vps_tproxy_port }}{% if not modern_sniff %},
+      "sniff": true{% endif %}
+    }{% endif %},
     {
       "type": "socks",
       "tag": "dnscrypt-socks-in",
@@ -216,11 +226,25 @@
       { "inbound": "redirect-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "dnscrypt-socks-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "redirect-in", "outbound": "reality-out" },
-      { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
+      { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if selected_full_vps_lan_enabled %},
+      {
+        "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}",
+        "port": 53,
+        "action": "route-options",
+        "override_address": "{{ (channel_a_selected_full_vps_dns_servers | default([]) | first) }}",
+        "override_port": 53
+      },
+      { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "port": 53, "outbound": "reality-out" },
+      { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "ip_is_private": true, "outbound": "direct-out" },
+      { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "outbound": "reality-out" }{% endif %}{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
       { "inbound": "vps-dns-in", "action": "hijack-dns" }{% endif %}{% if home_reality_enabled | default(false) | bool %},
 {% if modern_sniff %}
       { "inbound": "reality-in", "action": "sniff" },
       { "inbound": "channel-b-relay-socks", "action": "sniff" },
+{% endif %}
+{% if selected_full_vps_home_enabled %}
+      { "inbound": "reality-in", "auth_user": {{ selected_full_vps_home_users | to_json }}, "ip_is_private": true, "outbound": "direct-out" },
+      { "inbound": "reality-in", "auth_user": {{ selected_full_vps_home_users | to_json }}, "outbound": "reality-out" },
 {% endif %}
       { "inbound": "reality-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "channel-b-relay-socks", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },

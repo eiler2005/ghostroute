@@ -57,7 +57,9 @@
     echo 'address=/{{ system_caddy_site_host }}/{{ vps_ssh_host }}' >> $CONF
     {% endif %}
     grep -q '^no-resolv$' $CONF || echo 'no-resolv' >> $CONF
-    service restart_dnsmasq
+    service restart_dnsmasq >/tmp/ghostroute-restart-dnsmasq.log 2>&1 </dev/null &
+    sleep 2
+    netstat -nlp 2>/dev/null | grep -q ':53 '
   when: router_dns_egress_mode | default('policy_split') == 'dnscrypt_pool'
 
 - name: Keep default dnsmasq upstream in policy-split DNS mode
@@ -71,5 +73,7 @@
     {% if system_caddy_site_enabled | default(false) | bool %}
     echo 'address=/{{ system_caddy_site_host }}/{{ vps_ssh_host }}' >> $CONF
     {% endif %}
-    service restart_dnsmasq
+    service restart_dnsmasq >/tmp/ghostroute-restart-dnsmasq.log 2>&1 </dev/null &
+    sleep 2
+    netstat -nlp 2>/dev/null | grep -q ':53 '
   when: router_dns_egress_mode | default('policy_split') == 'policy_split'

@@ -378,6 +378,18 @@ ports:
     iana_range: user
     runtime_check: live-check channel_a_lan_listener
 
+  - id: channel_a_selected_full_vps_tproxy
+    owner_component: router_sing_box
+    protocol:
+      - tcp
+      - udp
+    bind_scope: router_all_interfaces
+    exposure: selected_lan_tproxy
+    source_var: channel_a_selected_full_vps_tproxy_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: enabled only for selected Channel A full-VPS LAN clients
+
   - id: singbox_dnscrypt_socks
     owner_component: router_sing_box
     protocol: tcp

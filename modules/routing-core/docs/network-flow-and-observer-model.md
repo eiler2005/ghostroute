@@ -13,12 +13,16 @@ compatibility/native paths:
 
 1. Домашние Wi-Fi/LAN устройства используют transparent routing на роутере.
    Только managed-направления из `STEALTH_DOMAINS` и `VPN_STATIC_NETS` уходят
-   через VPS Reality. Остальное идет напрямую через домашний WAN.
+   через VPS Reality. Остальное идет напрямую через домашний WAN, кроме
+   выбранного home Wi-Fi/LAN full-VPS set: эти устройства отправляют весь
+   internet-bound traffic через VPS.
 
 2. iPhone/Mac вне дома подключаются не к VPS напрямую, а к домашнему ASUS на
    TCP/<home-reality-port>. После входа в домашний роутер применяется тот же split policy:
    managed-направления идут через VPS, non-managed-направления идут через
-   домашний WAN.
+   домашний WAN. Выбранные Home Reality profiles могут включать Channel A
+   full-VPS override: private/local direct, остальной internet-bound traffic
+   через VPS.
 
 3. Channel B selected clients подключаются к отдельному домашнему XHTTP/TLS
    ingress. Роутер relays этот трафик в sing-box, после чего применяется тот
@@ -30,7 +34,8 @@ compatibility/native paths:
 
 Ключевой результат: для LTE-оператора первый hop мобильного клиента выглядит
 как domestic `iPhone -> home RU IP`. Для сайтов страна/IP зависят от того,
-попал ли конечный домен/IP в managed catalog.
+попал ли конечный домен/IP в managed catalog или включен ли выбранный
+full-VPS режим для устройства/профиля.
 
 ## Components
 
@@ -99,6 +104,31 @@ Laptop / TV / phone at home
 
 Expected website-facing exit: домашний российский WAN IP.
 
+### Selected Full-VPS Home Device
+
+Пример: выбранный планшет/TV/Mac на домашнем Wi-Fi, которому нужен весь
+internet-bound трафик через VPS, а не только managed catalog.
+
+```text
+selected home Wi-Fi/LAN device
+  -> reserved DHCP source IP
+  -> ASUS iptables PREROUTING on br0
+       -> source IP matches GR_A_FULL_VPS
+       -> plain DNS :53 to local/private resolver is TPROXY-captured
+          and rewritten to strict DNS over reality-out
+       -> local/private destinations stay local
+       -> internet TCP/UDP TPROXY to <full-vps-tproxy-port>
+  -> sing-box channel-a-selected-lan-full-vps-in
+  -> sing-box reality-out
+  -> VPS host TCP/443
+  -> Caddy L4
+  -> Xray Reality inbound
+  -> target site / game service
+```
+
+Expected website-facing exit: VPS datacenter IP for internet destinations.
+Non-selected home devices still use the managed/non-managed split above.
+
 ## Scenario B: Remote iPhone / Mac over LTE or Other Networks
 
 ### First Hop: Mobile Client to Home
@@ -122,9 +152,9 @@ The mobile profile uses router-side Reality identity:
 This means the LTE carrier sees the phone connecting to the home Russian IP,
 not to the VPS.
 
-### Managed Destination from Mobile
+### Managed Destination from Non-Selected Mobile
 
-Пример: YouTube video traffic from `iphone-1-home`.
+Пример: YouTube video traffic from a non-selected Home Reality profile.
 
 ```text
 iPhone LTE
@@ -141,7 +171,7 @@ iPhone LTE
 
 Expected website-facing exit: VPS datacenter IP.
 
-### Non-Managed Destination from Mobile
+### Non-Managed Destination from Non-Selected Mobile
 
 Пример: Russian service intentionally left outside the managed catalog.
 
@@ -159,7 +189,27 @@ iPhone LTE
 Expected website-facing exit: домашний российский WAN IP.
 
 This is the important post-cleanup nuance: Home Reality ingress is not an
-all-traffic relay to VPS. It is a home ingress plus split routing policy.
+all-traffic relay to VPS by default. It is a home ingress plus split routing
+policy.
+
+### Selected Full-VPS Home Reality Profile
+
+```text
+selected Home Reality profile
+  -> home public RU IP TCP/<home-reality-port>
+  -> ASUS sing-box reality-in
+  -> sing-box route rule:
+       auth_user matches selected full-VPS set
+       private/local destinations -> direct-out
+       other internet destinations -> reality-out
+  -> VPS host TCP/443
+  -> Caddy L4
+  -> Xray Reality inbound
+  -> target site / game service
+```
+
+Expected website-facing exit: VPS datacenter IP for internet destinations.
+Non-selected Home Reality profiles keep the managed/non-managed split.
 
 ## Scenario C: Channel B Selected-Client XHTTP/TLS
 

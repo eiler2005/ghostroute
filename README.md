@@ -19,11 +19,13 @@ Russian README is an operator-facing summary.
 
 GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
 It keeps home LAN devices app-free, gives selected remote clients a home-first
-entrypoint, and sends only managed destinations through the active managed
-Reality egress: normally the owned VPS, or an explicit reserve provider during
-incidents. The repo is intentionally module-native: routing, health, traffic,
-catalog, client profiles, secrets and recovery all have separate ownership and
-tests.
+entrypoint, and keeps routing policy on the router. By default only managed
+destinations use the active Reality egress; selected home Wi-Fi/LAN devices and
+selected Channel A Home Reality profiles can opt into full-VPS mode where all
+internet-bound traffic uses `reality-out`. The active egress is normally the
+owned VPS, or an explicit reserve provider during incidents. The repo is
+intentionally module-native: routing, health, traffic, catalog, client profiles,
+secrets and recovery all have separate ownership and tests.
 
 ![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.png)
 
@@ -31,7 +33,7 @@ tests.
 
 | Channel | Status | First hop | Scope | Automatic failover |
 |---|---|---|---|---|
-| A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, Home Reality clients, active managed Reality egress | No |
+| A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
@@ -66,7 +68,10 @@ The layered model separates the main traffic responsibilities:
   Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
   client with Naive outbound support.
 - Layer 2 is the home router. It terminates home-based channels and applies the
-  managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`.
+  managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
+  Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
+  Reality profiles that should send all internet-bound traffic through
+  `reality-out`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
 
 Production endpoint policy is intentionally country-neutral in this repository:
@@ -127,6 +132,10 @@ diagnostic.
 - Channel A managed egress through the stable `reality-out` tag: normally the
   owned VPS Reality/Vision host behind shared Caddy L4 on TCP/443, with an
   explicit Vault-backed backup Reality provider mode for incidents.
+- Optional Channel A selected full-VPS sets for home LAN/Wi-Fi devices and Home
+  Reality profiles that should send all internet-bound traffic through
+  `reality-out`, while non-selected devices keep the managed-domain split. This
+  is a Channel A policy override, not Channel B/C failover.
 - Channel B selected-client production home-first lane: selected devices connect
   to the home router first via XHTTP/TLS, then the router relays into local
   sing-box SOCKS and reuses the active managed `reality-out` upstream.
@@ -155,8 +164,9 @@ GhostRoute is organized as a small operational platform around the routing
 core, not just a set of firewall scripts:
 
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
-  sing-box REDIRECT and home Reality ingress, managed Reality egress to VPS,
-  direct-out fallback for non-managed traffic, and WireGuard cold fallback.
+  sing-box REDIRECT, selected full-VPS TPROXY, home Reality ingress, managed
+  Reality egress to VPS, direct-out fallback for non-selected non-managed
+  traffic, and WireGuard cold fallback.
 - **GhostRoute Health Monitor** — a read-only reliability module for the
   router + VPS setup. It produces local `STATUS_OK` / `STATUS_FAIL` sentinels,
   `status.json`, Markdown summaries, daily digests and disk-based alert
@@ -239,6 +249,11 @@ Layer 1 managed channels
 Layer 2 home router
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
+                              +-- selected full-VPS override
+                              |     reserved source IP / Home Reality auth_user
+                              |     -> TPROXY or reality-in rule
+                              |     -> reality-out -> active managed egress -> Internet
+                              |
                               +-- managed match
                               |     STEALTH_DOMAINS / VPN_STATIC_NETS
                               |     -> sing-box REDIRECT / reality-in
@@ -249,8 +264,8 @@ Layer 2 home router
                                     -> direct-out -> home WAN -> Internet
 
 Layer 3 VPS
-  remote egress for selected managed traffic
-  sites see VPS IP for managed traffic
+  remote egress for managed traffic and selected full-VPS traffic
+  sites see VPS IP for managed and selected full-VPS traffic
 
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
@@ -300,6 +315,13 @@ Home Wi-Fi / LAN devices
 
 Home devices do not need VPN apps. The router sees DNS answers, fills `STEALTH_DOMAINS`, redirects matching TCP traffic into sing-box, and sends it through Reality. UDP/443 for managed destinations is silently dropped so apps fall back from QUIC to TCP.
 
+Selected home Wi-Fi/LAN devices can instead use Channel A selected full-VPS
+mode. Those devices are matched by reserved source IP, captured with TPROXY, and
+sent to `channel-a-selected-lan-full-vps-in -> reality-out`; local/private
+traffic remains local. Plain DNS `:53` from those selected devices is also
+captured and destination-overridden to the strict resolver before it exits
+through `reality-out`. Non-selected home devices keep the managed-domain split.
+
 ### 2. Endpoint / Client-Side Routing
 
 ```text
@@ -336,6 +358,10 @@ ASUS Router / Merlin
 |     +-- sing-box Reality outbound
 |     +-- active managed egress
 |     +-- Internet
++-- selected full-VPS Home Reality profile
+|     +-- auth_user rule before managed split
+|     +-- private destinations direct
+|     +-- other internet destinations -> active managed egress
 +-- non-managed destination
       +-- sing-box direct outbound
       +-- home WAN
@@ -346,7 +372,8 @@ For Channel A/B managed traffic, the first network sees the endpoint connecting
 to the home endpoint, not directly to the active managed egress. The home ISP
 sees the home router connecting to the active managed egress. Managed
 websites/checkers see that active managed exit; non-managed websites see the
-home WAN IP.
+home WAN IP unless the Home Reality profile is explicitly selected for Channel A
+full-VPS mode.
 
 Detailed workflow, ports, components and observer model:
 [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
@@ -390,6 +417,7 @@ Router:
   ASUS RT-AX88U Pro + Asuswrt-Merlin
   dnsmasq + ipset + iptables
   sing-box REDIRECT inbound on :<lan-redirect-port>
+  optional Channel A selected full-VPS TPROXY inbound on :<full-vps-tproxy-port>
   sing-box home Reality inbound on :<home-reality-port>
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
@@ -484,7 +512,7 @@ overviews. The Ansible router/VPS deployment component map lives in
 # Home-LAN-only one-off override:
 # ROUTER=<router_lan_ip> ./deploy.sh
 
-# Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT routing
+# Channel A router layer: sing-box, dnscrypt-proxy, reboot-safe REDIRECT/full-VPS routing
 cd ansible
 ansible-playbook playbooks/20-stealth-router.yml
 
@@ -519,10 +547,12 @@ files or restart services. Bypass is explicit and should be reserved for
 emergency recovery: `GHOSTROUTE_SKIP_DEPLOY_GATE=1 ./deploy.sh` or
 `ansible-playbook ... -e ghostroute_skip_deploy_gate=true`.
 
-`20-stealth-router.yml` also installs the Channel A reboot hooks and catalog
-scripts (`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,
-`update-blocked-list.sh`) so REDIRECT and the accumulated `STEALTH_DOMAINS`
-state survive router reboots and Merlin firewall rebuilds.
+`20-stealth-router.yml` also installs the Channel A reboot hooks, selected
+full-VPS TPROXY/dnsmasq policy when enabled, and catalog scripts
+(`firewall-start`, `cron-save-ipset`, `domain-auto-add.sh`,
+`update-blocked-list.sh`) so REDIRECT, selected full-VPS rules and the
+accumulated `STEALTH_DOMAINS` state survive router reboots and Merlin firewall
+rebuilds.
 
 `21-channel-b-router.yml` is the Channel B add-on: dedicated home XHTTP ingress
 plus local router relay into sing-box Reality upstream, without taking over Channel A
@@ -609,7 +639,10 @@ Expected invariants:
 - LAN UDP/443 for those sets is silently dropped to force TCP fallback.
 - Remote QR/VLESS clients connect to the home public IP on `:<home-reality-port>`, not directly to VPS.
 - Router-side `sing-box` accepts `reality-in` on `0.0.0.0:<home-reality-port>`.
-- Mobile managed destinations route to `reality-out`; mobile non-managed destinations route to `direct-out`.
+- Non-selected mobile profiles keep the managed split: managed destinations
+  route to `reality-out`, and non-managed destinations route to `direct-out`.
+  Selected Channel A full-VPS profiles route private destinations direct and
+  other internet-bound traffic to `reality-out`.
 - Plain DNS from Wi-Fi/LAN and mobile Channels A/B/C reaches router dnsmasq.
 - Managed/foreign DNS goes through `dnsmasq -> dnscrypt-proxy -> sing-box SOCKS
   -> reality-out`; RU/direct/default DNS stays on the home/RF/default resolver
@@ -726,6 +759,7 @@ contracts.
 | [0007](/docs/adr/0007-channel-b-production-channel-c-planned.md) | Record current B/C channel maturity. |
 | [0008](/docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Record Channel C live compatibility and native Naive blocker. |
 | [0009](/docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Keep managed DNS on dnscrypt-backed forwarding; public VPS 443 open for Reality, public DNS 53 closed. |
+| [0010](/docs/adr/0010-channel-a-selected-full-vps.md) | Add Channel A selected full-VPS override for selected home Wi-Fi/LAN devices and Home Reality profiles. |
 
 See [docs/adr/](/docs/adr/) for the full index and when to add a new record.
 
@@ -754,6 +788,7 @@ directories. See [SECURITY.md](/SECURITY.md) and
 - [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
 - [docs/adr/](/docs/adr/) - concise architecture decision records
 - [docs/routing-policy-principles.md](/docs/routing-policy-principles.md) - compact routing policy contract across Channels A/B/C
+- [docs/channel-a-selected-full-vps.md](/docs/channel-a-selected-full-vps.md) - optional selected-device full-VPS sets for home LAN/Wi-Fi and Channel A Home Reality profiles
 - [docs/architecture.md](/docs/architecture.md) - current routing architecture
 - [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
 - [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks

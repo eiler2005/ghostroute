@@ -13,8 +13,11 @@ router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
-- Channel A — home-first managed channel: endpoint или LAN traffic попадает на
-  home router, а managed traffic уходит через Reality/Vision на VPS.
+- Channel A — home-first router data plane: endpoint или LAN traffic попадает
+  на home router. По умолчанию managed traffic уходит через Reality/Vision на
+  VPS, а non-managed traffic идет через home WAN; выбранные домашние Wi-Fi/LAN
+  устройства и выбранные Home Reality профили могут включать full-VPS override
+  и отправлять весь internet-bound traffic через `reality-out`.
 - Channel B — production selected-client lane в home-first форме:
   selected device подключается к отдельному домашнему XHTTP/TLS ingress, а
   роутер relays трафик дальше через local sing-box SOCKS c managed split: managed
@@ -46,12 +49,26 @@ Layer 2 home router
     -> active managed egress
     -> Internet
 
+  Selected LAN/Wi-Fi full-VPS clients
+    -> reserved source IP match
+    -> TPROXY to `channel-a-selected-lan-full-vps-in`
+    -> local/private destinations stay local
+    -> other internet destinations -> reality-out -> active managed egress
+    -> Internet
+
   Remote QR clients
     -> home public IP :<home-reality-port>
     -> ASUS sing-box Reality inbound
     -> managed split:
          STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound to active managed egress
          other destinations              -> direct-out via home WAN
+
+  Selected Home Reality full-VPS profiles
+    -> home public IP :<home-reality-port>
+    -> ASUS sing-box Reality inbound
+    -> auth_user selected full-VPS rule before managed split
+    -> local/private destinations stay direct
+    -> other internet destinations -> reality-out -> active managed egress
 
   Channel B selected device-client traffic
     -> VLESS+XHTTP+TLS profile to home public IP :<home-channel-b-port>
@@ -125,17 +142,20 @@ router as the source for managed traffic.
 
 ### Layer 2 — Home Router
 
-The home router terminates home-based channels and applies managed routing and
-DNS policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, home
-Reality ingress, Channel B home ingress relay, Channel C1 Naive ingress, and
-the Reality/Vision outbound to VPS. Router policy may further split managed and
-non-managed destinations.
+The home router terminates home-based channels and applies routing and DNS
+policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, optional
+Channel A selected full-VPS TPROXY for home Wi-Fi/LAN devices, home Reality
+ingress with optional selected `auth_user` full-VPS rules, Channel B home
+ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS.
+Router policy may either split managed/non-managed destinations or, for selected
+Channel A full-VPS sets, send internet-bound traffic through `reality-out`.
 
 ### Layer 3 — VPS
 
-The VPS is remote egress for selected managed traffic. Sites and checkers see
-the VPS IP for managed traffic; non-managed traffic selected as `DIRECT` or
-home-WAN direct does not use the VPS egress.
+The VPS is remote egress for managed traffic and selected full-VPS traffic.
+Sites and checkers see the VPS IP for managed catalog matches and for selected
+Channel A full-VPS internet-bound traffic; non-selected non-managed traffic
+selected as `DIRECT` or home-WAN direct does not use the VPS egress.
 
 Policy-split managed DNS is generated on the router and normally uses the
 router-local dnscrypt listener. dnscrypt sends upstream DoH through sing-box
@@ -467,7 +487,9 @@ direct-XHTTP варианта Channel B.
 |---|---|---|---|
 | LAN/Wi-Fi TCP (`br0`) | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | nat REDIRECT `:<lan-redirect-port>` | Channel A sing-box -> Reality |
 | LAN/Wi-Fi UDP/443 (`br0`) | same sets | DROP | client fallback to TCP |
+| LAN/Wi-Fi selected full-VPS set | reserved source IP set | TPROXY TCP/UDP to `channel-a-selected-lan-full-vps-in` | `reality-out` for internet-bound traffic |
 | Endpoint QR/VLESS | generated Reality profile plus managed rule-sets | TCP/<home-reality-port> to home router | managed -> Reality; non-managed -> home WAN |
+| Channel A Home Reality selected full-VPS set | Home Reality `auth_user` set | `reality-in` selected-user rule before managed split | `reality-out` for internet-bound traffic |
 | Channel B selected-client profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | production home-first egress |
 | Channel C1-sing-box selected-client profile | selected device only | TCP/<home-channel-c-public-port> to home router, then sing-box Naive inbound with managed split | stealth-primary home-first egress |
 | Channel C1-Shadowrocket profile | selected device only | TCP/4443 to home router, then sing-box HTTP inbound with managed split | compatibility home-first egress |

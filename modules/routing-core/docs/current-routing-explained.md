@@ -14,11 +14,20 @@ LAN/Wi-Fi TCP             -> STEALTH_DOMAINS/VPN_STATIC_NETS
 
 LAN/Wi-Fi UDP/443         -> DROP for managed destinations -> client TCP fallback
 
+selected LAN/Wi-Fi        -> reserved source IP -> TPROXY
+                           -> channel-a-selected-lan-full-vps-in
+                           -> reality-out -> VPS for internet-bound traffic
+
 Remote QR mobile clients  -> home IP :<home-reality-port>
                            -> router Reality inbound
                            -> managed split:
                                 STEALTH_DOMAINS/VPN_STATIC_NETS -> Reality outbound -> VPS
                                 other destinations -> direct-out -> home WAN
+
+selected Home Reality     -> home IP :<home-reality-port>
+                           -> router Reality inbound auth_user rule
+                           -> private/local direct
+                           -> other internet-bound traffic -> reality-out -> VPS
 
 DNS managed names         -> dnsmasq -> dnscrypt-proxy
                            -> sing-box SOCKS -> Reality outbound
@@ -30,7 +39,9 @@ router OUTPUT             -> main routing unless explicitly proxied
 | Источник | Домены | Static CIDR | Egress |
 |---|---|---|---|
 | `br0` | `STEALTH_DOMAINS` | `VPN_STATIC_NETS` | sing-box REDIRECT `:<lan-redirect-port>` |
+| selected LAN/Wi-Fi full-VPS | reserved source IP set | n/a | TPROXY -> `channel-a-selected-lan-full-vps-in` -> `reality-out` |
 | mobile QR | generated VLESS/Reality profile + `STEALTH_DOMAINS` | `VPN_STATIC_NETS` | home ASUS `:<home-reality-port>` -> managed split |
+| selected Home Reality full-VPS | generated VLESS/Reality profile + selected `auth_user` | n/a | home ASUS `:<home-reality-port>` -> `reality-out` for internet-bound traffic |
 | `OUTPUT` | no transparent capture | no transparent capture | main routing / explicit proxy |
 
 `wgs1`/`wgc1` are decommissioned in normal operation. `wgc1_*` NVRAM is preserved
@@ -48,8 +59,9 @@ only for `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
 
 3. **Российские сервисы вне managed route.** Домены, которых нет в
    `STEALTH_DOMAINS`/`VPN_STATIC_NETS`, идут обычным домашним WAN-выходом.
-   Это относится и к домашней LAN, и к traffic, который пришёл через mobile
-   Home Reality ingress.
+   Это относится к non-selected домашней LAN и non-selected mobile Home Reality
+   ingress. Для selected full-VPS устройств/профилей internet-bound traffic
+   специально идет через VPS.
 
 Подробная схема от клиента до конечного сайта, включая процессы, порты и
 observer model: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
