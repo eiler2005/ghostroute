@@ -91,6 +91,7 @@ def counter_delta(rows, key_index, value_indexes, single_row_as_current: false)
     result[key] = {
       first_ts: sorted.first[0],
       last_ts: sorted.last[0],
+      row_count: sorted.length,
       first: first,
       last: last,
       values: values
