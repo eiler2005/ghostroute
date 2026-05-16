@@ -3191,7 +3191,7 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
       .filter((row) => row.attribution_source === "byte_exact")
       .reduce((sum, row) => sum + Number(row.factual_bytes || 0), 0);
     const windowSummary = clientWindowTrafficSummary(target, period);
-    const targetBytes = observedByteValue(windowSummary) || observedByteValue(target);
+    const targetBytes = Math.max(observedByteValue(windowSummary), observedByteValue(target));
     const residualBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes));
     const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
     const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
