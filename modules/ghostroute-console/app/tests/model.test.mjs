@@ -1830,7 +1830,12 @@ test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily("rutube.ru").app_family, "Media / streaming");
   assert.equal(classifyAppFamily("gs-loc.apple.com").app_family, "Apple / iCloud");
   assert.equal(classifyAppFamily("gs-loc.ls-apple.com.akadns.net").app_family, "Apple / iCloud");
+  assert.equal(classifyAppFamily("gsp85-ssl.ls2-apple.com.akadns.net").app_family, "Apple / iCloud");
   assert.equal(classifyAppFamily("ftrr01.finam.ru").app_family, "Finance / banking");
+  assert.equal(classifyAppFamily("main.vscode-cdn.net").app_family, "GitHub / dev");
+  assert.equal(classifyAppFamily("otus.ru").app_family, "Education / learning");
+  assert.equal(classifyAppFamily("audid-api.taobao.com").app_family, "Shopping / marketplaces");
+  assert.equal(classifyAppFamily("mediation.goog").app_family, "Service / system");
   assert.equal(classifyAppFamily("discovery-lookup.syncthing.net").app_family, "Personal cloud / sync");
   assert.equal(classifyAppFamily("www.clarity.ms").app_family, "Service / system");
   assert.equal(isClientFacingAppFamily(classifyAppFamily("cnam4c.skadsdkless.appsflyersdk.com")), false);
