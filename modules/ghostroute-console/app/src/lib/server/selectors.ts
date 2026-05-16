@@ -3233,7 +3233,29 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
         matched_pattern: "truncated DNS evidence tail",
       }));
     }
-    return evidence
+    const cappedBytes = evidence.reduce((sum, row) => sum + siteEvidenceBytes(row), 0);
+    const capScale = targetBytes > 0 && cappedBytes > targetBytes * 1.03 ? targetBytes / cappedBytes : 1;
+    const cappedEvidence = capScale < 1
+      ? evidence.map((row) => {
+        const scaled = Math.max(0, Math.round(siteEvidenceBytes(row) * capScale));
+        const factual = Math.round(Number(row.factual_bytes || 0) * capScale);
+        const inferred = Math.max(0, scaled - factual);
+        return {
+          ...row,
+          effective_bytes: scaled,
+          bytes: scaled,
+          total_bytes: scaled,
+          factual_bytes: factual,
+          inferred_bytes: inferred > 0 || Number(row.inferred_bytes || 0) > 0 ? inferred : 0,
+          via_vps_bytes: Math.round(Number(row.via_vps_bytes || 0) * capScale),
+          direct_bytes: Math.round(Number(row.direct_bytes || 0) * capScale),
+          unknown_bytes: Math.round(Number(row.unknown_bytes || 0) * capScale),
+          byte_confidence: row.byte_confidence === "factual" ? "estimated" : row.byte_confidence,
+          reconciled: true,
+        };
+      })
+      : evidence;
+    return cappedEvidence
       .sort((a, b) => siteEvidenceBytes(b) - siteEvidenceBytes(a) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
       .map((row, idx) => ({ ...row, rank: idx + 1 }));
   });
