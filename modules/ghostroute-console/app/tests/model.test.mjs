@@ -62,6 +62,8 @@ const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapsh
 const { validateSnapshotPayload, withSnapshotContractDefaults } = snapshotContractsModule;
 const routerRollupsModule = await import(new URL("../scr" + "ipts/lib/router-rollups.mjs", import.meta.url));
 const { routerMskKey, routerMskTimestampToUtc } = routerRollupsModule;
+const channelLabelsModule = await import(new URL("../src/lib/channel-labels.mjs", import.meta.url));
+const { normalizeChannelLabel } = channelLabelsModule;
 
 async function withTempConsoleDataDir(prefix, callback) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -2434,4 +2436,17 @@ test("unified client registry resolves A/B/C aliases and keeps source counters d
   assert.equal(resolveClient({ mac: "02:00:00:00:00:02" }, registry).client_key, "");
   assert.equal(resolveClient("mobile-source-15", registry).client_key, "mobile-source-15");
   assert.equal(resolveClient("mobile-source-15", registry).attribution_confidence, "unattributed");
+});
+
+test("merged channel labels dedupe repeated compound evidence", () => {
+  assert.equal(
+    normalizeChannelLabel([
+      "A/Home Reality + A/Home Reality + Home Wi-Fi/LAN",
+      "A/Home Reality",
+      "Home Wi-Fi/LAN",
+      "Unknown",
+    ]),
+    "A/Home Reality + Home Wi-Fi/LAN"
+  );
+  assert.equal(normalizeChannelLabel(["Unknown", "", null]), "Unknown");
 });
