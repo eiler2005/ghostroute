@@ -252,11 +252,19 @@ function networkCandidateValues(value) {
   if (!value || typeof value !== "object") return [];
   const raw = value.raw || {};
   return [
+    value.client_key,
+    value.device_key,
+    value.device_id,
+    value.id,
     value.mac,
     value.mac_address,
     value.ip,
     value.client_ip,
     value.source_ip,
+    raw.client_key,
+    raw.device_key,
+    raw.device_id,
+    raw.id,
     raw.mac,
     raw.mac_address,
     raw.ip,

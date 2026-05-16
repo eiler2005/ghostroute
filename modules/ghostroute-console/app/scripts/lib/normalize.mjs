@@ -2503,6 +2503,8 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
   const catalogRows = db.prepare("select rowid, * from normalized_catalog order by collected_at desc, rowid desc").all();
   const catalogMatch = buildCatalogMatcher(catalogRows);
   const rows = dnsRowsForAggregateRange(db, dirtyStartUtc, dirtyEndUtc);
+  const registry = loadDeviceAttributions();
+  const networkHints = buildInventoryNetworkHints(db, registry);
   const grouped = new Map();
   for (const row of rows) {
     const bucket = bucketStartUtc(row.event_ts || row.collected_at, "5min");
@@ -2512,7 +2514,22 @@ function rebuildDnsAggregates(db, now, dirtyStartUtc, dirtyEndUtc = now) {
     const raw = parseJson(row.raw_json, {});
     const clientIp = text(row.client_ip || row.ip || raw.client_ip || raw.ip || "");
     const rawClient = text(row.client || "");
-    const clientKey = rawClient.toLowerCase().startsWith("unattributed") && clientIp ? clientIp : text(rawClient || clientIp);
+    const rawDeviceKey = text(row.device_key || identityKey(row));
+    const resolved = resolveOperatorClient({
+      ...row,
+      raw,
+      client_key: raw.client_key || rawDeviceKey || rawClient || clientIp,
+      client_label: raw.client_label || rawClient || rawDeviceKey || clientIp,
+      device_key: rawDeviceKey,
+      device_id: raw.device_id || row.device_id || "",
+      client_ip: clientIp,
+      ip: clientIp,
+      source_ip: raw.source_ip || clientIp,
+      mac: raw.mac || raw.mac_address || "",
+    }, registry, networkHints);
+    const clientKey = resolved?.registered
+      ? text(resolved.client_key)
+      : rawClient.toLowerCase().startsWith("unattributed") && clientIp ? clientIp : text(rawClient || clientIp || rawDeviceKey);
     const key = [bucket, clientKey, clientIp, row.domain || "", row.qtype || "", catalogStatusValue, route].join("|");
     const current = grouped.get(key) || {
       bucket_start_utc: bucket,

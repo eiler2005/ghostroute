@@ -242,11 +242,12 @@ path.
 
 Because detailed snapshots can be cumulative, Console derives current-window
 client rows from positive deltas between same-day samples per observed source,
-then aggregates those sources into the canonical registry client and reconciles
-them to the authoritative `traffic-summary`/`traffic` KPI totals before
-rendering Dashboard, Traffic Explorer and Clients. This prevents several
-cumulative snapshots or Channel A/B/C aliases from being summed into impossible
-Top clients or Top destination totals.
+then aggregates those sources into the canonical registry client. Dashboard
+KPI totals may still reconcile to authoritative summary counters, but
+individual clients, Apps and popular-site inference must use only the
+canonical client's current-window aggregate rows. Do not reconcile one client
+against the global Dashboard total, and do not add synthetic `all` lanes to
+class-specific rows.
 
 Destination views share the `traffic-report --json`
 `destination_attribution_coverage` contract. Concrete destination rows plus
