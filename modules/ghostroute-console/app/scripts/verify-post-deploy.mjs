@@ -194,8 +194,8 @@ const homeRealityFacts = number(db.prepare(`
   select count(*) as count
     from traffic_facts
    where lower(coalesce(destination, '')) like '%home reality ingress%'
-      or lower(coalesce(category, '')) = 'client.home_reality_ingress'
       or lower(coalesce(destination_kind, '')) = 'encrypted_ingress'
+      or lower(coalesce(evidence_json, '')) like '%client.home_reality_ingress%'
 `).get().count);
 const homeRealityLanes = number(db.prepare(`
   select count(*) as count
