@@ -221,6 +221,10 @@
           - --exclude=ansible/secrets/
           - --exclude=ansible/out/
           - --exclude=modules/ghostroute-console/data/
+          - --exclude=node_modules/
+          - --exclude=.next/
+          - --exclude=test-results/
+          - --exclude=playwright-report/
           - --exclude=modules/ghostroute-console/app/node_modules/
           - --exclude=modules/ghostroute-console/app/.next/
           - --exclude=modules/ghostroute-console/app/test-results/
