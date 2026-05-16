@@ -10,6 +10,7 @@ export async function GET() {
     generated_at: model.generatedAt,
     freshness_status: model.freshnessStatus,
     runtime: model.runtime,
+    routing_policy: model.routingPolicy || {},
     settings: model.settingsInventory || {},
   });
 }

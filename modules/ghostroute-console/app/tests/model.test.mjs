@@ -23,6 +23,8 @@ const classificationModule = await import(new URL("../src/lib/traffic-classifica
 const { deviceReviewState, deviceRole, displayDestination, trafficClassFor, trafficIntelligenceFor } = classificationModule;
 const attributionModule = await import(new URL("../src/lib/device-attribution.mjs", import.meta.url));
 const { applyDeviceAttribution, displayDeviceLabel, loadDeviceAttributions, resolveClient } = attributionModule;
+const routingPolicySnapshotModule = await import(new URL("../src/lib/routing-policy-snapshot.mjs", import.meta.url));
+const { normalizeRoutingPolicySnapshot } = routingPolicySnapshotModule;
 const popularSitesModule = await import(new URL("../src/lib/client-popular-sites.mjs", import.meta.url));
 const { composePopularSiteRows, counterFallbackRows, groupPopularSites, siteBytes } = popularSitesModule;
 const attributionEligibilityModule = await import(new URL("../src/lib/attribution-eligibility.mjs", import.meta.url));
@@ -98,6 +100,45 @@ test("snapshot contracts keep unknown fields and reject missing core fields", ()
     }),
     /generated_at/
   );
+});
+
+test("routing policy snapshots sanitize selected full-VPS state", () => {
+  const payload = validateSnapshotPayload("routing_policy", {
+    schema_version: 1,
+    generated_at: "2026-05-16T08:00:00.000Z",
+    source: { command: "policy-snapshot.local", mode: "sanitized" },
+    confidence: "exact",
+    home_wifi_lan_full_vps: [{
+      name: "Test/Home iPad",
+      label: "Test/Home iPad",
+      ip: "192.0.2.44",
+      mac: "02:00:5e:10:00:44",
+      ip_token: "ip-aabbccdd",
+      mac_token: "mac-ddeeffaa",
+      strict_dns_resolver_ip: "192.0.2.53",
+      full_vps: true,
+    }],
+    channel_profiles: [
+      { channel: "A", profile: "test-a-full", policy: "full_vps", full_vps: true, full_vps_supported: true },
+      { channel: "B", profile: "test-b", policy: "full_vps", full_vps: true, full_vps_supported: true },
+      { channel: "C", profile: "test-c", policy: "full_vps", full_vps: true, full_vps_supported: true },
+    ],
+  });
+  const normalized = normalizeRoutingPolicySnapshot(payload, { source_path: "policy-snapshot.local.json" });
+  assert.equal(normalized.summary.home_full_vps, 1);
+  assert.equal(normalized.summary.channel_a_full_vps, 1);
+  assert.equal(normalized.summary.channel_b_profiles, 1);
+  assert.equal(normalized.summary.channel_c_profiles, 1);
+  assert.equal(normalized.home_wifi_lan_full_vps[0].ip_token, "ip-aabbccdd");
+  assert.equal(normalized.home_wifi_lan_full_vps[0].mac_token, "mac-ddeeffaa");
+  assert.equal(normalized.home_wifi_lan_full_vps[0].strict_dns_status, "configured");
+  assert.equal(normalized.channel_profiles.find((row) => row.channel === "B").full_vps_supported, false);
+  assert.equal(normalized.channel_profiles.find((row) => row.channel === "B").full_vps, false);
+  assert.equal(normalized.channel_profiles.find((row) => row.channel === "C").policy, "compatibility");
+  const serialized = JSON.stringify(normalized);
+  assert.equal(serialized.includes("192.0.2.44"), false);
+  assert.equal(serialized.includes("02:00:5e:10:00:44"), false);
+  assert.equal(serialized.includes("192.0.2.53"), false);
 });
 
 test("router rollup helpers preserve MSK bucket identity", () => {
@@ -1379,6 +1420,79 @@ test("prepared traffic windows use operator clients and preserve destination top
     const missing = repairAggregateRange(db, { fromUtc: "2026-05-01T00:00:00Z", toUtc: "2026-05-01T01:00:00Z" });
     assert.equal(missing.status, "missing_source");
     assert.ok(db.prepare("select 1 from aggregate_state where model = 'repair_aggregates' and status = 'missing_source'").get());
+  } finally {
+    db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+  }
+});
+
+test("prepared DNS and client totals share canonical operator identity", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-canonical-client-"));
+  fs.writeFileSync(
+    path.join(tmp, "device-attribution.json"),
+    JSON.stringify({
+      schema_version: 2,
+      clients: {
+        macbook: {
+          label: "MacBook Owner",
+          device_key: "operator-macbook",
+          aliases: { lan_wifi: ["lan-host-11"], hostnames: ["operator-macbook.local"] },
+          ip_aliases: ["192.0.2.44"],
+        },
+      },
+    })
+  );
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
+  const db = new Database(path.join(tmp, "ghostroute.db"));
+  try {
+    ensureConsoleSchema(db);
+    db.prepare(`
+      insert into device_inventory(device_key, label, ip, hostname, mac, aliases_json, profile, trust_state, device_type,
+        channel, route, confidence, last_seen, total_bytes, via_vps_bytes, direct_bytes, unknown_bytes, top_domains_json,
+        health_status, risk, evidence_json)
+      values ('lan-host-11', 'lan-host-11 (Unknown device)', '192.0.2.44', 'operator-macbook.local', '', '["lan-host-11"]',
+        'lan-host-11', 'trusted', 'MacBook', 'Home Wi-Fi/LAN', 'Mixed', 'exact', '2026-05-07T08:00:00Z',
+        0, 0, 0, 0, '[]', 'OK', 'low', '{}')
+    `).run();
+    db.prepare(`
+      insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
+        bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
+      values (1, 'traffic', '2026-05-07T08:00:00Z', '192.0.2.44', 'Home Wi-Fi/LAN', 'unknown destination',
+        'Mixed', 'estimated', 40000000, 8, 'TCP', '192.0.2.44', 'client', 30000000, 10000000, 0,
+        '{"client":"192.0.2.44","client_ip":"192.0.2.44","device_key":"192.0.2.44"}')
+    `).run();
+    const insertDns = db.prepare(`
+      insert into normalized_dns(snapshot_id, collected_at, client, client_ip, domain, qtype, count, answer_ip,
+        event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, ts_confidence, confidence, raw_json)
+      values (2, ?, ?, ?, ?, 'A', ?, '', ?, ?, ?, ?, 'collector_ms', 'exact', 'dns-interest', ?)
+    `);
+    insertDns.run("2026-05-07T08:01:00Z", "unattributed source", "", "chatgpt.com", 12,
+      "2026-05-07T08:01:00Z", "2026-05-07T08:01:00Z", "2026-05-07T08:01:00Z", "2026-05-07T08:01:00Z",
+      JSON.stringify({ client_ip: "192.0.2.44", device_key: "192.0.2.44" }));
+    insertDns.run("2026-05-07T08:02:00Z", "192.0.2.44", "192.0.2.44", "www.youtube.com", 8,
+      "2026-05-07T08:02:00Z", "2026-05-07T08:02:00Z", "2026-05-07T08:02:00Z", "2026-05-07T08:02:00Z",
+      JSON.stringify({ client_ip: "192.0.2.44", device_key: "192.0.2.44" }));
+
+    rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
+
+    assert.equal(
+      db.prepare("select sum(query_count) as count from dns_log_5min where client_key = 'macbook'").get().count,
+      20
+    );
+    assert.equal(
+      db.prepare("select count(*) as count from dns_log_5min where client_key = '192.0.2.44'").get().count,
+      0
+    );
+    assert.equal(
+      db.prepare("select sum(bytes) as bytes from client_traffic_by_lane where client_key = 'macbook' and traffic_lane = 'all' and bucket_granularity = 'day'").get().bytes,
+      40000000
+    );
+    assert.equal(
+      db.prepare("select sum(bytes) as bytes from client_traffic_by_lane where client_key = 'macbook' and traffic_lane = 'all' and traffic_class = 'all' and bucket_granularity = 'day'").get().bytes,
+      40000000
+    );
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;

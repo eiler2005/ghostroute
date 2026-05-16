@@ -24,15 +24,17 @@ Operational details live in
 ## TL;DR
 
 GhostRoute Console is the read-only GUI for the existing GhostRoute operational
-modules. It consumes JSON snapshots from Traffic Observatory, Health Monitor and
-DNS/Catalog Intelligence, rebuilds bounded SQLite read models, and renders
-Dashboard, Flow Explorer, DNS, Clients, Health, Live, Catalog, Budget, Reports
-and Settings surfaces. The module is intentionally a consumer of evidence, not a
-second source of truth or a hidden deploy mechanism.
+modules. It consumes JSON snapshots from Traffic Observatory, Health Monitor,
+DNS/Catalog Intelligence and a sanitized local routing-policy snapshot, rebuilds
+bounded SQLite read models, and renders Dashboard, Flow Explorer, DNS, Clients,
+Health, Live, Catalog, Budget, Reports and Settings surfaces. The module is
+intentionally a consumer of evidence, not a second source of truth or a hidden
+deploy mechanism.
 
 ```text
 Module-owned JSON snapshots
   Traffic Observatory     Health Monitor     DNS/Catalog Intelligence
+  Sanitized routing policy snapshot
              |                 |                       |
              +-----------------+-----------------------+
                                |
@@ -55,7 +57,7 @@ Console has two operator surfaces over the same prepared data:
 | Edition | Routes | Intended use | Shape |
 |---|---|---|---|
 | Full Console | `/`, `/traffic`, `/dns`, `/clients`, `/health`, `/live`, `/catalog`, `/budget`, `/reports`, `/settings` | Desktop/laptop investigations, wide tables, charts and evidence panels. | Next.js workbench with sidebar, filters, selected-row panels and deeper raw evidence where appropriate. |
-| Mobile Console | `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`, `/m/live`, `/m/catalog` | Remote triage from iPhone/Safari or constrained networks. | Capped rows, plain document links, compact cards and raw no-JS `/m/health`; every page links back to the full desktop route with `desktop=1`. |
+| Mobile Console | `/m`, `/m/traffic`, `/m/dns`, `/m/clients`, `/m/health`, `/m/live`, `/m/catalog`, `/m/settings` | Remote triage from iPhone/Safari or constrained networks. | Capped rows, plain document links, compact cards and raw no-JS `/m/health`; every page links back to the full desktop route with `desktop=1`. |
 
 | Surface | Status | Evidence source | Notes |
 |---|---|---|---|
@@ -68,7 +70,7 @@ Console has two operator surfaces over the same prepared data:
 | Catalog `/catalog` | Active | catalog snapshot read models | Review surface; runtime deploy remains separate. |
 | Budget `/budget` | Active | traffic quota settings and summaries | VPS/LTE usage and quota posture. |
 | Reports `/reports` | Active | stored snapshots and summaries | Read-only reporting surface. |
-| Settings `/settings` | Active | non-secret runtime inventory | Shows posture without exposing endpoints or secrets. |
+| Settings `/settings` | Active | non-secret runtime inventory and sanitized routing-policy snapshot | Shows runtime posture, selected Home Wi-Fi/LAN full-VPS clients and Channel A/B/C profile policy without exposing endpoints or raw MAC/IP/DNS. |
 | Mobile `/m/*` | Active | same read models, capped pages | Ultra-light iPhone/Safari surface with no-JS `/m/health`. |
 
 ```text
@@ -92,6 +94,7 @@ Mobile Console
   /m/health      Raw no-JS triage page
   /m/live        Compact event stream
   /m/catalog     Lightweight catalog list
+  /m/settings    Routing policy and runtime posture
 ```
 
 ## Why This Exists
@@ -126,6 +129,8 @@ The current observability slice includes:
 - Alarm Center, Deploy Gate, Health Center probes and leak-check evidence.
 - Dashboard traffic analytics, quota posture and top clients/destinations.
 - Client/device attribution with private operator-local registry support.
+- Routing policy Settings for selected Home Wi-Fi/LAN full-VPS clients and
+  Channel A/B/C profile policy from a sanitized local snapshot.
 - Append-only live DNS/flow/route events and client activity summaries.
 - Controlled catalog review, notification settings and audited ops actions.
 - Mobile `/m` pages for reliable remote triage from iPhone/Safari.
@@ -140,6 +145,7 @@ same prepared data.
      traffic-summary / traffic-facts / traffic-daily-report
      router-health-report / leak-check / deploy-gate evidence
      domain-report / dns-forensics-report
+     policy-snapshot.local.json for selected full-VPS/profile policy
      live-events-report for bounded router log-tail events
 
 2. The collector stores facts
@@ -331,6 +337,14 @@ resolves stable display names through that private registry before grouping and
 rendering. The registry may include `lan-host-*`, profile aliases, hostnames,
 `ip_aliases` and `mac_aliases`; use the `.local.json` file for real household
 addresses so private LAN/MAC data does not enter git.
+
+Private routing-policy display state lives in the same gitignored data
+directory as `policy-snapshot.local.json`, or in the file pointed to by
+`GHOSTROUTE_CONSOLE_POLICY_SNAPSHOT_PATH`. It must contain only sanitized
+selectors: friendly labels/profile names plus masked tokens such as
+`ip-<hash>` and `mac-<hash>`. Console ignores raw MAC/IP/DNS values for display,
+recomputes summary counts, and shows Channel B/C profiles as managed-split or
+compatibility lanes without full-VPS support.
 
 LAN/Wi-Fi attribution is registry-first end to end. Router
 `lan-device-counters-snapshot` emits the historical eight counter columns plus

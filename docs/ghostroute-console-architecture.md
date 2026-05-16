@@ -28,6 +28,10 @@ Layer 0 source modules
     -> domain-report --json
     -> dns-forensics-report --json
 
+  Sanitized routing policy snapshot
+    -> policy-snapshot.local.json from operator/Ansible context
+    -> selected Home Wi-Fi/LAN full-VPS clients and Channel A/B/C profile policy
+
   Router log-tail evidence
     -> live-events-report --json --since <cursor> --limit N
     -> sing-box / dnsmasq / domain-activity event rows
@@ -153,7 +157,7 @@ Layer 5 public interfaces
     -> /catalog read-only catalog review
     -> /budget quota posture
     -> /reports stored reports
-    -> /settings runtime inventory and safety gates
+    -> /settings runtime inventory, routing policy and safety gates
 
   Mobile Console
     -> /m compact ops summary
@@ -163,6 +167,7 @@ Layer 5 public interfaces
     -> /m/health raw no-JS health triage
     -> /m/live compact event stream
     -> /m/catalog lightweight catalog list
+    -> /m/settings compact routing policy and runtime posture
 
   JSON APIs
     -> /api/health
@@ -209,6 +214,10 @@ Console reads machine-readable JSON from existing operational modules:
   egress identity evidence.
 - `domain-report --json` and `dns-forensics-report --json` for catalog, DNS
   interest and query-window evidence.
+- `policy-snapshot.local.json`, or `GHOSTROUTE_CONSOLE_POLICY_SNAPSHOT_PATH`,
+  for sanitized Settings display of selected Home Wi-Fi/LAN full-VPS clients
+  and Channel A/B/C profile policy. This file is operator/Vault-derived data,
+  stays gitignored, and must not contain raw MAC/IP/DNS values.
 - `live-events-report --json --since <cursor> --limit N` for read-only log-tail
   events from `sing-box.log`, `dnsmasq.log` and `domain-activity.log`.
 
@@ -535,7 +544,7 @@ Settings load only the data each view renders.
 Mobile browsers, especially iPhone Safari behind the Console auth/proxy path,
 use a separate `/m` surface rather than the desktop workbench shell. Middleware
 redirects mobile requests for `/`, `/traffic`, `/dns`, `/clients`, `/health`,
-`/live` and `/catalog` to matching `/m` pages, while `desktop=1`, `/api/*`,
+`/live`, `/catalog` and `/settings` to matching `/m` pages, while `desktop=1`, `/api/*`,
 `/_next/*`, `/m/*` and shared route-detail URLs bypass the redirect. The mobile
 pages use the same read-only selectors, cap page size to 25 rows, omit side
 panels and desktop charts, and keep navigation as plain document links. Mobile
@@ -544,7 +553,8 @@ probes, Leak-check evidence and freshness from the same health/alarm read
 models. `/m/health` is intentionally a raw no-JS HTML route instead of a React
 page so iOS Safari can show the triage state from one authenticated document
 without depending on hydration chunks. Mobile Live renders the event stream plus
-a compact Client activity summary from `flow_sessions`. No `m.` subdomain is
+a compact Client activity summary from `flow_sessions`; Mobile Settings renders
+the same sanitized routing-policy snapshot as desktop Settings. No `m.` subdomain is
 used in v1, so public nginx/TLS stays on the same listener; only immutable
 `/_next/static/` chunks and browser metadata probes bypass Basic Auth to keep
 iOS Safari navigation reliable.

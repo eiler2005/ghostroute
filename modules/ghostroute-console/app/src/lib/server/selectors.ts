@@ -47,6 +47,7 @@ import {
   trafficDisplayDestination,
 } from "../traffic-window.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "../app-family.mjs";
+import { normalizeRoutingPolicySnapshot } from "../routing-policy-snapshot.mjs";
 import {
   attributionEligibility,
   decorateAttributionEligibility,
@@ -2841,8 +2842,27 @@ function clientDnsRows(client: Record<string, any> | string, period = "today", o
   const fallbackMatch = isMobileProfileTarget(target)
     ? clientMatchPredicate(["client", "device_key"], genericDeviceDnsAliases(target))
     : { sql: "", params: [] as Array<string> };
-  if (fallbackMatch.sql) return fetchRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
-  return rows;
+  if (fallbackMatch.sql) {
+    const genericRows = fetchRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
+    if (genericRows.length > 0) return genericRows;
+  }
+  const lookup = new Set(candidates.map((value) => value.toLowerCase()));
+  return getDb()
+    .prepare(
+      `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
+              qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
+         from dns_query_log
+        where (${latest.sql})
+          and coalesce(domain, '') != ''
+        order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
+        limit ?`
+    )
+    .all(...latest.params, Math.max(limit * 20, 1000))
+    .map(mapDnsReadModelRow)
+    .map(operatorDnsRow)
+    .filter((row): row is Record<string, any> => Boolean(row))
+    .filter((row) => laneClientKeyCandidates(row).some((value) => lookup.has(value.toLowerCase())))
+    .slice(0, limit);
 }
 
 export function listClientDnsEvidence(client: Record<string, any> | string, period = "today", options: { limit?: number } = {}) {
@@ -2851,8 +2871,10 @@ export function listClientDnsEvidence(client: Record<string, any> | string, peri
   const limit = Math.max(1, Number(options.limit || 200));
   return cacheGet(`client-dns-evidence:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => {
     const prepared = preparedClientDnsRows(target, period, { limit: Math.max(limit * 4, 200) });
-    if (prepared.available) return prepared.rows.slice(0, limit);
-    return aggregateClientDnsEvidenceRows(clientDnsRows(target, period, { limit: Math.max(limit * 4, 200) }), limit);
+    if (prepared.available && prepared.rows.length > 0) return prepared.rows.slice(0, limit);
+    const fallback = aggregateClientDnsEvidenceRows(clientDnsRows(target, period, { limit: Math.max(limit * 4, 200) }), limit);
+    if (fallback.length > 0) return fallback;
+    return prepared.available ? [] : fallback;
   });
 }
 
@@ -3053,6 +3075,48 @@ function scaleCoarseRowsToResidual(rows: Array<Record<string, any>>, targetBytes
   }).filter((row) => Number(row.effective_bytes || 0) > 0);
 }
 
+function clientWindowTrafficSummary(target: Record<string, any>, period = "today") {
+  const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_traffic_by_lane"), ...laneClientKeyCandidates(target)]);
+  const match = clientMatchPredicate(["client_key", "client_label"], keys);
+  const summary = {
+    bytes: 0,
+    total_bytes: 0,
+    via_vps_bytes: 0,
+    direct_bytes: 0,
+    unknown_bytes: 0,
+    flows: 0,
+    last_seen_utc: "",
+  };
+  if (!match.sql) return summary;
+  const db = getDb();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const rows = db.prepare(`
+      select sum(bytes) as bytes,
+             sum(via_vps_bytes) as via_vps_bytes,
+             sum(direct_bytes) as direct_bytes,
+             sum(unknown_bytes) as unknown_bytes,
+             sum(flows) as flows,
+             max(last_seen_utc) as last_seen_utc
+        from client_traffic_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         and traffic_lane = 'all'
+         and ${match.sql}
+    `).get(granularity, segment.start, segment.end, ...match.params) as Record<string, any> | undefined;
+    const bytes = Number(rows?.bytes || 0);
+    summary.bytes += bytes;
+    summary.total_bytes += bytes;
+    summary.via_vps_bytes += Number(rows?.via_vps_bytes || 0);
+    summary.direct_bytes += Number(rows?.direct_bytes || 0);
+    summary.unknown_bytes += Number(rows?.unknown_bytes || 0);
+    summary.flows += Number(rows?.flows || 0);
+    if (String(rows?.last_seen_utc || "") > summary.last_seen_utc) summary.last_seen_utc = String(rows?.last_seen_utc || "");
+  }
+  return summary;
+}
+
 export function listClientSiteEvidence(client: Record<string, any> | string, period = "today", options: { limit?: number; includeService?: boolean } = {}) {
   const target = typeof client === "string" ? { label: client, client_key: client } : client || {};
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_destination_by_lane"), ...laneClientKeyCandidates(target)]);
@@ -3091,7 +3155,8 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
     const exactFactualBytes = exactRows
       .filter((row) => row.attribution_source === "byte_exact")
       .reduce((sum, row) => sum + Number(row.factual_bytes || 0), 0);
-    const targetBytes = observedByteValue(target);
+    const windowSummary = clientWindowTrafficSummary(target, period);
+    const targetBytes = observedByteValue(windowSummary) || observedByteValue(target);
     const residualBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes));
     const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
     const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
@@ -3872,17 +3937,19 @@ export function buildIntelligenceModel(filters: ConsoleFilters = {}): ConsoleMod
 }
 
 export function buildSettingsModel(filters: ConsoleFilters = {}) {
-  return cacheGet(`build-settings-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildSettingsModelUncached(filters));
+  return cacheGet(`build-settings-model:${latestSnapshotVersion()}:${routingPolicySnapshotVersion()}:${filtersKey(filters)}`, () => buildSettingsModelUncached(filters));
 }
 
 function buildSettingsModelUncached(filters: ConsoleFilters = {}) {
   const devices = listClientInventory({ page: 1, pageSize: 200, filters }).rows;
-  const model = buildShellModel(filters, {
+  const shell = buildShellModel(filters, {
     devices,
     notificationSettings: notificationSettings() as Record<string, any>,
     auditLog: auditLog() as Array<Record<string, any>>,
     opsRuns: opsRuns() as Array<Record<string, any>>,
   });
+  const routingPolicy = readRoutingPolicySnapshot();
+  const model = { ...shell, routingPolicy };
   return { ...model, settingsInventory: buildSettingsInventory(model) };
 }
 
@@ -3945,13 +4012,55 @@ function pathJoin(...parts: string[]) {
   return parts.join("/").replace(/\/+/g, "/");
 }
 
+function routingPolicySnapshotPath() {
+  return process.env.GHOSTROUTE_CONSOLE_POLICY_SNAPSHOT_PATH || pathJoin(dataDir(), "policy-snapshot.local.json");
+}
+
+function routingPolicySnapshotVersion() {
+  const file = routingPolicySnapshotPath();
+  try {
+    const stat = fs.statSync(file);
+    return `${labelPath(file)}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return `${labelPath(file)}:missing`;
+  }
+}
+
+function readRoutingPolicySnapshot() {
+  const file = routingPolicySnapshotPath();
+  try {
+    const stat = fs.statSync(file);
+    const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+    return normalizeRoutingPolicySnapshot(payload, {
+      source_path: labelPath(file),
+      file_mtime: stat.mtime.toISOString(),
+    });
+  } catch (error: any) {
+    const missing = error?.code === "ENOENT";
+    return normalizeRoutingPolicySnapshot(null, {
+      source_path: labelPath(file),
+      warnings: missing ? [] : [`policy snapshot ignored: ${error?.message || "invalid json"}`],
+    });
+  }
+}
+
 function buildSettingsInventory(model: ConsoleModel) {
   const readModels = readModelStates();
   const registryRows = model.devices || [];
   const unattributed = registryRows.filter((row) => row.role === "Unattributed mobile ingress source" || row.attribution_confidence === "unattributed").length;
   const routerProfile = process.env.GHOSTROUTE_READONLY_SSH_HOST && process.env.GHOSTROUTE_READONLY_SSH_KEY_PATH ? "configured" : "missing";
   const alarmMode = process.env.GHOSTROUTE_ALARM_STATE_MODE || "disabled";
+  const routingPolicy = model.routingPolicy || readRoutingPolicySnapshot();
   return {
+    routingPolicy,
+    routingPolicyOverview: [
+      ["Snapshot", routingPolicy.status || "missing"],
+      ["Home full-VPS clients", String(routingPolicy.summary?.home_full_vps || 0)],
+      ["Channel A profiles", `${routingPolicy.summary?.channel_a_profiles || 0} profiles / ${routingPolicy.summary?.channel_a_full_vps || 0} full-VPS`],
+      ["Channel B profiles", `${routingPolicy.summary?.channel_b_profiles || 0} managed split`],
+      ["Channel C profiles", `${routingPolicy.summary?.channel_c_profiles || 0} compatibility`],
+      ["Source", routingPolicy.source?.path || "policy-snapshot.local.json"],
+    ],
     runtime: [
       ["Source", model.runtime.sourceLabel],
       ["Build commit", model.runtime.buildCommit],
@@ -4425,7 +4534,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       traffic_collected_at: row.last_seen || row.collected_at || "",
     });
   }
-    const currentDeviceRows = (reconcileTrafficRows(rows, authoritativeTotalsForPeriod(period, trafficClass)) as Array<Record<string, any>>)
+    const currentDeviceRows = (rows as Array<Record<string, any>>)
     .map(inventoryRowFromTraffic)
     .filter((row): row is Record<string, any> => Boolean(row));
     return (mergeInventoryRows([
