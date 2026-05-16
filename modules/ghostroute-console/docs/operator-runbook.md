@@ -379,6 +379,10 @@ not infer egress IP/ASN/country from the public Console URL.
   prototype only: it shows expected/offline nDPI protocol comparison when
   samples exist and never changes routing or accounting. Mobile `/m/apps`
   follows the same selected-device default and service-DNS include toggle.
+- `/traffic` keeps factual byte/session counters in the flow table, but its
+  top-of-page prominence ranking can apply explicit noisy-domain presentation
+  weights. This prevents chatty domains from dominating the operator view while
+  leaving route/accounting evidence unchanged.
 - `/live?eventsPage=&eventsPageSize=&servicePage=&servicePageSize=` renders
   client and service/background live events separately, with millisecond event
   times and page sizes up to 500 rows.

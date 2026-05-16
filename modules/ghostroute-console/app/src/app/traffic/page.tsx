@@ -6,7 +6,7 @@ import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/ev
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
-import { destinationEvidence, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
+import { destinationEvidence, noisyDomainRule, trafficDisplayDestination, trafficPresentationBytes } from "@/lib/traffic-window.mjs";
 import { trafficClassLabel, trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 
 function scalar(value: string | string[] | undefined) {
@@ -52,6 +52,10 @@ function EvidenceBadge({ label, value }: { label: string; value?: string }) {
 
 function rowBytes(row: Record<string, any>) {
   return Number(row.bytes || row.total_bytes || 0);
+}
+
+function rowPresentationBytes(row: Record<string, any>) {
+  return trafficPresentationBytes(row);
 }
 
 function compactNumber(value: number) {
@@ -112,6 +116,27 @@ function presentationDestination(row: Record<string, any>, destination: ReturnTy
   return destination;
 }
 
+function groupedVpsPresentationRows(rows: Array<Record<string, any>>) {
+  const grouped = new Map<string, { key: string; label: string; kind: string; bytes: number; factualBytes: number; rows: number }>();
+  rows.forEach((row) => {
+    const destination = presentationDestination(row, destinationEvidence(row));
+    const key = `${destination.kind}:${destination.label}`;
+    const current = grouped.get(key) || {
+      key,
+      label: destination.label,
+      kind: destination.kind,
+      bytes: 0,
+      factualBytes: 0,
+      rows: 0,
+    };
+    current.bytes += rowPresentationBytes(row);
+    current.factualBytes += rowBytes(row);
+    current.rows += 1;
+    grouped.set(key, current);
+  });
+  return Array.from(grouped.values()).sort((a, b) => b.bytes - a.bytes || b.factualBytes - a.factualBytes);
+}
+
 function Sparkline({ values, tone = "ok" }: { values: number[]; tone?: "ok" | "warn" | "danger" }) {
   const clean = values.length ? values : [0];
   const max = Math.max(...clean, 1);
@@ -145,7 +170,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
-  const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics });
+  const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics, presentationWeight: true });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
   const evidences = evidenceSet.evidences;
@@ -160,9 +185,11 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const suspiciousRows = rows.filter((row) => row.route === "Direct" && ["medium", "high"].includes(String(row.risk || ""))).length;
   const unknownRows = rows.filter((row) => !row.destination || row.destination === "unknown destination" || row.route === "Unknown" || row.accounting_bucket).length;
   const totalBytes = rows.reduce((sum, row) => sum + rowBytes(row), 0);
+  const totalPresentationBytes = rows.reduce((sum, row) => sum + rowPresentationBytes(row), 0);
   const vpsBytes = vpsRows.reduce((sum, row) => sum + rowBytes(row), 0);
-  const vpsShare = totalBytes ? (vpsBytes / totalBytes) * 100 : 0;
-  const topVps = [...vpsRows].sort((a, b) => rowBytes(b) - rowBytes(a)).slice(0, 3);
+  const vpsPresentationBytes = vpsRows.reduce((sum, row) => sum + rowPresentationBytes(row), 0);
+  const vpsShare = totalPresentationBytes ? (vpsPresentationBytes / totalPresentationBytes) * 100 : 0;
+  const topVps = groupedVpsPresentationRows(vpsRows).slice(0, 3);
   const spark = rows.slice(0, 18).map(rowBytes).reverse();
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
@@ -217,16 +244,16 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
         <section className="card flow-kpi flow-kpi-wide">
           <div>
             <span>Top routed via VPS</span>
-            <strong>{bytes(vpsBytes)}</strong>
-            <small>{vpsRows.length} rows on current page</small>
+            <strong>{bytes(vpsPresentationBytes)}</strong>
+            <small>{vpsRows.length} rows shown · noisy domains weighted · factual {bytes(vpsBytes)}</small>
           </div>
           <div className="flow-vps-breakdown">
             <Donut value={vpsShare} />
             <div>
               {topVps.length ? topVps.map((row) => (
-                <small key={row.id} title={trafficDisplayDestination(row)}>
-                  <span>{trafficDisplayDestination(row)}</span>
-                  <b>{Math.round((rowBytes(row) / Math.max(vpsBytes, 1)) * 100)}%</b>
+                <small key={row.key} title={`${row.label} · factual ${bytes(row.factualBytes)} · ${row.rows} rows`}>
+                  <span>{row.label}</span>
+                  <b>{Math.round((row.bytes / Math.max(vpsPresentationBytes, 1)) * 100)}%</b>
                 </small>
               )) : <small>No VPS rows on this page</small>}
             </div>
@@ -303,6 +330,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                   {rows.map((row) => {
                     const href = flowHref(row.id);
                     const destination = presentationDestination(row, destinationEvidence(row));
+                    const noisy = noisyDomainRule(row);
                     const intel = trafficIntelligenceFor(row);
                     return (
                       <tr key={row.id} className={`clickable-row ${row.id === selectedId ? "selected" : ""}`}>
@@ -313,6 +341,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                           <Link className="row-link row-link-with-badges destination-cell" href={href}>
                             <span>{destination.label}</span>
                             <span className={`badge evidence-kind evidence-${String(destination.kind).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{destination.kind}</span>
+                            {noisy ? <span className="badge evidence-kind">noisy ÷{noisy.factor}</span> : null}
                           </Link>
                         </td>
                         <td className="col-route"><Link className="row-link row-link-with-badges" href={href}><RouteBadge value={row.route} /></Link></td>
@@ -332,7 +361,10 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                         <td className="col-policy" title={`${row.policy || row.rule_set || row.matched_rule || "DEFAULT"} ${row.matched_rule || row.outbound || ""}`}>
                           <Link className="row-link" href={href}>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</Link>
                         </td>
-                        <td className="col-traffic"><Link className="row-link" href={href}>{bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions</Link></td>
+                        <td className="col-traffic"><Link className="row-link" href={href}>
+                          {bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions
+                          {noisy ? <small>display {bytes(rowPresentationBytes(row))}</small> : null}
+                        </Link></td>
                         <td className="col-duration"><Link className="row-link" href={href}>{durationLabel(row.duration_seconds)}</Link></td>
                         <td className="col-domain" title={flowDomain(row)}><Link className="row-link" href={href}>{flowDomain(row)}</Link></td>
                         <td className="col-risk"><Link className="row-link row-link-with-badges" href={href}>{riskBadge(row.risk)}</Link></td>

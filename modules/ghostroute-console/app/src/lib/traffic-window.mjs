@@ -53,6 +53,51 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const NOISY_DOMAIN_RULES = [
+  {
+    domain: "miro.com",
+    factor: 25,
+    reason: "high-chatter collaboration traffic",
+  },
+];
+
+function domainCandidate(value) {
+  return text(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[.]$/g, "");
+}
+
+function matchesDomainRule(candidate, domain) {
+  if (!candidate || !domain) return false;
+  return candidate === domain || candidate.endsWith(`.${domain}`);
+}
+
+export function noisyDomainRule(rowOrDomain) {
+  const candidates = typeof rowOrDomain === "string"
+    ? [rowOrDomain]
+    : [
+        concreteTrafficDestination(rowOrDomain),
+        rowOrDomain?.dns_qname,
+        rowOrDomain?.sni,
+        rowOrDomain?.domain,
+        rowOrDomain?.destination,
+        rowOrDomain?.raw?.dns_qname,
+        rowOrDomain?.raw?.sni,
+        rowOrDomain?.raw?.domain,
+        rowOrDomain?.raw?.destination,
+      ];
+  const normalized = candidates.map(domainCandidate).filter(Boolean);
+  return NOISY_DOMAIN_RULES.find((rule) => normalized.some((candidate) => matchesDomainRule(candidate, rule.domain))) || null;
+}
+
+export function trafficPresentationBytes(row) {
+  const bytes = number(row?.bytes || row?.total_bytes || 0);
+  const rule = noisyDomainRule(row);
+  if (!rule || bytes <= 0) return bytes;
+  return Math.max(1, Math.round(bytes / rule.factor));
+}
+
 function moscowParts(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
