@@ -163,6 +163,7 @@ const RULES = [
     "gsp-ssl.ls.apple.com",
     "gspe21-ssl.ls.apple.com",
     "ls-apple.com.akadns.net",
+    "ls2-apple.com.akadns.net",
     "xp.apple.com",
   ]),
   rule("Service / system", "service_system", "service_system", "medium", [
@@ -174,6 +175,7 @@ const RULES = [
     "appsflyer.com",
     "appsflyersdk.com",
     "clarity.ms",
+    "mediation.goog",
     "connectivitycheck.gstatic.com",
     "clients3.google.com",
     "otel.",
@@ -254,6 +256,8 @@ const RULES = [
     "bitbucket.org",
     "dev.azure.com",
     "visualstudio.com",
+    "vscode.dev",
+    "vscode-cdn.net",
   ]),
   rule("Developer / SaaS tools", "developer_saas", "client", "medium", [
     "atlassian.com",
@@ -292,6 +296,12 @@ const RULES = [
     "kahoot.com",
     "kahoot.it",
   ]),
+  rule("Education / learning", "education", "client", "medium", [
+    "otus.ru",
+    "coursera.org",
+    "udemy.com",
+    "stepik.org",
+  ]),
   rule("Corporate mail / OWA", "productivity_mail", "client", "medium", [
     "owa.",
   ]),
@@ -326,6 +336,10 @@ const RULES = [
     "avito.ru",
     "avito.st",
     "market.yandex.ru",
+    "taobao.com",
+    "tmall.com",
+    "alicdn.com",
+    "aliexpress.com",
     "eda.yandex.ru",
     "lavka.yandex.ru",
     "iherb.com",
