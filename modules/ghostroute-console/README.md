@@ -146,6 +146,7 @@ same prepared data.
      router-health-report / leak-check / deploy-gate evidence
      domain-report / dns-forensics-report
      policy-snapshot.local.json for selected full-VPS/profile policy
+       (rendered from Vault during Console deploy)
      live-events-report for bounded router log-tail events
 
 2. The collector stores facts
@@ -344,7 +345,10 @@ directory as `policy-snapshot.local.json`, or in the file pointed to by
 selectors: friendly labels/profile names plus masked tokens such as
 `ip-<hash>` and `mac-<hash>`. Console ignores raw MAC/IP/DNS values for display,
 recomputes summary counts, and shows Channel B/C profiles as managed-split or
-compatibility lanes without full-VPS support.
+compatibility lanes without full-VPS support. The read-only Console deploy
+renders this snapshot from the Ansible/Vault selected full-VPS variables before
+syncing private Console data, so Settings does not depend on a manually-created
+local JSON file.
 
 LAN/Wi-Fi attribution is registry-first end to end. Router
 `lan-device-counters-snapshot` emits the historical eight counter columns plus

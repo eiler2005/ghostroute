@@ -1,0 +1,86 @@
+{% set policy_enabled = vault_channel_a_selected_full_vps_enabled | default(false) | bool -%}
+{% set selected_lan_clients = vault_channel_a_selected_full_vps_lan_clients | default([]) -%}
+{% set selected_home_users = vault_channel_a_selected_full_vps_home_reality_users | default([]) -%}
+{% set selected_dns_servers = vault_channel_a_selected_full_vps_dns_servers | default([]) -%}
+{% set channel_a_profiles = home_clients | default([]) -%}
+{% set channel_b_profiles = channel_b_home_clients | default(vault_channel_b_home_clients | default(vault_channel_b_xhttp_clients | default([]), true), true) -%}
+{% set channel_c_profiles = channel_c_shadowrocket_clients | default(channel_c_home_clients | default(vault_channel_c_home_clients | default([]), true), true) -%}
+{
+  "schema_version": 1,
+  "generated_at": {{ console_build_at | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) | to_json }},
+  "source": {
+    "command": "ansible-selected-full-vps-policy",
+    "mode": "sanitized"
+  },
+  "confidence": "exact",
+  "home_wifi_lan_full_vps": [
+{% for client in selected_lan_clients %}
+    {
+      "id": {{ client.id | default(client.name | default(client.hostname | default('home-client-' ~ loop.index), true), true) | to_json }},
+      "name": {{ client.name | default(client.hostname | default('home-client-' ~ loop.index), true) | to_json }},
+      "label": {{ client.label | default(client.display_name | default(client.name | default(client.hostname | default('home-client-' ~ loop.index), true), true), true) | to_json }},
+      "selector": "reserved_source_ip",
+      "interface": {{ client.interface | default((vault_channel_a_selected_full_vps_interfaces | default(['br0'], true) | first), true) | to_json }},
+      "ip_token": "{{ 'ip-configured' if (client.ip | default('', true) | string | length) > 0 else '' }}",
+      "mac_token": "{{ 'mac-configured' if (client.mac | default('', true) | string | length) > 0 else '' }}",
+      "strict_dns_status": "{{ 'configured' if (selected_dns_servers | length) > 0 else 'missing' }}",
+      "status": "{{ client.status | default('enabled' if policy_enabled else 'disabled', true) }}",
+      "full_vps": {{ (policy_enabled and (client.full_vps | default(true, true) | bool)) | to_json }},
+      "note": "sanitized from Ansible/Vault selected full-VPS LAN policy"
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "channel_profiles": [
+{% set ns = namespace(first=true) -%}
+{% for client in channel_a_profiles %}
+{% set profile_name = client.name | default(client.profile | default('channel-a-profile-' ~ loop.index), true) -%}
+{% set is_full_vps = policy_enabled and profile_name in selected_home_users -%}
+{% if not ns.first %},{% endif %}
+{% set ns.first = false -%}
+    {
+      "channel": "A",
+      "profile": {{ profile_name | to_json }},
+      "label": {{ client.label | default(client.display_name | default(profile_name, true), true) | to_json }},
+      "profile_type": "home_reality",
+      "status": {{ client.status | default('enabled', true) | to_json }},
+      "policy": "{{ 'full_vps' if is_full_vps else 'managed_split' }}",
+      "full_vps": {{ is_full_vps | to_json }},
+      "full_vps_supported": true,
+      "note": "sanitized from Ansible/Vault Channel A policy"
+    }
+{% endfor %}
+{% for client in channel_b_profiles %}
+{% set profile_name = client.name | default(client.profile | default(client.username | default('channel-b-profile-' ~ loop.index), true), true) -%}
+{% if not ns.first %},{% endif %}
+{% set ns.first = false -%}
+    {
+      "channel": "B",
+      "profile": {{ profile_name | to_json }},
+      "label": {{ client.label | default(client.display_name | default(profile_name, true), true) | to_json }},
+      "profile_type": "xhttp_home",
+      "status": {{ client.status | default('enabled', true) | to_json }},
+      "policy": "managed_split",
+      "full_vps": false,
+      "full_vps_supported": false,
+      "note": "sanitized from Ansible/Vault Channel B policy"
+    }
+{% endfor %}
+{% for client in channel_c_profiles %}
+{% set profile_name = client.name | default(client.profile | default(client.username | default('channel-c-profile-' ~ loop.index), true), true) -%}
+{% if not ns.first %},{% endif %}
+{% set ns.first = false -%}
+    {
+      "channel": "C",
+      "profile": {{ profile_name | to_json }},
+      "label": {{ client.label | default(client.display_name | default(profile_name, true), true) | to_json }},
+      "profile_type": "shadowrocket_compatibility",
+      "status": {{ client.status | default('enabled', true) | to_json }},
+      "policy": "compatibility",
+      "full_vps": false,
+      "full_vps_supported": false,
+      "note": "sanitized from Ansible/Vault Channel C policy"
+    }
+{% endfor %}
+  ],
+  "warnings": []
+}
