@@ -638,6 +638,13 @@ function isPrivateAddress(value: unknown) {
     || text.startsWith("169.254.");
 }
 
+function isTrustedDeviceCounterSource(row: Record<string, any>, rawRow: Record<string, any> = {}) {
+  const ip = String(row.ip || row.client_ip || rawRow.ip || rawRow.client_ip || "").trim();
+  if (ip) return isPrivateAddress(ip);
+  const channel = String(row.channel || rawRow.channel || row.profile || rawRow.profile || "").toLowerCase();
+  return channel.includes("home wi-fi") || channel.includes("wifi") || channel.includes("lan");
+}
+
 let inventoryHintCacheKey = "";
 let inventoryHintCache = new Map<string, string>();
 
@@ -3127,6 +3134,7 @@ function clientWindowTrafficSummary(target: Record<string, any>, period = "today
   const seen = new Set<string>();
   for (const rawRow of deviceDeltaRowsForPeriod(period)) {
     const row = inventoryRowFromTraffic(rawRow) || rawRow;
+    if (!isTrustedDeviceCounterSource(row, rawRow)) continue;
     const rowCandidates = laneClientKeyCandidates(row);
     if (!rowCandidates.some((value) => lookup.has(value.toLowerCase()))) continue;
     const rowKey = String(row.client_key || row.id || row.device_key || rawRow.id || rawRow.device_id || row.label || "").trim();

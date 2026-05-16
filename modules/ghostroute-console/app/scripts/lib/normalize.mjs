@@ -118,6 +118,23 @@ function inferChannel(row) {
   return text(row.channel || "Unknown");
 }
 
+function isPrivateNetworkAddress(value) {
+  const source = text(value).toLowerCase();
+  if (!source) return false;
+  if (source === "localhost" || source === "::1" || source.startsWith("127.")) return true;
+  return source.startsWith("10.")
+    || source.startsWith("192.168.")
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(source)
+    || source.startsWith("169.254.");
+}
+
+function isTrustedDeviceCounterSource(row, raw = {}) {
+  const ip = text(row.ip || row.client_ip || raw.ip || raw.client_ip);
+  if (ip) return isPrivateNetworkAddress(ip);
+  const channel = text(row.channel || raw.channel || row.profile || raw.profile).toLowerCase();
+  return channel.includes("home wi-fi") || channel.includes("wifi") || channel.includes("lan");
+}
+
 function routeFromTraffic(row) {
   if (number(row.via_vps_bytes || row.reality_bytes || row.vps_connections) > 0) return "VPS";
   if (number(row.direct_bytes || row.wan_bytes || row.direct_connections) > 0) return "Direct";
@@ -2982,6 +2999,7 @@ function deviceCounterRowsForWindow(db, window, now, registry = loadDeviceAttrib
   const grouped = new Map();
   for (const row of rows) {
     const raw = parseJson(row.raw_json, {});
+    if (!isTrustedDeviceCounterSource(row, raw)) continue;
     const resolved = resolveOperatorClient({
       ...row,
       raw,

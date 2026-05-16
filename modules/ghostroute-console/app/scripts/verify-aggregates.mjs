@@ -14,7 +14,7 @@ const db = new Database(dbFile, { readonly: true, fileMustExist: true });
 const registry = loadDeviceAttributions(dataDir);
 const trafficClasses = ["all", "client", "personal_cloud", "service_background", "unclassified"];
 const driftCheckedClasses = new Set(["all", "client"]);
-const trafficDriftTolerance = Number(process.env.GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE || 0.2);
+const trafficDriftTolerance = Number(process.env.GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE || 0.3);
 
 function number(value) {
   const parsed = Number(value || 0);

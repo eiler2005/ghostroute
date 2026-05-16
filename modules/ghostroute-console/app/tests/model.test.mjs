@@ -1523,7 +1523,7 @@ test("prepared counters preserve canonical client totals when flow detail is sam
             label: "MacBook Owner",
             device_key: "operator-macbook",
             aliases: { lan_wifi: ["lan-host-11"], hostnames: ["operator-macbook.local"] },
-            ip_aliases: ["192.0.2.44"],
+            ip_aliases: ["192.168.50.44"],
           },
         },
       })
@@ -1534,16 +1534,16 @@ test("prepared counters preserve canonical client totals when flow detail is sam
       const deviceStmt = db.prepare(`
         insert into normalized_devices(snapshot_id, snapshot_type, collected_at, device_id, label, ip, route, confidence,
           total_bytes, via_vps_bytes, direct_bytes, raw_json, channel)
-        values (?, 'traffic_summary', ?, '192.0.2.44', 'lan-host-11', '192.0.2.44', 'Mixed', 'exact', ?, ?, ?, ?, 'Home Wi-Fi/LAN')
+        values (?, 'traffic_summary', ?, '192.168.50.44', 'lan-host-11', '192.168.50.44', 'Mixed', 'exact', ?, ?, ?, ?, 'Home Wi-Fi/LAN')
       `);
-      deviceStmt.run(1, "2026-05-07T08:00:00Z", 1_000_000_000, 900_000_000, 100_000_000, JSON.stringify({ id: "192.0.2.44", label: "lan-host-11", ip: "192.0.2.44" }));
-      deviceStmt.run(2, "2026-05-07T09:00:00Z", 8_000_000_000, 7_200_000_000, 800_000_000, JSON.stringify({ id: "192.0.2.44", label: "lan-host-11", ip: "192.0.2.44" }));
+      deviceStmt.run(1, "2026-05-07T08:00:00Z", 1_000_000_000, 900_000_000, 100_000_000, JSON.stringify({ id: "192.168.50.44", label: "lan-host-11", ip: "192.168.50.44" }));
+      deviceStmt.run(2, "2026-05-07T09:00:00Z", 8_000_000_000, 7_200_000_000, 800_000_000, JSON.stringify({ id: "192.168.50.44", label: "lan-host-11", ip: "192.168.50.44" }));
       const flowStmt = db.prepare(`
         insert into normalized_flows(snapshot_id, snapshot_type, collected_at, client, channel, destination, route, confidence,
           bytes, connections, protocol, client_ip, traffic_class, via_vps_bytes, direct_bytes, unknown_bytes, raw_json)
-        values (3, 'traffic_facts', ?, '192.0.2.44', 'Home Wi-Fi/LAN', 'unknown destination',
-          'Mixed', 'estimated', 100000000, 12, 'TCP', '192.0.2.44', 'client', 90000000, 10000000, 0,
-          '{"client":"192.0.2.44","client_ip":"192.0.2.44","device_key":"192.0.2.44"}')
+        values (3, 'traffic_facts', ?, '192.168.50.44', 'Home Wi-Fi/LAN', 'unknown destination',
+          'Mixed', 'estimated', 100000000, 12, 'TCP', '192.168.50.44', 'client', 90000000, 10000000, 0,
+          '{"client":"192.168.50.44","client_ip":"192.168.50.44","device_key":"192.168.50.44"}')
       `);
       flowStmt.run("2026-05-07T09:02:00Z");
       const dnsStmt = db.prepare(`
@@ -1561,7 +1561,7 @@ test("prepared counters preserve canonical client totals when flow detail is sam
       for (const [domain, count] of dnsRows) {
         dnsStmt.run("2026-05-07T09:03:00Z", "unattributed source", "", domain, count,
           "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z", "2026-05-07T09:03:00Z",
-          JSON.stringify({ client_ip: "192.0.2.44", device_key: "192.0.2.44" }));
+          JSON.stringify({ client_ip: "192.168.50.44", device_key: "192.168.50.44" }));
       }
 
       rebuildPreparedWindows(db, "2026-05-07T10:00:00Z");
