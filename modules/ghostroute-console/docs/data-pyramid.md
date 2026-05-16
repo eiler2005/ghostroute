@@ -152,8 +152,10 @@ LAN devices, with the raw IP preserved in evidence fields rather than promoted
 to a trusted client name.
 
 DNS Query Log is factual evidence. DNS rows may be visible even when the source
-is not yet registry-attributed, but only registry-backed clients participate in
-DNS top-client grouping or client inventory rows.
+is not yet registry-attributed. Prepared DNS windows resolve raw IP,
+`lan-host-*`, hostname/MAC and private-registry aliases through the same
+canonical client resolver used by flow and destination rows, so DNS evidence
+and byte rows for one physical device land on the same `client_key`.
 
 The Clients page, Apps page and Dashboard ranking/API cards use one site/DNS
 evidence selector. Exact domain/SNI byte rows stay factual. Provider/category
@@ -161,7 +163,9 @@ byte rows can provide coarse families when no better evidence exists. When the
 selected client has aggregate bytes that are otherwise only IP/provider
 residual, the selector may distribute that residual across client-facing DNS
 domains by query count so popular-site, app-family and dashboard ranking views
-cover the visible client total. Those rows are marked as inferred
+cover that canonical client's current-window total. Per-client inference never
+uses Dashboard/global totals, and synthetic `all` lanes are not summed together
+with class-specific lanes. Those rows are marked as inferred
 (`attribution_source=dns_inferred`, `byte_confidence=estimated`) and must not be
 presented as exact per-domain byte accounting. If no client-facing DNS evidence
 exists, the residual remains `Other / uncategorized`.
