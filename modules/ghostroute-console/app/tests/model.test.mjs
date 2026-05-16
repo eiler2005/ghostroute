@@ -1890,6 +1890,20 @@ test("client popular sites keep unmapped residual separate from ranked sites", (
 });
 
 test("prepared traffic aggregates quarantine invalid split rows and full rebuild clears stale windows", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-aggregate-registry-"));
+  fs.writeFileSync(path.join(tmp, "device-attribution.json"), JSON.stringify({
+    schema_version: 2,
+    clients: {
+      "lan-host-13": {
+        label: "lan-host-13 (MacBook Denis 23)",
+        device_key: "lan-host-13",
+        device_type: "MacBook",
+        aliases: { lan_wifi: ["lan-host-13"] },
+      },
+    },
+  }));
+  const previousDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+  process.env.GHOSTROUTE_CONSOLE_DATA_DIR = tmp;
   const db = new Database(":memory:");
   try {
     ensureConsoleSchema(db);
@@ -1919,6 +1933,9 @@ test("prepared traffic aggregates quarantine invalid split rows and full rebuild
     }
   } finally {
     db.close();
+    if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
+    else process.env.GHOSTROUTE_CONSOLE_DATA_DIR = previousDataDir;
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
