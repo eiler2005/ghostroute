@@ -202,6 +202,14 @@ separate from exact per-destination byte proof. Fully unverified bytes stay in
 `unknown_bytes` and every fact must satisfy
 `bytes = via_vps_bytes + direct_bytes + unknown_bytes`.
 
+For Channel A/Home Reality, encrypted ingress counters are still the byte
+authority. When sing-box route evidence contains profile-level destinations for
+the same window, `traffic-facts` can allocate those exact profile-counter bytes
+across observed destinations by connection share. The resulting destination and
+app-family rows are estimated, keep `dns_status=no_match`, and do not imply that
+dnsmasq saw client-attributed DNS rows. If route evidence is absent, the
+residual `Home Reality ingress` counter row is retained.
+
 Keep these boundaries stable:
 
 - `intended_route` is policy/ipset intent: `VPS`, `Direct` or `Unknown`.

@@ -260,11 +260,14 @@ fine categories, action hints and human explanations. They must not alter fact
 bytes, route verification, DNS confidence, managed-domain policy, filter rules
 or router/VPS state.
 
-Home Reality evidence is treated as observed encrypted ingress only. A profile
-counter delta may create a trusted client fact named `Home Reality ingress`, but
-it must not manufacture destination facts such as Apple/iCloud or Google/YouTube
-without matching DNS/flow evidence. These rows keep `unknown_bytes=bytes`,
-`route_status=unknown` and `dns_status=no_match`.
+Home Reality byte totals remain anchored to observed encrypted ingress profile
+counter deltas. When matching `sing_box_route_evidence` exists for the same
+profile, `traffic-facts` may split that exact counter total into estimated
+per-destination facts using connection share. These rows keep
+`dns_status=no_match`, use `destination_confidence=sing_box_destination`, and
+must be presented as estimated attribution rather than DNS proof. If no
+destination evidence exists, the pipeline keeps the trusted residual
+`Home Reality ingress` counter fact.
 
 The Traffic Intelligence GUI axes are:
 

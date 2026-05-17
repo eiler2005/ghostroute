@@ -298,7 +298,7 @@ function fallbackClientActivityRows(selected: Record<string, any> | undefined, r
   }];
 }
 
-function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>> }) {
+function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback, emptyTitle, emptyDetail }: { title: string; rows: Array<Record<string, any>>; dnsFallback?: Array<Record<string, any>>; counterFallback?: Array<Record<string, any>>; emptyTitle?: string; emptyDetail?: string }) {
   const residualRows = counterFallback || [];
   const visible: Array<Record<string, any>> = composePopularSiteRows(rows, dnsFallback || [], []);
   const evidenceLabel = rows.length && residualRows.length
@@ -311,7 +311,10 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
         <span className="subtle">{evidenceLabel}</span>
       </div>
       {visible.length === 0 && residualRows.length === 0 ? (
-        <EmptyState title="No site-level traffic for this client" detail="Only client/channel counters were observed in the selected day." />
+        <EmptyState
+          title={emptyTitle || "No site evidence for this client"}
+          detail={emptyDetail || "No DNS, flow, or destination evidence was tied to this client in the selected day."}
+        />
       ) : (
         <div className="detail-list">
           {visible.map((row) => (
@@ -758,7 +761,13 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
           </div>
           <div className="grid two">
             <PopularSitesList title="Client sites" rows={selectedClientSites} counterFallback={selectedClientFallbackSites} />
-            <PopularSitesList title="Service/system sites" rows={selectedServiceSites} counterFallback={selectedServiceCounterSites} />
+            <PopularSitesList
+              title="Service/system sites"
+              rows={selectedServiceSites}
+              counterFallback={selectedServiceCounterSites}
+              emptyTitle="No service/system site evidence"
+              emptyDetail="No service-background DNS, flow, or destination evidence was tied to this client in the selected day."
+            />
           </div>
         </section>
       ) : null}

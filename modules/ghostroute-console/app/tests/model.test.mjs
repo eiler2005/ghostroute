@@ -982,6 +982,144 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   db.close();
 });
 
+test("Home Reality estimated destination facts feed prepared client read models without DNS rows", async () => {
+  await withTempConsoleDataDir("ghostroute-console-home-reality-sites-", async (tmp) => {
+    const db = new Database(path.join(tmp, "ghostroute.db"));
+    try {
+      ensureConsoleSchema(db);
+      const payload = {
+        schema_version: 3,
+        generated_at: "2026-05-17T10:10:00.000Z",
+        source: { command: "traffic-facts", source_report: "traffic-evidence" },
+        confidence: "mixed",
+        window: { period: "today", start_ts_utc: "2026-05-16T21:00:00.000Z", end_ts_utc: "2026-05-17T21:00:00.000Z" },
+        collector_metrics: { duration_ms: 1, source_row_counts: { traffic_facts: 3, dns_links: 0 } },
+        clients: [],
+        traffic_facts: [
+          {
+            fact_id: "hr-youtube",
+            flow_group_key: "hr-youtube",
+            event_ts_utc: "2026-05-17T10:05:00.000Z",
+            client_key: "phone-a",
+            client_label: "phone-a",
+            client_ip: "198.51.100.10",
+            channel: "A/Home Reality",
+            route: "VPS",
+            intended_route: "Unknown",
+            traffic_class: "client",
+            destination: "youtubei.googleapis.com",
+            destination_kind: "domain",
+            destination_port: "443",
+            protocol: "tcp",
+            dns_qname: "",
+            bytes: 750,
+            via_vps_bytes: 750,
+            direct_bytes: 0,
+            unknown_bytes: 0,
+            connections: 3,
+            route_source: "sing-box",
+            route_basis: "home_reality_connection_share",
+            route_verification: "ingress_route_allocated",
+            route_status: "counter_allocated",
+            dns_link_confidence: "no_dns_match",
+            dns_status: "no_match",
+            accounting_status: "ok",
+            byte_confidence: "estimated_connection_share",
+            destination_confidence: "sing_box_destination",
+            allocation_basis: "home_reality_connection_share",
+            evidence_level: "home_reality_sing_box_destination_estimate",
+            confidence: "estimated",
+          },
+          {
+            fact_id: "hr-telegram",
+            flow_group_key: "hr-telegram",
+            event_ts_utc: "2026-05-17T10:05:00.000Z",
+            client_key: "phone-a",
+            client_label: "phone-a",
+            client_ip: "198.51.100.10",
+            channel: "A/Home Reality",
+            route: "Direct",
+            intended_route: "Unknown",
+            traffic_class: "client",
+            destination: "api.telegram.org",
+            destination_kind: "domain",
+            destination_port: "443",
+            protocol: "tcp",
+            dns_qname: "",
+            bytes: 250,
+            via_vps_bytes: 0,
+            direct_bytes: 250,
+            unknown_bytes: 0,
+            connections: 1,
+            route_source: "sing-box",
+            route_basis: "home_reality_connection_share",
+            route_verification: "ingress_route_allocated",
+            route_status: "counter_allocated",
+            dns_link_confidence: "no_dns_match",
+            dns_status: "no_match",
+            accounting_status: "ok",
+            byte_confidence: "estimated_connection_share",
+            destination_confidence: "sing_box_destination",
+            allocation_basis: "home_reality_connection_share",
+            evidence_level: "home_reality_sing_box_destination_estimate",
+            confidence: "estimated",
+          },
+          {
+            fact_id: "lan-control",
+            flow_group_key: "lan-control",
+            event_ts_utc: "2026-05-17T10:05:00.000Z",
+            client_key: "lan-control",
+            client_label: "lan-control",
+            client_ip: "192.0.2.20",
+            channel: "Home Wi-Fi/LAN",
+            route: "VPS",
+            traffic_class: "client",
+            destination: "lan.example.invalid",
+            destination_kind: "domain",
+            destination_ip: "198.51.100.20",
+            destination_port: "443",
+            protocol: "tcp",
+            dns_qname: "lan.example.invalid",
+            dns_answer_ip: "198.51.100.20",
+            bytes: 400,
+            via_vps_bytes: 400,
+            direct_bytes: 0,
+            unknown_bytes: 0,
+            route_verification: "verified_vps",
+            route_status: "verified",
+            dns_link_confidence: "high",
+            dns_status: "exact",
+            dns_ts_source: "parsed_log",
+            accounting_status: "ok",
+            confidence: "observed",
+          },
+        ],
+        dns_links: [],
+        attribution_gaps: [],
+        coverage: {},
+      };
+      validateSnapshotPayload("traffic_facts", payload);
+      normalizeSnapshot(db, 1, "traffic_facts", payload.generated_at, payload);
+      rebuildPreparedWindows(db, "2026-05-17T10:11:00.000Z");
+
+      const phoneTotal = db.prepare("select coalesce(sum(bytes), 0) as bytes, coalesce(sum(via_vps_bytes), 0) as vps, coalesce(sum(direct_bytes), 0) as direct from client_traffic_by_lane where bucket_granularity = '5min' and client_key = 'phone-a' and traffic_lane = 'all'").get();
+      assert.deepEqual(phoneTotal, { bytes: 1000, vps: 750, direct: 250 });
+      const phoneDestinations = db.prepare("select destination_key, bytes, via_vps_bytes, direct_bytes, dns_category from client_destination_by_lane where bucket_granularity = '5min' and client_key = 'phone-a' order by destination_key").all();
+      assert.deepEqual(phoneDestinations.map((row) => [row.destination_key, row.bytes, row.via_vps_bytes, row.direct_bytes]), [
+        ["api.telegram.org", 250, 0, 250],
+        ["youtubei.googleapis.com", 750, 750, 0],
+      ]);
+      assert.equal(db.prepare("select count(*) as count from traffic_dns_links where client_key = 'phone-a'").get().count, 0);
+      assert.equal(db.prepare("select count(*) as count from dns_log_5min where client_key = 'phone-a'").get().count, 0);
+
+      const lan = db.prepare("select destination_key, bytes, via_vps_bytes from client_destination_by_lane where bucket_granularity = '5min' and client_key = 'lan-control'").get();
+      assert.deepEqual(lan, { destination_key: "lan.example.invalid", bytes: 400, via_vps_bytes: 400 });
+    } finally {
+      db.close();
+    }
+  });
+});
+
 test("observability rebuild writes capped prepared health summaries", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-summary-"));
   const db = new Database(path.join(tmp, "ghostroute.db"));

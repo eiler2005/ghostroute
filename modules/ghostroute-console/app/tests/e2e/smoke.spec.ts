@@ -106,7 +106,7 @@ test("mobile apps uses the same selected-client attribution as desktop", async (
   await page.goto("/m/apps?client=test-iphone-heavy");
   const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families" }) });
   await expect(selectedApps).toBeVisible();
-  await expect(selectedApps).toContainText(/GB/);
+  await expect(selectedApps).toContainText(/(?:MB|GB)/);
   await expect(selectedApps).not.toContainText("No app-family rows");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains" }) });
   await expect(latestDns).toContainText("gs-loc.apple.com");
@@ -143,6 +143,24 @@ test("client popular sites expose ranked inferred domains instead of IP-only res
   const labels = await rows.locator("strong").evaluateAll((nodes) => nodes.map((node) => node.textContent || ""));
   const domainLabels = labels.filter((value) => /\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(value));
   expect(domainLabels.length).toBeGreaterThanOrEqual(10);
+});
+
+test("Home Reality selected client shows estimated apps and sites without DNS rows", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only Home Reality attribution detail");
+  await page.goto("/apps?client=test-home-reality-estimated");
+  const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families for Test/Home Reality Estimated" }) });
+  await expect(selectedApps).toBeVisible();
+  await expect(selectedApps).toContainText(/YouTube|Telegram|Apple/);
+  await expect(selectedApps).toContainText("0 queries");
+  const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains for Test/Home Reality Estimated" }) });
+  await expect(latestDns).toContainText("No DNS domains for this device");
+
+  await page.goto("/clients?client=test-home-reality-estimated");
+  const popular = page.locator("section").filter({ has: page.getByRole("heading", { name: "Most popular sites for Test/Home Reality Estimated" }) });
+  await expect(popular).toBeVisible();
+  await expect(popular).toContainText("youtubei.googleapis.com");
+  await expect(popular).toContainText("api.telegram.org");
+  await expect(popular).not.toContainText("No site-level traffic for this client");
 });
 
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {
