@@ -72,6 +72,7 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
   const dnsRows = (dnsFiltered.length > 0 || includeServiceDns ? dnsFiltered : dnsAll).slice(0, 12);
   const model = buildLightweightShellModel(filters, { devices: inventory.rows });
   const selectedTitle = selected?.label || selected?.client_label || selected?.id || "selected device";
+  const totalBytes = apps.rows.reduce((sum: number, row: Record<string, any>) => sum + Number(row.bytes || row.total_bytes || 0), 0);
   const dnsModeParams = new URLSearchParams();
   if (selected) dnsModeParams.set("client", String(selectedClientId));
   if (!includeServiceDns) dnsModeParams.set("showServiceDns", "1");
@@ -124,7 +125,9 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
           {includeServiceDns ? "Hide service DNS" : "Include service DNS"}
         </a>
         {dnsRows.length === 0 ? (
-          <div className="mobile-empty">No DNS domains for this device.</div>
+          <div className="mobile-empty">
+            {totalBytes > 0 ? "Byte counters are shown above as aggregate residual; no DNS domains were tied to this device." : "No DNS domains for this device."}
+          </div>
         ) : (
           <div className="mobile-list">
             {dnsRows.map((row: Record<string, any>) => (
