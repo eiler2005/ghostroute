@@ -131,4 +131,33 @@ ruby -rjson -e '
   abort "current Home Reality without route mix should be unknown split" unless fact["route_verification"] == "unknown" && fact["unknown_bytes"].to_i == 850
 ' "$CURRENT_DIR/evidence-current.json" "$CURRENT_DIR/facts-current.json"
 
+IPTABLES_DIR="$TMP_DIR/current-home-reality-iptables"
+FAKE_BIN="$IPTABLES_DIR/bin"
+mkdir -p "$FAKE_BIN"
+cat > "$IPTABLES_DIR/mobile-reality-counters.tsv" <<'EOF'
+2026-05-11T09:00:00+0300|198.51.100.30|phone-profile|1000|2000
+EOF
+cat > "$FAKE_BIN/iptables-save" <<'EOF'
+#!/bin/sh
+cat <<'RULES'
+[10:2000] -A RC_MOBILE_REALITY_IN -s 198.51.100.30/32 -j RETURN
+[20:5000] -A RC_MOBILE_REALITY_OUT -d 198.51.100.30/32 -j RETURN
+RULES
+EOF
+chmod +x "$FAKE_BIN/iptables-save"
+
+PATH="$FAKE_BIN:$PATH" \
+GHOSTROUTE_TRAFFIC_WINDOW_NOW="2026-05-11T09:10:00+0300" \
+GHOSTROUTE_TRAFFIC_STATE_DIR="$IPTABLES_DIR" \
+  "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-evidence" --json today > "$IPTABLES_DIR/evidence-current.json"
+
+ruby -rjson -e '
+  evidence = JSON.parse(File.read(ARGV[0]))
+  home_samples = evidence["home_reality_samples"]
+  abort "expected iptables Home Reality current sample" unless home_samples.length == 1
+  sample = home_samples.first
+  abort "expected iptables current Home Reality delta bytes" unless sample["bytes_up"].to_i == 1000 && sample["bytes_down"].to_i == 3000 && sample["total_bytes"].to_i == 4000
+  abort "expected iptables current sample to preserve known profile label" unless sample["client_label"] == "phone-profile"
+' "$IPTABLES_DIR/evidence-current.json"
+
 echo "traffic evidence/facts v3 tests passed"

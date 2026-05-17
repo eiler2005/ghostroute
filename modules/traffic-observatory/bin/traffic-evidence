@@ -65,7 +65,7 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
 fi
 
 append_current_mobile_counters() {
-  local now_value state_file
+  local now_value state_file tmp_rules
 
   case "$PERIOD_ARG" in
     today|current|current-day|week|month) ;;
@@ -104,6 +104,46 @@ append_current_mobile_counters() {
 
   if [ -n "${TRAFFIC_MOBILE_CURRENT_FILE:-}" ]; then
     awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' "$TRAFFIC_MOBILE_CURRENT_FILE" >> "${STATE_DIR}/mobile-reality-counters.tsv"
+  elif command -v iptables-save >/dev/null 2>&1; then
+    tmp_rules="/tmp/traffic-evidence-mobile.$$"
+    if iptables-save -t mangle -c > "$tmp_rules" 2>/dev/null; then
+      awk -v ts="$now_value" '
+        BEGIN { OFS = "|" }
+        NR == FNR {
+          split($0, fields, "|")
+          if (fields[2] != "" && fields[3] != "" && fields[3] !~ /^remote:/) label[fields[2]] = fields[3]
+          next
+        }
+        {
+          if (NF < 1 || $0 !~ / -A RC_MOBILE_REALITY_/) next
+          bytes = $1
+          sub(/^\[[0-9]+:/, "", bytes)
+          sub(/\].*$/, "", bytes)
+          chain = ""
+          ip = ""
+          for (i = 1; i <= NF; i++) {
+            if ($i == "-A" && (i + 1) <= NF && $(i + 1) ~ /^RC_MOBILE_REALITY_/) chain = $(i + 1)
+            if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+              ip = $(i + 1)
+              sub(/\/32$/, "", ip)
+            }
+          }
+          if (ip == "") next
+          ips[ip] = 1
+          if (chain == "RC_MOBILE_REALITY_IN") upload[ip] = bytes
+          if (chain == "RC_MOBILE_REALITY_OUT") download[ip] = bytes
+        }
+        END {
+          for (ip in ips) {
+            up = upload[ip]; if (up == "") up = "0"
+            down = download[ip]; if (down == "") down = "0"
+            client = label[ip]; if (client == "") client = "remote:" ip
+            print ts, ip, client, up, down
+          }
+        }
+      ' "${STATE_DIR}/mobile-reality-counters.tsv" "$tmp_rules" >> "${STATE_DIR}/mobile-reality-counters.tsv"
+    fi
+    rm -f "$tmp_rules"
   elif router_health_load_env >/dev/null 2>&1; then
     { router_ssh 'sh -s' <<'REMOTE' | awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' >> "${STATE_DIR}/mobile-reality-counters.tsv"; } || true
 TMP_RULES="/tmp/traffic-evidence-mobile.$$"
