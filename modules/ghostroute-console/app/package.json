@@ -22,6 +22,7 @@
     "collector:live": "node scripts/collect-live-once.mjs",
     "repair:aggregates": "node scripts/repair-aggregates.mjs",
     "import:iptoasn": "node scripts/import-iptoasn.mjs",
+    "import:rdap-review": "node scripts/import-rdap-review.mjs",
     "export:review-queue": "node scripts/export-review-queue.mjs",
     "doctor": "node scripts/doctor.mjs",
     "verify:post-deploy": "node scripts/verify-post-deploy.mjs"

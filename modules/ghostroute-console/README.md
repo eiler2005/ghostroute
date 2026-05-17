@@ -298,6 +298,22 @@ messaging, social, meeting, CDN/cloud hosting, vendor infra or generic network
 provider. It does not call public APIs and does not change routing, blocking,
 filters or facts.
 
+For a one-off live review pass, an operator may also import a gitignored RDAP
+review export into the same advisory cache:
+
+```bash
+cd modules/ghostroute-console/app
+npm run import:rdap-review -- --file ../../data/review/rdap-enrichment.json
+npm run repair:aggregates -- --full
+npm run verify:aggregates
+```
+
+RDAP review imports are manual and local: they cache provider/category hints for
+already observed IP destinations, but they do not add static routes, managed
+domains, direct exceptions or blocking rules. Shared CDN/cloud ranges should
+remain provider labels unless separate DNS or narrow service-owned CIDR evidence
+justifies a routing catalog change.
+
 Unknown or weakly classified destinations are reviewed through local files, not
 manual per-flow GUI buttons. After rebuilding aggregates, export the queue:
 
