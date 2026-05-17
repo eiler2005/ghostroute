@@ -436,7 +436,8 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
   const selectedServiceSites = groupPopularSites(selectedSiteRows, "service", 8, { excludeLabels: excludedSiteLabels });
   const selectedServiceCounterSites = counterOnlyRows(selectedSiteRows, "service", 1);
   const attributedSiteBytes = [...selectedClientSites, ...selectedServiceSites, ...selectedServiceCounterSites].reduce((sum, row) => sum + siteBytes(row), 0);
-  const selectedClientFallbackSites = selectedSiteEvidence.length ? [] : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes)
+  const hasMappedSiteRows = selectedClientSites.length > 0 || selectedServiceSites.length > 0 || selectedServiceCounterSites.length > 0;
+  const selectedClientFallbackSites = hasMappedSiteRows ? [] : counterFallbackRows(selected, selectedLaneRows, selectedRoute, "client", attributedSiteBytes)
     .map((row) => ({
       ...row,
       label: "Unattributed traffic not mapped to sites",
