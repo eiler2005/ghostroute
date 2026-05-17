@@ -458,13 +458,26 @@ def allocation_for_ingress_sample(sample, allocations)
   nil
 end
 
-def destination_allocation_for_ingress_sample(sample, allocations)
+def ingress_sample_profiles(input)
+  profiles = Hash.new { |hash, key| hash[key] = {} }
+  (input['home_reality_samples'] || []).each do |sample|
+    next unless sample.is_a?(Hash)
+    channel = text(sample['channel'])
+    label = text(sample['client_label'], text(sample['client_key']))
+    next if channel.empty? || label.empty?
+    profiles[channel][label] = true
+  end
+  profiles.transform_values { |values| values.keys }
+end
+
+def destination_allocation_for_ingress_sample(sample, allocations, sample_profiles)
   channel = text(sample['channel'])
   label = text(sample['client_label'], text(sample['client_key']))
   profile_key = channel.empty? || label.empty? ? '' : "#{channel}|#{label}"
   allocation = allocations[profile_key]
   return allocation if allocation && number(allocation['total_units']) > 0
-  return nil unless label.empty?
+  active_profiles = sample_profiles[channel] || []
+  return nil unless label.empty? || active_profiles.length == 1
   allocation = allocations[channel]
   return allocation if allocation && number(allocation['total_units']) > 0
   nil
@@ -632,6 +645,7 @@ else
   route_allocations = lan_route_allocations(input)
   ingress_allocations = ingress_route_allocations(input)
   ingress_destination_groups = ingress_destination_allocations(input)
+  ingress_profiles = ingress_sample_profiles(input)
   sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row| row.is_a?(Hash) }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
@@ -730,7 +744,7 @@ else
     route_status = route_status_for(route_verification)
     total, vps, direct, unknown = route_verification == 'ingress_route_allocated' ? split_for_route_allocation(total, allocation) : split_for_verification(route_verification, total)
     total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
-    destination_allocation = destination_allocation_for_ingress_sample(sample, ingress_destination_groups)
+    destination_allocation = destination_allocation_for_ingress_sample(sample, ingress_destination_groups, ingress_profiles)
     if destination_allocation && number(destination_allocation['total_units']) > 0
       groups = proportional_group_allocations(destination_allocation['groups'].values, {
         'bytes' => total,
