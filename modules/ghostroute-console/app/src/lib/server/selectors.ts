@@ -3923,6 +3923,112 @@ function intelligenceSearchMatches(row: Record<string, any>, search = "") {
   ].filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
+function intelligenceReviewRow(row: Record<string, any>) {
+  const category = String(row.category || "");
+  const lane = String(row.traffic_lane || "");
+  const action = String(row.decision_hint || row.action_hint || "");
+  return lane === "unknown_review"
+    || category.startsWith("unknown.")
+    || ["block_candidate", "ask_user", "route_vps_candidate", "direct_candidate", "investigate"].includes(action)
+    || row.enrichment_status === "missing";
+}
+
+function preparedTrafficIntelligenceRows(filters: ConsoleFilters = {}) {
+  if (!USE_PREPARED_WINDOWS) return [];
+  const period = filters.period || "today";
+  const trafficClass = filters.trafficClass || "all";
+  const search = filters.search || "";
+  const grouped = new Map<string, Record<string, any>>();
+  const db = getDb();
+  for (const segment of windowAggregateSegmentsForSelector(period)) {
+    const granularity = laneGranularity(segment.layer);
+    const params: Array<string> = [granularity, segment.start, segment.end];
+    const trafficClassSql = trafficClass === "all" ? "" : "and traffic_class = ?";
+    if (trafficClass !== "all") params.push(trafficClass);
+    const rows = db.prepare(`
+      select destination_key,
+             max(destination_label) as destination_label,
+             max(traffic_class) as traffic_class,
+             max(traffic_lane) as traffic_lane,
+             max(dns_category) as dns_category,
+             max(decision_hint) as decision_hint,
+             max(category) as category,
+             max(provider) as provider,
+             max(traffic_role) as traffic_role,
+             max(traffic_purpose) as traffic_purpose,
+             max(source) as source,
+             max(enrichment_status) as enrichment_status,
+             sum(bytes) as bytes,
+             sum(flows) as flows,
+             max(last_seen_utc) as last_seen,
+             min(first_seen_utc) as first_seen
+        from client_destination_by_lane
+       where bucket_granularity = ?
+         and bucket_start_utc >= ?
+         and bucket_start_utc < ?
+         ${trafficClassSql}
+         and coalesce(destination_key, '') not in ('', 'unknown destination', 'Unknown/Unattributed LAN-WiFi', 'Unknown/Unattributed LAN-Wi-Fi')
+       group by destination_key
+    `).all(...params) as Array<Record<string, any>>;
+    for (const row of rows) {
+      const key = String(row.destination_key || "").toLowerCase();
+      if (!key) continue;
+      const current = grouped.get(key) || {
+        destination_key: key,
+        value: row.destination_label || row.destination_key,
+        normalized_value: row.destination_key,
+        kind: isIpv4Literal(row.destination_key) ? "ip" : "domain",
+        category: row.category || "unknown",
+        provider: row.provider || "",
+        action_hint: row.decision_hint || "monitor",
+        traffic_class: row.traffic_class || "unclassified",
+        traffic_lane: row.traffic_lane || "unknown_review",
+        dns_category: row.dns_category || (isIpv4Literal(row.destination_key) ? "unknown_ip_only" : "unknown_domain"),
+        traffic_role: row.traffic_role || "unknown",
+        traffic_purpose: row.traffic_purpose || "unknown",
+        decision_hint: row.decision_hint || "monitor",
+        human_explanation: row.traffic_lane === "unknown_review"
+          ? "No safe DNS match; keep as IP-only until reviewed."
+          : "Prepared traffic model classification from local rules and IP enrichment cache.",
+        source: row.source || row.enrichment_status || "prepared_traffic_model",
+        confidence: row.enrichment_status || "observed",
+        reason_code: row.enrichment_status || "",
+        evidence_sources: [],
+        sources: [],
+        evidence: {},
+        first_seen: row.first_seen || "",
+        last_seen: row.last_seen || "",
+        bytes: 0,
+        flows: 0,
+      };
+      current.bytes += Number(row.bytes || 0);
+      current.flows += Number(row.flows || 0);
+      if (String(row.last_seen || "") > String(current.last_seen || "")) {
+        current.value = row.destination_label || row.destination_key;
+        current.category = row.category || current.category;
+        current.provider = row.provider || current.provider;
+        current.traffic_class = row.traffic_class || current.traffic_class;
+        current.traffic_lane = row.traffic_lane || current.traffic_lane;
+        current.dns_category = row.dns_category || current.dns_category;
+        current.traffic_role = row.traffic_role || current.traffic_role;
+        current.traffic_purpose = row.traffic_purpose || current.traffic_purpose;
+        current.decision_hint = row.decision_hint || current.decision_hint;
+        current.action_hint = current.decision_hint;
+        current.source = row.source || row.enrichment_status || current.source;
+        current.confidence = row.enrichment_status || current.confidence;
+        current.reason_code = row.enrichment_status || current.reason_code;
+        current.last_seen = row.last_seen || current.last_seen;
+      }
+      if (String(row.first_seen || "") < String(current.first_seen || "") || !current.first_seen) current.first_seen = row.first_seen || current.first_seen;
+      grouped.set(key, current);
+    }
+  }
+  return Array.from(grouped.values())
+    .filter((row) => intelligenceSearchMatches(row, search))
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0) || String(a.destination_key).localeCompare(String(b.destination_key)))
+    .slice(0, 250);
+}
+
 function readTrafficIntelligence(filters: ConsoleFilters = {}) {
   const trafficClass = filters.trafficClass || "all";
   const search = filters.search || "";
@@ -3937,7 +4043,8 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
        order by last_seen desc
        limit 500
     `).all() as Array<Record<string, any>>;
-    const enrichments: Array<Record<string, any>> = rows
+    let enrichments: Array<Record<string, any>> = preparedTrafficIntelligenceRows(filters);
+    if (enrichments.length === 0) enrichments = rows
       .filter((row) => trafficClass === "all" || row.traffic_class === trafficClass)
       .filter((row) => intelligenceSearchMatches(row, search))
       .slice(0, 250)
@@ -3947,6 +4054,7 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
         sources: safeJson(row.sources_json, []),
         evidence: safeJson(row.evidence_json, {}),
       }));
+    const activeReviewDestinations = new Set(enrichments.filter((row) => intelligenceReviewRow(row)).map((row) => String(row.destination_key || "").toLowerCase()).filter(Boolean));
     const candidates = db.prepare(`
       select candidate_id, snapshot_id, destination_key, client_key, client_ip, proposed_action,
              confidence, reason_code, explanation, status, applied, created_at_utc, updated_at_utc,
@@ -3957,6 +4065,7 @@ function readTrafficIntelligence(filters: ConsoleFilters = {}) {
     `).all() as Array<Record<string, any>>;
     const filteredCandidates: Array<Record<string, any>> = candidates
       .filter((row) => !search || JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
+      .filter((row) => activeReviewDestinations.size === 0 || activeReviewDestinations.has(String(row.destination_key || "").toLowerCase()))
       .map((row) => ({ ...row, evidence: safeJson(row.evidence_json, {}) }));
     const summary = {
       total: enrichments.length,
