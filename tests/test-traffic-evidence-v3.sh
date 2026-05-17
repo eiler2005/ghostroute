@@ -47,6 +47,7 @@ EOF
 
 GHOSTROUTE_TRAFFIC_WINDOW_NOW="2026-05-11T12:00:00+0300" \
 GHOSTROUTE_TRAFFIC_STATE_DIR="$TMP_DIR" \
+GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_MOBILE=0 \
   "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-evidence" --json today > "$TMP_DIR/evidence.json"
 
 GHOSTROUTE_TRAFFIC_FACTS_EVIDENCE_FILE="$TMP_DIR/evidence.json" \
@@ -91,5 +92,37 @@ ruby -rjson -e '
   abort "Home Reality expected 50/50 split" unless home.all? { |row| (row["via_vps_bytes"].to_i - row["direct_bytes"].to_i).abs <= 1 && row["unknown_bytes"].to_i == 0 }
   abort "Home Reality must not invent DNS/domain attribution" unless home.all? { |row| row["dns_link_confidence"] == "no_dns_match" && row["destination_confidence"] == "none" }
 ' "$TMP_DIR/evidence.json" "$TMP_DIR/facts.json"
+
+CURRENT_DIR="$TMP_DIR/current-home-reality"
+mkdir -p "$CURRENT_DIR"
+cat > "$CURRENT_DIR/mobile-reality-counters.tsv" <<'EOF'
+2026-05-11T09:00:00+0300|198.51.100.20|remote:198.51.100.20|1000|2000
+EOF
+cat > "$CURRENT_DIR/current-mobile.tsv" <<'EOF'
+198.51.100.20|remote:198.51.100.20|1250|2600
+EOF
+
+GHOSTROUTE_TRAFFIC_WINDOW_NOW="2026-05-11T09:10:00+0300" \
+GHOSTROUTE_TRAFFIC_STATE_DIR="$CURRENT_DIR" \
+TRAFFIC_MOBILE_CURRENT_FILE="$CURRENT_DIR/current-mobile.tsv" \
+  "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-evidence" --json today > "$CURRENT_DIR/evidence-current.json"
+
+GHOSTROUTE_TRAFFIC_FACTS_EVIDENCE_FILE="$CURRENT_DIR/evidence-current.json" \
+  "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-facts" --json today > "$CURRENT_DIR/facts-current.json"
+
+ruby -rjson -e '
+  evidence = JSON.parse(File.read(ARGV[0]))
+  facts = JSON.parse(File.read(ARGV[1]))
+  home_samples = evidence["home_reality_samples"]
+  abort "expected current Home Reality sample" unless home_samples.length == 1
+  sample = home_samples.first
+  abort "expected current Home Reality delta bytes" unless sample["bytes_up"].to_i == 250 && sample["bytes_down"].to_i == 600 && sample["total_bytes"].to_i == 850
+  home = facts["traffic_facts"].select { |row| row["destination"] == "Home Reality ingress" }
+  abort "expected current Home Reality fact" unless home.length == 1
+  fact = home.first
+  abort "expected current fact bytes" unless fact["bytes"].to_i == 850
+  abort "current Home Reality must stay IP/profile evidence only" unless fact["dns_link_confidence"] == "no_dns_match" && fact["destination_confidence"] == "none"
+  abort "current Home Reality without route mix should be unknown split" unless fact["route_verification"] == "unknown" && fact["unknown_bytes"].to_i == 850
+' "$CURRENT_DIR/evidence-current.json" "$CURRENT_DIR/facts-current.json"
 
 echo "traffic evidence/facts v3 tests passed"

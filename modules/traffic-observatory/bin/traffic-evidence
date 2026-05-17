@@ -64,6 +64,86 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
   fi
 fi
 
+append_current_mobile_counters() {
+  local now_value state_file
+
+  case "$PERIOD_ARG" in
+    today|current|current-day|week|month) ;;
+    *) return 0 ;;
+  esac
+
+  if [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_MOBILE:-1}" != "1" ]; then
+    return 0
+  fi
+
+  if [ -z "$STATE_DIR" ]; then
+    return 0
+  fi
+
+  if [ -z "$TMP_STATE_DIR" ]; then
+    TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
+    for state_file in lan-flow-facts.tsv dns-query-facts.tsv lan-device-counters.tsv mobile-reality-counters.tsv sing-box-route-evidence.tsv; do
+      if [ -f "${STATE_DIR}/${state_file}" ]; then
+        cp "${STATE_DIR}/${state_file}" "${TMP_STATE_DIR}/${state_file}"
+      else
+        : > "${TMP_STATE_DIR}/${state_file}"
+      fi
+    done
+    STATE_DIR="$TMP_STATE_DIR"
+  fi
+
+  if [ -n "${TRAFFIC_EVIDENCE_NOW:-}" ]; then
+    now_value="$TRAFFIC_EVIDENCE_NOW"
+  elif [ -n "${GHOSTROUTE_TRAFFIC_WINDOW_NOW:-}" ]; then
+    now_value="$GHOSTROUTE_TRAFFIC_WINDOW_NOW"
+  elif router_health_load_env >/dev/null 2>&1; then
+    now_value="$(router_ssh "date '+%Y-%m-%dT%H:%M:%S%z'" 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')"
+  else
+    now_value="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  fi
+
+  if [ -n "${TRAFFIC_MOBILE_CURRENT_FILE:-}" ]; then
+    awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' "$TRAFFIC_MOBILE_CURRENT_FILE" >> "${STATE_DIR}/mobile-reality-counters.tsv"
+  elif router_health_load_env >/dev/null 2>&1; then
+    { router_ssh 'sh -s' <<'REMOTE' | awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' >> "${STATE_DIR}/mobile-reality-counters.tsv"; } || true
+TMP_RULES="/tmp/traffic-evidence-mobile.$$"
+iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || exit 0
+awk '
+  BEGIN { OFS = "|" }
+  {
+    if (NF < 1 || $0 !~ / -A RC_MOBILE_REALITY_/) next
+    bytes = $1
+    sub(/^\[[0-9]+:/, "", bytes)
+    sub(/\].*$/, "", bytes)
+    chain = ""
+    ip = ""
+    for (i = 1; i <= NF; i++) {
+      if ($i == "-A" && (i + 1) <= NF && $(i + 1) ~ /^RC_MOBILE_REALITY_/) chain = $(i + 1)
+      if (($i == "-s" || $i == "-d") && (i + 1) <= NF) {
+        ip = $(i + 1)
+        sub(/\/32$/, "", ip)
+      }
+    }
+    if (ip == "") next
+    ips[ip] = 1
+    if (chain == "RC_MOBILE_REALITY_IN") upload[ip] = bytes
+    if (chain == "RC_MOBILE_REALITY_OUT") download[ip] = bytes
+  }
+  END {
+    for (ip in ips) {
+      up = upload[ip]; if (up == "") up = "0"
+      down = download[ip]; if (down == "") down = "0"
+      print ip, "remote:" ip, up, down
+    }
+  }
+' "$TMP_RULES"
+rm -f "$TMP_RULES"
+REMOTE
+  fi
+}
+
+append_current_mobile_counters
+
 TRAFFIC_EVIDENCE_PERIOD="$PERIOD_ARG" \
 TRAFFIC_EVIDENCE_STATE_DIR="$STATE_DIR" \
 ruby -rjson -rdigest -rtime -rdate - <<'RUBY'

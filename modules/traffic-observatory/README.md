@@ -68,6 +68,9 @@ operator/debug output and a rollback source only.
 `traffic-evidence --json <period>` applies explicit UTC window bounds for
 `today`, `yesterday`, `week`, `month` and `YYYY-MM-DD` before facts are built, so
 retained router tails do not leak old rows into current accounting. Evidence
+mode includes the current Home Reality counter snapshot in a temporary state
+copy for live `today`/`week`/`month` windows, keeping the source router files
+read-only while matching `traffic-summary` freshness.
 mode is conservative: route/ipset matches are policy intent until real egress
 or outbound evidence exists. LAN/Wi-Fi and ingress bytes may also be marked
 `counter_allocated` when per-client counters or inbound/outbound route mix prove
