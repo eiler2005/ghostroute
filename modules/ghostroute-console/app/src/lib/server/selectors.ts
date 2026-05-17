@@ -2717,6 +2717,11 @@ function aggregateClientDnsEvidenceRows(rows: Array<Record<string, any>>, limit 
     const current = grouped.get(key) || {
       domain,
       dns_qname: domain,
+      client_key: row.client_key || "",
+      client_label: row.client_label || row.client || "",
+      client: row.client || row.client_label || "",
+      client_ip: row.client_ip || "",
+      device_key: row.device_key || "",
       count: 0,
       latest,
       routes: new Set<string>(),
@@ -2727,6 +2732,11 @@ function aggregateClientDnsEvidenceRows(rows: Array<Record<string, any>>, limit 
     };
     current.count += dnsEvidenceCount(row);
     current.rows.push(row);
+    if (!current.client_key && row.client_key) current.client_key = row.client_key;
+    if (!current.client_label && (row.client_label || row.client)) current.client_label = row.client_label || row.client;
+    if (!current.client && (row.client || row.client_label)) current.client = row.client || row.client_label;
+    if (!current.client_ip && row.client_ip) current.client_ip = row.client_ip;
+    if (!current.device_key && row.device_key) current.device_key = row.device_key;
     if (latest && (!current.latest || Date.parse(latest) > Date.parse(current.latest))) current.latest = latest;
     if (row.route) current.routes.add(dnsRouteValue(row.route));
     if (row.catalog_status) current.catalogStatuses.add(String(row.catalog_status));
@@ -2752,6 +2762,11 @@ function aggregateClientDnsEvidenceRows(rows: Array<Record<string, any>>, limit 
       return withAppFamily({
         domain: row.domain,
         dns_qname: row.domain,
+        client_key: row.client_key,
+        client_label: row.client_label,
+        client: row.client,
+        client_ip: row.client_ip,
+        device_key: row.device_key,
         count: row.count,
         latest: row.latest,
         event_ts: row.latest,
@@ -2870,10 +2885,10 @@ export function listClientDnsEvidence(client: Record<string, any> | string, peri
   const limit = Math.max(1, Number(options.limit || 200));
   return cacheGet(`client-dns-evidence:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => {
     const prepared = preparedClientDnsRows(target, period, { limit: Math.max(limit * 4, 200) });
-    if (prepared.available && prepared.rows.length > 0) return prepared.rows.slice(0, limit);
+    if (prepared.available) return prepared.rows.slice(0, limit);
     const fallback = aggregateClientDnsEvidenceRows(clientDnsRows(target, period, { limit: Math.max(limit * 4, 200) }), limit);
     if (fallback.length > 0) return fallback;
-    return prepared.available ? [] : fallback;
+    return fallback;
   });
 }
 
@@ -3161,18 +3176,20 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
           ? "byte_exact"
           : row.provider ? "provider_hint" : row.category || row.dns_category ? "category_hint" : "";
         if (!source) return null;
-        const dns = byDomainDns.get(normalizedSiteKey(label));
+        const homeRealityEstimated = String(row.channel || "").includes("Home Reality") && String(row.confidence || "").toLowerCase() === "estimated";
+        const dns = homeRealityEstimated ? undefined : byDomainDns.get(normalizedSiteKey(label));
+        const bytes = Number(row.bytes || row.total_bytes || 0);
         return makeSiteEvidenceRow({
           ...row,
           domain: isDomainLikeValue(label) ? label : "",
           url_label: label,
-          effective_bytes: Number(row.bytes || row.total_bytes || 0),
-          factual_bytes: Number(row.bytes || row.total_bytes || 0),
-          inferred_bytes: 0,
+          effective_bytes: bytes,
+          factual_bytes: homeRealityEstimated ? 0 : bytes,
+          inferred_bytes: homeRealityEstimated ? bytes : 0,
           dns_queries: Number(dns?.count || 0),
           latest: row.last_seen_utc || dns?.latest || "",
           attribution_source: source,
-          byte_confidence: source === "byte_exact" ? "factual" : "estimated",
+          byte_confidence: homeRealityEstimated ? "estimated" : source === "byte_exact" ? "factual" : "estimated",
         });
       })
       .filter((row) => row && isAttributableSiteRow(row, { includeService }))
@@ -5019,6 +5036,7 @@ function clientDomainAggregateRows(clientKey: string, period = "today") {
     const timeColumn = segment.layer === "weekly" ? "week_start_utc" : segment.layer === "daily" ? "day_start_utc" : segment.layer === "hourly" ? "hour_start_utc" : "bucket_start_utc";
     const rows = db.prepare(`
       select max(client_label) as client_label,
+             max(channel) as channel,
              destination_key,
              route,
              traffic_class,
@@ -5157,6 +5175,7 @@ function clientDestinationLaneRows(clientKeys: string | Array<string>, period = 
       : [granularity, segment.start, segment.end, ...clientMatch.params];
     const rows = db.prepare(`
       select max(client_label) as client_label,
+             max(channel) as channel,
              destination_key,
              max(destination_label) as destination_label,
              route,
@@ -5187,6 +5206,7 @@ function clientDestinationLaneRows(clientKeys: string | Array<string>, period = 
       const current = grouped.get(key) || {
         client_key: keys[0],
         client_label: row.client_label || keys[0],
+        channel: row.channel || "",
         destination: row.destination_label || row.destination_key,
         destination_key: row.destination_key,
         destination_label: row.destination_label || row.destination_key,

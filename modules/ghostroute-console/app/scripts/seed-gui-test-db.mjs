@@ -264,7 +264,9 @@ function seed(db) {
     { key: "test-home-console", label: "Test/Home Console", ip: "10.10.0.41", channel: "A/Home Reality", type: "Windows PC" },
     { key: "test-iphone-heavy", label: "Test/iPhone Heavy", ip: "10.10.0.51", channel: "Home Wi-Fi/LAN", type: "iPhone" },
     { key: "test-macbook-heavy", label: "Test/MacBook Heavy", ip: "10.10.0.61", channel: "Home Wi-Fi/LAN", type: "MacBook" },
+    { key: "test-home-reality-estimated", label: "Test/Home Reality Estimated", ip: "10.10.0.71", channel: "A/Home Reality", type: "iPhone" },
   ];
+  const generatedTrafficClients = clients.filter((client) => client.key !== "test-home-reality-estimated");
   fs.writeFileSync(
     path.join(dataDir, "device-attribution.json"),
     `${JSON.stringify({
@@ -450,7 +452,7 @@ function seed(db) {
     via_vps_bytes, direct_bytes, unknown_bytes, route_verification, route_status, raw_json
   ) values (@snapshot_id,@snapshot_type,@collected_at,@client,@channel,@destination,@route,@confidence,@bytes,@connections,@protocol,@client_ip,@destination_ip,@destination_port,@dns_qname,@dns_answer_ip,@sni,@outbound,@matched_rule,@rule_set,@source_log,@traffic_class,@via_vps_bytes,@direct_bytes,@unknown_bytes,@route_verification,@route_status,@raw_json)`);
   for (let i = 0; i < 320; i++) {
-    const client = clients[i % clients.length];
+    const client = generatedTrafficClients[i % generatedTrafficClients.length];
     const [destLabel, domain, ip] = destinations[i % destinations.length];
     const route = routes[i % routes.length];
     const offsetMs = flowOffsetMs(i);
@@ -579,13 +581,67 @@ function seed(db) {
       raw_json: JSON.stringify({ synthetic: true, ip_provider_case: true }),
     });
   }
+  const homeRealityEstimatedFlows = [
+    ["youtubei.googleapis.com", "VPS", 900_000_000, 900_000_000, 0, "reality-out"],
+    ["api.telegram.org", "Direct", 300_000_000, 0, 300_000_000, "direct-out"],
+    ["apple.com", "VPS", 200_000_000, 200_000_000, 0, "reality-out"],
+  ];
+  const homeRealityEstimatedClient = clients.find((entry) => entry.key === "test-home-reality-estimated");
+  for (const [destination, route, bytes, viaVpsBytes, directBytes, outbound] of homeRealityEstimatedFlows) {
+    const idx = homeRealityEstimatedFlows.findIndex((entry) => entry[0] === destination);
+    const unknownBytes = bytes - viaVpsBytes - directBytes;
+    normalizedFlowStmt.run({
+      snapshot_id: trafficSnapshotId,
+      snapshot_type: "traffic_facts",
+      collected_at: iso(now, 35000 + idx * 2000),
+      client: homeRealityEstimatedClient.label,
+      channel: homeRealityEstimatedClient.channel,
+      destination,
+      route,
+      confidence: "estimated",
+      bytes,
+      connections: 4 + idx,
+      protocol: "TCP",
+      client_ip: homeRealityEstimatedClient.ip,
+      destination_ip: "",
+      destination_port: "443",
+      dns_qname: "",
+      dns_answer_ip: "",
+      sni: "",
+      outbound,
+      matched_rule: "",
+      rule_set: "",
+      source_log: "traffic-evidence",
+      traffic_class: "client",
+      via_vps_bytes: viaVpsBytes,
+      direct_bytes: directBytes,
+      unknown_bytes: unknownBytes,
+      route_verification: "ingress_route_allocated",
+      route_status: "counter_allocated",
+      raw_json: JSON.stringify({
+        fact_id: `test-seed:home-reality-estimated:${idx + 1}`,
+        flow_group_key: `test-seed:home-reality-estimated:${idx + 1}`,
+        schema_version: 3,
+        allocation_basis: "home_reality_connection_share",
+        evidence_level: "home_reality_sing_box_destination_estimate",
+        destination_confidence: "sing_box_destination",
+        byte_confidence: "estimated_connection_share",
+        dns_status: "no_match",
+        via_vps_bytes: viaVpsBytes,
+        direct_bytes: directBytes,
+        unknown_bytes: unknownBytes,
+        accounting_status: "ok",
+      }),
+    });
+  }
 
   const dnsStmt = db.prepare(`insert into dns_query_log(
     id, snapshot_id, collected_at, event_ts, client, client_ip, device_key, domain, qtype,
     answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
   ) values (@id,@snapshot_id,@collected_at,@event_ts,@client,@client_ip,@device_key,@domain,@qtype,@answer_ip,@route,@catalog_status,@status,@count,@risk,@confidence,@evidence_json)`);
+  const dnsClients = generatedTrafficClients;
   for (let i = 0; i < 260; i++) {
-    const client = clients[i % clients.length];
+    const client = dnsClients[i % dnsClients.length];
     const route = i % 6 === 0 ? "Direct" : i % 5 === 0 ? "Unknown" : "VPS";
     const catalogStatus = route === "VPS" ? "managed" : route === "Direct" ? "candidate" : "unknown";
     dnsStmt.run({
@@ -723,7 +779,7 @@ function seed(db) {
     client_ip,destination_ip,destination_port,dns_qname,dns_answer_ip,sni,rule_set,source_log,confidence,evidence_json
   ) values (@snapshot_id,@occurred_at,@client,@channel,@destination,@route,@outbound,@matched_rule,@visible_ip,@event_id,@client_ip,@destination_ip,@destination_port,@dns_qname,@dns_answer_ip,@sni,@rule_set,@source_log,@confidence,@evidence_json)`);
   for (let i = 0; i < 360; i++) {
-    const client = clients[i % clients.length];
+    const client = generatedTrafficClients[i % generatedTrafficClients.length];
     const [destLabel, domain, ip] = destinations[i % destinations.length];
     const route = routes[i % routes.length];
     const occurredAt = iso(now, i * 777 + (i % 9));

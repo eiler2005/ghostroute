@@ -65,7 +65,7 @@ ruby -rjson -e '
   abort "yesterday flow leaked into today evidence" if evidence["flow_samples"].any? { |row| row["remote_ip"] == "192.0.2.10" }
   abort "expected timestamp warnings" unless evidence["warnings"].any? { |row| row["code"] == "unparsable_timestamp" }
   abort "expected traffic-facts schema v3" unless facts["schema_version"] == 3
-  abort "expected seven traffic facts" unless facts["traffic_facts"].length == 7
+  abort "expected ten traffic facts" unless facts["traffic_facts"].length == 10
   abort "yesterday flow leaked into today facts" if facts["traffic_facts"].any? { |row| row["destination_ip"] == "192.0.2.10" }
   facts["traffic_facts"].each do |row|
     sum = row["via_vps_bytes"].to_i + row["direct_bytes"].to_i + row["unknown_bytes"].to_i
@@ -84,13 +84,19 @@ ruby -rjson -e '
   abort "sing-box mismatch should be visible" unless shared["route_verification"] == "mismatch" && shared["outbound"] == "direct-out" && shared["unknown_bytes"].to_i == shared["bytes"].to_i
   no_ipset = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.70" }
   abort "no_ipset should not become intent_only" unless no_ipset && no_ipset["route_verification"] == "unknown" && no_ipset["route_status"] == "unknown"
-  home = facts["traffic_facts"].select { |row| row["destination"] == "Home Reality ingress" }
-  abort "expected Home Reality facts" unless home.length == 3
-  abort "expected Home Reality profile key" unless home.all? { |row| row["client_key"] == "iphone-4" && row["traffic_class"] == "client" }
+  home = facts["traffic_facts"].select { |row| row["client_key"] == "iphone-4" && row["evidence_level"] == "home_reality_sing_box_destination_estimate" }
+  abort "expected estimated Home Reality destination facts" unless home.length == 6
+  abort "Home Reality ingress should be residual-only" if facts["traffic_facts"].any? { |row| row["destination"] == "Home Reality ingress" }
+  abort "expected Home Reality profile key" unless home.all? { |row| row["traffic_class"] == "client" }
   abort "Home Reality should use ingress route allocation" unless home.all? { |row| row["route_verification"] == "ingress_route_allocated" && row["route_status"] == "counter_allocated" }
   abort "Home Reality bytes must use route split invariant" unless home.all? { |row| row["bytes"].to_i == row["unknown_bytes"].to_i + row["via_vps_bytes"].to_i + row["direct_bytes"].to_i }
-  abort "Home Reality expected 50/50 split" unless home.all? { |row| (row["via_vps_bytes"].to_i - row["direct_bytes"].to_i).abs <= 1 && row["unknown_bytes"].to_i == 0 }
-  abort "Home Reality must not invent DNS/domain attribution" unless home.all? { |row| row["dns_link_confidence"] == "no_dns_match" && row["destination_confidence"] == "none" }
+  abort "Home Reality must stay estimated without DNS proof" unless home.all? { |row| row["dns_link_confidence"] == "no_dns_match" && row["dns_qname"].to_s.empty? && row["destination_confidence"] == "sing_box_destination" && row["confidence"] == "estimated" }
+  abort "Home Reality should preserve exact counter total" unless home.sum { |row| row["bytes"].to_i } == evidence["home_reality_samples"].sum { |row| row["total_bytes"].to_i }
+  vps_home = home.select { |row| row["destination"] == "api.example.invalid" }
+  direct_home = home.select { |row| row["destination"] == "direct.example.invalid" }
+  abort "expected three VPS and three Direct Home Reality destination facts" unless vps_home.length == 3 && direct_home.length == 3
+  abort "expected VPS destination split" unless vps_home.all? { |row| row["route"] == "VPS" && row["via_vps_bytes"].to_i == row["bytes"].to_i && row["direct_bytes"].to_i == 0 && row["unknown_bytes"].to_i == 0 }
+  abort "expected Direct destination split" unless direct_home.all? { |row| row["route"] == "Direct" && row["direct_bytes"].to_i == row["bytes"].to_i && row["via_vps_bytes"].to_i == 0 && row["unknown_bytes"].to_i == 0 }
 ' "$TMP_DIR/evidence.json" "$TMP_DIR/facts.json"
 
 CURRENT_DIR="$TMP_DIR/current-home-reality"

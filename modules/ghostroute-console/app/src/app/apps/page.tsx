@@ -1,7 +1,7 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
 import { listAppFamilyRows } from "@/lib/server/selectors/apps";
-import { listClientInventory, listClientSiteEvidence } from "@/lib/server/selectors/clients";
+import { listClientDnsEvidence, listClientInventory } from "@/lib/server/selectors/clients";
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { dnsInterestTrafficClass } from "@/lib/traffic-window.mjs";
@@ -95,10 +95,13 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
   const selectedClientId = selectedClientValue(selected);
   const appFilters = { ...filters, client: selectedClientId || "all" };
   const apps = listAppFamilyRows({ page, pageSize, filters: appFilters, clientTarget: selected });
+  const selectedDnsTokens = new Set(clientTokens(selected).map(normalizeToken));
   const dnsRows = selected
-    ? listClientSiteEvidence(selected, filters.period || "today", { limit: 300, includeService: includeServiceDns })
-      .filter((row: Record<string, any>) => Number(row.dns_queries || row.count || 0) > 0 && row.domain)
-      .sort((a: Record<string, any>, b: Record<string, any>) => Date.parse(String(b.latest || "")) - Date.parse(String(a.latest || "")) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
+    ? listClientDnsEvidence(selected, filters.period || "today", { limit: 300 })
+      .filter((row: Record<string, any>) => clientTokens(row).some((token) => selectedDnsTokens.has(normalizeToken(token))))
+      .filter((row: Record<string, any>) => Number(row.count || row.dns_queries || 0) > 0 && row.domain)
+      .filter((row: Record<string, any>) => includeServiceDns || dnsInterestTrafficClass(row) !== "service_background")
+      .sort((a: Record<string, any>, b: Record<string, any>) => Date.parse(String(b.latest || "")) - Date.parse(String(a.latest || "")) || Number(b.count || b.dns_queries || 0) - Number(a.count || a.dns_queries || 0))
       .slice(0, 25)
     : [];
   const model = buildShellModel(filters, { devices: inventory.rows });

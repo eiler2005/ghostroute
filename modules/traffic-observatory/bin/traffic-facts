@@ -376,6 +376,77 @@ def ingress_route_allocations(input)
   allocations
 end
 
+def ip_literal?(value)
+  candidate = text(value).strip.downcase
+  return true if candidate.match?(/\A(\d{1,3}\.){3}\d{1,3}\z/)
+  candidate.include?(':') && candidate.match?(/\A[0-9a-f:.]+\z/i)
+end
+
+def strip_destination_port(value, port)
+  candidate = text(value).strip
+  port = text(port).strip
+  return candidate if candidate.empty? || port.empty?
+  if candidate.start_with?('[')
+    close = candidate.index(']')
+    return candidate[1...close] if close && candidate[(close + 1)..] == ":#{port}"
+  end
+  if candidate.count(':') == 1 && candidate.end_with?(":#{port}")
+    return candidate[0...(candidate.length - port.length - 1)]
+  end
+  candidate
+end
+
+def ingress_destination_for(row)
+  host = text(row['destination_host']).strip
+  destination = host.empty? ? strip_destination_port(row['destination'], row['destination_port']) : host
+  destination = destination.sub(/\A\[/, '').sub(/\]\z/, '').sub(/\.\z/, '').strip
+  return '' if destination.empty?
+  lower = destination.downcase
+  return '' if %w[unknown unknown-destination n/a not-observed home-reality-ingress].include?(lower.tr(' ', '-'))
+  ip_literal?(destination) ? destination : lower
+end
+
+def ingress_destination_allocations(input)
+  allocations = Hash.new { |hash, key| hash[key] = { 'total_units' => 0, 'groups' => {}, 'basis' => 'home_reality_connection_share' } }
+  (input['sing_box_route_evidence'] || []).each do |row|
+    next unless row.is_a?(Hash)
+    channel = ingress_channel_for_inbound(row['inbound'])
+    next if channel.empty?
+    profile = text(row['profile'])
+    keys = []
+    keys << "#{channel}|#{profile}" unless profile.empty?
+    keys << channel if profile.empty?
+    next if keys.empty?
+    destination = ingress_destination_for(row)
+    next if destination.empty?
+    route = text(row['route'], 'Unknown')
+    route = 'Unknown' unless %w[VPS Direct].include?(route)
+    outbound = text(row['outbound'])
+    port = text(row['destination_port'])
+    kind = ip_literal?(destination) ? 'ip' : 'domain'
+    group_key = [route, outbound, destination, port].join('|')
+    keys.uniq.each do |key|
+      group = allocations[key]['groups'][group_key] ||= {
+        'destination' => destination,
+        'destination_kind' => kind,
+        'destination_port' => port,
+        'route' => route,
+        'outbound' => outbound,
+        'units' => 0,
+        'samples' => []
+      }
+      group['units'] += 1
+      group['samples'] << {
+        'sample_id' => text(row['id']),
+        'ts' => text(row['ts']),
+        'connection_id' => text(row['connection_id'])
+      } if group['samples'].length < 8
+      allocations[key]['total_units'] += 1
+    end
+  end
+  allocations
+end
+
 def allocation_for_ingress_sample(sample, allocations)
   channel = text(sample['channel'])
   label = text(sample['client_label'], text(sample['client_key']))
@@ -385,6 +456,34 @@ def allocation_for_ingress_sample(sample, allocations)
     return allocation if allocation && number(allocation['vpn_bytes']) + number(allocation['direct_bytes']) > 0
   end
   nil
+end
+
+def destination_allocation_for_ingress_sample(sample, allocations)
+  channel = text(sample['channel'])
+  label = text(sample['client_label'], text(sample['client_key']))
+  profile_key = channel.empty? || label.empty? ? '' : "#{channel}|#{label}"
+  allocation = allocations[profile_key]
+  return allocation if allocation && number(allocation['total_units']) > 0
+  return nil unless label.empty?
+  allocation = allocations[channel]
+  return allocation if allocation && number(allocation['total_units']) > 0
+  nil
+end
+
+def proportional_group_allocations(groups, totals)
+  groups = groups.sort_by { |group| [-number(group['units']), text(group['destination']), text(group['route']), text(group['outbound'])] }
+  unit_total = groups.sum { |group| number(group['units']) }
+  remaining = totals.transform_values { |value| number(value) }
+  groups.each_with_index.map do |group, index|
+    last = index == groups.length - 1
+    allocated = {}
+    remaining.each_key do |field|
+      value = last ? remaining[field] : (number(totals[field]) * number(group['units']) / unit_total.to_f).floor
+      allocated[field] = value
+      remaining[field] -= value
+    end
+    group.merge(allocated)
+  end
 end
 
 def route_candidates_for(sample, dns_link)
@@ -532,6 +631,7 @@ else
   answers = dns_answer_rows(input)
   route_allocations = lan_route_allocations(input)
   ingress_allocations = ingress_route_allocations(input)
+  ingress_destination_groups = ingress_destination_allocations(input)
   sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row| row.is_a?(Hash) }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
@@ -630,8 +730,93 @@ else
     route_status = route_status_for(route_verification)
     total, vps, direct, unknown = route_verification == 'ingress_route_allocated' ? split_for_route_allocation(total, allocation) : split_for_verification(route_verification, total)
     total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
+    destination_allocation = destination_allocation_for_ingress_sample(sample, ingress_destination_groups)
+    if destination_allocation && number(destination_allocation['total_units']) > 0
+      groups = proportional_group_allocations(destination_allocation['groups'].values, {
+        'bytes' => total,
+        'bytes_up' => number(sample['bytes_up']),
+        'bytes_down' => number(sample['bytes_down'])
+      })
+      groups.each_with_index do |group, group_index|
+        allocated_bytes = number(group['bytes'])
+        next if allocated_bytes <= 0
+        allocated_total, allocated_vps, allocated_direct, allocated_unknown = split_for_route(group['route'], allocated_bytes)
+        allocated_total, allocated_vps, allocated_direct, allocated_unknown, allocated_corrected = enforce_split(allocated_total, allocated_vps, allocated_direct, allocated_unknown)
+        destination = text(group['destination'])
+        destination_kind = text(group['destination_kind'], ip_literal?(destination) ? 'ip' : 'domain')
+        fact_id = fact_hash('home-reality-destination', sample['sample_id'], event_ts, key, destination, group['route'], group_index, allocated_total)
+        facts << {
+          'fact_id' => fact_id,
+          'flow_group_key' => fact_id,
+          'sample_id' => text(sample['sample_id']),
+          'event_ts' => event_ts,
+          'event_ts_utc' => event_ts,
+          'observed_at_utc' => event_ts,
+          'display_ts_utc' => event_ts,
+          'time_precision' => 'second',
+          'client_key' => key,
+          'client_label' => label,
+          'client_ip' => text(sample['source_ip']),
+          'channel' => text(sample['channel'], 'A/Home Reality'),
+          'route' => route_from_split(allocated_vps, allocated_direct, allocated_unknown),
+          'intended_route' => 'Unknown',
+          'route_verification' => 'ingress_route_allocated',
+          'route_status' => route_status_for('ingress_route_allocated'),
+          'route_source' => 'sing-box',
+          'route_basis' => 'home_reality_connection_share',
+          'matched_ipset' => '',
+          'egress_iface' => '',
+          'fwmark' => '',
+          'traffic_class' => traffic_class_for(destination),
+          'destination' => destination,
+          'destination_kind' => destination_kind,
+          'destination_ip' => destination_kind == 'ip' ? destination : '',
+          'destination_port' => text(group['destination_port']),
+          'protocol' => 'tcp',
+          'dns_qname' => '',
+          'dns_answer_ip' => '',
+          'dns_link_id' => '',
+          'dns_link_confidence' => 'no_dns_match',
+          'dns_status' => 'no_match',
+          'dns_ts_source' => '',
+          'sni' => '',
+          'policy' => '',
+          'matched_rule' => '',
+          'outbound' => text(group['outbound']),
+          'bytes' => allocated_total,
+          'bytes_up' => number(group['bytes_up']),
+          'bytes_down' => number(group['bytes_down']),
+          'via_vps_bytes' => allocated_vps,
+          'direct_bytes' => allocated_direct,
+          'unknown_bytes' => allocated_unknown,
+          'connections' => number(group['units']),
+          'identity_confidence' => text(sample['client_label']).empty? ? 'source_ip' : 'profile',
+          'byte_confidence' => 'estimated_connection_share',
+          'destination_confidence' => 'sing_box_destination',
+          'confidence' => 'estimated',
+          'accounting_status' => accounting_status_for(corrected_split || allocated_corrected),
+          'allocation_basis' => 'home_reality_connection_share',
+          'evidence_level' => 'home_reality_sing_box_destination_estimate',
+          'sources' => ['traffic-evidence', text(sample['source'], 'mobile-reality-counters'), 'sing-box-route-evidence'],
+          'evidence_json' => JSON.generate({
+            'sample' => sample,
+            'route_allocation' => allocation,
+            'destination_allocation' => {
+              'basis' => 'home_reality_connection_share',
+              'total_units' => number(destination_allocation['total_units']),
+              'group_units' => number(group['units']),
+              'samples' => group['samples']
+            },
+            'route_allocation_basis' => allocation ? 'ingress_outbound_mix' : '',
+            'accounting_corrected' => corrected_split || allocated_corrected
+          })
+        }
+      end
+      next
+    end
     fact = {
       'fact_id' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
+      'flow_group_key' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
       'sample_id' => text(sample['sample_id']),
       'event_ts' => event_ts,
       'event_ts_utc' => event_ts,
