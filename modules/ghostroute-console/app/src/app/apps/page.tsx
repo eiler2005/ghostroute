@@ -103,6 +103,9 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
     : [];
   const model = buildShellModel(filters, { devices: inventory.rows });
   const totalBytes = apps.rows.reduce((sum: number, row: Record<string, any>) => sum + Number(row.bytes || row.total_bytes || 0), 0);
+  const dnsEmptyDetail = totalBytes > 0
+    ? "Byte counters are shown above as aggregate residual; no domain/DNS attribution was tied to this device in the current window."
+    : "No DNS rows were tied to this selected device in the current window.";
   const extraParams = {
     period: filters.period !== "today" ? filters.period : undefined,
     route: filters.route !== "all" ? filters.route : undefined,
@@ -239,7 +242,7 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
           </div>
         </div>
         {dnsRows.length === 0 ? (
-          <EmptyState title="No DNS domains for this device" detail="No DNS rows were tied to this selected device in the current window." />
+          <EmptyState title="No DNS domains for this device" detail={dnsEmptyDetail} />
         ) : (
           <div className="detail-list">
             {dnsRows.map((row: Record<string, any>, index: number) => (

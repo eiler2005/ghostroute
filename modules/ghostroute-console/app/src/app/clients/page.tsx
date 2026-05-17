@@ -310,7 +310,7 @@ function PopularSitesList({ title: heading, rows, dnsFallback, counterFallback }
         <h3>{heading}</h3>
         <span className="subtle">{evidenceLabel}</span>
       </div>
-      {visible.length === 0 ? (
+      {visible.length === 0 && residualRows.length === 0 ? (
         <EmptyState title="No site-level traffic for this client" detail="Only client/channel counters were observed in the selected day." />
       ) : (
         <div className="detail-list">
