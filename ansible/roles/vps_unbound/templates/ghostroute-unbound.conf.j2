@@ -23,3 +23,12 @@ server:
   harden-glue: yes
   harden-dnssec-stripped: yes
   unwanted-reply-threshold: 10000
+{% if vps_unbound_forward_addrs | default([]) | length > 0 %}
+  do-not-query-localhost: no
+
+forward-zone:
+  name: "."
+{% for forward_addr in vps_unbound_forward_addrs %}
+  forward-addr: {{ forward_addr }}
+{% endfor %}
+{% endif %}

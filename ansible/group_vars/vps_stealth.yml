@@ -12,6 +12,7 @@ vps_unbound_docker_bridge_cidr: "{{ vault_vps_unbound_docker_bridge_cidr | defau
 vps_unbound_reality_listen_host: "{{ vault_vps_unbound_reality_listen_host | default(vps_ssh_host, true) }}"
 vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | default(vps_unbound_reality_listen_host, true) }}"
 vps_unbound_xray_allow_port: "{{ vault_vps_unbound_xray_allow_port | default(vps_unbound_listen_port, true) }}"
+vps_unbound_forward_addrs: "{{ vault_vps_unbound_forward_addrs | default(['127.0.0.53@53']) }}"
 vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.conf
 
 # Actual VPS currently has host-level Caddy already bound on :80/:443 for an

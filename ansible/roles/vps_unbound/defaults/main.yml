@@ -7,3 +7,4 @@ vps_unbound_docker_bridge_cidr: 172.22.0.0/16
 vps_unbound_docker_bridge_startup_wait_seconds: 60
 vps_unbound_reality_listen_host: ""
 vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.conf
+vps_unbound_forward_addrs: []
