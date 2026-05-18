@@ -58,6 +58,8 @@ const timeWindowModule = await import(new URL("../src/lib/time/window.mjs", impo
 const { bucketStartUtc, mskWindowBounds, toMskKey, toUtcIsoFromMskKey } = timeWindowModule;
 const collectorLockModule = await import(new URL("../scr" + "ipts/lib/collector-lock.mjs", import.meta.url));
 const { acquireCollectorLock } = collectorLockModule;
+const postDeployVerifyModule = await import(new URL("../scr" + "ipts/lib/post-deploy-verify.mjs", import.meta.url));
+const { splitCollectorRunErrors } = postDeployVerifyModule;
 const snapshotContractsModule = await import(new URL("../scr" + "ipts/lib/snapshot-contracts.mjs", import.meta.url));
 const { validateSnapshotPayload, withSnapshotContractDefaults } = snapshotContractsModule;
 const routerRollupsModule = await import(new URL("../scr" + "ipts/lib/router-rollups.mjs", import.meta.url));
@@ -478,6 +480,17 @@ test("collector lock replaces stale locks and preserves active peer locks", asyn
   assert.equal(acquireCollectorLock(lockFile, "collector", 60000), null);
   child.kill("SIGTERM");
   fs.unlinkSync(lockFile);
+});
+
+test("post-deploy verification treats health collector errors as optional", () => {
+  const latestRun = { id: 1, error_count: 2 };
+  const split = splitCollectorRunErrors(latestRun, [
+    { type: "health", message: "readonly health command unavailable" },
+    { type: "traffic_facts", message: "missing traffic facts" },
+  ]);
+  assert.deepEqual(split.optionalErrors.map((row) => row.type), ["health"]);
+  assert.deepEqual(split.hardErrors.map((row) => row.type), ["traffic_facts"]);
+  assert.deepEqual(splitCollectorRunErrors({ id: 2, error_count: 0 }, []).hardErrors, []);
 });
 
 test("alarm-state command stores ack snooze and reopen as bounded JSON", () => {
