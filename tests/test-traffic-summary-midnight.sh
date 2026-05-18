@@ -68,6 +68,25 @@ ruby -rjson -e '
   abort "did not expect baseline warning for two samples" if warnings.any? { |row| row["code"] == "home_reality_counter_baseline_missing" }
 ' "$TMP_DIR/delta.json"
 
+cat > "$TMP_DIR/mobile-remote-delta.tsv" <<'EOF'
+2026-05-17T00:12:00+0300|198.51.100.20|remote:198.51.100.20|1000|2000
+2026-05-17T00:30:00+0300|198.51.100.20|remote:198.51.100.20|6000|9000
+EOF
+run_summary "$TMP_DIR/mobile-remote-delta.tsv" "2026-05-17T00:30:00+0300" "$TMP_DIR/remote-delta.json"
+
+ruby -rjson -e '
+  payload = JSON.parse(File.read(ARGV[0]))
+  totals = payload.fetch("totals")
+  abort "unprofiled mobile leaked into home_reality_ingress_bytes" unless totals["home_reality_ingress_bytes"].to_i == 0
+  abort "unprofiled mobile leaked into client_observed_bytes" unless totals["client_observed_bytes"].to_i == totals["lan_wifi_bytes"].to_i
+  abort "expected diagnostic unprofiled Home Reality bytes" unless totals["unprofiled_home_reality_bytes"].to_i == 12_000
+  abort "unprofiled mobile inflated unknown bytes" if totals["unknown_bytes"].to_i >= 12_000
+  warning = payload.fetch("warnings").find { |row| row["code"] == "home_reality_unprofiled_ingress_not_client_observed" }
+  abort "expected unprofiled ingress warning" unless warning && warning["bytes"].to_i == 12_000
+  diagnostic = payload.fetch("home_reality_unprofiled_sources")
+  abort "expected unprofiled diagnostic source total" unless diagnostic["count"].to_i == 1 && diagnostic["total_bytes"].to_i == 12_000
+' "$TMP_DIR/remote-delta.json"
+
 cat > "$TMP_DIR/mobile-reset.tsv" <<'EOF'
 2026-05-17T00:12:00+0300|198.51.100.10|iphone-6|6000|9000
 2026-05-17T00:30:00+0300|198.51.100.10|iphone-6|500|700
@@ -93,5 +112,21 @@ ruby -rjson -e '
   total = payload.fetch("totals").fetch("home_reality_ingress_bytes").to_i
   abort "daily report single mobile sample leaked into totals" unless total == 0
 ' "$TMP_DIR/daily-single.json"
+
+TRAFFIC_REPORT_SKIP_REFRESH=1 \
+TRAFFIC_INTERFACE_COUNTERS_FILE="$INTERFACE_COUNTERS" \
+TRAFFIC_LAN_COUNTERS_FILE="$LAN_COUNTERS" \
+TRAFFIC_MOBILE_COUNTERS_FILE="$TMP_DIR/mobile-remote-delta.tsv" \
+DEVICE_METADATA_FILE="$METADATA" \
+REPORT_REDACT_NAMES=0 \
+  "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-daily-report" --json 2026-05-17 > "$TMP_DIR/daily-remote.json"
+
+ruby -rjson -e '
+  payload = JSON.parse(File.read(ARGV[0]))
+  totals = payload.fetch("totals")
+  abort "daily unprofiled mobile leaked into home_reality_ingress_bytes" unless totals["home_reality_ingress_bytes"].to_i == 0
+  abort "daily unprofiled mobile leaked into client_observed_bytes" unless totals["client_observed_bytes"].to_i == totals["lan_wifi_bytes"].to_i
+  abort "daily expected diagnostic unprofiled Home Reality bytes" unless totals["unprofiled_home_reality_bytes"].to_i == 12_000
+' "$TMP_DIR/daily-remote.json"
 
 echo "traffic-summary midnight counter tests passed"

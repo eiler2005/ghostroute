@@ -592,10 +592,12 @@ DNS/route evidence and accounting status, while Traffic Intelligence writes
 labels, explanations and dry-run decision candidates for the Console
 `/intelligence` review surface. It does not change routing, blocking, managed
 domains or accounting.
-Home Reality profile bytes enter the trusted pipeline only as read-only
-encrypted ingress counter deltas (`home_reality_samples` ->
-`Home Reality ingress` facts); Console does not revive legacy estimated
-Apple/iCloud-style per-destination allocations without real DNS/flow evidence.
+Home Reality profile bytes enter the trusted pipeline only when the ingress
+counter is profile-labelled (`home_reality_samples` -> `Home Reality ingress`
+or sing-box destination facts). Unprofiled `remote:*` ingress counters are kept
+as diagnostics and are not counted as client-observed traffic; Console does not
+revive legacy estimated Apple/iCloud-style per-destination allocations without
+real DNS/flow evidence.
 
 Health monitor:
 

@@ -496,6 +496,8 @@ else
   mobile_path = File.join(state_dir, 'mobile-reality-counters.tsv')
   if File.file?(mobile_path)
     rows_by_key = Hash.new { |hash, key| hash[key] = [] }
+    unprofiled_home_reality_sources = {}
+    unprofiled_home_reality_bytes = 0
     File.readlines(mobile_path, chomp: true).each_with_index do |line, index|
       next if line.strip.empty?
       parts = line.split('|', -1)
@@ -528,6 +530,12 @@ else
           down_delta = row['bytes_down_counter'] >= previous['bytes_down_counter'] ? row['bytes_down_counter'] - previous['bytes_down_counter'] : row['bytes_down_counter']
           total = up_delta + down_delta
           if total > 0
+            if row['client_label'].to_s.start_with?('remote:')
+              unprofiled_home_reality_sources[row['source_ip']] = true
+              unprofiled_home_reality_bytes += total
+              previous = row
+              next
+            end
             sample = {
               'sample_id' => evidence_id('home-reality', previous['ts'].iso8601(3), row['ts'].iso8601(3), row['source_ip'], row['client_label'], total),
               'ts' => row['ts'].utc.iso8601(3),
@@ -549,6 +557,15 @@ else
         end
         previous = in_window ? row : nil
       end
+    end
+    if unprofiled_home_reality_bytes > 0
+      warnings << {
+        'code' => 'home_reality_unprofiled_ingress_not_client_observed',
+        'source' => 'mobile-reality-counters.tsv',
+        'sources' => unprofiled_home_reality_sources.length,
+        'bytes' => unprofiled_home_reality_bytes,
+        'detail' => 'Unprofiled Home Reality source counters are diagnostic and are not emitted as client traffic facts.'
+      }
     end
   end
 end
