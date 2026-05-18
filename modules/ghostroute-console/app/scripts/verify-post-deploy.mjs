@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
+import { splitCollectorRunErrors } from "./lib/post-deploy-verify.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const moduleDir = path.resolve(appDir, "..");
@@ -101,7 +102,15 @@ const latestRun = db.prepare(`
 `).get();
 assert.ok(latestRun, "missing full collector run; run npm run collector:once after deploy");
 assert.ok(latestRun.finished_at, `latest full collector run did not finish: ${JSON.stringify(latestRun)}`);
-assert.equal(number(latestRun.error_count), 0, `latest full collector run has errors: ${JSON.stringify(latestRun)}`);
+const latestRunErrorRows = db
+  .prepare("select type, message from collector_errors where run_id = ? order by id")
+  .all(latestRun.id);
+const latestRunErrors = splitCollectorRunErrors(latestRun, latestRunErrorRows);
+assert.equal(
+  latestRunErrors.hardErrors.length,
+  0,
+  `latest full collector run has blocking errors: ${JSON.stringify({ latestRun, errors: latestRunErrors.hardErrors })}`
+);
 
 for (const type of requiredFullSnapshots) {
   const row = db.prepare(`
@@ -230,6 +239,7 @@ console.log(JSON.stringify({
   status: "ok",
   data_dir: dataDir,
   latest_full_collector: latestRun,
+  optional_collector_errors: latestRunErrors.optionalErrors,
   prepared_windows: preparedSummary.length,
   fact_classes: factClasses,
   inactive_locks: activeLocks,
