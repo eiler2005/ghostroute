@@ -38,7 +38,7 @@ const commands = [
   ["traffic_facts", "modules/traffic-observatory/bin/traffic-facts", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"]],
   ["health", "modules/ghostroute-health-monitor/bin/router-health-report", ["--json"], { allowFailure: true, retries: 1 }],
   ["deploy_gate", "modules/ghostroute-health-monitor/bin/live-check", ["--json", "--active-probe", "--deploy-gate", "--no-log"], { allowFailure: true, retries: 1 }],
-  ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"]],
+  ["leaks", "modules/ghostroute-health-monitor/bin/leak-check", ["--json"], { timeoutMs: 300000 }],
   ["domains", "modules/dns-catalog-intelligence/bin/domain-report", ["--json", "--all"]],
   ["dns", "modules/dns-catalog-intelligence/bin/dns-forensics-report", ["--json"]],
 ];
@@ -53,6 +53,7 @@ function runReadOnlyCommandOnce(command, args, options = {}) {
   if (!allowedCommands.has(command)) {
     throw new Error(`collector command is not whitelisted: ${command}`);
   }
+  const commandTimeoutMs = Math.max(30000, Number(options.timeoutMs || process.env.GHOSTROUTE_COLLECT_COMMAND_TIMEOUT_MS || 120000));
 
   if ((process.env.GHOSTROUTE_COLLECTOR_MODE || "local") === "ssh") {
     const host = process.env.GHOSTROUTE_READONLY_SSH_HOST;
@@ -77,7 +78,7 @@ function runReadOnlyCommandOnce(command, args, options = {}) {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         env: process.env,
-        timeout: 120000,
+        timeout: commandTimeoutMs,
         maxBuffer: collectMaxBuffer,
       });
     } catch (error) {
@@ -92,7 +93,7 @@ function runReadOnlyCommandOnce(command, args, options = {}) {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
-      timeout: 120000,
+      timeout: commandTimeoutMs,
       maxBuffer: collectMaxBuffer,
     });
   } catch (error) {
