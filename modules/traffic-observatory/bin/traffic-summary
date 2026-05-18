@@ -215,14 +215,28 @@ lan_devices = lan_raw.map do |ip, data|
   { id: ip, label: label, ip: ip, total_bytes: total, via_vps_bytes: reality, direct_bytes: wan, unknown_bytes: other, confidence: 'exact', evidence: ['lan-device-counters.tsv'] }
 end
 
-mobile_sources = mobile_raw.map do |ip, data|
+mobile_source_rows = mobile_raw.map do |ip, data|
   last = data[:last]
   label = last[2]
   label = "remote:#{ip}" if label.nil? || label.empty?
   up, down = data[:values]
   total = up + down
-  { id: ip, label: label, ip: ip, total_bytes: total, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: total, confidence: 'mixed', evidence: ['mobile-reality-counters.tsv'] }
-end.reject { |row| row[:total_bytes].to_i <= 0 || row[:label].to_s.start_with?('remote:#') || row[:label].to_s.start_with?('remote:*') }
+  profile_known = !label.to_s.start_with?('remote:') && label.to_s != 'unknown-mobile-source'
+  { id: ip, label: label, ip: ip, total_bytes: total, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: total, confidence: 'mixed', evidence: ['mobile-reality-counters.tsv'], profile_known: profile_known }
+end.reject { |row| row[:total_bytes].to_i <= 0 }
+
+unprofiled_mobile_sources = mobile_source_rows.reject { |row| row[:profile_known] }
+mobile_sources = mobile_source_rows.select { |row| row[:profile_known] }
+unprofiled_mobile_total = unprofiled_mobile_sources.sum { |row| row[:total_bytes] }
+if unprofiled_mobile_total > 0
+  warnings << {
+    code: 'home_reality_unprofiled_ingress_not_client_observed',
+    source: 'mobile-reality-counters.tsv',
+    sources: unprofiled_mobile_sources.length,
+    bytes: unprofiled_mobile_total,
+    detail: 'Unprofiled Home Reality source counters are diagnostic and are not counted as client-observed traffic.'
+  }
+end
 
 if redact_names == '1'
   lan_devices.sort_by { |row| row[:ip] }.each_with_index { |row, idx| row[:label] = format('lan-host-%02d', idx + 1) }
@@ -265,14 +279,20 @@ puts JSON.pretty_generate({
     wan_bytes: wan[:total],
     lan_wifi_bytes: lan_total,
     home_reality_ingress_bytes: mobile_total,
+    unprofiled_home_reality_bytes: unprofiled_mobile_total,
     client_observed_bytes: observed,
     via_vps_bytes: lan_vps,
     direct_bytes: lan_direct,
-    unknown_bytes: lan_unknown + mobile_total,
+    unknown_bytes: lan_unknown,
     confidence: 'mixed'
   },
   devices: lan_devices.sort_by { |row| [-row[:total_bytes], row[:label]] }.first(25),
   home_reality_clients: mobile_sources.sort_by { |row| [-row[:total_bytes], row[:label]] }.first(25),
+  home_reality_unprofiled_sources: {
+    count: unprofiled_mobile_sources.length,
+    total_bytes: unprofiled_mobile_total,
+    evidence: ['mobile-reality-counters.tsv']
+  },
   source_limits: {
     bounded_counter_sources: ['interface-counters.tsv', 'lan-device-counters.tsv', 'mobile-reality-counters.tsv'],
     log_tail_lines: 0,

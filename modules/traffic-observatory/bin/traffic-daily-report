@@ -135,23 +135,23 @@ lan_devices = lan_devices_raw.map do |ip, data|
   }
 end
 
-mobile_sources_by_label = Hash.new { |hash, key| hash[key] = { label: key, upload: 0, download: 0, total: 0 } }
+mobile_sources_by_label = Hash.new { |hash, key| hash[key] = { label: key, upload: 0, download: 0, total: 0, profile_known: true } }
 mobile_raw.each_value do |data|
   last = data[:last]
   label = last[2]
   label = 'unknown-mobile-source' if label.nil? || label.empty?
+  profile_known = !label.to_s.start_with?('remote:') && label.to_s != 'unknown-mobile-source'
   upload, download = data[:values]
   total = upload + download
   mobile_sources_by_label[label][:upload] += upload
   mobile_sources_by_label[label][:download] += download
   mobile_sources_by_label[label][:total] += total
+  mobile_sources_by_label[label][:profile_known] &&= profile_known
 end
-mobile_sources = mobile_sources_by_label.values
-mobile_sources.reject! do |row|
-  row[:total].to_i <= 0 ||
-    row[:label].to_s.start_with?('remote:#') ||
-    row[:label].to_s.start_with?('remote:*')
-end
+mobile_source_rows = mobile_sources_by_label.values.reject { |row| row[:total].to_i <= 0 }
+unprofiled_mobile_sources = mobile_source_rows.reject { |row| row[:profile_known] }
+mobile_sources = mobile_source_rows.select { |row| row[:profile_known] }
+unprofiled_mobile_total = unprofiled_mobile_sources.sum { |row| row[:total] }
 
 if redact_names == '1'
   lan_devices.sort_by { |row| row[:key] }.each_with_index do |row, idx|
@@ -209,6 +209,7 @@ if json_mode == '1'
       wan_bytes: wan[:total],
       lan_wifi_bytes: lan_total,
       home_reality_ingress_bytes: mobile_total,
+      unprofiled_home_reality_bytes: unprofiled_mobile_total,
       client_observed_bytes: client_observed_total,
       via_vps_bytes: lan_reality,
       direct_bytes: lan_wan,
@@ -238,6 +239,11 @@ if json_mode == '1'
         evidence: ['mobile-reality-counters.tsv']
       }
     end,
+    home_reality_unprofiled_sources: {
+      count: unprofiled_mobile_sources.length,
+      total_bytes: unprofiled_mobile_total,
+      evidence: ['mobile-reality-counters.tsv']
+    },
     destinations: [],
     routing_mistakes: [],
     notes: [

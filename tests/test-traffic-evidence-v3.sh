@@ -120,15 +120,11 @@ ruby -rjson -e '
   evidence = JSON.parse(File.read(ARGV[0]))
   facts = JSON.parse(File.read(ARGV[1]))
   home_samples = evidence["home_reality_samples"]
-  abort "expected current Home Reality sample" unless home_samples.length == 1
-  sample = home_samples.first
-  abort "expected current Home Reality delta bytes" unless sample["bytes_up"].to_i == 250 && sample["bytes_down"].to_i == 600 && sample["total_bytes"].to_i == 850
+  abort "unprofiled current Home Reality sample leaked into client evidence" unless home_samples.empty?
   home = facts["traffic_facts"].select { |row| row["destination"] == "Home Reality ingress" }
-  abort "expected current Home Reality fact" unless home.length == 1
-  fact = home.first
-  abort "expected current fact bytes" unless fact["bytes"].to_i == 850
-  abort "current Home Reality must stay IP/profile evidence only" unless fact["dns_link_confidence"] == "no_dns_match" && fact["destination_confidence"] == "none"
-  abort "current Home Reality without route mix should be unknown split" unless fact["route_verification"] == "unknown" && fact["unknown_bytes"].to_i == 850
+  abort "unprofiled current Home Reality fact leaked into traffic facts" unless home.empty?
+  warning = evidence.fetch("warnings").find { |row| row["code"] == "home_reality_unprofiled_ingress_not_client_observed" }
+  abort "expected unprofiled current Home Reality warning" unless warning && warning["bytes"].to_i == 850
 ' "$CURRENT_DIR/evidence-current.json" "$CURRENT_DIR/facts-current.json"
 
 IPTABLES_DIR="$TMP_DIR/current-home-reality-iptables"

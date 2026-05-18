@@ -900,6 +900,22 @@ function splitCounters(row: Record<string, any>, totalBytes = Number(row.bytes |
   };
 }
 
+function isMobileRealityCounterRow(row: Record<string, any>) {
+  const evidence = row.raw?.evidence;
+  return Array.isArray(evidence) && evidence.includes("mobile-reality-counters.tsv");
+}
+
+function isUnprofiledHomeRealityCounterRow(row: Record<string, any>) {
+  if (!isMobileRealityCounterRow(row)) return false;
+  if (row.raw?.profile_known === true) return false;
+  const total = observedByteValue(row);
+  if (total <= 0) return false;
+  const viaVpsBytes = Number(row.via_vps_bytes || row.raw?.via_vps_bytes || 0);
+  const directBytes = Number(row.direct_bytes || row.raw?.direct_bytes || 0);
+  const unknownBytes = Number(row.raw?.unknown_bytes || row.unknown_bytes || Math.max(0, total - viaVpsBytes - directBytes));
+  return viaVpsBytes <= 0 && directBytes <= 0 && unknownBytes >= total * 0.95;
+}
+
 function deviceRoute(row: Record<string, any>) {
   const route = String(row.route || "");
   if (route && route !== "Unknown") return route;
@@ -1346,7 +1362,8 @@ function deviceDeltaRowsForPeriod(period = "today") {
       raw: row.raw,
       collected_at: row.collected_at,
       profile: row.raw?.profile,
-    }));
+    }))
+    .filter((row) => !isUnprofiledHomeRealityCounterRow(row));
   const byKey = new Map<string, Map<string, Array<Record<string, any>>>>();
   for (const row of rows) {
     const key = keyForDevice(row);
