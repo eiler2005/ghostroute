@@ -98,6 +98,7 @@ test("apps selected device keeps byte traffic separate from DNS evidence", async
   await expect(selectedApps).not.toContainText("86.3 KB");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains for Test/iPhone Heavy" }) });
   await expect(latestDns).toBeVisible();
+  await expect(latestDns.getByText("ip-only-dns.example.invalid")).toBeVisible();
   await expect(latestDns.getByText(/gs-loc.*apple/i)).toBeVisible();
 });
 
