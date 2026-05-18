@@ -2903,10 +2903,10 @@ export function listClientDnsEvidence(client: Record<string, any> | string, peri
   const limit = Math.max(1, Number(options.limit || 200));
   return cacheGet(`client-dns-evidence:${latestSnapshotVersion()}:${period}:${key}:${limit}`, () => {
     const prepared = preparedClientDnsRows(target, period, { limit: Math.max(limit * 4, 200) });
-    if (prepared.available) return prepared.rows.slice(0, limit);
     const fallback = aggregateClientDnsEvidenceRows(clientDnsRows(target, period, { limit: Math.max(limit * 4, 200) }), limit);
+    if (prepared.rows.length > 0) return prepared.rows.slice(0, limit);
     if (fallback.length > 0) return fallback;
-    return fallback;
+    return prepared.available ? [] : fallback;
   });
 }
 

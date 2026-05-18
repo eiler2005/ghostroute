@@ -1020,6 +1020,9 @@ createSchema(db);
 ensureConsoleSchema(db);
 db.transaction(() => seed(db))();
 rebuildPreparedWindows(db);
+for (const table of ["dns_log_5min", "dns_log_hourly", "dns_log_daily", "dns_log_weekly", "dns_log_monthly"]) {
+  db.prepare(`delete from ${table} where client_key = ?`).run("test-iphone-heavy");
+}
 db.close();
 
 console.log(`seeded GUI test DB: ${dbFile}`);
