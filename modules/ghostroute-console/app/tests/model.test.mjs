@@ -1331,6 +1331,26 @@ test("local traffic intelligence returns deterministic labels and action hints",
     pick(trafficIntelligenceFor({ destination: "eu-central-courier-4.push-apple.com.akadns.net" })),
     { category: "system.apple.push", traffic_lane: "service_system", dns_category: "system_push", action_hint: "allow" }
   );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "gspe79-ssl.ls.apple.com" })),
+    { category: "system.apple.maintenance", traffic_lane: "service_system", dns_category: "system_maintenance", action_hint: "allow" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "app-analytics-services.com" })),
+    { category: "analytics.apple", traffic_lane: "privacy_risk", dns_category: "analytics", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "calendar.google.com" })),
+    { category: "client.calendar.google", traffic_lane: "client_observed", dns_category: "user_content", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "api.whatsapp.net" })),
+    { category: "client.messaging.whatsapp", traffic_lane: "client_observed", dns_category: "messaging_platform", action_hint: "monitor" }
+  );
+  assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "tile0-sdk.maps.2gis.com" })),
+    { category: "client.maps.2gis", traffic_lane: "client_observed", dns_category: "user_content", action_hint: "monitor" }
+  );
 });
 
 function pick(row) {
