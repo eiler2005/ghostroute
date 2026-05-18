@@ -1732,6 +1732,7 @@ type PageArgs = {
   pageSize?: number;
   maxPageSize?: number;
   maxRows?: number;
+  minBytes?: number;
   filters?: ConsoleFilters;
   diagnostics?: boolean;
   showInactive?: boolean;
@@ -4756,6 +4757,28 @@ export function listClientInventory(args: PageArgs = {}) {
   return cacheGet(`list-client-inventory:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listClientInventoryUncached(args));
 }
 
+export function listAppDeviceRows(args: PageArgs = {}) {
+  const minBytes = Math.max(0, Number(args.minBytes ?? 1024 * 1024));
+  const pageSize = clampPageSize(args.pageSize, 25, args.maxPageSize || 100);
+  const filters = { ...(args.filters || {}), client: "all" };
+  return cacheGet(`list-app-device-rows:${latestSnapshotVersion()}:${filtersKey(filters)}:${minBytes}:${pageSize}`, () => {
+    return clientInventoryRows(filters)
+      .filter((row) => observedByteValue(row) >= minBytes)
+      .filter((row) => {
+        if (
+          filters.channel &&
+          filters.channel !== "all" &&
+          row.channel !== filters.channel &&
+          !(row.channels || []).includes(filters.channel)
+        ) return false;
+        if (filters.route && filters.route !== "all" && routeFromCounters(row) !== filters.route) return false;
+        if (filters.confidence && filters.confidence !== "all" && row.confidence !== filters.confidence) return false;
+        return clientSearch(row, filters.search);
+      })
+      .slice(0, pageSize);
+  });
+}
+
 function listClientInventoryUncached(args: PageArgs = {}) {
   const page = clampPage(args.page);
   const pageSize = clampPageSize(args.pageSize, 25, 100);
@@ -5337,9 +5360,11 @@ function groupAppFamilyRows(rows: Array<Record<string, any>>, dnsRows: Array<Rec
     }));
 }
 
-function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, target: Record<string, any> | null = null) {
+function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, target: Record<string, any> | null = null, period = "today") {
   if (!target) return rows;
-  const targetBytes = observedByteValue(target);
+  const summary = clientWindowTrafficSummary(target, period);
+  const targetBytes = observedByteValue(target) || observedByteValue(summary);
+  const summaryRoute = routeFromCounters(summary);
   const rowBytes = rows.reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0);
   const residual = Math.round(targetBytes - rowBytes);
   if (targetBytes <= 0 || residual <= Math.max(64 * 1024, targetBytes * 0.05)) return rows;
@@ -5351,7 +5376,8 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
     existing.total_bytes = Number(existing.total_bytes || 0) + residual;
     existing.unknown_bytes = Number(existing.unknown_bytes || 0) + residual;
     existing.app_source = existing.app_source === "ip_only" ? "aggregate_residual" : existing.app_source || "aggregate_residual";
-    existing.app_confidence = existing.app_confidence || "estimated";
+    existing.app_confidence = existing.app_confidence || "residual";
+    existing.byte_confidence = existing.byte_confidence || "residual";
     existing.matched_pattern = existing.matched_pattern || "current-window aggregate residual";
     existing.sample_domains = Array.from(new Set([...(existing.sample_domains || []), residualSample])).slice(0, 6);
   } else {
@@ -5368,11 +5394,12 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
       clients: new Set<string>(),
       client_count: 1,
       routes: new Set<string>(),
-      route: target.route || "Unknown",
+      route: target.route || summaryRoute || "Unknown",
       sample_domains: [residualSample],
       confidence: "estimated",
       app_source: "aggregate_residual",
-      app_confidence: "estimated",
+      app_confidence: "residual",
+      byte_confidence: "residual",
       matched_pattern: "current-window aggregate residual",
     });
   }
@@ -5453,7 +5480,11 @@ export function listClientAppFamilies(client: Record<string, any> | string, peri
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_destination_by_lane"), ...laneClientKeyCandidates(target)]);
   const limit = Math.max(1, Number(options.limit || 10));
   return cacheGet(`client-app-families:${latestSnapshotVersion()}:${period}:${keys.join("|")}:${limit}`, () => {
-    return groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, period, { limit: Math.max(limit * 4, 50) })).slice(0, limit);
+    return reconcileAppFamilyRowsToClientTotal(
+      groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, period, { limit: Math.max(limit * 4, 50) })),
+      target,
+      period
+    ).slice(0, limit);
   });
 }
 
@@ -5527,7 +5558,11 @@ export function listAppFamilyRows(args: PageArgs = {}) {
   return cacheGet(`app-family-rows:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => {
     const target = args.clientTarget || (filters.client && filters.client !== "all" ? { label: filters.client, client_key: filters.client } : null);
     const allRows = target
-      ? groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, filters.period || "today", { limit: 500 }))
+      ? reconcileAppFamilyRowsToClientTotal(
+        groupAppFamilyRowsFromSiteEvidence(listClientSiteEvidence(target, filters.period || "today", { limit: 500 })),
+        target,
+        filters.period || "today"
+      )
       : groupAppFamilyRowsFromSiteEvidence(siteEvidenceRowsForFilters(filters, { limit: 5000, perClientLimit: 120 }));
     const total = allRows.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));

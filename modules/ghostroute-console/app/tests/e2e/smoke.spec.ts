@@ -98,7 +98,7 @@ test("apps selected device keeps byte traffic separate from DNS evidence", async
   await expect(selectedApps).not.toContainText("86.3 KB");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains for Test/iPhone Heavy" }) });
   await expect(latestDns).toBeVisible();
-  await expect(latestDns.getByText("gs-loc.apple.com")).toBeVisible();
+  await expect(latestDns.getByText(/gs-loc.*apple/i)).toBeVisible();
 });
 
 test("mobile apps uses the same selected-client attribution as desktop", async ({ page, isMobile }) => {
@@ -109,7 +109,7 @@ test("mobile apps uses the same selected-client attribution as desktop", async (
   await expect(selectedApps).toContainText(/(?:MB|GB)/);
   await expect(selectedApps).not.toContainText("No app-family rows");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains" }) });
-  await expect(latestDns).toContainText("gs-loc.apple.com");
+  await expect(latestDns).toContainText(/gs-loc.*apple/i);
 });
 
 test("apps selected-device byte totals stay aligned for all visible app devices", async ({ page, isMobile }) => {
@@ -129,6 +129,24 @@ test("apps selected-device byte totals stay aligned for all visible app devices"
     expect(appBytes, `${href} app bytes should cover selected device bytes`).toBeGreaterThanOrEqual(deviceBytes * 0.95);
     expect(appBytes, `${href} app bytes should not exceed selected device bytes`).toBeLessThanOrEqual(deviceBytes * 1.08);
   }
+});
+
+test("apps includes large unattributed clients and shows residual app traffic", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop-only Apps inventory coverage");
+  await page.goto("/apps");
+  const deviceList = page.locator("section").first();
+  await expect(deviceList).toContainText("mobile-source-99");
+  await expect(deviceList.locator("tbody tr").filter({ hasText: "1.5 MB" }).filter({ hasText: "Needs attribution" })).toHaveCount(1);
+  await expect(deviceList).not.toContainText("683.6 KB");
+
+  await page.goto("/apps?client=mobile-source-99");
+  const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families for mobile-source-99" }) });
+  await expect(selectedApps).toBeVisible();
+  await expect(selectedApps).toContainText("Other / uncategorized");
+  await expect(selectedApps).toContainText("0 queries");
+  await expect(selectedApps).toContainText("aggregate residual");
+  const summary = await selectedApps.locator(".toolbar .subtle").last().innerText();
+  expect(parseByteText(summary)).toBeGreaterThanOrEqual(2_300_000);
 });
 
 test("client popular sites expose ranked inferred domains instead of IP-only residual", async ({ page, isMobile }) => {

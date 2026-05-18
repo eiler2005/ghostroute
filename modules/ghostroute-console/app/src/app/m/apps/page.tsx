@@ -1,6 +1,6 @@
 import { MobileShell } from "@/components/MobileShell";
 import { bytes, ChannelBadge, RouteBadge } from "@/components/Widgets";
-import { listAppFamilyRows } from "@/lib/server/selectors/apps";
+import { listAppDeviceRows, listAppFamilyRows } from "@/lib/server/selectors/apps";
 import { listClientInventory, listClientSiteEvidence } from "@/lib/server/selectors/clients";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
@@ -45,6 +45,15 @@ function appHref(row: Record<string, any>, includeServiceDns: boolean) {
   return `/m/apps?${next.toString()}`;
 }
 
+function appDeviceLabel(row: Record<string, any>) {
+  if (row.client_attributed === false || row.attribution_state === "needs_attribution") {
+    const label = String(row.label || "").trim();
+    if (label && label !== "Unknown LAN device") return label;
+    return row.client_label || row.client_key || row.device_key || row.ip || "Unknown LAN device";
+  }
+  return row.device_label || row.label || row.id;
+}
+
 export default async function MobileAppsPage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
@@ -52,13 +61,15 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
   const inventory = listClientInventory({ page: 1, pageSize: 12, filters: { ...filters, client: "all" }, showInactive: false });
+  const appDeviceRows = listAppDeviceRows({ pageSize: 25, filters: { ...filters, client: "all" }, minBytes: 1024 * 1024 });
   const selectedClientParam = scalar(params.client) || "";
   const selectedLookup = selectedClientParam
     ? listClientInventory({ page: 1, pageSize: 1, filters: { ...filters, client: selectedClientParam }, showInactive: true }).rows[0]
     : undefined;
   const selected =
     selectedLookup ||
-    inventory.rows.find((row: Record<string, any>) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
+    appDeviceRows.find((row: Record<string, any>) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
+    appDeviceRows[0] ||
     inventory.rows[0];
   const selectedClientId = selectedClientValue(selected);
   const apps = listAppFamilyRows({
@@ -79,12 +90,12 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
 
   return (
     <MobileShell active="/m/apps" model={model} filters={filters} desktopPath={`/apps${selectedClientId ? `?client=${encodeURIComponent(String(selectedClientId))}` : ""}`}>
-      <MobileSection title="Device Inventory" detail={`${inventory.total} devices`}>
+      <MobileSection title="Device Inventory" detail={`${appDeviceRows.length} active >= 1 MiB`}>
         <div className="mobile-list">
-          {inventory.rows.map((row: Record<string, any>) => (
+          {appDeviceRows.map((row: Record<string, any>) => (
             <a className="mobile-row" href={appHref(row, includeServiceDns)} key={row.id || row.label}>
               <span>
-                <strong>{row.device_label || row.label || row.id}</strong>
+                <strong>{appDeviceLabel(row)}</strong>
                 <small>{row.owner || row.client_label || row.device_type || row.role || "Inventory"}</small>
               </span>
               <span className="mobile-row-meta">

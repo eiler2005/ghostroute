@@ -1,5 +1,6 @@
 export {
   buildClientsModel,
+  listAppDeviceRows,
   listAppFamilyRows,
   listClientAppFamilies,
   listClientDomainBreakdown,
