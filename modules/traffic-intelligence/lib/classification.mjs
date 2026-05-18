@@ -82,6 +82,7 @@ function trafficLaneForCategory(category, trafficClass) {
 
 function dnsCategoryForCategory(category) {
   if (category === "analytics.firebase") return "analytics";
+  if (category.startsWith("analytics.")) return "analytics";
   if (category === "tracker.ads") return "ads_tracking";
   if (category === "system.apple.push") return "system_push";
   if (category.startsWith("system.apple.")) return category.includes("store") || category.includes("itunes") ? "system_appstore" : "system_maintenance";
@@ -132,6 +133,30 @@ function valueFor(input) {
 
 function includesAny(value, terms) {
   return terms.some((term) => value.includes(term));
+}
+
+function isAppleSystemDomain(value) {
+  return includesAny(value, [
+    "configuration.apple",
+    "configuration.ls.apple.com",
+    "captive.apple",
+    "ocsp.apple",
+    "ocsp2.apple",
+    "stocks-data-service.apple",
+    "mzstatic",
+    "aaplimg",
+    "itunes",
+    "apple-dns.net",
+    "gs-loc.apple.com",
+    "gsp-ssl.ls.apple.com",
+    "ls.apple.com",
+    "iphone-ld.apple.com",
+    "lcdn-locator.apple.com",
+    "pancake.apple.com",
+    "swallow.apple.com",
+    "valid.apple.com",
+    "cdn-apple.com",
+  ]);
 }
 
 export function classifyDestination(input) {
@@ -224,6 +249,18 @@ export function classifyDestination(input) {
       traffic_purpose: "tracking",
     });
   }
+  if (value.includes("app-analytics-services.com")) {
+    return result(input, {
+      value,
+      category: "analytics.apple",
+      provider: "apple",
+      decision_hint: "monitor",
+      confidence: "medium",
+      reason_code: "apple_analytics",
+      traffic_role: "analytics_tracker",
+      traffic_purpose: "telemetry",
+    });
+  }
   if (value.includes("icloud")) {
     return result(input, {
       value,
@@ -270,6 +307,19 @@ export function classifyDestination(input) {
       reason_code: "google_cloud",
       traffic_role: "client_bulk_sync",
       traffic_purpose: "personal_cloud",
+    });
+  }
+  if (value === "calendar.google.com" || value.endsWith(".calendar.google.com")) {
+    return result(input, {
+      value,
+      category: "client.calendar.google",
+      provider: "google",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "high",
+      reason_code: "known_calendar_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "calendar",
     });
   }
   if (value.includes("youtube") || value.includes("ytimg.com") || value.includes("googlevideo.com")) {
@@ -322,6 +372,19 @@ export function classifyDestination(input) {
       reason_code: "known_social_app",
       traffic_role: "client_interactive",
       traffic_purpose: "social",
+    });
+  }
+  if (value.includes("whatsapp.com") || value.includes("whatsapp.net")) {
+    return result(input, {
+      value,
+      category: "client.messaging.whatsapp",
+      provider: "whatsapp",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "high",
+      reason_code: "known_messaging_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "messaging",
     });
   }
   if (value === "x.com" || value.endsWith(".x.com") || value.includes("twitter.com")) {
@@ -388,7 +451,7 @@ export function classifyDestination(input) {
       traffic_purpose: "push",
     });
   }
-  if (includesAny(value, ["configuration.apple", "captive.apple", "ocsp.apple", "stocks-data-service.apple", "mzstatic", "aaplimg", "itunes", "apple-dns.net"])) {
+  if (isAppleSystemDomain(value)) {
     return result(input, {
       value,
       category: "system.apple.maintenance",
@@ -423,6 +486,19 @@ export function classifyDestination(input) {
       reason_code: "known_client_app",
       traffic_role: "client_interactive",
       traffic_purpose: "collaboration",
+    });
+  }
+  if (value === "2gis.com" || value.endsWith(".2gis.com") || value === "2gis.ru" || value.endsWith(".2gis.ru")) {
+    return result(input, {
+      value,
+      category: "client.maps.2gis",
+      provider: "2gis",
+      traffic_class: "client",
+      decision_hint: "monitor",
+      confidence: "high",
+      reason_code: "known_maps_app",
+      traffic_role: "client_interactive",
+      traffic_purpose: "maps",
     });
   }
   const cdn = cdnProvider(value);
