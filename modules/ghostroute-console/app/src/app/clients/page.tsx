@@ -35,7 +35,7 @@ function scalar(value: string | string[] | undefined) {
 }
 
 function clientTokens(client?: Record<string, any>) {
-  return [client?.client_key, client?.client_label, client?.device_key, client?.device_label, client?.label, client?.id, client?.ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || []), ...(client?.observed_identities || [])].filter(Boolean).map(String);
+  return [client?.client_key, client?.client_label, client?.device_key, client?.device_label, client?.label, client?.id, client?.ip, client?.client_ip, client?.profile, client?.client, ...(client?.aliases || []), ...(client?.observed_aliases || []), ...(client?.observed_identities || [])].filter(Boolean).map(String);
 }
 
 function normalizeToken(value: unknown) {

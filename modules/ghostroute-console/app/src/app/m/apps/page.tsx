@@ -21,6 +21,7 @@ function clientTokens(client?: Record<string, any>) {
     client?.label,
     client?.id,
     client?.ip,
+    client?.client_ip,
     client?.profile,
     client?.client,
     ...(client?.aliases || []),

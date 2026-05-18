@@ -793,6 +793,26 @@ function seed(db) {
       evidence_json: JSON.stringify({ synthetic: true, ip_provider_case: true }),
     });
   }
+  const ipOnlyDnsClient = clients.find((entry) => entry.key === "test-iphone-heavy");
+  dnsStmt.run({
+    id: "test-seed:defect-dns:ip-only-client",
+    snapshot_id: dnsSnapshotId,
+    collected_at: iso(now, 450),
+    event_ts: iso(now, 1850),
+    client: "",
+    client_ip: ipOnlyDnsClient.ip,
+    device_key: "",
+    domain: "ip-only-dns.example.invalid",
+    qtype: "A",
+    answer_ip: "203.0.113.99",
+    route: "VPS",
+    catalog_status: "managed",
+    status: "OK",
+    count: 40,
+    risk: "low",
+    confidence: "exact",
+    evidence_json: JSON.stringify({ synthetic: true, client_ip_only_match: true }),
+  });
 
   const deviceStmt = db.prepare(`insert into device_inventory(
     device_key,label,ip,hostname,mac,aliases_json,profile,trust_state,device_type,channel,route,confidence,last_seen,total_bytes,via_vps_bytes,direct_bytes,unknown_bytes,top_domains_json,health_status,risk,evidence_json
