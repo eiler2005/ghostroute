@@ -168,7 +168,7 @@
 
     - name: VPS firewall does not allow public DNS
       ansible.builtin.shell: |
-        ! ufw status | grep -E '^53(/(tcp|udp))?[[:space:]]+ALLOW'
+        ! ufw status | grep -E '^53(/(tcp|udp))?[[:space:]]+ALLOW[[:space:]]+IN\b'
       changed_when: false
       when: vps_unbound_enabled | default(true) | bool
 
