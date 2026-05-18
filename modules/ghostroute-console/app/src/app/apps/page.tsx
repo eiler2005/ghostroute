@@ -1,6 +1,6 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ChannelBadge, EmptyState, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
-import { listAppFamilyRows } from "@/lib/server/selectors/apps";
+import { listAppDeviceRows, listAppFamilyRows } from "@/lib/server/selectors/apps";
 import { listClientDnsEvidence, listClientInventory } from "@/lib/server/selectors/clients";
 import { buildShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
@@ -49,11 +49,13 @@ function matchesClientFilter(client: Record<string, any>, value?: string) {
   return Boolean(target) && clientTokens(client).some((token) => normalizeToken(token) === target);
 }
 
-function isPrimaryAppDevice(row: Record<string, any>) {
-  const state = String(row.review_state || "");
-  if (state && state !== "registry_known") return false;
-  if (row.client_attributed === false || row.attribution_state === "needs_attribution") return false;
-  return true;
+function appDeviceLabel(row: Record<string, any>) {
+  if (row.client_attributed === false || row.attribution_state === "needs_attribution") {
+    const label = String(row.label || "").trim();
+    if (label && label !== "Unknown LAN device") return label;
+    return row.client_label || row.client_key || row.device_key || row.ip || "Unknown LAN device";
+  }
+  return row.device_label || row.label || row.id;
 }
 
 function appHref(row: Record<string, any>, params: Record<string, string | undefined>) {
@@ -83,7 +85,7 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(scalar(params.pageSize) || "25", 10) || 25));
   const inventory = listClientInventory({ page: 1, pageSize: 25, filters: { ...filters, client: "all" }, showInactive: false });
-  const appDeviceRows = inventory.rows.filter(isPrimaryAppDevice);
+  const appDeviceRows = listAppDeviceRows({ pageSize: 100, filters: { ...filters, client: "all" }, minBytes: 1024 * 1024 });
   const selectedLookup = selectedClientParam
     ? listClientInventory({ page: 1, pageSize: 1, filters: { ...filters, client: selectedClientParam }, showInactive: true }).rows[0]
     : undefined;
@@ -148,7 +150,7 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
                 const isSelected = selectedClientId ? selectedClientValue(row) === selectedClientId || matchesClientFilter(row, selectedClientId) : false;
                 return (
                   <tr key={row.id || row.label} className={`clickable-row ${isSelected ? "selected" : ""}`}>
-                    <td><a className="row-link" href={appHref(row, extraParams)}>{row.device_label || row.label || row.id}</a></td>
+                    <td><a className="row-link" href={appHref(row, extraParams)}>{appDeviceLabel(row)}</a></td>
                     <td><a className="row-link row-link-with-badges" href={appHref(row, extraParams)}><ChannelBadge value={row.channel} /></a></td>
                     <td><a className="row-link" href={appHref(row, extraParams)}>{bytes(row.total_bytes || 0)}</a></td>
                     <td><a className="row-link" href={appHref(row, extraParams)}>{row.owner || row.client_label || "Inventory"}</a></td>

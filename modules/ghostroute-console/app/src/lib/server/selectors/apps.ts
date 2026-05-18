@@ -1,4 +1,5 @@
 export {
+  listAppDeviceRows,
   listAppFamilyRows,
   listClientAppFamilies,
   listClientSiteEvidence,

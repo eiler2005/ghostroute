@@ -536,6 +536,11 @@ traffic totals and route splits. The older lower duplicate `Top clients` and
 Clients selected-device DNS panels default to client-facing query domains and
 offer an explicit service/system toggle on both desktop and mobile; DNS counts
 remain separate from byte-ranked popular sites.
+Apps uses the same active-window Device Inventory source but includes any
+traffic-active client at or above 1 MiB, including low-signal and unattributed
+sources. When a selected client has counter bytes but no site/app evidence, Apps
+shows a residual `Other / uncategorized` app row with zero DNS queries instead
+of hiding the client or rendering an empty app-family table.
 Large evidence
 surfaces use paging and explicit exports instead of rendering full datasets in
 one response. `/traffic`, `/dns` and `/live` default to compact first pages and
