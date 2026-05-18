@@ -180,7 +180,7 @@ the gate itself.
 |---|---|
 | `caddy_l4` | VPS public TLS/Reality demux through Caddy layer4. |
 | `xray_reality` | VPS Xray/3x-ui Reality inbound state. |
-| `vps_unbound` | VPS managed-domain resolver for policy-based DNS consistency. |
+| `vps_unbound` | VPS managed-domain resolver for policy-based DNS consistency; forwards through the local system resolver when recursive DNS is unavailable. |
 | `ufw_stealth` | VPS firewall exposure policy. |
 | `vps_health_monitor` | VPS-side GhostRoute health observer. |
 | `ipv6_kill` | Router IPv6 policy. |
