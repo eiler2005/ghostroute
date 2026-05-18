@@ -2853,7 +2853,15 @@ function clientDnsRows(client: Record<string, any> | string, period = "today", o
   const latest = idWhereForWindow(period, new Set(["dns", "live"]));
   const match = clientMatchPredicate(["client", "device_key", "client_ip"], candidates);
   if (!match.sql) return [];
-  const fetchRows = (matchSql: string, matchParams: Array<string>, fallbackConfidence = "") => getDb()
+  const bounds = mskWindowBounds(period || "today", new Date());
+  const endExclusive = isoPlusMs(bounds.endUtc, 1);
+  const dnsRowTime = "coalesce(nullif(event_ts_utc, ''), nullif(display_ts_utc, ''), nullif(event_ts, ''), collected_at)";
+  const mapDnsRows = (rows: Array<Record<string, any>>, fallbackConfidence = "") => rows
+    .map(mapDnsReadModelRow)
+    .map(operatorDnsRow)
+    .filter((row): row is Record<string, any> => Boolean(row))
+    .map((row) => fallbackConfidence ? { ...row, confidence: fallbackConfidence, dns_link_confidence: fallbackConfidence } : row);
+  const fetchSnapshotRows = (matchSql: string, matchParams: Array<string>, fallbackConfidence = "") => mapDnsRows(getDb()
     .prepare(
       `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
               qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
@@ -2864,19 +2872,32 @@ function clientDnsRows(client: Record<string, any> | string, period = "today", o
         order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
         limit ?`
     )
-    .all(...latest.params, ...matchParams, limit)
-    .map(mapDnsReadModelRow)
-    .map(operatorDnsRow)
-    .filter((row): row is Record<string, any> => Boolean(row))
-    .map((row) => fallbackConfidence ? { ...row, confidence: fallbackConfidence, dns_link_confidence: fallbackConfidence } : row);
-  const rows = fetchRows(match.sql, match.params);
+    .all(...latest.params, ...matchParams, limit) as Array<Record<string, any>>, fallbackConfidence);
+  const fetchPeriodRows = (matchSql: string, matchParams: Array<string>, fallbackConfidence = "") => mapDnsRows(getDb()
+    .prepare(
+      `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
+              qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
+         from dns_query_log
+        where ${dnsRowTime} >= ?
+          and ${dnsRowTime} < ?
+          and ${matchSql}
+          and coalesce(domain, '') != ''
+        order by ${dnsRowTime} desc, id desc
+        limit ?`
+    )
+    .all(bounds.startUtc, endExclusive, ...matchParams, limit) as Array<Record<string, any>>, fallbackConfidence);
+  const rows = fetchSnapshotRows(match.sql, match.params);
   if (rows.length > 0) return rows;
+  const periodRows = fetchPeriodRows(match.sql, match.params);
+  if (periodRows.length > 0) return periodRows;
   const fallbackMatch = isMobileProfileTarget(target)
     ? clientMatchPredicate(["client", "device_key"], genericDeviceDnsAliases(target))
     : { sql: "", params: [] as Array<string> };
   if (fallbackMatch.sql) {
-    const genericRows = fetchRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
+    const genericRows = fetchSnapshotRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
     if (genericRows.length > 0) return genericRows;
+    const genericPeriodRows = fetchPeriodRows(fallbackMatch.sql, fallbackMatch.params, "dns-generic-device");
+    if (genericPeriodRows.length > 0) return genericPeriodRows;
   }
   const lookup = new Set(candidates.map((value) => value.toLowerCase()));
   return getDb()
@@ -2884,12 +2905,13 @@ function clientDnsRows(client: Record<string, any> | string, period = "today", o
       `select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip, device_key, domain,
               qtype, answer_ip, route, catalog_status, status, count, risk, confidence, evidence_json
          from dns_query_log
-        where (${latest.sql})
+        where ${dnsRowTime} >= ?
+          and ${dnsRowTime} < ?
           and coalesce(domain, '') != ''
-        order by coalesce(nullif(event_ts, ''), collected_at) desc, id desc
+        order by ${dnsRowTime} desc, id desc
         limit ?`
     )
-    .all(...latest.params, Math.max(limit * 20, 1000))
+    .all(bounds.startUtc, endExclusive, Math.max(limit * 20, 1000))
     .map(mapDnsReadModelRow)
     .map(operatorDnsRow)
     .filter((row): row is Record<string, any> => Boolean(row))
