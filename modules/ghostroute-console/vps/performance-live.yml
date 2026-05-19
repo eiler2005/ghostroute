@@ -1,0 +1,86 @@
+- name: Run GhostRoute Console live performance tests
+  hosts: vps_stealth
+  gather_facts: false
+  become: true
+  vars:
+    ghostroute_console_perf_image: mcr.microsoft.com/playwright:v1.59.1-noble
+    ghostroute_console_perf_playwright_version: "1.59.1"
+    ghostroute_console_perf_base_url: "http://127.0.0.1:3000"
+    ghostroute_console_perf_work_dir: /tmp/ghostroute-console-perf-vps
+    ghostroute_console_perf_local_tests_dir: ../app/tests/e2e/
+  tasks:
+    - name: Confirm live Console health is reachable from the VPS host
+      ansible.builtin.uri:
+        url: "{{ ghostroute_console_perf_base_url }}/api/health"
+        method: GET
+        status_code: 200
+        return_content: false
+
+    - name: Reset temporary Console performance workspace
+      ansible.builtin.file:
+        path: "{{ ghostroute_console_perf_work_dir }}"
+        state: absent
+      changed_when: false
+
+    - name: Create temporary Console performance test directory
+      ansible.builtin.file:
+        path: "{{ ghostroute_console_perf_work_dir }}/source-tests"
+        state: directory
+        mode: "0755"
+      changed_when: false
+
+    - name: Copy current checkout performance tests to the VPS temporary workspace
+      ansible.builtin.copy:
+        src: "{{ ghostroute_console_perf_local_tests_dir }}"
+        dest: "{{ ghostroute_console_perf_work_dir }}/source-tests/"
+        mode: "0644"
+      changed_when: false
+
+    - name: Run existing Console performance spec against live Console
+      ansible.builtin.shell: |
+        set -eu
+        work_dir="{{ ghostroute_console_perf_work_dir }}"
+        tests_dir="$work_dir/source-tests"
+        run_dir="$work_dir/run"
+        rm -rf "$run_dir"
+        mkdir -p "$run_dir"
+        trap 'rm -rf "$work_dir"' EXIT
+        docker run --rm --pull=missing --network host \
+          -v "$tests_dir:/repo-tests:ro" \
+          -v "$run_dir:/work" \
+          -w /work \
+          -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+          "{{ ghostroute_console_perf_image }}" \
+          sh -lc '
+            set -eu
+            mkdir -p tests/e2e
+            cp -R /repo-tests/. tests/e2e/
+            cat > package.json <<EOF
+        {"private":true,"type":"module","devDependencies":{"@playwright/test":"{{ ghostroute_console_perf_playwright_version }}"}}
+        EOF
+            npm install --no-audit --no-fund --ignore-scripts
+            cat > live-performance.config.mjs <<EOF
+        import { defineConfig, devices } from "@playwright/test";
+
+        export default defineConfig({
+          testDir: "./tests/e2e",
+          outputDir: "./test-results",
+          timeout: 120_000,
+          reporter: [["line"]],
+          use: {
+            baseURL: "{{ ghostroute_console_perf_base_url }}",
+            trace: "retain-on-failure",
+          },
+          projects: [
+            { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+          ],
+        });
+        EOF
+            npx playwright test performance.spec.ts --config=live-performance.config.mjs --project=desktop
+          '
+      changed_when: false
+      register: ghostroute_console_perf_result
+
+    - name: Show Console performance test summary
+      ansible.builtin.debug:
+        var: ghostroute_console_perf_result.stdout_lines

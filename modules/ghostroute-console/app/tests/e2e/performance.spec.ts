@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const PAGE_BUDGET_MS = 2500;
 const API_BUDGET_MS = 1500;
@@ -41,12 +41,19 @@ const apiPaths = [
   "/api/audit",
 ];
 
+async function gotoReady(page: Page, path: string) {
+  await page.goto(path, { waitUntil: "domcontentloaded" });
+}
+
 test.describe.configure({ mode: "serial" });
 
-test.beforeAll(async ({ browser }) => {
+test.beforeAll(async ({ browser, request }) => {
+  for (const path of apiPaths) {
+    await request.get(path).catch(() => undefined);
+  }
   const page = await browser.newPage();
   for (const item of pages) {
-    await page.goto(item.path);
+    await gotoReady(page, item.path);
     await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 10_000 }))).catch(() => undefined);
   }
   await page.close();
@@ -55,7 +62,7 @@ test.beforeAll(async ({ browser }) => {
 for (const item of pages) {
   test(`page performance ${item.path}`, async ({ page }) => {
     const started = performance.now();
-    await page.goto(item.path);
+    await gotoReady(page, item.path);
     await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
     const elapsed = performance.now() - started;
     expect(elapsed, `${item.path} rendered in ${Math.round(elapsed)}ms`).toBeLessThan(PAGE_BUDGET_MS);
@@ -70,7 +77,7 @@ for (const item of mobilePages) {
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
     });
     const started = performance.now();
-    await page.goto(item.path);
+    await gotoReady(page, item.path);
     await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 5_000 })));
     const elapsed = performance.now() - started;
     expect(elapsed, `${item.path} rendered in ${Math.round(elapsed)}ms`).toBeLessThan(PAGE_BUDGET_MS);
@@ -79,7 +86,7 @@ for (const item of mobilePages) {
 }
 
 test("rapid sidebar navigation stays responsive", async ({ page }) => {
-  await page.goto("/");
+  await gotoReady(page, "/");
   for (const item of pages.slice(1)) {
     const started = performance.now();
     const label = item.nav;

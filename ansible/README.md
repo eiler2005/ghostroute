@@ -103,6 +103,18 @@ Playbook ownership is intentionally narrow:
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
+Module-local verification playbooks may live with their owning module when they
+are not part of the platform deployment graph. For example, Console live
+performance testing uses:
+
+```bash
+ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
+```
+
+That playbook is read-only for GhostRoute runtime state: it runs the existing
+Console Playwright performance spec in an ephemeral sidecar against the local VPS
+Console listener.
+
 Channel B is production for selected device-client profiles, but it is not an
 automatic failover path for Channel A. Channel B can run in direct-XHTTP VPS
 mode (`11`) or in home-first mode (`21`) where router ingress is XHTTP and

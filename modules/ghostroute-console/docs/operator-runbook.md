@@ -211,6 +211,31 @@ unknown_bytes`. This is the guard that catches a release where `/clients` or
 Dashboard would accidentally show only `client` traffic while hiding
 `personal_cloud` or `service_background` clients from the `all` view.
 
+## Live VPS Performance Gate
+
+Local `npm run test:perf` seeds a synthetic GUI database and is the deterministic
+development timing gate. To measure the deployed Console against live VPS data,
+use the module playbook instead:
+
+```bash
+cd ansible
+ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
+```
+
+The playbook runs the existing `tests/e2e/performance.spec.ts`; it does not fork
+or replace the performance suite. The Console runtime container is Alpine-based
+and read-only, so browser tests run in an ephemeral Microsoft Playwright sidecar
+container on the VPS host network. The playbook copies the current checkout's
+test directory to a temporary VPS workspace, the sidecar mounts that copy
+read-only, installs the matching `@playwright/test` runner in a temporary
+workspace, and connects to the local Console listener at `http://127.0.0.1:3000`.
+
+The live config keeps the spec's page/API budgets intact but allows a longer
+global test timeout for warmup. The spec itself warms page and API paths before
+timed assertions so one-time read-model/cache initialization is not measured as a
+steady-state render or API regression. Temporary npm and Playwright artifacts are
+removed at the end of the playbook run.
+
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
 latest collected traffic window. Dashboard, Flow Explorer and Clients do not
