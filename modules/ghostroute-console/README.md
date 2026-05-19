@@ -346,6 +346,17 @@ Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
 troubleshooting window may be stripped once a newer payload of the same type is
 available.
 
+Local full SQLite copies are disabled by default on the VPS
+(`GHOSTROUTE_DB_BACKUP_MODE=none`) so the Console cannot duplicate a large
+`ghostroute.db` onto the same small disk after every cleanup. In this disabled
+mode, retention prunes existing local full DB copies to zero. Operators who want
+same-disk safety copies must opt in with `GHOSTROUTE_DB_BACKUP_MODE=local_daily`;
+retention then enforces max file count, max total bytes, and the disk guard
+(`GHOSTROUTE_DB_BACKUP_MIN_FREE_BYTES` / `GHOSTROUTE_DB_BACKUP_MAX_USED_PCT`).
+The collector also folds legacy `ghostroute.db.backup-*` files into the managed
+`backups/` retention set. Durable production backup should live outside this
+filesystem, for example a host-level encrypted backup or restic target.
+
 Private client identity lives in gitignored
 `modules/ghostroute-console/data/device-attribution.json`,
 `modules/ghostroute-console/data/device-attribution.local.json` or the VPS

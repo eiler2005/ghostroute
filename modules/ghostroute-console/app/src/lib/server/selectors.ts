@@ -355,6 +355,7 @@ function runtimeInfo(snapshots: ConsoleModel["snapshots"]) {
     buildCommit: gitCommit(),
     buildAt: buildAt(),
     nodeEnv: process.env.NODE_ENV || "development",
+    backups: sqliteBackupRuntimeStatus(),
     latestSnapshots: Object.fromEntries(
       Object.entries(snapshots)
         .filter(([, row]) => Boolean(row?.collectedAt))
@@ -3673,7 +3674,8 @@ export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrid
   const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
   const collectorErrors = collectorDisabled ? [] : (latestCollectorErrors(2) as Array<Record<string, any>>);
   const totals = dashboardTraffic.totals || shellSummary.totals || {};
-  const statusCards = Array.isArray(shellSummary.statusCards) && shellSummary.statusCards.length > 0
+  const runtime = runtimeInfo(snapshotMetas);
+  const baseStatusCards = Array.isArray(shellSummary.statusCards) && shellSummary.statusCards.length > 0
     ? shellSummary.statusCards
     : [
         { label: "Router", status: "UNKNOWN", detail: "not observed" },
@@ -3683,6 +3685,14 @@ export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrid
         { label: "Rule-set", status: "UNKNOWN", detail: "catalog mirror" },
         { label: "Leaks", status: "UNKNOWN", detail: "0 signals" },
       ];
+  const statusCards = [
+    ...baseStatusCards.filter((card: any) => card.label !== "DB Backups"),
+    {
+      label: "DB Backups",
+      status: "OK",
+      detail: `${runtime.backups.mode}; ${runtime.backups.retainedCount} files / ${runtime.backups.retainedBytesLabel}`,
+    },
+  ];
   const summaryAlerts = Array.isArray(shellSummary.alarms) ? shellSummary.alarms : [];
   const model: ConsoleModel = {
     generatedAt: new Date().toISOString(),
@@ -3691,7 +3701,7 @@ export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrid
     freshnessLabel: newest || "",
     nextExpectedCollection: nextExpectedCollection(newest),
     staleThresholdMinutes: staleThreshold,
-    runtime: runtimeInfo(snapshotMetas),
+    runtime,
     collectorErrors,
     collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
     hourlyTraffic: [],
@@ -3932,7 +3942,7 @@ function buildClientsModelUncached(filters: ConsoleFilters = {}, devices: Array<
 }
 
 export function buildHealthModel(filters: ConsoleFilters = {}) {
-  return cacheGet(`build-health-model:${latestSnapshotVersion()}:${filtersKey(filters)}`, () => buildLightweightShellModel(filters));
+  return cacheGet(`build-health-model:${latestSnapshotVersion()}:${latestRetentionVersion()}:${filtersKey(filters)}`, () => buildLightweightShellModel(filters));
 }
 
 export function buildCatalogModel(filters: ConsoleFilters = {}) {
@@ -4171,7 +4181,7 @@ export function buildIntelligenceModel(filters: ConsoleFilters = {}): ConsoleMod
 }
 
 export function buildSettingsModel(filters: ConsoleFilters = {}) {
-  return cacheGet(`build-settings-model:${latestSnapshotVersion()}:${routingPolicySnapshotVersion()}:${filtersKey(filters)}`, () => buildSettingsModelUncached(filters));
+  return cacheGet(`build-settings-model:${latestSnapshotVersion()}:${latestRetentionVersion()}:${routingPolicySnapshotVersion()}:${filtersKey(filters)}`, () => buildSettingsModelUncached(filters));
 }
 
 function buildSettingsModelUncached(filters: ConsoleFilters = {}) {
@@ -4202,6 +4212,80 @@ function envNumber(name: string, fallback: string | number) {
   return String(process.env[name] || fallback);
 }
 
+function humanBytes(value: number) {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let size = Math.max(0, Number(value || 0));
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 10 || unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function backupMode() {
+  return String(process.env.GHOSTROUTE_DB_BACKUP_MODE || "none").trim().toLowerCase() || "none";
+}
+
+function isManagedBackupName(name: string) {
+  return name.startsWith("ghostroute-") && name.endsWith(".db");
+}
+
+function isLegacyBackupName(name: string) {
+  return name.startsWith("ghostroute.db.backup-");
+}
+
+function sqliteBackupInventory() {
+  const dir = dataDir();
+  const backups = pathJoin(dir, "backups");
+  const files: Array<{ file: string; size: number; mtimeMs: number; mtime: Date }> = [];
+  for (const [scanDir, predicate] of [
+    [backups, (name: string) => isManagedBackupName(name) || isLegacyBackupName(name)],
+    [dir, isLegacyBackupName],
+  ] as const) {
+    try {
+      for (const name of fs.readdirSync(scanDir)) {
+        if (!predicate(name)) continue;
+        const file = pathJoin(scanDir, name);
+        const stat = fs.statSync(file);
+        if (stat.isFile()) files.push({ file, size: stat.size, mtimeMs: stat.mtimeMs, mtime: stat.mtime });
+      }
+    } catch {
+      // Missing backup directories are normal when backups are disabled.
+    }
+  }
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const totalBytes = files.reduce((sum, entry) => sum + entry.size, 0);
+  return {
+    count: files.length,
+    totalBytes,
+    totalLabel: humanBytes(totalBytes),
+    latestPath: files[0]?.file ? labelPath(files[0].file) : "",
+    latestAt: files[0]?.mtime ? files[0].mtime.toISOString() : "",
+  };
+}
+
+function sqliteBackupRuntimeStatus() {
+  const inventory = sqliteBackupInventory();
+  const retention = latestRetentionRun();
+  return {
+    mode: backupMode(),
+    retentionDays: envNumber("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2),
+    maxFiles: envNumber("GHOSTROUTE_DB_BACKUP_MAX_FILES", 1),
+    maxTotalBytes: envNumber("GHOSTROUTE_DB_BACKUP_MAX_TOTAL_BYTES", 2147483648),
+    maxTotalLabel: humanBytes(Number(envNumber("GHOSTROUTE_DB_BACKUP_MAX_TOTAL_BYTES", 2147483648))),
+    minFreeBytes: envNumber("GHOSTROUTE_DB_BACKUP_MIN_FREE_BYTES", 10737418240),
+    minFreeLabel: humanBytes(Number(envNumber("GHOSTROUTE_DB_BACKUP_MIN_FREE_BYTES", 10737418240))),
+    maxUsedPct: envNumber("GHOSTROUTE_DB_BACKUP_MAX_USED_PCT", 75),
+    retainedCount: inventory.count,
+    retainedBytes: inventory.totalBytes,
+    retainedBytesLabel: inventory.totalLabel,
+    latestBackupPath: inventory.latestPath,
+    latestBackupAt: inventory.latestAt,
+    latestRetentionRun: retention?.ran_at || "",
+  };
+}
+
 function tableCount(table: string) {
   if (!/^[a-z_]+$/.test(table)) return 0;
   try {
@@ -4219,6 +4303,11 @@ function latestRetentionRun() {
   } catch {
     return null;
   }
+}
+
+function latestRetentionVersion() {
+  const row = latestRetentionRun();
+  return row?.ran_at || "no-retention-run";
 }
 
 function readModelStates() {
@@ -4285,6 +4374,7 @@ function buildSettingsInventory(model: ConsoleModel) {
   const routerProfile = process.env.GHOSTROUTE_READONLY_SSH_HOST && process.env.GHOSTROUTE_READONLY_SSH_KEY_PATH ? "configured" : "missing";
   const alarmMode = process.env.GHOSTROUTE_ALARM_STATE_MODE || "disabled";
   const routingPolicy = model.routingPolicy || readRoutingPolicySnapshot();
+  const backupStatus = model.runtime.backups || sqliteBackupRuntimeStatus();
   return {
     routingPolicy,
     routingPolicyOverview: [
@@ -4317,9 +4407,13 @@ function buildSettingsInventory(model: ConsoleModel) {
       ["Raw snapshots", `${envNumber("GHOSTROUTE_RAW_RETENTION_DAYS", 7)}d`],
       ["Live raw snapshots", `${envNumber("GHOSTROUTE_LIVE_RAW_RETENTION_HOURS", 6)}h`],
       ["Hourly aggregates", `${envNumber("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30)}d`],
-      ["DB backups", `${envNumber("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2)}d / max ${envNumber("GHOSTROUTE_DB_BACKUP_MAX_FILES", 2)}`],
+      ["DB backup mode", backupStatus.mode],
+      ["DB backup retention", `${backupStatus.retentionDays}d / max ${backupStatus.maxFiles} files / max ${backupStatus.maxTotalLabel}`],
+      ["DB backup disk guard", `min free ${backupStatus.minFreeLabel} / max used ${backupStatus.maxUsedPct}%`],
+      ["DB backups retained", `${backupStatus.retainedCount} files / ${backupStatus.retainedBytesLabel}`],
+      ["Last DB backup", backupStatus.latestBackupAt ? `${backupStatus.latestBackupAt} (${backupStatus.latestBackupPath || "unknown path"})` : "none"],
       ["Derived cache TTL", `${envNumber("GHOSTROUTE_CONSOLE_DERIVED_CACHE_TTL_MS", 300000)}ms`],
-      ["Latest retention run", latestRetentionRun()?.ran_at || "n/a"],
+      ["Latest retention run", backupStatus.latestRetentionRun || "n/a"],
     ],
     access: [
       ["Console auth", enabled(process.env.GHOSTROUTE_CONSOLE_AUTH || process.env.GHOSTROUTE_CONSOLE_BASIC_AUTH)],

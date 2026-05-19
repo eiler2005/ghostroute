@@ -103,7 +103,13 @@ run several read-only reports in one pass.
 Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
 snapshots are kept for 7 days, fine traffic buckets for 8 days, hourly/daily
 traffic and DNS aggregates for about 35 days, live raw snapshots for 6 hours,
-and SQLite safety backups are daily with at most 1 recent file. Raw normalized
+and full local SQLite safety backups are disabled unless explicitly enabled with
+`GHOSTROUTE_DB_BACKUP_MODE=local_daily`. In disabled mode, retention removes
+existing local full DB copies instead of preserving one large same-disk file.
+When local backups are enabled, the collector keeps them under `data/backups/`,
+moves legacy root-level `ghostroute.db.backup-*` files into that managed set,
+and enforces max count, max total bytes and disk guards before creating a new
+copy. Raw normalized
 traffic, DNS, event and route-decision rows are bounded by the raw retention
 window; service/background traffic can be pruned sooner than client traffic.
 Heavy `traffic`, `dns` and `live` snapshot payloads older than the short

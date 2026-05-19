@@ -145,8 +145,8 @@ The git log shows commits like "keep collector writer locks short", "serialize c
 2. **No vault backup automation.** `modules/secrets-management/docs/vault-offsite-backup.md` describes the procedure, but there's no cron / hook. **Vault loss = total loss** for a one-operator setup — that's the primary operational risk.
    *Fix*: cron helper `bin/vault-snapshot --to <encrypted-path>` + integrity check. Document weekly minimum cadence.
 
-3. **Console DB backup destination unclear.** Deploy mentions `GHOSTROUTE_DB_BACKUP_MODE=daily`, but the destination isn't visible and there's no integrity check after backup.
-   *Fix*: document destination + add `PRAGMA integrity_check` after snapshot.
+3. **Console DB backup destination unclear.** Addressed after this review by making local full SQLite backups opt-in (`GHOSTROUTE_DB_BACKUP_MODE=local_daily`), documenting the managed `data/backups/` destination, and adding count/byte/disk guardrails.
+   *Remaining fix*: add an integrity check for any explicitly enabled local snapshot.
 
 4. **`.nvmrc` is missing.** CI hardcodes `node-version: "22"`, but local devs don't see this.
    *Fix*: `echo "22" > .nvmrc`.

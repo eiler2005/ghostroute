@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { ensureConsoleSchema, normalizeSnapshot, pruneOperationalTables, rebuildHourlyAggregates, rebuildObservabilityReadModels } from "./lib/normalize.mjs";
 import { acquireCollectorLock, acquireSharedCollectorLock } from "./lib/collector-lock.mjs";
 import { validateSnapshotPayload, withSnapshotContractDefaults } from "./lib/snapshot-contracts.mjs";
+import { runSqliteBackupRetention } from "./lib/sqlite-backups.mjs";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
 const moduleDir = path.resolve(appDir, "..");
@@ -145,49 +146,19 @@ function pruneFiles(dir, retentionDays, predicate = () => true) {
   return deleted;
 }
 
-function pruneFilesByCount(dir, maxFiles, predicate = () => true) {
-  if (!fs.existsSync(dir) || maxFiles <= 0) return 0;
-  const files = fs
-    .readdirSync(dir)
-    .map((name) => {
-      const file = path.join(dir, name);
-      const stat = fs.statSync(file);
-      return { name, file, stat };
-    })
-    .filter(({ name, stat }) => stat.isFile() && predicate(name))
-    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-  let deleted = 0;
-  for (const entry of files.slice(maxFiles)) {
-    fs.unlinkSync(entry.file);
-    deleted += 1;
-  }
-  return deleted;
-}
-
-function backupSqlite(dbFile) {
-  if (!fs.existsSync(dbFile)) return "";
-  const mode = process.env.GHOSTROUTE_DB_BACKUP_MODE || "daily";
-  if (mode === "none" || mode === "disabled" || mode === "0") return "";
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  if (mode === "daily") {
-    const day = stamp.slice(0, 10);
-    const existing = fs.readdirSync(backupsDir).some((name) => name.startsWith(`ghostroute-${day}`) && name.endsWith(".db"));
-    if (existing) return "";
-  }
-  const backupPath = path.join(backupsDir, `ghostroute-${stamp}.db`);
-  fs.copyFileSync(dbFile, backupPath);
-  return backupPath;
-}
-
 function applyRetention() {
   const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
   const hourlyDays = days("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30);
-  const backupDays = days("GHOSTROUTE_BACKUP_RETENTION_DAYS", 2);
-  const backupMaxFiles = Number(process.env.GHOSTROUTE_DB_BACKUP_MAX_FILES || 2);
-  const backupPath = backupSqlite(path.join(dataDir, "ghostroute.db"));
+  const backupRetention = runSqliteBackupRetention({
+    dataDir,
+    backupsDir,
+    dbFile: path.join(dataDir, "ghostroute.db"),
+    env: process.env,
+  });
+  if (backupRetention.skippedReason && !["disabled", "missing-db", "already-backed-up-today"].includes(backupRetention.skippedReason)) {
+    console.log(`sqlite backup skipped: ${backupRetention.skippedReason}`);
+  }
   const rawDeleted = pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
-  let backupsDeleted = pruneFiles(backupsDir, backupDays, (name) => name.endsWith(".db"));
-  backupsDeleted += pruneFilesByCount(backupsDir, backupMaxFiles, (name) => name.endsWith(".db"));
   const snapshotRows = db
     .prepare("delete from snapshots where collected_at < ?")
     .run(cutoffIso(rawDays)).changes;
@@ -195,7 +166,7 @@ function applyRetention() {
   db.prepare(
     `insert into retention_runs(ran_at, raw_deleted, snapshot_rows_deleted, backups_deleted, backup_path)
      values (?, ?, ?, ?, ?)`
-  ).run(new Date().toISOString(), rawDeleted, snapshotRows, backupsDeleted, backupPath);
+  ).run(new Date().toISOString(), rawDeleted, snapshotRows, backupRetention.backupsDeleted, backupRetention.backupPath);
 }
 
 const collected = [];

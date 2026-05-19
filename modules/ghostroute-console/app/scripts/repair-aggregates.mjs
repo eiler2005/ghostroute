@@ -65,7 +65,9 @@ function compactResult(result) {
 }
 
 async function backupDbFile(db, dbFile) {
-  const backupFile = `${dbFile}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const backupDir = path.join(path.dirname(dbFile), "backups");
+  fs.mkdirSync(backupDir, { recursive: true });
+  const backupFile = path.join(backupDir, `${path.basename(dbFile)}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`);
   await db.backup(backupFile);
   return backupFile;
 }
