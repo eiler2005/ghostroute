@@ -452,6 +452,21 @@ and JSON contracts. It must not contain timing assertions.
 operator-network or VPN curl timings are deployment diagnostics, not
 deterministic Playwright gates.
 
+The live VPS performance gate uses the same
+`tests/e2e/performance.spec.ts` against the deployed Console runtime. Run it from
+the control machine after deploy/post-deploy verification:
+
+```bash
+cd ansible
+ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
+```
+
+The playbook copies the current checkout's existing performance specs to a
+temporary VPS workspace, starts an ephemeral Playwright sidecar on the VPS host
+network, and points it at the local Console listener. It does not seed test data
+or mutate Console runtime state; temporary npm/test artifacts are created under
+`/tmp` and removed after the run.
+
 `verify:timezone` protects UTC-storage/MSK-window math. `verify:aggregates`
 checks that prepared windows exist and reconcile to dashboard attribution
 coverage. `verify:post-deploy` is the runtime guard after a Console release: it
@@ -485,6 +500,13 @@ npm run verify:aggregates
 npm run verify:timezone
 npm run bench:dashboard
 npm run report:db-size
+```
+
+For the browser/API timing gate on the deployed VPS runtime:
+
+```bash
+cd ansible
+ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
 ```
 
 The expected full collector set includes `traffic_summary`, `router_rollups`,
