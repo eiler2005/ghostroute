@@ -466,9 +466,13 @@ shell tail:
 Raw live JSON snapshots are retained only briefly (`GHOSTROUTE_LIVE_RAW_RETENTION_HOURS`,
 default 6h) because live polling can create thousands of files per day. The
 durable contract is the normalized SQLite event tables, while raw live payloads
-are short-term troubleshooting evidence. SQLite backups are daily by default
-and capped by retention/count settings so a small VPS disk is not filled by
-collector safety copies.
+are short-term troubleshooting evidence. Full local SQLite backups are disabled
+by default on the VPS; `GHOSTROUTE_DB_BACKUP_MODE=local_daily` is the explicit
+opt-in for same-disk daily safety copies. In disabled mode, retention removes
+existing local full DB copies. When enabled, retention enforces both max count
+and max total bytes, migrates legacy root-level
+`ghostroute.db.backup-*` files into the managed backup set, and skips creating a
+new copy if free disk or used-percent guards would be violated.
 
 Operational pruning keeps `normalized_flows`, `normalized_dns`, `events`,
 `route_decisions` and `collector_errors` inside their retention windows.

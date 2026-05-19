@@ -46,6 +46,22 @@ export type ConsoleModel = {
     buildCommit: string;
     buildAt: string;
     nodeEnv: string;
+    backups: {
+      mode: string;
+      retentionDays: string;
+      maxFiles: string;
+      maxTotalBytes: string;
+      maxTotalLabel: string;
+      minFreeBytes: string;
+      minFreeLabel: string;
+      maxUsedPct: string;
+      retainedCount: number;
+      retainedBytes: number;
+      retainedBytesLabel: string;
+      latestBackupPath: string;
+      latestBackupAt: string;
+      latestRetentionRun: string;
+    };
     latestSnapshots: Record<string, string>;
   };
   collectorErrors: Array<Record<string, any>>;
