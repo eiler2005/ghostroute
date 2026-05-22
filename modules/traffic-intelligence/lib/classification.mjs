@@ -151,6 +151,7 @@ function isAppleSystemDomain(value) {
     "gsp-ssl.ls.apple.com",
     "ls.apple.com",
     "iphone-ld.apple.com",
+    "cl2.apple.com",
     "lcdn-locator.apple.com",
     "pancake.apple.com",
     "swallow.apple.com",
