@@ -1349,6 +1349,10 @@ test("local traffic intelligence returns deterministic labels and action hints",
     { category: "system.apple.maintenance", traffic_lane: "service_system", dns_category: "system_maintenance", action_hint: "allow" }
   );
   assert.deepEqual(
+    pick(trafficIntelligenceFor({ destination: "cl2.apple.com" })),
+    { category: "system.apple.maintenance", traffic_lane: "service_system", dns_category: "system_maintenance", action_hint: "allow" }
+  );
+  assert.deepEqual(
     pick(trafficIntelligenceFor({ destination: "app-analytics-services.com" })),
     { category: "analytics.apple", traffic_lane: "privacy_risk", dns_category: "analytics", action_hint: "monitor" }
   );

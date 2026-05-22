@@ -107,6 +107,7 @@ ipset=/account.apple.com/STEALTH_DOMAINS
 ipset=/appleid.cdn-apple.com/STEALTH_DOMAINS
 ipset=/idmsa.apple.com/STEALTH_DOMAINS
 ipset=/gsa.apple.com/STEALTH_DOMAINS
+ipset=/cl2.apple.com/STEALTH_DOMAINS
 ipset=/icloud.com/STEALTH_DOMAINS
 ipset=/icloud.apple.com/STEALTH_DOMAINS
 ipset=/icloud.com.cn/STEALTH_DOMAINS
