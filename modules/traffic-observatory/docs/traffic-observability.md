@@ -209,6 +209,12 @@ across observed destinations by connection share. The resulting destination and
 app-family rows are estimated, keep `dns_status=no_match`, and do not imply that
 dnsmasq saw client-attributed DNS rows. If route evidence is absent, the
 residual `Home Reality ingress` counter row is retained.
+For current-day windows, `traffic-evidence` may also append a read-only live
+counter fallback: it pairs same-day sing-box `reality-in` profile evidence with
+current `RC_MOBILE_REALITY_*` counters so an active profile is not hidden just
+because the last scheduled router snapshot is stale. Unpaired source addresses
+remain generic remote-source labels; this fallback does not refresh counters or
+change routing state.
 
 Keep these boundaries stable:
 

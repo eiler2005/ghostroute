@@ -281,6 +281,11 @@ from byte-attributed client destinations, service/system sites remain separate,
 and unmapped counter residual is shown as a summary rather than ranked as a
 site. The separate Latest DNS domains block lists DNS query counts for the
 selected device without turning those counts into byte estimates.
+Apps drilldowns may use selected-device byte totals plus DNS query shares to
+estimate app-family rows when destination byte attribution is still coarse. DNS
+route alone is not byte proof: missing DNS route stays `Unknown`, and
+DNS-inferred app rows inherit the selected traffic window route split instead of
+defaulting to `Direct`.
 
 IP-only destinations can be enriched locally from an iptoasn TSV snapshot. For
 the current IPv4 traffic, download `ip2asn-v4-u32.tsv.gz` and run:
