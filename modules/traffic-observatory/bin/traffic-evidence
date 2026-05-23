@@ -104,7 +104,7 @@ append_current_mobile_counters() {
 
   if [ -n "${TRAFFIC_MOBILE_CURRENT_FILE:-}" ]; then
     awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' "$TRAFFIC_MOBILE_CURRENT_FILE" >> "${STATE_DIR}/mobile-reality-counters.tsv"
-  elif command -v iptables-save >/dev/null 2>&1; then
+  elif command -v iptables-save >/dev/null 2>&1 && iptables-save -t mangle -c 2>/dev/null | grep -q ' -A RC_MOBILE_REALITY_'; then
     tmp_rules="/tmp/traffic-evidence-mobile.$$"
     if iptables-save -t mangle -c > "$tmp_rules" 2>/dev/null; then
       awk -v ts="$now_value" '
