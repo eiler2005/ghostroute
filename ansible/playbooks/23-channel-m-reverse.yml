@@ -170,6 +170,107 @@
         sudo systemctl enable --now channel-m-reverse-firewall.timer
       changed_when: true
 
+    - name: Stage Channel M reverse listener watchdog helper
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-listener-watchdog.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+
+          network="${1:-deploy_default}"
+          port="${2:-18057}"
+          target_host="${3:-api.oneme.ru}"
+          target_port="${4:-443}"
+
+          log() {
+            logger -t channel-m-reverse-listener "$*"
+          }
+
+          gateway="$(docker network inspect "$network" 2>/dev/null | python3 -c '
+          import json
+          import sys
+          try:
+              data = json.load(sys.stdin)
+              print(data[0]["IPAM"]["Config"][0].get("Gateway", ""))
+          except Exception:
+              print("")
+          ')"
+          if [ -z "$gateway" ]; then
+            gateway="$(ip -4 addr show docker0 | awk '/inet / { split($2, a, "/"); print a[1]; exit }')"
+          fi
+          [ -n "$gateway" ] || exit 0
+
+          if ! ss -ltn | grep -q "${gateway}:${port}"; then
+            exit 0
+          fi
+
+          first_line="$(
+            printf 'CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\n' \
+              "$target_host" "$target_port" "$target_host" "$target_port" |
+              timeout 7 nc -w 6 "$gateway" "$port" 2>/dev/null |
+              sed -n '1p' || true
+          )"
+          if printf '%s' "$first_line" | grep -q '^HTTP/'; then
+            exit 0
+          fi
+
+          pids="$(ss -ltnp "( sport = :$port )" 2>/dev/null |
+            sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u)"
+          [ -n "$pids" ] || exit 0
+          log "stale Channel M reverse listener on ${gateway}:${port}; killing sshd pid(s)"
+          printf '%s\n' "$pids" |
+            while read pid; do
+              [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+            done
+
+    - name: Install Channel M reverse listener watchdog helper
+      ansible.builtin.shell: >-
+        sudo install -m 0755 /tmp/channel-m-reverse-listener-watchdog.sh
+        /usr/local/sbin/channel-m-reverse-listener-watchdog.sh
+      changed_when: true
+
+    - name: Stage Channel M reverse listener watchdog systemd unit
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-listener-watchdog.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Channel M reverse listener stale-state watchdog
+          After=network-online.target docker.service ssh.service
+          Wants=network-online.target docker.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/channel-m-reverse-listener-watchdog.sh {{ channel_m_maxtg_reverse_docker_network }} {{ channel_m_maxtg_reverse_listen_port }}
+
+    - name: Stage Channel M reverse listener watchdog systemd timer
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-listener-watchdog.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Refresh Channel M reverse listener stale-state watchdog
+
+          [Timer]
+          OnBootSec=45
+          OnUnitActiveSec=60
+          Unit=channel-m-reverse-listener-watchdog.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable Channel M reverse listener watchdog persistence
+      ansible.builtin.shell: >-
+        sudo install -m 0644 /tmp/channel-m-reverse-listener-watchdog.service
+        /etc/systemd/system/channel-m-reverse-listener-watchdog.service &&
+        sudo install -m 0644 /tmp/channel-m-reverse-listener-watchdog.timer
+        /etc/systemd/system/channel-m-reverse-listener-watchdog.timer &&
+        sudo systemctl daemon-reload &&
+        sudo systemctl enable --now channel-m-reverse-listener-watchdog.timer &&
+        sudo systemctl start channel-m-reverse-listener-watchdog.service
+      changed_when: true
+
     - name: Ensure deploy SSH directory exists
       ansible.builtin.file:
         path: "/home/{{ vps_ssh_user }}/.ssh"
@@ -263,6 +364,12 @@
               >/dev/null 2>&1
           }
 
+          remote_proxy_ok() {
+            "$SSH_BIN" -y -i "$KEY" -T "$VPS" \
+              "printf 'CONNECT api.oneme.ru:443 HTTP/1.1\r\nHost: api.oneme.ru:443\r\n\r\n' | timeout 7 nc -w 6 '${LISTEN_HOST}' '${LISTEN_PORT}' 2>/dev/null | sed -n '1p' | grep -q '^HTTP/'" \
+              >/dev/null 2>&1
+          }
+
           tunnel_pids() {
             ps | grep "$SSH_MARKER" | grep ssh | grep -v grep |
               sed "s/^ *//" | cut -d" " -f1 || true
@@ -305,10 +412,10 @@
           fi
 
           if tunnel_running; then
-            if remote_listener_ok; then
+            if remote_listener_ok && remote_proxy_ok; then
               exit 0
             fi
-            log "stale Channel M reverse tunnel detected; remote listener missing"
+            log "stale Channel M reverse tunnel detected; remote listener/proxy validation failed"
             kill_tunnel
           fi
 
@@ -323,6 +430,11 @@
           fi
           if ! remote_listener_ok; then
             log "Channel M reverse remote listener validation failed"
+            kill_tunnel
+            exit 1
+          fi
+          if ! remote_proxy_ok; then
+            log "Channel M reverse remote proxy validation failed"
             kill_tunnel
             exit 1
           fi

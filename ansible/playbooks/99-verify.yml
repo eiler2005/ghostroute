@@ -74,11 +74,46 @@
       changed_when: false
       when: channel_m_maxtg_reverse_enabled | default(false) | bool
 
+    - name: Channel M reverse listener forwards to router HTTP proxy
+      ansible.builtin.shell: |
+        listen_ip="$(python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            gateway = json.loads(raw)[0]["IPAM"]["Config"][0]["Gateway"]
+            if gateway:
+                print(gateway)
+                raise SystemExit(0)
+        except Exception:
+            pass
+        subprocess.run(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            check=True,
+        )
+        PY
+        )"
+        printf 'CONNECT api.oneme.ru:443 HTTP/1.1\r\nHost: api.oneme.ru:443\r\n\r\n' |
+          timeout 7 nc -w 6 "$listen_ip" "{{ channel_m_maxtg_reverse_listen_port }}" |
+          sed -n '1p' | grep -q '^HTTP/'
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
+
     - name: Channel M reverse docker bridge firewall persistence is active
       ansible.builtin.shell: |
         systemctl is-enabled --quiet channel-m-reverse-firewall.service
         systemctl is-enabled --quiet channel-m-reverse-firewall.timer
         systemctl is-active --quiet channel-m-reverse-firewall.timer
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M reverse listener watchdog persistence is active
+      ansible.builtin.shell: |
+        systemctl is-enabled --quiet channel-m-reverse-listener-watchdog.timer
+        systemctl is-active --quiet channel-m-reverse-listener-watchdog.timer
       changed_when: false
       when: channel_m_maxtg_reverse_enabled | default(false) | bool
 
