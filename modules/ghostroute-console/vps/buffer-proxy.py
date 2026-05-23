@@ -113,7 +113,7 @@ class BufferProxyHandler(BaseHTTPRequestHandler):
     def _upstream_headers(self):
         headers = {}
         for key, value in self.headers.items():
-            if key.lower() in HOP_BY_HOP:
+            if key.lower() in HOP_BY_HOP or key.lower() == "accept-encoding":
                 continue
             headers[key] = value
         headers["Host"] = self.headers.get("Host", f"{UPSTREAM_HOST}:{UPSTREAM_PORT}")
