@@ -800,6 +800,17 @@
         - channel_m_maxtg_enabled | default(false) | bool
         - channel_m_maxtg_reverse_enabled | default(false) | bool
 
+    - name: Channel M reverse services-start boot recovery is installed when enabled
+      ansible.builtin.shell: |
+        grep -Fq 'ChannelMReverse managed by ansible' /jffs/scripts/services-start
+        grep -Fq 'cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"' /jffs/scripts/services-start
+        grep -Fq 'cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"' /jffs/scripts/services-start
+        grep -Fq '( sleep 45; {{ channel_m_maxtg_reverse_script_path }} )' /jffs/scripts/services-start
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - channel_m_maxtg_reverse_enabled | default(false) | bool
+
     - name: Channel M maxtg ingress has deny-by-default INPUT firewall rule
       ansible.builtin.shell: |
         iptables -S INPUT | awk '
