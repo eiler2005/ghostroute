@@ -17,6 +17,7 @@
     console_buffer_proxy_port: "{{ ghostroute_console_buffer_proxy_port | default(3001) }}"
     console_public_listener: "{{ ghostroute_console_public_listener | default('nginx') }}"
     console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
+    console_basic_auth_realm: "{{ ghostroute_console_basic_auth_realm | default('GhostRoute Console v2') }}"
     console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
     console_basic_auth_password: "{{ lookup('ansible.builtin.ini', 'password type=properties file=' ~ console_basic_auth_file) }}"
   tasks:
@@ -247,10 +248,7 @@
               server_tokens off;
               keepalive_timeout 0;
               tcp_nodelay on;
-              gzip on;
-              gzip_vary on;
-              gzip_min_length 512;
-              gzip_types text/plain text/css application/json application/javascript text/javascript;
+              gzip off;
 
               server {
                   listen 0.0.0.0:{{ console_public_port }} ssl;
@@ -262,7 +260,7 @@
                   ssl_protocols TLSv1.2 TLSv1.3;
                   ssl_buffer_size 1400;
 
-                  auth_basic "GhostRoute Console";
+                  auth_basic "{{ console_basic_auth_realm }}";
                   auth_basic_user_file {{ console_root }}/auth/nginx.htpasswd;
 
                   add_header X-Robots-Tag "noindex, nofollow" always;
@@ -278,7 +276,7 @@
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
                       proxy_set_header X-Forwarded-Port $server_port;
-                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Accept-Encoding $http_accept_encoding;
                       proxy_set_header Connection close;
                       proxy_buffering on;
                   }
@@ -293,7 +291,7 @@
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
                       proxy_set_header X-Forwarded-Port $server_port;
-                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Accept-Encoding $http_accept_encoding;
                       proxy_set_header Connection close;
                       proxy_buffering on;
                   }
@@ -308,7 +306,7 @@
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
                       proxy_set_header X-Forwarded-Port $server_port;
-                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Accept-Encoding $http_accept_encoding;
                       proxy_set_header Connection close;
                       proxy_buffering on;
                   }
@@ -324,7 +322,7 @@
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
                       proxy_set_header X-Forwarded-Port $server_port;
-                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Accept-Encoding $http_accept_encoding;
                       proxy_set_header Connection close;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -343,7 +341,7 @@
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
                       proxy_set_header X-Forwarded-Port $server_port;
-                      proxy_set_header Accept-Encoding "";
+                      proxy_set_header Accept-Encoding $http_accept_encoding;
                       proxy_set_header Connection close;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -455,30 +453,40 @@
       register: console_public_health
       no_log: true
 
-    - name: Check Console public large response with auth
-      ansible.builtin.uri:
-        url: "{{ console_public_url }}/api/reports/llm-safe"
-        url_username: "{{ console_basic_auth_user }}"
-        url_password: "{{ console_basic_auth_password }}"
-        force_basic_auth: true
-        status_code: 200
-        validate_certs: true
-        return_content: false
-        timeout: 30
+    - name: Check Console public browser-compressed large page with auth
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --header
+          - "Accept-Encoding: br"
+          - --user
+          - "{{ console_basic_auth_user }}:{{ console_basic_auth_password }}"
+          - --output
+          - /dev/null
+          - "{{ console_public_url }}/clients"
       register: console_public_large_response
+      changed_when: false
       no_log: true
 
-    - name: Check Console public HTML shell with auth
-      ansible.builtin.uri:
-        url: "{{ console_public_url }}/"
-        url_username: "{{ console_basic_auth_user }}"
-        url_password: "{{ console_basic_auth_password }}"
-        force_basic_auth: true
-        status_code: 200
-        validate_certs: true
-        return_content: false
-        timeout: 30
+    - name: Check Console public browser-compressed HTML shell with auth
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --header
+          - "Accept-Encoding: br"
+          - --user
+          - "{{ console_basic_auth_user }}:{{ console_basic_auth_password }}"
+          - --output
+          - /dev/null
+          - "{{ console_public_url }}/"
       register: console_public_html_shell
+      changed_when: false
       no_log: true
 
     - name: Show Console public URL
@@ -488,5 +496,5 @@
           username: "{{ console_basic_auth_user }}"
           health_ok: "{{ console_public_health.json.ok | default(false) }}"
           snapshots: "{{ console_public_health.json.snapshots | default('n/a') }}"
-          large_response_status: "{{ console_public_large_response.status | default('n/a') }}"
-          html_shell_status: "{{ console_public_html_shell.status | default('n/a') }}"
+          large_response_status: "{{ 'ok' if (console_public_large_response.rc | default(1)) == 0 else 'failed' }}"
+          html_shell_status: "{{ 'ok' if (console_public_html_shell.rc | default(1)) == 0 else 'failed' }}"

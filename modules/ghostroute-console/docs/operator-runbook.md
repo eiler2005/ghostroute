@@ -336,6 +336,17 @@ Classify the failure before changing anything:
 - hanging `?_rsc` requests point to Next.js App Router navigation/RSC behavior.
 - fast API responses with stuck HTML point to HTML streaming, proxy buffering or
   client transport, not to the collector itself.
+- if regular Chrome fails but Incognito prompts for Basic Auth and opens, check
+  nginx error logs for `password mismatch`. Chrome can keep stale Basic Auth
+  credentials in the profile; clear the origin's site data or bump
+  `ghostroute_console_basic_auth_realm` during the expose playbook to force a
+  fresh prompt.
+- if server-local requests are fast but browser-sized public HTML stalls after
+  the first response segment, capture the public listener with `tcpdump` before
+  changing the app. Repeated retransmits of the same server-to-client segment
+  indicate a client-path MTU/MSS/transport issue. The public listener keeps
+  gzip off and lets the buffer proxy return Brotli to browsers so Chrome-sized
+  pages stay below the observed stall threshold where possible.
 
 Server-side baseline:
 
@@ -351,6 +362,11 @@ curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{
 curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
   -u '<console-user>:<console-password>' \
   https://<console-host>:<console-port>/api/health
+
+curl -o /dev/null -sS -H 'Accept-Encoding: br' \
+  -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
+  -u '<console-user>:<console-password>' \
+  https://<console-host>:<console-port>/clients
 ```
 
 Use the browser waterfall and these timings together: server-local fast plus
