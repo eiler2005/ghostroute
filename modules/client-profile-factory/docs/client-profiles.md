@@ -304,9 +304,12 @@ ansible/out/clients/router.conf
 ansible/out/clients-home/*.conf
 ansible/out/clients-home/*.png
 ansible/out/clients-home/qr-index.html
+  out/<service-egress>/           # private service artifacts, gitignored
 ```
 
-They contain client UUIDs, Reality parameters and server access information. They are gitignored and must not be copied into README/docs/issues/chat.
+They contain client UUIDs, Reality parameters, proxy credentials or server
+access information. They are gitignored and must not be copied into
+README/docs/issues/chat.
 
 ## Generate
 
@@ -328,10 +331,10 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 ./modules/client-profile-factory/bin/client-profiles home-open
 ./modules/client-profile-factory/bin/client-profiles emergency-list
 ./modules/client-profile-factory/bin/client-profiles emergency-open
+./modules/client-profile-factory/bin/client-profiles channel-m-list
 ```
 
-`home-open` opens the local home Reality `qr-index.html` when available.
-`emergency-open` opens the disabled/off direct-VPS fallback profiles.
+`home-open` opens the local home Reality `qr-index.html` when available. `emergency-open` opens the disabled/off direct-VPS fallback profiles. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Mobile App DNS Settings Critical
 
@@ -491,6 +494,10 @@ client with outbound `type: naive` support is selected. These profiles never
 change router behavior by themselves; the router C1 ingress is deployed
 separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 
+## Channel M — Regional Service Policy
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+
 ## Clean Local Artifacts
 
 ```bash
@@ -498,6 +505,7 @@ separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 ./modules/client-profile-factory/bin/client-profiles emergency-clean
 ./modules/client-profile-factory/bin/client-profiles channel-b-clean
 ./modules/client-profile-factory/bin/client-profiles channel-c-clean
+./modules/client-profile-factory/bin/client-profiles channel-m-clean
 ```
 
 This removes generated home mobile files under `ansible/out/clients-home/` and keeps only `.gitkeep`. `ansible/out/clients/router.conf` is the router's VPS identity, not a mobile QR.

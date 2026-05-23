@@ -1,4 +1,4 @@
-# GhostRoute Channels A / B / C
+# GhostRoute Channels A / B / C / M
 
 This document is the short handoff view of the current channel model. All
 managed channels are home-first: the endpoint's first visible remote endpoint is
@@ -14,6 +14,8 @@ the endpoint selects the first-hop channel, then the router owns the route
 decision. The default decision is managed-vs-direct split; Channel A also has an
 explicit selected full-VPS override for home Wi-Fi/LAN devices and Home Reality
 profiles.
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Channel A - Production Router Data Plane
 
@@ -209,6 +211,10 @@ Current production interpretation:
 - Re-test only with an iOS sing-box/SFI build that supports outbound
   `"type": "naive"`.
 
+## Channel M — Regional Service Policy
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+
 ## No Automatic Failover
 
 No channel automatically fails over to another channel.
@@ -217,6 +223,7 @@ No channel automatically fails over to another channel.
 Channel A != automatic fallback to B or C
 Channel B != automatic fallback for A
 Channel C != automatic fallback for A/B
+Channel M != automatic fallback for A/B/C
 WireGuard = cold manual fallback only
 ```
 

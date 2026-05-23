@@ -43,7 +43,7 @@ if find "${PROJECT_ROOT}/scripts" -type f ! -name README.md | grep . >/dev/null;
   exit 1
 fi
 
-stale_scripts_pattern='[.]/scripts/'
+stale_scripts_pattern='(^|[^.])\.''/scripts/'
 if rg -n "$stale_scripts_pattern" "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/README-ru.md" \
   "${PROJECT_ROOT}/docs" "${PROJECT_ROOT}/modules" \
   --glob '!docs/vpn-domain-journal.md' >/tmp/ghostroute-stale-scripts.txt; then

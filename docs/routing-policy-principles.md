@@ -1,7 +1,8 @@
 # Routing Policy Principles
 
 This document is the compact source for GhostRoute routing principles. It
-explains what must stay true across Channel A, Channel B and Channel C. The
+explains what must stay true across Channel A, Channel B and Channel C, plus
+why Channel M is intentionally outside that managed split. The
 runtime implementation still lives in Ansible templates, router scripts and
 domain catalogs listed below.
 
@@ -30,6 +31,23 @@ The endpoint client may choose the first-hop channel, but it must not become the
 main policy engine. The router owns the managed-vs-direct decision after traffic
 has reached home.
 
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+
+```text
+home router -> outbound SSH remote-forward -> VPS docker bridge
+  <service-specific configuration retained in private operator notes>
+  -> reverse tunnel target on router loopback
+  <service-specific configuration retained in private operator notes>
+  -> direct-out via home WAN -> internet
+```
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. The router
+does not classify Channel M with `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, policy
+DNS or selected full-VPS rules.
+
+The active reverse lane does not need a new inbound public port on the home
+router and does not reuse Channel C. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+
 ## Policy Layers
 
 Layer 0 is endpoint/client policy.
@@ -52,6 +70,7 @@ Layer 1 is channel ingress.
 - C1-Shadowrocket compatibility lands in `channel-c-shadowrocket-http-in`.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 Layer 2 is the shared router managed split plus the selected full-VPS override.
 
@@ -66,6 +85,7 @@ Layer 2 is the shared router managed split plus the selected full-VPS override.
   RU/direct/default names use the home/RF/default resolver.
 - A small explicit direct exception set exists for known local/trusted
   destinations such as selected banking and telemetry domains.
+- Channel M does not use the shared managed split. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 Layer 3 is the upstream exit.
 
@@ -76,6 +96,7 @@ Layer 3 is the upstream exit.
 - `direct-out` uses the home WAN; target sites see the home Russian IP.
 - The VPS should not be visible to the mobile operator as the first hop for
   home-first mobile channels.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Managed Catalog Contract
 
@@ -213,14 +234,13 @@ still use home/RF/default upstreams.
 
 The routing principles above are implemented in these places:
 
-- `ansible/roles/singbox_client/templates/config.json.j2`
-  - sing-box inbounds for A/B/C
-  - `stealth-domains` and `stealth-static` rule-sets
-  - shared post-ingress rules to `reality-out` or `direct-out`
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2`
   - LAN/Wi-Fi TCP REDIRECT for `STEALTH_DOMAINS` / `VPN_STATIC_NETS`
   - UDP/443 DROP for managed destinations
   - INPUT, MSS and connlimit rules for mobile ingress ports
+  - Channel M source allowlist and deny-by-default INPUT rules for its separate
+    service port
 - `modules/routing-core/router/update-singbox-rule-sets.sh`
   - mirrors dnsmasq/ipset/static policy into sing-box rule-set files for mobile
     Channels A/B/C
@@ -262,6 +282,15 @@ Channel C is selected-client home-first.
   tested SFI/sing-box `1.11.4` because that client does not support outbound
   `type: naive`.
 - Both C1 variants must enter the same router managed split after ingress.
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+
+- It accepts only authenticated HTTP CONNECT inside the router-initiated SSH
+  reverse tunnel.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- It must not mutate Channel A/B/C ownership, DNS policy, managed catalogs or
+  LAN/Wi-Fi routing.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## DNS And IPv6 Principles
 

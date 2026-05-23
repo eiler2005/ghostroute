@@ -3,12 +3,13 @@
 ## Purpose
 
 Client Profile Factory generates and cleans local QR/VLESS profiles from
-Ansible Vault for router identity, home-mobile clients and emergency profiles.
+Ansible Vault for router identity, home-mobile clients and emergency profiles. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Features
 
 - Generates local VLESS `.conf` files and QR images.
 - Separates router, home-mobile and emergency profile flows.
+- Separates Channel M service artifacts from user/client QR profiles.
 - Opens local HTML indexes for operator use.
 - Cleans generated artifacts without touching Vault.
 
@@ -36,6 +37,7 @@ explicit Ansible workflow.
 - `./modules/client-profile-factory/bin/client-profiles list`
 - `./modules/client-profile-factory/bin/client-profiles home-list`
 - `./modules/client-profile-factory/bin/client-profiles emergency-list`
+- `./modules/client-profile-factory/bin/client-profiles channel-m-list`
 - `./modules/client-profile-factory/bin/client-profiles clean`
 
 ## Runtime Storage & Artifacts
@@ -43,6 +45,7 @@ explicit Ansible workflow.
 - `ansible/out/clients`
 - `ansible/out/clients-home`
 - `ansible/out/clients-emergency`
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Dependencies On Other Modules
 
@@ -54,6 +57,7 @@ explicit Ansible workflow.
 
 - Missing Vault values.
 - Generated QR files accidentally staged for git.
+- Channel M `.env` fragment accidentally copied into tracked docs or logs.
 - Profile regeneration not followed by live verification.
 - Emergency profiles confused with home-mobile profiles.
 

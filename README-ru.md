@@ -24,6 +24,7 @@ EN. Расширенные технические разделы (Quick Start, A
 | A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | Нет |
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
+| M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
 ---
@@ -31,7 +32,7 @@ EN. Расширенные технические разделы (Quick Start, A
 ## Обзор
 
 GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS Merlin
-роутера и удаленного VPS egress. Домашние устройства могут оставаться без
+роутера и удаленного VPS egress. Отдельная служебная политика поддерживает приложения, которым нужен выход в заданной стране или регионе. Домашние устройства могут оставаться без
 клиентских VPN-приложений, а managed endpoint-клиенты могут применять
 собственную first-hop routing policy еще до входа на домашний роутер. Базовый
 режим — managed-domain split, но выбранные домашние Wi-Fi/LAN устройства и
@@ -50,10 +51,11 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
 - Layer 1 — managed channels. Channel A, Channel B и Channel C работают home-first:
   первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
   теперь разделен на C1-Shadowrocket HTTPS CONNECT compatibility и C1-sing-box
-  native Naive target.
+  native Naive target. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, плюс optional Channel A
-  selected full-VPS override для выбранных устройств/профилей.
+  selected full-VPS override для выбранных устройств/профилей. Channel M не
+  участвует в split и route rule ведет его inbound напрямую в `direct-out`.
 - Layer 3 — VPS. Он служит удаленным egress для выбранного managed traffic.
 
 Production endpoint policy в этом репозитории остается country-neutral:
@@ -67,8 +69,7 @@ profiles, а не к общей архитектуре.
 lane для selected device-client profiles с отдельным ingress/relay и без
 захвата Channel A REDIRECT. Channel C означает только C1 home-first на роутере:
 C1-Shadowrocket compatibility live-proven и C1-sing-box native Naive
-server-ready/client-blocked, а не VPS-only backend.
-Автоматический failover через B/C не включается.
+server-ready/client-blocked, а не VPS-only backend. Автоматический failover через B/C не включается. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
 `wgc1_*` NVRAM сохранён только как cold fallback.
@@ -125,6 +126,7 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   live-proven iPhone compatibility path; C1-sing-box использует router-side
   native Naive, но пока ожидает iOS client support for outbound `type: naive`.
   Оба варианта применяют тот же managed split и Reality/Vision upstream.
+- Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных
   клиентов: первая сеть видит home endpoint, а не VPS endpoint.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
@@ -216,8 +218,7 @@ Layer 1 managed channels
   Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like
             -> home endpoint :<home-channel-c-public-port>
             -> router sing-box Naive ingress
-                  |
-                  v
+  Channel M -> isolated service policy -> approved regional egress
 Layer 2 home router
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
@@ -234,6 +235,8 @@ Layer 2 home router
                               |
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
+
+  Channel M -> isolated service policy -> approved regional egress
 
 Layer 3 VPS
   remote egress for managed traffic and selected full-VPS traffic
@@ -378,7 +381,9 @@ failover. Artifacts в
 `ansible/out/clients-channel-c/` считаются explicit C1 selected-client
 artifacts: C1-Shadowrocket live-proven, C1-sing-box native target.
 
----
+### Channel M — Regional Service Policy
+
+Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 
 ## Технический стек
 
@@ -392,6 +397,7 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay к sing-box SOCKS на 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
+  optional Channel M service policy (operator-owned)
   policy DNS split via dnsmasq + dnscrypt-proxy через sing-box SOCKS/Reality
   sing-box vps-dns-in остаётся для DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
@@ -440,6 +446,7 @@ ansible/
   out/clients-emergency/          # generated emergency artifacts, gitignored
   out/clients-channel-b/          # generated Channel B artifacts, gitignored
   out/clients-channel-c/          # generated Channel C artifacts, gitignored
+  out/<service-egress>/           # private service artifacts, gitignored
 
 modules/
   routing-core/

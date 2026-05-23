@@ -1,0 +1,322 @@
+---
+- name: Prepare Channel M reverse SSH key on router
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Ensure Channel M reverse key directory exists
+      ansible.builtin.raw: mkdir -p /jffs/keys && chmod 700 /jffs/keys
+      changed_when: true
+
+    - name: Generate Channel M reverse Dropbear key if missing
+      ansible.builtin.raw: >-
+        [ -s {{ channel_m_maxtg_reverse_key_path }} ] ||
+        /usr/bin/dropbearkey -t ed25519 -f {{ channel_m_maxtg_reverse_key_path }}
+      no_log: true
+      changed_when: true
+
+    - name: Read Channel M reverse public key
+      ansible.builtin.raw: /usr/bin/dropbearkey -y -f {{ channel_m_maxtg_reverse_key_path }} | awk '/^ssh-/ {print}'
+      register: channel_m_reverse_public_key
+      changed_when: false
+      no_log: true
+
+    - name: Share Channel M reverse public key
+      ansible.builtin.add_host:
+        name: channel-m-reverse-key
+        channel_m_reverse_public_key: "{{ channel_m_reverse_public_key.stdout | trim }}"
+      no_log: true
+
+- name: Prepare Channel M reverse listener on VPS
+  hosts: vps_stealth
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vps_stealth.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Read docker bridge IPv4 for Channel M reverse listener
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            gateway = json.loads(raw)[0]["IPAM"]["Config"][0]["Gateway"]
+            if gateway:
+                print(gateway)
+                raise SystemExit(0)
+        except Exception:
+            pass
+        subprocess.run(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            check=True,
+        )
+        PY
+      register: channel_m_reverse_docker0_ip
+      changed_when: false
+      no_log: true
+
+    - name: Enable client-specified GatewayPorts for deploy reverse Channel M
+      ansible.builtin.copy:
+        dest: /tmp/51-channel-m-reverse.conf
+        mode: "0644"
+        content: |
+          Match User {{ vps_ssh_user }}
+              GatewayPorts clientspecified
+
+    - name: Install deploy GatewayPorts drop-in
+      ansible.builtin.shell: >-
+        sudo install -m 0644 /tmp/51-channel-m-reverse.conf
+        /etc/ssh/sshd_config.d/51-channel-m-reverse.conf &&
+        sudo sshd -t &&
+        sudo systemctl reload ssh
+      changed_when: true
+
+    - name: Stage Channel M reverse docker bridge firewall helper
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-firewall.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+
+          network="${1:-deploy_default}"
+          port="${2:-18057}"
+          gateway=""
+          subnet=""
+
+          if docker network inspect "$network" >/tmp/channel-m-reverse-network.json 2>/dev/null; then
+            values="$(python3 - /tmp/channel-m-reverse-network.json <<'PY'
+          import json
+          import sys
+
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          config = data[0].get("IPAM", {}).get("Config", [{}])[0]
+          print(config.get("Gateway", ""))
+          print(config.get("Subnet", ""))
+          PY
+          )"
+            gateway="$(printf '%s\n' "$values" | sed -n '1p')"
+            subnet="$(printf '%s\n' "$values" | sed -n '2p')"
+          fi
+
+          if [ -z "$gateway" ]; then
+            gateway="$(ip -4 addr show docker0 | awk '/inet / { split($2, a, "/"); print a[1]; exit }')"
+          fi
+          if [ -z "$subnet" ]; then
+            subnet="$(ip -4 addr show docker0 | awk '/inet / { print $2; exit }')"
+          fi
+
+          [ -n "$gateway" ]
+          [ -n "$subnet" ]
+
+          while iptables -D INPUT -p tcp -s "$subnet" -d "$gateway" --dport "$port" -j ACCEPT 2>/dev/null; do :; done
+          iptables -I INPUT 1 -p tcp -s "$subnet" -d "$gateway" --dport "$port" -j ACCEPT
+
+    - name: Install Channel M reverse docker bridge firewall helper
+      ansible.builtin.shell: >-
+        sudo install -m 0755 /tmp/channel-m-reverse-firewall.sh
+        /usr/local/sbin/channel-m-reverse-firewall.sh
+      changed_when: true
+
+    - name: Stage Channel M reverse docker bridge firewall systemd unit
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-firewall.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Channel M reverse Docker bridge firewall
+          After=docker.service network-online.target
+          Wants=docker.service network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/channel-m-reverse-firewall.sh {{ channel_m_maxtg_reverse_docker_network }} {{ channel_m_maxtg_reverse_listen_port }}
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Stage Channel M reverse docker bridge firewall systemd timer
+      ansible.builtin.copy:
+        dest: /tmp/channel-m-reverse-firewall.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Refresh Channel M reverse Docker bridge firewall
+
+          [Timer]
+          OnBootSec=30
+          OnUnitActiveSec=60
+          Unit=channel-m-reverse-firewall.service
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable Channel M reverse docker bridge firewall persistence
+      ansible.builtin.shell: >-
+        sudo install -m 0644 /tmp/channel-m-reverse-firewall.service
+        /etc/systemd/system/channel-m-reverse-firewall.service &&
+        sudo install -m 0644 /tmp/channel-m-reverse-firewall.timer
+        /etc/systemd/system/channel-m-reverse-firewall.timer &&
+        sudo systemctl daemon-reload &&
+        sudo systemctl enable --now channel-m-reverse-firewall.service &&
+        sudo systemctl enable --now channel-m-reverse-firewall.timer
+      changed_when: true
+
+    - name: Ensure deploy SSH directory exists
+      ansible.builtin.file:
+        path: "/home/{{ vps_ssh_user }}/.ssh"
+        state: directory
+        mode: "0700"
+
+    - name: Remove old loopback-only Channel M reverse key authorizations
+      ansible.builtin.lineinfile:
+        path: "/home/{{ vps_ssh_user }}/.ssh/authorized_keys"
+        regexp: '^restrict,port-forwarding,permitlisten=".*:{{ channel_m_maxtg_reverse_listen_port }}".*'
+        state: absent
+
+    - name: Authorize Channel M reverse key for docker bridge listener only
+      ansible.builtin.lineinfile:
+        path: "/home/{{ vps_ssh_user }}/.ssh/authorized_keys"
+        create: true
+        mode: "0600"
+        line: >-
+          restrict,port-forwarding,permitlisten="{{ channel_m_reverse_docker0_ip.stdout }}:{{ channel_m_maxtg_reverse_listen_port }}"
+          {{ hostvars['channel-m-reverse-key'].channel_m_reverse_public_key }}
+      no_log: true
+
+    - name: Share Channel M reverse docker bridge IPv4
+      ansible.builtin.add_host:
+        name: channel-m-reverse-vps
+        channel_m_reverse_docker0_ip: "{{ channel_m_reverse_docker0_ip.stdout }}"
+      no_log: true
+
+- name: Install and start Channel M reverse tunnel on router
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Install Channel M reverse tunnel script
+      ansible.builtin.copy:
+        dest: "{{ channel_m_maxtg_reverse_script_path }}"
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+
+          KEY="{{ channel_m_maxtg_reverse_key_path }}"
+          VPS="{{ vps_ssh_user }}@{{ vps_ssh_host }}"
+          LISTEN_HOST="{{ hostvars['channel-m-reverse-vps'].channel_m_reverse_docker0_ip }}"
+          LISTEN_PORT="{{ channel_m_maxtg_reverse_listen_port }}"
+          TARGET_HOST="127.0.0.1"
+          TARGET_PORT="{{ channel_m_maxtg_reverse_ingress_port }}"
+
+          iptables -C INPUT -i lo -p tcp --dport "$TARGET_PORT" -j ACCEPT 2>/dev/null \
+            || iptables -I INPUT 1 -i lo -p tcp --dport "$TARGET_PORT" -j ACCEPT
+
+          if ps | grep channel_m_reverse_dropbear | grep -v grep >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          /usr/bin/ssh -y -i "$KEY" -N -T -f -K 30 -I 0 \
+            -R "$LISTEN_HOST:$LISTEN_PORT:$TARGET_HOST:$TARGET_PORT" \
+            "$VPS"
+
+    - name: Register Channel M reverse tunnel cron watchdog
+      ansible.builtin.raw: >-
+        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+      changed_when: true
+
+    - name: Stop existing Channel M reverse tunnel before restart
+      ansible.builtin.raw: >-
+        ps | grep channel_m_reverse_drop | grep ssh | grep -v grep |
+        sed "s/^ *//" | cut -d" " -f1 |
+        while read pid; do kill "$pid" 2>/dev/null || true; done
+      changed_when: true
+
+    - name: Start Channel M reverse tunnel
+      ansible.builtin.raw: "{{ channel_m_maxtg_reverse_script_path }}"
+      changed_when: true
+
+- name: Verify Channel M reverse listener on VPS
+  hosts: vps_stealth
+  gather_facts: false
+  vars_files:
+    - ../group_vars/vps_stealth.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Channel M reverse listener is bound on docker bridge
+      ansible.builtin.shell: |
+        listen_ip="$(python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            gateway = json.loads(raw)[0]["IPAM"]["Config"][0]["Gateway"]
+            if gateway:
+                print(gateway)
+                raise SystemExit(0)
+        except Exception:
+            pass
+        subprocess.run(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            check=True,
+        )
+        PY
+        )"
+        ss -ltn | grep -q "${listen_ip}:{{ channel_m_maxtg_reverse_listen_port }}"
+      changed_when: false
+
+    - name: Channel M reverse firewall persistence is active
+      ansible.builtin.shell: |
+        systemctl is-enabled --quiet channel-m-reverse-firewall.service
+        systemctl is-enabled --quiet channel-m-reverse-firewall.timer
+        systemctl is-active --quiet channel-m-reverse-firewall.timer
+      changed_when: false
+
+    - name: Channel M reverse docker bridge firewall permits bridge clients
+      ansible.builtin.shell: |
+        values="$(python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            config = json.loads(raw)[0]["IPAM"]["Config"][0]
+            print(config.get("Gateway", ""))
+            print(config.get("Subnet", ""))
+            raise SystemExit(0)
+        except Exception:
+            pass
+        gateway = subprocess.check_output(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            text=True,
+        ).strip()
+        subnet = subprocess.check_output(
+            "ip -4 addr show docker0 | awk '/inet / { print $2; exit }'",
+            shell=True,
+            text=True,
+        ).strip()
+        print(gateway)
+        print(subnet)
+        PY
+        )"
+        gateway="$(printf '%s\n' "$values" | sed -n '1p')"
+        subnet="$(printf '%s\n' "$values" | sed -n '2p')"
+        sudo iptables -C INPUT -p tcp -s "$subnet" -d "$gateway" --dport "{{ channel_m_maxtg_reverse_listen_port }}" -j ACCEPT
+      changed_when: false

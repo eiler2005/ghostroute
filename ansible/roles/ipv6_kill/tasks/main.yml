@@ -2,6 +2,7 @@
 - name: Check current IPv6 service state
   ansible.builtin.raw: "nvram get ipv6_service"
   register: ipv6_state
+  check_mode: false
   changed_when: false
 
 - name: Disable IPv6 in Merlin NVRAM when enabled
@@ -14,6 +15,7 @@
 - name: Fail-safe assert that IPv6 is disabled in Merlin
   ansible.builtin.raw: "nvram get ipv6_service"
   register: ipv6_recheck
+  check_mode: false
   changed_when: false
   failed_when: ipv6_recheck.stdout | trim not in ['disabled', '']
 
@@ -30,5 +32,6 @@
   ansible.builtin.raw: |
     ip -6 addr show dev br0 2>/dev/null | grep -E 'inet6 (2|3)[0-9a-f]{1,3}:' || echo "OK_NO_GUA"
   register: ipv6_lan_gua
+  check_mode: false
   changed_when: false
   failed_when: "'OK_NO_GUA' not in ipv6_lan_gua.stdout"

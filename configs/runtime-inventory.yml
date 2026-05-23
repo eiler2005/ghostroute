@@ -68,6 +68,7 @@ components:
       - consumes_static_cidr_rule_set
       - provides_lan_redirect
       - provides_home_reality_ingress
+      - provides_channel_m_maxtg_service_egress
       - provides_router_socks
       - provides_router_vps_dns_forwarder
     runtime_checks:
@@ -78,9 +79,11 @@ components:
       - Plain HTTP generate_204 compatibility probe returns 204 through the managed client path.
       - LAN/Wi-Fi managed-domain probe must show managed exit through Reality.
       - Active managed HTTP 204 probe must pass through the sing-box SOCKS/Reality path.
+      - Channel M check confirms channel-m-maxtg-max-egress routes only to direct-out when enabled.
     compatibility_notes:
       - Process status and listener checks are necessary but not sufficient after binary upgrades.
       - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
+      - Channel M is service-only for maxtg_bridge and must not use managed rule-sets or reality-out.
 
   - id: router_singbox_watchdog
     component_name: singbox-watchdog.sh
@@ -325,6 +328,31 @@ components:
     compatibility_notes:
       - This is not Channel A failover and must not change Reality :443 ownership.
 
+  - id: vps_ssh_remote_forward
+    component_name: Channel M SSH remote-forward listener
+    supplier: OpenSSH / GhostRoute
+    type: vps_runtime_service
+    ecosystem: systemd_openssh
+    origin: Router-originated reverse Channel M tunnel for maxtg_bridge MAX egress
+    package_names:
+      - openssh-server
+      - iptables
+    version_policy:
+      proven_good: OpenSSH with deploy-user Match GatewayPorts clientspecified and docker bridge scoped permitlisten.
+      minimum_required: Must support remote port forwarding bound to the compose docker bridge address.
+      candidate: SSH daemon changes require 23-channel-m-reverse and 99-verify checks.
+      known_problematic: []
+      rollback_available: Disable the Channel M reverse cron/watchdog on the router and restore previous sshd drop-in.
+    relationships:
+      - provides_channel_m_maxtg_service_egress
+      - restricted_to_bridge_container_clients
+    runtime_checks:
+      - ansible-playbook playbooks/23-channel-m-reverse.yml
+      - ansible-playbook playbooks/99-verify.yml --limit vps_stealth
+    compatibility_notes:
+      - Listener must stay on the VPS docker bridge, not public interfaces.
+      - This is not Channel C and does not use Caddy or public :443.
+
   - id: vps_unbound_policy_dns
     component_name: Unbound managed DNS resolver
     supplier: NLnet Labs / distribution package maintainers
@@ -507,6 +535,46 @@ ports:
     conflict_group: router_singbox_local_listeners
     iana_range: user
     runtime_check: netstat shows channel-c-shadowrocket-http-in listener
+
+  - id: channel_m_maxtg_public
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_wan
+    exposure: selected_vps_client
+    source_var: channel_m_maxtg_public_port
+    conflict_group: router_public_ingress
+    iana_range: user
+    runtime_check: 99-verify confirms Channel M source-allowlisted public ingress
+
+  - id: channel_m_maxtg_ingress
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: redirected_public_ingress
+    source_var: channel_m_maxtg_ingress_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows channel-m-maxtg-max-egress listener
+
+  - id: channel_m_maxtg_reverse_ingress
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_loopback
+    exposure: ssh_remote_forward_target
+    source_var: channel_m_maxtg_reverse_ingress_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows channel-m-maxtg-reverse-egress listener
+
+  - id: channel_m_maxtg_reverse_vps_listener
+    owner_component: vps_ssh_remote_forward
+    protocol: tcp
+    bind_scope: vps_docker_bridge
+    exposure: bridge_container_only
+    source_var: channel_m_maxtg_reverse_listen_port
+    conflict_group: vps_private_listeners
+    iana_range: user
+    runtime_check: 23-channel-m-reverse and 99-verify confirm docker bridge listener
 
   - id: vps_public_reality_tls
     owner_component: vps_caddy_l4

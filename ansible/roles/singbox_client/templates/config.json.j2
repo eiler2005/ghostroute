@@ -144,6 +144,43 @@
         "key_path": "{{ channel_c_home_tls_key_path }}"
       }
     }
+{% endif %}{% if channel_m_maxtg_enabled | default(false) | bool %},
+    {
+      "type": "http",
+      "tag": "channel-m-maxtg-max-egress",
+      "listen": "{{ channel_m_maxtg_listen }}",
+      "listen_port": {{ channel_m_maxtg_ingress_port }},
+      "users": [
+{% for client in channel_m_maxtg_clients %}
+        {
+          "username": "{{ client.username }}",
+          "password": "{{ client.password }}"
+        }{{ "," if not loop.last else "" }}
+{% endfor %}
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ channel_m_maxtg_public_host }}",
+        "certificate_path": "{{ channel_m_maxtg_tls_cert_path }}",
+        "key_path": "{{ channel_m_maxtg_tls_key_path }}"
+      }
+    }
+{% if channel_m_maxtg_reverse_enabled | default(false) | bool %},
+    {
+      "type": "http",
+      "tag": "channel-m-maxtg-reverse-egress",
+      "listen": "127.0.0.1",
+      "listen_port": {{ channel_m_maxtg_reverse_ingress_port }},
+      "users": [
+{% for client in channel_m_maxtg_clients %}
+        {
+          "username": "{{ client.username }}",
+          "password": "{{ client.password }}"
+        }{{ "," if not loop.last else "" }}
+{% endfor %}
+      ]
+    }
+{% endif %}
 {% endif %}
   ],
   "outbounds": [
@@ -382,6 +419,11 @@
       },
       { "inbound": "channel-c-shadowrocket-http-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
       { "inbound": "channel-c-shadowrocket-http-in", "outbound": "direct-out" }
+{% endif %}{% if channel_m_maxtg_enabled | default(false) | bool %},
+      { "inbound": "channel-m-maxtg-max-egress", "outbound": "direct-out" }
+{% if channel_m_maxtg_reverse_enabled | default(false) | bool %},
+      { "inbound": "channel-m-maxtg-reverse-egress", "outbound": "direct-out" }
+{% endif %}
 {% endif %}
     ],
     "final": "direct-out"

@@ -19,7 +19,7 @@ Russian README is an operator-facing summary.
 
 GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
 It keeps home LAN devices app-free, gives selected remote clients a home-first
-entrypoint, and keeps routing policy on the router. By default only managed
+entrypoint, and keeps routing policy on the router. It also supports isolated policies for applications that require egress in a designated region. By default only managed
 destinations use the active Reality egress; selected home Wi-Fi/LAN devices and
 selected Channel A Home Reality profiles can opt into full-VPS mode where all
 internet-bound traffic uses `reality-out`. The active egress is normally the
@@ -36,6 +36,7 @@ secrets and recovery all have separate ownership and tests.
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
+| M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 ## Why This Exists
@@ -66,12 +67,13 @@ The layered model separates the main traffic responsibilities:
   VPS. See [docs/channels.md](/docs/channels.md) for the compact A/B/C handoff
   model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
   Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
-  client with Naive outbound support.
+  client with Naive outbound support. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
   Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
   Reality profiles that should send all internet-bound traffic through
-  `reality-out`.
+  `reality-out`. Channel M bypasses that managed split and routes its inbound
+  tag directly to `direct-out`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
 
 Production endpoint policy is intentionally country-neutral in this repository:
@@ -84,7 +86,7 @@ not the general architecture.
 Only Channel A is part of the automatic router data plane. Channel B is
 production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
-home-first, separate from Channel A/B routing and has no automatic failover.
+home-first, separate from Channel A/B routing and has no automatic failover. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -144,6 +146,7 @@ diagnostic.
   uses sing-box Naive on the home endpoint as the native design, but current
   SFI `1.11.4` rejects outbound `type: naive`. Both router-side paths apply the
   same managed split and Reality/Vision upstream.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -244,8 +247,7 @@ Layer 1 managed channels
   Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like
             -> home endpoint :<home-channel-c-public-port>
             -> router sing-box Naive ingress
-                  |
-                  v
+  Channel M -> isolated service policy -> approved regional egress
 Layer 2 home router
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
@@ -262,6 +264,8 @@ Layer 2 home router
                               |
                               +-- non-managed match
                                     -> direct-out -> home WAN -> Internet
+
+  Channel M -> isolated service policy -> approved regional egress
 
 Layer 3 VPS
   remote egress for managed traffic and selected full-VPS traffic
@@ -408,7 +412,9 @@ selected-client Channel C artifacts. Shadowrocket compatibility is not proof of
 native Naive; see [docs/channels.md](/docs/channels.md) and
 [docs/channel-c.md](/docs/channel-c.md).
 
----
+### Channel M — Regional Service Policy
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ## Technical Stack
 
@@ -422,6 +428,7 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
+  optional Channel M service policy (operator-owned)
   policy DNS split via dnsmasq + dnscrypt-proxy over sing-box SOCKS/Reality
   sing-box vps-dns-in remains for DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
@@ -470,6 +477,7 @@ ansible/
   out/clients-emergency/          # generated emergency artifacts, gitignored
   out/clients-channel-b/          # generated Channel B artifacts, gitignored
   out/clients-channel-c/          # generated Channel C artifacts, gitignored
+  out/<service-egress>/           # private service artifacts, gitignored
 
 modules/
   routing-core/

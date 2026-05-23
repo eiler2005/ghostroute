@@ -5,11 +5,10 @@
 Текущая architecture model — layered routing setup: endpoint/client routing,
 managed channels, home router и VPS egress. Channel A остается основным
 Reality-first router data plane без активного legacy WireGuard. Channel B
-реализован как production home-first lane для selected device-client profiles.
-Channel C — home-first selected-client lane with C1-sing-box Naive as the
+реализован как production home-first lane для selected device-client profiles. Channel C — home-first selected-client lane with C1-sing-box Naive as the
 stealth-primary design and C1-Shadowrocket HTTPS CONNECT as a proven
 compatibility path. C1-Shadowrocket is live-proven and persisted. C1-sing-box is
-router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`.
+router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
@@ -27,6 +26,8 @@ router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`.
   что и для других home-first каналов. C1-Shadowrocket uses HTTPS CONNECT for
   Shadowrocket compatibility and is not Naive. C1-sing-box uses sing-box Naive
   on the router, but requires an iOS client with outbound `"type": "naive"`.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. It is not a client failover channel and
+  does not use the managed split.
 
 ```text
 Layer 0 endpoint/client routing
@@ -39,6 +40,7 @@ Layer 1 managed channels
   Channel A -> endpoint -> home endpoint -> router -> managed egress
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
   Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
+  Channel M -> isolated service policy -> approved regional egress
 
 Layer 2 home router
   LAN/Wi-Fi clients
@@ -95,6 +97,8 @@ Layer 2 home router
     -> Caddy :443 -> Xray Reality inbound
     -> Internet
 
+  Channel M -> isolated service policy -> approved regional egress
+
 Layer 3 VPS
   -> remote egress for selected managed traffic
   -> policy-split DNS egress for managed foreign names
@@ -140,15 +144,17 @@ Channel A/B/C are home-first for managed traffic: the first network sees
 endpoint -> home endpoint, not endpoint -> VPS. The VPS provider sees the home
 router as the source for managed traffic.
 
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. It is
+authenticated and separate from A/B/C client routing.
+
 ### Layer 2 — Home Router
 
 The home router terminates home-based channels and applies routing and DNS
 policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, optional
 Channel A selected full-VPS TPROXY for home Wi-Fi/LAN devices, home Reality
 ingress with optional selected `auth_user` full-VPS rules, Channel B home
-ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS.
-Router policy may either split managed/non-managed destinations or, for selected
-Channel A full-VPS sets, send internet-bound traffic through `reality-out`.
+ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS. Router policy may either split managed/non-managed destinations or, for selected
+Channel A full-VPS sets, send internet-bound traffic through `reality-out`. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ### Layer 3 — VPS
 

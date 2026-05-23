@@ -15,6 +15,7 @@
     channel_c_out_dir: "{{ playbook_dir }}/../out/clients-channel-c"
     channel_c_sfi_out_dir: "{{ channel_c_out_dir }}/c1-SFI"
     channel_c_shadowrocket_out_dir: "{{ channel_c_out_dir }}/1-SR"
+    channel_m_out_dir: "{{ playbook_dir }}/../out/channel-m-maxtg"
     shadowrocket_proof_out_dir: "{{ playbook_dir }}/../out/shadowrocket-proof"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
@@ -49,9 +50,11 @@
         - "{{ channel_c_out_dir }}"
         - "{{ channel_c_sfi_out_dir }}"
         - "{{ channel_c_shadowrocket_out_dir }}"
+        - "{{ channel_m_out_dir }}"
       tags:
         - channel_b_clients_only
         - channel_c_clients_only
+        - channel_m_artifacts_only
 
     - name: Ensure Shadowrocket proof output dir
       ansible.builtin.file:
@@ -75,6 +78,21 @@
       no_log: true
       tags:
         - channel_c_clients_only
+
+    - name: Validate Channel M maxtg MAX egress artifact fields
+      ansible.builtin.assert:
+        that:
+          - channel_m_maxtg_public_host | string | length > 0
+          - channel_m_maxtg_public_port | int > 0
+          - channel_m_maxtg_clients | length > 0
+          - (channel_m_maxtg_clients | selectattr('name', 'defined') | list | length) == (channel_m_maxtg_clients | length)
+          - (channel_m_maxtg_clients | selectattr('username', 'defined') | list | length) == (channel_m_maxtg_clients | length)
+          - (channel_m_maxtg_clients | selectattr('password', 'defined') | list | length) == (channel_m_maxtg_clients | length)
+        fail_msg: "Channel M artifact generation needs home host/public port and clients with name, username and password."
+      when: channel_m_maxtg_enabled | default(false) | bool
+      no_log: true
+      tags:
+        - channel_m_artifacts_only
 
     - name: Validate C1-Shadowrocket profile fields
       ansible.builtin.assert:
@@ -958,6 +976,79 @@
       tags:
         - channel_c_clients_only
 
+    - name: Render Channel M maxtg MAX egress env fragment for each service client
+      ansible.builtin.copy:
+        dest: "{{ channel_m_out_dir }}/{{ item.name }}.env"
+        mode: "0600"
+        content: |
+          # Source/copy MAX_EGRESS_PROXY_URL into maxtg_bridge .env.secrets on Hetzner.
+          # Source/copy MAX_EGRESS_PROXY_HOST into maxtg_bridge .env.host for compose extra_hosts.
+          # Do not commit this file.
+          {% if channel_m_maxtg_reverse_enabled | default(false) | bool %}
+          # Reverse Channel M: router opens outbound SSH -R to the VPS docker bridge.
+          # The proxy leg is plain HTTP because it is carried inside that SSH tunnel.
+          MAX_EGRESS_PROXY_URL=http://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_m_maxtg_public_host }}:{{ channel_m_maxtg_reverse_listen_port }}
+          MAX_EGRESS_PROXY_HOST={{ channel_m_maxtg_public_host }}
+          # Set MAX_EGRESS_PROXY_GATEWAY on the bridge VPS to the compose docker gateway.
+          {% else %}
+          MAX_EGRESS_PROXY_URL=https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_m_maxtg_public_host }}:{{ channel_m_maxtg_public_port }}
+          MAX_EGRESS_PROXY_HOST={{ channel_m_maxtg_public_host }}
+          {% endif %}
+      loop: "{{ channel_m_maxtg_clients | default([]) }}"
+      when: channel_m_maxtg_enabled | default(false) | bool
+      no_log: true
+      tags:
+        - channel_m_artifacts_only
+
+    - name: Render Channel M local operator checklist
+      ansible.builtin.copy:
+        dest: "{{ channel_m_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # Channel M maxtg MAX Egress Artifact
+
+          Channel M is a service-only MAX egress lane:
+
+          ```text
+          maxtg_bridge container -> HTTP CONNECT -> VPS docker bridge :{{ channel_m_maxtg_reverse_listen_port }}
+          home router -> outbound SSH remote-forward -> VPS docker bridge :{{ channel_m_maxtg_reverse_listen_port }}
+          tunnel target -> router loopback Channel M -> direct-out -> home WAN -> MAX API/CDN
+          ```
+
+          Use the generated `<client>.env` fragment only on the maxtg_bridge
+          Hetzner host as `.env.secrets` / `.env.host` input. It contains
+          `MAX_EGRESS_PROXY_URL` and must stay out of git, tickets and chat
+          logs. `MAX_EGRESS_PROXY_GATEWAY` is deployment-specific and should be
+          set on the VPS to the compose docker gateway address.
+
+          Expected bridge config:
+
+          ```yaml
+          max:
+            egress:
+              active: "home_ru_proxy"
+              fallback_policy: "manual"
+          ```
+
+          Router invariants:
+
+          - inbound tag: `channel-m-maxtg-max-egress`
+          - route: `channel-m-maxtg-max-egress -> direct-out`
+          - reverse inbound tag: `channel-m-maxtg-reverse-egress`
+          - route: `channel-m-maxtg-reverse-egress -> direct-out`
+          - reverse SSH listener: VPS docker bridge port `{{ channel_m_maxtg_reverse_listen_port }}`
+          - source allowlist: Vault-configured Hetzner/VPS CIDR only
+          - not Channel A/B/C failover
+          - not `reality-out`, `STEALTH_DOMAINS`, `VPN_STATIC_NETS` or policy DNS
+          - no home inbound public port is required for the reverse lane
+
+          After deploy, run `ansible-playbook playbooks/23-channel-m-reverse.yml`,
+          `ansible-playbook playbooks/99-verify.yml`, and check maxtg_bridge
+          `/status` for `MAX egress: home_ru_proxy`.
+      when: channel_m_maxtg_enabled | default(false) | bool
+      tags:
+        - channel_m_artifacts_only
+
     - name: Inform user
       ansible.builtin.debug:
         msg: |
@@ -966,4 +1057,5 @@
           Emergency direct-VPS mobile profiles generated in {{ emergency_out_dir }}.
           Channel B selected-client production artifacts generated in {{ channel_b_out_dir }} when enabled.
           Channel C1 home-first artifacts generated in {{ channel_c_out_dir }} when enabled.
+          Channel M maxtg service artifact generated in {{ channel_m_out_dir }} when enabled.
           Emergency profiles must stay disabled in client apps except during a home relay outage.
