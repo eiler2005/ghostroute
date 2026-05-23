@@ -219,21 +219,141 @@
           LISTEN_PORT="{{ channel_m_maxtg_reverse_listen_port }}"
           TARGET_HOST="127.0.0.1"
           TARGET_PORT="{{ channel_m_maxtg_reverse_ingress_port }}"
+          LOCK_DIR="/tmp/channel-m-reverse-tunnel.lock"
+          SSH_MARKER="channel_m_reverse_drop"
+          SSH_BIN="/usr/bin/ssh"
+          LOG_TAG="channel-m-reverse"
+
+          log() {
+            logger -t "$LOG_TAG" "$*"
+          }
+
+          if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+            exit 0
+          fi
+          trap 'rmdir "$LOCK_DIR"' EXIT
+
+          nc_probe() {
+            if [ -x /opt/bin/nc ]; then
+              /opt/bin/nc -z -w 3 "$1" "$2" >/dev/null 2>&1
+            else
+              nc -w 3 "$1" "$2" < /dev/null >/dev/null 2>&1
+            fi
+          }
+
+          wait_for_vps_ssh() {
+            attempts=0
+            while [ "$attempts" -lt 30 ]; do
+              if nc_probe "{{ vps_ssh_host }}" 22; then
+                return 0
+              fi
+              attempts=$((attempts + 1))
+              sleep 2
+            done
+            return 1
+          }
+
+          local_ingress_ok() {
+            nc_probe "$TARGET_HOST" "$TARGET_PORT"
+          }
+
+          remote_listener_ok() {
+            "$SSH_BIN" -y -i "$KEY" -T "$VPS" \
+              "ss -ltn 2>/dev/null | grep -q '${LISTEN_HOST}:${LISTEN_PORT}'" \
+              >/dev/null 2>&1
+          }
+
+          tunnel_pids() {
+            ps | grep "$SSH_MARKER" | grep ssh | grep -v grep |
+              sed "s/^ *//" | cut -d" " -f1 || true
+          }
+
+          tunnel_running() {
+            [ -n "$(tunnel_pids)" ]
+          }
+
+          kill_tunnel() {
+            pids="$(tunnel_pids)"
+            [ -n "$pids" ] || return 0
+            printf '%s\n' "$pids" |
+              while read pid; do
+                [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+              done
+            sleep 2
+          }
 
           iptables -C INPUT -i lo -p tcp --dport "$TARGET_PORT" -j ACCEPT 2>/dev/null \
             || iptables -I INPUT 1 -i lo -p tcp --dport "$TARGET_PORT" -j ACCEPT
 
-          if ps | grep channel_m_reverse_dropbear | grep -v grep >/dev/null 2>&1; then
-            exit 0
+          if ! wait_for_vps_ssh; then
+            log "VPS SSH is not reachable; tunnel start deferred"
+            exit 1
           fi
 
-          /usr/bin/ssh -y -i "$KEY" -N -T -f -K 30 -I 0 \
+          if ! local_ingress_ok; then
+            log "local reverse ingress is down; restarting sing-box"
+            if [ -x /opt/etc/init.d/S99sing-box ]; then
+              /opt/etc/init.d/S99sing-box restart >/dev/null 2>&1 || true
+              sleep 5
+            fi
+          fi
+
+          if ! local_ingress_ok; then
+            log "local reverse ingress still down on ${TARGET_HOST}:${TARGET_PORT}"
+            kill_tunnel
+            exit 1
+          fi
+
+          if tunnel_running; then
+            if remote_listener_ok; then
+              exit 0
+            fi
+            log "stale Channel M reverse tunnel detected; remote listener missing"
+            kill_tunnel
+          fi
+
+          "$SSH_BIN" -y -i "$KEY" -N -T -f -K 30 -I 0 \
             -R "$LISTEN_HOST:$LISTEN_PORT:$TARGET_HOST:$TARGET_PORT" \
             "$VPS"
+
+          sleep 3
+          if ! tunnel_running; then
+            log "Channel M reverse tunnel process did not stay running"
+            exit 1
+          fi
+          if ! remote_listener_ok; then
+            log "Channel M reverse remote listener validation failed"
+            kill_tunnel
+            exit 1
+          fi
+          log "Channel M reverse tunnel healthy"
 
     - name: Register Channel M reverse tunnel cron watchdog
       ansible.builtin.raw: >-
         cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+      changed_when: true
+
+    - name: Ensure services-start re-registers Channel M reverse after boot
+      ansible.builtin.raw: |
+        hook="/jffs/scripts/services-start"
+        tmp="/tmp/services-start.channel-m.$$"
+        touch "$hook"
+        chmod 755 "$hook"
+        awk '
+          /# BEGIN ChannelMReverse managed by ansible/ { skip=1; next }
+          /# END ChannelMReverse managed by ansible/ { skip=0; next }
+          skip != 1 { print }
+        ' "$hook" > "$tmp"
+        cat >> "$tmp" <<'SH'
+        # BEGIN ChannelMReverse managed by ansible
+        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
+        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+        ( sleep 45; {{ channel_m_maxtg_reverse_script_path }} ) >/dev/null 2>&1 &
+        # END ChannelMReverse managed by ansible
+        SH
+        mv "$tmp" "$hook"
+        chmod 755 "$hook"
+        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
       changed_when: true
 
     - name: Stop existing Channel M reverse tunnel before restart
