@@ -71,6 +71,9 @@ lane для selected device-client profiles с отдельным ingress/relay 
 C1-Shadowrocket compatibility live-proven и C1-sing-box native Naive
 server-ready/client-blocked, а не VPS-only backend. Автоматический failover через B/C не включается. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 
+Runtime ownership, порты и invariants для redeploy описаны в
+[docs/channel-m-environment.md](docs/channel-m-environment.md).
+
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
 `wgc1_*` NVRAM сохранён только как cold fallback.
 

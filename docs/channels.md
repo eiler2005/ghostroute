@@ -17,6 +17,9 @@ profiles.
 
 Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
+Full Channel M environment ownership, ports and redeploy invariants are in
+[channel-m-environment.md](channel-m-environment.md).
+
 ## Channel A - Production Router Data Plane
 
 Channel A is the primary production path owned by the router.

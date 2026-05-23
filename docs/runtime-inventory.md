@@ -53,6 +53,9 @@ managed destinations remain governed by the managed split.
 
 Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
+The human-readable Channel M environment inventory is
+[channel-m-environment.md](channel-m-environment.md).
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT

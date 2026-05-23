@@ -88,6 +88,9 @@ production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
 home-first, separate from Channel A/B routing and has no automatic failover. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
+Channel M runtime ownership, ports and redeploy invariants are documented in
+[docs/channel-m-environment.md](docs/channel-m-environment.md).
+
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
 
