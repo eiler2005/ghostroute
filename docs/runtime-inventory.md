@@ -51,6 +51,12 @@ exception: plain HTTP `www.google.com:80` may bypass managed Reality so
 `generate_204` health checks can complete. HTTPS Google traffic and normal
 managed destinations remain governed by the managed split.
 
+Channel M is represented as separate service egress listeners for
+`maxtg_bridge`. The active reverse lane uses a router-originated SSH
+remote-forward to a VPS docker bridge listener and a router loopback sing-box
+inbound, while the optional direct public lane stays isolated. Channel M is not
+Channel A/B/C routing and must route only to `direct-out`.
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT

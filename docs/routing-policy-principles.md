@@ -1,7 +1,8 @@
 # Routing Policy Principles
 
 This document is the compact source for GhostRoute routing principles. It
-explains what must stay true across Channel A, Channel B and Channel C. The
+explains what must stay true across Channel A, Channel B and Channel C, plus
+why Channel M is intentionally outside that managed split. The
 runtime implementation still lives in Ansible templates, router scripts and
 domain catalogs listed below.
 
@@ -30,6 +31,27 @@ The endpoint client may choose the first-hop channel, but it must not become the
 main policy engine. The router owns the managed-vs-direct decision after traffic
 has reached home.
 
+Channel M is a service exception for `maxtg_bridge` MAX egress, not part of the
+managed client policy:
+
+```text
+home router -> outbound SSH remote-forward -> VPS docker bridge
+maxtg_bridge container -> authenticated HTTP CONNECT to VPS-local listener
+  -> reverse tunnel target on router loopback
+  -> sing-box inbound `channel-m-maxtg-reverse-egress`
+  -> direct-out via home WAN -> internet
+```
+
+It is authenticated and scoped to MAX API/CDN traffic by the bridge. The router
+does not classify Channel M with `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, policy
+DNS or selected full-VPS rules.
+
+The active reverse lane does not need a new inbound public port on the home
+router and does not reuse Channel C. The optional direct public lane may use
+separate source-allowlisted ingress material, but sharing Channel C `:443` for
+MAX would require an explicit multiplexing/auth-user design and is intentionally
+outside the default policy.
+
 ## Policy Layers
 
 Layer 0 is endpoint/client policy.
@@ -52,6 +74,8 @@ Layer 1 is channel ingress.
 - C1-Shadowrocket compatibility lands in `channel-c-shadowrocket-http-in`.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
+- Channel M service egress lands in `channel-m-maxtg-max-egress` and is
+  isolated by port, TLS/auth credentials and source CIDR allowlist.
 
 Layer 2 is the shared router managed split plus the selected full-VPS override.
 
@@ -66,6 +90,9 @@ Layer 2 is the shared router managed split plus the selected full-VPS override.
   RU/direct/default names use the home/RF/default resolver.
 - A small explicit direct exception set exists for known local/trusted
   destinations such as selected banking and telemetry domains.
+- Channel M does not use the shared managed split. Its single service route is
+  `channel-m-maxtg-reverse-egress -> direct-out`, so MAX API/CDN sees the home
+  WAN IP without touching A/B/C routing or DNS ownership.
 
 Layer 3 is the upstream exit.
 
@@ -76,6 +103,9 @@ Layer 3 is the upstream exit.
 - `direct-out` uses the home WAN; target sites see the home Russian IP.
 - The VPS should not be visible to the mobile operator as the first hop for
   home-first mobile channels.
+- For Channel M, the VPS hosts only the bridge-local reverse listener while the
+  home router remains the egress lane. Target MAX sites see the home WAN IP;
+  A/B/C managed egress state is irrelevant.
 
 ## Managed Catalog Contract
 
@@ -214,13 +244,16 @@ still use home/RF/default upstreams.
 The routing principles above are implemented in these places:
 
 - `ansible/roles/singbox_client/templates/config.json.j2`
-  - sing-box inbounds for A/B/C
+  - sing-box inbounds for A/B/C and Channel M
   - `stealth-domains` and `stealth-static` rule-sets
   - shared post-ingress rules to `reality-out` or `direct-out`
+  - Channel M direct-only rule for `channel-m-maxtg-max-egress`
 - `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2`
   - LAN/Wi-Fi TCP REDIRECT for `STEALTH_DOMAINS` / `VPN_STATIC_NETS`
   - UDP/443 DROP for managed destinations
   - INPUT, MSS and connlimit rules for mobile ingress ports
+  - Channel M source allowlist and deny-by-default INPUT rules for its separate
+    service port
 - `modules/routing-core/router/update-singbox-rule-sets.sh`
   - mirrors dnsmasq/ipset/static policy into sing-box rule-set files for mobile
     Channels A/B/C
@@ -262,6 +295,16 @@ Channel C is selected-client home-first.
   tested SFI/sing-box `1.11.4` because that client does not support outbound
   `type: naive`.
 - Both C1 variants must enter the same router managed split after ingress.
+
+Channel M is service-only MAX egress.
+
+- It accepts only authenticated HTTP CONNECT inside the router-initiated SSH
+  reverse tunnel.
+- It routes `channel-m-maxtg-reverse-egress` directly to `direct-out`.
+- It must not mutate Channel A/B/C ownership, DNS policy, managed catalogs or
+  LAN/Wi-Fi routing.
+- It is not a fallback channel for clients; if `maxtg_bridge` cannot reach it,
+  the bridge should report MAX degraded instead of changing router policy.
 
 ## DNS And IPv6 Principles
 

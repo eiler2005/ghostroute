@@ -19,7 +19,9 @@ Russian README is an operator-facing summary.
 
 GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
 It keeps home LAN devices app-free, gives selected remote clients a home-first
-entrypoint, and keeps routing policy on the router. By default only managed
+entrypoint, and keeps routing policy on the router. It also has an isolated
+service lane for MAX traffic from the `maxtg_bridge` VPS back through the home
+Russian WAN. By default only managed
 destinations use the active Reality egress; selected home Wi-Fi/LAN devices and
 selected Channel A Home Reality profiles can opt into full-VPS mode where all
 internet-bound traffic uses `reality-out`. The active egress is normally the
@@ -36,6 +38,7 @@ secrets and recovery all have separate ownership and tests.
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
+| M | Service MAX egress lane | home router -> SSH remote-forward -> maxtg_bridge VPS docker bridge | MAX API/CDN only, authenticated HTTP CONNECT inside the reverse tunnel, direct-out via home WAN | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 ## Why This Exists
@@ -66,12 +69,16 @@ The layered model separates the main traffic responsibilities:
   VPS. See [docs/channels.md](/docs/channels.md) for the compact A/B/C handoff
   model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
   Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
-  client with Naive outbound support.
+  client with Naive outbound support. Channel M is separate from this managed
+  client layer: it is a service-only reverse SSH lane for MAX egress from
+  `maxtg_bridge`; the bridge uses HTTP CONNECT against the VPS-local reverse
+  listener, and the router sends the resulting traffic out through home WAN.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
   Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
   Reality profiles that should send all internet-bound traffic through
-  `reality-out`.
+  `reality-out`. Channel M bypasses that managed split and routes its inbound
+  tag directly to `direct-out`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
 
 Production endpoint policy is intentionally country-neutral in this repository:
@@ -85,6 +92,8 @@ Only Channel A is part of the automatic router data plane. Channel B is
 production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
 home-first, separate from Channel A/B routing and has no automatic failover.
+Channel M is not Channel A/B/C failover: it is a dedicated service ingress for
+MAX API/CDN egress and never uses `reality-out`.
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
@@ -144,6 +153,11 @@ diagnostic.
   uses sing-box Naive on the home endpoint as the native design, but current
   SFI `1.11.4` rejects outbound `type: naive`. Both router-side paths apply the
   same managed split and Reality/Vision upstream.
+- Channel M service lane for `maxtg_bridge`: the home router opens an SSH
+  remote-forward to the Hetzner/VPS docker bridge; `maxtg_bridge` uses
+  authenticated HTTP CONNECT through that reverse tunnel, and router sing-box
+  routes `channel-m-maxtg-reverse-egress` only to `direct-out` so MAX API/CDN
+  sees the home Russian WAN IP.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -244,6 +258,10 @@ Layer 1 managed channels
   Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like
             -> home endpoint :<home-channel-c-public-port>
             -> router sing-box Naive ingress
+  Channel M -> maxtg_bridge container -> HTTP CONNECT
+            -> VPS docker bridge :<channel-m-reverse-listen-port>
+            -> router-initiated SSH remote-forward
+            -> router sing-box loopback HTTP inbound
                   |
                   v
 Layer 2 home router
@@ -261,6 +279,11 @@ Layer 2 home router
                               |     -> active managed egress -> Internet
                               |
                               +-- non-managed match
+                                    -> direct-out -> home WAN -> Internet
+
+  Channel M MAX service traffic
+                              |
+                              +-- inbound tag channel-m-maxtg-reverse-egress
                                     -> direct-out -> home WAN -> Internet
 
 Layer 3 VPS
@@ -408,6 +431,22 @@ selected-client Channel C artifacts. Shadowrocket compatibility is not proof of
 native Naive; see [docs/channels.md](/docs/channels.md) and
 [docs/channel-c.md](/docs/channel-c.md).
 
+### 6. Channel M MAX Service Egress
+
+Channel M is a service lane for `maxtg_bridge`, not a client failover channel.
+The active production shape is reverse Channel M: the home router initiates an
+SSH remote-forward to the VPS docker bridge, and the bridge connects to that
+VPS-local listener with authenticated HTTP CONNECT. Router-side sing-box
+receives the tunnel target as `channel-m-maxtg-reverse-egress` and routes that
+inbound directly to `direct-out`, so MAX API/CDN destinations see the home WAN
+IP. It does not participate in `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, Reality
+egress, policy DNS, Channel A/B/C ownership or LAN/Wi-Fi routing.
+
+The optional direct public `channel-m-maxtg-max-egress` lane remains documented
+for controlled experiments, but reverse Channel M is the preferred operating
+mode because it does not require a new inbound home public port and does not
+reuse or modify Channel C.
+
 ---
 
 ## Technical Stack
@@ -422,6 +461,7 @@ Router:
   optional Channel B home XHTTP/TLS ingress on :<home-channel-b-port>
   optional Channel B local Xray relay to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
+  optional Channel M MAX egress HTTP inbound on :<home-channel-m-ingress-port>
   policy DNS split via dnsmasq + dnscrypt-proxy over sing-box SOCKS/Reality
   sing-box vps-dns-in remains for DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
@@ -470,6 +510,7 @@ ansible/
   out/clients-emergency/          # generated emergency artifacts, gitignored
   out/clients-channel-b/          # generated Channel B artifacts, gitignored
   out/clients-channel-c/          # generated Channel C artifacts, gitignored
+  out/channel-m-maxtg/            # generated Channel M maxtg service env fragments, gitignored
 
 modules/
   routing-core/

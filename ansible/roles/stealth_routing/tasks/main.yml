@@ -3,6 +3,7 @@
     echo "wan_if=$(nvram get wan0_ifname)"
     echo "wan_gw=$(nvram get wan0_gateway)"
   register: wan_detect
+  check_mode: false
   changed_when: false
 
 - name: Parse WAN facts

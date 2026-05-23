@@ -304,9 +304,12 @@ ansible/out/clients/router.conf
 ansible/out/clients-home/*.conf
 ansible/out/clients-home/*.png
 ansible/out/clients-home/qr-index.html
+ansible/out/channel-m-maxtg/*.env
 ```
 
-They contain client UUIDs, Reality parameters and server access information. They are gitignored and must not be copied into README/docs/issues/chat.
+They contain client UUIDs, Reality parameters, proxy credentials or server
+access information. They are gitignored and must not be copied into
+README/docs/issues/chat.
 
 ## Generate
 
@@ -328,10 +331,13 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 ./modules/client-profile-factory/bin/client-profiles home-open
 ./modules/client-profile-factory/bin/client-profiles emergency-list
 ./modules/client-profile-factory/bin/client-profiles emergency-open
+./modules/client-profile-factory/bin/client-profiles channel-m-list
 ```
 
 `home-open` opens the local home Reality `qr-index.html` when available.
 `emergency-open` opens the disabled/off direct-VPS fallback profiles.
+`channel-m-list` lists the generated maxtg service env fragments; `channel-m-open`
+opens the local Channel M checklist when present.
 
 ## Mobile App DNS Settings Critical
 
@@ -491,6 +497,51 @@ client with outbound `type: naive` support is selected. These profiles never
 change router behavior by themselves; the router C1 ingress is deployed
 separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 
+## Channel M maxtg Service Egress Artifact
+
+Channel M artifacts are not client QR profiles. They are local service fragments
+for wiring `maxtg_bridge` on Hetzner to the home-router MAX egress lane:
+
+```text
+maxtg_bridge container -> HTTP CONNECT -> VPS docker bridge :18057
+home router -> outbound SSH remote-forward -> VPS docker bridge :18057
+tunnel target -> router loopback `channel-m-maxtg-reverse-egress`
+              -> direct-out -> home WAN -> MAX API/CDN
+```
+
+When Channel M is enabled in Vault, profile generation writes:
+
+```text
+ansible/out/channel-m-maxtg/<client>.env
+ansible/out/channel-m-maxtg/README.md
+```
+
+The `.env` file contains `MAX_EGRESS_PROXY_URL` and must be copied only into the
+private `maxtg_bridge` `.env.secrets` on the VPS. It also contains
+`MAX_EGRESS_PROXY_HOST` for `.env.host`; `MAX_EGRESS_PROXY_GATEWAY` is resolved
+on the bridge VPS from the compose docker network. Do not commit generated env
+fragments, paste them into docs, or print them in logs.
+
+View local artifacts:
+
+```bash
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles channel-m-list
+./modules/client-profile-factory/bin/client-profiles channel-m-open
+```
+
+Router invariants after deploy:
+
+- `channel-m-maxtg-max-egress` and `channel-m-maxtg-reverse-egress` route only
+  to `direct-out`.
+- Reverse Channel M uses router-initiated SSH remote-forwarding; it does not
+  require a home inbound public port and does not reuse Channel C.
+- Source allowlist permits only the Vault-configured Hetzner/VPS CIDR for the
+  optional direct public lane.
+- Channel M is not Channel A/B/C failover and does not touch LAN/Wi-Fi routing.
+- `maxtg_bridge` should show `MAX egress: home_ru_proxy`; if Channel M fails,
+  MAX should degrade instead of auto-switching to `hetzner_direct`.
+
 ## Clean Local Artifacts
 
 ```bash
@@ -498,6 +549,7 @@ separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 ./modules/client-profile-factory/bin/client-profiles emergency-clean
 ./modules/client-profile-factory/bin/client-profiles channel-b-clean
 ./modules/client-profile-factory/bin/client-profiles channel-c-clean
+./modules/client-profile-factory/bin/client-profiles channel-m-clean
 ```
 
 This removes generated home mobile files under `ansible/out/clients-home/` and keeps only `.gitkeep`. `ansible/out/clients/router.conf` is the router's VPS identity, not a mobile QR.

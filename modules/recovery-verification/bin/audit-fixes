@@ -133,7 +133,7 @@ check_module_native_contract() {
 
   reject_pattern \
     "docs/modules/tests contain stale ./scripts references" \
-    '[.]/scripts/' \
+    '(^|[^.])\.''/scripts/' \
     "${PROJECT_ROOT}/README.md" "${PROJECT_ROOT}/README-ru.md" \
     "${PROJECT_ROOT}/docs" "${PROJECT_ROOT}/modules" "${PROJECT_ROOT}/tests" \
     --glob '!docs/vpn-domain-journal.md' \

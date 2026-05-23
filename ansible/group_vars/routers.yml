@@ -71,6 +71,28 @@ channel_c_shadowrocket_clients: "{{ vault_channel_c_shadowrocket_clients | defau
 channel_c_shadowrocket_connlimit_above: "{{ vault_channel_c_shadowrocket_connlimit_above | default(channel_c_home_connlimit_above, true) }}"
 channel_c_shadowrocket_mss: "{{ vault_channel_c_shadowrocket_mss | default(channel_c_home_mss, true) }}"
 
+# Channel M: service-to-home MAX egress lane for maxtg_bridge. This is not a
+# user/device channel and must not participate in Channel A/B/C managed split.
+channel_m_maxtg_enabled: "{{ vault_channel_m_maxtg_enabled | default(false) }}"
+channel_m_maxtg_listen: "0.0.0.0"
+channel_m_maxtg_public_host: "{{ vault_channel_m_maxtg_public_host | default(channel_c_home_public_host | default(home_reality_public_host, true), true) }}"
+channel_m_maxtg_public_port: "{{ vault_channel_m_maxtg_public_port | default(4453, true) }}"
+channel_m_maxtg_ingress_port: "{{ vault_channel_m_maxtg_ingress_port | default((channel_c_shadowrocket_ingress_port | int) + 1, true) }}"
+channel_m_maxtg_clients: "{{ vault_channel_m_maxtg_clients | default([]) }}"
+channel_m_maxtg_allowed_source_cidrs: "{{ vault_channel_m_maxtg_allowed_source_cidrs | default([]) }}"
+channel_m_maxtg_connlimit_above: "{{ vault_channel_m_maxtg_connlimit_above | default(80) }}"
+channel_m_maxtg_mss: "{{ vault_channel_m_maxtg_mss | default(1360) }}"
+channel_m_maxtg_tls_cert_path: "{{ vault_channel_m_maxtg_tls_cert_path | default('/opt/etc/sing-box/channel-m-maxtg-fullchain.pem') }}"
+channel_m_maxtg_tls_key_path: "{{ vault_channel_m_maxtg_tls_key_path | default('/opt/etc/sing-box/channel-m-maxtg-privkey.pem') }}"
+channel_m_maxtg_tls_cert_pem: "{{ vault_channel_m_maxtg_tls_cert_pem | default('') }}"
+channel_m_maxtg_tls_key_pem: "{{ vault_channel_m_maxtg_tls_key_pem | default('') }}"
+channel_m_maxtg_reverse_enabled: "{{ vault_channel_m_maxtg_reverse_enabled | default(false) }}"
+channel_m_maxtg_reverse_docker_network: "{{ vault_channel_m_maxtg_reverse_docker_network | default('deploy_default') }}"
+channel_m_maxtg_reverse_listen_port: "{{ vault_channel_m_maxtg_reverse_listen_port | default(18057, true) }}"
+channel_m_maxtg_reverse_ingress_port: "{{ vault_channel_m_maxtg_reverse_ingress_port | default((channel_m_maxtg_ingress_port | int) + 1, true) }}"
+channel_m_maxtg_reverse_key_path: "{{ vault_channel_m_maxtg_reverse_key_path | default('/jffs/keys/channel_m_reverse_dropbear') }}"
+channel_m_maxtg_reverse_script_path: "{{ vault_channel_m_maxtg_reverse_script_path | default('/jffs/scripts/channel-m-reverse-tunnel.sh') }}"
+
 dnscrypt_port: "{{ vault_dnscrypt_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_PORT type=properties file=../../.env', errors='ignore'), true) | default(dnscrypt_port_secret | default('535' ~ '4'), true) }}"
 dnscrypt_listen: "127.0.0.1:{{ dnscrypt_port }}"
 dnscrypt_bin_path: /opt/sbin/dnscrypt-proxy

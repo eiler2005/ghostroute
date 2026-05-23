@@ -12,6 +12,7 @@
     V=$({{ singbox_bin_path }} version 2>/dev/null | head -1 | awk '{print $3}')
     echo "${V}"
   register: sb_ver
+  check_mode: false
   changed_when: false
 
 - name: Warn if sing-box version outdated
@@ -30,6 +31,7 @@
     MINOR=${REST%%.*}
     [ -n "$MAJOR" ] && [ -n "$MINOR" ] || exit 1
     [ "$MAJOR" -gt 1 ] || { [ "$MAJOR" -eq 1 ] && [ "$MINOR" -ge 13 ]; }
+  check_mode: false
   changed_when: false
   when: channel_c_home_enabled | default(false) | bool
 
@@ -180,6 +182,37 @@
   when: channel_c_shadowrocket_enabled | default(false) | bool
   no_log: true
 
+- name: Validate Channel M maxtg MAX egress settings
+  ansible.builtin.assert:
+    that:
+      - channel_m_maxtg_public_host | string | length > 0
+      - channel_m_maxtg_public_port | int > 0
+      - channel_m_maxtg_public_port | int <= 65535
+      - channel_m_maxtg_ingress_port | int > 1024
+      - channel_m_maxtg_ingress_port | int <= 65535
+      - channel_m_maxtg_ingress_port | int not in [443, 1080, 1194, 51820, 8080, 8443]
+      - channel_m_maxtg_ingress_port | string != singbox_redirect_port | string
+      - channel_m_maxtg_ingress_port | string != singbox_dnscrypt_socks_port | string
+      - channel_m_maxtg_ingress_port | string != dnscrypt_port | string
+      - channel_m_maxtg_ingress_port | string != home_reality_ingress_port | string
+      - channel_m_maxtg_ingress_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_m_maxtg_ingress_port | string != channel_c_home_ingress_port | default('') | string
+      - channel_m_maxtg_ingress_port | string != channel_c_shadowrocket_ingress_port | default('') | string
+      - channel_m_maxtg_public_port | string != home_reality_ingress_port | string
+      - channel_m_maxtg_public_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_m_maxtg_public_port | string != channel_c_home_public_port | default('') | string
+      - channel_m_maxtg_public_port | string != channel_c_shadowrocket_public_port | default('') | string
+      - channel_m_maxtg_clients | length > 0
+      - (channel_m_maxtg_clients | selectattr('username', 'defined') | list | length) == (channel_m_maxtg_clients | length)
+      - (channel_m_maxtg_clients | selectattr('password', 'defined') | list | length) == (channel_m_maxtg_clients | length)
+      - channel_m_maxtg_allowed_source_cidrs | length > 0
+      - channel_m_maxtg_tls_cert_path | string | length > 0
+      - channel_m_maxtg_tls_key_path | string | length > 0
+      - channel_m_maxtg_tls_cert_path != channel_m_maxtg_tls_key_path
+    fail_msg: "Channel M needs a home host, unique public/internal ports, source allowlist, TLS cert/key and username/password clients."
+  when: channel_m_maxtg_enabled | default(false) | bool
+  no_log: true
+
 - name: Ensure Channel C1 TLS directory exists
   ansible.builtin.file:
     path: "{{ item | dirname }}"
@@ -216,6 +249,44 @@
     [ -s "{{ channel_c_home_tls_key_path }}" ]
   changed_when: false
   when: channel_c_home_enabled | default(false) | bool
+  no_log: true
+
+- name: Ensure Channel M TLS directory exists
+  ansible.builtin.file:
+    path: "{{ item | dirname }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ channel_m_maxtg_tls_cert_path }}"
+    - "{{ channel_m_maxtg_tls_key_path }}"
+  when: channel_m_maxtg_enabled | default(false) | bool
+
+- name: Install Channel M TLS certificate from vault content when supplied
+  ansible.builtin.copy:
+    dest: "{{ channel_m_maxtg_tls_cert_path }}"
+    content: "{{ channel_m_maxtg_tls_cert_pem }}"
+    mode: "0644"
+  when:
+    - channel_m_maxtg_enabled | default(false) | bool
+    - channel_m_maxtg_tls_cert_pem | default('') | length > 0
+  no_log: true
+
+- name: Install Channel M TLS private key from vault content when supplied
+  ansible.builtin.copy:
+    dest: "{{ channel_m_maxtg_tls_key_path }}"
+    content: "{{ channel_m_maxtg_tls_key_pem }}"
+    mode: "0600"
+  when:
+    - channel_m_maxtg_enabled | default(false) | bool
+    - channel_m_maxtg_tls_key_pem | default('') | length > 0
+  no_log: true
+
+- name: Validate Channel M TLS certificate files exist
+  ansible.builtin.raw: |
+    [ -s "{{ channel_m_maxtg_tls_cert_path }}" ] &&
+    [ -s "{{ channel_m_maxtg_tls_key_path }}" ]
+  changed_when: false
+  when: channel_m_maxtg_enabled | default(false) | bool
   no_log: true
 
 - name: Install sing-box rule-set generator

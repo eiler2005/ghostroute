@@ -85,8 +85,9 @@ described in the root README and `docs/architecture.md`.
 
 | Zone | What Ansible manages | Why it exists |
 |---|---|---|
-| Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks and local QR/profile output under `out/`. | Keeps real credentials and generated client artifacts local while making deployment repeatable. |
+| Control machine | Inventory, non-secret defaults, Vault-backed secrets, syntax/health checks, local QR/profile output and Channel M maxtg service env fragments under `out/`. | Keeps real credentials and generated client/service artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, optional selected full-VPS TPROXY/dnsmasq policy, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: non-selected home LAN/Wi-Fi traffic uses managed split, while selected home Wi-Fi/LAN devices or Home Reality profiles can send all internet-bound traffic through VLESS+Reality+Vision to the active managed egress. |
+| Router / Channel M | Reverse SSH tunnel script/watchdog, router loopback sing-box HTTP inbound `channel-m-maxtg-reverse-egress`, optional direct public `channel-m-maxtg-max-egress`, auth material and direct-out routes. | Gives `maxtg_bridge` a dedicated MAX API/CDN egress through the home WAN without touching A/B/C routing or LAN/Wi-Fi clients. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
 | Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
 
@@ -97,10 +98,11 @@ Playbook ownership is intentionally narrow:
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, optional restricted DNS support, UFW and VPS health monitor. | Refresh the public Reality edge, firewall boundary and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
-| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, cron persistence and health monitor. | Restore or refresh the production router-managed data plane. |
+| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, optional Channel M service ingress, cron persistence and health monitor. | Restore or refresh the production router-managed data plane and service-only MAX egress lane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
-| `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS artifacts under `out/`. | Generate importable profiles without writing credentials to git. |
+| `23-channel-m-reverse.yml` | Router + VPS | Router-originated SSH remote-forward, VPS docker bridge listener firewall persistence, and reverse listener checks. | Keep MAX egress on home WAN without requiring a new inbound home public port or touching Channel C. |
+| `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS and Channel M service artifacts under `out/`. | Generate importable profiles and private service env fragments without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
 Module-local verification playbooks may live with their owning module when they
@@ -125,6 +127,13 @@ Shadowrocket path is C1-Shadowrocket HTTPS CONNECT compatibility and is
 persisted by the Channel C router playbook when enabled. Neither channel may
 mutate Channel A REDIRECT ownership or introduce automatic failover.
 
+Channel M is separate from Channel A/B/C. The active shape is reverse Channel M:
+the router opens an outbound SSH remote-forward to the VPS docker bridge,
+`maxtg_bridge` uses authenticated HTTP CONNECT against that VPS-local listener,
+and router sing-box routes `channel-m-maxtg-reverse-egress` only to
+`direct-out`. It does not use `reality-out`, `STEALTH_DOMAINS`,
+`VPN_STATIC_NETS` or policy DNS.
+
 Managed egress reserve mode is separate from Channel B/C. The router keeps the
 same managed split and the same `reality-out` route target, while
 `router_managed_egress_mode` chooses which backend is rendered behind that tag:
@@ -147,7 +156,7 @@ group_vars/routers.yml           # router defaults and local env fallbacks
 group_vars/vps_stealth.yml       # VPS defaults and local env fallbacks
 secrets/stealth.yml.example      # safe Vault template
 secrets/stealth.yml              # encrypted real Vault, gitignored
-out/                             # generated QR/client artifacts, gitignored
+out/                             # generated QR/client/service artifacts, gitignored
 playbooks/                       # deployment, profile generation and verify
 roles/                           # reusable target-specific configuration
 scripts/                         # Ansible-local helper scripts
@@ -169,7 +178,8 @@ out of that file and use masked tokens instead.
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
 | `22-channel-c-router.yml` | Router | Mutating | Deploys the Channel C1 home-first Naive ingress. |
-| `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles into `out/`. |
+| `23-channel-m-reverse.yml` | Router + VPS | Mutating | Deploys reverse Channel M SSH remote-forward and VPS docker bridge firewall persistence. |
+| `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles and Channel M maxtg env fragments into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 
 Mutating playbooks run the shared GhostRoute deploy gate before and after the

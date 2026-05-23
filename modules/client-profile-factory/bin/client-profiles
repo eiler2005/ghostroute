@@ -8,10 +8,11 @@ HOME_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-home"
 EMERGENCY_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-emergency"
 CHANNEL_B_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-channel-b"
 CHANNEL_C_OUT_DIR="${PROJECT_ROOT}/ansible/out/clients-channel-c"
+CHANNEL_M_OUT_DIR="${PROJECT_ROOT}/ansible/out/channel-m-maxtg"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./modules/client-profile-factory/bin/client-profiles <generate|list|home-list|emergency-list|channel-b-list|channel-c-list|open|home-open|emergency-open|channel-b-open|channel-c-open|clean|home-clean|emergency-clean|channel-b-clean|channel-c-clean>
+Usage: ./modules/client-profile-factory/bin/client-profiles <generate|list|home-list|emergency-list|channel-b-list|channel-c-list|channel-m-list|open|home-open|emergency-open|channel-b-open|channel-c-open|channel-m-open|clean|home-clean|emergency-clean|channel-b-clean|channel-c-clean|channel-m-clean>
 
 Commands:
   generate  Generate local VLESS .conf and QR .png files from ansible-vault.
@@ -20,16 +21,19 @@ Commands:
   emergency-list List generated emergency direct-VPS artifacts.
   channel-b-list List generated Channel B selected-client production artifacts.
   channel-c-list List generated Channel C planned compatibility artifacts.
+  channel-m-list List generated Channel M maxtg service egress artifacts.
   open      Open local qr-index.html when it exists.
   home-open Open local home Reality qr-index.html when it exists.
   emergency-open Open local emergency direct-VPS qr-index.html when it exists.
   channel-b-open Open local Channel B XHTTP qr-index.html when it exists.
   channel-c-open Open local Channel C NaiveProxy qr-index.html when it exists.
+  channel-m-open Open local Channel M operator README when it exists.
   clean     Remove generated local client artifacts.
   home-clean Remove generated home Reality mobile client artifacts.
   emergency-clean Remove generated emergency direct-VPS artifacts.
   channel-b-clean Remove generated Channel B XHTTP artifacts.
   channel-c-clean Remove generated Channel C NaiveProxy artifacts.
+  channel-m-clean Remove generated Channel M maxtg service artifacts.
 EOF
 }
 
@@ -76,6 +80,14 @@ case "$cmd" in
       find "$CHANNEL_C_OUT_DIR" -type f ! -name '.gitkeep' | sort
     else
       echo "No generated Channel C client directory: $CHANNEL_C_OUT_DIR" >&2
+      exit 1
+    fi
+    ;;
+  channel-m-list)
+    if [ -d "$CHANNEL_M_OUT_DIR" ]; then
+      find "$CHANNEL_M_OUT_DIR" -type f ! -name '.gitkeep' | sort
+    else
+      echo "No generated Channel M artifact directory: $CHANNEL_M_OUT_DIR" >&2
       exit 1
     fi
     ;;
@@ -149,6 +161,20 @@ case "$cmd" in
       echo "$index"
     fi
     ;;
+  channel-m-open)
+    index="${CHANNEL_M_OUT_DIR}/README.md"
+    [ -f "$index" ] || {
+      echo "Missing $index. Run: ./modules/client-profile-factory/bin/client-profiles generate" >&2
+      exit 1
+    }
+    if command -v open >/dev/null 2>&1; then
+      open "$index"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$index"
+    else
+      echo "$index"
+    fi
+    ;;
   clean)
     mkdir -p "$OUT_DIR"
     find "$OUT_DIR" -maxdepth 1 -type f ! -name '.gitkeep' -delete
@@ -168,6 +194,10 @@ case "$cmd" in
   channel-c-clean)
     mkdir -p "$CHANNEL_C_OUT_DIR"
     find "$CHANNEL_C_OUT_DIR" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} +
+    ;;
+  channel-m-clean)
+    mkdir -p "$CHANNEL_M_OUT_DIR"
+    find "$CHANNEL_M_OUT_DIR" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} +
     ;;
   -h|--help|help|"")
     usage

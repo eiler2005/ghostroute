@@ -4,6 +4,7 @@
   vars_files:
     - ../group_vars/all.yml
     - ../group_vars/vps_stealth.yml
+    - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   tasks:
     - name: Host Caddy has layer4 module
@@ -46,6 +47,75 @@
     - name: maxtg_bridge container still running
       ansible.builtin.shell: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q deploy-bridge-1"
       changed_when: false
+
+    - name: Channel M reverse listener is bound on the VPS docker bridge
+      ansible.builtin.shell: |
+        listen_ip="$(python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            gateway = json.loads(raw)[0]["IPAM"]["Config"][0]["Gateway"]
+            if gateway:
+                print(gateway)
+                raise SystemExit(0)
+        except Exception:
+            pass
+        subprocess.run(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            check=True,
+        )
+        PY
+        )"
+        ss -ltn | grep -q "${listen_ip}:{{ channel_m_maxtg_reverse_listen_port }}"
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M reverse docker bridge firewall persistence is active
+      ansible.builtin.shell: |
+        systemctl is-enabled --quiet channel-m-reverse-firewall.service
+        systemctl is-enabled --quiet channel-m-reverse-firewall.timer
+        systemctl is-active --quiet channel-m-reverse-firewall.timer
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M reverse docker bridge firewall permits bridge clients
+      ansible.builtin.shell: |
+        values="$(python3 - <<'PY'
+        import json
+        import subprocess
+
+        network = "{{ channel_m_maxtg_reverse_docker_network }}"
+        try:
+            raw = subprocess.check_output(["docker", "network", "inspect", network], text=True)
+            config = json.loads(raw)[0]["IPAM"]["Config"][0]
+            print(config.get("Gateway", ""))
+            print(config.get("Subnet", ""))
+            raise SystemExit(0)
+        except Exception:
+            pass
+        gateway = subprocess.check_output(
+            "ip -4 addr show docker0 | awk '/inet / { split($2, a, \"/\"); print a[1]; exit }'",
+            shell=True,
+            text=True,
+        ).strip()
+        subnet = subprocess.check_output(
+            "ip -4 addr show docker0 | awk '/inet / { print $2; exit }'",
+            shell=True,
+            text=True,
+        ).strip()
+        print(gateway)
+        print(subnet)
+        PY
+        )"
+        gateway="$(printf '%s\n' "$values" | sed -n '1p')"
+        subnet="$(printf '%s\n' "$values" | sed -n '2p')"
+        iptables -C INPUT -p tcp -s "$subnet" -d "$gateway" --dport "{{ channel_m_maxtg_reverse_listen_port }}" -j ACCEPT
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
 
     - name: Shared OpenClaw site still requires mTLS after Caddy restart
       when:
@@ -238,6 +308,8 @@
         GHOSTROUTE_CHANNEL_B_HOME_PORT="${GHOSTROUTE_CHANNEL_B_HOME_PORT:-{{ channel_b_home_ingress_port | default('') }}}"
         GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT:-{{ channel_c_home_public_port | default('') }}}"
         GHOSTROUTE_CHANNEL_C_HOME_PORT="${GHOSTROUTE_CHANNEL_C_HOME_PORT:-$(port_by_tag channel-c-naive-in)}"
+        GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT="${GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT:-{{ channel_m_maxtg_public_port | default('') }}}"
+        GHOSTROUTE_CHANNEL_M_MAXTG_PORT="${GHOSTROUTE_CHANNEL_M_MAXTG_PORT:-$(port_by_tag channel-m-maxtg-max-egress)}"
         GHOSTROUTE_VPS_DNS_FORWARD_PORT="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(port_by_tag vps-dns-in)}"
         GHOSTROUTE_DNSCRYPT_PORT="${GHOSTROUTE_DNSCRYPT_PORT:-{{ dnscrypt_port }}}"
         GHOSTROUTE_MANAGED_DNS_FORWARD_HOST="${GHOSTROUTE_MANAGED_DNS_FORWARD_HOST:-{{ router_managed_dns_forward_host | default('127.0.0.1') }}}"
@@ -248,6 +320,8 @@
         printf 'GHOSTROUTE_CHANNEL_B_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_B_HOME_PORT"
         printf 'GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT"
         printf 'GHOSTROUTE_CHANNEL_C_HOME_PORT=%s\n' "$GHOSTROUTE_CHANNEL_C_HOME_PORT"
+        printf 'GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT=%s\n' "$GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT"
+        printf 'GHOSTROUTE_CHANNEL_M_MAXTG_PORT=%s\n' "$GHOSTROUTE_CHANNEL_M_MAXTG_PORT"
         printf 'GHOSTROUTE_VPS_DNS_FORWARD_PORT=%s\n' "$GHOSTROUTE_VPS_DNS_FORWARD_PORT"
         printf 'GHOSTROUTE_DNSCRYPT_PORT=%s\n' "$GHOSTROUTE_DNSCRYPT_PORT"
         printf 'GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=%s\n' "$GHOSTROUTE_MANAGED_DNS_FORWARD_HOST"
@@ -264,6 +338,8 @@
         channel_b_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_B_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_B_HOME_PORT=', '') }}"
         channel_c_home_public_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PUBLIC_PORT=', '') }}"
         channel_c_home_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_C_HOME_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_C_HOME_PORT=', '') }}"
+        channel_m_maxtg_public_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_M_MAXTG_PUBLIC_PORT=', '') }}"
+        channel_m_maxtg_ingress_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_CHANNEL_M_MAXTG_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_CHANNEL_M_MAXTG_PORT=', '') }}"
         router_vps_dns_forward_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_VPS_DNS_FORWARD_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_VPS_DNS_FORWARD_PORT=', '') }}"
         dnscrypt_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_PORT=', '') }}"
         router_managed_dns_forward_host: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=') | first | default('') | regex_replace('^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=', '') }}"
@@ -704,6 +780,77 @@
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":853,"outbound":"reality-out"'
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: Channel M maxtg MAX egress listener is running when enabled
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_m_maxtg_ingress_port }}'"
+      changed_when: false
+      when: channel_m_maxtg_enabled | default(false) | bool
+
+    - name: Channel M reverse loopback listener is running when enabled
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ channel_m_maxtg_reverse_ingress_port }}'"
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M reverse tunnel cron watchdog is installed when enabled
+      ansible.builtin.shell: "cru l 2>/dev/null | grep -q '{{ channel_m_maxtg_reverse_script_path }}'"
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M maxtg ingress has deny-by-default INPUT firewall rule
+      ansible.builtin.shell: |
+        iptables -S INPUT | awk '
+          /--dport {{ channel_m_maxtg_ingress_port }}/ && /-j DROP/ && $0 !~ /connlimit/ { found = 1 }
+          END { exit !found }
+        '
+      changed_when: false
+      when: channel_m_maxtg_enabled | default(false) | bool
+
+    - name: Channel M maxtg public port redirects to dedicated ingress port
+      ansible.builtin.shell: "iptables -t nat -S PREROUTING | grep -q -- '--dport {{ channel_m_maxtg_public_port }} .*REDIRECT .*--to-ports {{ channel_m_maxtg_ingress_port }}'"
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - (channel_m_maxtg_public_port | string) != (channel_m_maxtg_ingress_port | string)
+
+    - name: Channel M maxtg ingress is source allowlisted by INPUT firewall
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-s {{ item }} .*--dport {{ channel_m_maxtg_ingress_port }} .*ACCEPT'"
+      loop: "{{ channel_m_maxtg_allowed_source_cidrs | default([]) }}"
+      changed_when: false
+      when: channel_m_maxtg_enabled | default(false) | bool
+      no_log: true
+
+    - name: sing-box has Channel M HTTP inbound with direct-only routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"type":"http"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-m-maxtg-max-egress"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_m_maxtg_ingress_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"certificate_path":"{{ channel_m_maxtg_tls_cert_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"key_path":"{{ channel_m_maxtg_tls_key_path }}"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-max-egress","outbound":"direct-out"' &&
+        ! printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-max-egress","rule_set"' &&
+        ! printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-max-egress","outbound":"reality-out"'
+      changed_when: false
+      when: channel_m_maxtg_enabled | default(false) | bool
+
+    - name: sing-box has Channel M reverse HTTP inbound with direct-only routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"type":"http"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-m-maxtg-reverse-egress"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen":"127.0.0.1"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_m_maxtg_reverse_ingress_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-reverse-egress","outbound":"direct-out"' &&
+        ! printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-reverse-egress","rule_set"' &&
+        ! printf '%s' "$cfg" | grep -Fq '"inbound":"channel-m-maxtg-reverse-egress","outbound":"reality-out"'
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - channel_m_maxtg_reverse_enabled | default(false) | bool
 
     - name: dnscrypt-proxy routes DoH through sing-box SOCKS
       ansible.builtin.shell: "grep -q '^proxy = .socks5://127.0.0.1:{{ singbox_dnscrypt_socks_port }}.' {{ dnscrypt_config_path }}"

@@ -1,4 +1,4 @@
-# GhostRoute Channels A / B / C
+# GhostRoute Channels A / B / C / M
 
 This document is the short handoff view of the current channel model. All
 managed channels are home-first: the endpoint's first visible remote endpoint is
@@ -14,6 +14,9 @@ the endpoint selects the first-hop channel, then the router owns the route
 decision. The default decision is managed-vs-direct split; Channel A also has an
 explicit selected full-VPS override for home Wi-Fi/LAN devices and Home Reality
 profiles.
+
+Channel M is intentionally different: it is a service egress lane for
+`maxtg_bridge`, not a managed client channel.
 
 ## Channel A - Production Router Data Plane
 
@@ -209,6 +212,55 @@ Current production interpretation:
 - Re-test only with an iOS sing-box/SFI build that supports outbound
   `"type": "naive"`.
 
+## Channel M - Service MAX Egress Lane
+
+Channel M exists only for MAX traffic from `maxtg_bridge`.
+
+```text
+home router
+  -> outbound SSH remote-forward
+  -> VPS docker bridge :<channel-m-reverse-listen-port>
+
+maxtg_bridge container on Hetzner/VPS
+  -> authenticated HTTP CONNECT to the VPS-local reverse listener
+  -> SSH remote-forward target on router loopback
+  -> router sing-box HTTP inbound `channel-m-maxtg-reverse-egress`
+  -> direct-out via home WAN -> internet
+```
+
+What the remote exposure model allows:
+
+```text
+no new inbound home public port is required for the active reverse lane
+the VPS listener is bound to the docker bridge, not the public internet
+```
+
+What target MAX API/CDN sites see:
+
+```text
+home WAN Russian IP
+```
+
+Main role:
+
+- MAX API socket and MAX CDN downloads for `maxtg_bridge`.
+- Authenticated HTTP CONNECT with per-service username/password inside the SSH
+  reverse tunnel.
+- Route rule is only `inbound=channel-m-maxtg-reverse-egress -> direct-out`.
+- The optional direct public `channel-m-maxtg-max-egress` lane remains isolated
+  and source-allowlisted for controlled experiments, but it is not required for
+  the active reverse design.
+- Reusing Channel C `:443` or adding MAX auth users to a Channel C inbound is a
+  separate design change and is not part of Channel M.
+
+Isolation rule:
+
+- Channel M is not Channel A/B/C failover.
+- Channel M does not use `reality-out`.
+- Channel M does not participate in `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, DNS
+  policy, Channel A REDIRECT ownership, Channel B/C client routing, or LAN/Wi-Fi
+  routing.
+
 ## No Automatic Failover
 
 No channel automatically fails over to another channel.
@@ -217,6 +269,7 @@ No channel automatically fails over to another channel.
 Channel A != automatic fallback to B or C
 Channel B != automatic fallback for A
 Channel C != automatic fallback for A/B
+Channel M != automatic fallback for A/B/C
 WireGuard = cold manual fallback only
 ```
 
