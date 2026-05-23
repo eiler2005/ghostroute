@@ -90,6 +90,10 @@ assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'MAX_EGRESS_
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'channel_m_artifacts_only'
 assert_contains "modules/client-profile-factory/bin/client-profiles" 'channel-m-list'
 assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel M maxtg Service Egress Artifact'
+assert_contains "docs/channel-m-environment.md" 'channel-m-maxtg-reverse-egress -> direct-out'
+assert_contains "docs/channel-m-environment.md" 'channel_m_maxtg_reverse_listen_port'
+assert_contains "docs/channel-m-environment.md" 'No public home inbound port is required'
+assert_contains "docs/channels.md" 'channel-m-environment.md'
 assert_contains ".gitignore" '/ansible/out/channel-m-maxtg/*'
 
 echo "channel-m static tests passed"

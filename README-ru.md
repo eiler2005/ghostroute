@@ -78,6 +78,9 @@ server-ready/client-blocked, а не VPS-only backend.
 Channel M не является failover для A/B/C и не использует `reality-out`: это
 отдельный служебный MAX API/CDN egress через домашний WAN.
 
+Runtime ownership, порты и invariants для redeploy описаны в
+[docs/channel-m-environment.md](docs/channel-m-environment.md).
+
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
 `wgc1_*` NVRAM сохранён только как cold fallback.
 

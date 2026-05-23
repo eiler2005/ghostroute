@@ -18,6 +18,9 @@ profiles.
 Channel M is intentionally different: it is a service egress lane for
 `maxtg_bridge`, not a managed client channel.
 
+Full Channel M environment ownership, ports and redeploy invariants are in
+[channel-m-environment.md](channel-m-environment.md).
+
 ## Channel A - Production Router Data Plane
 
 Channel A is the primary production path owned by the router.

@@ -57,6 +57,9 @@ remote-forward to a VPS docker bridge listener and a router loopback sing-box
 inbound, while the optional direct public lane stays isolated. Channel M is not
 Channel A/B/C routing and must route only to `direct-out`.
 
+The human-readable Channel M environment inventory is
+[channel-m-environment.md](channel-m-environment.md).
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT

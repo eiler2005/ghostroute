@@ -95,6 +95,9 @@ home-first, separate from Channel A/B routing and has no automatic failover.
 Channel M is not Channel A/B/C failover: it is a dedicated service ingress for
 MAX API/CDN egress and never uses `reality-out`.
 
+Channel M runtime ownership, ports and redeploy invariants are documented in
+[docs/channel-m-environment.md](docs/channel-m-environment.md).
+
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 `wgc1_*` NVRAM remains only as a cold fallback.
 
