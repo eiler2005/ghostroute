@@ -146,10 +146,71 @@ append_current_mobile_counters() {
     rm -f "$tmp_rules"
   elif router_health_load_env >/dev/null 2>&1; then
     { router_ssh 'sh -s' <<'REMOTE' | awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' >> "${STATE_DIR}/mobile-reality-counters.tsv"; } || true
+SINGBOX_LOG="${SINGBOX_LOG:-/opt/var/log/sing-box.log}"
 TMP_RULES="/tmp/traffic-evidence-mobile.$$"
+TMP_CLIENT_IPS="/tmp/traffic-evidence-mobile-clients.$$"
+TMP_CLIENT_MAP="/tmp/traffic-evidence-mobile-map.$$"
+trap 'rm -f "$TMP_RULES" "$TMP_CLIENT_IPS" "$TMP_CLIENT_MAP"' EXIT
+
+if [ -f "$SINGBOX_LOG" ]; then
+  today="$(date +%Y-%m-%d)"
+  grep " $today " "$SINGBOX_LOG" 2>/dev/null | awk '
+    function conn_id(line,   body, parts) {
+      if (match(line, /\[[0-9]+ [^]]+\]/)) {
+        body = substr(line, RSTART + 1, RLENGTH - 2)
+        split(body, parts, " ")
+        return parts[1]
+      }
+      return ""
+    }
+    /inbound\/vless\[reality-in\]: inbound connection from / {
+      id = conn_id($0)
+      if (id == "") next
+      ip = $0
+      sub(/^.* inbound connection from /, "", ip)
+      sub(/:[0-9]+.*$/, "", ip)
+      remote_by_id[id] = ip
+      next
+    }
+    /inbound\/vless\[reality-in\]: \[[^]]+\] inbound connection to / {
+      id = conn_id($0)
+      if (id == "" || !(id in remote_by_id)) next
+      client = $0
+      sub(/^.*inbound\/vless\[reality-in\]: \[/, "", client)
+      sub(/\].*$/, "", client)
+      ip = remote_by_id[id]
+      if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && client != "") {
+        print ip "|" client
+      }
+    }' | sort -u > "$TMP_CLIENT_IPS"
+else
+  : > "$TMP_CLIENT_IPS"
+fi
+
+awk -F'|' '
+  BEGIN { OFS = "|" }
+  {
+    ip = $1
+    client = $2
+    if (ip == "" || client == "") next
+    if (seen[ip, client]) next
+    seen[ip, client] = 1
+    if (label[ip] == "") label[ip] = client
+    else label[ip] = label[ip] "+" client
+  }
+  END {
+    for (ip in label) print ip, label[ip]
+  }
+' "$TMP_CLIENT_IPS" > "$TMP_CLIENT_MAP"
+
 iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || exit 0
 awk '
   BEGIN { OFS = "|" }
+  NR == FNR {
+    split($0, fields, "|")
+    label[fields[1]] = fields[2]
+    next
+  }
   {
     if (NF < 1 || $0 !~ / -A RC_MOBILE_REALITY_/) next
     bytes = $1
@@ -173,11 +234,11 @@ awk '
     for (ip in ips) {
       up = upload[ip]; if (up == "") up = "0"
       down = download[ip]; if (down == "") down = "0"
-      print ip, "remote:" ip, up, down
+      client = label[ip]; if (client == "") client = "remote:" ip
+      print ip, client, up, down
     }
   }
-' "$TMP_RULES"
-rm -f "$TMP_RULES"
+' "$TMP_CLIENT_MAP" "$TMP_RULES"
 REMOTE
   fi
 }

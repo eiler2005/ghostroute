@@ -847,8 +847,16 @@ function operatorDnsRow(row: Record<string, any>): Record<string, any> | null {
   };
 }
 
+function normalizedRouteValue(value: unknown) {
+  const route = String(value || "").trim().toLowerCase();
+  if (route === "vps") return "VPS";
+  if (route === "direct") return "Direct";
+  if (route === "mixed") return "Mixed";
+  return "Unknown";
+}
+
 function dnsRouteValue(value: unknown) {
-  return String(value || "").toLowerCase() === "vps" ? "VPS" : "Direct";
+  return normalizedRouteValue(value);
 }
 
 function operatorLiveRow(row: Record<string, any>): Record<string, any> | null {
@@ -899,6 +907,18 @@ function splitCounters(row: Record<string, any>, totalBytes = Number(row.bytes |
     direct_bytes: directBytes,
     unknown_bytes: unknownBytes,
   };
+}
+
+function routeFromSplitBytes(split: Record<string, any>, fallback: unknown = "Unknown") {
+  const viaVpsBytes = Number(split.via_vps_bytes || split.reality_bytes || split.vps_bytes || 0);
+  const directBytes = Number(split.direct_bytes || split.wan_bytes || 0);
+  const unknownBytes = Number(split.unknown_bytes || split.unresolved_bytes || 0);
+  const positiveRoutes = [viaVpsBytes, directBytes, unknownBytes].filter((value) => value > 0).length;
+  if (positiveRoutes > 1) return "Mixed";
+  if (viaVpsBytes > 0) return "VPS";
+  if (directBytes > 0) return "Direct";
+  if (unknownBytes > 0) return "Unknown";
+  return normalizedRouteValue(fallback);
 }
 
 function isMobileRealityCounterRow(row: Record<string, any>) {
@@ -2630,11 +2650,11 @@ function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
   const where = [latest.sql];
   const params = [...latest.params];
   if (route !== "all") {
-    if (route === "VPS") {
-      where.push("route = ?");
+    if (route === "VPS" || route === "Direct" || route === "Mixed") {
+      where.push("lower(route) = lower(?)");
       params.push(route);
     } else {
-      where.push("coalesce(route, '') != 'VPS'");
+      where.push("lower(coalesce(route, '')) not in ('vps', 'direct', 'mixed')");
     }
   }
   if (filters.confidence && filters.confidence !== "all") {
@@ -3040,6 +3060,9 @@ function mergeSiteEvidenceRows(rows: Array<Record<string, any>>, limit = 200) {
       total_bytes: 0,
       factual_bytes: 0,
       inferred_bytes: 0,
+      via_vps_bytes: 0,
+      direct_bytes: 0,
+      unknown_bytes: 0,
       dns_queries: 0,
       flows: 0,
       routes: new Set<string>(),
@@ -3052,6 +3075,9 @@ function mergeSiteEvidenceRows(rows: Array<Record<string, any>>, limit = 200) {
     current.total_bytes += effective;
     current.factual_bytes += Number(row.factual_bytes || 0);
     current.inferred_bytes += Number(row.inferred_bytes || 0);
+    current.via_vps_bytes += Number(row.via_vps_bytes || 0);
+    current.direct_bytes += Number(row.direct_bytes || 0);
+    current.unknown_bytes += Number(row.unknown_bytes || Math.max(0, effective - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0)));
     current.dns_queries += Number(row.dns_queries || row.count || 0);
     current.flows += Number(row.flows || row.connections || 0);
     if (row.route) current.routes.add(String(row.route));
@@ -3080,6 +3106,32 @@ function mergeSiteEvidenceRows(rows: Array<Record<string, any>>, limit = 200) {
     });
 }
 
+function inferredRouteSplit(totalBytes: number, source: Record<string, any>) {
+  const total = Math.max(0, Math.round(Number(totalBytes || 0)));
+  const rawViaVpsBytes = Number(source.via_vps_bytes || source.reality_bytes || source.vps_bytes || 0);
+  const rawDirectBytes = Number(source.direct_bytes || source.wan_bytes || 0);
+  const rawUnknownBytes = Number(source.unknown_bytes || source.unresolved_bytes || 0);
+  const rawTotal = rawViaVpsBytes + rawDirectBytes + rawUnknownBytes;
+  const fallbackRoute = normalizedRouteValue(source.route || source.raw_route);
+  if (total <= 0) {
+    return { via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, route: fallbackRoute };
+  }
+  if (rawTotal > 0) {
+    const viaVpsBytes = Math.round(total * (rawViaVpsBytes / rawTotal));
+    const directBytes = Math.round(total * (rawDirectBytes / rawTotal));
+    const unknownBytes = Math.max(0, total - viaVpsBytes - directBytes);
+    const split = {
+      via_vps_bytes: viaVpsBytes,
+      direct_bytes: directBytes,
+      unknown_bytes: unknownBytes,
+    };
+    return { ...split, route: routeFromSplitBytes(split, fallbackRoute) };
+  }
+  if (fallbackRoute === "VPS") return { via_vps_bytes: total, direct_bytes: 0, unknown_bytes: 0, route: "VPS" };
+  if (fallbackRoute === "Direct") return { via_vps_bytes: 0, direct_bytes: total, unknown_bytes: 0, route: "Direct" };
+  return { via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: total, route: fallbackRoute === "Mixed" ? "Mixed" : "Unknown" };
+}
+
 function distributeResidualBytes(residualBytes: number, dnsRows: Array<Record<string, any>>, target: Record<string, any>) {
   const totalQueries = dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0);
   if (residualBytes <= 0 || totalQueries <= 0) return [];
@@ -3098,7 +3150,7 @@ function distributeResidualBytes(residualBytes: number, dnsRows: Array<Record<st
       inferred_bytes: inferred,
       dns_queries: count,
       flows: count,
-      route: row.route || target.route || "Unknown",
+      ...inferredRouteSplit(inferred, target),
       attribution_source: "dns_inferred",
       byte_confidence: "estimated",
       confidence: row.confidence || "dns-inferred",
@@ -3243,10 +3295,11 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
     const windowSummary = clientWindowTrafficSummary(target, period);
     const selectedBytes = observedByteValue(target);
     const targetBytes = selectedBytes > 0 ? selectedBytes : observedByteValue(windowSummary);
+    const inferenceTarget = observedByteValue(windowSummary) > 0 ? windowSummary : target;
     const residualBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes));
     const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
     const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
-    const inferredRows = distributeResidualBytes(residualBytes, residualDnsRows.length ? residualDnsRows : dnsRows, target);
+    const inferredRows = distributeResidualBytes(residualBytes, residualDnsRows.length ? residualDnsRows : dnsRows, inferenceTarget);
     const coarseEffectiveRows = inferredRows.length > 0
       ? []
       : scaleCoarseRowsToResidual(coarseRows, Math.max(0, targetBytes - exactFactualBytes));
@@ -3260,7 +3313,7 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
         factual_bytes: 0,
         inferred_bytes: fallbackBytes,
         dns_queries: 0,
-        route: target.route || "Unknown",
+        ...inferredRouteSplit(fallbackBytes, inferenceTarget),
         attribution_source: "aggregate_residual",
         byte_confidence: "residual",
         confidence: "estimated",
@@ -3277,7 +3330,7 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
         factual_bytes: 0,
         inferred_bytes: hiddenTailBytes,
         dns_queries: Math.max(0, dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0) - evidence.reduce((sum, row) => sum + Number(row.dns_queries || 0), 0)),
-        route: target.route || "Unknown",
+        ...inferredRouteSplit(hiddenTailBytes, inferenceTarget),
         attribution_source: "aggregate_residual",
         byte_confidence: "residual",
         confidence: "estimated",
@@ -5497,17 +5550,22 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
   if (!target) return rows;
   const summary = clientWindowTrafficSummary(target, period);
   const targetBytes = observedByteValue(target) || observedByteValue(summary);
-  const summaryRoute = routeFromCounters(summary);
   const rowBytes = rows.reduce((sum, row) => sum + Number(row.bytes || row.total_bytes || 0), 0);
   const residual = Math.round(targetBytes - rowBytes);
   if (targetBytes <= 0 || residual <= Math.max(64 * 1024, targetBytes * 0.05)) return rows;
+  const residualSource = observedByteValue(summary) > 0 ? summary : target;
+  const residualSplit = inferredRouteSplit(residual, residualSource);
   const next: Array<Record<string, any>> = rows.map((row) => ({ ...row, sample_domains: Array.isArray(row.sample_domains) ? [...row.sample_domains] : row.sample_domains }));
   const existing = next.find((row) => String(row.app_family || "").toLowerCase() === "other / uncategorized");
   const residualSample = "aggregate client byte evidence";
   if (existing) {
     existing.bytes = Number(existing.bytes || existing.total_bytes || 0) + residual;
     existing.total_bytes = Number(existing.total_bytes || 0) + residual;
-    existing.unknown_bytes = Number(existing.unknown_bytes || 0) + residual;
+    existing.via_vps_bytes = Number(existing.via_vps_bytes || 0) + residualSplit.via_vps_bytes;
+    existing.direct_bytes = Number(existing.direct_bytes || 0) + residualSplit.direct_bytes;
+    existing.unknown_bytes = Number(existing.unknown_bytes || 0) + residualSplit.unknown_bytes;
+    if (existing.routes instanceof Set) existing.routes.add(residualSplit.route);
+    existing.route = routeFromSplitBytes(existing, existing.route || residualSplit.route);
     existing.app_source = existing.app_source === "ip_only" ? "aggregate_residual" : existing.app_source || "aggregate_residual";
     existing.app_confidence = existing.app_confidence || "residual";
     existing.byte_confidence = existing.byte_confidence || "residual";
@@ -5519,15 +5577,15 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
       app_category: "uncategorized",
       bytes: residual,
       total_bytes: residual,
-      via_vps_bytes: 0,
-      direct_bytes: 0,
-      unknown_bytes: residual,
+      via_vps_bytes: residualSplit.via_vps_bytes,
+      direct_bytes: residualSplit.direct_bytes,
+      unknown_bytes: residualSplit.unknown_bytes,
       flows: 0,
       dns_queries: 0,
       clients: new Set<string>(),
       client_count: 1,
       routes: new Set<string>(),
-      route: target.route || summaryRoute || "Unknown",
+      route: residualSplit.route,
       sample_domains: [residualSample],
       confidence: "estimated",
       app_source: "aggregate_residual",

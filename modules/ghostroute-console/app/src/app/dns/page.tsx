@@ -32,7 +32,11 @@ function grouped(rows: Array<Record<string, any>>, key: string, limit = 6) {
 }
 
 function dnsRoute(row: Record<string, any>) {
-  return String(row.route || "").toLowerCase() === "vps" ? "VPS" : "Direct";
+  const route = String(row.route || "").trim().toLowerCase();
+  if (route === "vps") return "VPS";
+  if (route === "direct") return "Direct";
+  if (route === "mixed") return "Mixed";
+  return "Unknown";
 }
 
 function dnsTime(row: Record<string, any>) {
