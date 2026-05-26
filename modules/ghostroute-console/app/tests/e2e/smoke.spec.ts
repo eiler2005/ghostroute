@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-const pages = ["/", "/traffic", "/dns", "/intelligence", "/clients", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
+const pages = ["/", "/traffic", "/dns", "/intelligence", "/clients", "/apps", "/health", "/catalog", "/budget", "/live", "/reports", "/settings"];
 const mobileRedirects: Record<string, string> = {
   "/": "/m",
   "/traffic": "/m/traffic",
   "/dns": "/m/dns",
   "/clients": "/m/clients",
+  "/apps": "/m/apps",
   "/health": "/m/health",
   "/live": "/m/live",
   "/catalog": "/m/catalog",

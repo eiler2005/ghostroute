@@ -30,10 +30,10 @@ HOP_BY_HOP = {
 
 class ClosingHTTPConnection(http.client.HTTPConnection):
     # Next.js streams HTML without a Content-Length on HTTP/1.1. The buffer
-    # proxy intentionally requests a close-delimited HTTP/1.0 response so
-    # upstream.read() has a deterministic end before nginx receives the body.
-    _http_vsn = 10
-    _http_vsn_str = "HTTP/1.0"
+    # proxy keeps Connection: close on the upstream request so upstream.read()
+    # has a deterministic end before nginx receives the body.
+    _http_vsn = 11
+    _http_vsn_str = "HTTP/1.1"
 
 
 class BufferProxyHandler(BaseHTTPRequestHandler):
