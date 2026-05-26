@@ -69,12 +69,14 @@ maxtg_bridge container on VPS
 ## Router Reboot Recovery
 
 The router-side script is deliberately stricter than a process-presence check.
-Each cron or boot-delayed run takes a lock, waits for VPS SSH reachability,
-checks `127.0.0.1:<channel-m-reverse-ingress-port>`, verifies the remote VPS
-listener and verifies that HTTP CONNECT through it reaches the router proxy,
-kills stale reverse SSH sessions when validation fails, then starts a fresh
-`ssh -R` tunnel. If local sing-box ingress is down after boot, it attempts one
-sing-box restart before giving up to the next cron cycle.
+Each cron or boot-delayed run takes a lock with `pid` and `started_at`
+metadata, waits for VPS SSH reachability, checks
+`127.0.0.1:<channel-m-reverse-ingress-port>`, verifies the remote VPS listener
+and verifies that HTTP CONNECT through it reaches the router proxy, kills stale
+reverse SSH sessions when validation fails, then starts a fresh `ssh -R`
+tunnel. If an earlier watchdog run left a stale lock, the next run clears locks
+older than 5 minutes before retrying. If local sing-box ingress is down after
+boot, it attempts one sing-box restart before giving up to the next cron cycle.
 
 The VPS-side listener watchdog covers the other half of router reboot recovery:
 if an orphan `sshd` process keeps the VPS listener bound but the listener no

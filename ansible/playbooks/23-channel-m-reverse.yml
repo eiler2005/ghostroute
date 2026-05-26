@@ -329,10 +329,39 @@
             logger -t "$LOG_TAG" "$*"
           }
 
-          if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+          acquire_lock() {
+            now="$(date +%s)"
+            if mkdir "$LOCK_DIR" 2>/dev/null; then
+              printf '%s\n' "$$" > "$LOCK_DIR/pid"
+              printf '%s\n' "$now" > "$LOCK_DIR/started_at"
+              trap 'rm -rf "$LOCK_DIR"' EXIT
+              return 0
+            fi
+
+            old_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+            started_at="$(cat "$LOCK_DIR/started_at" 2>/dev/null || true)"
+            case "$started_at" in
+              ''|*[!0-9]*) started_at=0 ;;
+            esac
+            lock_age=$((now - started_at))
+            if [ -z "$old_pid" ] || [ "$lock_age" -gt 300 ]; then
+              log "stale Channel M reverse lock detected; clearing"
+              if [ -n "$old_pid" ]; then
+                ps w | grep "^[ ]*$old_pid " | grep -q "channel-m-reverse-tunnel.sh" &&
+                  kill "$old_pid" 2>/dev/null || true
+              fi
+              rm -rf "$LOCK_DIR"
+              if mkdir "$LOCK_DIR" 2>/dev/null; then
+                printf '%s\n' "$$" > "$LOCK_DIR/pid"
+                printf '%s\n' "$now" > "$LOCK_DIR/started_at"
+                trap 'rm -rf "$LOCK_DIR"' EXIT
+                return 0
+              fi
+            fi
             exit 0
-          fi
-          trap 'rmdir "$LOCK_DIR"' EXIT
+          }
+
+          acquire_lock
 
           nc_probe() {
             if [ -x /opt/bin/nc ]; then
