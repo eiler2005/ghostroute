@@ -40,6 +40,7 @@ SINGBOX_INIT="${SINGBOX_INIT:-/opt/etc/init.d/S99sing-box}"
 DNSMASQ_RESTART="${DNSMASQ_RESTART:-service restart_dnsmasq}"
 
 TMP_PREFIX="/tmp/singbox-rule-sets.$$"
+DOMAINS_ALL_TXT="${TMP_PREFIX}.domains-all"
 DOMAINS_TXT="${TMP_PREFIX}.domains"
 DIRECT_DOMAINS_TXT="${TMP_PREFIX}.direct-domains"
 VPS_DNS_DOMAINS_TXT="${TMP_PREFIX}.vps-dns-domains"
@@ -51,7 +52,7 @@ CHANGED=0
 DNSMASQ_CHANGED=0
 
 cleanup() {
-  rm -f "$DOMAINS_TXT" "$DIRECT_DOMAINS_TXT" "$VPS_DNS_DOMAINS_TXT" "$STATIC_TXT" "$DOMAINS_NEW" "$STATIC_NEW" "$DNSMASQ_VPS_DNS_NEW"
+  rm -f "$DOMAINS_ALL_TXT" "$DOMAINS_TXT" "$DIRECT_DOMAINS_TXT" "$VPS_DNS_DOMAINS_TXT" "$STATIC_TXT" "$DOMAINS_NEW" "$STATIC_NEW" "$DNSMASQ_VPS_DNS_NEW"
 }
 trap cleanup EXIT
 
@@ -108,7 +109,7 @@ filter_vps_dns_domains() {
   direct_file="$2"
 
   awk '
-    NR == FNR {
+    FILENAME == ARGV[1] {
       direct[$0] = 1
       next
     }
@@ -128,6 +129,33 @@ filter_vps_dns_domains() {
       domain = tolower($0)
       if (domain == "") next
       if (is_ru_domain(domain)) next
+      if (is_direct(domain)) next
+      print domain
+    }
+  ' "$direct_file" "$managed_file" | sort -u
+}
+
+filter_direct_domains() {
+  managed_file="$1"
+  direct_file="$2"
+
+  awk '
+    FILENAME == ARGV[1] {
+      direct[$0] = 1
+      next
+    }
+    function covered_by_direct(domain, d) {
+      return domain == d || domain ~ ("\\." d "$")
+    }
+    function is_direct(domain, d) {
+      for (d in direct) {
+        if (covered_by_direct(domain, d)) return 1
+      }
+      return 0
+    }
+    {
+      domain = tolower($0)
+      if (domain == "") next
       if (is_direct(domain)) next
       print domain
     }
@@ -235,8 +263,9 @@ install_dnsmasq_if_changed() {
   fi
 }
 
-extract_stealth_domains "$MANUAL_DNSMASQ" "$AUTO_DNSMASQ" > "$DOMAINS_TXT"
+extract_stealth_domains "$MANUAL_DNSMASQ" "$AUTO_DNSMASQ" > "$DOMAINS_ALL_TXT"
 extract_direct_domains "$DOMAINS_NO_VPN" > "$DIRECT_DOMAINS_TXT"
+filter_direct_domains "$DOMAINS_ALL_TXT" "$DIRECT_DOMAINS_TXT" > "$DOMAINS_TXT"
 filter_vps_dns_domains "$DOMAINS_TXT" "$DIRECT_DOMAINS_TXT" > "$VPS_DNS_DOMAINS_TXT"
 {
   extract_static_cidrs "$STATIC_NETS"

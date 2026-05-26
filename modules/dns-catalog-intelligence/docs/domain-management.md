@@ -56,7 +56,10 @@ RU/direct/default domains -> dnsmasq default home/RF resolver
 ```
 
 `dnsmasq-vps-managed.conf.add` генерируется из managed catalog автоматически.
-RU TLD и `configs/domains-no-vpn.txt` туда не попадают.
+RU TLD и `configs/domains-no-vpn.txt` туда не попадают. Домены из
+`configs/domains-no-vpn.txt` также вырезаются из mobile
+`stealth-domains.json`, чтобы stale auto-discovery не отправлял direct/control
+plane хосты через Channels A/B/C.
 
 ## Deploy
 
@@ -80,6 +83,7 @@ The same repo catalogs feed mobile Home Reality split routing. During deploy,
 
 - `configs/dnsmasq-stealth.conf.add` -> `stealth-domains.json`
 - `/jffs/configs/dnsmasq-autodiscovered.conf.add` -> `stealth-domains.json`
+- `configs/domains-no-vpn.txt` -> исключения из `stealth-domains.json`
 - `configs/static-networks.txt` -> `stealth-static.json`
 - live/snapshotted `STEALTH_DOMAINS` IPv4 entries -> `stealth-static.json`
 

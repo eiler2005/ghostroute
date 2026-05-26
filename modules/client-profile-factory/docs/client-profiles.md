@@ -453,6 +453,9 @@ For BrowserLeaks and other arbitrary checker tests, use the shared strict
 Shadowrocket proof Config. A Geo/RU template, `sslip.io DIRECT` helper rule, or
 system DNS fallback is not valid proof-mode evidence because it can move
 resolver ownership back to the endpoint before Channel B reaches the router.
+The Console's `sslip.io` hostname is handled separately as router-side
+control-plane/direct traffic; do not use a client-side `sslip.io DIRECT` rule to
+prove Channel A/B/C egress.
 
 ## Channel C1 Home-First Naive
 

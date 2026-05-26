@@ -147,6 +147,10 @@ channel_a_selected_full_vps_chain_name: GR_A_FULL_VPS
 channel_a_selected_full_vps_inbound_tag: channel-a-selected-lan-full-vps-in
 channel_a_selected_full_vps_dnsmasq_tag: ghostroute-channel-a-full-vps
 channel_a_selected_full_vps_dnsmasq_conf_path: /jffs/configs/dnsmasq-channel-a-full-vps.conf.add
+router_control_plane_direct_domain_suffixes:
+  - sslip.io
+router_control_plane_direct_ports:
+  - 2087
 channel_a_selected_full_vps_bypass_cidrs:
   - 0.0.0.0/8
   - 10.0.0.0/8

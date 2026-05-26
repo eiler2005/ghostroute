@@ -32,6 +32,16 @@ assert_generated_contains_fixed() {
   fi
 }
 
+assert_generated_not_contains_fixed() {
+  local path="$1"
+  local needle="$2"
+  if rg -n -F -- "$needle" "$path" >/dev/null; then
+    echo "Expected generated ${path} not to contain text: ${needle}" >&2
+    sed -n '1,160p' "$path" >&2 || true
+    exit 1
+  fi
+}
+
 assert_compact_contains() {
   local path="$1"
   local needle="$2"
@@ -86,6 +96,7 @@ assert_contains_fixed "modules/client-profile-factory/docs/client-profiles.md" "
 assert_contains_fixed "docs/dns-policy.md" "https://api64.ipify.org   -> must not show LTE/mobile-provider IP"
 assert_contains_fixed "docs/dns-policy.md" "explicit DNS server"
 assert_contains_fixed "docs/dns-policy.md" "DOMAIN-SUFFIX,sslip.io,DIRECT"
+assert_contains_fixed "configs/domains-no-vpn.txt" "sslip.io"
 assert_contains_fixed "docs/dns-policy.md" "Gmail SMTP/IMAP ports can time out"
 assert_contains_fixed "docs/troubleshooting.md" "Channel A api64 показывает LTE IP"
 
@@ -142,6 +153,7 @@ ipset=/unmanaged.example/OTHER_SET
 EOF_MANUAL
 cat > "$TMPDIR/auto.conf" <<'EOF_AUTO'
 ipset=/auto-managed.example/STEALTH_DOMAINS
+ipset=/sslip.io/STEALTH_DOMAINS
 EOF_AUTO
 awk '{ printf "%s\r\n", $0 }' "$TMPDIR/manual.conf" > "$TMPDIR/manual.conf.crlf" && mv "$TMPDIR/manual.conf.crlf" "$TMPDIR/manual.conf"
 awk '{ printf "%s\r\n", $0 }' "$TMPDIR/auto.conf" > "$TMPDIR/auto.conf.crlf" && mv "$TMPDIR/auto.conf.crlf" "$TMPDIR/auto.conf"
@@ -164,6 +176,8 @@ DNSMASQ_VPS_DNS_CONF="$TMPDIR/managed-vps-dns.conf" \
 
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"ipify.org"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"auto-managed.example"'
+assert_generated_not_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"sslip.io"'
+assert_generated_not_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/sslip.io/'
 assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.com/127.0.0.1#5354'
 assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.net/127.0.0.1#5354'
 assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" 'server=/browserleaks.org/127.0.0.1#5354'
