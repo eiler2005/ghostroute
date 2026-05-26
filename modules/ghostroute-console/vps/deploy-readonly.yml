@@ -26,8 +26,15 @@
       - { path: "/live", contains: "Live event stream" }
       - { path: "/live", contains: "Showing" }
       - { path: "/live?activityPageSize=150", contains: "Client activity summary" }
+      - { path: "/m", contains: "GhostRoute Mobile" }
+      - { path: "/m/traffic", contains: "Flow Explorer" }
+      - { path: "/m/dns", contains: "DNS Query Log" }
+      - { path: "/m/clients", contains: "Clients" }
+      - { path: "/m/apps", contains: "Device Inventory" }
       - { path: "/m/health", contains: "Alarm Center" }
       - { path: "/m/live", contains: "Client activity summary" }
+      - { path: "/m/catalog", contains: "Catalog" }
+      - { path: "/m/settings", contains: "Settings" }
       - { path: "/dns", contains: "DNS Query Log" }
       - { path: "/dns", contains: "Showing" }
       - { path: "/traffic", contains: "Flow Explorer" }
