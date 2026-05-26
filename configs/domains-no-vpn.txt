@@ -14,3 +14,8 @@ championat.com
 
 # --- Финансы / анти-VPN чувствительные сервисы ---
 vtb.ru
+
+# --- Control-plane / operator helper hostnames ---
+# sslip.io is used for public Console helper hostnames and must not become
+# managed traffic through auto-discovery.
+sslip.io

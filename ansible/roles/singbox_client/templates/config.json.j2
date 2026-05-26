@@ -3,6 +3,9 @@
 {% set selected_full_vps_lan_enabled = (channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([])) | length > 0) %}
 {% set selected_full_vps_home_users = channel_a_selected_full_vps_home_reality_users | default([]) %}
 {% set selected_full_vps_home_enabled = (channel_a_selected_full_vps_enabled | default(false) | bool) and (selected_full_vps_home_users | length > 0) %}
+{% set control_plane_direct_domain_suffixes = router_control_plane_direct_domain_suffixes | default([]) %}
+{% set control_plane_direct_ports = router_control_plane_direct_ports | default([]) %}
+{% set control_plane_direct_enabled = (control_plane_direct_domain_suffixes | length > 0) and (control_plane_direct_ports | length > 0) %}
 {
   "log": {
     "level": "info",
@@ -264,6 +267,9 @@
       { "inbound": "dnscrypt-socks-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "redirect-in", "outbound": "reality-out" },
       { "inbound": "dnscrypt-socks-in", "outbound": "reality-out" }{% if selected_full_vps_lan_enabled %},
+{% if modern_sniff %}
+      { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "action": "sniff" },
+{% endif %}
       {
         "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}",
         "port": 53,
@@ -273,6 +279,9 @@
       },
       { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "port": 53, "outbound": "reality-out" },
       { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "ip_is_private": true, "outbound": "direct-out" },
+{% if control_plane_direct_enabled %}
+      { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       { "inbound": "{{ channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in') }}", "outbound": "reality-out" }{% endif %}{% if router_dns_egress_mode | default('policy_split') == 'policy_split' %},
       { "inbound": "vps-dns-in", "action": "hijack-dns" }{% endif %}{% if home_reality_enabled | default(false) | bool %},
 {% if modern_sniff %}
@@ -281,6 +290,9 @@
 {% endif %}
 {% if selected_full_vps_home_enabled %}
       { "inbound": "reality-in", "auth_user": {{ selected_full_vps_home_users | to_json }}, "ip_is_private": true, "outbound": "direct-out" },
+{% if control_plane_direct_enabled %}
+      { "inbound": "reality-in", "auth_user": {{ selected_full_vps_home_users | to_json }}, "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       { "inbound": "reality-in", "auth_user": {{ selected_full_vps_home_users | to_json }}, "outbound": "reality-out" },
 {% endif %}
       { "inbound": "reality-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
@@ -304,6 +316,9 @@
         "port": 853,
         "outbound": "reality-out"
       },
+{% if control_plane_direct_enabled %}
+      { "inbound": "reality-in", "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       {
         "inbound": "reality-in",
         "domain_suffix": [
@@ -335,6 +350,9 @@
         "port": 853,
         "outbound": "reality-out"
       },
+{% if control_plane_direct_enabled %}
+      { "inbound": "channel-b-relay-socks", "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       {
         "inbound": "channel-b-relay-socks",
         "domain_suffix": [
@@ -371,6 +389,9 @@
         "port": 853,
         "outbound": "reality-out"
       },
+{% if control_plane_direct_enabled %}
+      { "inbound": "channel-c-naive-in", "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       {
         "inbound": "channel-c-naive-in",
         "domain_suffix": [
@@ -407,6 +428,9 @@
         "port": 853,
         "outbound": "reality-out"
       },
+{% if control_plane_direct_enabled %}
+      { "inbound": "channel-c-shadowrocket-http-in", "port": {{ control_plane_direct_ports | to_json }}, "domain_suffix": {{ control_plane_direct_domain_suffixes | to_json }}, "outbound": "direct-out" },
+{% endif %}
       {
         "inbound": "channel-c-shadowrocket-http-in",
         "domain_suffix": [

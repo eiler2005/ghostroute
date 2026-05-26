@@ -123,6 +123,7 @@ assert_contains_regex "$STATIC_CATALOG" '^5[.]150[.]156[.]0/22'
 # skipped by code; sensitive non-RU services can be listed explicitly.
 assert_contains_fixed "$NO_VPN_CATALOG" "championat.com"
 assert_contains_fixed "$NO_VPN_CATALOG" "vtb.ru"
+assert_contains_fixed "$NO_VPN_CATALOG" "sslip.io"
 assert_not_contains_fixed "$NO_VPN_CATALOG" "meduza.io"
 assert_contains_fixed "$AUTO_ADD_SCRIPT" 'RU_TLDS="\.ru$|\.su$|\.xn--p1ai$|\.xn--80adxhks$|\.xn--d1acj3b$|\.xn--p1acf$|\.tatar$|\.moscow$"'
 assert_contains_fixed "$AUTO_ADD_SCRIPT" 'is_domain_covered_by_lists "$domain" "$NO_VPN_DOMAINS"'

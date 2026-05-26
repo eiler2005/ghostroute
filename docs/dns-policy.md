@@ -95,6 +95,9 @@ disabled, and unsupported UDP rejected. A Geo/RU client config, missing
 explicit DNS server, or helper rule such as `DOMAIN-SUFFIX,sslip.io,DIRECT` is
 not proof-mode evidence because arbitrary DNS test names can fall back before
 the router sees them.
+The Console `sslip.io` hostname is a separate control-plane exception: it stays
+out of the managed catalog and mobile rule-set so Channels A/B/C can still reach
+the operator Console without turning a proof config into a client-side bypass.
 
 For everyday Shadowrocket use, a separate daily template may intentionally use
 `dns-server = system` and narrow `DIRECT` rules for domestic banking or
