@@ -219,6 +219,9 @@
           Environment=GHOSTROUTE_BUFFER_LISTEN_PORT={{ console_buffer_proxy_port }}
           Environment=GHOSTROUTE_BUFFER_UPSTREAM_HOST=127.0.0.1
           Environment=GHOSTROUTE_BUFFER_UPSTREAM_PORT=3000
+          Environment=GHOSTROUTE_BUFFER_JS_SPLIT_THRESHOLD=1
+          Environment=GHOSTROUTE_BUFFER_JS_SPLIT_PART_SIZE=60000
+          Environment=GHOSTROUTE_BUFFER_DISABLE_NEXT_JS=1
           Restart=always
           RestartSec=2
           NoNewPrivileges=true
@@ -312,8 +315,8 @@
                   }
 
                   location = /m {
-                      proxy_pass http://127.0.0.1:3000;
-                      proxy_http_version 1.1;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
                       proxy_set_header Host $http_host;
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;
@@ -331,8 +334,8 @@
                   }
 
                   location ^~ /m/ {
-                      proxy_pass http://127.0.0.1:3000;
-                      proxy_http_version 1.1;
+                      proxy_pass http://127.0.0.1:{{ console_buffer_proxy_port }};
+                      proxy_http_version 1.0;
                       proxy_set_header Host $http_host;
                       proxy_set_header X-Forwarded-Host $http_host;
                       proxy_set_header X-Forwarded-Proto https;

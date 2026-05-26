@@ -346,7 +346,15 @@ Classify the failure before changing anything:
   changing the app. Repeated retransmits of the same server-to-client segment
   indicate a client-path MTU/MSS/transport issue. The public listener keeps
   gzip off and lets the buffer proxy return Brotli to browsers so Chrome-sized
-  pages stay below the observed stall threshold where possible.
+  pages stay below the observed stall threshold where possible. The buffer proxy
+  strips Next.js hydration scripts from public HTML so the read-only Console
+  can render as server HTML plus CSS on constrained home/mobile links. If script
+  delivery is explicitly re-enabled, the buffer proxy wraps
+  `/_next/static/*.js` chunks in a small synchronous bootstrap and serves the
+  chunk body through smaller same-origin part requests. These are transport
+  workarounds only; they do not change Console data collection or routing
+  state. Desktop and mobile-prefix routes should both pass through this buffer
+  proxy; a direct `/m/*` route to Next.js can reintroduce mobile-only stalls.
 
 Server-side baseline:
 

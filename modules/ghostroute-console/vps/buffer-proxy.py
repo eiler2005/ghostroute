@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import http.client
 import gzip
+import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 try:
     import brotli
@@ -15,6 +18,29 @@ UPSTREAM_PORT = int(os.environ.get("GHOSTROUTE_BUFFER_UPSTREAM_PORT", "3000"))
 LISTEN_HOST = os.environ.get("GHOSTROUTE_BUFFER_LISTEN_HOST", "127.0.0.1")
 LISTEN_PORT = int(os.environ.get("GHOSTROUTE_BUFFER_LISTEN_PORT", "3001"))
 MAX_REQUEST_BODY = int(os.environ.get("GHOSTROUTE_BUFFER_MAX_REQUEST_BODY", "1048576"))
+JS_SPLIT_THRESHOLD = int(os.environ.get("GHOSTROUTE_BUFFER_JS_SPLIT_THRESHOLD", "20000"))
+JS_SPLIT_PART_SIZE = int(os.environ.get("GHOSTROUTE_BUFFER_JS_SPLIT_PART_SIZE", "12000"))
+JS_SPLIT_QUERY_PARAM = "__gr_part"
+DISABLE_NEXT_JS = os.environ.get("GHOSTROUTE_BUFFER_DISABLE_NEXT_JS", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+}
+
+NEXT_SCRIPT_RE = re.compile(
+    r"<script\b(?=[^>]*\bsrc=(?:[\"']/_next/static/[^\"']+\.js[\"']|/_next/static/[^>\s]+\.js))"
+    r"[^>]*>\s*</script>",
+    re.IGNORECASE,
+)
+NEXT_SCRIPT_PRELOAD_RE = re.compile(
+    r"<link\b(?=[^>]*\brel=(?:[\"'][^\"']*(?:preload|modulepreload)[^\"']*[\"']|[^\s>]*preload[^\s>]*))"
+    r"(?=[^>]*\bas=(?:[\"']script[\"']|script))[^>]*>",
+    re.IGNORECASE,
+)
+NEXT_FLIGHT_RE = re.compile(
+    r"<script>\s*\(?self\.__next_f.*?</script>",
+    re.DOTALL,
+)
 
 HOP_BY_HOP = {
     "connection",
@@ -71,6 +97,14 @@ class BufferProxyHandler(BaseHTTPRequestHandler):
             response_headers = {
                 key.lower(): value for key, value in upstream.getheaders()
             }
+            html_response = self._dehydrated_html_response(response_body, response_headers)
+            if html_response is not None:
+                response_body, response_headers = html_response
+            else:
+                split_response = self._split_js_response(response_body, response_headers)
+                if split_response is not None:
+                    response_body, response_headers = split_response
+
             encoding = self._selected_encoding(response_body, response_headers)
             if encoding == "br":
                 response_body = brotli.compress(response_body, quality=6)
@@ -139,6 +173,93 @@ class BufferProxyHandler(BaseHTTPRequestHandler):
         if "gzip" in accept_encoding:
             return "gzip"
         return None
+
+    def _dehydrated_html_response(self, body, response_headers):
+        if not DISABLE_NEXT_JS:
+            return None
+        if self.command not in {"GET", "HEAD"}:
+            return None
+        content_type = response_headers.get("content-type", "")
+        if "text/html" not in content_type:
+            return None
+        if "content-encoding" in response_headers:
+            return None
+        try:
+            html = body.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+        html = NEXT_SCRIPT_PRELOAD_RE.sub("", html)
+        html = NEXT_SCRIPT_RE.sub("", html)
+        html = NEXT_FLIGHT_RE.sub("", html)
+        headers = dict(response_headers)
+        headers["content-type"] = content_type
+        return html.encode("utf-8"), headers
+
+    def _split_js_response(self, body, response_headers):
+        split = urlsplit(self.path)
+        if not self._can_split_js(split, body, response_headers):
+            return None
+
+        query = parse_qs(split.query, keep_blank_values=True)
+        source = body.decode("utf-8")
+        part_count = (len(source) + JS_SPLIT_PART_SIZE - 1) // JS_SPLIT_PART_SIZE
+        headers = {
+            "content-type": "application/javascript; charset=utf-8",
+            "cache-control": response_headers.get("cache-control", "public, max-age=31536000, immutable"),
+        }
+
+        if JS_SPLIT_QUERY_PARAM in query:
+            try:
+                part_index = int(query[JS_SPLIT_QUERY_PARAM][0])
+            except (TypeError, ValueError, IndexError):
+                part_index = -1
+            if part_index < 0 or part_index >= part_count:
+                return b"", headers
+            start = part_index * JS_SPLIT_PART_SIZE
+            end = start + JS_SPLIT_PART_SIZE
+            return source[start:end].encode("utf-8"), headers
+
+        return self._js_split_bootstrap(split, part_count).encode("utf-8"), headers
+
+    def _can_split_js(self, split, body, response_headers):
+        if self.command not in {"GET", "HEAD"}:
+            return False
+        if not split.path.startswith("/_next/static/") or not split.path.endswith(".js"):
+            return False
+        if len(body) <= JS_SPLIT_THRESHOLD:
+            return False
+        if "content-encoding" in response_headers:
+            return False
+        content_type = response_headers.get("content-type", "")
+        if "javascript" not in content_type and "ecmascript" not in content_type:
+            return False
+        try:
+            body.decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+        return True
+
+    def _js_split_bootstrap(self, split, part_count):
+        query = parse_qs(split.query, keep_blank_values=True)
+        query.pop(JS_SPLIT_QUERY_PARAM, None)
+        base_query = urlencode(query, doseq=True)
+        base_path = urlunsplit(("", "", split.path, base_query, ""))
+        return (
+            "(function(){"
+            f"var u={json.dumps(base_path)};"
+            f"var n={part_count};"
+            "var s='';"
+            "for(var i=0;i<n;i++){"
+            "var x=new XMLHttpRequest();"
+            "x.open('GET',u+(u.indexOf('?')===-1?'?':'&')+'__gr_part='+i,false);"
+            "x.send(null);"
+            "if(x.status<200||x.status>=300){throw new Error('GhostRoute chunk part failed: '+u);}"
+            "s+=x.responseText;"
+            "}"
+            "(0,eval)(s+'\\n//# sourceURL='+u);"
+            "})();"
+        )
 
 
 if __name__ == "__main__":
