@@ -355,6 +355,9 @@ Classify the failure before changing anything:
   workarounds only; they do not change Console data collection or routing
   state. Desktop and mobile-prefix routes should both pass through this buffer
   proxy; a direct `/m/*` route to Next.js can reintroduce mobile-only stalls.
+  The same buffered read-only Console is also available on the standard HTTPS
+  host without the dedicated port so constrained networks can avoid the
+  non-standard listener path while Reality traffic remains separated by SNI.
 
 Server-side baseline:
 

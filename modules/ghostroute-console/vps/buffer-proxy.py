@@ -41,6 +41,12 @@ NEXT_FLIGHT_RE = re.compile(
     r"<script>\s*\(?self\.__next_f.*?</script>",
     re.DOTALL,
 )
+NEXT_STREAM_CONTAINER_RE = re.compile(r"<div\s+hidden\s+id=(?:[\"']S:\d+[\"']|S:\d+)[^>]*>", re.IGNORECASE)
+BODY_OPEN_RE = re.compile(r"<body\b[^>]*>", re.IGNORECASE)
+BODY_VISIBLE_CONTENT_RE = re.compile(
+    r"<(?:main|section|article|nav|header|table|ul|ol|h[1-6])\b|<div\b(?![^>]*\bhidden\b)",
+    re.IGNORECASE,
+)
 
 HOP_BY_HOP = {
     "connection",
@@ -189,12 +195,56 @@ class BufferProxyHandler(BaseHTTPRequestHandler):
         except UnicodeDecodeError:
             return None
 
+        html = self._promote_next_stream_content(html)
         html = NEXT_SCRIPT_PRELOAD_RE.sub("", html)
         html = NEXT_SCRIPT_RE.sub("", html)
         html = NEXT_FLIGHT_RE.sub("", html)
         headers = dict(response_headers)
         headers["content-type"] = content_type
         return html.encode("utf-8"), headers
+
+    def _promote_next_stream_content(self, html):
+        body_match = BODY_OPEN_RE.search(html)
+        body_end = html.rfind("</body>")
+        if body_match is None or body_end == -1:
+            return html
+
+        stream_matches = [
+            match for match in NEXT_STREAM_CONTAINER_RE.finditer(html)
+            if body_match.end() <= match.start() < body_end
+        ]
+        if not stream_matches:
+            return html
+
+        body_content_before_stream = html[body_match.end() : stream_matches[0].start()]
+        if BODY_VISIBLE_CONTENT_RE.search(body_content_before_stream):
+            return html
+
+        for stream_match in stream_matches:
+            content_start = stream_match.end()
+            content_end = self._matching_div_end(html, stream_match.start(), content_start)
+            if content_end is None:
+                continue
+            stream_content = html[content_start:content_end]
+            if not stream_content.strip():
+                continue
+            return html[: body_match.end()] + stream_content + html[body_end:]
+        return html
+
+    def _matching_div_end(self, html, div_start, content_start):
+        depth = 1
+        for match in re.finditer(r"</?div\b[^>]*>", html[content_start:], re.IGNORECASE):
+            tag_start = content_start + match.start()
+            if tag_start <= div_start:
+                continue
+            tag = match.group(0)
+            if tag[1:2] == "/":
+                depth -= 1
+                if depth == 0:
+                    return tag_start
+            else:
+                depth += 1
+        return None
 
     def _split_js_response(self, body, response_headers):
         split = urlsplit(self.path)
