@@ -106,7 +106,7 @@
         backup: true
         state: absent
 
-    - name: Keep GhostRoute Console certificate managed by Caddy
+    - name: Expose GhostRoute Console fallback on standard HTTPS through Caddy
       ansible.builtin.blockinfile:
         path: /etc/caddy/Caddyfile
         marker: "# {mark} GHOSTROUTE CONSOLE CERTIFICATE"
@@ -114,8 +114,25 @@
         backup: true
         block: |
           https://{{ console_public_host }} {
-              respond 404
+              basicauth {
+                  {{ console_basic_auth_user }} {{ console_caddy_basic_auth_hash.stdout }}
+              }
+              header X-Robots-Tag "noindex, nofollow"
+              header Referrer-Policy "no-referrer"
+              header -Alt-Svc
+              reverse_proxy 127.0.0.1:{{ console_buffer_proxy_port }} {
+                  header_up Host {http.request.host}
+                  header_up X-Forwarded-Host {http.request.host}
+                  header_up X-Forwarded-Proto https
+                  header_up X-Forwarded-Port 443
+                  transport http {
+                      versions 1.1
+                      keepalive off
+                  }
+                  header_up Connection close
+              }
           }
+      no_log: true
 
     - name: Expose GhostRoute Console dedicated listener through Caddy
       ansible.builtin.blockinfile:
