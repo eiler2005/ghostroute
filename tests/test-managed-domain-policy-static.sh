@@ -118,6 +118,7 @@ assert_contains_regex "$STATIC_CATALOG" '^31[.]13[.]64[.]0/18'
 assert_contains_regex "$STATIC_CATALOG" '^91[.]108[.]4[.]0/22'
 assert_contains_regex "$STATIC_CATALOG" '^149[.]154[.]160[.]0/20'
 assert_contains_regex "$STATIC_CATALOG" '^5[.]150[.]156[.]0/22'
+assert_contains_regex "$STATIC_CATALOG" '^192[.]12[.]31[.]0/24'
 
 # Direct/skip policy: these are not managed-route additions. Russian TLDs are
 # skipped by code; sensitive non-RU services can be listed explicitly.
