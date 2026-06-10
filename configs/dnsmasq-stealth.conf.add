@@ -136,7 +136,6 @@ ipset=/api.wisprflow.com/STEALTH_DOMAINS
 ipset=/wisprflow.onelink.me/STEALTH_DOMAINS
 # imo Messenger (official domain family; covers auth/beta/tunnel subdomains)
 ipset=/imo.im/STEALTH_DOMAINS
-ipset=/redshieldvpn.com/STEALTH_DOMAINS
 # WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
 ipset=/whatsapp.com/STEALTH_DOMAINS
 ipset=/whatsapp.net/STEALTH_DOMAINS

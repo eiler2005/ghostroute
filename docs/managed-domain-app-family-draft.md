@@ -59,7 +59,7 @@ and must not be presented as exact per-domain byte accounting.
 | Books / torrents / media sites | media_content | client | medium | `flibusta.is`, `flibusta.net`, `flibusta.site`, `hdrezka.ag`, `kinozal.tv`, `rezka.ag`, `rutor.info`, `rutor.is`, `rutracker.org`, `seasonvar.ru`, `x-minus.pro`, `livetv.sx`, `mixcloud.com`, `ign.com`, `premierleague.com` |
 | News / public-interest media | news_media | client | high | `euronews.com`, `grani.ru`, `gulagu.net`, `holod.media`, `meduza.io`, `navalny.com`, `novaya.no`, `novayagazeta.eu`, `novayagazeta.ru`, `ntc.party`, `proekt.media`, `thebell.io` |
 | Shopping / consumer services | shopping_consumer | client | medium | `aol.com`, `api2.support-kp.com`, `cub.red`, `dyson.com`, `iherb.com`, `ikea.com`, `intel.com`, `proton.me`, `realguide.com`, `setapp.com` |
-| VPN / network app | network_app | client | medium | `redshieldvpn.com` |
+| VPN / network app | network_app | client | medium | `<provider-site-domain>` |
 | KONAMI / eFootball | game | client | high | `konami.com`, `konami.net`, `my.konami.net.edgekey.net`, `my1.konami.net.edgekey.net`, `account-applb-1040330410.ap-northeast-1.elb.amazonaws.com`, `pes22-prd-lb-1361062069.us-west-2.elb.amazonaws.com`, `efootball-prod-frontdoor-endpoint-user-b9fpgxfschepghg7.z01.azurefd.net`, `efootball-prod-frontdoor-endpoint-user-api-eseddha0a8esekda.z01.azurefd.net`, `efootball-prod-cdn-ms.azureedge.net`, `efootball-prod-cdn-ms.afd.azureedge.net`, `d2fbzftqq66qjv.cloudfront.net`, `eu-irl-00001.s3.dualstack.eu-west-1.amazonaws.com` |
 | Mobile / casual games | game | client | high | `anzu-us.com`, `clashofclans.com`, `game-assets.clashofclans.com`, `game.boombeachgame.com`, `game.clashofclans.com`, `gameloft.com`, `supercell.com` |
 
@@ -72,6 +72,10 @@ and must not be presented as exact per-domain byte accounting.
   represent Instagram, Facebook, Messenger, Threads, WhatsApp-adjacent media, or
   Meta shared infra. Treat the family as `Instagram / Meta` unless a more
   specific domain is available.
+- imo Messenger media can use direct PageBites IP ranges in addition to
+  `imo.im` DNS names. Keep those as static managed CIDRs in
+  `configs/static-networks.txt`; do not split `cdn*.imo.im` into separate
+  managed-domain entries.
 - Apple domains mix user-facing media/iCloud and service/system behavior.
   `doh.dns.apple.com` and `apple-relay.apple.com` should stay service/privacy
   signals; `podcasts.apple.com`, `apps.apple.com`, and iCloud content are more
