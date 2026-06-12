@@ -122,7 +122,7 @@ assert_contains "ansible/playbooks/99-verify.yml" 'Channel C1 Naive ingress list
 assert_contains "ansible/playbooks/99-verify.yml" 'sing-box has Channel C1 Naive inbound with managed split routing'
 assert_contains "ansible/playbooks/99-verify.yml" 'C1-Shadowrocket compatibility listener is running when enabled'
 assert_contains "ansible/playbooks/99-verify.yml" 'sing-box has C1-Shadowrocket HTTP inbound with managed split routing'
-assert_not_contains "ansible/playbooks/99-verify.yml" 'channel_c_naive|channel-c-squid|channel-c-stunnel|forward_proxy'
+assert_not_contains "ansible/playbooks/99-verify.yml" 'channel_c_naive|channel-c-squid|channel-c-stunnel'
 
 assert_contains "modules/client-profile-factory/bin/client-profiles" 'channel-b-list'
 assert_contains "modules/client-profile-factory/bin/client-profiles" 'channel-c-list'

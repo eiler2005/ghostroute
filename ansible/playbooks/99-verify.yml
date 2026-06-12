@@ -699,6 +699,66 @@
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
 
+    - name: Channel D NaiveProxy Caddy listener is running when enabled
+      ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -Eq '(^|[[:space:]])(0\\.0\\.0\\.0|::):{{ channel_d_naiveproxy_ingress_port }}[[:space:]]'"
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D NaiveProxy public port redirects to internal Caddy listener when needed
+      ansible.builtin.shell: |
+        wan_if="$(nvram get wan0_ifname)"
+        iptables -t nat -S PREROUTING |
+          grep -q -- "-i ${wan_if} -p tcp .*--dport {{ channel_d_naiveproxy_public_port }} .*REDIRECT --to-ports {{ channel_d_naiveproxy_ingress_port }}"
+      changed_when: false
+      when:
+        - channel_d_naiveproxy_enabled | default(false) | bool
+        - channel_d_naiveproxy_public_port | string != channel_d_naiveproxy_ingress_port | string
+
+    - name: Channel D NaiveProxy ingress is allowed by INPUT firewall when enabled
+      ansible.builtin.shell: "iptables -S INPUT | grep -q -- '-p tcp .*--dport {{ channel_d_naiveproxy_ingress_port }} .*ACCEPT'"
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D NaiveProxy ingress connlimit DROP precedes ACCEPT when enabled
+      ansible.builtin.shell: |
+        iptables -S INPUT | awk '
+          /--dport {{ channel_d_naiveproxy_ingress_port }}/ {
+            if ($0 ~ /connlimit/ && $0 ~ /--connlimit-above {{ channel_d_naiveproxy_connlimit_above | default(300) }}/ && $0 ~ /-j DROP/) drop = NR
+            if ($0 ~ /-j ACCEPT/ && first_accept == 0) first_accept = NR
+          }
+          END { exit !(drop > 0 && first_accept > 0 && drop < first_accept) }
+        '
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D NaiveProxy ingress has MSS clamp when enabled
+      ansible.builtin.shell: |
+        iptables -t mangle -S PREROUTING |
+          grep -q -- '--dport {{ channel_d_naiveproxy_public_port }} .*TCPMSS --set-mss {{ channel_d_naiveproxy_mss | default(1360) }}' &&
+        iptables -t mangle -S OUTPUT |
+          grep -q -- '--sport {{ channel_d_naiveproxy_ingress_port }} .*TCPMSS --set-mss {{ channel_d_naiveproxy_mss | default(1360) }}'
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D Caddy binary and config markers are present when enabled
+      ansible.builtin.shell: |
+        [ -x {{ channel_d_naiveproxy_caddy_bin_path }} ] &&
+        grep -q 'forward_proxy' {{ channel_d_naiveproxy_caddy_bin_path }} &&
+        grep -q 'auto_https disable_redirects' {{ channel_d_naiveproxy_caddy_config_path }} &&
+        grep -q 'tls {{ channel_d_naiveproxy_tls_cert_path }} {{ channel_d_naiveproxy_tls_key_path }}' {{ channel_d_naiveproxy_caddy_config_path }}
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel D Caddyfile relays NaiveProxy to local sing-box SOCKS when enabled
+      ansible.builtin.shell: |
+        grep -q 'forward_proxy' {{ channel_d_naiveproxy_caddy_config_path }} &&
+        grep -q 'upstream socks5://127.0.0.1:{{ channel_d_naiveproxy_upstream_socks_port }}' {{ channel_d_naiveproxy_caddy_config_path }} &&
+        grep -q 'probe_resistance' {{ channel_d_naiveproxy_caddy_config_path }}
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
     - name: Router TCP high-BDP tuning is applied
       ansible.builtin.shell: |
         tcp_rmem="$(awk '{$1=$1; print}' /proc/sys/net/ipv4/tcp_rmem 2>/dev/null)"
@@ -815,6 +875,22 @@
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-c-shadowrocket-http-in","port":853,"outbound":"reality-out"'
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
+
+    - name: sing-box has Channel D NaiveProxy SOCKS inbound with managed split routing
+      ansible.builtin.shell: |
+        cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        printf '%s' "$cfg" | grep -Fq '"type":"socks"' &&
+        printf '%s' "$cfg" | grep -Fq '"tag":"channel-d-naiveproxy-socks-in"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen":"127.0.0.1"' &&
+        printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_d_naiveproxy_upstream_socks_port }}' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","action":"sniff"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","port":53,"outbound":"direct-out"' &&
+        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","port":853,"outbound":"reality-out"'
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
 
     - name: Channel M maxtg MAX egress listener is running when enabled
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_m_maxtg_ingress_port }}'"

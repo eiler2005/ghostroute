@@ -94,6 +94,8 @@ The operator explicitly accepts:
 - Run `./modules/secrets-management/bin/secret-scan` before pushing.
 - Treat Channel B artifacts as production credentials for selected clients.
 - Treat Channel C artifacts as planned compatibility credentials until promoted.
+- Treat Channel D artifacts and local Caddy binaries as experimental local
+  credentials/artifacts; keep them gitignored.
 
 ## Recovery Boundaries
 

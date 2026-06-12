@@ -44,6 +44,9 @@ Top-level sections:
     scaffold. Detailed plan:
     [`docs/traffic-facts-v3-and-pyramid-plan.md`](traffic-facts-v3-and-pyramid-plan.md).
     Closes much of repo-review-2026-05-10 Part B.
+13. **Channel D Console integration debt** (`○`) — Channel D runtime, docs and
+    CLI/Ansible verification exist, but GhostRoute Console has not yet been
+    updated to expose Channel D as a first-class lane.
 
 Detailed prose for each section is in Russian below. For new findings, see the
 2026-05-10 audit linked above.
@@ -464,20 +467,17 @@ Channel C target:
 - документация явно отделяет Channel A router data plane, Channel B
   selected-client production и Channel C native/compatibility split
 
-Future Caddy forward_proxy@naive / forwardproxy experiment:
+Channel D Caddy forward_proxy@naive / forwardproxy experiment:
 
-- Рассмотреть только как отдельную future research lane, не как замену текущему
-  рабочему C1-Shadowrocket.
-- Цель эксперимента: проверить, даст ли `Shadowrocket -> Caddy
-  forward_proxy/forwardproxy@naive -> managed split` более похожий на
+- Implemented as a disabled-by-default router-native Channel D lab, not as a
+  replacement for the current working C1-Shadowrocket path.
+- Цель эксперимента: проверить, даст ли `Karing -> home Caddy
+  forward_proxy@naive -> sing-box managed split` более похожий на
   HTTPS/H2/NaiveProxy traffic профиль, чем текущий sing-box HTTP inbound
   compatibility path.
-- Не подвешивать эксперимент на существующий VPS Caddy `:443` без отдельного
-  design review: VPS Caddy уже держит shared Reality edge и optional Channel B
-  direct-XHTTP route, поэтому ошибка в Caddyfile может затронуть Channel A/B.
-- Предпочтительная форма для исследования: isolated home/router-side или
-  отдельный hostname/port, отдельные credentials, отдельный playbook/flag,
-  отдельные verify checks и явный rollback.
+- Эксперимент не подвешен на существующий VPS Caddy `:443`: VPS Caddy держит
+  shared Reality edge и optional Channel B direct-XHTTP route, поэтому Channel D
+  живет на домашнем роутере с отдельным портом/credentials/playbook/rollback.
 - Риски, которые нужно закрыть до implementation:
   - не открыть public unauthenticated forward proxy;
   - не сломать VPS Caddy/Reality edge;
@@ -489,6 +489,18 @@ Future Caddy forward_proxy@naive / forwardproxy experiment:
   - учесть, что Chrome-like masking зависит не только от Caddy backend, но и от
     client fingerprint; Shadowrocket + forward_proxy не равен official
     NaiveProxy client с Chromium network stack.
+
+Channel D Console technical debt:
+
+- текущий rollout Channel D не обновлял `modules/ghostroute-console`;
+- Console пока не показывает Channel D как отдельный lane с D-specific Caddy
+  state, QR/client inventory, proof labels или traffic attribution;
+- до отдельного Console follow-up источники proof остаются CLI/Ansible:
+  `99-verify.yml`, `verify.sh --verbose`, `router-health-report` и router logs;
+- это не блокирует текущий router-native Channel D runtime, но должно быть
+  закрыто до того, как Console станет canonical UI для Channel D operations;
+- Console-specific follow-up также зафиксирован в
+  [`docs/ghostroute-console-post-mvp-roadmap.md`](ghostroute-console-post-mvp-roadmap.md).
 
 ### 10. Policy-Based DNS / Own Resolver Strategy `✓ done` (per ADR-0009)
 

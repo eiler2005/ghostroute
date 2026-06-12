@@ -56,6 +56,11 @@ Channel M provides an isolated policy for applications with regional egress requ
 The human-readable Channel M environment inventory is
 [channel-m-environment.md](channel-m-environment.md).
 
+Channel D is represented as an experimental router-native Caddy
+`forward_proxy@naive` service plus a router-local sing-box SOCKS inbound. It is
+disabled by default, has separate public/internal/SOCKS port ownership, and is
+not counted as Channel C native Naive proof.
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT

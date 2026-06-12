@@ -276,7 +276,22 @@ iPhone LTE
 
 Expected website-facing exit: домашний российский WAN IP.
 
-## Scenario F: Policy-Based DNS
+## Scenario F: Channel D Router-Native NaiveProxy Lab
+
+```text
+Karing / NaiveProxy-style client
+  -> home public RU IP TCP/4444
+  -> optional WAN REDIRECT to router internal TCP/<channel-d-naiveproxy-ingress-port>
+  -> ASUS Caddy forward_proxy@naive
+  -> ASUS sing-box SOCKS inbound channel-d-naiveproxy-socks-in
+  -> sing-box route rule:
+       managed catalog/static match -> reality-out -> active managed egress
+       no managed match             -> direct-out -> home WAN
+```
+
+Channel D is experimental and does not replace Channel C proof signals.
+
+## Scenario G: Policy-Based DNS
 
 ```text
 Wi-Fi/LAN or mobile plain DNS
@@ -300,7 +315,7 @@ The optional VPS Unbound resolver is not public. If enabled, its restricted
 port is for host/container/private diagnostics only. Public DNS `53/tcp,udp`
 remains closed.
 
-## Scenario G: Router-Originated Traffic
+## Scenario H: Router-Originated Traffic
 
 ```text
 Router process
@@ -351,6 +366,8 @@ what the LTE carrier saw as the first hop.
   TCP/4443.
 - C1 native clients enter `channel-c-naive-in` through
   TCP/<home-channel-c-public-port>.
+- Channel D clients enter router Caddy on TCP/4444 and then
+  `channel-d-naiveproxy-socks-in`.
 - Managed destinations route to `reality-out`.
 - Non-managed destinations from mobile route to `direct-out`.
 - Managed foreign DNS reaches dnscrypt-proxy through the generated dnsmasq

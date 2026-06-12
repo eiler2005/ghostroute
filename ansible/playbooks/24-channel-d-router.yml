@@ -1,0 +1,151 @@
+- name: Preflight router for Channel D NaiveProxy lab
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: GhostRoute deploy gate before Channel D router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Validate Channel D router preflight settings when enabled
+      ansible.builtin.assert:
+        that:
+          - channel_d_naiveproxy_public_host | string | length > 0
+          - channel_d_naiveproxy_public_port | int > 0
+          - channel_d_naiveproxy_public_port | int <= 65535
+          - channel_d_naiveproxy_ingress_port | int > 1024
+          - channel_d_naiveproxy_ingress_port | int <= 65535
+          - channel_d_naiveproxy_upstream_socks_port | int > 1024
+          - channel_d_naiveproxy_upstream_socks_port | int <= 65535
+          - (channel_d_naiveproxy_ingress_port | int) != (channel_d_naiveproxy_upstream_socks_port | int)
+          - (channel_d_naiveproxy_public_port | int) != (home_reality_ingress_port | default(0, true) | int)
+          - (channel_d_naiveproxy_public_port | int) != (channel_c_home_public_port | default(0, true) | int)
+          - (channel_d_naiveproxy_public_port | int) != (channel_c_shadowrocket_public_port | default(0, true) | int)
+          - (channel_d_naiveproxy_ingress_port | int) != (home_reality_ingress_port | default(0, true) | int)
+          - (channel_d_naiveproxy_ingress_port | int) != (channel_b_home_ingress_port | default(0, true) | int)
+          - (channel_d_naiveproxy_ingress_port | int) != (channel_c_home_ingress_port | default(0, true) | int)
+          - (channel_d_naiveproxy_ingress_port | int) != (channel_c_shadowrocket_ingress_port | default(0, true) | int)
+          - channel_d_naiveproxy_clients | length > 0
+          - channel_d_naiveproxy_tls_cert_path | string | length > 0
+          - channel_d_naiveproxy_tls_key_path | string | length > 0
+          - channel_d_naiveproxy_tls_cert_path != channel_d_naiveproxy_tls_key_path
+        fail_msg: "Channel D needs a home host, unique public/internal ports, SOCKS relay port, TLS cert/key paths and selected clients."
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel D TLS certificate files exist on router when enabled
+      ansible.builtin.raw: |
+        [ -s "{{ channel_d_naiveproxy_tls_cert_path }}" ] &&
+        [ -s "{{ channel_d_naiveproxy_tls_key_path }}" ]
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Ensure bash + python3 via opkg
+      ansible.builtin.raw: |
+        /opt/bin/opkg list-installed | grep -q '^bash ' || /opt/bin/opkg install bash
+        /opt/bin/opkg list-installed | grep -q '^python3 ' || /opt/bin/opkg install python3
+      changed_when: false
+
+    - name: Channel D local Caddy binary exists on control host when enabled
+      ansible.builtin.stat:
+        path: "{{ channel_d_naiveproxy_local_binary_path }}"
+      delegate_to: localhost
+      register: channel_d_binary_preflight
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D local Caddy binary is available when enabled
+      ansible.builtin.assert:
+        that:
+          - channel_d_binary_preflight.stat.exists
+          - channel_d_binary_preflight.stat.isreg
+        fail_msg: "Build the Channel D Caddy binary first: ./modules/routing-core/bin/build-channel-d-caddy"
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Deploy or remove Channel D router-native NaiveProxy lab
+  hosts: routers
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  pre_tasks:
+    - name: Capture last-known-good router runtime before Channel D deploy
+      ansible.builtin.include_tasks: ../tasks/router-last-good-backup.yml
+  roles:
+    - singbox_client
+    - stealth_routing
+    - channel_d_naiveproxy
+  post_tasks:
+    - name: Refresh sing-box rule-sets after Channel D deploy
+      ansible.builtin.raw: >
+        MANAGED_DNS_FORWARD_HOST='{{ router_managed_dns_forward_host | default("127.0.0.1") }}'
+        MANAGED_DNS_FORWARD_PORT='{{ router_managed_dns_forward_port | default(dnscrypt_port) }}'
+        /jffs/scripts/update-singbox-rule-sets.sh --no-restart
+      changed_when: false
+
+    - name: Restart sing-box after Channel D deploy
+      ansible.builtin.raw: |
+        {{ singbox_init_path }} restart
+        sleep 3
+      changed_when: false
+
+    - name: Restart Channel D Caddy when enabled
+      ansible.builtin.raw: |
+        {{ channel_d_naiveproxy_caddy_init_path }} restart
+        sleep 2
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Re-apply stealth routing after Channel D restart
+      ansible.builtin.raw: "{{ stealth_route_init_script }}"
+      changed_when: false
+
+    - name: Restore Channel M reverse services-start bootstrap after Channel D deploy
+      ansible.builtin.raw: |
+        hook="/jffs/scripts/services-start"
+        tmp="/tmp/services-start.channel-m.$$"
+        touch "$hook"
+        chmod 755 "$hook"
+        awk '
+          /# BEGIN ChannelMReverse managed by ansible/ { skip=1; next }
+          /# END ChannelMReverse managed by ansible/ { skip=0; next }
+          skip != 1 { print }
+        ' "$hook" > "$tmp"
+        cat >> "$tmp" <<'SH'
+        # BEGIN ChannelMReverse managed by ansible
+        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
+        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+        ( sleep 45; {{ channel_m_maxtg_reverse_script_path }} ) >/dev/null 2>&1 &
+        # END ChannelMReverse managed by ansible
+        SH
+        mv "$tmp" "$hook"
+        chmod 755 "$hook"
+        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
+        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+      changed_when: false
+      when: channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel D Caddy listener is running when enabled
+      ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -Eq '(^|[[:space:]])(0\\.0\\.0\\.0|::):{{ channel_d_naiveproxy_ingress_port }}[[:space:]]'"
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D sing-box SOCKS relay listener is running when enabled
+      ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ channel_d_naiveproxy_upstream_socks_port }}'"
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D public port redirects to internal Caddy listener when needed
+      ansible.builtin.raw: |
+        iptables -t nat -S PREROUTING |
+          grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_d_naiveproxy_public_port }} .*REDIRECT --to-ports {{ channel_d_naiveproxy_ingress_port }}'
+      changed_when: false
+      when:
+        - channel_d_naiveproxy_enabled | default(false) | bool
+        - channel_d_naiveproxy_public_port | string != channel_d_naiveproxy_ingress_port | string
+
+    - name: GhostRoute deploy gate after Channel D router mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

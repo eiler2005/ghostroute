@@ -1393,6 +1393,14 @@ Channel C is split into two variants and they must not be mixed.
 - C1-Shadowrocket is not native Naive. It is the current compatibility lane for Shadowrocket and uses short HTTPS CONNECT URL QR artifacts such as iphone-N-c1-shadowrocket-https.png and iphone-N-c1-shadowrocket-https.txt.
 - C1-sing-box/native Naive is the intended stealth-primary design. The router side has real LE TLS and per-client username/password, but the tested SFI build failed with "unknown outbound type: naive"; return to it when an iOS sing-box/SFI client supports naive outbound, target sing-box >= 1.13.
 
+## Channel D Status
+
+Channel D is an experimental router-native NaiveProxy lab. Karing/NaiveProxy-style
+clients connect to home TCP/4444, router Caddy forward_proxy@naive relays into
+sing-box channel-d-naiveproxy-socks-in, and the same managed split sends
+managed destinations to reality-out and non-managed destinations to direct-out.
+It is disabled by default and is not Channel C proof.
+
 ## Drift
 EOF
 

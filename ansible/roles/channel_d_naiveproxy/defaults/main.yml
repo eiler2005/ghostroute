@@ -1,0 +1,20 @@
+---
+channel_d_naiveproxy_enabled: false
+channel_d_naiveproxy_public_host: ""
+channel_d_naiveproxy_public_port: 4444
+channel_d_naiveproxy_listen: 0.0.0.0
+channel_d_naiveproxy_ingress_port: ""
+channel_d_naiveproxy_upstream_socks_port: ""
+channel_d_naiveproxy_clients: []
+channel_d_naiveproxy_connlimit_above: 300
+channel_d_naiveproxy_mss: 1360
+channel_d_naiveproxy_tls_cert_path: /opt/etc/sing-box/channel-c-home-fullchain.pem
+channel_d_naiveproxy_tls_key_path: /opt/etc/sing-box/channel-c-home-privkey.pem
+channel_d_naiveproxy_caddy_bin_path: /opt/bin/caddy-channel-d-naiveproxy
+channel_d_naiveproxy_caddy_config_path: /opt/etc/caddy/channel-d-naiveproxy/Caddyfile
+channel_d_naiveproxy_caddy_init_path: /opt/etc/init.d/S99caddy-channel-d-naiveproxy
+channel_d_naiveproxy_caddy_log_path: /opt/var/log/caddy-channel-d-naiveproxy.log
+channel_d_naiveproxy_caddy_pid_path: /opt/var/run/caddy-channel-d-naiveproxy.pid
+channel_d_naiveproxy_www_root: /opt/share/channel-d-naiveproxy
+channel_d_naiveproxy_local_binary_path: "{{ playbook_dir }}/../out/channel-d-naiveproxy/caddy-channel-d-naiveproxy-linux-arm64"
+services_start_hook: /jffs/scripts/services-start

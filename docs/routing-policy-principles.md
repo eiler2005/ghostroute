@@ -68,6 +68,9 @@ Layer 1 is channel ingress.
   `channel-b-relay-socks`.
 - Channel C1 native Naive lands in `channel-c-naive-in`.
 - C1-Shadowrocket compatibility lands in `channel-c-shadowrocket-http-in`.
+- Experimental Channel D NaiveProxy lands in
+  `channel-d-naiveproxy-socks-in` after router-local Caddy
+  `forward_proxy@naive`.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
 - Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.

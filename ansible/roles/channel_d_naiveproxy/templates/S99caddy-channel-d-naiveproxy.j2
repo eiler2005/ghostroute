@@ -1,0 +1,49 @@
+#!/bin/sh
+
+ENABLED=yes
+NAME="caddy-channel-d-naiveproxy"
+BIN="{{ channel_d_naiveproxy_caddy_bin_path }}"
+CONFIG="{{ channel_d_naiveproxy_caddy_config_path }}"
+LOG="{{ channel_d_naiveproxy_caddy_log_path }}"
+PIDFILE="{{ channel_d_naiveproxy_caddy_pid_path }}"
+
+start() {
+  [ "$ENABLED" = "yes" ] || return 0
+  [ -x "$BIN" ] || return 1
+  [ -f "$CONFIG" ] || return 1
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+    return 0
+  fi
+  mkdir -p /opt/var/run "$(dirname "$LOG")"
+  nohup "$BIN" run --config "$CONFIG" --adapter caddyfile >> "$LOG" 2>&1 </dev/null &
+  echo $! > "$PIDFILE"
+}
+
+stop() {
+  if [ -f "$PIDFILE" ]; then
+    kill "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null || true
+    rm -f "$PIDFILE"
+  fi
+}
+
+restart() {
+  stop
+  sleep 1
+  start
+}
+
+status() {
+  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null && echo "running" || echo "stopped"
+}
+
+case "$1" in
+  start|stop|restart|status)
+    "$1"
+    ;;
+  enable|disable)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status|enable|disable}"
+    exit 1
+    ;;
+esac

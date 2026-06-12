@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUT_DIR="${PROJECT_ROOT}/ansible/out/channel-d-naiveproxy"
+OUT="${CHANNEL_D_CADDY_OUT:-${OUT_DIR}/caddy-channel-d-naiveproxy-linux-arm64}"
+CADDY_VERSION="${CHANNEL_D_CADDY_VERSION:-v2.11.1}"
+FORWARDPROXY_MODULE="${CHANNEL_D_FORWARDPROXY_MODULE:-github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive}"
+
+mkdir -p "$OUT_DIR"
+
+if ! command -v xcaddy >/dev/null 2>&1; then
+  if ! command -v go >/dev/null 2>&1; then
+    echo "go is required to install xcaddy; install Go first or put xcaddy in PATH" >&2
+    exit 1
+  fi
+  GOBIN="${GOBIN:-${HOME}/go/bin}" go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+  export PATH="${GOBIN:-${HOME}/go/bin}:$PATH"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+(
+  cd "$tmpdir"
+  GOOS=linux GOARCH=arm64 CGO_ENABLED=0 xcaddy build "$CADDY_VERSION" \
+    --output caddy-channel-d-naiveproxy-linux-arm64 \
+    --with "$FORWARDPROXY_MODULE"
+)
+
+install -m 0755 "$tmpdir/caddy-channel-d-naiveproxy-linux-arm64" "$OUT"
+printf '%s\n' "$OUT"
