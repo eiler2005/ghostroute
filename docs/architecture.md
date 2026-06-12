@@ -40,6 +40,7 @@ Layer 1 managed channels
   Channel A -> endpoint -> home endpoint -> router -> managed egress
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
   Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
+  Channel D -> Karing/Naive -> home endpoint -> router Caddy forward_proxy@naive -> sing-box D SOCKS -> managed egress
   Channel M -> isolated service policy -> approved regional egress
 
 Layer 2 home router

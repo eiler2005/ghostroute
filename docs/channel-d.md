@@ -45,6 +45,40 @@ The Caddy binary is built locally with:
 The router only receives the finished `linux/arm64` binary. Do not run generic
 NaiveProxy install scripts on the router.
 
+## Naive Compatibility And DPI Reality
+
+Channel D is real on the router-server side in the practical sense that the
+public listener is Caddy built with `forward_proxy@naive`, authenticated with
+Naive-style Basic Auth, and upstreamed into local sing-box through SOCKS. It is
+not the standalone `klzgrad/naiveproxy` server binary, and its observed network
+fingerprint also depends on the client. The current proven client is Karing, not
+the official NaiveProxy client embedded in a Chromium network stack.
+
+For passive observers on LTE or another first-hop network, Channel D looks like
+a TLS connection to the home hostname and Channel D public port. They do not see
+the post-router managed split directly: managed destinations are selected only
+after the router receives the proxy stream. That means Channel D hides final
+managed destinations from the mobile carrier better than direct browsing, but it
+does not make the home endpoint itself invisible.
+
+DPI difficulty should be treated as probabilistic, not binary:
+
+- Basic hostname/IP/port filtering can still block the home endpoint or the
+  Channel D public port.
+- A non-standard public port is easier to single out than ordinary web traffic.
+- TLS/HTTP fingerprinting may classify Caddy/Karing differently from a normal
+  Chrome session.
+- Traffic shape, long-lived proxy sessions, repeated CONNECT-like behavior and
+  active probing can provide additional signals.
+- `probe_resistance`, `hide_ip` and `hide_via` reduce obvious proxy disclosure
+  to unauthenticated probes, but they are not a proof against a capable DPI
+  system.
+
+So the correct project wording is: Channel D is a router-native
+Naive-compatible lane, live-proven with Karing/LTE, with a better HTTPS-looking
+first hop than a plain custom proxy. It is not guaranteed to be
+indistinguishable from normal browser traffic under advanced DPI.
+
 ## Karing Artifacts
 
 For an import-only Karing trial that does not use real endpoints or secrets:
