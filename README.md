@@ -166,7 +166,10 @@ diagnostic.
   clients connect to router-native Caddy `forward_proxy@naive` on home TCP/4444.
   Caddy relays into local sing-box SOCKS `channel-d-naiveproxy-socks-in`, where
   managed destinations use `reality-out` and non-managed traffic uses
-  `direct-out`. It is disabled by default and is not Channel C proof.
+  `direct-out`. The server build pins `klzgrad/forwardproxy`; the current live
+  client proof is Karing-only, with a Karing fingerprint limit and a neutral
+  cover site for ordinary unauthenticated HTTPS GET probes. It is disabled by
+  default and is not Channel C proof.
 - Channel M service lane for `maxtg_bridge`: the home router opens an SSH
   remote-forward to the Hetzner/VPS docker bridge; `maxtg_bridge` uses
   authenticated HTTP CONNECT through that reverse tunnel, and router sing-box

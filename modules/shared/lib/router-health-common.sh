@@ -678,9 +678,20 @@ sysctl_value() {
   fi
 }
 
+runtime_value() {
+  local key="$1"
+  if [ -n "${runtime_env:-}" ] && [ -r "$runtime_env" ]; then
+    awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$runtime_env"
+  fi
+}
+
 now_epoch=$(date +%s)
 state_dir="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && state_dir="/opt/var/log/router_configuration"
+runtime_env=""
+for candidate in /jffs/scripts/ghostroute-runtime.env /jffs/scripts/ghostroute-runtime-env; do
+  [ -f "$candidate" ] && runtime_env="$candidate" && break
+done
 
 legacy_vpn_current=$(ipset list VPN_DOMAINS 2>/dev/null | awk '/^Number of entries:/ {print $4; exit}')
 legacy_vpn_exists=0
@@ -711,6 +722,18 @@ home_reality_port="${GHOSTROUTE_HOME_REALITY_PORT:-$(singbox_port_by_tag reality
 dnscrypt_socks_port="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(singbox_port_by_tag dnscrypt-socks-in)}"
 vps_dns_forward_port="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(singbox_port_by_tag vps-dns-in)}"
 dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-}"
+channel_d_enabled="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
+channel_d_public_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PUBLIC_PORT)"
+channel_d_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT)"
+channel_d_socks_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT)"
+channel_d_caddy_bin="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_BIN)"
+channel_d_caddy_config="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_CONFIG)"
+channel_d_www_root="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_WWW_ROOT)"
+channel_d_enabled="${channel_d_enabled:-0}"
+channel_d_socks_port="${channel_d_socks_port:-$(singbox_port_by_tag channel-d-naiveproxy-socks-in)}"
+channel_d_caddy_bin="${channel_d_caddy_bin:-/opt/bin/caddy-channel-d-naiveproxy}"
+channel_d_caddy_config="${channel_d_caddy_config:-/opt/etc/caddy/channel-d-naiveproxy/Caddyfile}"
+channel_d_www_root="${channel_d_www_root:-/opt/share/channel-d-naiveproxy}"
 prerouting_mangle=$(iptables -t mangle -S PREROUTING 2>/dev/null || true)
 output_mangle=$(iptables -t mangle -S OUTPUT 2>/dev/null || true)
 nat_prerouting=$(iptables -t nat -S PREROUTING 2>/dev/null || true)
@@ -859,6 +882,33 @@ printf 'CHANNEL_B_DROP_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FOR
 printf 'CHANNEL_B_DROP_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP')"
 printf 'CHANNEL_B_REJECT_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT')"
 printf 'CHANNEL_B_REJECT_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j REJECT')"
+printf 'CHANNEL_D_NAIVEPROXY_ENABLED=%s\n' "$channel_d_enabled"
+printf 'CHANNEL_D_NAIVEPROXY_LISTENER=%s\n' "$( [ -n "$channel_d_port" ] && bool_grep "$listen_sockets" "0.0.0.0:$channel_d_port" || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_SOCKS_LISTENER=%s\n' "$( [ -n "$channel_d_socks_port" ] && bool_grep "$listen_sockets" "127.0.0.1:$channel_d_socks_port" || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_PUBLIC_REDIRECT=%s\n' "$(
+  if [ -n "$channel_d_public_port" ] && [ -n "$channel_d_port" ]; then
+    if [ "$channel_d_public_port" = "$channel_d_port" ]; then
+      printf '1\n'
+    else
+      bool_grep "$nat_prerouting" "--dport $channel_d_public_port" | grep -q 1 &&
+        bool_grep "$nat_prerouting" "--to-ports $channel_d_port" || printf '0\n'
+    fi
+  else
+    printf '0\n'
+  fi
+)"
+printf 'CHANNEL_D_NAIVEPROXY_INPUT_ACCEPT=%s\n' "$( [ -n "$channel_d_port" ] && bool_grep "$filter_input" "--dport $channel_d_port -j ACCEPT" || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_CADDY_MODULE=%s\n' "$( [ -x "$channel_d_caddy_bin" ] && "$channel_d_caddy_bin" list-modules 2>/dev/null | grep -q 'forward_proxy' && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_CADDY_CONFIG=%s\n' "$( [ -r "$channel_d_caddy_config" ] && grep -q 'forward_proxy' "$channel_d_caddy_config" && grep -q 'probe_resistance' "$channel_d_caddy_config" && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_COVER_SITE=%s\n' "$( [ -r "$channel_d_www_root/index.html" ] && grep -q 'The site is available.' "$channel_d_www_root/index.html" && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_MANAGED_SPLIT=%s\n' "$(
+  if bool_grep "$singbox_config_compact" '"inbound":"channel-d-naiveproxy-socks-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' | grep -q 1 &&
+    bool_grep "$singbox_config_compact" '"inbound":"channel-d-naiveproxy-socks-in","outbound":"direct-out"' | grep -q 1; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
 printf 'DNS_REDIRECT_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
 printf 'DNS_REDIRECT_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53')"
 
@@ -1400,6 +1450,22 @@ clients connect to home TCP/4444, router Caddy forward_proxy@naive relays into
 sing-box channel-d-naiveproxy-socks-in, and the same managed split sends
 managed destinations to reality-out and non-managed destinations to direct-out.
 It is disabled by default and is not Channel C proof.
+
+| Check | Status |
+|---|---|
+| Runtime flag | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_ENABLED)" = "1" ] && printf 'Enabled' || printf 'Disabled' ) |
+| Caddy listener | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| Caddy forward_proxy module | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_CADDY_MODULE)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| Caddy config markers | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_CADDY_CONFIG)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| Cover site content | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_COVER_SITE)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| Public redirect | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_PUBLIC_REDIRECT)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| INPUT allow | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_INPUT_ACCEPT)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| sing-box SOCKS inbound | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+| Managed split rules | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_MANAGED_SPLIT)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
+
+Expected live proof remains `channel-d-naiveproxy-socks-in -> reality-out` for
+managed destinations and `channel-d-naiveproxy-socks-in -> direct-out` for
+non-managed destinations.
 
 ## Drift
 EOF

@@ -29,7 +29,12 @@ runtime, client artifacts and deploy playbook.
   Karing reports this as `cert common name invalid`.
 - Router runtime: `/opt/bin/caddy-channel-d-naiveproxy` with
   `forward_proxy@naive`.
+- The build pins `klzgrad/forwardproxy` to
+  `d62c80d3dd2c706b6b87579844d2397bddd18317` by default; override
+  `CHANNEL_D_FORWARDPROXY_MODULE` only for an explicit rebuild/update.
 - Caddy upstream: `socks5://127.0.0.1:<channel-d-socks-port>`.
+- The unauthenticated web root is a neutral static cover page. It must not
+  mention GhostRoute, NaiveProxy, Karing or proxying.
 - Managed split owner: sing-box inbound `channel-d-naiveproxy-socks-in`.
 - Generated client artifacts: `ansible/out/clients-channel-d/`.
 - Trial Karing QR artifacts can be generated locally with
@@ -73,6 +78,8 @@ DPI difficulty should be treated as probabilistic, not binary:
 - `probe_resistance`, `hide_ip` and `hide_via` reduce obvious proxy disclosure
   to unauthenticated probes, but they are not a proof against a capable DPI
   system.
+- The cover site makes ordinary HTTPS GET probes look like a small static site,
+  while unauthenticated CONNECT probes must not receive a successful tunnel.
 
 So the correct project wording is: Channel D is a router-native
 Naive-compatible lane, live-proven with Karing/LTE, with a better HTTPS-looking
@@ -92,6 +99,8 @@ ansible-playbook playbooks/30-generate-client-profiles.yml \
 
 This writes a fake `example.invalid` profile named `karing-trial` so Karing QR
 import can be tested without enabling Channel D or storing trial credentials.
+Outside this trial mode, the generator rejects numeric IPv4/IPv6 public hosts
+for Channel D because Karing has no project-proven SNI override path.
 
 For a real test profile, keep the Karing client in Vault:
 

@@ -141,6 +141,12 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   live-proven iPhone compatibility path; C1-sing-box использует router-side
   native Naive, но пока ожидает iOS client support for outbound `type: naive`.
   Оба варианта применяют тот же managed split и Reality/Vision upstream.
+- Channel D Karing-only NaiveProxy lane: выбранные клиенты Karing подключаются
+  к домашнему TCP/4444, router-native Caddy `forward_proxy@naive` relays трафик
+  в `channel-d-naiveproxy-socks-in`, а sing-box применяет тот же managed split.
+  Server-side build pinned на `klzgrad/forwardproxy`, но live fingerprint
+  остается Karing-like; cover site отвечает на обычный unauthenticated HTTPS
+  GET. Channel D выключен по умолчанию и не является Channel C proof.
 - Channel M service lane для `maxtg_bridge`: домашний роутер открывает SSH
   remote-forward на Hetzner/VPS docker bridge; bridge использует authenticated
   HTTP CONNECT внутри этого туннеля, а router-side sing-box ведет

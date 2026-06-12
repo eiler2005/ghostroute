@@ -236,6 +236,11 @@ Current production interpretation:
 
 - Channel D is operator live-proven with Karing over LTE, but still isolated
   from Channel A/B/C ownership.
+- The server side is Caddy `forward_proxy@naive` built with a pinned
+  `klzgrad/forwardproxy` ref; the current client fingerprint is still Karing,
+  not the official Chromium NaiveProxy client.
+- A neutral cover site handles ordinary unauthenticated HTTPS GET probes, while
+  unauthenticated CONNECT must not become an open proxy.
 - Channel D has separate credentials, Karing artifacts and deploy playbook.
 - Proof logs must show `channel-d-naiveproxy-socks-in -> reality-out` for
   managed destinations and `direct-out` for non-managed destinations.

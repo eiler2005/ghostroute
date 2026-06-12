@@ -63,7 +63,10 @@ The human-readable Channel M environment inventory is
 Channel D is represented as an experimental router-native Caddy
 `forward_proxy@naive` service plus a router-local sing-box SOCKS inbound. It is
 disabled by default, has separate public/internal/SOCKS port ownership, and is
-not counted as Channel C native Naive proof.
+not counted as Channel C native Naive proof. Its Caddy binary is built from a
+pinned `klzgrad/forwardproxy` naive ref, serves a neutral cover page for
+ordinary unauthenticated HTTPS GET probes, and must reject unauthenticated
+CONNECT as an open-proxy attempt. Current client proof is Karing-only.
 
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`

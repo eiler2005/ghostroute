@@ -505,7 +505,9 @@ separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 Channel D artifacts are experimental Karing/NaiveProxy-style credentials for a
 router-native Caddy `forward_proxy@naive` lane. The client connects to the home
 endpoint first, Caddy relays to local sing-box SOCKS, and sing-box applies the
-same managed split as Channel A/B/C.
+same managed split as Channel A/B/C. Current live proof is Karing-only: the
+server side is pinned `klzgrad/forwardproxy`, but client-side fingerprinting is
+still Karing-like rather than official Chromium NaiveProxy.
 
 For an import-only Karing trial without real endpoints or credentials:
 
@@ -547,6 +549,10 @@ Channel D is not Channel C proof. Its proof signal is
 `vault_channel_d_naiveproxy_profiles_enabled=true` is importable by Karing, but
 it becomes usable only after Channel D runtime is enabled with matching Vault
 credentials.
+
+For live artifacts, `channel_d_profile_public_host` must be a TLS hostname, not
+a numeric IP. Karing reports `cert common name invalid` when a raw IP is used
+with the existing hostname certificate and no proven SNI override.
 
 ## Channel M maxtg Service Egress Artifact
 

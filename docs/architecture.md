@@ -470,7 +470,7 @@ preserved only as the cold fallback documented above.
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
-| Channel D | experimental router-native NaiveProxy lab: Caddy `forward_proxy@naive` on the home router relays into sing-box managed split |
+| Channel D | experimental Karing-only router-native NaiveProxy lab: pinned Caddy `forward_proxy@naive` on the home router serves a neutral cover site and relays into sing-box managed split |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 

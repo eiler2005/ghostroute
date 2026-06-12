@@ -73,6 +73,20 @@
       tags:
         - shadowrocket_proof
 
+    - name: Validate Channel D live Karing profile host is a TLS hostname
+      ansible.builtin.assert:
+        that:
+          - channel_d_profile_public_host | string | length > 0
+          - channel_d_profile_public_host is not match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+          - channel_d_profile_public_host is not match('^\[?[0-9A-Fa-f:]*:[0-9A-Fa-f:]+\]?$')
+        fail_msg: "Live Channel D Karing artifacts require a TLS hostname, not a numeric IP. Use karing-trial mode for placeholder import tests."
+      when:
+        - channel_d_profile_generation_enabled | bool
+        - not (channel_d_karing_trial_enabled | bool)
+      no_log: true
+      tags:
+        - channel_d_clients_only
+
     - name: Validate Channel C1 client profile fields
       ansible.builtin.assert:
         that:
