@@ -158,7 +158,10 @@ diagnostic.
   clients connect to router-native Caddy `forward_proxy@naive` on home TCP/4444.
   Caddy relays into local sing-box SOCKS `channel-d-naiveproxy-socks-in`, where
   managed destinations use `reality-out` and non-managed traffic uses
-  `direct-out`. It is disabled by default and is not Channel C proof.
+  `direct-out`. The server build pins `klzgrad/forwardproxy`; the current live
+  client proof is Karing-only, with a Karing fingerprint limit and a neutral
+  cover site for ordinary unauthenticated HTTPS GET probes. It is disabled by
+  default and is not Channel C proof.
 - Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.

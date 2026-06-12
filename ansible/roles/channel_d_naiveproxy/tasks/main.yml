@@ -78,7 +78,25 @@
     mode: "0644"
     content: |
       <!doctype html>
-      <html><head><meta charset="utf-8"><title>Not Found</title></head><body>Not Found</body></html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Welcome</title>
+        <style>
+          body { margin: 0; font-family: system-ui, sans-serif; color: #202428; background: #f7f7f5; }
+          main { max-width: 44rem; margin: 14vh auto 0; padding: 0 1.5rem; }
+          h1 { font-size: 2rem; margin: 0 0 0.75rem; }
+          p { color: #4f5a62; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>Welcome</h1>
+          <p>The site is available.</p>
+        </main>
+      </body>
+      </html>
   when: channel_d_naiveproxy_enabled | default(false) | bool
 
 - name: Install Channel D Caddy binary

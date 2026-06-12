@@ -128,11 +128,16 @@ Shadowrocket path is C1-Shadowrocket HTTPS CONNECT compatibility and is
 persisted by the Channel C router playbook when enabled. Channel D (`24`) is an
 experimental home-first NaiveProxy lab: router Caddy `forward_proxy@naive`
 relays into sing-box `channel-d-naiveproxy-socks-in` for the same managed split.
+Its server build pins the `klzgrad/forwardproxy` naive ref, serves a neutral
+cover page for ordinary unauthenticated HTTPS GET probes, and verifies that
+unauthenticated CONNECT does not become an open proxy.
 For a Karing trial, `vault_channel_d_naiveproxy_profiles_enabled=true` lets
 `30-generate-client-profiles.yml --tags channel_d_clients_only` render Channel D
 QR artifacts without enabling router runtime. For import-only UI testing without
 real endpoints or secrets, run the same tag with
-`-e channel_d_naiveproxy_karing_trial_enabled=true`.
+`-e channel_d_naiveproxy_karing_trial_enabled=true`. Live Channel D profile
+generation requires a TLS hostname, not a numeric IP, because Karing has no
+project-proven SNI override path.
 None of these channels may mutate Channel A REDIRECT ownership or introduce
 automatic failover.
 

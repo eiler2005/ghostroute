@@ -754,7 +754,32 @@
       ansible.builtin.shell: |
         grep -q 'forward_proxy' {{ channel_d_naiveproxy_caddy_config_path }} &&
         grep -q 'upstream socks5://127.0.0.1:{{ channel_d_naiveproxy_upstream_socks_port }}' {{ channel_d_naiveproxy_caddy_config_path }} &&
-        grep -q 'probe_resistance' {{ channel_d_naiveproxy_caddy_config_path }}
+        grep -q 'probe_resistance' {{ channel_d_naiveproxy_caddy_config_path }} &&
+        grep -q 'root {{ channel_d_naiveproxy_www_root }}' {{ channel_d_naiveproxy_caddy_config_path }} &&
+        grep -q 'The site is available.' {{ channel_d_naiveproxy_www_root }}/index.html
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel D Caddy cover site responds to ordinary TLS GET when enabled
+      ansible.builtin.shell: |
+        response="$(
+          printf 'GET / HTTP/1.1\r\nHost: {{ channel_d_naiveproxy_public_host }}\r\nConnection: close\r\n\r\n' |
+            timeout 8 openssl s_client -connect "127.0.0.1:{{ channel_d_naiveproxy_ingress_port }}" -servername "{{ channel_d_naiveproxy_public_host }}" -quiet 2>/dev/null || true
+        )"
+        printf '%s\n' "$response" | grep -q 'HTTP/1.1 200' &&
+        printf '%s\n' "$response" | grep -q 'The site is available.'
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel D unauthenticated CONNECT is not an open proxy when enabled
+      ansible.builtin.shell: |
+        response="$(
+          printf 'CONNECT www.gstatic.com:443 HTTP/1.1\r\nHost: www.gstatic.com:443\r\nConnection: close\r\n\r\n' |
+            timeout 8 openssl s_client -connect "127.0.0.1:{{ channel_d_naiveproxy_ingress_port }}" -servername "{{ channel_d_naiveproxy_public_host }}" -quiet 2>/dev/null || true
+        )"
+        ! printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 200|200 Connection established'
       changed_when: false
       when: channel_d_naiveproxy_enabled | default(false) | bool
       no_log: true
