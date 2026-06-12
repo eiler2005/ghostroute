@@ -63,6 +63,10 @@ assert_contains "ansible/roles/ufw_stealth/tasks/main.yml" "Allow Xray Docker br
 
 assert_contains "$ROUTER_TASKS" "conf-file={{ router_vps_dnsmasq_conf_path }}"
 assert_contains "$DNSCRYPT_TASKS" "Keep default dnsmasq upstream in policy-split DNS mode"
+assert_contains "$DNSCRYPT_TASKS" "Install dnscrypt listener watchdog"
+assert_contains "$DNSCRYPT_TASKS" "DnscryptWatchdog"
+assert_contains "ansible/roles/dnscrypt_proxy/templates/dnscrypt-watchdog.sh.j2" "dnscrypt-proxy listener probe failed"
+assert_contains "ansible/roles/dnscrypt_proxy/templates/dnscrypt-watchdog.sh.j2" '"$INIT" restart'
 assert_contains "$DNSCRYPT_TASKS" "^no-resolv$"
 assert_contains "$RULESET_SCRIPT" "DNSMASQ_VPS_DNS_CONF"
 assert_contains "$RULESET_SCRIPT" "GHOSTROUTE_MANAGED_DNS_FORWARD_PORT"
@@ -88,8 +92,19 @@ assert_not_contains "$SINGBOX_TEMPLATE" '"port": [53, 853]'
 assert_contains "$VERIFY" "VPS Unbound resolver listens only on private hosts when enabled"
 assert_contains "$VERIFY" "Xray permits only the private VPS Unbound endpoint before private-IP block"
 assert_contains "$VERIFY" "Managed DNS include sends BrowserLeaks DNS to dnscrypt-backed forwarder"
+assert_contains "$VERIFY" "dnscrypt-proxy listening on configured port"
 assert_contains "$VERIFY" "RU and direct domains are absent from managed DNS include"
 assert_contains "$VERIFY" "Router-side Reality ingress sends plain DNS to router-local dnsmasq"
+assert_contains "modules/shared/lib/router-health-common.sh" "DNSCRYPT_PROXY_LISTENER"
+assert_contains "modules/shared/lib/router-health-common.sh" "dnscrypt-proxy listener missing on router loopback"
+assert_contains "modules/ghostroute-health-monitor/bin/router-health-report" "dnscrypt_listener"
+assert_contains "README.md" "/jffs/scripts/dnscrypt-watchdog.sh"
+assert_contains "README-ru.md" "/jffs/scripts/dnscrypt-watchdog.sh"
+assert_contains "docs/architecture.md" "dnscrypt-watchdog.sh"
+assert_contains "docs/dns-policy.md" "dnscrypt-watchdog.sh"
+assert_contains "docs/troubleshooting.md" "DnscryptWatchdog"
+assert_contains "docs/runtime-inventory.md" "router_dnscrypt_watchdog"
+assert_contains "configs/runtime-inventory.yml" "router_dnscrypt_watchdog"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT

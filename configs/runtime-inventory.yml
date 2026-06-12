@@ -134,6 +134,32 @@ components:
     compatibility_notes:
       - dnsmasq depends on the local dnscrypt listener for normal upstream DNS.
 
+  - id: router_dnscrypt_watchdog
+    component_name: dnscrypt-watchdog.sh
+    supplier: GhostRoute Routing Core
+    type: router_script
+    ecosystem: asuswrt_merlin_jffs
+    origin: ansible dnscrypt_proxy role template
+    package_names:
+      - /jffs/scripts/dnscrypt-watchdog.sh
+    version_policy:
+      proven_good: Checks the router-local dnscrypt listener every minute and restarts only dnscrypt-proxy when it disappears.
+      minimum_required: Installed cron entry must be present whenever dnsmasq managed DNS forwards to dnscrypt-proxy.
+      candidate: Add resolver-response probes only after they are safe for slow router DNS conditions.
+      known_problematic: []
+      rollback_available: Remove cron entry and restore previous script only during approved recovery.
+    relationships:
+      - monitors_router_dnscrypt_proxy
+      - restarts_router_dnscrypt_proxy
+      - preserves_singbox_and_channel_ownership
+    runtime_checks:
+      - cru l | grep DnscryptWatchdog
+      - /jffs/scripts/dnscrypt-watchdog.sh
+      - netstat -nlp | grep 127.0.0.1:<dnscrypt-port>
+    compatibility_notes:
+      - A missing dnscrypt listener can break LAN/Wi-Fi and home-first managed DNS while Channel listeners remain up.
+      - Channel M is direct-out service traffic and is not managed-DNS proof.
+
   - id: router_dnsmasq
     component_name: dnsmasq
     supplier: Asuswrt-Merlin

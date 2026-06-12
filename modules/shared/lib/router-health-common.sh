@@ -722,6 +722,7 @@ home_reality_port="${GHOSTROUTE_HOME_REALITY_PORT:-$(singbox_port_by_tag reality
 dnscrypt_socks_port="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(singbox_port_by_tag dnscrypt-socks-in)}"
 vps_dns_forward_port="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(singbox_port_by_tag vps-dns-in)}"
 dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-}"
+[ -n "$dnscrypt_port" ] || dnscrypt_port=5354
 channel_d_enabled="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
 channel_d_public_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PUBLIC_PORT)"
 channel_d_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT)"
@@ -859,6 +860,13 @@ printf 'HOME_REALITY_SPLIT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"i
 printf 'HOME_REALITY_DIRECT_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"direct-out"')"
 printf 'HOME_REALITY_ALL_RELAY_RULE=%s\n' "$(bool_grep "$singbox_config_compact" '"inbound":"reality-in","outbound":"reality-out"')"
 printf 'CHANNEL_B_DNSCRYPT_SOCKS_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$dnscrypt_socks_port")"
+printf 'DNSCRYPT_PROXY_LISTENER=%s\n' "$(
+  if [ -n "$dnscrypt_port" ] && bool_grep "$listen_sockets" "127.0.0.1:$dnscrypt_port" | grep -q 1; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" "socks5://127.0.0.1:$dnscrypt_socks_port")"
 printf 'VPS_DNS_FORWARD_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$vps_dns_forward_port")"
 printf 'VPS_DNS_FORWARD_RULE=%s\n' "$(
@@ -883,7 +891,13 @@ printf 'CHANNEL_B_DROP_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORW
 printf 'CHANNEL_B_REJECT_QUIC_STEALTH=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j REJECT')"
 printf 'CHANNEL_B_REJECT_QUIC_STATIC=%s\n' "$(bool_grep "$filter_forward" '-A FORWARD -i br0 -p udp -m udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j REJECT')"
 printf 'CHANNEL_D_NAIVEPROXY_ENABLED=%s\n' "$channel_d_enabled"
-printf 'CHANNEL_D_NAIVEPROXY_LISTENER=%s\n' "$( [ -n "$channel_d_port" ] && bool_grep "$listen_sockets" "0.0.0.0:$channel_d_port" || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_LISTENER=%s\n' "$(
+  if [ -n "$channel_d_port" ] && printf '%s\n' "$listen_sockets" | grep -Eq "(0\.0\.0\.0:$channel_d_port|:::$channel_d_port|\[::\]:$channel_d_port|\*:$channel_d_port)[[:space:]]"; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
 printf 'CHANNEL_D_NAIVEPROXY_SOCKS_LISTENER=%s\n' "$( [ -n "$channel_d_socks_port" ] && bool_grep "$listen_sockets" "127.0.0.1:$channel_d_socks_port" || printf '0\n' )"
 printf 'CHANNEL_D_NAIVEPROXY_PUBLIC_REDIRECT=%s\n' "$(
   if [ -n "$channel_d_public_port" ] && [ -n "$channel_d_port" ]; then
@@ -898,7 +912,15 @@ printf 'CHANNEL_D_NAIVEPROXY_PUBLIC_REDIRECT=%s\n' "$(
   fi
 )"
 printf 'CHANNEL_D_NAIVEPROXY_INPUT_ACCEPT=%s\n' "$( [ -n "$channel_d_port" ] && bool_grep "$filter_input" "--dport $channel_d_port -j ACCEPT" || printf '0\n' )"
-printf 'CHANNEL_D_NAIVEPROXY_CADDY_MODULE=%s\n' "$( [ -x "$channel_d_caddy_bin" ] && "$channel_d_caddy_bin" list-modules 2>/dev/null | grep -q 'forward_proxy' && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_D_NAIVEPROXY_CADDY_MODULE=%s\n' "$(
+  if [ -x "$channel_d_caddy_bin" ] && "$channel_d_caddy_bin" list-modules 2>/dev/null | grep -q 'forward_proxy'; then
+    printf '1\n'
+  elif [ -r "$channel_d_caddy_config" ] && grep -q 'forward_proxy' "$channel_d_caddy_config" && [ -n "$channel_d_port" ] && printf '%s\n' "$listen_sockets" | grep -Eq "(0\.0\.0\.0:$channel_d_port|:::$channel_d_port|\[::\]:$channel_d_port|\*:$channel_d_port)[[:space:]]"; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
 printf 'CHANNEL_D_NAIVEPROXY_CADDY_CONFIG=%s\n' "$( [ -r "$channel_d_caddy_config" ] && grep -q 'forward_proxy' "$channel_d_caddy_config" && grep -q 'probe_resistance' "$channel_d_caddy_config" && printf '1\n' || printf '0\n' )"
 printf 'CHANNEL_D_NAIVEPROXY_COVER_SITE=%s\n' "$( [ -r "$channel_d_www_root/index.html" ] && grep -q 'The site is available.' "$channel_d_www_root/index.html" && printf '1\n' || printf '0\n' )"
 printf 'CHANNEL_D_NAIVEPROXY_MANAGED_SPLIT=%s\n' "$(
@@ -1227,6 +1249,7 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] || drift_lines+=("home Reality ingress missing direct fallback rule")
   [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || drift_lines+=("home Reality ingress still relays all traffic to VPS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener")
+  [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] || drift_lines+=("dnscrypt-proxy listener missing on router loopback")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
@@ -1311,6 +1334,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Home Reality direct fallback | $( [ "$(router_kv_get "$state_file" HOME_REALITY_DIRECT_RULE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | Channel A dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| dnscrypt-proxy listener | $( [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
@@ -1463,8 +1487,8 @@ It is disabled by default and is not Channel C proof.
 | sing-box SOCKS inbound | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
 | Managed split rules | $( [ "$(router_kv_get "$state_file" CHANNEL_D_NAIVEPROXY_MANAGED_SPLIT)" = "1" ] && printf 'OK' || printf 'Missing/not expected' ) |
 
-Expected live proof remains `channel-d-naiveproxy-socks-in -> reality-out` for
-managed destinations and `channel-d-naiveproxy-socks-in -> direct-out` for
+Expected live proof remains 'channel-d-naiveproxy-socks-in -> reality-out' for
+managed destinations and 'channel-d-naiveproxy-socks-in -> direct-out' for
 non-managed destinations.
 
 ## Drift

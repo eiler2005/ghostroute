@@ -76,14 +76,23 @@ Wi-Fi/LAN client
   -> normal home/RF/default resolver
 ```
 
-Mobile Channels A/B/C use the same DNS selection after reaching the router:
+Home-first mobile Channels A/B/C/D use the same DNS selection after reaching the
+router when they carry DNS or domain-routed managed traffic:
 
 ```text
-iPhone LTE -> Channel A/B/C ingress -> sing-box
+iPhone LTE -> Channel A/B/C/D ingress -> sing-box
 plain DNS :53 -> router-local dnsmasq
 dnsmasq managed domain -> dnscrypt-over-Reality
 dnsmasq RU/direct/default -> home/RF/default resolver
 ```
+
+`dnscrypt-proxy` is therefore a shared managed-DNS dependency, not an optional
+background service. If the local listener on `127.0.0.1:<dnscrypt-port>` is
+down, managed lookups can fail for LAN/Wi-Fi and for home-first mobile Channels
+A/B/C/D at the same time. Channel M is service-only direct-out and does not use
+the managed DNS split. The router-side guardrail is
+`/jffs/scripts/dnscrypt-watchdog.sh`, installed by the dnscrypt role and run by
+cron every minute; it restarts only dnscrypt-proxy when that listener disappears.
 
 DoH/DoT generated inside an app is not force-blocked in v1. It remains a
 residual risk and should be checked during BrowserLeaks/app proof testing.
@@ -220,6 +229,7 @@ Relevant expected signals:
 IPv6 policy OK
 Mobile plain DNS :53 goes to router-local dnsmasq OK
 Managed DNS include has browserleaks.com/.net/.org -> 127.0.0.1#<dnscrypt-port> OK
+dnscrypt-proxy listener OK
 dnscrypt-proxy routes DoH through sing-box SOCKS OK
 DNS/IPv6 leak probe OK
 ```

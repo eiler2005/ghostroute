@@ -94,6 +94,7 @@ checks = [
   check('sing_box_redirect_listener', 'sing-box LAN redirect listener', state['CHANNEL_B_REDIRECT_LISTENER'], { key: 'CHANNEL_B_REDIRECT_LISTENER' }),
   check('home_reality_listener', 'Home Reality listener', state['HOME_REALITY_LISTENER'], { key: 'HOME_REALITY_LISTENER' }),
   check('home_reality_input_accept', 'Home Reality INPUT allow rule', state['HOME_REALITY_INPUT_ACCEPT'], { key: 'HOME_REALITY_INPUT_ACCEPT' }),
+  check('dnscrypt_listener', 'dnscrypt-proxy listener', state['DNSCRYPT_PROXY_LISTENER'], { key: 'DNSCRYPT_PROXY_LISTENER' }),
   check('dnscrypt_proxy', 'dnscrypt-proxy SOCKS path', state['CHANNEL_B_DNSCRYPT_PROXY'], { key: 'CHANNEL_B_DNSCRYPT_PROXY' }),
   check('rule_set_redirect_stealth', 'STEALTH_DOMAINS redirect rule', state['CHANNEL_B_REDIRECT_STEALTH'], { key: 'CHANNEL_B_REDIRECT_STEALTH' }),
   check('rule_set_redirect_static', 'VPN_STATIC_NETS redirect rule', state['CHANNEL_B_REDIRECT_STATIC'], { key: 'CHANNEL_B_REDIRECT_STATIC' }),

@@ -69,14 +69,20 @@ Guardrails:
 
 ## dnscrypt-proxy Down
 
-Symptom: DNS resolution fails or `STEALTH_DOMAINS` stops populating.
+Symptom: managed DNS resolution fails, `STEALTH_DOMAINS` stops populating, and
+home-first Reality clients may log `failed to dial dest: lookup
+setup.icloud.com`. This can make LAN/Wi-Fi managed domains plus remote
+Channels A/B/C/D look broken at the same time while listeners and iptables
+still look healthy. Channel M is service-only direct-out and should not be used
+as proof that managed DNS is healthy.
 
 Check:
 
 ```sh
 netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 grep '^proxy = ' /opt/etc/dnscrypt-proxy.toml
-nslookup ifconfig.me 127.0.0.1
+grep '^server=/browserleaks.com/127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq-vps-managed.conf.add
+nslookup setup.icloud.com 127.0.0.1
 ```
 
 Recover:
@@ -88,6 +94,8 @@ service restart_dnsmasq
 
 Expected design: dnsmasq sends upstream DNS to `127.0.0.1#<dnscrypt-port>`;
 dnscrypt-proxy sends DoH through sing-box SOCKS at `socks5://127.0.0.1:<router-socks-port>`.
+`/jffs/scripts/dnscrypt-watchdog.sh` is the production guardrail: cron runs it
+every minute and restarts only dnscrypt-proxy if the local listener disappears.
 
 ## VPS 443 Broken
 
