@@ -1,0 +1,27 @@
+{
+  admin off
+  auto_https disable_redirects
+  order forward_proxy before file_server
+  log {
+    exclude http.log.error
+  }
+}
+
+:{{ channel_d_naiveproxy_ingress_port }} {
+  tls {{ channel_d_naiveproxy_tls_cert_path }} {{ channel_d_naiveproxy_tls_key_path }}
+  encode gzip zstd
+
+  forward_proxy {
+{% for client in channel_d_naiveproxy_clients %}
+    basic_auth {{ client.username }} {{ client.password }}
+{% endfor %}
+    hide_ip
+    hide_via
+    upstream socks5://127.0.0.1:{{ channel_d_naiveproxy_upstream_socks_port }}
+    probe_resistance
+  }
+
+  file_server {
+    root {{ channel_d_naiveproxy_www_root }}
+  }
+}

@@ -15,12 +15,19 @@
     channel_c_out_dir: "{{ playbook_dir }}/../out/clients-channel-c"
     channel_c_sfi_out_dir: "{{ channel_c_out_dir }}/c1-SFI"
     channel_c_shadowrocket_out_dir: "{{ channel_c_out_dir }}/1-SR"
+    channel_d_out_dir: "{{ playbook_dir }}/../out/clients-channel-d"
     channel_m_out_dir: "{{ playbook_dir }}/../out/channel-m-maxtg"
     shadowrocket_proof_out_dir: "{{ playbook_dir }}/../out/shadowrocket-proof"
     reality_sni: "{{ reality_server_names[0] }}"
     home_reality_sni: "{{ home_reality_server_names[0] }}"
     channel_b_profile_clients: "{{ (channel_b_home_clients | default(channel_b_xhttp_clients | default([]))) if (channel_b_home_relay_enabled | default(false) | bool) else (channel_b_xhttp_clients | default([])) }}"
     channel_c_shadowrocket_profile_clients: "{{ channel_c_shadowrocket_clients | default(channel_c_home_clients | default([]), true) }}"
+    channel_d_karing_trial_enabled: "{{ channel_d_naiveproxy_karing_trial_enabled | default(vault_channel_d_naiveproxy_karing_trial_enabled | default(false), true) }}"
+    channel_d_karing_trial_clients: "{{ [{'name': 'karing-trial', 'username': 'karing-trial', 'password': 'karing-trial-change-me'}] }}"
+    channel_d_profile_generation_enabled: "{{ (channel_d_karing_trial_enabled | bool) or (channel_d_naiveproxy_profiles_enabled | default(channel_d_naiveproxy_enabled | default(false), true) | bool) }}"
+    channel_d_profile_public_host: "{{ channel_d_naiveproxy_karing_trial_public_host | default(vault_channel_d_naiveproxy_karing_trial_public_host | default('example.invalid'), true) if (channel_d_karing_trial_enabled | bool) else channel_d_naiveproxy_public_host }}"
+    channel_d_profile_public_port: "{{ channel_d_naiveproxy_karing_trial_public_port | default(vault_channel_d_naiveproxy_karing_trial_public_port | default(channel_d_naiveproxy_public_port), true) if (channel_d_karing_trial_enabled | bool) else channel_d_naiveproxy_public_port }}"
+    channel_d_profile_clients: "{{ channel_d_naiveproxy_karing_trial_clients | default(vault_channel_d_naiveproxy_karing_trial_clients | default(channel_d_karing_trial_clients), true) if (channel_d_karing_trial_enabled | bool) else (channel_d_naiveproxy_clients | default([])) }}"
   tasks:
     - name: Ensure router output dir
       ansible.builtin.file:
@@ -50,10 +57,12 @@
         - "{{ channel_c_out_dir }}"
         - "{{ channel_c_sfi_out_dir }}"
         - "{{ channel_c_shadowrocket_out_dir }}"
+        - "{{ channel_d_out_dir }}"
         - "{{ channel_m_out_dir }}"
       tags:
         - channel_b_clients_only
         - channel_c_clients_only
+        - channel_d_clients_only
         - channel_m_artifacts_only
 
     - name: Ensure Shadowrocket proof output dir
@@ -108,6 +117,21 @@
       no_log: true
       tags:
         - channel_c_clients_only
+
+    - name: Validate Channel D NaiveProxy profile fields
+      ansible.builtin.assert:
+        that:
+          - channel_d_profile_public_host | string | length > 0
+          - channel_d_profile_public_port | int > 0
+          - channel_d_profile_clients | length > 0
+          - (channel_d_profile_clients | selectattr('name', 'defined') | list | length) == (channel_d_profile_clients | length)
+          - (channel_d_profile_clients | selectattr('username', 'defined') | list | length) == (channel_d_profile_clients | length)
+          - (channel_d_profile_clients | selectattr('password', 'defined') | list | length) == (channel_d_profile_clients | length)
+        fail_msg: "Channel D profile generation needs public host/port and clients with name, username and password."
+      when: channel_d_profile_generation_enabled | bool
+      no_log: true
+      tags:
+        - channel_d_clients_only
 
     - name: Render VLESS URI for router VPS identity
       ansible.builtin.copy:
@@ -975,6 +999,145 @@
       no_log: true
       tags:
         - channel_c_clients_only
+
+    - name: Render Channel D NaiveProxy URL for each selected client
+      ansible.builtin.copy:
+        dest: "{{ channel_d_out_dir }}/{{ item.name }}-channel-d-naiveproxy.txt"
+        mode: "0600"
+        content: |
+          {{ channel_d_client_url }}
+      loop: "{{ channel_d_profile_clients }}"
+      when: channel_d_profile_generation_enabled | bool
+      vars:
+        channel_d_client_remark: "{{ item.name }}-channel-d"
+        channel_d_client_url: "naive+https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_d_profile_public_host }}:{{ channel_d_profile_public_port }}#{{ channel_d_client_remark | urlencode }}"
+      no_log: true
+      tags:
+        - channel_d_clients_only
+
+    - name: Render Channel D Karing install-config link for each selected client
+      ansible.builtin.copy:
+        dest: "{{ channel_d_out_dir }}/{{ item.name }}-channel-d-karing.txt"
+        mode: "0600"
+        content: |
+          karing://install-config?url={{ channel_d_client_url | urlencode }}&name={{ channel_d_client_remark | urlencode }}
+      loop: "{{ channel_d_profile_clients }}"
+      when: channel_d_profile_generation_enabled | bool
+      vars:
+        channel_d_client_remark: "{{ item.name }}-channel-d"
+        channel_d_client_url: "naive+https://{{ item.username | urlencode }}:{{ item.password | urlencode }}@{{ channel_d_profile_public_host }}:{{ channel_d_profile_public_port }}#{{ channel_d_client_remark | urlencode }}"
+      no_log: true
+      tags:
+        - channel_d_clients_only
+
+    - name: Render Channel D NaiveProxy URL QR PNG for each selected client
+      ansible.builtin.shell: |
+        PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        qrencode -t PNG -o "{{ channel_d_out_dir }}/{{ item.name }}-channel-d-naiveproxy.png" -r "{{ channel_d_out_dir }}/{{ item.name }}-channel-d-karing.txt"
+      loop: "{{ channel_d_profile_clients }}"
+      when: channel_d_profile_generation_enabled | bool
+      no_log: true
+      tags:
+        - channel_d_clients_only
+
+    - name: Render Channel D local operator checklist
+      ansible.builtin.copy:
+        dest: "{{ channel_d_out_dir }}/README.md"
+        mode: "0600"
+        content: |
+          # Channel D Router-Native NaiveProxy Lab
+
+          Channel D is an experimental selected-client home-first lane:
+
+          {% if channel_d_karing_trial_enabled | bool %}
+          This bundle was rendered in Karing import trial mode. It uses
+          placeholder endpoint/credentials and is for client import testing only;
+          it will not connect to GhostRoute runtime.
+
+          {% endif %}
+
+          ```text
+          Karing / NaiveProxy-style client
+            -> home public host :{{ channel_d_profile_public_port }}
+            -> router Caddy forward_proxy@naive
+            -> router sing-box SOCKS `channel-d-naiveproxy-socks-in`
+            -> managed split
+          ```
+
+          Import `*-channel-d-naiveproxy.png` with the iOS Camera/Safari deep
+          link flow. The QR contains a Karing `install-config` link with
+          `name=<client-name>-channel-d`, so Karing pre-fills the required
+          Remark field. If using Karing's in-app QR scanner or manual paste,
+          copy the matching `*-channel-d-naiveproxy.txt` raw URI and set Remark
+          to `<client-name>-channel-d` manually.
+          Keep the Naive URL host aligned with the router TLS certificate name.
+          A raw public IPv4 with the existing hostname certificate causes Karing
+          to fail with `cert common name invalid` unless the client supports a
+          separate SNI/server-name override.
+          Channel D is not proof for Channel C native Naive and does not
+          replace Channel A/B/C.
+
+          Acceptance signal:
+
+          - Managed destinations produce `channel-d-naiveproxy-socks-in -> reality-out`.
+          - Non-managed destinations produce `channel-d-naiveproxy-socks-in -> direct-out`.
+          - Mobile first hop is the home endpoint, not the VPS.
+
+          Rollback is disabling `vault_channel_d_naiveproxy_enabled` and rerunning
+          `ansible-playbook playbooks/24-channel-d-router.yml`.
+      when: channel_d_profile_generation_enabled | bool
+      tags:
+        - channel_d_clients_only
+
+    - name: Render Channel D QR index
+      ansible.builtin.copy:
+        dest: "{{ channel_d_out_dir }}/qr-index.html"
+        mode: "0600"
+        content: |
+          <!doctype html>
+          <html lang="ru">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Channel D NaiveProxy Lab Artifacts</title>
+            <style>
+              body { margin: 0; font-family: system-ui, sans-serif; background: #f7f7f4; color: #1f2528; }
+              main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
+              h1 { margin: 0 0 8px; font-size: 34px; }
+              p { margin: 0 0 24px; color: #566; }
+              .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+              article { border: 1px solid #d8d8cf; border-radius: 8px; background: white; padding: 16px; }
+              h2 { margin: 0 0 12px; font-size: 18px; }
+              a { color: #145c7c; font-weight: 650; }
+              .links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+              img { width: 100%; max-width: 320px; aspect-ratio: 1; display: block; margin: 0 auto; image-rendering: pixelated; }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>Channel D NaiveProxy Lab Clients</h1>
+              <p><a href="README.md">Read the local Channel D import checklist before importing.</a></p>
+              <p>Scan QR with the iOS Camera/Safari deep-link flow to prefill Karing Remark. If using Karing's in-app scanner, copy the raw URL and the Remark shown on the card.</p>
+              <section class="grid">
+          {% for client in channel_d_profile_clients %}
+                <article>
+                  <h2>{{ client.name }} Channel D</h2>
+                  <p>Remark: <code>{{ client.name }}-channel-d</code></p>
+                  <img src="{{ client.name }}-channel-d-naiveproxy.png" alt="{{ client.name }} Channel D QR">
+                  <div class="links">
+                    <a href="{{ client.name }}-channel-d-karing.txt">Karing install link</a>
+                    <a href="{{ client.name }}-channel-d-naiveproxy.txt">raw NaiveProxy URL</a>
+                  </div>
+                </article>
+          {% endfor %}
+              </section>
+            </main>
+          </body>
+          </html>
+      when: channel_d_profile_generation_enabled | bool
+      no_log: true
+      tags:
+        - channel_d_clients_only
 
     - name: Render Channel M maxtg MAX egress env fragment for each service client
       ansible.builtin.copy:

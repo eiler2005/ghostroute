@@ -21,6 +21,7 @@ For the current end-to-end flow and observer model, see
 | Remote mobile QR clients | generated VLESS/Reality profile plus sing-box rule-sets | TCP/<home-reality-port> to home ASUS Reality inbound | managed -> VPS Reality; non-managed -> home WAN |
 | Channel B selected clients | separate generated home-first profiles | device app -> home Channel B XHTTP ingress -> local relay -> managed sing-box split (Reality for managed domains, direct home WAN for others) | selected-client production |
 | Channel C1 selected clients | separate generated home-first Shadowrocket/native artifacts | device app -> home C1-Shadowrocket HTTPS CONNECT ingress or C1 native Naive ingress -> managed sing-box split | C1-SR live-proven; C1 native server-ready/client-blocked |
+| Channel D selected clients | separate generated NaiveProxy lab artifacts | Karing/NaiveProxy-style client -> home Caddy forward_proxy@naive -> local sing-box SOCKS -> managed split | experimental, disabled by default |
 | Router-originated traffic (`OUTPUT`) | not transparently captured | main routing by default | router default / explicit proxy only |
 | Legacy Legacy WireGuard | n/a | inactive in steady state | cold fallback only |
 
@@ -55,6 +56,8 @@ Merlin router
   -> optional local Xray Channel B ingress on 0.0.0.0:<home-channel-b-port>
   -> local Xray relay forwards to sing-box SOCKS on 127.0.0.1:<router-socks-port>
   -> optional sing-box Channel C1 Naive ingress on 0.0.0.0:<home-channel-c-ingress-port>
+  -> optional Caddy Channel D NaiveProxy ingress on 0.0.0.0:<channel-d-naiveproxy-ingress-port>
+  -> Caddy Channel D relays to sing-box SOCKS on 127.0.0.1:<channel-d-socks-port>
   -> stealth-route-init.sh redirects matching br0 TCP to :<lan-redirect-port>
   -> stealth-route-init.sh drops matching br0 UDP/443 to force TCP fallback
   -> mobile reality-in / channel-c-naive-in use STEALTH_DOMAINS/VPN_STATIC_NETS rule-sets for split routing
@@ -285,6 +288,7 @@ ansible/out/clients-home/macbook.png
 ansible/out/clients-home/qr-index.html
 ansible/out/clients-channel-b/qr-index.html
 ansible/out/clients-channel-c/qr-index.html
+ansible/out/clients-channel-d/qr-index.html
 ```
 
 `router.conf` is for router/service use and points directly at the VPS. Phone/Mac QR files live under `clients-home/`, point at the home public IP first, and use router-side `home_clients[]` identities.
@@ -296,6 +300,10 @@ explicit C1 selected-client credentials: C1-Shadowrocket is live-proven
 compatibility, while C1-sing-box native Naive is server-ready but blocked by the
 tested iPhone SFI `1.11.4` client. They should not replace normal Home Reality
 profiles.
+
+Channel D artifacts live under `clients-channel-d/`. They are experimental
+Karing/NaiveProxy-style credentials for the router-native Caddy
+`forward_proxy@naive` lab and should not be used as Channel C proof.
 
 ### 4.5 Verify
 

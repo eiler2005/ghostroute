@@ -24,6 +24,7 @@ EN. Расширенные технические разделы (Quick Start, A
 | A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | Нет |
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
+| D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:4444` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
 | M | Service MAX egress lane | home router -> SSH remote-forward -> maxtg_bridge VPS docker bridge | Только MAX API/CDN, authenticated HTTP CONNECT внутри reverse-туннеля, direct-out через home WAN | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
@@ -51,10 +52,14 @@ MAX трафика `maxtg_bridge`: роутер сам открывает исх
   VPN-профиль может выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
   Например, Shadowrocket на iPhone/iPad/MacBook может использовать domain, IP,
   GEOIP и rule-list policy; это routing layer, а не просто VPN toggle.
-- Layer 1 — managed channels. Channel A, Channel B и Channel C работают home-first:
+- Layer 1 — managed channels. Channel A, Channel B, Channel C и experimental
+  Channel D работают home-first:
   первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
   теперь разделен на C1-Shadowrocket HTTPS CONNECT compatibility и C1-sing-box
-  native Naive target. Channel M стоит отдельно: это service-only reverse SSH
+  native Naive target. Channel D — выключенный по умолчанию router-native
+  Caddy `forward_proxy@naive` lab на `:4444`, который заводит трафик в
+  `channel-d-naiveproxy-socks-in` и тот же managed split. Channel M стоит
+  отдельно: это service-only reverse SSH
   lane для MAX egress из `maxtg_bridge`, а не клиентский failover.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, плюс optional Channel A
@@ -379,9 +384,9 @@ full-VPS профилей.
 
 WireGuard не активен в steady state. Сохранённый `wgc1_*` NVRAM используется только через `modules/recovery-verification/router/emergency-enable-wgc1.sh` при катастрофическом отказе Reality.
 
-### 5. Channel B/C device profiles
+### 5. Channel B/C/D device profiles
 
-Channel B и Channel C — device-client линии с разным уровнем зрелости.
+Channel B, Channel C и Channel D — device-client линии с разным уровнем зрелости.
 Channel B работает как production lane для selected clients: выбранные устройства
 подключаются к отдельному домашнему XHTTP/TLS ingress на роутере. Локальный
 Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, где
@@ -394,6 +399,12 @@ C1-sing-box подключается к домашнему Naive ingress и по
 `channel-c-naive-in`; серверная часть готова, но протестированный iPhone SFI
 `1.11.4` не поддержал outbound `type: naive`. Оба варианта используют общий
 managed split.
+Channel D — отдельный experimental router-native NaiveProxy lab: Karing или
+NaiveProxy-style клиент подключается к домашнему `:4444`, Caddy
+`forward_proxy@naive` на роутере принимает первый hop и передает трафик в
+локальный sing-box SOCKS `channel-d-naiveproxy-socks-in`. Managed destinations
+идут через `reality-out`, non-managed — через `direct-out`. Это не доказательство
+Channel C native Naive и не замена C1.
 
 Границы изоляции Channel B жесткие: отдельный ingress-port и локальный relay на
 роутере без захвата Channel A REDIRECT, router DNS, TUN state и automatic
@@ -402,6 +413,7 @@ failover. Artifacts в
 считаются selected-client production credentials. Artifacts в
 `ansible/out/clients-channel-c/` считаются explicit C1 selected-client
 artifacts: C1-Shadowrocket live-proven, C1-sing-box native target.
+`ansible/out/clients-channel-d/` считаются experimental Channel D credentials.
 
 ### 6. Channel M MAX service egress
 
@@ -481,6 +493,8 @@ ansible/
   out/clients-emergency/          # generated emergency artifacts, gitignored
   out/clients-channel-b/          # generated Channel B artifacts, gitignored
   out/clients-channel-c/          # generated Channel C artifacts, gitignored
+  out/clients-channel-d/          # generated Channel D NaiveProxy lab artifacts, gitignored
+  out/channel-d-naiveproxy/       # locally built Channel D Caddy binary, gitignored
   out/channel-m-maxtg/            # generated Channel M maxtg service env fragments, gitignored
 
 modules/
@@ -535,6 +549,10 @@ ansible-playbook playbooks/11-channel-b-vps.yml
 
 # Ручной Channel C1 home-first add-on на роутере
 ansible-playbook playbooks/22-channel-c-router.yml
+
+# Optional Channel D router-native NaiveProxy lab на роутере
+../modules/routing-core/bin/build-channel-d-caddy
+ansible-playbook playbooks/24-channel-d-router.yml
 
 # End-to-end verification: VPS + router
 ansible-playbook playbooks/99-verify.yml

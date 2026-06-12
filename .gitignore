@@ -47,8 +47,12 @@ reports/
 !/ansible/out/clients-channel-b/.gitkeep
 /ansible/out/clients-channel-c/*
 !/ansible/out/clients-channel-c/.gitkeep
+/ansible/out/clients-channel-d/*
+!/ansible/out/clients-channel-d/.gitkeep
 /ansible/out/channel-m-maxtg/*
 !/ansible/out/channel-m-maxtg/.gitkeep
+/ansible/out/channel-d-naiveproxy/*
+!/ansible/out/channel-d-naiveproxy/.gitkeep
 /ansible/out/shadowrocket-proof/*
 !/ansible/out/shadowrocket-proof/.gitkeep
 /ansible/out/channel-c1-live-*/

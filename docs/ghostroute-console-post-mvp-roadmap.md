@@ -87,6 +87,18 @@ instead of guessing site-visible IP/ASN/country.
      forced-command tests, SSH timeout/error log.
    - Redaction audit, Caddy access review, SQLite backup/restore drill.
 
+10. **Channel D Console Integration Debt**
+   - Channel D уже имеет router-native runtime, docs, CLI/Ansible checks и
+     live-proven Karing/LTE proof, но `modules/ghostroute-console` пока не
+     обновлялся под этот lane.
+   - Console должна показывать Channel D отдельно от Channel C: D-specific
+     Caddy/NaiveProxy state, client/QR inventory summary, proof labels
+     `channel-d-naiveproxy-socks-in -> reality-out/direct-out` и traffic
+     attribution.
+   - До отдельного Console follow-up canonical proof для Channel D остаётся в
+     `99-verify.yml`, `verify.sh --verbose`, `router-health-report` и router
+     logs; это не блокирует текущий Channel D runtime.
+
 ## Priority 2: Broader Project Backlog
 
 1. **Managed Egress Failover**

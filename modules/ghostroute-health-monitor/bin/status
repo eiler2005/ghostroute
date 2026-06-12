@@ -370,5 +370,6 @@ printf 'Channel B ingress: %s\n' "$(channel_b_ingress_line)"
 printf 'Channel B relay split: %s\n' "$(channel_b_relay_line)"
 printf 'Home Reality split (Channel A): %s\n' "$(home_reality_split_line)"
 printf 'Channel C: C1-SR / Shadowrocket :4443 works now; C1-sing-box native Naive :443 is server-ready but blocked by tested iPhone SFI 1.11.4 missing naive outbound\n'
+printf 'Channel D: experimental router-native NaiveProxy lab on :4444; disabled by default, managed split via channel-d-naiveproxy-socks-in when enabled\n'
 printf 'Last non-OK probe: %s\n' "$(last_non_ok)"
 printf 'Next: ./modules/traffic-observatory/bin/traffic-report check | ./modules/ghostroute-health-monitor/bin/leak-check | ./modules/ghostroute-health-monitor/bin/router-health-report\n'

@@ -28,6 +28,11 @@ CHANNEL_C_SHADOWROCKET_PUBLIC_PORT={{ channel_c_shadowrocket_public_port | defau
 CHANNEL_C_SHADOWROCKET_PORT={{ channel_c_shadowrocket_ingress_port | default(0) }}
 CHANNEL_C_SHADOWROCKET_CONNLIMIT_ABOVE={{ channel_c_shadowrocket_connlimit_above | default(500) }}
 CHANNEL_C_SHADOWROCKET_MSS={{ channel_c_shadowrocket_mss | default(1360) }}
+CHANNEL_D_NAIVEPROXY_ENABLED={{ channel_d_naiveproxy_enabled | default(false) | ternary('1', '0') }}
+CHANNEL_D_NAIVEPROXY_PUBLIC_PORT={{ channel_d_naiveproxy_public_port | default(0) }}
+CHANNEL_D_NAIVEPROXY_PORT={{ channel_d_naiveproxy_ingress_port | default(0) }}
+CHANNEL_D_NAIVEPROXY_CONNLIMIT_ABOVE={{ channel_d_naiveproxy_connlimit_above | default(300) }}
+CHANNEL_D_NAIVEPROXY_MSS={{ channel_d_naiveproxy_mss | default(1360) }}
 CHANNEL_M_MAXTG_ENABLED={{ channel_m_maxtg_enabled | default(false) | ternary('1', '0') }}
 CHANNEL_M_MAXTG_PUBLIC_PORT={{ channel_m_maxtg_public_port | default(0) }}
 CHANNEL_M_MAXTG_PORT={{ channel_m_maxtg_ingress_port | default(0) }}
@@ -297,6 +302,42 @@ if [ "$CHANNEL_C_SHADOWROCKET_ENABLED" = "1" ]; then
     || logger -t stealth-route-init "comment match unavailable; C1-Shadowrocket ingress counter is unnamed"
 fi
 
+if [ "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" != "0" ] && [ "$CHANNEL_D_NAIVEPROXY_PORT" != "0" ]; then
+  # Channel D is a router-native Caddy forward_proxy@naive experiment. Always
+  # clear stale D rules first so disabling the lane removes its public surface.
+  iptables -t nat -D PREROUTING -i "$WAN_IF" -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_D_NAIVEPROXY_PORT" 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above 30 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above 100 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above 300 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above 500 -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above "$CHANNEL_D_NAIVEPROXY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" -j ACCEPT 2>/dev/null || true
+  iptables -D INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" -m comment --comment "mobile-naiveproxy-channel-d-ingress" -j ACCEPT 2>/dev/null || true
+
+  for OLD_MSS in 1280 1360 1380 1400 "$CHANNEL_D_NAIVEPROXY_MSS"; do
+    iptables -t mangle -D PREROUTING -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+    iptables -t mangle -D PREROUTING -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -p tcp --sport "$CHANNEL_D_NAIVEPROXY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$OLD_MSS" 2>/dev/null || true
+  done
+fi
+
+if [ "$CHANNEL_D_NAIVEPROXY_ENABLED" = "1" ]; then
+  if [ "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" != "$CHANNEL_D_NAIVEPROXY_PORT" ]; then
+    iptables -t nat -A PREROUTING -i "$WAN_IF" -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_D_NAIVEPROXY_PORT"
+  fi
+
+  iptables -t mangle -I PREROUTING 1 -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PUBLIC_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$CHANNEL_D_NAIVEPROXY_MSS" 2>/dev/null \
+    || logger -t stealth-route-init "TCPMSS unavailable; Channel D NaiveProxy public SYN has no MSS clamp"
+  iptables -t mangle -I OUTPUT 1 -p tcp --sport "$CHANNEL_D_NAIVEPROXY_PORT" --tcp-flags SYN,RST SYN -j TCPMSS --set-mss "$CHANNEL_D_NAIVEPROXY_MSS" 2>/dev/null \
+    || logger -t stealth-route-init "TCPMSS unavailable; Channel D NaiveProxy ingress SYN-ACK has no MSS clamp"
+
+  iptables -I INPUT 1 -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" --syn -m connlimit --connlimit-above "$CHANNEL_D_NAIVEPROXY_CONNLIMIT_ABOVE" -j DROP 2>/dev/null \
+    || logger -t stealth-route-init "connlimit unavailable; Channel D NaiveProxy ingress has no kernel connlimit"
+  iptables -I INPUT 2 -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" -j ACCEPT
+  iptables -A INPUT -p tcp --dport "$CHANNEL_D_NAIVEPROXY_PORT" -m comment --comment "mobile-naiveproxy-channel-d-ingress" -j ACCEPT 2>/dev/null \
+    || logger -t stealth-route-init "comment match unavailable; Channel D NaiveProxy ingress counter is unnamed"
+fi
+
 if [ "$CHANNEL_M_MAXTG_ENABLED" = "1" ]; then
   # Channel M is a service-to-home egress lane for maxtg_bridge only. It is
   # source-allowlisted and always routes to sing-box direct-out, never to the
@@ -338,4 +379,4 @@ if [ "$CHANNEL_M_MAXTG_ENABLED" = "1" ]; then
 {% endfor %}
 fi
 
-echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, channel_b_home=$CHANNEL_B_HOME_ENABLED, channel_c_home=$CHANNEL_C_HOME_ENABLED, channel_c_shadowrocket=$CHANNEL_C_SHADOWROCKET_ENABLED, channel_m_maxtg=$CHANNEL_M_MAXTG_ENABLED, vps=$VPS_IP via normal WAN)"
+echo "stealth-route-init: OK ($IPSET -> REDIRECT tcp/$REDIRECT_PORT, channel_b_home=$CHANNEL_B_HOME_ENABLED, channel_c_home=$CHANNEL_C_HOME_ENABLED, channel_c_shadowrocket=$CHANNEL_C_SHADOWROCKET_ENABLED, channel_d_naiveproxy=$CHANNEL_D_NAIVEPROXY_ENABLED, channel_m_maxtg=$CHANNEL_M_MAXTG_ENABLED, vps=$VPS_IP via normal WAN)"

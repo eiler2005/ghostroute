@@ -1,0 +1,7 @@
+---
+- name: restart channel d naiveproxy
+  ansible.builtin.raw: |
+    {{ channel_d_naiveproxy_caddy_init_path }} enable >/dev/null 2>&1 || true
+    {{ channel_d_naiveproxy_caddy_init_path }} restart
+  listen: restart channel d naiveproxy
+  when: channel_d_naiveproxy_enabled | default(false) | bool

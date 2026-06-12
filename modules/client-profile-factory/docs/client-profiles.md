@@ -500,6 +500,54 @@ client with outbound `type: naive` support is selected. These profiles never
 change router behavior by themselves; the router C1 ingress is deployed
 separately with `ansible-playbook playbooks/22-channel-c-router.yml`.
 
+## Channel D Router-Native NaiveProxy Lab
+
+Channel D artifacts are experimental Karing/NaiveProxy-style credentials for a
+router-native Caddy `forward_proxy@naive` lane. The client connects to the home
+endpoint first, Caddy relays to local sing-box SOCKS, and sing-box applies the
+same managed split as Channel A/B/C.
+
+For an import-only Karing trial without real endpoints or credentials:
+
+```bash
+cd ansible
+ansible-playbook playbooks/30-generate-client-profiles.yml \
+  --tags channel_d_clients_only \
+  -e channel_d_naiveproxy_karing_trial_enabled=true
+```
+
+This generates a fake `example.invalid` `karing-trial` QR so the Karing import
+path can be tested. For a real test profile, keep credentials in Vault and enable
+only artifact rendering:
+
+```yaml
+vault_channel_d_naiveproxy_profiles_enabled: true
+vault_channel_d_naiveproxy_clients:
+  - name: karing-trial
+    username: <channel-d-karing-user>
+    password: <channel-d-karing-password>
+```
+
+```bash
+./modules/client-profile-factory/bin/client-profiles generate
+./modules/client-profile-factory/bin/client-profiles channel-d-list
+./modules/client-profile-factory/bin/client-profiles channel-d-open
+```
+
+Generated artifacts live in `ansible/out/clients-channel-d/`:
+
+- `<client>-channel-d-naiveproxy.txt`: `naive+https://...` URI for Karing or
+  another NaiveProxy-style client.
+- `<client>-channel-d-naiveproxy.png`: QR for the same URI.
+- `README.md`: local import checklist and acceptance notes.
+
+Channel D is not Channel C proof. Its proof signal is
+`channel-d-naiveproxy-socks-in -> reality-out` for managed destinations and
+`direct-out` for non-managed destinations. A QR generated while only
+`vault_channel_d_naiveproxy_profiles_enabled=true` is importable by Karing, but
+it becomes usable only after Channel D runtime is enabled with matching Vault
+credentials.
+
 ## Channel M maxtg Service Egress Artifact
 
 Channel M artifacts are not client QR profiles. They are local service fragments

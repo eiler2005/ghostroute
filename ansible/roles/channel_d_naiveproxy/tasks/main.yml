@@ -1,0 +1,153 @@
+---
+- name: Stop Channel D NaiveProxy service when disabled
+  ansible.builtin.raw: |
+    if [ -x "{{ channel_d_naiveproxy_caddy_init_path }}" ]; then
+      {{ channel_d_naiveproxy_caddy_init_path }} stop || true
+    fi
+  changed_when: false
+  when: not (channel_d_naiveproxy_enabled | default(false) | bool)
+
+- name: Remove Channel D services-start bootstrap when disabled
+  ansible.builtin.raw: |
+    if [ -f {{ services_start_hook }} ]; then
+      sed -i '/# BEGIN channel-d-naiveproxy-bootstrap/,/# END channel-d-naiveproxy-bootstrap/d' {{ services_start_hook }}
+    fi
+  changed_when: false
+  when: not (channel_d_naiveproxy_enabled | default(false) | bool)
+
+- name: Validate Channel D NaiveProxy settings
+  ansible.builtin.assert:
+    that:
+      - channel_d_naiveproxy_public_host | string | length > 0
+      - channel_d_naiveproxy_public_port | int > 0
+      - channel_d_naiveproxy_public_port | int <= 65535
+      - channel_d_naiveproxy_ingress_port | int > 1024
+      - channel_d_naiveproxy_ingress_port | int <= 65535
+      - channel_d_naiveproxy_ingress_port | int not in [443, 1080, 1194, 51820, 8080, 8443]
+      - channel_d_naiveproxy_upstream_socks_port | int > 1024
+      - channel_d_naiveproxy_upstream_socks_port | int <= 65535
+      - channel_d_naiveproxy_upstream_socks_port | string != channel_d_naiveproxy_ingress_port | string
+      - channel_d_naiveproxy_clients | length > 0
+      - (channel_d_naiveproxy_clients | selectattr('name', 'defined') | list | length) == (channel_d_naiveproxy_clients | length)
+      - (channel_d_naiveproxy_clients | selectattr('username', 'defined') | list | length) == (channel_d_naiveproxy_clients | length)
+      - (channel_d_naiveproxy_clients | selectattr('password', 'defined') | list | length) == (channel_d_naiveproxy_clients | length)
+      - channel_d_naiveproxy_tls_cert_path | string | length > 0
+      - channel_d_naiveproxy_tls_key_path | string | length > 0
+      - channel_d_naiveproxy_tls_cert_path != channel_d_naiveproxy_tls_key_path
+      - channel_d_naiveproxy_caddy_bin_path | string | length > 0
+      - channel_d_naiveproxy_caddy_config_path | string | length > 0
+      - channel_d_naiveproxy_caddy_init_path | string | length > 0
+      - channel_d_naiveproxy_caddy_log_path | string | length > 0
+      - channel_d_naiveproxy_caddy_pid_path | string | length > 0
+      - channel_d_naiveproxy_www_root | string | length > 0
+    fail_msg: "Channel D needs distinct public/internal ports, SOCKS relay port, TLS cert/key, Caddy paths and username/password clients."
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  no_log: true
+
+- name: Check local Channel D Caddy binary exists on control host
+  ansible.builtin.stat:
+    path: "{{ channel_d_naiveproxy_local_binary_path }}"
+  delegate_to: localhost
+  register: channel_d_naiveproxy_local_binary
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Require locally built Channel D Caddy binary
+  ansible.builtin.assert:
+    that:
+      - channel_d_naiveproxy_local_binary.stat.exists
+      - channel_d_naiveproxy_local_binary.stat.isreg
+    fail_msg: "Build the Channel D Caddy binary first: ./modules/routing-core/bin/build-channel-d-caddy"
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Ensure Channel D Caddy directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ channel_d_naiveproxy_caddy_bin_path | dirname }}"
+    - "{{ channel_d_naiveproxy_caddy_config_path | dirname }}"
+    - "{{ channel_d_naiveproxy_caddy_log_path | dirname }}"
+    - "{{ channel_d_naiveproxy_caddy_pid_path | dirname }}"
+    - "{{ channel_d_naiveproxy_www_root }}"
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Install Channel D fallback web root
+  ansible.builtin.copy:
+    dest: "{{ channel_d_naiveproxy_www_root }}/index.html"
+    mode: "0644"
+    content: |
+      <!doctype html>
+      <html><head><meta charset="utf-8"><title>Not Found</title></head><body>Not Found</body></html>
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Install Channel D Caddy binary
+  ansible.builtin.copy:
+    src: "{{ channel_d_naiveproxy_local_binary_path }}"
+    dest: "{{ channel_d_naiveproxy_caddy_bin_path }}"
+    mode: "0755"
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  notify: restart channel d naiveproxy
+
+- name: Stop Channel D Caddy before local binary/config validation
+  ansible.builtin.raw: |
+    if [ -x "{{ channel_d_naiveproxy_caddy_init_path }}" ]; then
+      {{ channel_d_naiveproxy_caddy_init_path }} stop || true
+    fi
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Verify Channel D Caddy binary has forwardproxy module
+  ansible.builtin.raw: "{{ channel_d_naiveproxy_caddy_bin_path }} list-modules 2>/dev/null | grep -q 'forward_proxy'"
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Validate Channel D TLS certificate files exist
+  ansible.builtin.raw: |
+    [ -s "{{ channel_d_naiveproxy_tls_cert_path }}" ] &&
+    [ -s "{{ channel_d_naiveproxy_tls_key_path }}" ]
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  no_log: true
+
+- name: Render Channel D Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ channel_d_naiveproxy_caddy_config_path }}"
+    mode: "0600"
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  notify: restart channel d naiveproxy
+  no_log: true
+
+- name: Validate Channel D Caddyfile
+  ansible.builtin.raw: "{{ channel_d_naiveproxy_caddy_bin_path }} validate --config {{ channel_d_naiveproxy_caddy_config_path }} --adapter caddyfile"
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Install Channel D Caddy init script
+  ansible.builtin.template:
+    src: S99caddy-channel-d-naiveproxy.j2
+    dest: "{{ channel_d_naiveproxy_caddy_init_path }}"
+    mode: "0755"
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  notify: restart channel d naiveproxy
+
+- name: Ensure services-start hook starts Channel D Caddy
+  ansible.builtin.raw: |
+    touch {{ services_start_hook }}
+    chmod +x {{ services_start_hook }}
+    sed -i '/# BEGIN channel-d-naiveproxy-bootstrap/,/# END channel-d-naiveproxy-bootstrap/d' {{ services_start_hook }}
+    cat >> {{ services_start_hook }} <<'EOF'
+    # BEGIN channel-d-naiveproxy-bootstrap
+    {{ channel_d_naiveproxy_caddy_init_path }} start
+    # END channel-d-naiveproxy-bootstrap
+    EOF
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+
+- name: Enable + start Channel D Caddy service
+  ansible.builtin.raw: |
+    {{ channel_d_naiveproxy_caddy_init_path }} enable >/dev/null 2>&1 || true
+    {{ channel_d_naiveproxy_caddy_init_path }} restart
+  changed_when: false
+  when: channel_d_naiveproxy_enabled | default(false) | bool

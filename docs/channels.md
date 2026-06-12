@@ -1,4 +1,4 @@
-# GhostRoute Channels A / B / C / M
+# GhostRoute Channels A / B / C / D / M
 
 This document is the short handoff view of the current channel model. All
 managed channels are home-first: the endpoint's first visible remote endpoint is
@@ -214,6 +214,33 @@ Current production interpretation:
   `channel_c_sfi_native_profiles_enabled: false`.
 - Re-test only with an iOS sing-box/SFI build that supports outbound
   `"type": "naive"`.
+
+## Channel D - Router-Native NaiveProxy Lab
+
+Channel D is a router-native NaiveProxy selected-client home-first lane for
+Karing / NaiveProxy-style clients. It remains separately owned from Channel C:
+successful Channel D Karing/LTE traffic proves Channel D only, not Channel C
+native Naive.
+
+```text
+Karing / NaiveProxy-style client
+  -> home public IP/DDNS :4444
+  -> router Caddy forward_proxy@naive
+  -> local sing-box SOCKS inbound `channel-d-naiveproxy-socks-in`
+  -> managed split
+       managed destinations     -> reality-out -> active managed egress -> internet
+       non-managed destinations -> direct-out via home WAN -> internet
+```
+
+Current production interpretation:
+
+- Channel D is operator live-proven with Karing over LTE, but still isolated
+  from Channel A/B/C ownership.
+- Channel D has separate credentials, Karing artifacts and deploy playbook.
+- Proof logs must show `channel-d-naiveproxy-socks-in -> reality-out` for
+  managed destinations and `direct-out` for non-managed destinations.
+- It does not prove Channel C native Naive; Channel C proof still lands in
+  `channel-c-naive-in`.
 
 ## Channel M - Service MAX Egress Lane
 

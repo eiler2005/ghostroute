@@ -36,6 +36,12 @@ channel_c_shadowrocket_ingress_port: ""
 channel_c_shadowrocket_clients: []
 channel_c_shadowrocket_connlimit_above: 300
 channel_c_shadowrocket_mss: 1360
+channel_d_naiveproxy_enabled: false
+channel_d_naiveproxy_public_host: ""
+channel_d_naiveproxy_public_port: 4444
+channel_d_naiveproxy_ingress_port: ""
+channel_d_naiveproxy_upstream_socks_port: ""
+channel_d_naiveproxy_clients: []
 clients: []
 home_clients: []
 emergency_clients: []

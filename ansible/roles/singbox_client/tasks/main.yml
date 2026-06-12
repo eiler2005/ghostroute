@@ -10,6 +10,9 @@
 - name: Ensure sing-box version >= 1.9 (required for Reality utls)
   ansible.builtin.raw: |
     V=$({{ singbox_bin_path }} version 2>/dev/null | head -1 | awk '{print $3}')
+    if [ -z "$V" ]; then
+      V=$(/opt/bin/opkg list-installed 2>/dev/null | awk '/^sing-box(-go)? / {print $3; exit}')
+    fi
     echo "${V}"
   register: sb_ver
   check_mode: false
@@ -25,6 +28,9 @@
 - name: Require sing-box version with Naive inbound support for Channel C1
   ansible.builtin.raw: |
     V=$({{ singbox_bin_path }} version 2>/dev/null | head -1 | awk '{print $3}')
+    if [ -z "$V" ]; then
+      V=$(/opt/bin/opkg list-installed 2>/dev/null | awk '/^sing-box(-go)? / {print $3; exit}')
+    fi
     V=${V#v}
     MAJOR=${V%%.*}
     REST=${V#*.}
@@ -182,6 +188,41 @@
   when: channel_c_shadowrocket_enabled | default(false) | bool
   no_log: true
 
+- name: Validate Channel D NaiveProxy sing-box relay settings
+  ansible.builtin.assert:
+    that:
+      - channel_d_naiveproxy_public_host | string | length > 0
+      - channel_d_naiveproxy_public_port | int > 0
+      - channel_d_naiveproxy_public_port | int <= 65535
+      - channel_d_naiveproxy_ingress_port | int > 1024
+      - channel_d_naiveproxy_ingress_port | int <= 65535
+      - channel_d_naiveproxy_ingress_port | int not in [443, 1080, 1194, 51820, 8080, 8443]
+      - channel_d_naiveproxy_upstream_socks_port | int > 1024
+      - channel_d_naiveproxy_upstream_socks_port | int <= 65535
+      - channel_d_naiveproxy_ingress_port | string != channel_d_naiveproxy_upstream_socks_port | string
+      - channel_d_naiveproxy_ingress_port | string != singbox_redirect_port | string
+      - channel_d_naiveproxy_ingress_port | string != singbox_dnscrypt_socks_port | string
+      - channel_d_naiveproxy_ingress_port | string != dnscrypt_port | string
+      - channel_d_naiveproxy_ingress_port | string != home_reality_ingress_port | string
+      - channel_d_naiveproxy_ingress_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_d_naiveproxy_ingress_port | string != channel_b_home_upstream_socks_port | default('') | string
+      - channel_d_naiveproxy_ingress_port | string != channel_c_home_ingress_port | default('') | string
+      - channel_d_naiveproxy_ingress_port | string != channel_c_shadowrocket_ingress_port | default('') | string
+      - channel_d_naiveproxy_upstream_socks_port | string != singbox_redirect_port | string
+      - channel_d_naiveproxy_upstream_socks_port | string != singbox_dnscrypt_socks_port | string
+      - channel_d_naiveproxy_upstream_socks_port | string != dnscrypt_port | string
+      - channel_d_naiveproxy_upstream_socks_port | string != home_reality_ingress_port | string
+      - channel_d_naiveproxy_upstream_socks_port | string != channel_b_home_ingress_port | default('') | string
+      - channel_d_naiveproxy_upstream_socks_port | string != channel_b_home_upstream_socks_port | default('') | string
+      - channel_d_naiveproxy_upstream_socks_port | string != channel_c_home_ingress_port | default('') | string
+      - channel_d_naiveproxy_upstream_socks_port | string != channel_c_shadowrocket_ingress_port | default('') | string
+      - channel_d_naiveproxy_clients | length > 0
+      - (channel_d_naiveproxy_clients | selectattr('username', 'defined') | list | length) == (channel_d_naiveproxy_clients | length)
+      - (channel_d_naiveproxy_clients | selectattr('password', 'defined') | list | length) == (channel_d_naiveproxy_clients | length)
+    fail_msg: "Channel D needs public host/port, unique Caddy/SOCKS ports and username/password clients."
+  when: channel_d_naiveproxy_enabled | default(false) | bool
+  no_log: true
+
 - name: Validate Channel M maxtg MAX egress settings
   ansible.builtin.assert:
     that:
@@ -307,11 +348,31 @@
     src: config.json.j2
     dest: "{{ singbox_config_path }}"
     mode: "0600"
+  register: singbox_config_render
   notify: restart singbox
 
-- name: Validate sing-box config before restart
-  ansible.builtin.raw: "{{ singbox_bin_path }} check -C {{ singbox_config_path | dirname }}"
-  changed_when: false
+- name: Validate changed sing-box config before restart
+  block:
+    - name: Stop Channel D Caddy before sing-box config check when active
+      ansible.builtin.raw: |
+        if [ -x "{{ channel_d_naiveproxy_caddy_init_path | default('/opt/etc/init.d/S99caddy-channel-d-naiveproxy') }}" ]; then
+          {{ channel_d_naiveproxy_caddy_init_path | default('/opt/etc/init.d/S99caddy-channel-d-naiveproxy') }} stop || true
+        fi
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Validate sing-box config before restart
+      ansible.builtin.raw: "{{ singbox_bin_path }} check -C {{ singbox_config_path | dirname }}"
+      changed_when: false
+  always:
+    - name: Restart Channel D Caddy after sing-box config check
+      ansible.builtin.raw: |
+        if [ -x "{{ channel_d_naiveproxy_caddy_init_path | default('/opt/etc/init.d/S99caddy-channel-d-naiveproxy') }}" ]; then
+          {{ channel_d_naiveproxy_caddy_init_path | default('/opt/etc/init.d/S99caddy-channel-d-naiveproxy') }} start || true
+        fi
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+  when: singbox_config_render.changed | default(true)
 
 - name: Install stable sing-box init script
   ansible.builtin.template:

@@ -53,6 +53,11 @@ channel_b_home_relay_enabled: false
 channel_b_home_ingress_port: ""
 channel_b_home_connlimit_above: 500
 channel_b_home_mss: 1360
+channel_d_naiveproxy_enabled: false
+channel_d_naiveproxy_public_port: 4444
+channel_d_naiveproxy_ingress_port: ""
+channel_d_naiveproxy_connlimit_above: 300
+channel_d_naiveproxy_mss: 1360
 router_tcp_perf_tuning_enabled: true
 router_tcp_rmem: "4096 262144 16777216"
 router_tcp_wmem: "4096 65536 16777216"

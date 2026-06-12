@@ -78,6 +78,10 @@ This is not the original klzgrad NaiveProxy daemon behind Caddy
 of the NaiveProxy protocol family. For GhostRoute, C1-sing-box is the correct
 candidate when the iPhone client is SFI/sing-box.
 
+The separate klzgrad/Caddy `forward_proxy@naive` experiment lives in
+[Channel D](channel-d.md). Channel D is not C1 proof because it lands in
+`channel-d-naiveproxy-socks-in`, not `channel-c-naive-in`.
+
 ## C1-Shadowrocket Compatibility
 
 C1-Shadowrocket is a separate compatibility path for Shadowrocket:

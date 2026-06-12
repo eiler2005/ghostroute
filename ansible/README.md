@@ -89,7 +89,7 @@ described in the root README and `docs/architecture.md`.
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, optional selected full-VPS TPROXY/dnsmasq policy, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: non-selected home LAN/Wi-Fi traffic uses managed split, while selected home Wi-Fi/LAN devices or Home Reality profiles can send all internet-bound traffic through VLESS+Reality+Vision to the active managed egress. |
 | Router / Channel M | Reverse SSH tunnel script/watchdog, router loopback sing-box HTTP inbound `channel-m-maxtg-reverse-egress`, optional direct public `channel-m-maxtg-max-egress`, auth material and direct-out routes. | Gives `maxtg_bridge` a dedicated MAX API/CDN egress through the home WAN without touching A/B/C routing or LAN/Wi-Fi clients. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
-| Device-client lanes | Selected-client B/C artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C ownership isolated from the Channel A router data-plane baseline. |
+| Device-client lanes | Selected-client B/C/D artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C/D ownership isolated from the Channel A router data-plane baseline. |
 
 Playbook ownership is intentionally narrow:
 
@@ -102,6 +102,7 @@ Playbook ownership is intentionally narrow:
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
 | `23-channel-m-reverse.yml` | Router + VPS | Router-originated SSH remote-forward, VPS docker bridge listener firewall persistence, and reverse listener checks. | Keep MAX egress on home WAN without requiring a new inbound home public port or touching Channel C. |
+| `24-channel-d-router.yml` | Router | Experimental Channel D Caddy `forward_proxy@naive` + sing-box SOCKS relay. | Enable/rollback a router-native NaiveProxy lab without touching Channel A/B/C or VPS Caddy. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS and Channel M service artifacts under `out/`. | Generate importable profiles and private service env fragments without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
@@ -124,8 +125,16 @@ upstream egress is reused via sing-box Reality. Channel C native is C1
 home-first Naive (`22`): clients connect to the home endpoint first, then
 router-side sing-box applies the same managed split. The live-proven
 Shadowrocket path is C1-Shadowrocket HTTPS CONNECT compatibility and is
-persisted by the Channel C router playbook when enabled. Neither channel may
-mutate Channel A REDIRECT ownership or introduce automatic failover.
+persisted by the Channel C router playbook when enabled. Channel D (`24`) is an
+experimental home-first NaiveProxy lab: router Caddy `forward_proxy@naive`
+relays into sing-box `channel-d-naiveproxy-socks-in` for the same managed split.
+For a Karing trial, `vault_channel_d_naiveproxy_profiles_enabled=true` lets
+`30-generate-client-profiles.yml --tags channel_d_clients_only` render Channel D
+QR artifacts without enabling router runtime. For import-only UI testing without
+real endpoints or secrets, run the same tag with
+`-e channel_d_naiveproxy_karing_trial_enabled=true`.
+None of these channels may mutate Channel A REDIRECT ownership or introduce
+automatic failover.
 
 Channel M is separate from Channel A/B/C. The active shape is reverse Channel M:
 the router opens an outbound SSH remote-forward to the VPS docker bridge,
@@ -179,6 +188,7 @@ out of that file and use masked tokens instead.
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
 | `22-channel-c-router.yml` | Router | Mutating | Deploys the Channel C1 home-first Naive ingress. |
 | `23-channel-m-reverse.yml` | Router + VPS | Mutating | Deploys reverse Channel M SSH remote-forward and VPS docker bridge firewall persistence. |
+| `24-channel-d-router.yml` | Router | Mutating | Deploys or removes the experimental Channel D router-native NaiveProxy lab. |
 | `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles and Channel M maxtg env fragments into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 

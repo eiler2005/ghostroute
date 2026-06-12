@@ -47,6 +47,7 @@ item fails, do not deploy.
    ansible-playbook --syntax-check playbooks/20-stealth-router.yml
    ansible-playbook --syntax-check playbooks/21-channel-b-router.yml
    ansible-playbook --syntax-check playbooks/22-channel-c-router.yml
+   ansible-playbook --syntax-check playbooks/24-channel-d-router.yml
    ansible-playbook --syntax-check playbooks/99-verify.yml
    ```
 
@@ -94,6 +95,9 @@ cd ansible && ansible-playbook playbooks/21-channel-b-router.yml
 # Channel C selected-client lane (router add-on).
 cd ansible && ansible-playbook playbooks/22-channel-c-router.yml
 
+# Channel D experimental router-native NaiveProxy lab (router add-on).
+cd ansible && ansible-playbook playbooks/24-channel-d-router.yml
+
 # VPS base runtime.
 cd ansible && ansible-playbook playbooks/10-stealth-vps.yml
 
@@ -124,8 +128,9 @@ Expected invariants:
   active `wgc1` are absent.
 - Channel A REDIRECT listener responds, home Reality listener responds,
   managed split is OK.
-- If Channel B/C was changed: their ingress responds and the managed split
-  through them is OK.
+- If Channel B/C/D was changed: their ingress responds and the managed split
+  through them is OK. Channel D proof must use `channel-d-naiveproxy-socks-in`,
+  not Channel C `channel-c-naive-in`.
 - `traffic-report check` reports no new "routing mistake" findings.
 
 ## Rollback triggers
@@ -141,7 +146,7 @@ Roll back immediately if any of these are true after deploy:
   carrier resolver visible).
 - Reality handshake fails on a remote QR client that worked before the
   change.
-- Channel B/C ingress no longer responds, or starts capturing Channel A
+- Channel B/C/D ingress no longer responds, or starts capturing Channel A
   state (REDIRECT, DNS, TUN, recovery).
 
 ## Per-component rollback
@@ -156,13 +161,18 @@ Pick the narrowest path that recovers the regressed surface.
 3. `./verify.sh --verbose` to confirm invariants.
 4. Capture evidence under `reports/` for postmortem.
 
-### Channel B / Channel C
+### Channel B / Channel C / Channel D
 
 1. `git checkout <pre-tag>` (or revert the offending commit).
 2. Re-run only the affected playbook (`21-channel-b-router.yml` or
-   `22-channel-c-router.yml`).
+   `22-channel-c-router.yml`, or `24-channel-d-router.yml`).
 3. Confirm Channel A is **untouched** with `./verify.sh --verbose` and
    `traffic-report check`.
+
+For Channel D removal, set `vault_channel_d_naiveproxy_enabled=false` and rerun
+`24-channel-d-router.yml`. Confirm the Caddy service is stopped, the
+`services-start` bootstrap block is absent, D firewall rules are absent, and
+A/B/C verification still passes.
 
 ### VPS edge
 

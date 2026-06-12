@@ -68,6 +68,7 @@ components:
       - consumes_static_cidr_rule_set
       - provides_lan_redirect
       - provides_home_reality_ingress
+      - provides_channel_d_naiveproxy_socks_relay
       - provides_channel_m_maxtg_service_egress
       - provides_router_socks
       - provides_router_vps_dns_forwarder
@@ -79,10 +80,12 @@ components:
       - Plain HTTP generate_204 compatibility probe returns 204 through the managed client path.
       - LAN/Wi-Fi managed-domain probe must show managed exit through Reality.
       - Active managed HTTP 204 probe must pass through the sing-box SOCKS/Reality path.
+      - Channel D check confirms channel-d-naiveproxy-socks-in applies the managed split when enabled.
       - Channel M check confirms channel-m-maxtg-max-egress routes only to direct-out when enabled.
     compatibility_notes:
       - Process status and listener checks are necessary but not sufficient after binary upgrades.
       - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
+      - Channel D is experimental and must not be counted as Channel C native proof.
       - Channel M is service-only for maxtg_bridge and must not use managed rule-sets or reality-out.
 
   - id: router_singbox_watchdog
@@ -257,6 +260,34 @@ components:
       - leak-check channel_b_routing_leaks
     compatibility_notes:
       - Channel B is selected-client production and must not take over Channel A redirect ownership.
+
+  - id: router_channel_d_caddy_naiveproxy
+    component_name: Router Channel D Caddy forward_proxy@naive
+    supplier: Caddy project / klzgrad forwardproxy naive fork / GhostRoute
+    type: router_runtime_service
+    ecosystem: local_arm64_binary
+    origin: locally built linux/arm64 Caddy binary deployed by channel_d_naiveproxy role
+    package_names:
+      - caddy-channel-d-naiveproxy
+      - /opt/etc/init.d/S99caddy-channel-d-naiveproxy
+    version_policy:
+      proven_good: None; Channel D is disabled by default and experimental.
+      minimum_required: Must include the forward_proxy module built from the naive fork.
+      candidate: Local linux/arm64 Caddy build is acceptable only after module, config, listener and Karing split-proof checks pass.
+      known_problematic: []
+      rollback_available: Disable channel_d_naiveproxy_enabled and rerun playbooks/24-channel-d-router.yml.
+    relationships:
+      - receives_channel_d_selected_clients
+      - forwards_to_channel_d_naiveproxy_socks
+      - isolated_from_vps_caddy_l4
+    runtime_checks:
+      - Caddy list-modules contains forward_proxy
+      - Caddy validate accepts the Channel D Caddyfile
+      - netstat shows Channel D Caddy internal listener when enabled
+      - 99-verify confirms Channel D firewall, REDIRECT and sing-box split rules
+    compatibility_notes:
+      - This is not Channel C proof because traffic lands in channel-d-naiveproxy-socks-in.
+      - The binary is built locally and deployed ready-made; the router must not run upstream install scripts.
 
   - id: vps_caddy_l4
     component_name: Caddy with layer4 module
@@ -438,6 +469,16 @@ ports:
     iana_range: user
     runtime_check: Channel B relay config points to local sing-box SOCKS
 
+  - id: channel_d_naiveproxy_socks
+    owner_component: router_sing_box
+    protocol: tcp
+    bind_scope: router_loopback
+    exposure: router_local_only
+    source_var: channel_d_naiveproxy_upstream_socks_port
+    conflict_group: router_singbox_local_listeners
+    iana_range: user
+    runtime_check: netstat shows channel-d-naiveproxy-socks-in listener when Channel D is enabled
+
   - id: router_vps_dns_forward
     owner_component: router_sing_box
     protocol:
@@ -535,6 +576,26 @@ ports:
     conflict_group: router_singbox_local_listeners
     iana_range: user
     runtime_check: netstat shows channel-c-shadowrocket-http-in listener
+
+  - id: channel_d_naiveproxy_public
+    owner_component: router_channel_d_caddy_naiveproxy
+    protocol: tcp
+    bind_scope: router_wan
+    exposure: selected_remote_clients
+    source_var: channel_d_naiveproxy_public_port
+    conflict_group: router_public_ingress
+    iana_range: user
+    runtime_check: 99-verify confirms Channel D public REDIRECT when enabled
+
+  - id: channel_d_naiveproxy_ingress
+    owner_component: router_channel_d_caddy_naiveproxy
+    protocol: tcp
+    bind_scope: router_all_interfaces
+    exposure: redirected_public_ingress
+    source_var: channel_d_naiveproxy_ingress_port
+    conflict_group: router_channel_d_caddy_listeners
+    iana_range: user
+    runtime_check: netstat shows Caddy Channel D internal listener when enabled
 
   - id: channel_m_maxtg_public
     owner_component: router_sing_box
@@ -644,6 +705,15 @@ compatibility_claims:
       - Router-side native Naive ingress is server-ready.
       - Tested iPhone SFI line did not support the required native Naive outbound.
     notes: C1-Shadowrocket remains the live-proven compatibility path.
+
+  - id: channel_d_naiveproxy_lab
+    component_id: router_channel_d_caddy_naiveproxy
+    status: experimental
+    evidence:
+      - Disabled by default.
+      - Uses a separate playbook, public port, Caddy binary, credentials and client artifacts.
+      - Managed proof must show channel-d-naiveproxy-socks-in to reality-out for managed destinations and direct-out for non-managed destinations.
+    notes: Channel D is removable and must not be treated as Channel C native Naive proof.
 
 upgrade_gates:
   - id: router_sing_box_upgrade_gate

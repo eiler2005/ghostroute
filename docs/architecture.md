@@ -469,6 +469,7 @@ preserved only as the cold fallback documented above.
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
+| Channel D | experimental router-native NaiveProxy lab: Caddy `forward_proxy@naive` on the home router relays into sing-box managed split |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
@@ -484,6 +485,9 @@ preserved only as the cold fallback documented above.
 | Router internal | `:<home-channel-c-ingress-port>` | sing-box `channel-c-naive-in` | C1 native Naive inbound |
 | Router WAN | `:4443` | DNAT/REDIRECT to C1-SR | C1-Shadowrocket compatibility public endpoint |
 | Router internal | `:<channel-c-shadowrocket-ingress-port>` | sing-box `channel-c-shadowrocket-http-in` | C1-SR HTTPS CONNECT inbound |
+| Router WAN | `:4444` | DNAT/REDIRECT to Channel D Caddy | Experimental NaiveProxy-style public endpoint |
+| Router internal | `:<channel-d-naiveproxy-ingress-port>` | Caddy `forward_proxy@naive` | Channel D first-hop termination |
+| Router local | `127.0.0.1:<channel-d-socks-port>` | sing-box `channel-d-naiveproxy-socks-in` | Channel D relay into managed split |
 | Router local | `127.0.0.1:<dnscrypt-port>` | dnscrypt-proxy | Primary managed DNS forwarder from dnsmasq |
 | Router local | `127.0.0.1:<vps-dns-forward-port>` | sing-box `vps-dns-in` | DNS hijack compatibility listener, not the primary generated managed DNS target |
 | VPS public | `:443` | system Caddy layer4 | Reality/Vision entrypoint |
