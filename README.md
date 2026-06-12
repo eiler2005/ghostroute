@@ -272,6 +272,9 @@ Layer 1 managed channels
   Channel C -> endpoint -> Naive/HTTPS-H2-CONNECT-like
             -> home endpoint :<home-channel-c-public-port>
             -> router sing-box Naive ingress
+  Channel D -> Karing/Naive -> home endpoint :<channel-d-public-port>
+            -> router Caddy forward_proxy@naive
+            -> sing-box channel-d-naiveproxy-socks-in
   Channel M -> maxtg_bridge container -> HTTP CONNECT
             -> VPS docker bridge :<channel-m-reverse-listen-port>
             -> router-initiated SSH remote-forward
@@ -311,7 +314,7 @@ Operational layer:
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
-  Client Profiles     -> QR/VLESS, selected-client B/C artifacts from Vault
+  Client Profiles     -> QR/VLESS, selected-client B/C/D artifacts from Vault
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```

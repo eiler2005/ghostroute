@@ -48,6 +48,7 @@ Layer 1 managed channels
   Channel A -> endpoint -> home endpoint -> router -> managed egress
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
   Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
+  Channel D -> Karing/Naive -> home endpoint -> router Caddy forward_proxy@naive -> sing-box D SOCKS -> managed egress
   Channel M -> maxtg_bridge VPS -> HTTP CONNECT -> VPS docker bridge -> router reverse SSH target -> router direct-out
 
 Layer 2 home router
