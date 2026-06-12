@@ -191,6 +191,9 @@ mode on/off, restart VPN profile, restart Safari/tab. Если только од
 
 Симптом: YouTube/Telegram/OpenAI или другой managed-сайт пишет “нет интернета”,
 а `live-check` показывает, что `active_managed_egress` через SOCKS/Reality OK.
+Home-first Reality logs могут одновременно показывать
+`failed to dial dest: lookup setup.icloud.com`, потому что Reality handshake
+тоже зависит от router-local DNS.
 
 Это обычно DNS-слой, а не порт Reality:
 
@@ -203,9 +206,11 @@ dnsmasq -> dnsmasq-vps-managed.conf.add -> dnscrypt-proxy -> sing-box SOCKS -> r
 ```sh
 ssh admin@<router_lan_ip> '
   grep "^server=/youtube.com/127.0.0.1#<dnscrypt-port>$" /jffs/configs/dnsmasq-vps-managed.conf.add
+  netstat -nlp 2>/dev/null | grep "127.0.0.1:<dnscrypt-port> "
+  cru l 2>/dev/null | grep DnscryptWatchdog
   nslookup youtube.com 127.0.0.1
   nslookup gateway.icloud.com 127.0.0.1
-  tail -200 /opt/var/log/sing-box.log | grep -E "SERVFAIL|EOF|dns|reality-out"
+  tail -200 /opt/var/log/sing-box.log | grep -E "SERVFAIL|EOF|dns|reality-out|setup.icloud.com"
 '
 ./modules/ghostroute-health-monitor/bin/live-check --active-probe
 ```
@@ -214,14 +219,17 @@ Recovery без deploy:
 
 ```sh
 ssh admin@<router_lan_ip> '
-  /jffs/scripts/update-singbox-rule-sets.sh --no-restart
-  /opt/etc/init.d/S99sing-box restart
+  /opt/etc/init.d/S09dnscrypt-proxy2 restart
+  /jffs/scripts/dnscrypt-watchdog.sh
   service restart_dnsmasq
 '
 ```
 
-Если DNS зелёный, но managed egress через Reality падает, это уже другой слой:
-проверьте Caddy/VPS public TCP/443 и provider + host firewall.
+Если `dnscrypt-proxy` слушает, `nslookup ... 127.0.0.1` зелёный, но managed
+egress через Reality падает, это уже другой слой: проверьте Caddy/VPS public
+TCP/443 и provider + host firewall. Если rule-set явно устарел, отдельно
+пересоберите `/jffs/scripts/update-singbox-rule-sets.sh --no-restart`; не
+перезапускайте sing-box как первый шаг для чистого dnscrypt outage.
 
 ## Managed Egress Падает Только До Primary VPS
 

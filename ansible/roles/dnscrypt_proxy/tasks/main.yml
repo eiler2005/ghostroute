@@ -38,12 +38,26 @@
   ansible.builtin.raw: |
     touch {{ services_start_hook }}
     chmod +x {{ services_start_hook }}
-    sed -i '\|/opt/etc/init.d/S09dnscrypt-proxy2 start|d' {{ services_start_hook }}
-    grep -q '# BEGIN stealth-dnscrypt-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
+    sed -i '\|# BEGIN stealth-dnscrypt-bootstrap|,\|# END stealth-dnscrypt-bootstrap|d' {{ services_start_hook }}
+    cat >> {{ services_start_hook }} <<'EOF'
     # BEGIN stealth-dnscrypt-bootstrap
     {{ dnscrypt_init_path }} start
+    [ -x /jffs/scripts/dnscrypt-watchdog.sh ] && cru a DnscryptWatchdog "* * * * * /jffs/scripts/dnscrypt-watchdog.sh"
     # END stealth-dnscrypt-bootstrap
     EOF
+
+- name: Install dnscrypt listener watchdog
+  ansible.builtin.template:
+    src: dnscrypt-watchdog.sh.j2
+    dest: /jffs/scripts/dnscrypt-watchdog.sh
+    mode: "0755"
+
+- name: Enable dnscrypt listener watchdog cron
+  ansible.builtin.raw: |
+    cru d DnscryptWatchdog 2>/dev/null
+    cru a DnscryptWatchdog "* * * * * /jffs/scripts/dnscrypt-watchdog.sh"
+    /jffs/scripts/dnscrypt-watchdog.sh
+  changed_when: false
 
 - name: Update dnsmasq upstream to use dnscrypt-proxy (for non-VPN / non-STEALTH)
   ansible.builtin.raw: |

@@ -287,6 +287,11 @@ Layer 1 managed channels
 Layer 2 home router
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
+                              +-- managed DNS lookup
+                              |     dnsmasq server=/managed/127.0.0.1#<dnscrypt-port>
+                              |     -> dnscrypt-proxy -> sing-box SOCKS
+                              |     -> reality-out -> dnscrypt upstream
+                              |
                               +-- selected full-VPS override
                               |     reserved source IP / Home Reality auth_user
                               |     -> TPROXY or reality-in rule
@@ -491,6 +496,7 @@ Router:
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
   optional Channel M MAX egress HTTP inbound on :<home-channel-m-ingress-port>
   policy DNS split via dnsmasq + dnscrypt-proxy over sing-box SOCKS/Reality
+  dnscrypt listener watchdog on /jffs/scripts/dnscrypt-watchdog.sh
   sing-box vps-dns-in remains for DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
@@ -725,6 +731,12 @@ Expected invariants:
   -> reality-out`; RU/direct/default DNS stays on the home/RF/default resolver
   path. Router `vps-dns-in` remains for DNS hijack compatibility, but it is no
   longer the generated managed-domain forward target.
+- `dnscrypt-proxy` is a load-bearing router-local dependency for managed DNS.
+  If `127.0.0.1:<dnscrypt-port>` disappears, LAN/Wi-Fi managed domains and
+  home-first mobile Channels A/B/C/D can fail together even when listeners and
+  iptables still look healthy. Channel M is service-only direct-out and does
+  not use the managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` monitors
+  that listener every minute and restarts only dnscrypt-proxy.
 - Optional VPS restricted DNS, when enabled, is not public: host firewall allows
   it only from trusted private sources, while public `53/tcp,udp` is denied.
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.

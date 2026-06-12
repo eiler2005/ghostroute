@@ -192,6 +192,15 @@ depending on a separate VPS resolver leg. If the optional VPS Unbound resolver
 is enabled for private diagnostics, it is intentionally not public: public
 `53/tcp,udp` stays denied.
 
+That router-local dnscrypt listener is a shared dependency for LAN/Wi-Fi
+managed DNS and for home-first mobile Channels A/B/C/D after they reach the
+router. If `127.0.0.1:<dnscrypt-port>` disappears, the failure can look like a
+multi-channel routing outage even though sing-box/Xray/Caddy listeners and
+iptables are still present. The production guardrail is
+`/jffs/scripts/dnscrypt-watchdog.sh`: cron checks the listener every minute and
+restarts only dnscrypt-proxy, leaving Channel A/B/C/D/M ownership untouched.
+Channel M is service-only direct-out and does not use the managed DNS split.
+
 ### Observability, Console And Traffic Intelligence
 
 GhostRoute Console is an observability/review surface, not part of the router
@@ -465,6 +474,7 @@ preserved only as the cold fallback documented above.
 | ASUS RT-AX88U Pro + Merlin | dnsmasq/ipset/iptables, sing-box, dnscrypt-proxy |
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the dnscrypt-backed local forwarder |
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`; its DoH traffic goes through sing-box SOCKS/Reality |
+| `dnscrypt-watchdog.sh` | router cron guardrail for the dnscrypt listener; restarts only dnscrypt-proxy when `127.0.0.1:<dnscrypt-port>` disappears |
 | `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to active managed egress |
 | VPS host | Caddy :443, existing 3x-ui/Xray Docker container, optional restricted/private DNS resolver support |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |

@@ -46,6 +46,16 @@ names through router-local dnsmasq. IP-literal handshake targets are incident
 workarounds only and must fail `live-check` until deliberately promoted through
 the upgrade gates.
 
+The managed-DNS router dependency is the local dnscrypt listener on
+`127.0.0.1:<dnscrypt-port>`. dnsmasq managed includes point at that listener,
+and dnscrypt-proxy sends upstream DoH through sing-box SOCKS/Reality. The
+`router_dnscrypt_watchdog` component is the production guardrail: cron runs
+`/jffs/scripts/dnscrypt-watchdog.sh` every minute and restarts only
+dnscrypt-proxy if the listener disappears. A missing dnscrypt listener can make
+LAN/Wi-Fi plus home-first Channels A/B/C/D look broken while channel listeners
+remain up; Channel M direct-out traffic is not proof that managed DNS is
+healthy.
+
 The captive/connectivity compatibility contract has one explicit direct
 exception: plain HTTP `www.google.com:80` may bypass managed Reality so
 `generate_204` health checks can complete. HTTPS Google traffic and normal

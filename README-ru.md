@@ -255,6 +255,11 @@ Layer 1 managed channels
 Layer 2 home router
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
+                              +-- managed DNS lookup
+                              |     dnsmasq server=/managed/127.0.0.1#<dnscrypt-port>
+                              |     -> dnscrypt-proxy -> sing-box SOCKS
+                              |     -> reality-out -> dnscrypt upstream
+                              |
                               +-- selected full-VPS override
                               |     reserved source IP / Home Reality auth_user
                               |     -> TPROXY или reality-in rule
@@ -455,6 +460,7 @@ Router:
   optional Channel C1 Naive ingress on :<home-channel-c-ingress-port>
   optional Channel M MAX egress HTTP inbound on :<home-channel-m-ingress-port>
   policy DNS split via dnsmasq + dnscrypt-proxy через sing-box SOCKS/Reality
+  dnscrypt listener watchdog on /jffs/scripts/dnscrypt-watchdog.sh
   sing-box vps-dns-in остаётся для DNS hijack compatibility
   Legacy WireGuard disabled; wgc1 NVRAM preserved for cold fallback
 
@@ -671,6 +677,12 @@ VPS observer хранит свой local-only статус на VPS в
   Selected Channel A full-VPS profiles отправляют private/local direct, а
   остальной internet-bound traffic через `reality-out`.
 - Managed/foreign DNS идёт через `dnsmasq -> dnscrypt-proxy -> sing-box SOCKS -> reality-out`; RU/direct/default DNS остаётся на домашнем/RF/default resolver path.
+- `dnscrypt-proxy` на `127.0.0.1:<dnscrypt-port>` — load-bearing локальная
+  зависимость managed DNS. Если listener исчезает, LAN/Wi-Fi managed domains и
+  home-first A/B/C/D могут выглядеть сломанными одновременно, даже когда
+  listeners/iptables зелёные. Channel M остается service-only direct-out и не
+  использует managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` проверяет
+  listener каждую минуту и перезапускает только dnscrypt-proxy.
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` существуют.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` и active `wgc1` отсутствуют.
 

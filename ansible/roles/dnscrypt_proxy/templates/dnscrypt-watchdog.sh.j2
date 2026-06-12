@@ -1,0 +1,49 @@
+#!/bin/sh
+# Restart dnscrypt-proxy when its local listener disappears.
+
+PORT="{{ dnscrypt_port }}"
+INIT="{{ dnscrypt_init_path }}"
+STATE_FILE=/opt/tmp/dnscrypt-watchdog.state
+FAIL_LIMIT=1
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+listener_present() {
+  if netstat -nl 2>/dev/null | grep "127.0.0.1:${PORT}[[:space:]]" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 127.0.0.1 "$PORT" >/dev/null 2>&1
+    return $?
+  fi
+  if [ -x /opt/bin/nc ]; then
+    /opt/bin/nc -z -w 2 127.0.0.1 "$PORT" >/dev/null 2>&1
+    return $?
+  fi
+
+  return 1
+}
+
+if listener_present; then
+  echo 0 > "$STATE_FILE"
+  exit 0
+fi
+
+FAILS=0
+[ -f "$STATE_FILE" ] && FAILS="$(cat "$STATE_FILE" 2>/dev/null || echo 0)"
+case "$FAILS" in
+  ''|*[!0-9]*) FAILS=0 ;;
+esac
+FAILS=$((FAILS + 1))
+echo "$FAILS" > "$STATE_FILE"
+
+if [ "$FAILS" -ge "$FAIL_LIMIT" ]; then
+  logger -t dnscrypt-watchdog "dnscrypt-proxy listener probe failed on port $PORT ($FAILS checks); restarting"
+  "$INIT" restart >/dev/null 2>&1 || logger -t dnscrypt-watchdog "restart command failed"
+  sleep 2
+  if ! listener_present; then
+    logger -t dnscrypt-watchdog "dnscrypt-proxy listener still missing on port $PORT after restart"
+  fi
+  echo 0 > "$STATE_FILE"
+fi
