@@ -3,6 +3,10 @@
 Channel M is the service-only MAX egress lane for `maxtg_bridge`. It is not a
 client channel and not Channel A/B/C failover.
 
+This document owns the router_configuration view of Channel M. The companion
+VPS host-layer view is documented in
+[`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).
+
 ## Active Runtime Shape
 
 ```text

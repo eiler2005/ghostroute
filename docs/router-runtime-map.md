@@ -11,6 +11,10 @@ For the machine-readable source of truth, see
 verification, run `./verify.sh --verbose` or
 `cd ansible && ansible-playbook playbooks/99-verify.yml`.
 
+This map covers the router side. The companion VPS-side runtime map for
+Channel M, GhostRoute Console and routing/app surfaces lives in
+[`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).
+
 ## At A Glance
 
 ```mermaid
@@ -297,5 +301,6 @@ run the matching playbook in `--check --diff` before any deploy.
 - [`channel-m-environment.md`](/docs/channel-m-environment.md) - Channel M reverse egress details.
 - [`dns-policy.md`](/docs/dns-policy.md) - DNS consistency and leak policy.
 - [`runtime-inventory.md`](/docs/runtime-inventory.md) - inventory policy and upgrade gates.
+- [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map.
 - [`modules/routing-core/README.md`](/modules/routing-core/README.md) - routing-core module ownership.
 - [`modules/recovery-verification/docs/failure-modes.md`](/modules/recovery-verification/docs/failure-modes.md) - recovery runbook.

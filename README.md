@@ -34,6 +34,9 @@ secrets and recovery all have separate ownership and tests.
 For an operator map of what is installed on the ASUS Merlin router, including
 runtime files, services, cron watchdogs and channel diagrams, see
 [`docs/router-runtime-map.md`](docs/router-runtime-map.md).
+For the companion VPS-side runtime map used by Channel M, GhostRoute Console
+and the routing/app surfaces, see
+[`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).
 
 ## Channel Status
 
