@@ -99,7 +99,7 @@ Layer 2 home router
     -> Internet
 
   Channel C1-Shadowrocket compatibility traffic
-    -> HTTPS CONNECT/TLS profile to home public IP :4443
+    -> HTTPS CONNECT/TLS profile to home public IP :<channel-c-shadowrocket-public-port>
     -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in`
     -> managed split (same rule-sets as Channel A)
     -> Channel A Reality outbound to active managed egress
@@ -302,7 +302,7 @@ Facts and interpretation are intentionally separate:
   gitignored JSON/Markdown review queues for offline/LLM analysis, and stable
   results are promoted into deterministic local rules.
 
-The VPS deployment keeps the Console app on `127.0.0.1:3000`. Public operator
+The VPS deployment keeps the Console app on `127.0.0.1:<console-local-port>`. Public operator
 access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a
 small local buffering proxy. This keeps larger Console pages away from the
 shared Reality/layer4 `:443` listener used by Channel A/B/C egress. Large
@@ -383,8 +383,8 @@ C1-Shadowrocket is the Shadowrocket compatibility lane proven live on 2026-04-28
 
 ```text
 Endpoint Shadowrocket client
-  -> HTTPS CONNECT over TLS to home public IP :4443
-  -> WAN REDIRECT to router internal :41956
+  -> HTTPS CONNECT over TLS to home public IP :<channel-c-shadowrocket-public-port>
+  -> WAN REDIRECT to router internal :<channel-c-shadowrocket-ingress-port>
   -> ASUS sing-box HTTP inbound `channel-c-shadowrocket-http-in`
   -> managed split по `stealth-domains` / `stealth-static`
        - managed     -> reality-out -> active managed egress
@@ -494,9 +494,9 @@ preserved only as the cold fallback documented above.
 | Router local | `127.0.0.1:<router-socks-port>` | sing-box `channel-b-relay-socks` | Channel B relay into shared managed split |
 | Router WAN | `:<home-channel-c-public-port>` | DNAT/REDIRECT to C1 native | C1-sing-box public Naive endpoint, usually public `443` when enabled |
 | Router internal | `:<home-channel-c-ingress-port>` | sing-box `channel-c-naive-in` | C1 native Naive inbound |
-| Router WAN | `:4443` | DNAT/REDIRECT to C1-SR | C1-Shadowrocket compatibility public endpoint |
+| Router WAN | `:<channel-c-shadowrocket-public-port>` | DNAT/REDIRECT to C1-SR | C1-Shadowrocket compatibility public endpoint |
 | Router internal | `:<channel-c-shadowrocket-ingress-port>` | sing-box `channel-c-shadowrocket-http-in` | C1-SR HTTPS CONNECT inbound |
-| Router WAN | `:4444` | DNAT/REDIRECT to Channel D Caddy | Experimental NaiveProxy-style public endpoint |
+| Router WAN | `:<channel-d-public-port>` | DNAT/REDIRECT to Channel D Caddy | Experimental NaiveProxy-style public endpoint |
 | Router internal | `:<channel-d-naiveproxy-ingress-port>` | Caddy `forward_proxy@naive` | Channel D first-hop termination |
 | Router local | `127.0.0.1:<channel-d-socks-port>` | sing-box `channel-d-naiveproxy-socks-in` | Channel D relay into managed split |
 | Router local | `127.0.0.1:<dnscrypt-port>` | dnscrypt-proxy | Primary managed DNS forwarder from dnsmasq |
@@ -534,7 +534,7 @@ direct-XHTTP варианта Channel B.
 | Channel A Home Reality selected full-VPS set | Home Reality `auth_user` set | `reality-in` selected-user rule before managed split | `reality-out` for internet-bound traffic |
 | Channel B selected-client profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | production home-first egress |
 | Channel C1-sing-box selected-client profile | selected device only | TCP/<home-channel-c-public-port> to home router, then sing-box Naive inbound with managed split | stealth-primary home-first egress |
-| Channel C1-Shadowrocket profile | selected device only | TCP/4443 to home router, then sing-box HTTP inbound with managed split | compatibility home-first egress |
+| Channel C1-Shadowrocket profile | selected device only | TCP/<channel-c-shadowrocket-public-port> to home router, then sing-box HTTP inbound with managed split | compatibility home-first egress |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 
@@ -629,7 +629,7 @@ Current Channel C1-Shadowrocket shape is home-first compatibility:
 
 ```text
 client app
-  -> HTTPS CONNECT/TLS to home public IP :4443
+  -> HTTPS CONNECT/TLS to home public IP :<channel-c-shadowrocket-public-port>
   -> router sing-box HTTP inbound channel-c-shadowrocket-http-in
   -> managed split (same rule-sets as Channel A)
   -> sing-box Reality outbound -> active managed egress

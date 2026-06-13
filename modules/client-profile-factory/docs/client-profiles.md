@@ -560,8 +560,8 @@ Channel M artifacts are not client QR profiles. They are local service fragments
 for wiring `maxtg_bridge` on Hetzner to the home-router MAX egress lane:
 
 ```text
-maxtg_bridge container -> HTTP CONNECT -> VPS docker bridge :18057
-home router -> outbound SSH remote-forward -> VPS docker bridge :18057
+maxtg_bridge container -> HTTP CONNECT -> VPS docker bridge :<channel-m-reverse-listen-port>
+home router -> outbound SSH remote-forward -> VPS docker bridge :<channel-m-reverse-listen-port>
 tunnel target -> router loopback `channel-m-maxtg-reverse-egress`
               -> direct-out -> home WAN -> MAX API/CDN
 ```

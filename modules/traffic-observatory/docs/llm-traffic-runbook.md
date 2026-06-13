@@ -108,7 +108,7 @@ When the user asks for a router traffic report or router health/capacity report 
    connection counts until exact per-outbound byte attribution exists.
 
 11. If the report contains "CHANNEL C STATUS", keep the two Channel C variants separate:
-   - C1-Shadowrocket / 1-SR on `:4443` is the working iPhone path today.
+   - C1-Shadowrocket / 1-SR on `:<channel-c-shadowrocket-public-port>` is the working iPhone path today.
    - It is not native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
    - The mobile operator sees iPhone -> home Russian IP with TLS/HTTPS CONNECT traffic, not the VPS as first hop.
    - C1-sing-box/native Naive on `:443` is the intended stealth-primary design, but current tested iPhone SFI/sing-box `1.11.4` fails with `unknown outbound type: naive`.

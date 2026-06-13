@@ -17,7 +17,7 @@ Current channel maturity is:
 - Channel B remains production for selected device-client profiles.
 - Channel C1-Shadowrocket is the live-proven Channel C compatibility lane:
   Shadowrocket uses authenticated HTTPS CONNECT over TLS to the home endpoint
-  on public `:4443`, the router terminates it with sing-box HTTP inbound, then
+  on public `:<channel-c-shadowrocket-public-port>`, the router terminates it with sing-box HTTP inbound, then
   applies the same managed split and Reality/Vision egress as other home-first
   channels.
 - Channel C1-sing-box is the intended native Naive design: the router exposes a

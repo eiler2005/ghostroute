@@ -140,8 +140,8 @@ C1-Shadowrocket is the live-proven iPhone compatibility lane.
 ```text
 iPhone Shadowrocket
   -> HTTPS CONNECT over TLS
-  -> home public IP/DDNS :4443
-  -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in` :41956
+  -> home public IP/DDNS :<channel-c-shadowrocket-public-port>
+  -> router sing-box HTTP inbound `channel-c-shadowrocket-http-in` :<channel-c-shadowrocket-ingress-port>
   -> managed split
        managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
@@ -187,7 +187,7 @@ Target shape:
 iPhone SFI / sing-box client with outbound type `naive`
   -> Naive over public TLS :443
   -> home public IP/DDNS
-  -> router sing-box naive inbound `channel-c-naive-in` :41955
+  -> router sing-box naive inbound `channel-c-naive-in` :<home-channel-c-ingress-port>
   -> managed split
        managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
@@ -224,7 +224,7 @@ native Naive.
 
 ```text
 Karing / NaiveProxy-style client
-  -> home public IP/DDNS :4444
+  -> home public IP/DDNS :<channel-d-public-port>
   -> router Caddy forward_proxy@naive
   -> local sing-box SOCKS inbound `channel-d-naiveproxy-socks-in`
   -> managed split

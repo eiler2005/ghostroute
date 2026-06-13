@@ -182,7 +182,7 @@ Layer 6 deployment/access
     -> dedicated Console HTTPS port with Basic Auth
     -> nginx listener
     -> local buffering proxy
-    -> Next.js container on 127.0.0.1:3000
+    -> Next.js container on 127.0.0.1:<console-local-port>
     -> SQLite data directory
 
   Safety invariant
@@ -503,11 +503,11 @@ during the day and 210 minutes overnight.
 ## Deployment And Access
 
 The deployed Console app runs as a single Docker container on
-`127.0.0.1:3000` on the VPS. Public access uses a dedicated non-443 nginx HTTPS
+`127.0.0.1:<console-local-port>` on the VPS. Public access uses a dedicated non-443 nginx HTTPS
 listener with Basic Auth and a small local buffering proxy in front of the app.
 The proxy preserves the external `Host`, `X-Forwarded-Host`, `X-Forwarded-Proto`
 and `X-Forwarded-Port` headers so server-side mobile redirects never leak the
-internal `localhost:3000` upstream address.
+internal `localhost:<console-local-port>` upstream address.
 This keeps Console off the shared Reality/layer4 `:443` listener while avoiding
 a second owner for the Reality surface. Caddy still owns certificate storage and
 the separate Reality/layer4 listener. Legacy dedicated Caddy Console blocks may
@@ -628,7 +628,7 @@ blank or long-loading page, collect a Chrome DevTools Network waterfall with
 Preserve log and Disable cache enabled, or Safari/WebKit Web Inspector Network
 evidence for Safari/iOS. Compare the HTML document, `?_rsc` requests, static
 chunks and API timings with a VPS-local curl baseline to
-`127.0.0.1:3000/health` and a public curl baseline to the dedicated Console
+`127.0.0.1:<console-local-port>/health` and a public curl baseline to the dedicated Console
 URL. A slow document TTFB points toward server render/read-model work; fast TTFB
 with a slow body points toward proxy/TLS/client-path behavior; failed chunks
 point toward static asset/auth/cache handling; hanging `?_rsc` requests point

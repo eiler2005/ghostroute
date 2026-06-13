@@ -44,9 +44,9 @@ Channel C — это будущий manual-only экспериментальны
 ```
 Wire           Termination          Auth           Pass-through
 ────────────────────────────────────────────────────────────────
-:443 (TCP)    Caddy L4 (SNI)        —              proxy → 18443
-:18443        stunnel (TLS terminate, LE cert) —    plain HTTP → 18889
-:18889        Squid (HTTP CONNECT, basic auth)  Authorization: Basic … → upstream
+:443 (TCP)    Caddy L4 (SNI)        —              proxy → <legacy-channel-c-tls-port>
+:<legacy-channel-c-tls-port>        stunnel (TLS terminate, LE cert) —    plain HTTP → <legacy-channel-c-http-proxy-port>
+:<legacy-channel-c-http-proxy-port>        Squid (HTTP CONNECT, basic auth)  Authorization: Basic … → upstream
 ```
 
 **Контракт SNI-routing:** Caddy `layer4` инспектирует TLS Client Hello, не терминируя. Если SNI == `channel_c_naive_public_host` → proxy на stunnel. Иначе fallthrough → Reality (`gateway.icloud.com`) → Xray. SNI mismatch ⇒ traffic уходит в Reality, который порвёт TLS handshake (т.к. Reality ждёт свою magic-handshake, а тут обычный TLS).
@@ -91,7 +91,7 @@ App socket
 - `curl --proxy https://USER:PASS@host:443 https://www.google.com/generate_204` → HTTP 204 ✅
 - `CONNECT api.ipify.org:443` → `HTTP/1.1 200 Connection established` ✅
 - Squid access log: `TCP_TUNNEL/200 CONNECT api.ipify.org:443` (при curl-попытке) ✅
-- VPS listeners: `caddy :443`, `stunnel 127.0.0.1:18443`, `Squid 127.0.0.1:18889` ✅
+- VPS listeners: `caddy :443`, `stunnel 127.0.0.1:<legacy-channel-c-tls-port>`, `Squid 127.0.0.1:<legacy-channel-c-http-proxy-port>` ✅
 - `99-verify.yml --limit vps_stealth` → green ✅
 - Channel A не отвалился (`verify.sh` warning только о blocked-list freshness) ✅
 
@@ -108,7 +108,7 @@ App socket
 |---|---|---|
 | Свежий Squid access log во время попытки c iPhone | Различить (a) iPhone не доходит до Squid, (b) доходит но 407, (c) tunnel ok но bytes=0 | `ssh deploy@vps 'sudo tail -f /var/log/squid/channel-c-access.log'` параллельно с попыткой |
 | stunnel log во время попытки | Видеть, состоялся ли TLS handshake от iPhone (TLS error vs. clean) | `ssh deploy@vps 'sudo tail -f /var/log/stunnel4/channel-c.log'` |
-| pcap WAN-side во время попытки | Если логи молчат — увидеть, дошли ли SYN от iPhone | `sudo timeout 60 tcpdump -ni any 'tcp port 443 or tcp port 18443 or tcp port 18889' -w /tmp/c.pcap` |
+| pcap WAN-side во время попытки | Если логи молчат — увидеть, дошли ли SYN от iPhone | `sudo timeout 60 tcpdump -ni any 'tcp port 443 or tcp port <legacy-channel-c-tls-port> or tcp port <legacy-channel-c-http-proxy-port>' -w /tmp/c.pcap` |
 | Status iCloud Private Relay/IP Tracking | Однозначно отбросить или подтвердить H1 | iOS Settings, скриншот |
 | Plain HTTP test | Различить (a) проблема только с TLS-in-TLS, (b) полный отказ proxy | `Safari: http://neverssl.com` |
 | Built-in connectivity test Shadowrocket | Внутренний тест без смешения с приложениями | Shadowrocket → Server → tap server → Test |
@@ -491,7 +491,7 @@ curl -fsS --max-time 20 --proxy "$u" https://api.ipify.org
 ```bash
 ssh deploy@<vps> '
   sudo timeout 60 tcpdump -ni any \
-    "(tcp port 443 or tcp port 18443 or tcp port 18889)" \
+    "(tcp port 443 or tcp port <legacy-channel-c-tls-port> or tcp port <legacy-channel-c-http-proxy-port>)" \
     -w /tmp/channel-c-iphone.pcap
 '
 scp deploy@<vps>:/tmp/channel-c-iphone.pcap .
@@ -589,7 +589,7 @@ Sing-box (already known по Channel A) поддерживает `naive` inbound
 - htpasswd / basic_ncsa_auth проблемы (sing-box hardcodes auth).
 - TIMEOUTclose-style edge cases.
 
-**Trade-off:** sing-box на VPS — ещё один runtime, новый Ansible role. Но топология та же: Caddy L4 SNI → sing-box `:18443` → naive-listen.
+**Trade-off:** sing-box на VPS — ещё один runtime, новый Ansible role. Но топология та же: Caddy L4 SNI → sing-box `:<legacy-channel-c-tls-port>` → naive-listen.
 
 См. §6 ChC-Alt-1 ниже.
 
@@ -608,7 +608,7 @@ sing-box on VPS:
   inbound:
     - type: naive
       listen: 127.0.0.1
-      listen_port: 18443
+      listen_port: <legacy-channel-c-tls-port>
       users:
         - user_name: USER
           auth_secret: PASS
@@ -619,7 +619,7 @@ sing-box on VPS:
         alpn: ["h2", "http/1.1"]
 ```
 
-Caddy L4 SNI → `127.0.0.1:18443` (sing-box) → CONNECT-handle.
+Caddy L4 SNI → `127.0.0.1:<legacy-channel-c-tls-port>` (sing-box) → CONNECT-handle.
 
 **Плюсы:** один процесс, проверенный mobile-side support, ALPN правильно negotiate'ится, нет stunnel-edge-cases.
 **Минусы:** новая Ansible role, секреты в конфиге sing-box.

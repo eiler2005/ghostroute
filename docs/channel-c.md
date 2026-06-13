@@ -26,7 +26,7 @@ only as removed-design debugging records.
 
 Short status:
 
-- `C1-Shadowrocket / 1-SR` on `:4443` works now on the real iPhone. It is not
+- `C1-Shadowrocket / 1-SR` on `:<channel-c-shadowrocket-public-port>` works now on the real iPhone. It is not
   native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
 - `C1-sing-box / native Naive` on `:443` is the intended stealth-primary design.
   The router side is ready, but the tested iPhone SFI build uses sing-box
@@ -44,7 +44,7 @@ iPhone LTE
   -> SFI / sing-box client with outbound type: naive
   -> Naive over TLS/H2-like :443
   -> home DDNS / public RU IP
-  -> WAN REDIRECT to router internal :41955
+  -> WAN REDIRECT to router internal :<home-channel-c-ingress-port>
   -> router sing-box naive inbound `channel-c-naive-in`
   -> managed split
   -> reality-out / Vision
@@ -89,8 +89,8 @@ C1-Shadowrocket is a separate compatibility path for Shadowrocket:
 ```text
 iPhone LTE
   -> Shadowrocket HTTPS CONNECT over TLS
-  -> home DDNS / public RU IP :4443
-  -> WAN REDIRECT to router internal :41956
+  -> home DDNS / public RU IP :<channel-c-shadowrocket-public-port>
+  -> WAN REDIRECT to router internal :<channel-c-shadowrocket-ingress-port>
   -> router sing-box http inbound `channel-c-shadowrocket-http-in`
   -> managed split
   -> reality-out / Vision
@@ -117,7 +117,7 @@ Live finding from 2026-04-28:
 - Those profiles timed out during connectivity tests.
 - Router logs showed the attempts hitting `channel-c-naive-in` but failing with
   `not CONNECT request`.
-- A sing-box `http` inbound on router internal `:41956`, public `:4443`,
+- A sing-box `http` inbound on router internal `:<channel-c-shadowrocket-ingress-port>`, public `:<channel-c-shadowrocket-public-port>`,
   succeeded with Shadowrocket.
 - Logs confirmed
   `inbound/http[channel-c-shadowrocket-http-in] -> outbound/vless[reality-out]`.
@@ -167,7 +167,7 @@ behave as a compatible Naive client for the current sing-box inbound.
 - C1-sing-box on `:443` remains the intended stealth-primary Channel C design,
   but it is not considered iPhone-proven until a client accepts outbound
   `"type": "naive"` and produces `channel-c-naive-in -> reality-out` logs.
-- C1-Shadowrocket on `:4443` is a Shadowrocket compatibility lane, not a Naive lane.
+- C1-Shadowrocket on `:<channel-c-shadowrocket-public-port>` is a Shadowrocket compatibility lane, not a Naive lane.
 - C1-Shadowrocket is a persisted compatibility lane with separate profile and
   verification artifacts.
 - Neither C1-sing-box nor C1-Shadowrocket is automatic failover for Channel A/B.

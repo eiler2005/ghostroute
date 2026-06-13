@@ -7,7 +7,7 @@ LTE, but Channel D remains isolated from Channel C proof and ownership.
 
 ```text
 Karing / NaiveProxy-style client
-  -> home public host :4444
+  -> home public host :<channel-d-public-port>
   -> ASUS router Caddy forward_proxy@naive
   -> local sing-box SOCKS inbound `channel-d-naiveproxy-socks-in`
   -> managed split
@@ -21,7 +21,7 @@ runtime, client artifacts and deploy playbook.
 
 ## Runtime
 
-- Default public endpoint: same home host as Channel C on TCP/4444, or another
+- Default public endpoint: same home host as Channel C on TCP/<channel-d-public-port>, or another
   Channel D-only hostname in `vault_channel_d_naiveproxy_public_host`.
 - The profile host must match the router TLS certificate SAN/CN. Do not put a
   raw public IPv4 in the Naive URL while reusing a hostname certificate unless
@@ -129,7 +129,7 @@ enabled with matching Vault credentials.
 Raw Channel D import URLs include a fragment remark:
 
 ```text
-naive+https://<user>:<pass>@<host>:4444#<client-name>-channel-d
+naive+https://<user>:<pass>@<host>:<channel-d-public-port>#<client-name>-channel-d
 ```
 
 Keep the fragment when copying a text URI manually; clients that preserve
