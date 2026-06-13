@@ -101,14 +101,14 @@ Current listeners after the `squid_tls` switch:
 
 ```text
 Caddy public :443
-Squid 127.0.0.1:18889
+Squid 127.0.0.1:<legacy-channel-c-http-proxy-port>
 ```
 
 Current Caddy layer4 route sends Channel C SNI directly to Squid:
 
 ```text
 @channel_c_naive tls sni <channel-c-host>
-proxy 127.0.0.1:18889
+proxy 127.0.0.1:<legacy-channel-c-http-proxy-port>
 ```
 
 Squid access log shows successful proxy tunnels for local curl:
@@ -182,7 +182,7 @@ Results:
 ```bash
 ssh deploy@<vps-ip> '
   sudo timeout 45 tcpdump -ni any \
-    "(tcp port 443 or tcp port 18443 or tcp port 18889)" \
+    "(tcp port 443 or tcp port <legacy-channel-c-tls-port> or tcp port <legacy-channel-c-http-proxy-port>)" \
     -w /tmp/channel-c-iphone.pcap
 '
 ```
@@ -219,7 +219,7 @@ Squid 6 on the VPS is built with GnuTLS and supports `https_port`, so Channel C
 was changed again to remove stunnel from the active path:
 
 ```text
-client -> Caddy :443 layer4 SNI -> Squid https_port on 127.0.0.1:18889 -> Internet
+client -> Caddy :443 layer4 SNI -> Squid https_port on 127.0.0.1:<legacy-channel-c-http-proxy-port> -> Internet
 ```
 
 The same public hostname/profile should continue to work. Caddy still owns

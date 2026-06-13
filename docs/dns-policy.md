@@ -167,7 +167,7 @@ home ISP resolver directly.
 For C1-Shadowrocket:
 
 ```text
-iPhone Shadowrocket -> home IP :4443 -> router HTTP inbound -> managed split
+iPhone Shadowrocket -> home IP :<channel-c-shadowrocket-public-port> -> router HTTP inbound -> managed split
 DNS must follow the active Shadowrocket/tunnel policy, not LTE carrier DNS.
 ```
 

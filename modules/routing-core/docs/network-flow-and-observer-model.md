@@ -29,7 +29,7 @@ compatibility/native paths:
    же split policy.
 
 4. Channel C1 selected clients используют два явных варианта: C1-Shadowrocket
-   HTTPS CONNECT/TLS на `:4443` как live-proven compatibility path и
+   HTTPS CONNECT/TLS на `:<channel-c-shadowrocket-public-port>` как live-proven compatibility path и
    C1-sing-box native Naive как server-ready path, ожидающий iOS client support.
 
 Ключевой результат: для LTE-оператора первый hop мобильного клиента выглядит
@@ -231,7 +231,7 @@ managed split as Channel A, Wi-Fi/LAN and Channel C.
 
 ```text
 iPhone LTE / Shadowrocket
-  -> HTTPS CONNECT/TLS to home public RU IP TCP/4443
+  -> HTTPS CONNECT/TLS to home public RU IP TCP/<channel-c-shadowrocket-public-port>
   -> optional WAN REDIRECT to router internal TCP/<channel-c-shadowrocket-ingress-port>
   -> ASUS sing-box channel-c-shadowrocket-http-in
   -> sing-box route rule:
@@ -280,7 +280,7 @@ Expected website-facing exit: домашний российский WAN IP.
 
 ```text
 Karing / NaiveProxy-style client
-  -> home public RU IP TCP/4444
+  -> home public RU IP TCP/<channel-d-public-port>
   -> optional WAN REDIRECT to router internal TCP/<channel-d-naiveproxy-ingress-port>
   -> ASUS Caddy forward_proxy@naive
   -> ASUS sing-box SOCKS inbound channel-d-naiveproxy-socks-in
@@ -363,10 +363,10 @@ what the LTE carrier saw as the first hop.
 - Mobile Channel A clients enter `reality-in` on TCP/<home-reality-port>.
 - Channel B clients enter the local relay and then `channel-b-relay-socks`.
 - C1-Shadowrocket clients enter `channel-c-shadowrocket-http-in` through
-  TCP/4443.
+  TCP/<channel-c-shadowrocket-public-port>.
 - C1 native clients enter `channel-c-naive-in` through
   TCP/<home-channel-c-public-port>.
-- Channel D clients enter router Caddy on TCP/4444 and then
+- Channel D clients enter router Caddy on TCP/<channel-d-public-port> and then
   `channel-d-naiveproxy-socks-in`.
 - Managed destinations route to `reality-out`.
 - Non-managed destinations from mobile route to `direct-out`.

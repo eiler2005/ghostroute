@@ -24,7 +24,7 @@ EN. Расширенные технические разделы (Quick Start, A
 | A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | Нет |
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
-| D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:4444` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
+| D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
 | M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
@@ -54,7 +54,7 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
   первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
   теперь разделен на C1-Shadowrocket HTTPS CONNECT compatibility и C1-sing-box
   native Naive target. Channel D — выключенный по умолчанию router-native
-  Caddy `forward_proxy@naive` lab на `:4444`, который заводит трафик в
+  Caddy `forward_proxy@naive` lab на `:<channel-d-public-port>`, который заводит трафик в
   `channel-d-naiveproxy-socks-in` и тот же managed split. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, плюс optional Channel A
@@ -134,7 +134,7 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   native Naive, но пока ожидает iOS client support for outbound `type: naive`.
   Оба варианта применяют тот же managed split и Reality/Vision upstream.
 - Channel D Karing-only NaiveProxy lane: выбранные клиенты Karing подключаются
-  к домашнему TCP/4444, router-native Caddy `forward_proxy@naive` relays трафик
+  к домашнему TCP/<channel-d-public-port>, router-native Caddy `forward_proxy@naive` relays трафик
   в `channel-d-naiveproxy-socks-in`, а sing-box применяет тот же managed split.
   Server-side build pinned на `klzgrad/forwardproxy`, но live fingerprint
   остается Karing-like; cover site отвечает на обычный unauthenticated HTTPS
@@ -387,14 +387,14 @@ Xray завершает первый hop и передает трафик в л�
 managed домены продолжают идти через существующий Reality/Vision upstream на VPS,
 а non-managed — сразу в home WAN.
 Channel C теперь разделен на два C1-варианта. C1-Shadowrocket подключается к
-домашнему HTTPS CONNECT/TLS ingress на `:4443` и попадает в
+домашнему HTTPS CONNECT/TLS ingress на `:<channel-c-shadowrocket-public-port>` и попадает в
 `channel-c-shadowrocket-http-in`; это compatibility, не native Naive.
 C1-sing-box подключается к домашнему Naive ingress и попадает в
 `channel-c-naive-in`; серверная часть готова, но протестированный iPhone SFI
 `1.11.4` не поддержал outbound `type: naive`. Оба варианта используют общий
 managed split.
 Channel D — отдельный experimental router-native NaiveProxy lab: Karing или
-NaiveProxy-style клиент подключается к домашнему `:4444`, Caddy
+NaiveProxy-style клиент подключается к домашнему `:<channel-d-public-port>`, Caddy
 `forward_proxy@naive` на роутере принимает первый hop и передает трафик в
 локальный sing-box SOCKS `channel-d-naiveproxy-socks-in`. Managed destinations
 идут через `reality-out`, non-managed — через `direct-out`. Это не доказательство

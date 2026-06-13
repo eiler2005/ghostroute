@@ -228,7 +228,7 @@ and read-only, so browser tests run in an ephemeral Microsoft Playwright sidecar
 container on the VPS host network. The playbook copies the current checkout's
 test directory to a temporary VPS workspace, the sidecar mounts that copy
 read-only, installs the matching `@playwright/test` runner in a temporary
-workspace, and connects to the local Console listener at `http://127.0.0.1:3000`.
+workspace, and connects to the local Console listener at `http://127.0.0.1:<console-local-port>`.
 
 The live config keeps the spec's page/API budgets intact but allows a longer
 global test timeout for warmup. The spec itself warms page and API paths before
@@ -364,7 +364,7 @@ Server-side baseline:
 ```bash
 # From the VPS:
 curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
-  http://127.0.0.1:3000/health
+  http://127.0.0.1:<console-local-port>/health
 
 curl -o /dev/null -sS -w 'ttfb=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' \
   https://<console-host>:<console-port>/health
@@ -485,7 +485,7 @@ Basic Auth still protects HTML, API and operator data routes; immutable
 `/_next/static/` chunks and browser metadata probes are public cacheable assets
 to avoid iOS Safari auth loops. The VPS proxy forwards the external host and
 port through `X-Forwarded-*` headers; mobile redirects use those headers so they
-stay on the public Console URL instead of the internal `localhost:3000`
+stay on the public Console URL instead of the internal `localhost:<console-local-port>`
 container upstream.
 
 ## Release Hardening

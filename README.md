@@ -36,7 +36,7 @@ secrets and recovery all have separate ownership and tests.
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | No |
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
-| D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive on `:4444` | Karing/NaiveProxy-style proof lane relayed into the same managed split; disabled by default | No |
+| D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive on `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane relayed into the same managed split; disabled by default | No |
 | M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
@@ -71,7 +71,7 @@ The layered model separates the main traffic responsibilities:
   model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
   Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
   client with Naive outbound support. Channel D is a disabled-by-default
-  router-native Caddy `forward_proxy@naive` lab on `:4444`, relayed into the
+  router-native Caddy `forward_proxy@naive` lab on `:<channel-d-public-port>`, relayed into the
   same managed split through `channel-d-naiveproxy-socks-in`. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
@@ -155,7 +155,7 @@ diagnostic.
   SFI `1.11.4` rejects outbound `type: naive`. Both router-side paths apply the
   same managed split and Reality/Vision upstream.
 - Channel D experimental NaiveProxy lab: selected Karing/NaiveProxy-style
-  clients connect to router-native Caddy `forward_proxy@naive` on home TCP/4444.
+  clients connect to router-native Caddy `forward_proxy@naive` on home TCP/<channel-d-public-port>.
   Caddy relays into local sing-box SOCKS `channel-d-naiveproxy-socks-in`, where
   managed destinations use `reality-out` and non-managed traffic uses
   `direct-out`. The server build pins `klzgrad/forwardproxy`; the current live
