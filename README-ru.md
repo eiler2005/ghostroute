@@ -17,6 +17,10 @@
 EN. Расширенные технические разделы (Quick Start, ADR index, Demo, полная
 таблица каналов) намеренно живут только в EN, чтобы не дублировать дрейф.
 
+Карта того, что установлено на ASUS Merlin router, с runtime-файлами,
+watchdog'ами и схемами каналов:
+[`docs/router-runtime-map.md`](docs/router-runtime-map.md).
+
 ## Статус каналов
 
 | Канал | Статус | Первый hop | Scope | Автоматический failover |
