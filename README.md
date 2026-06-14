@@ -29,6 +29,8 @@ secrets and recovery all have separate ownership and tests.
 
 ![GhostRoute architecture](docs/assets/diagrams/ghostroute-routing-en.png)
 
+![GhostRoute detailed runtime map](docs/assets/diagrams/ghostroute-lifecycle-en.png)
+
 For an operator map of what is installed on the ASUS Merlin router, including
 runtime files, services, cron watchdogs and channel diagrams, see
 [`docs/router-runtime-map.md`](docs/router-runtime-map.md).
