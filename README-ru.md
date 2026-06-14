@@ -51,7 +51,7 @@ MAX трафика `maxtg_bridge`: роутер сам открывает исх
 весь internet-bound трафик идет через `reality-out`, а local/private остается
 локальным.
 
-![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.svg)
+![Архитектура GhostRoute](docs/assets/diagrams/ghostroute-architecture-ru.png)
 
 Модель слоев разделяет основные traffic-задачи:
 

@@ -29,7 +29,7 @@ owned VPS, or an explicit reserve provider during incidents. The repo is
 intentionally module-native: routing, health, traffic, catalog, client profiles,
 secrets and recovery all have separate ownership and tests.
 
-![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.svg)
+![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture-concept.png)
 
 For an operator map of what is installed on the ASUS Merlin router, including
 runtime files, services, cron watchdogs and channel diagrams, see

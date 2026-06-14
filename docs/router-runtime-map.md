@@ -17,6 +17,8 @@ Channel M, GhostRoute Console and routing/app surfaces lives in
 
 ## At A Glance
 
+![GhostRoute detailed runtime map](assets/diagrams/ghostroute-runtime-map-detailed.png)
+
 ```mermaid
 flowchart LR
   subgraph endpoint[Endpoint and LAN clients]
