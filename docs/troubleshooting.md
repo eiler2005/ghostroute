@@ -219,11 +219,18 @@ Recovery без deploy:
 
 ```sh
 ssh admin@<router_lan_ip> '
+  echo 1 > /proc/sys/vm/overcommit_memory
   /opt/etc/init.d/S09dnscrypt-proxy2 restart
   /jffs/scripts/dnscrypt-watchdog.sh
   service restart_dnsmasq
 '
 ```
+
+Если `/opt/sbin/dnscrypt-proxy -version` падает с `out of memory allocating heap
+arena map`, это не проблема конфига: Go runtime не стартует при strict
+overcommit. Проверьте `cat /proc/sys/vm/overcommit_memory`; для этого runtime
+ожидается значение `1`, которое repo-managed init script выставляет перед
+стартом dnscrypt.
 
 Если `dnscrypt-proxy` слушает, `nslookup ... 127.0.0.1` зелёный, но managed
 egress через Reality падает, это уже другой слой: проверьте Caddy/VPS public

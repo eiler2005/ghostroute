@@ -867,6 +867,7 @@ printf 'DNSCRYPT_PROXY_LISTENER=%s\n' "$(
     printf '0\n'
   fi
 )"
+printf 'DNSCRYPT_GO_OVERCOMMIT=%s\n' "$( [ "$(sysctl_value /proc/sys/vm/overcommit_memory)" = "1" ] && printf '1\n' || printf '0\n' )"
 printf 'CHANNEL_B_DNSCRYPT_PROXY=%s\n' "$(bool_grep "$dnscrypt_config" "socks5://127.0.0.1:$dnscrypt_socks_port")"
 printf 'VPS_DNS_FORWARD_LISTENER=%s\n' "$(bool_grep "$listen_sockets" "127.0.0.1:$vps_dns_forward_port")"
 printf 'VPS_DNS_FORWARD_RULE=%s\n' "$(
@@ -1250,6 +1251,7 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || drift_lines+=("home Reality ingress still relays all traffic to VPS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener")
   [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] || drift_lines+=("dnscrypt-proxy listener missing on router loopback")
+  [ "$(router_kv_get "$state_file" DNSCRYPT_GO_OVERCOMMIT)" = "1" ] || drift_lines+=("vm.overcommit_memory is strict; dnscrypt-proxy Go runtime may fail before config parsing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
@@ -1335,6 +1337,7 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Home Reality all-relay absent | $( [ "$(router_kv_get "$state_file" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] && printf 'OK' || printf 'Still enabled' ) |
 | Channel A dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy listener | $( [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| dnscrypt-proxy Go overcommit guard | $( [ "$(router_kv_get "$state_file" DNSCRYPT_GO_OVERCOMMIT)" = "1" ] && printf 'OK' || printf 'Strict' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |
