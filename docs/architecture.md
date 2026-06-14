@@ -35,7 +35,10 @@ and the router sends the tunnel target to `direct-out` through the home WAN.
   SSH remote-forward open to the VPS docker bridge, `maxtg_bridge` uses
   authenticated HTTP CONNECT inside that tunnel, and the router sends that
   inbound directly to `direct-out`. It is not a client failover channel and
-  does not use the managed split.
+  does not use the managed split. Recovery has two modes: normal boot/recover is
+  owned by the router runtime supervisor together with A/B/C/D, while the
+  VPS/app side may request only Channel M on-demand recovery through the scoped
+  supervisor command `channel-m-recover`.
 
 ```text
 Layer 0 endpoint/client routing
@@ -50,8 +53,17 @@ Layer 1 managed channels
   Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
   Channel D -> Karing/Naive -> home endpoint -> router Caddy forward_proxy@naive -> sing-box D SOCKS -> managed egress
   Channel M -> maxtg_bridge VPS -> HTTP CONNECT -> VPS docker bridge -> router reverse SSH target -> router direct-out
+             -> optional VPS/app recovery request -> router supervisor `channel-m-recover`
 
 Layer 2 home router
+  services-start
+    -> ghostroute-runtime-supervisor.sh boot
+    -> prepare runtime, register watchdog crons
+    -> start/check sing-box before firewall ownership
+    -> apply and verify LAN REDIRECT + managed UDP/443 DROP
+    -> start/check dnscrypt, Channel B, Channel D, Channel M reverse
+    -> delayed firewall stabilization after Merlin chain rebuilds
+
   LAN/Wi-Fi clients
     -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
     -> br0 TCP nat REDIRECT :<lan-redirect-port>
@@ -196,12 +208,24 @@ That router-local dnscrypt listener is a shared dependency for LAN/Wi-Fi
 managed DNS and for home-first mobile Channels A/B/C/D after they reach the
 router. If `127.0.0.1:<dnscrypt-port>` disappears, the failure can look like a
 multi-channel routing outage even though sing-box/Xray/Caddy listeners and
-iptables are still present. The production guardrail is
+iptables are still present. The boot owner is
+`/jffs/scripts/ghostroute-runtime-supervisor.sh`: `services-start` launches it
+once, and it registers cron jobs plus targeted recovery for sing-box, dnscrypt,
+Channel B, Channel D and Channel M reverse. It also treats firewall state as a
+runtime invariant: after sing-box owns its listeners, the supervisor applies
+`firewall-start` / `stealth-route-init.sh`, verifies LAN REDIRECT plus managed
+UDP/443 DROP rules, retries if they are incomplete, and performs a delayed
+post-boot stabilization pass because Merlin can rebuild chains after
+`services-start` has already fired. The production DNS guardrail is
 `/jffs/scripts/dnscrypt-watchdog.sh`: cron checks the listener every minute and
 restarts only dnscrypt-proxy, leaving Channel A/B/C/D/M ownership untouched.
-The dnscrypt init script and `services-start` bootstrap set
+The dnscrypt init script and runtime supervisor set
 `vm.overcommit_memory=1` before startup; strict overcommit can make Entware's Go
 `dnscrypt-proxy2` fail before configuration parsing after reboot.
+The `sing-box` init path is also reboot-hardened: pidfile and `pidof` results
+are accepted only when the process is live and not zombie, because a stale
+post-boot zombie can otherwise block the LAN REDIRECT, Home Reality and
+router-local SOCKS listeners from starting.
 Channel M is service-only direct-out and does not use the managed DNS split.
 
 ### Observability, Console And Traffic Intelligence
@@ -478,7 +502,7 @@ preserved only as the cold fallback documented above.
 | `dnsmasq` | fills `STEALTH_DOMAINS`, includes static/auto catalogs, filters AAAA while IPv6 is off, and sends managed foreign DNS to the dnscrypt-backed local forwarder |
 | `dnscrypt-proxy` | upstream DNS on `127.0.0.1:<dnscrypt-port>`; its DoH traffic goes through sing-box SOCKS/Reality |
 | `dnscrypt-watchdog.sh` | router cron guardrail for the dnscrypt listener; restarts only dnscrypt-proxy when `127.0.0.1:<dnscrypt-port>` disappears |
-| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to active managed egress |
+| `sing-box` on router | `redirect-in :<lan-redirect-port>`, home Reality inbound `:<home-reality-port>`, local SOCKS inbound for dnscrypt/Channel B relay, Channel C1 Naive inbound, C1-Shadowrocket HTTP inbound when enabled, `vps-dns-in` for DNS hijack compatibility, managed split, Reality outbound to active managed egress; its init script rejects zombie pids during post-reboot recovery |
 | VPS host | Caddy :443, existing 3x-ui/Xray Docker container, optional restricted/private DNS resolver support |
 | Channel A | active production `sing-box -> VLESS+Reality+Vision` path |
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
@@ -656,6 +680,8 @@ client app
 |---|---|
 | `firewall-start` | create `STEALTH_DOMAINS` as `hash:ip`, replay persisted `add STEALTH_DOMAINS ...` entries, load `VPN_STATIC_NETS`, enforce LAN-only SSH, call stealth-route-init |
 | `stealth-route-init.sh` | apply REDIRECT, QUIC DROP and mobile Reality INPUT rules |
+| `services-start` | single-owner boot hook; starts only `ghostroute-runtime-supervisor.sh boot` |
+| `ghostroute-runtime-supervisor.sh` | dependency-ordered startup, watchdog cron registration, targeted listener recovery, Channel M on-demand control and delayed firewall stabilization |
 | `cron-save-ipset` | persist `STEALTH_DOMAINS.ipset` |
 | `cron-traffic-snapshot` | collect WAN/LAN/Tailscale/device counters |
 | `rotate-singbox-log` | cap `/opt/var/log/sing-box.log` growth and retain short compressed archives |

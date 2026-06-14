@@ -29,7 +29,7 @@ owned VPS, or an explicit reserve provider during incidents. The repo is
 intentionally module-native: routing, health, traffic, catalog, client profiles,
 secrets and recovery all have separate ownership and tests.
 
-![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.png)
+![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.svg)
 
 For an operator map of what is installed on the ASUS Merlin router, including
 runtime files, services, cron watchdogs and channel diagrams, see
@@ -90,8 +90,11 @@ The layered model separates the main traffic responsibilities:
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
   Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
   Reality profiles that should send all internet-bound traffic through
-  `reality-out`. Channel M bypasses that managed split and routes its inbound
-  tag directly to `direct-out`.
+  `reality-out`. Router reboot recovery is centralized in
+  `ghostroute-runtime-supervisor.sh`: `services-start` delegates to it, and it
+  re-registers watchdog crons, restores listeners and performs delayed firewall
+  stabilization after Merlin rebuilds chains. Channel M bypasses the managed
+  split and routes its inbound tag directly to `direct-out`.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
 
 Production endpoint policy is intentionally country-neutral in this repository:
@@ -292,6 +295,10 @@ Layer 1 managed channels
                   |
                   v
 Layer 2 home router
+  services-start -> ghostroute-runtime-supervisor.sh boot
+       prepare runtime -> sing-box -> firewall/stealth rules
+       -> dnscrypt -> Channel B/D/M -> delayed firewall stabilization
+
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
                               +-- managed DNS lookup
@@ -324,6 +331,7 @@ Layer 3 VPS
 
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
+  Runtime Supervisor  -> reboot recovery, watchdog crons, firewall stabilization
   Health Monitor      -> STATUS_OK/FAIL, summaries, local alerts
   Traffic Observatory -> WAN/LAN/Home Reality usage and routing checks
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
@@ -744,9 +752,10 @@ Expected invariants:
   iptables still look healthy. Channel M is service-only direct-out and does
   not use the managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` monitors
   that listener every minute and restarts only dnscrypt-proxy. The dnscrypt
-  init path and `services-start` bootstrap also set `vm.overcommit_memory=1`
+  init path and GhostRoute runtime supervisor also set `vm.overcommit_memory=1`
   before startup so Entware's Go `dnscrypt-proxy2` can reserve its runtime heap
-  after router reboot.
+  after router reboot. `services-start` delegates boot recovery to the runtime
+  supervisor instead of owning per-channel start blocks.
 - Optional VPS restricted DNS, when enabled, is not public: host firewall allows
   it only from trusted private sources, while public `53/tcp,udp` is denied.
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.

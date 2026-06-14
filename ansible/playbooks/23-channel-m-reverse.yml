@@ -469,33 +469,23 @@
           fi
           log "Channel M reverse tunnel healthy"
 
-    - name: Register Channel M reverse tunnel cron watchdog
-      ansible.builtin.raw: >-
-        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
-      changed_when: true
-
-    - name: Ensure services-start re-registers Channel M reverse after boot
+    - name: Remove legacy Channel M services-start bootstrap
       ansible.builtin.raw: |
         hook="/jffs/scripts/services-start"
-        tmp="/tmp/services-start.channel-m.$$"
-        touch "$hook"
-        chmod 755 "$hook"
-        awk '
-          /# BEGIN ChannelMReverse managed by ansible/ { skip=1; next }
-          /# END ChannelMReverse managed by ansible/ { skip=0; next }
-          skip != 1 { print }
-        ' "$hook" > "$tmp"
-        cat >> "$tmp" <<'SH'
-        # BEGIN ChannelMReverse managed by ansible
-        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
-        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
-        ( sleep 45; {{ channel_m_maxtg_reverse_script_path }} ) >/dev/null 2>&1 &
-        # END ChannelMReverse managed by ansible
-        SH
-        mv "$tmp" "$hook"
-        chmod 755 "$hook"
-        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
-      changed_when: true
+        if [ -f "$hook" ]; then
+          sed -i '/# BEGIN ChannelMReverse managed by ansible/,/# END ChannelMReverse managed by ansible/d' "$hook"
+          sed -i '\|{{ channel_m_maxtg_reverse_script_path }}|d' "$hook"
+        fi
+      changed_when: false
+
+    - name: Register runtime supervisor cron ownership for Channel M
+      ansible.builtin.raw: |
+        [ -x {{ ghostroute_runtime_supervisor_path }} ] || {
+          echo "GhostRoute runtime supervisor is missing; run the router runtime playbook first." >&2
+          exit 1
+        }
+        {{ ghostroute_runtime_supervisor_path }} recover
+      changed_when: false
 
     - name: Stop existing Channel M reverse tunnel before restart
       ansible.builtin.raw: >-

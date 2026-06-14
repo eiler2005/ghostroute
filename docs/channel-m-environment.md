@@ -37,7 +37,7 @@ maxtg_bridge container on VPS
 | `channel-m-maxtg-reverse-egress -> direct-out` route | home router sing-box | `router_configuration` | `20-stealth-router.yml` and `99-verify.yml` |
 | `/jffs/scripts/channel-m-reverse-tunnel.sh` | home router | `router_configuration` | `23-channel-m-reverse.yml` |
 | `cru` watchdog `ChannelMReverse` | home router | `router_configuration` | every-minute stale tunnel and local ingress recovery |
-| `/jffs/scripts/services-start` Channel M block | home router | `router_configuration` | re-registers cron after boot and runs a delayed first recovery |
+| `/jffs/scripts/ghostroute-runtime-supervisor.sh` | home router | `router_configuration` | re-registers Channel M cron after boot and runs targeted recovery after local ingress is present |
 | `sshd_config.d/51-channel-m-reverse.conf` | VPS | `router_configuration` | `23-channel-m-reverse.yml`; scoped to deploy user |
 | deploy user's `authorized_keys` `permitlisten` entry | VPS | `router_configuration` | `23-channel-m-reverse.yml`; scoped to docker bridge listener |
 | `/usr/local/sbin/channel-m-reverse-firewall.sh` | VPS | `router_configuration` | `23-channel-m-reverse.yml` |
@@ -64,13 +64,43 @@ maxtg_bridge container on VPS
   remote-forward, VPS `permitlisten`, and VPS docker bridge firewall
   persistence.
 - `99-verify.yml` must confirm the VPS docker bridge listener, firewall
-  persistence, router cron watchdog, router boot recovery hook, router loopback
-  listener and direct-only sing-box routing.
+  persistence, supervisor-owned router cron recovery, router boot recovery
+  hook, router loopback listener and direct-only sing-box routing.
 - No Channel M rule may add `rule_set`, `reality-out`, DNS policy, LAN/Wi-Fi
   ownership or Channel A/B/C failover behavior.
 - No public home inbound port is required for the active reverse lane.
 
 ## Router Reboot Recovery
+
+Channel M carries the messenger egress path, so it is recovery-critical. The
+runtime supervisor re-registers the `ChannelMReverse` cron on every boot and
+only invokes `/jffs/scripts/channel-m-reverse-tunnel.sh` after the local
+sing-box reverse ingress is listening. A tunnel drop or stale reverse-forward is
+therefore repaired by the Channel M script itself, without changing Channel
+A/B/C/D routing ownership or restarting unrelated services.
+
+There are two supported recovery modes:
+
+1. Router boot/recover mode: `/jffs/scripts/services-start` launches
+   `/jffs/scripts/ghostroute-runtime-supervisor.sh boot`, which restores the
+   shared router runtime in dependency order and registers `ChannelMReverse`.
+2. VPS/app on-demand mode: `maxtg_bridge` or a VPS-side watchdog may request
+   only Channel M recovery by running the router command
+   `/jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-recover` through a
+   restricted SSH profile. This command must not be used as a generic router
+   restart hook: it checks the Channel M local ingress, restarts sing-box only if
+   that ingress is missing, and then delegates stale tunnel replacement to
+   `/jffs/scripts/channel-m-reverse-tunnel.sh`.
+
+The read-only companion command is:
+
+```sh
+/jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-status
+```
+
+It reports local ingress, cron and reverse tunnel state for app-side backoff
+logic. The VPS/app profile should rate-limit recovery requests and keep the SSH
+target/key in runtime secrets, not in tracked docs or application config.
 
 The router-side script is deliberately stricter than a process-presence check.
 Each cron or boot-delayed run takes a lock with `pid` and `started_at`

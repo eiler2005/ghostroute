@@ -57,5 +57,9 @@
       changed_when: false
       when: stealth_channel_a_lan_enabled | bool
 
+    - name: Reconcile GhostRoute runtime supervisor after router deploy
+      ansible.builtin.raw: "{{ ghostroute_runtime_supervisor_path }} recover"
+      changed_when: false
+
     - name: GhostRoute deploy gate after router mutation
       ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

@@ -51,7 +51,7 @@ MAX трафика `maxtg_bridge`: роутер сам открывает исх
 весь internet-bound трафик идет через `reality-out`, а local/private остается
 локальным.
 
-![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.png)
+![GhostRoute architecture](docs/assets/diagrams/ghostroute-architecture.svg)
 
 Модель слоев разделяет основные traffic-задачи:
 
@@ -72,6 +72,10 @@ MAX трафика `maxtg_bridge`: роутер сам открывает исх
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, плюс optional Channel A
   selected full-VPS override для выбранных устройств/профилей. Channel M не
   участвует в split и route rule ведет его inbound напрямую в `direct-out`.
+  Reboot recovery централизован в `ghostroute-runtime-supervisor.sh`:
+  `services-start` делегирует ему boot, supervisor регистрирует watchdog crons,
+  восстанавливает listeners и делает delayed firewall stabilization после
+  Merlin chain rebuild.
 - Layer 3 — VPS. Он служит удаленным egress для выбранного managed traffic.
 
 Production endpoint policy в этом репозитории остается country-neutral:
@@ -260,6 +264,10 @@ Layer 1 managed channels
                   |
                   v
 Layer 2 home router
+  services-start -> ghostroute-runtime-supervisor.sh boot
+       prepare runtime -> sing-box -> firewall/stealth rules
+       -> dnscrypt -> Channel B/D/M -> delayed firewall stabilization
+
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
                               +-- managed DNS lookup
@@ -292,6 +300,7 @@ Layer 3 VPS
 
 Operational layer:
   Routing Core        -> dnsmasq/ipset/sing-box/Reality split
+  Runtime Supervisor  -> reboot recovery, watchdog crons, firewall stabilization
   Health Monitor      -> STATUS_OK/FAIL, summaries, local alerts
   Traffic Observatory -> WAN/LAN/Home Reality usage and routing checks
   DNS Intelligence    -> lookup evidence, domain discovery, catalog review
@@ -690,9 +699,10 @@ VPS observer хранит свой local-only статус на VPS в
   listeners/iptables зелёные. Channel M остается service-only direct-out и не
   использует managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` проверяет
   listener каждую минуту и перезапускает только dnscrypt-proxy. Init path и
-  `services-start` bootstrap также выставляют `vm.overcommit_memory=1` перед
+  GhostRoute runtime supervisor также выставляют `vm.overcommit_memory=1` перед
   стартом, чтобы Entware Go `dnscrypt-proxy2` мог зарезервировать runtime heap
-  после перезагрузки роутера.
+  после перезагрузки роутера. `services-start` теперь только делегирует boot
+  recovery supervisor-у, а не содержит отдельные start-блоки каналов.
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` существуют.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` и active `wgc1` отсутствуют.
 

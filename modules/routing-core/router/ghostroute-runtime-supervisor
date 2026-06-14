@@ -1,0 +1,343 @@
+#!/bin/sh
+# Targeted boot/recovery supervisor for GhostRoute router runtime.
+
+RUNTIME_ENV=${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}
+LOG=${GHOSTROUTE_RUNTIME_SUPERVISOR_LOG:-/opt/var/log/ghostroute-runtime-supervisor.log}
+LOCKDIR=/tmp/ghostroute-runtime-supervisor.lock
+
+[ -r "$RUNTIME_ENV" ] && . "$RUNTIME_ENV"
+
+SINGBOX_INIT=${GHOSTROUTE_SINGBOX_INIT:-/opt/etc/init.d/S99sing-box}
+DNSCRYPT_INIT=${GHOSTROUTE_DNSCRYPT_INIT:-/opt/etc/init.d/S09dnscrypt-proxy2}
+STEALTH_ROUTE_INIT=${GHOSTROUTE_STEALTH_ROUTE_INIT:-/jffs/scripts/stealth-route-init.sh}
+FIREWALL_START=${GHOSTROUTE_FIREWALL_START:-/jffs/scripts/firewall-start}
+CHANNEL_B_INIT=${GHOSTROUTE_CHANNEL_B_HOME_INIT:-/opt/etc/init.d/S99xray-channel-b-home}
+CHANNEL_D_INIT=${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_INIT:-/opt/etc/init.d/S99caddy-channel-d-naiveproxy}
+CHANNEL_M_REVERSE_SCRIPT=${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_SCRIPT:-/jffs/scripts/channel-m-reverse-tunnel.sh}
+
+log() {
+  mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG" 2>/dev/null || true
+  logger -t ghostroute-runtime-supervisor "$*" 2>/dev/null || true
+}
+
+lock() {
+  for _ in 1 2 3 4 5; do
+    mkdir "$LOCKDIR" 2>/dev/null && return 0
+    sleep 1
+  done
+  log "lock busy"
+  return 1
+}
+
+unlock() {
+  rmdir "$LOCKDIR" 2>/dev/null || true
+}
+
+listener_present() {
+  port="$1"
+  [ -n "$port" ] && [ "$port" != "0" ] || return 1
+  netstat -nl 2>/dev/null | grep -E "[.:]${port}[[:space:]]" >/dev/null 2>&1 && return 0
+  nc -z -w 2 127.0.0.1 "$port" >/dev/null 2>&1 && return 0
+  if [ -x /opt/bin/nc ]; then
+    /opt/bin/nc -z -w 2 127.0.0.1 "$port" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+missing_ports() {
+  missing=""
+  for port in "$@"; do
+    [ -n "$port" ] && [ "$port" != "0" ] || continue
+    listener_present "$port" || missing="${missing}${missing:+ }$port"
+  done
+  printf '%s\n' "$missing"
+}
+
+wait_for_entware() {
+  for _ in $(seq 1 45 2>/dev/null || echo 1 2 3 4 5 6 7 8 9 10); do
+    [ -d /opt/etc/init.d ] && return 0
+    sleep 2
+  done
+  [ -d /opt/etc/init.d ]
+}
+
+prepare_runtime() {
+  [ -w /proc/sys/vm/overcommit_memory ] && echo 1 > /proc/sys/vm/overcommit_memory
+  /sbin/modprobe tun >/dev/null 2>&1 || true
+  mkdir -p /dev/net /opt/var/log /opt/tmp 2>/dev/null || true
+  [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
+  chmod 666 /dev/net/tun 2>/dev/null || true
+  wait_for_entware || log "Entware init dir is not ready"
+}
+
+cron_set() {
+  name="$1"
+  schedule="$2"
+  command="$3"
+  cru d "$name" 2>/dev/null || true
+  cru a "$name" "$schedule $command" 2>/dev/null || true
+}
+
+register_crons() {
+  cru l >/dev/null 2>&1 || return 0
+  [ -x /jffs/scripts/cron-save-ipset ] && cron_set SaveIPSet "0 */6 * * *" "/jffs/scripts/cron-save-ipset"
+  [ -x /jffs/scripts/cron-traffic-snapshot ] && cron_set TrafficSnapshot "0 */6 * * *" "/jffs/scripts/cron-traffic-snapshot"
+  [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && cron_set MobileRealityCounters "*/5 * * * *" "/jffs/scripts/mobile-reality-accounting-refresh"
+  [ -x /jffs/scripts/rotate-singbox-log ] && cron_set RotateSingBoxLog "17 * * * *" "/jffs/scripts/rotate-singbox-log"
+  [ -x "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}" ] && cron_set SingBoxWatchdog "* * * * *" "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}"
+  [ -x "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}" ] && cron_set DnscryptWatchdog "* * * * *" "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}"
+  [ -x /jffs/scripts/health-monitor/run-probes ] && cron_set HealthMonitorProbes "0 * * * *" "/jffs/scripts/health-monitor/run-probes"
+  [ -x /jffs/scripts/health-monitor/aggregate ] && cron_set HealthMonitorAggregate "2 * * * *" "/jffs/scripts/health-monitor/aggregate"
+  [ -x /jffs/scripts/health-monitor/daily-digest ] && cron_set HealthMonitorDaily "10 3 * * *" "/jffs/scripts/health-monitor/daily-digest"
+  [ -x /jffs/scripts/cron-traffic-daily-close ] && cron_set TrafficDailyClose "55 23 * * *" "/jffs/scripts/cron-traffic-daily-close"
+  cru d DomainCollect 2>/dev/null || true
+  [ -x /jffs/addons/x3mRouting/domain-auto-add.sh ] && cron_set DomainAutoAdd "0 * * * *" "/jffs/addons/x3mRouting/domain-auto-add.sh"
+  [ -x /jffs/addons/x3mRouting/update-blocked-list.sh ] && cron_set UpdateBlockedList "0 5 * * *" "/jffs/addons/x3mRouting/update-blocked-list.sh"
+  if [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] && [ -x "$CHANNEL_M_REVERSE_SCRIPT" ]; then
+    cron_set ChannelMReverse "* * * * *" "$CHANNEL_M_REVERSE_SCRIPT"
+  else
+    cru d ChannelMReverse 2>/dev/null || true
+  fi
+}
+
+singbox_ports() {
+  ports="${GHOSTROUTE_REDIRECT_PORT:-} ${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-} ${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-} ${GHOSTROUTE_HOME_REALITY_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_B_HOME_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_B_HOME_SOCKS_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_C_HOME_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_C_HOME_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_M_MAXTG_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_M_MAXTG_PORT:-}"
+  [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] && ports="$ports ${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_PORT:-}"
+  printf '%s\n' "$ports"
+}
+
+ensure_singbox() {
+  [ -x "$SINGBOX_INIT" ] || {
+    log "sing-box init missing"
+    return 1
+  }
+  ports="$(singbox_ports)"
+  missing="$(missing_ports $ports)"
+  [ -z "$missing" ] && return 0
+  log "sing-box missing listeners: $missing; restarting sing-box only"
+  "$SINGBOX_INIT" restart >/dev/null 2>&1 || log "sing-box restart command failed"
+  sleep 6
+  missing="$(missing_ports $ports)"
+  [ -z "$missing" ] || {
+    log "sing-box listeners still missing after restart: $missing"
+    return 1
+  }
+}
+
+apply_routing() {
+  [ -x "$FIREWALL_START" ] && "$FIREWALL_START" >/dev/null 2>&1 || true
+  [ -x "$STEALTH_ROUTE_INIT" ] && "$STEALTH_ROUTE_INIT" >/dev/null 2>&1 || true
+}
+
+routing_rules_present() {
+  ipset_name="${GHOSTROUTE_STEALTH_IPSET:-STEALTH_DOMAINS}"
+  static_ipset="${GHOSTROUTE_STATIC_IPSET:-VPN_STATIC_NETS}"
+  redirect_port="${GHOSTROUTE_REDIRECT_PORT:-}"
+  [ -n "$redirect_port" ] && [ "$redirect_port" != "0" ] || return 1
+
+  nat_rules="$(iptables -t nat -S PREROUTING 2>/dev/null || true)"
+  forward_rules="$(iptables -S FORWARD 2>/dev/null || true)"
+
+  printf '%s\n' "$nat_rules" |
+    grep -E -- "-i br0 .*--match-set ${ipset_name} dst .*REDIRECT .*--to-ports ${redirect_port}" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$nat_rules" |
+    grep -E -- "-i br0 .*--match-set ${static_ipset} dst .*REDIRECT .*--to-ports ${redirect_port}" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$forward_rules" |
+    grep -E -- "-i br0 -p udp .*--dport 443 .*--match-set ${ipset_name} dst .*DROP" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$forward_rules" |
+    grep -E -- "-i br0 -p udp .*--dport 443 .*--match-set ${static_ipset} dst .*DROP" >/dev/null 2>&1 || return 1
+}
+
+stabilize_routing() {
+  for attempt in 1 2 3; do
+    apply_routing
+    sleep 2
+    routing_rules_present && return 0
+    log "routing rules incomplete after apply attempt ${attempt}"
+    sleep 5
+  done
+  log "routing rules still incomplete after stabilization"
+  return 1
+}
+
+ensure_dnscrypt() {
+  port="${GHOSTROUTE_DNSCRYPT_PORT:-}"
+  [ -n "$port" ] && [ "$port" != "0" ] || return 0
+  [ -x "$DNSCRYPT_INIT" ] || {
+    log "dnscrypt init missing"
+    return 1
+  }
+  listener_present "$port" && return 0
+  log "dnscrypt listener missing; restarting dnscrypt only"
+  "$DNSCRYPT_INIT" restart >/dev/null 2>&1 || log "dnscrypt restart command failed"
+  sleep 3
+  listener_present "$port" || {
+    log "dnscrypt listener still missing after restart"
+    return 1
+  }
+}
+
+ensure_channel_b() {
+  [ "${GHOSTROUTE_CHANNEL_B_HOME_ENABLED:-0}" = "1" ] || return 0
+  port="${GHOSTROUTE_CHANNEL_B_HOME_PORT:-}"
+  [ -n "$port" ] && [ "$port" != "0" ] || return 0
+  [ -x "$CHANNEL_B_INIT" ] || {
+    log "Channel B init missing"
+    return 1
+  }
+  listener_present "$port" && return 0
+  log "Channel B listener missing; restarting Channel B relay only"
+  "$CHANNEL_B_INIT" restart >/dev/null 2>&1 || log "Channel B restart command failed"
+  sleep 3
+  listener_present "$port" || log "Channel B listener still missing after restart"
+}
+
+ensure_channel_d() {
+  [ "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED:-0}" = "1" ] || return 0
+  caddy_port="${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT:-}"
+  socks_port="${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT:-}"
+  [ -n "$caddy_port" ] && [ "$caddy_port" != "0" ] || return 0
+  [ -x "$CHANNEL_D_INIT" ] || {
+    log "Channel D Caddy init missing"
+    return 1
+  }
+  listener_present "$socks_port" || {
+    log "Channel D SOCKS inbound missing; not starting Caddy before sing-box is healthy"
+    return 1
+  }
+  listener_present "$caddy_port" && return 0
+  log "Channel D Caddy listener missing; restarting Channel D Caddy only"
+  "$CHANNEL_D_INIT" restart >/dev/null 2>&1 || log "Channel D Caddy restart command failed"
+  sleep 3
+  listener_present "$caddy_port" || log "Channel D Caddy listener still missing after restart"
+}
+
+ensure_channel_m_reverse() {
+  [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] || return 0
+  [ -x "$CHANNEL_M_REVERSE_SCRIPT" ] || return 0
+  listener_present "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_PORT:-}" || {
+    log "Channel M reverse local ingress missing; not opening reverse tunnel"
+    return 1
+  }
+  "$CHANNEL_M_REVERSE_SCRIPT" >/dev/null 2>&1 || log "Channel M reverse script returned non-zero"
+}
+
+ensure_channel_m_local_ingress() {
+  [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] || return 0
+  port="${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_PORT:-}"
+  [ -n "$port" ] && [ "$port" != "0" ] || return 0
+  listener_present "$port" && return 0
+  [ -x "$SINGBOX_INIT" ] || {
+    log "Channel M local ingress missing and sing-box init is unavailable"
+    return 1
+  }
+  log "Channel M local ingress missing; restarting sing-box only"
+  "$SINGBOX_INIT" restart >/dev/null 2>&1 || log "sing-box restart command failed during Channel M recovery"
+  sleep 6
+  listener_present "$port" || {
+    log "Channel M local ingress still missing after sing-box restart"
+    return 1
+  }
+}
+
+recover_channel_m() {
+  prepare_runtime
+  register_crons
+  ensure_channel_m_local_ingress
+  ensure_channel_m_reverse
+}
+
+status_channel_m() {
+  if [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" != "1" ]; then
+    printf 'channel_m_reverse=disabled\n'
+    return 0
+  fi
+  printf 'channel_m_local_ingress=%s\n' "$(listener_present "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_PORT:-}" && echo ok || echo missing)"
+  if cru l 2>/dev/null | grep -q 'ChannelMReverse'; then
+    printf 'channel_m_cron=ok\n'
+  else
+    printf 'channel_m_cron=missing\n'
+  fi
+  if ps w 2>/dev/null | grep '[c]hannel_m_reverse_drop' | grep -q '[s]sh'; then
+    printf 'channel_m_reverse_tunnel=running\n'
+  else
+    printf 'channel_m_reverse_tunnel=idle\n'
+  fi
+}
+
+seed_samples() {
+  [ -x /jffs/scripts/cron-traffic-snapshot ] && /jffs/scripts/cron-traffic-snapshot >/dev/null 2>&1 || true
+  [ -x /jffs/scripts/health-monitor/run-once ] && /jffs/scripts/health-monitor/run-once >/dev/null 2>&1 || true
+}
+
+recover_runtime() {
+  ensure_singbox
+  stabilize_routing
+  ensure_dnscrypt && service restart_dnsmasq >/dev/null 2>&1 || true
+  ensure_channel_b
+  ensure_channel_d
+  ensure_channel_m_reverse
+}
+
+status_runtime() {
+  printf 'supervisor=installed\n'
+  printf 'services_start_single_owner='
+  grep -q 'GhostRouteRuntimeSupervisor' /jffs/scripts/services-start 2>/dev/null && echo yes || echo no
+  printf 'singbox_missing_ports=%s\n' "$(missing_ports $(singbox_ports))"
+  printf 'dnscrypt_listener=%s\n' "$(listener_present "${GHOSTROUTE_DNSCRYPT_PORT:-}" && echo ok || echo missing)"
+  printf 'channel_b=%s\n' "$([ "${GHOSTROUTE_CHANNEL_B_HOME_ENABLED:-0}" = "1" ] && { listener_present "${GHOSTROUTE_CHANNEL_B_HOME_PORT:-}" && echo ok || echo missing; } || echo disabled)"
+  printf 'channel_d=%s\n' "$([ "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED:-0}" = "1" ] && { listener_present "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT:-}" && echo ok || echo missing; } || echo disabled)"
+  printf 'channel_m_reverse=%s\n' "$([ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] && { cru l 2>/dev/null | grep -q 'ChannelMReverse' && echo ok || echo missing; } || echo disabled)"
+}
+
+case "${1:-status}" in
+  boot)
+    sleep "${GHOSTROUTE_RUNTIME_BOOT_DELAY:-20}"
+    lock || exit 1
+    log "boot recovery started"
+    prepare_runtime
+    register_crons
+    recover_runtime
+    post_delay="${GHOSTROUTE_RUNTIME_POST_ROUTING_DELAY:-45}"
+    if [ "$post_delay" != "0" ]; then
+      log "post-boot routing stabilization delay ${post_delay}s"
+      sleep "$post_delay"
+      stabilize_routing
+    fi
+    seed_samples
+    log "boot recovery finished"
+    unlock
+    ;;
+  recover)
+    lock || exit 1
+    log "targeted recovery started"
+    prepare_runtime
+    register_crons
+    recover_runtime
+    log "targeted recovery finished"
+    unlock
+    ;;
+  channel-m-recover)
+    lock || exit 1
+    log "Channel M on-demand recovery started"
+    recover_channel_m
+    log "Channel M on-demand recovery finished"
+    unlock
+    ;;
+  channel-m-status)
+    status_channel_m
+    ;;
+  status)
+    status_runtime
+    ;;
+  *)
+    echo "usage: $0 {boot|recover|status|channel-m-recover|channel-m-status}" >&2
+    exit 64
+    ;;
+esac

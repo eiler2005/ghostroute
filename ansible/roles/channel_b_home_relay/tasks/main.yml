@@ -125,16 +125,12 @@
         mode: "0755"
       notify: restart channel b home relay
 
-    - name: Ensure services-start hook starts Channel B home relay
+    - name: Remove legacy Channel B services-start bootstrap
       ansible.builtin.raw: |
-        touch {{ services_start_hook }}
-        chmod +x {{ services_start_hook }}
-        sed -i '\|{{ channel_b_home_router_xray_init_path }} start|d' {{ services_start_hook }}
-        grep -q '# BEGIN channel-b-home-relay-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
-        # BEGIN channel-b-home-relay-bootstrap
-        {{ channel_b_home_router_xray_init_path }} start
-        # END channel-b-home-relay-bootstrap
-        EOF
+        [ -f {{ services_start_hook }} ] &&
+          sed -i '\|# BEGIN channel-b-home-relay-bootstrap|,\|# END channel-b-home-relay-bootstrap|d' {{ services_start_hook }} || true
+        [ -f {{ services_start_hook }} ] &&
+          sed -i '\|{{ channel_b_home_router_xray_init_path }} start|d' {{ services_start_hook }} || true
       changed_when: false
 
     - name: Enable + start Channel B home relay service

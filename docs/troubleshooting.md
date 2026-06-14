@@ -93,6 +93,79 @@ restores persisted `STEALTH_DOMAINS` entries without replaying the saved
 as `hash:net` breaks restored dnsmasq/ipset state and prevents REDIRECT rules
 from being installed.
 
+## После Reboot Нет Managed Wi-Fi И Home-First Каналов
+
+Симптом: после ручного reboot одновременно ломаются managed domains на Wi-Fi и
+home-first Channels A/B/C/D, при этом router UI/SSH ещё доступны. Не
+ориентируйтесь только на `pidof sing-box`: после boot может остаться zombie
+process, и старый init script мог ошибочно считать его живым.
+
+Проверка:
+
+```sh
+ssh admin@<router_lan_ip> '
+  /opt/etc/init.d/S99sing-box status
+  /jffs/scripts/ghostroute-runtime-supervisor.sh status
+  ps w | grep "[s]ing-box"
+  netstat -nlp 2>/dev/null | grep -E ":(<lan-redirect-port>|<home-reality-port>) "
+  netstat -nlp 2>/dev/null | grep "127.0.0.1:<router-socks-port> "
+'
+```
+
+Expected:
+
+- `S99sing-box status` reports `running` only when the pid is live and not
+  zombie;
+- `services-start` contains the `GhostRouteRuntimeSupervisor` block and no
+  legacy per-channel boot blocks;
+- LAN REDIRECT, Home Reality and router-local SOCKS listeners are present;
+- the supervisor can register watchdog crons and restart only the component
+  whose listener is missing;
+- `ghostroute-runtime-supervisor.sh status` reports no missing sing-box ports,
+  `dnscrypt_listener=ok`, enabled Channel B/D state as `ok`, and Channel M
+  reverse recovery as `ok` when Channel M reverse is enabled.
+
+Fast recovery without touching WAN/VPS:
+
+```sh
+ssh admin@<router_lan_ip> '
+  /jffs/scripts/ghostroute-runtime-supervisor.sh recover
+'
+```
+
+The repo-managed init scripts for `sing-box`, dnscrypt, Channel B relay and
+Channel D Caddy are zombie-safe: `start`, `stop` and `status` filter pidfile and
+`pidof` results through a process-state check, so a post-reboot zombie cannot
+block the real listeners from starting. Use direct service restarts only as a
+fallback after supervisor status points at a specific component.
+
+The runtime supervisor intentionally checks `cru` and `nc` by running the command
+directly with stderr suppressed instead of relying on `command -v`, because some
+router boot/raw shell contexts do not expose that builtin reliably. If listeners
+are healthy but `SingBoxWatchdog`, `DnscryptWatchdog` or `ChannelMReverse` are
+missing from `cru l`, run the supervisor `recover` command once and re-check
+`cru l`; do not reset WAN.
+
+If a post-reboot `live-check --deploy-gate` reports only the Channel A managed
+UDP/443 DROP rule as missing while listeners, dnscrypt and Channel M are healthy,
+the likely cause is a Merlin firewall-chain rebuild after `services-start`.
+Run the supervisor `recover` command once and re-check `live-check`; the stable
+boot contract is that supervisor performs delayed firewall stabilization so this
+does not require WAN reset or per-channel restarts.
+
+For Channel M-only messenger egress incidents, do not run the full router
+recover path first. Check and repair only Channel M:
+
+```sh
+ssh admin@<router_lan_ip> '
+  /jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-status
+  /jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-recover
+'
+```
+
+The VPS/app variant should run the same router command through a restricted SSH
+profile and should rate-limit retries. It must not call generic `recover`.
+
 ## YouTube Или Другой Dual-Stack Сайт Не Открывается
 
 Проверьте AAAA leakage:

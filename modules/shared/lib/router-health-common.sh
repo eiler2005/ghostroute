@@ -723,6 +723,14 @@ dnscrypt_socks_port="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-$(singbox_port_by_tag dns
 vps_dns_forward_port="${GHOSTROUTE_VPS_DNS_FORWARD_PORT:-$(singbox_port_by_tag vps-dns-in)}"
 dnscrypt_port="${GHOSTROUTE_DNSCRYPT_PORT:-}"
 [ -n "$dnscrypt_port" ] || dnscrypt_port=5354
+runtime_supervisor="$(runtime_value GHOSTROUTE_RUNTIME_SUPERVISOR)"
+runtime_supervisor="${runtime_supervisor:-/jffs/scripts/ghostroute-runtime-supervisor.sh}"
+services_start_hook="$(runtime_value GHOSTROUTE_SERVICES_START)"
+services_start_hook="${services_start_hook:-/jffs/scripts/services-start}"
+channel_m_reverse_enabled="$(runtime_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED)"
+channel_m_reverse_script="$(runtime_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_SCRIPT)"
+channel_m_reverse_enabled="${channel_m_reverse_enabled:-0}"
+channel_m_reverse_script="${channel_m_reverse_script:-/jffs/scripts/channel-m-reverse-tunnel.sh}"
 channel_d_enabled="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
 channel_d_public_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PUBLIC_PORT)"
 channel_d_port="$(runtime_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT)"
@@ -935,12 +943,29 @@ printf 'CHANNEL_D_NAIVEPROXY_MANAGED_SPLIT=%s\n' "$(
 printf 'DNS_REDIRECT_UDP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p udp -m udp --dport 53 -j REDIRECT --to-ports 53')"
 printf 'DNS_REDIRECT_TCP=%s\n' "$(bool_grep "$nat_prerouting" '-A PREROUTING -i wgs1 -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53')"
 
+legacy_bootstrap=0
+grep -Eq 'stealth-singbox-bootstrap|stealth-dnscrypt-bootstrap|channel-b-home-relay-bootstrap|channel-d-naiveproxy-bootstrap|ChannelMReverse managed by ansible' "$services_start_hook" 2>/dev/null && legacy_bootstrap=1
+printf 'RUNTIME_SUPERVISOR_INSTALLED=%s\n' "$( [ -x "$runtime_supervisor" ] && "$runtime_supervisor" status >/dev/null 2>&1 && printf '1\n' || printf '0\n' )"
+printf 'CHANNEL_M_ON_DEMAND_CONTROL=%s\n' "$(
+  if [ "$channel_m_reverse_enabled" = "1" ] && [ -x "$runtime_supervisor" ] &&
+    "$runtime_supervisor" channel-m-status 2>/dev/null | grep -Eq '^channel_m_(local_ingress|reverse)='; then
+    printf '1\n'
+  elif [ "$channel_m_reverse_enabled" != "1" ]; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+)"
+printf 'SERVICES_START_SUPERVISOR=%s\n' "$( [ -r "$services_start_hook" ] && grep -q 'GhostRouteRuntimeSupervisor' "$services_start_hook" 2>/dev/null && printf '1\n' || printf '0\n' )"
+printf 'SERVICES_START_LEGACY_BOOTSTRAPS=%s\n' "$legacy_bootstrap"
 printf 'CRON_SAVE_IPSET=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-save-ipset')"
 printf 'CRON_TRAFFIC_SNAPSHOT=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-snapshot')"
 printf 'CRON_TRAFFIC_DAILY_CLOSE=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/cron-traffic-daily-close')"
 printf 'CRON_MOBILE_REALITY_COUNTERS=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/mobile-reality-accounting-refresh')"
 printf 'CRON_DOMAIN_AUTO_ADD=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/domain-auto-add.sh')"
 printf 'CRON_SINGBOX_WATCHDOG=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/singbox-watchdog.sh')"
+printf 'CRON_DNSCRYPT_WATCHDOG=%s\n' "$(bool_grep "$cron_list" '/jffs/scripts/dnscrypt-watchdog.sh')"
+printf 'CRON_CHANNEL_M_REVERSE=%s\n' "$( [ "$channel_m_reverse_enabled" = "1" ] && bool_grep "$cron_list" "$channel_m_reverse_script" || printf '1\n' )"
 printf 'CRON_UPDATE_BLOCKED=%s\n' "$(bool_grep "$cron_list" '/jffs/addons/x3mRouting/update-blocked-list.sh')"
 
 printf 'BLOCKED_FILE=%s\n' "$blocked_file"
@@ -1233,6 +1258,9 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] || drift_lines+=("wgc1 cold-fallback NVRAM fields are missing")
   [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] || drift_lines+=("WireGuard RC_VPN_ROUTE chain should be absent")
   [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] || drift_lines+=("WireGuard fwmark 0x1000 -> wgc1 rule should be absent")
+  [ "$(router_kv_get "$state_file" RUNTIME_SUPERVISOR_INSTALLED)" = "1" ] || drift_lines+=("GhostRoute runtime supervisor is missing")
+  [ "$(router_kv_get "$state_file" SERVICES_START_SUPERVISOR)" = "1" ] || drift_lines+=("services-start does not delegate to the runtime supervisor")
+  [ "$(router_kv_get "$state_file" SERVICES_START_LEGACY_BOOTSTRAPS)" = "0" ] || drift_lines+=("services-start contains legacy distributed boot blocks")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] || drift_lines+=("missing sing-box REDIRECT listener")
   [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] || drift_lines+=("missing home Reality listener")
   [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] || drift_lines+=("home Reality listener should bind IPv4 0.0.0.0 only, not IPv6 wildcard")
@@ -1252,6 +1280,9 @@ router_render_health_markdown() {
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || drift_lines+=("missing sing-box SOCKS listener")
   [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] || drift_lines+=("dnscrypt-proxy listener missing on router loopback")
   [ "$(router_kv_get "$state_file" DNSCRYPT_GO_OVERCOMMIT)" = "1" ] || drift_lines+=("vm.overcommit_memory is strict; dnscrypt-proxy Go runtime may fail before config parsing")
+  [ "$(router_kv_get "$state_file" CRON_DNSCRYPT_WATCHDOG)" = "1" ] || drift_lines+=("dnscrypt watchdog cron is missing")
+  [ "$(router_kv_get "$state_file" CRON_CHANNEL_M_REVERSE)" = "1" ] || drift_lines+=("Channel M reverse cron is missing")
+  [ "$(router_kv_get "$state_file" CHANNEL_M_ON_DEMAND_CONTROL)" = "1" ] || drift_lines+=("Channel M on-demand supervisor control is unavailable")
   [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || drift_lines+=("dnscrypt-proxy is not routed through sing-box SOCKS")
   [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || drift_lines+=("sing-box keepalive tuning missing")
   [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || drift_lines+=("missing LAN TCP REDIRECT for STEALTH_DOMAINS")
@@ -1321,6 +1352,8 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | wgc1 cold-fallback NVRAM preserved | $( [ "$(router_kv_get "$state_file" WGC1_NVRAM_PRESERVED)" = "1" ] && printf 'OK' || printf 'Missing fields' ) |
 | RC_VPN_ROUTE chain absent | $( [ "$(router_kv_get "$state_file" CHAIN_RC_VPN_ROUTE)" = "0" ] && printf 'OK' || printf 'Present' ) |
 | ip rule fwmark 0x1000 -> wgc1 absent | $( [ "$(router_kv_get "$state_file" RULE_MARK_0X1000)" = "0" ] && printf 'OK' || printf 'Present' ) |
+| Runtime supervisor installed | $( [ "$(router_kv_get "$state_file" RUNTIME_SUPERVISOR_INSTALLED)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| services-start single owner | $( [ "$(router_kv_get "$state_file" SERVICES_START_SUPERVISOR)" = "1" ] && [ "$(router_kv_get "$state_file" SERVICES_START_LEGACY_BOOTSTRAPS)" = "0" ] && printf 'OK' || printf 'Drift' ) |
 | Channel A REDIRECT listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | Home Reality IPv4-only listener | $( [ "$(router_kv_get "$state_file" HOME_REALITY_IPV4_ONLY)" = "1" ] && printf 'OK' || printf 'IPv6/wildcard drift' ) |
@@ -1338,6 +1371,9 @@ Sanitised health snapshot for humans and LLMs. Generated locally; no private IPs
 | Channel A dnscrypt SOCKS listener | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy listener | $( [ "$(router_kv_get "$state_file" DNSCRYPT_PROXY_LISTENER)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy Go overcommit guard | $( [ "$(router_kv_get "$state_file" DNSCRYPT_GO_OVERCOMMIT)" = "1" ] && printf 'OK' || printf 'Strict' ) |
+| dnscrypt watchdog cron | $( [ "$(router_kv_get "$state_file" CRON_DNSCRYPT_WATCHDOG)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel M reverse cron | $( [ "$(router_kv_get "$state_file" CRON_CHANNEL_M_REVERSE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
+| Channel M on-demand control | $( [ "$(router_kv_get "$state_file" CHANNEL_M_ON_DEMAND_CONTROL)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | dnscrypt-proxy uses sing-box SOCKS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | sing-box keepalive tuning | $( [ "$(router_kv_get "$state_file" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] && printf 'OK' || printf 'Missing' ) |
 | LAN TCP REDIRECT -> STEALTH_DOMAINS | $( [ "$(router_kv_get "$state_file" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] && printf 'OK' || printf 'Missing' ) |

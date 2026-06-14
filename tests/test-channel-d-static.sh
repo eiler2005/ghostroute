@@ -42,7 +42,8 @@ assert_contains "ansible/playbooks/24-channel-d-router.yml" 'Deploy or remove Ch
 assert_contains "ansible/playbooks/24-channel-d-router.yml" 'channel_d_naiveproxy'
 assert_contains "ansible/playbooks/24-channel-d-router.yml" 'Build the Channel D Caddy binary first'
 assert_contains "ansible/playbooks/24-channel-d-router.yml" 'channel-d-naiveproxy-socks-in|channel_d_naiveproxy_upstream_socks_port'
-assert_contains "ansible/playbooks/24-channel-d-router.yml" 'ChannelMReverse managed by ansible'
+assert_contains "ansible/playbooks/24-channel-d-router.yml" 'GhostRoute runtime supervisor'
+assert_not_contains "ansible/playbooks/24-channel-d-router.yml" 'ChannelMReverse managed by ansible'
 assert_not_contains "ansible/playbooks/24-channel-d-router.yml" 'caddy_l4|xray_xhttp|vps_stealth'
 
 assert_contains "ansible/roles/channel_d_naiveproxy/templates/Caddyfile.j2" 'forward_proxy'
@@ -51,8 +52,8 @@ assert_contains "ansible/roles/channel_d_naiveproxy/templates/Caddyfile.j2" 'pro
 assert_contains_fixed "ansible/roles/channel_d_naiveproxy/tasks/main.yml" 'The site is available.'
 assert_not_contains "ansible/roles/channel_d_naiveproxy/tasks/main.yml" '<title>.*(GhostRoute|Naive|Karing|Proxy)|<h1>.*(GhostRoute|Naive|Karing|Proxy)'
 assert_contains "ansible/roles/channel_d_naiveproxy/templates/S99caddy-channel-d-naiveproxy.j2" 'caddy-channel-d-naiveproxy'
-assert_contains "ansible/roles/channel_d_naiveproxy/tasks/main.yml" 'services-start hook starts Channel D Caddy'
-assert_contains "ansible/roles/channel_d_naiveproxy/tasks/main.yml" 'sed -i.*channel-d-naiveproxy-bootstrap'
+assert_contains "ansible/roles/channel_d_naiveproxy/tasks/main.yml" 'Remove legacy Channel D services-start bootstrap'
+assert_not_contains "ansible/roles/channel_d_naiveproxy/tasks/main.yml" 'Ensure services-start hook starts Channel D Caddy'
 assert_contains_fixed "modules/routing-core/bin/build-channel-d-caddy" 'github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@d62c80d3dd2c706b6b87579844d2397bddd18317'
 assert_not_contains "modules/routing-core/bin/build-channel-d-caddy" 'github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive'
 

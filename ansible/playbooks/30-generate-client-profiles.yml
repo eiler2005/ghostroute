@@ -1160,6 +1160,10 @@
         content: |
           # Source/copy MAX_EGRESS_PROXY_URL into maxtg_bridge .env.secrets on Hetzner.
           # Source/copy MAX_EGRESS_PROXY_HOST into maxtg_bridge .env.host for compose extra_hosts.
+          # Optional app-side recovery: keep router SSH target/key in VPS runtime secrets.
+          # Run the router command below through that restricted SSH profile when MAX egress needs repair.
+          MAX_EGRESS_RECOVERY_SUPERVISOR_COMMAND=/jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-recover
+          MAX_EGRESS_RECOVERY_STATUS_COMMAND=/jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-status
           # Do not commit this file.
           {% if channel_m_maxtg_reverse_enabled | default(false) | bool %}
           # Reverse Channel M: router opens outbound SSH -R to the VPS docker bridge.
@@ -1218,6 +1222,11 @@
           - not Channel A/B/C failover
           - not `reality-out`, `STEALTH_DOMAINS`, `VPN_STATIC_NETS` or policy DNS
           - no home inbound public port is required for the reverse lane
+          - router boot recovery uses `ghostroute-runtime-supervisor.sh boot`
+          - VPS/app on-demand recovery may request only
+            `ghostroute-runtime-supervisor.sh channel-m-recover`
+          - VPS/app status checks may request only
+            `ghostroute-runtime-supervisor.sh channel-m-status`
 
           After deploy, run `ansible-playbook playbooks/23-channel-m-reverse.yml`,
           `ansible-playbook playbooks/99-verify.yml`, and check maxtg_bridge

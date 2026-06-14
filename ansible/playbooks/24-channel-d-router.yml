@@ -103,30 +103,9 @@
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
       changed_when: false
 
-    - name: Restore Channel M reverse services-start bootstrap after Channel D deploy
-      ansible.builtin.raw: |
-        hook="/jffs/scripts/services-start"
-        tmp="/tmp/services-start.channel-m.$$"
-        touch "$hook"
-        chmod 755 "$hook"
-        awk '
-          /# BEGIN ChannelMReverse managed by ansible/ { skip=1; next }
-          /# END ChannelMReverse managed by ansible/ { skip=0; next }
-          skip != 1 { print }
-        ' "$hook" > "$tmp"
-        cat >> "$tmp" <<'SH'
-        # BEGIN ChannelMReverse managed by ansible
-        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
-        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
-        ( sleep 45; {{ channel_m_maxtg_reverse_script_path }} ) >/dev/null 2>&1 &
-        # END ChannelMReverse managed by ansible
-        SH
-        mv "$tmp" "$hook"
-        chmod 755 "$hook"
-        [ -x {{ singbox_watchdog_path }} ] && cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"
-        cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"
+    - name: Reconcile GhostRoute runtime supervisor after Channel D deploy
+      ansible.builtin.raw: "{{ ghostroute_runtime_supervisor_path }} recover"
       changed_when: false
-      when: channel_m_maxtg_reverse_enabled | default(false) | bool
 
     - name: Channel D Caddy listener is running when enabled
       ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -Eq '(^|[[:space:]])(0\\.0\\.0\\.0|::):{{ channel_d_naiveproxy_ingress_port }}[[:space:]]'"

@@ -6,6 +6,9 @@ singbox_bin_path: /opt/bin/sing-box
 singbox_log_path: /opt/var/log/sing-box.log
 singbox_config_path: /opt/etc/sing-box/config.json
 singbox_init_path: /opt/etc/init.d/S99sing-box
+ghostroute_runtime_supervisor_path: /jffs/scripts/ghostroute-runtime-supervisor.sh
+ghostroute_runtime_supervisor_log_path: /opt/var/log/ghostroute-runtime-supervisor.log
+ghostroute_runtime_post_routing_delay: 45
 singbox_redirect_port: "{{ vault_singbox_redirect_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_REDIRECT_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_redirect_port_secret | default('12' ~ '345'), true) }}"
 singbox_dnscrypt_socks_port: "{{ vault_singbox_dnscrypt_socks_port | default(lookup('ansible.builtin.ini', 'GHOSTROUTE_DNSCRYPT_SOCKS_PORT type=properties file=../../.env', errors='ignore'), true) | default(singbox_dnscrypt_socks_port_secret | default('10' ~ '80'), true) }}"
 singbox_watchdog_path: /jffs/scripts/singbox-watchdog.sh

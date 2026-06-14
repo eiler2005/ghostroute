@@ -36,6 +36,41 @@ Recover:
 
 The watchdog probes both the LAN REDIRECT listener and the home Reality ingress.
 
+### Post-Reboot Zombie Process
+
+Observed failure mode: after a router reboot, Entware can leave `sing-box` as a
+zombie. A raw `pidof`/`kill -0` check can then print "already running" while the
+LAN REDIRECT, Home Reality and router-local SOCKS listeners are absent. The
+repo-managed `S99sing-box` init script treats zombie state as not live in
+`start`, `stop` and `status`.
+
+Check listeners, not only process ids:
+
+```sh
+netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
+netstat -nlp 2>/dev/null | grep ':<home-reality-port> '
+netstat -nlp 2>/dev/null | grep '127.0.0.1:<router-socks-port> '
+```
+
+Recover without touching WAN or the VPS:
+
+```sh
+/jffs/scripts/ghostroute-runtime-supervisor.sh recover
+```
+
+The supervisor is launched by `services-start`, owns cron registration, applies
+the dependency order, verifies LAN REDIRECT plus managed UDP/443 DROP after
+applying routing, and performs targeted restarts only for missing listeners.
+During boot it also runs a delayed firewall stabilization pass because Merlin
+can rebuild chains after `services-start` has already fired.
+Direct service restarts remain a fallback after `ghostroute-runtime-supervisor.sh
+status` identifies the broken component.
+
+If processes and listeners are healthy but `live-check` reports the Channel A
+UDP/443 drop as missing after reboot, run the supervisor `recover` path and
+check `live-check --deploy-gate` again. Do not reset WAN for this symptom unless
+the WAN itself is down.
+
 ### Rule-set Hot Reload Crash
 
 Observed failure mode: sing-box can die during local source rule-set hot reload,

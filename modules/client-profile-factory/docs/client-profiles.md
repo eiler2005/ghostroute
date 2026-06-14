@@ -576,8 +576,11 @@ ansible/out/channel-m-maxtg/README.md
 The `.env` file contains `MAX_EGRESS_PROXY_URL` and must be copied only into the
 private `maxtg_bridge` `.env.secrets` on the VPS. It also contains
 `MAX_EGRESS_PROXY_HOST` for `.env.host`; `MAX_EGRESS_PROXY_GATEWAY` is resolved
-on the bridge VPS from the compose docker network. Do not commit generated env
-fragments, paste them into docs, or print them in logs.
+on the bridge VPS from the compose docker network. Optional
+`MAX_EGRESS_RECOVERY_*` values name the router supervisor commands for scoped
+Channel M status/recovery; the VPS-side SSH target and key remain runtime
+secrets. Do not commit generated env fragments, paste them into docs, or print
+them in logs.
 
 View local artifacts:
 
@@ -596,6 +599,10 @@ Router invariants after deploy:
 - Source allowlist permits only the Vault-configured Hetzner/VPS CIDR for the
   optional direct public lane.
 - Channel M is not Channel A/B/C failover and does not touch LAN/Wi-Fi routing.
+- VPS/app on-demand recovery may call only
+  `ghostroute-runtime-supervisor.sh channel-m-status` and
+  `ghostroute-runtime-supervisor.sh channel-m-recover` through a restricted SSH
+  profile; it must not call generic router `recover`.
 - `maxtg_bridge` should show `MAX egress: home_ru_proxy`; if Channel M fails,
   MAX should degrade instead of auto-switching to `hetzner_direct`.
 

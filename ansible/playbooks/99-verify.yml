@@ -379,6 +379,24 @@
         dnscrypt_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_DNSCRYPT_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_DNSCRYPT_PORT=', '') }}"
         router_managed_dns_forward_host: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=') | first | default('') | regex_replace('^GHOSTROUTE_MANAGED_DNS_FORWARD_HOST=', '') }}"
         router_managed_dns_forward_port: "{{ router_runtime_ports.stdout_lines | select('match', '^GHOSTROUTE_MANAGED_DNS_FORWARD_PORT=') | first | default('') | regex_replace('^GHOSTROUTE_MANAGED_DNS_FORWARD_PORT=', '') }}"
+
+    - name: GhostRoute runtime supervisor is installed
+      ansible.builtin.shell: |
+        [ -x "{{ ghostroute_runtime_supervisor_path }}" ]
+        "{{ ghostroute_runtime_supervisor_path }}" status | grep -Fq 'supervisor=installed'
+      changed_when: false
+
+    - name: services-start is owned by GhostRoute runtime supervisor
+      ansible.builtin.shell: |
+        grep -Fq 'GhostRouteRuntimeSupervisor' "{{ services_start_hook }}"
+        ! grep -Eq 'stealth-singbox-bootstrap|stealth-dnscrypt-bootstrap|channel-b-home-relay-bootstrap|channel-d-naiveproxy-bootstrap|ChannelMReverse managed by ansible' "{{ services_start_hook }}"
+      changed_when: false
+
+    - name: Runtime supervisor cron ownership is active
+      ansible.builtin.shell: |
+        cru l 2>/dev/null | grep -Fq '{{ singbox_watchdog_path }}'
+        cru l 2>/dev/null | grep -Fq '/jffs/scripts/dnscrypt-watchdog.sh'
+      changed_when: false
       no_log: true
 
     - name: IPv6 is disabled in Merlin
@@ -940,12 +958,19 @@
         - channel_m_maxtg_enabled | default(false) | bool
         - channel_m_maxtg_reverse_enabled | default(false) | bool
 
-    - name: Channel M reverse services-start boot recovery is installed when enabled
+    - name: Channel M reverse supervisor cron recovery is installed when enabled
       ansible.builtin.shell: |
-        grep -Fq 'ChannelMReverse managed by ansible' /jffs/scripts/services-start
-        grep -Fq 'cru a SingBoxWatchdog "* * * * * {{ singbox_watchdog_path }}"' /jffs/scripts/services-start
-        grep -Fq 'cru a ChannelMReverse "* * * * * {{ channel_m_maxtg_reverse_script_path }}"' /jffs/scripts/services-start
-        grep -Fq '( sleep 45; {{ channel_m_maxtg_reverse_script_path }} )' /jffs/scripts/services-start
+        grep -Fq 'GhostRouteRuntimeSupervisor' /jffs/scripts/services-start
+        cru l 2>/dev/null | grep -Fq '{{ channel_m_maxtg_reverse_script_path }}'
+      changed_when: false
+      when:
+        - channel_m_maxtg_enabled | default(false) | bool
+        - channel_m_maxtg_reverse_enabled | default(false) | bool
+
+    - name: Channel M supervisor on-demand control is available when enabled
+      ansible.builtin.shell: |
+        {{ ghostroute_runtime_supervisor_path }} channel-m-status | grep -Eq '^channel_m_(local_ingress|reverse)='
+        grep -Fq 'channel-m-recover)' {{ ghostroute_runtime_supervisor_path }}
       changed_when: false
       when:
         - channel_m_maxtg_enabled | default(false) | bool

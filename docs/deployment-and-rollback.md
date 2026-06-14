@@ -121,6 +121,13 @@ cd ..
 ./modules/traffic-observatory/bin/traffic-report today
 ```
 
+For router runtime hardening changes, include a reboot gate before treating the
+deploy as complete. After the router comes back, run `live-check --deploy-gate`
+before `99-verify.yml`; this proves the boot supervisor restored LAN REDIRECT
+and managed UDP/443 DROP rules without relying on the verify playbook to reapply
+`stealth-route-init.sh`. Then run router-only `99-verify.yml` and the health
+report for the full assertion set.
+
 Expected invariants:
 
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist and are non-empty.
@@ -171,7 +178,8 @@ Pick the narrowest path that recovers the regressed surface.
 
 For Channel D removal, set `vault_channel_d_naiveproxy_enabled=false` and rerun
 `24-channel-d-router.yml`. Confirm the Caddy service is stopped, the
-`services-start` bootstrap block is absent, D firewall rules are absent, and
+legacy Channel D `services-start` bootstrap block is absent while the
+`GhostRouteRuntimeSupervisor` block remains, D firewall rules are absent, and
 A/B/C verification still passes.
 
 ### VPS edge

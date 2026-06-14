@@ -88,6 +88,38 @@ components:
       - Channel D is experimental and must not be counted as Channel C native proof.
       - Channel M is service-only for maxtg_bridge and must not use managed rule-sets or reality-out.
 
+  - id: router_runtime_supervisor
+    component_name: ghostroute-runtime-supervisor.sh
+    supplier: GhostRoute Routing Core
+    type: router_script
+    ecosystem: asuswrt_merlin_jffs
+    origin: modules/routing-core/router/ghostroute-runtime-supervisor
+    package_names:
+      - /jffs/scripts/ghostroute-runtime-supervisor.sh
+    version_policy:
+      proven_good: services-start single-owner supervisor with targeted recovery for sing-box, dnscrypt, Channel B, Channel D, Channel M reverse and delayed firewall stabilization after Merlin chain rebuilds.
+      minimum_required: Must be installed and executable whenever GhostRoute owns router boot recovery.
+      candidate: New recovery actions require static tests, 99-verify, router-health-report and a controlled reboot gate.
+      known_problematic: []
+      rollback_available: Restore previous services-start only during approved runtime rollback.
+    relationships:
+      - owns_services_start_boot_recovery
+      - registers_router_crons
+      - stabilizes_lan_redirect_and_udp443_drop_after_boot
+      - coordinates_channel_m_reverse_recovery
+      - exposes_scoped_channel_m_on_demand_recovery
+      - preserves_channel_a_b_c_d_m_ownership
+    runtime_checks:
+      - /jffs/scripts/ghostroute-runtime-supervisor.sh status
+      - grep GhostRouteRuntimeSupervisor /jffs/scripts/services-start
+      - live-check channel_a_lan_redirect and channel_a_udp443_drop are OK after reboot without running 99-verify first
+      - 99-verify.yml services-start supervisor ownership check
+    compatibility_notes:
+      - It performs targeted component recovery and must not reset WAN or mutate VPS state.
+      - Firewall stabilization is limited to router-owned REDIRECT, DROP, INPUT and MSS rules.
+      - Channel M reverse cron is registered here so maxtg_bridge recovers after router reboot or tunnel interruption.
+      - VPS/app callers may request only channel-m-status or channel-m-recover through a restricted SSH profile; they must not call generic recover.
+
   - id: router_singbox_watchdog
     component_name: singbox-watchdog.sh
     supplier: GhostRoute Routing Core

@@ -285,6 +285,11 @@ Main role:
 - The optional direct public `channel-m-maxtg-max-egress` lane remains isolated
   and source-allowlisted for controlled experiments, but it is not required for
   the active reverse design.
+- After router reboot, the runtime supervisor registers `ChannelMReverse` and
+  restores Channel M together with the rest of the router runtime.
+- The VPS/app side may request only Channel M repair through
+  `ghostroute-runtime-supervisor.sh channel-m-recover` and may read
+  `channel-m-status`; it must not call the generic router `recover` path.
 - Reusing Channel C `:443` or adding MAX auth users to a Channel C inbound is a
   separate design change and is not part of Channel M.
 

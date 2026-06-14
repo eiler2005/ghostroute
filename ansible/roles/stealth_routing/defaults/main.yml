@@ -72,6 +72,9 @@ firewall_start_hook: /jffs/scripts/firewall-start
 nat_start_hook: /jffs/scripts/nat-start
 cron_save_ipset_script: /jffs/scripts/cron-save-ipset
 services_start_hook: /jffs/scripts/services-start
+ghostroute_runtime_supervisor_path: /jffs/scripts/ghostroute-runtime-supervisor.sh
+ghostroute_runtime_supervisor_log_path: /opt/var/log/ghostroute-runtime-supervisor.log
+ghostroute_runtime_post_routing_delay: 45
 dns_catalog_script_dir: /jffs/addons/x3mRouting
 domain_auto_add_script: /jffs/addons/x3mRouting/domain-auto-add.sh
 update_blocked_list_script: /jffs/addons/x3mRouting/update-blocked-list.sh

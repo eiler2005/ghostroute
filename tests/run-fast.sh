@@ -3,6 +3,8 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 "${PROJECT_ROOT}/tests/check-shell-syntax.sh"
+"${PROJECT_ROOT}/tests/test-singbox-init-static.sh"
+"${PROJECT_ROOT}/tests/test-runtime-supervisor-static.sh"
 "${PROJECT_ROOT}/modules/secrets-management/bin/secret-scan"
 "${PROJECT_ROOT}/modules/recovery-verification/tests/test-router-health.sh"
 "${PROJECT_ROOT}/modules/dns-catalog-intelligence/tests/test-catalog-review.sh"
