@@ -150,16 +150,12 @@
   when: channel_d_naiveproxy_enabled | default(false) | bool
   notify: restart channel d naiveproxy
 
-- name: Ensure services-start hook starts Channel D Caddy
+- name: Remove legacy Channel D services-start bootstrap when enabled
   ansible.builtin.raw: |
-    touch {{ services_start_hook }}
-    chmod +x {{ services_start_hook }}
-    sed -i '/# BEGIN channel-d-naiveproxy-bootstrap/,/# END channel-d-naiveproxy-bootstrap/d' {{ services_start_hook }}
-    cat >> {{ services_start_hook }} <<'EOF'
-    # BEGIN channel-d-naiveproxy-bootstrap
-    {{ channel_d_naiveproxy_caddy_init_path }} start
-    # END channel-d-naiveproxy-bootstrap
-    EOF
+    [ -f {{ services_start_hook }} ] &&
+      sed -i '/# BEGIN channel-d-naiveproxy-bootstrap/,/# END channel-d-naiveproxy-bootstrap/d' {{ services_start_hook }} || true
+    [ -f {{ services_start_hook }} ] &&
+      sed -i '\|{{ channel_d_naiveproxy_caddy_init_path }} start|d' {{ services_start_hook }} || true
   changed_when: false
   when: channel_d_naiveproxy_enabled | default(false) | bool
 

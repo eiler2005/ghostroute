@@ -63,6 +63,10 @@
       ansible.builtin.raw: "{{ stealth_route_init_script }}"
       changed_when: false
 
+    - name: Reconcile GhostRoute runtime supervisor after Channel C deploy
+      ansible.builtin.raw: "{{ ghostroute_runtime_supervisor_path }} recover"
+      changed_when: false
+
     - name: Channel C1 native Naive listener is running
       ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_home_ingress_port }}'"
       changed_when: false

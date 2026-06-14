@@ -15,7 +15,7 @@ usage() {
   cat <<'USAGE'
 Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-probe] [--deploy-gate] [--no-log] [all|channel-a|channel-b|channel-c]
 
-Read-only live A/B/C runtime-chain check.
+Read-only live runtime-chain check.
 Default mode checks listeners, firewall rules, sing-box split rules, DNS/catalog
 sanity, iCloud Reality cover SNI, recent sanitised log evidence, and the
 Console VPS-to-router collector path when Ansible/Vault are available.
@@ -269,6 +269,10 @@ native_port="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PORT)"
 sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
 sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
 sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
+runtime_supervisor="$(env_value GHOSTROUTE_RUNTIME_SUPERVISOR)"
+services_start_hook="$(env_value GHOSTROUTE_SERVICES_START)"
+channel_m_reverse_enabled="$(env_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED)"
+channel_m_reverse_script="$(env_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_SCRIPT)"
 
 redirect_port="${redirect_port:-$(legacy_value REDIRECT_PORT)}"
 home_reality_port="${home_reality_port:-$(legacy_value HOME_REALITY_PORT)}"
@@ -298,6 +302,10 @@ native_port="${native_port:-41955}"
 sr_enabled="${sr_enabled:-0}"
 sr_public="${sr_public:-4443}"
 sr_port="${sr_port:-41956}"
+runtime_supervisor="${runtime_supervisor:-/jffs/scripts/ghostroute-runtime-supervisor.sh}"
+services_start_hook="${services_start_hook:-/jffs/scripts/services-start}"
+channel_m_reverse_enabled="${channel_m_reverse_enabled:-0}"
+channel_m_reverse_script="${channel_m_reverse_script:-/jffs/scripts/channel-m-reverse-tunnel.sh}"
 
 filter="${GHOSTROUTE_LIVE_FILTER:-all}"
 active_probe="${GHOSTROUTE_LIVE_ACTIVE_PROBE:-0}"
@@ -369,6 +377,34 @@ if [ "$filter" = all ] || [ "$filter" = channel-c ]; then
 fi
 
 if [ "$filter" = all ]; then
+  supervisor_ready=0
+  if [ -x "$runtime_supervisor" ] && "$runtime_supervisor" status >/dev/null 2>&1; then
+    supervisor_ready=1
+    emit runtime_supervisor OK "Runtime supervisor" "GhostRoute runtime supervisor is installed and runnable" "path=$runtime_supervisor" "No action."
+  else
+    emit runtime_supervisor N/A "Runtime supervisor" "GhostRoute runtime supervisor is not installed yet" "path=$runtime_supervisor" "Deploy router runtime hardening before relying on reboot recovery."
+  fi
+  if [ "$supervisor_ready" = 1 ] && grep -Fq 'GhostRouteRuntimeSupervisor' "$services_start_hook" 2>/dev/null &&
+    ! grep -Eq 'stealth-singbox-bootstrap|stealth-dnscrypt-bootstrap|channel-b-home-relay-bootstrap|channel-d-naiveproxy-bootstrap|ChannelMReverse managed by ansible' "$services_start_hook" 2>/dev/null; then
+    emit services_start_supervisor OK "Runtime supervisor" "services-start is single-owner and delegates boot to the supervisor" "hook=$services_start_hook" "No action."
+  elif [ "$supervisor_ready" = 1 ]; then
+    emit services_start_supervisor WARN "Runtime supervisor" "services-start still has missing or legacy runtime boot ownership" "hook=$services_start_hook" "Remove legacy boot blocks and restore the supervisor block."
+  else
+    emit services_start_supervisor N/A "Runtime supervisor" "services-start supervisor ownership has not been deployed yet" "hook=$services_start_hook" "Run the router runtime hardening deploy."
+  fi
+  cron_list="$(cru l 2>/dev/null || true)"
+  if [ "$supervisor_ready" = 1 ]; then
+    printf '%s\n' "$cron_list" | grep -Fq '/jffs/scripts/singbox-watchdog.sh' && printf '%s\n' "$cron_list" | grep -Fq '/jffs/scripts/dnscrypt-watchdog.sh' && emit runtime_watchdog_crons OK "Runtime supervisor" "Core listener watchdog cron entries are active" "watchdogs=sing-box,dnscrypt" "No action." || emit runtime_watchdog_crons WARN "Runtime supervisor" "Core listener watchdog cron entries are incomplete" "watchdogs=sing-box,dnscrypt" "Run the runtime supervisor recover command."
+  else
+    emit runtime_watchdog_crons N/A "Runtime supervisor" "Supervisor-owned watchdog cron state has not been deployed yet" "watchdogs=sing-box,dnscrypt" "Run the router runtime hardening deploy."
+  fi
+  if [ "$channel_m_reverse_enabled" = 1 ] && [ "$supervisor_ready" = 1 ]; then
+    printf '%s\n' "$cron_list" | grep -Fq "$channel_m_reverse_script" && emit channel_m_reverse_cron OK "Channel M" "Channel M reverse cron is owned by supervisor state" "script=$channel_m_reverse_script" "No action." || emit channel_m_reverse_cron WARN "Channel M" "Channel M reverse cron is missing" "script=$channel_m_reverse_script" "Run the runtime supervisor recover command."
+    "$runtime_supervisor" channel-m-status 2>/dev/null | grep -Eq '^channel_m_(local_ingress|reverse)=' && emit channel_m_on_demand_control OK "Channel M" "Channel M on-demand supervisor status is available for VPS/app recovery requests" "command=channel-m-status" "No action." || emit channel_m_on_demand_control WARN "Channel M" "Channel M on-demand supervisor status is unavailable" "command=channel-m-status" "Deploy the runtime supervisor with Channel M control commands."
+  elif [ "$channel_m_reverse_enabled" = 1 ]; then
+    emit channel_m_reverse_cron N/A "Channel M" "Channel M reverse cron ownership has not been deployed yet" "script=$channel_m_reverse_script" "Run the router runtime hardening deploy."
+    emit channel_m_on_demand_control N/A "Channel M" "Channel M on-demand supervisor control has not been deployed yet" "command=channel-m-recover" "Run the router runtime hardening deploy."
+  fi
   listener_ok 53 && emit dnsmasq_listener OK "DNS/catalog" "dnsmasq listener is present" "port=53" "No action." || emit dnsmasq_listener CRIT "DNS/catalog" "dnsmasq listener is missing" "port=53" "Check dnsmasq before changing routing."
   listener_ok "$vps_dns_port" && emit vps_dns_in_listener OK "DNS/catalog" "vps-dns-in listener is present" "port=$vps_dns_port" "No action." || emit vps_dns_in_listener WARN "DNS/catalog" "vps-dns-in listener is missing" "port=$vps_dns_port" "Managed DNS may not use VPS path; check sing-box DNS inbound."
   grep -q "^server=/$managed_domain/127.0.0.1#$managed_dns_forward_port\$" /jffs/configs/dnsmasq-vps-managed.conf.add 2>/dev/null && emit managed_dns_forward_target OK "DNS/catalog" "Managed DNS include points to dnscrypt-backed local forwarder" "domain=$managed_domain port=$managed_dns_forward_port" "No action." || emit managed_dns_forward_target WARN "DNS/catalog" "Managed DNS include is not using the dnscrypt-backed forwarder" "domain=$managed_domain expected_port=$managed_dns_forward_port" "Regenerate rule-sets with the current managed DNS forward target before troubleshooting clients."

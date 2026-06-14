@@ -54,16 +54,30 @@ and dnscrypt-proxy sends upstream DoH through sing-box SOCKS/Reality. The
 dnscrypt-proxy if the listener disappears. A missing dnscrypt listener can make
 LAN/Wi-Fi plus home-first Channels A/B/C/D look broken while channel listeners
 remain up; Channel M direct-out traffic is not proof that managed DNS is
-healthy. The dnscrypt init script and boot bootstrap set
+healthy. The dnscrypt init script and runtime supervisor set
 `vm.overcommit_memory=1` before startup so Entware's Go `dnscrypt-proxy2` can
 reserve its runtime heap after reboot.
+
+Router boot recovery is represented by `router_runtime_supervisor`. Merlin
+`services-start` delegates to `/jffs/scripts/ghostroute-runtime-supervisor.sh`;
+the supervisor registers cron jobs and performs targeted component recovery in
+dependency order instead of keeping per-channel start blocks in `services-start`.
+It also validates router-owned firewall invariants after applying routing:
+LAN managed TCP must have REDIRECT rules and managed UDP/443 must be dropped for
+both `STEALTH_DOMAINS` and `VPN_STATIC_NETS`. A delayed post-boot stabilization
+pass handles Merlin chain rebuilds that can happen after `services-start`.
 
 The captive/connectivity compatibility contract has one explicit direct
 exception: plain HTTP `www.google.com:80` may bypass managed Reality so
 `generate_204` health checks can complete. HTTPS Google traffic and normal
 managed destinations remain governed by the managed split.
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. Because it carries
+the messenger service lane, the supervisor owns `ChannelMReverse` cron
+registration and reruns the tunnel recovery after reboot or stale remote-forward
+conditions. It also exposes scoped `channel-m-status` and `channel-m-recover`
+commands so a VPS/app watchdog can request only Channel M repair without
+triggering general A/B/C/D router recovery.
 
 The human-readable Channel M environment inventory is
 [channel-m-environment.md](channel-m-environment.md).

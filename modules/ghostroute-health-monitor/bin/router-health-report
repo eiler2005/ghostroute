@@ -91,11 +91,16 @@ history = kv(history_file)
 traffic = kv(traffic_file)
 
 checks = [
+  check('runtime_supervisor', 'GhostRoute runtime supervisor', state['RUNTIME_SUPERVISOR_INSTALLED'], { key: 'RUNTIME_SUPERVISOR_INSTALLED' }),
+  check('services_start_supervisor', 'services-start supervisor ownership', (state['SERVICES_START_SUPERVISOR'].to_s == '1' && state['SERVICES_START_LEGACY_BOOTSTRAPS'].to_s == '0') ? '1' : '0', { supervisor: state['SERVICES_START_SUPERVISOR'], legacy_bootstraps: state['SERVICES_START_LEGACY_BOOTSTRAPS'] }),
   check('sing_box_redirect_listener', 'sing-box LAN redirect listener', state['CHANNEL_B_REDIRECT_LISTENER'], { key: 'CHANNEL_B_REDIRECT_LISTENER' }),
   check('home_reality_listener', 'Home Reality listener', state['HOME_REALITY_LISTENER'], { key: 'HOME_REALITY_LISTENER' }),
   check('home_reality_input_accept', 'Home Reality INPUT allow rule', state['HOME_REALITY_INPUT_ACCEPT'], { key: 'HOME_REALITY_INPUT_ACCEPT' }),
   check('dnscrypt_listener', 'dnscrypt-proxy listener', state['DNSCRYPT_PROXY_LISTENER'], { key: 'DNSCRYPT_PROXY_LISTENER' }),
   check('dnscrypt_go_overcommit', 'dnscrypt-proxy Go overcommit guard', state['DNSCRYPT_GO_OVERCOMMIT'], { key: 'DNSCRYPT_GO_OVERCOMMIT' }),
+  check('dnscrypt_watchdog_cron', 'dnscrypt watchdog cron', state['CRON_DNSCRYPT_WATCHDOG'], { key: 'CRON_DNSCRYPT_WATCHDOG' }),
+  check('channel_m_reverse_cron', 'Channel M reverse cron', state['CRON_CHANNEL_M_REVERSE'], { key: 'CRON_CHANNEL_M_REVERSE' }),
+  check('channel_m_on_demand_control', 'Channel M on-demand supervisor control', state['CHANNEL_M_ON_DEMAND_CONTROL'], { key: 'CHANNEL_M_ON_DEMAND_CONTROL' }),
   check('dnscrypt_proxy', 'dnscrypt-proxy SOCKS path', state['CHANNEL_B_DNSCRYPT_PROXY'], { key: 'CHANNEL_B_DNSCRYPT_PROXY' }),
   check('rule_set_redirect_stealth', 'STEALTH_DOMAINS redirect rule', state['CHANNEL_B_REDIRECT_STEALTH'], { key: 'CHANNEL_B_REDIRECT_STEALTH' }),
   check('rule_set_redirect_static', 'VPN_STATIC_NETS redirect rule', state['CHANNEL_B_REDIRECT_STATIC'], { key: 'CHANNEL_B_REDIRECT_STATIC' }),

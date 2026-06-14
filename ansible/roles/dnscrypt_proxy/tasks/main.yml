@@ -34,18 +34,15 @@
     {{ dnscrypt_init_path }} restart
   changed_when: false
 
-- name: Ensure services-start hook starts dnscrypt on boot
+- name: Remove legacy dnscrypt services-start bootstrap
   ansible.builtin.raw: |
-    touch {{ services_start_hook }}
-    chmod +x {{ services_start_hook }}
-    sed -i '\|# BEGIN stealth-dnscrypt-bootstrap|,\|# END stealth-dnscrypt-bootstrap|d' {{ services_start_hook }}
-    cat >> {{ services_start_hook }} <<'EOF'
-    # BEGIN stealth-dnscrypt-bootstrap
-    [ -w /proc/sys/vm/overcommit_memory ] && echo 1 > /proc/sys/vm/overcommit_memory
-    {{ dnscrypt_init_path }} start
-    [ -x /jffs/scripts/dnscrypt-watchdog.sh ] && cru a DnscryptWatchdog "* * * * * /jffs/scripts/dnscrypt-watchdog.sh"
-    # END stealth-dnscrypt-bootstrap
-    EOF
+    [ -f {{ services_start_hook }} ] &&
+      sed -i '\|# BEGIN stealth-dnscrypt-bootstrap|,\|# END stealth-dnscrypt-bootstrap|d' {{ services_start_hook }} || true
+    [ -f {{ services_start_hook }} ] &&
+      sed -i '\|{{ dnscrypt_init_path }} start|d' {{ services_start_hook }} || true
+    [ -f {{ services_start_hook }} ] &&
+      sed -i '\|DnscryptWatchdog|d' {{ services_start_hook }} || true
+  changed_when: false
 
 - name: Install dnscrypt listener watchdog
   ansible.builtin.template:
@@ -53,10 +50,8 @@
     dest: /jffs/scripts/dnscrypt-watchdog.sh
     mode: "0755"
 
-- name: Enable dnscrypt listener watchdog cron
+- name: Run dnscrypt listener watchdog once after install
   ansible.builtin.raw: |
-    cru d DnscryptWatchdog 2>/dev/null
-    cru a DnscryptWatchdog "* * * * * /jffs/scripts/dnscrypt-watchdog.sh"
     /jffs/scripts/dnscrypt-watchdog.sh
   changed_when: false
 

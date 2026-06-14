@@ -7,11 +7,41 @@ CONFIG="{{ channel_d_naiveproxy_caddy_config_path }}"
 LOG="{{ channel_d_naiveproxy_caddy_log_path }}"
 PIDFILE="{{ channel_d_naiveproxy_caddy_pid_path }}"
 
+pid_is_live() {
+  pid="$1"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  state="$(ps w 2>/dev/null | awk -v pid="$pid" '$1 == pid { print $4; exit }')"
+  [ -n "$state" ] || return 1
+  case "$state" in
+    *Z*) return 1 ;;
+  esac
+  return 0
+}
+
+live_pidof() {
+  for pid in $(pidof "$NAME" 2>/dev/null); do
+    if pid_is_live "$pid"; then
+      echo "$pid"
+      return 0
+    fi
+  done
+  return 1
+}
+
 start() {
   [ "$ENABLED" = "yes" ] || return 0
   [ -x "$BIN" ] || return 1
   [ -f "$CONFIG" ] || return 1
-  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+  PID=""
+  [ -f "$PIDFILE" ] && PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if pid_is_live "$PID"; then
+    return 0
+  fi
+  [ -n "$PID" ] && rm -f "$PIDFILE"
+  EXISTING_PID="$(live_pidof || true)"
+  if [ -n "$EXISTING_PID" ]; then
+    echo "$EXISTING_PID" > "$PIDFILE"
     return 0
   fi
   mkdir -p /opt/var/run "$(dirname "$LOG")"
@@ -24,6 +54,10 @@ stop() {
     kill "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null || true
     rm -f "$PIDFILE"
   fi
+  for _ in 1 2 3 4 5; do
+    live_pidof >/dev/null 2>&1 || break
+    sleep 1
+  done
 }
 
 restart() {
@@ -33,7 +67,9 @@ restart() {
 }
 
 status() {
-  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null && echo "running" || echo "stopped"
+  PID=""
+  [ -f "$PIDFILE" ] && PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+  pid_is_live "$PID" && echo "running" || echo "stopped"
 }
 
 case "$1" in

@@ -30,6 +30,7 @@ flowchart LR
 
   subgraph router[ASUS Merlin router]
     merlin[Merlin hooks<br/>nat-start / firewall-start / services-start]
+    supervisor[ghostroute-runtime-supervisor<br/>boot / recover / channel-m-recover]
     dnsmasq[dnsmasq + ipset<br/>managed domain and static-net catalog]
     singbox[sing-box<br/>REDIRECT, Reality, SOCKS, HTTP inbounds]
     xray[Xray Channel B home relay]
@@ -43,7 +44,8 @@ flowchart LR
     mListener[Channel M reverse listener<br/>VPS Docker bridge only]
   end
 
-  lan --> merlin --> dnsmasq --> singbox
+  lan --> merlin --> supervisor
+  supervisor --> dnsmasq --> singbox
   mobileA --> singbox
   mobileB --> xray --> singbox
   mobileC --> singbox
@@ -52,6 +54,10 @@ flowchart LR
   singbox -->|managed destinations| reality
   singbox -->|direct / home-WAN destinations| wan[Home WAN direct-out]
   dnsmasq --> dnscrypt --> singbox
+  supervisor -. delayed firewall stabilization .-> merlin
+  supervisor -. starts and checks .-> singbox
+  supervisor -. starts and checks .-> dnscrypt
+  supervisor -. starts and checks .-> caddyD
   watchdogs -. recovers .-> singbox
   watchdogs -. recovers .-> dnscrypt
   watchdogs -. recovers .-> mListener
@@ -61,15 +67,15 @@ flowchart LR
 
 | Area | Runtime objects | Installed or rendered by | Verification signal |
 |---|---|---|---|
-| Merlin boot hooks | `/jffs/scripts/nat-start`, `/jffs/scripts/firewall-start`, `/jffs/scripts/services-start` | `deploy.sh`, routing Ansible roles | `99-verify.yml` checks firewall/NAT rules, cron bootstrap and listener ownership |
+| Merlin boot hooks | `/jffs/scripts/nat-start`, `/jffs/scripts/firewall-start`, `/jffs/scripts/services-start`, `/jffs/scripts/ghostroute-runtime-supervisor.sh` | `deploy.sh`, routing Ansible roles | `99-verify.yml` checks firewall/NAT rules, supervisor bootstrap and listener ownership |
 | Routing core | `/opt/bin/sing-box`, `/opt/etc/sing-box/config.json`, `/opt/etc/init.d/S99sing-box`, `/opt/etc/sing-box/rule-sets/` | `20-stealth-router.yml`, `singbox_client`, routing-core scripts | REDIRECT listener, Home Reality listener, rule-set mirror, direct/reality routing |
 | Catalog DNS | `/jffs/configs/dnsmasq-stealth.conf.add`, `/jffs/configs/dnsmasq-vps-managed.conf.add`, optional selected full-VPS include | `stealth_routing`, DNS catalog inputs | managed domains resolve into `STEALTH_DOMAINS`; direct/RU domains stay out of managed DNS |
 | Managed DNS egress | `/opt/sbin/dnscrypt-proxy`, `/opt/etc/dnscrypt-proxy.toml`, `/opt/etc/init.d/S09dnscrypt-proxy2` | `dnscrypt_proxy` | local dnscrypt listener plus sing-box SOCKS listener for dnscrypt |
 | Channel B home relay | `/opt/bin/xray`, `/opt/etc/xray/channel-b-home-relay.json`, `/opt/etc/init.d/S99xray-channel-b-home` | `21-channel-b-router.yml`, `channel_b_home_relay` | Channel B listener, firewall allow, connlimit and MSS clamp |
 | Channel C native and compatibility lanes | sing-box inbounds and TLS assets under `/opt/etc/sing-box/` | `22-channel-c-router.yml`, `singbox_client` | native Naive and Shadowrocket compatibility listeners plus firewall redirect/allow checks |
 | Channel D NaiveProxy lab | `/opt/bin/caddy-channel-d-naiveproxy`, `/opt/etc/caddy/channel-d-naiveproxy/Caddyfile`, `/opt/etc/init.d/S99caddy-channel-d-naiveproxy`, `/opt/share/channel-d-naiveproxy/` | `24-channel-d-router.yml`, `channel_d_naiveproxy` | Caddy listener, config markers, SOCKS upstream, cover-site proof and firewall checks |
-| Channel M reverse lane | `/jffs/keys/channel-m-reverse-key`, `/jffs/scripts/channel-m-reverse-tunnel.sh`, services-start cron block | `23-channel-m-reverse.yml` | local router ingress, `ChannelMReverse` cron and VPS reverse listener validation |
-| Recovery watchdogs | `/jffs/scripts/singbox-watchdog.sh`, `/jffs/scripts/dnscrypt-watchdog.sh`, Channel M reverse watchdog cron | `singbox_client`, `dnscrypt_proxy`, `23-channel-m-reverse.yml` | minute-level listener probes and targeted restarts or stale tunnel replacement |
+| Channel M reverse lane | `/jffs/keys/channel-m-reverse-key`, `/jffs/scripts/channel-m-reverse-tunnel.sh`, supervisor-owned cron, supervisor `channel-m-recover`/`channel-m-status` | `23-channel-m-reverse.yml`, runtime supervisor | local router ingress, `ChannelMReverse` cron, on-demand Channel M control and VPS reverse listener validation |
+| Recovery supervisor/watchdogs | `/jffs/scripts/ghostroute-runtime-supervisor.sh`, `/jffs/scripts/singbox-watchdog.sh`, `/jffs/scripts/dnscrypt-watchdog.sh`, Channel M reverse watchdog cron | `stealth_routing`, `singbox_client`, `dnscrypt_proxy`, `23-channel-m-reverse.yml` | `services-start` single-owner bootstrap, delayed LAN REDIRECT / UDP/443 DROP stabilization, minute-level listener probes, Channel M on-demand recovery and targeted restarts or stale tunnel replacement |
 | Health monitor | `/jffs/scripts/health-monitor/run-probes`, `aggregate`, `daily-digest`, `lib.sh` | `health_monitor` | hourly probes, aggregate state and daily digest cron jobs |
 | Cold fallback | preserved `wgc1_*` NVRAM and `/jffs/scripts/emergency-enable-wgc1.sh` | recovery tooling | WireGuard disabled in steady state; emergency script is manual only |
 
@@ -87,7 +93,7 @@ does not include endpoints, listener numbers, credentials or traffic evidence.
 | Linux kernel | `4.19.183` | `uname -r` |
 | BusyBox | `1.25.1` | `busybox` banner |
 | Entware `opkg` | `80503d94e356476250adaf1f669ee955ec26de76` (`2025-11-05`) | `opkg --version` |
-| `sing-box` | Entware package `sing-box-go 1.13.3-2` | `opkg list-installed` |
+| `sing-box` | Entware package `sing-box-go 1.13.3-2`; init script rejects zombie pids before reporting running or blocking startup | `opkg list-installed`; `/opt/etc/init.d/S99sing-box status`; listener checks |
 | `dnscrypt-proxy` | Entware package `dnscrypt-proxy2 2.1.15-1`; init/boot guard sets `vm.overcommit_memory=1` for Go runtime startup | `opkg list-installed`; `cat /proc/sys/vm/overcommit_memory` |
 | Xray | Entware package `xray-core 26.2.6-1` | `opkg list-installed` |
 | Channel D Caddy | custom repo-built binary, installed at `/opt/bin/caddy-channel-d-naiveproxy` | local binary managed by `24-channel-d-router.yml`; verify module support via `99-verify.yml` |

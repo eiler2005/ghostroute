@@ -26,6 +26,7 @@
     - { src: nat-start, dest: "{{ nat_start_hook }}" }
     - { src: cron-save-ipset, dest: "{{ cron_save_ipset_script }}" }
     - { src: services-start, dest: "{{ services_start_hook }}" }
+    - { src: ghostroute-runtime-supervisor, dest: "{{ ghostroute_runtime_supervisor_path }}" }
 
 - name: Install read-only traffic observatory router samplers
   ansible.builtin.copy:
@@ -117,21 +118,6 @@
       ' "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
     done
 
-- name: Ensure services-start hook starts singbox on boot
-  ansible.builtin.raw: |
-    touch {{ services_start_hook }}
-    chmod +x {{ services_start_hook }}
-    sed -i '\|/opt/etc/init.d/S99singbox start|d' {{ services_start_hook }}
-    grep -q '# BEGIN stealth-singbox-bootstrap' {{ services_start_hook }} || cat >> {{ services_start_hook }} <<'EOF'
-    # BEGIN stealth-singbox-bootstrap
-    /sbin/modprobe tun >/dev/null 2>&1 || true
-    mkdir -p /dev/net
-    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
-    chmod 666 /dev/net/tun
-    {{ singbox_init_path }} start
-    # END stealth-singbox-bootstrap
-    EOF
-
 - name: Ensure dnsmasq loads stealth catalog
   ansible.builtin.raw: |
     CONF=/jffs/configs/dnsmasq.conf.add
@@ -146,18 +132,6 @@
       echo 'conf-file={{ channel_a_selected_full_vps_dnsmasq_conf_path }}' >> $CONF
     sed -i '\|^tcp-upstream$|d' $CONF
     service restart_dnsmasq
-
-- name: Ensure Channel A persistence and catalog cron entries
-  ansible.builtin.raw: |
-    cru d SaveIPSet 2>/dev/null || true
-    cru a SaveIPSet "0 */6 * * * {{ cron_save_ipset_script }}"
-    cru d DomainAutoAdd 2>/dev/null || true
-    [ -x {{ domain_auto_add_script }} ] && \
-      cru a DomainAutoAdd "0 * * * * {{ domain_auto_add_script }}"
-    cru d UpdateBlockedList 2>/dev/null || true
-    [ -x {{ update_blocked_list_script }} ] && \
-      cru a UpdateBlockedList "0 5 * * * {{ update_blocked_list_script }}"
-  changed_when: false
 
 - name: Refresh blocked-domain cache opportunistically
   ansible.builtin.raw: "{{ update_blocked_list_script }} || true"

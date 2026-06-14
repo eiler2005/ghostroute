@@ -10,16 +10,25 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 
 - Builds and refreshes router-side hooks for NAT, firewall and service startup.
 - Maintains sing-box rule-set synchronization from the repo-managed catalogs.
+- Installs the runtime supervisor that owns router reboot recovery, watchdog cron
+  registration, dependency-ordered listener recovery and delayed firewall
+  stabilization.
 - Installs the sing-box listener watchdog used to recover from process death or
   listener loss.
-- Preserves Channel A only as a cold fallback path, not as steady-state routing.
+- Preserves legacy WireGuard only as a cold fallback path, not as steady-state
+  routing.
 
 ## How It Works
 
 `deploy.sh` copies the router scripts from this module to the ASUS Merlin
 runtime paths. Merlin then calls `/jffs/scripts/nat-start`,
 `/jffs/scripts/firewall-start` and `/jffs/scripts/services-start`; those hooks
-install the REDIRECT, counter and cron behavior used by the rest of GhostRoute.
+install the REDIRECT and counter behavior used by the rest of GhostRoute.
+`services-start` is single-owner: it launches
+`/jffs/scripts/ghostroute-runtime-supervisor.sh boot`, and the supervisor
+registers crons, starts/checks components in dependency order, validates LAN
+REDIRECT plus managed UDP/443 DROP rules and runs a delayed post-boot firewall
+stabilization pass after Merlin chain rebuilds.
 
 ## Architecture
 
@@ -50,6 +59,7 @@ inspect its state, but must not silently change routing.
 - `/jffs/scripts/firewall-start`
 - `/jffs/scripts/nat-start`
 - `/jffs/scripts/services-start`
+- `/jffs/scripts/ghostroute-runtime-supervisor.sh`
 - `/jffs/scripts/update-singbox-rule-sets.sh`
 - `/jffs/scripts/singbox-watchdog.sh`
 - `/opt/etc/sing-box/rule-sets`
@@ -66,6 +76,8 @@ inspect its state, but must not silently change routing.
 - Missing Merlin hook files.
 - Rule-set drift between router runtime and repo catalogs.
 - sing-box REDIRECT not receiving managed traffic.
+- Merlin firewall rebuild after reboot removes LAN REDIRECT or managed UDP/443
+  DROP before the supervisor stabilization pass finishes.
 - sing-box process death after local rule-set hot reload; the watchdog should
   restart the service when critical listeners disappear.
 - WireGuard cold fallback accidentally re-enabled.
