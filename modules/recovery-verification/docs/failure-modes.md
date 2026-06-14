@@ -82,12 +82,14 @@ Check:
 netstat -nlp 2>/dev/null | grep ':<dnscrypt-port> '
 grep '^proxy = ' /opt/etc/dnscrypt-proxy.toml
 grep '^server=/browserleaks.com/127.0.0.1#<dnscrypt-port>$' /jffs/configs/dnsmasq-vps-managed.conf.add
+cat /proc/sys/vm/overcommit_memory
 nslookup setup.icloud.com 127.0.0.1
 ```
 
 Recover:
 
 ```sh
+echo 1 > /proc/sys/vm/overcommit_memory
 /opt/etc/init.d/S09dnscrypt-proxy2 restart
 service restart_dnsmasq
 ```
@@ -96,6 +98,9 @@ Expected design: dnsmasq sends upstream DNS to `127.0.0.1#<dnscrypt-port>`;
 dnscrypt-proxy sends DoH through sing-box SOCKS at `socks5://127.0.0.1:<router-socks-port>`.
 `/jffs/scripts/dnscrypt-watchdog.sh` is the production guardrail: cron runs it
 every minute and restarts only dnscrypt-proxy if the local listener disappears.
+The dnscrypt init script also sets `vm.overcommit_memory=1` before starting the
+Go binary; strict overcommit can make dnscrypt-proxy fail before it parses its
+configuration.
 
 ## VPS 443 Broken
 

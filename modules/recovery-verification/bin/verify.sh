@@ -152,6 +152,7 @@ add_info() {
 [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_DIRECT_RULE)" = "1" ] || add_critical "home Reality ingress missing direct fallback rule"
 [ "$(router_kv_get "$STATE_FILE" HOME_REALITY_ALL_RELAY_RULE)" = "0" ] || add_critical "home Reality ingress still relays all traffic to VPS"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_SOCKS_LISTENER)" = "1" ] || add_critical "missing sing-box SOCKS listener on 127.0.0.1:<router-socks-port>"
+[ "$(router_kv_get "$STATE_FILE" DNSCRYPT_GO_OVERCOMMIT)" = "1" ] || add_critical "vm.overcommit_memory is strict; dnscrypt-proxy Go runtime may fail before config parsing"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_DNSCRYPT_PROXY)" = "1" ] || add_critical "dnscrypt-proxy is not routed through sing-box SOCKS"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_SINGBOX_KEEPALIVE)" = "1" ] || add_critical "sing-box keepalive tuning missing"
 [ "$(router_kv_get "$STATE_FILE" CHANNEL_B_REDIRECT_STEALTH)" = "1" ] || add_critical "missing LAN TCP REDIRECT for STEALTH_DOMAINS"

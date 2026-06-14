@@ -41,6 +41,7 @@
     sed -i '\|# BEGIN stealth-dnscrypt-bootstrap|,\|# END stealth-dnscrypt-bootstrap|d' {{ services_start_hook }}
     cat >> {{ services_start_hook }} <<'EOF'
     # BEGIN stealth-dnscrypt-bootstrap
+    [ -w /proc/sys/vm/overcommit_memory ] && echo 1 > /proc/sys/vm/overcommit_memory
     {{ dnscrypt_init_path }} start
     [ -x /jffs/scripts/dnscrypt-watchdog.sh ] && cru a DnscryptWatchdog "* * * * * /jffs/scripts/dnscrypt-watchdog.sh"
     # END stealth-dnscrypt-bootstrap

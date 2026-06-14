@@ -54,7 +54,9 @@ and dnscrypt-proxy sends upstream DoH through sing-box SOCKS/Reality. The
 dnscrypt-proxy if the listener disappears. A missing dnscrypt listener can make
 LAN/Wi-Fi plus home-first Channels A/B/C/D look broken while channel listeners
 remain up; Channel M direct-out traffic is not proof that managed DNS is
-healthy.
+healthy. The dnscrypt init script and boot bootstrap set
+`vm.overcommit_memory=1` before startup so Entware's Go `dnscrypt-proxy2` can
+reserve its runtime heap after reboot.
 
 The captive/connectivity compatibility contract has one explicit direct
 exception: plain HTTP `www.google.com:80` may bypass managed Reality so

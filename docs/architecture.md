@@ -199,6 +199,9 @@ multi-channel routing outage even though sing-box/Xray/Caddy listeners and
 iptables are still present. The production guardrail is
 `/jffs/scripts/dnscrypt-watchdog.sh`: cron checks the listener every minute and
 restarts only dnscrypt-proxy, leaving Channel A/B/C/D/M ownership untouched.
+The dnscrypt init script and `services-start` bootstrap set
+`vm.overcommit_memory=1` before startup; strict overcommit can make Entware's Go
+`dnscrypt-proxy2` fail before configuration parsing after reboot.
 Channel M is service-only direct-out and does not use the managed DNS split.
 
 ### Observability, Console And Traffic Intelligence

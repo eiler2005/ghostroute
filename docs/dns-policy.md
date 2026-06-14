@@ -93,6 +93,10 @@ A/B/C/D at the same time. Channel M is service-only direct-out and does not use
 the managed DNS split. The router-side guardrail is
 `/jffs/scripts/dnscrypt-watchdog.sh`, installed by the dnscrypt role and run by
 cron every minute; it restarts only dnscrypt-proxy when that listener disappears.
+Because Entware `dnscrypt-proxy2` is a Go binary, the init script sets
+`vm.overcommit_memory=1` before start. strict overcommit can make the binary
+fail before config parsing, which has the same operator symptom as a missing
+listener.
 
 DoH/DoT generated inside an app is not force-blocked in v1. It remains a
 residual risk and should be checked during BrowserLeaks/app proof testing.

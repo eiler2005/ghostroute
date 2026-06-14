@@ -689,7 +689,10 @@ VPS observer хранит свой local-only статус на VPS в
   home-first A/B/C/D могут выглядеть сломанными одновременно, даже когда
   listeners/iptables зелёные. Channel M остается service-only direct-out и не
   использует managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` проверяет
-  listener каждую минуту и перезапускает только dnscrypt-proxy.
+  listener каждую минуту и перезапускает только dnscrypt-proxy. Init path и
+  `services-start` bootstrap также выставляют `vm.overcommit_memory=1` перед
+  стартом, чтобы Entware Go `dnscrypt-proxy2` мог зарезервировать runtime heap
+  после перезагрузки роутера.
 - `STEALTH_DOMAINS` и `VPN_STATIC_NETS` существуют.
 - `VPN_DOMAINS`, `RC_VPN_ROUTE`, `0x1000`, active `wgs1` и active `wgc1` отсутствуют.
 

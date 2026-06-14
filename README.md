@@ -743,7 +743,10 @@ Expected invariants:
   home-first mobile Channels A/B/C/D can fail together even when listeners and
   iptables still look healthy. Channel M is service-only direct-out and does
   not use the managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` monitors
-  that listener every minute and restarts only dnscrypt-proxy.
+  that listener every minute and restarts only dnscrypt-proxy. The dnscrypt
+  init path and `services-start` bootstrap also set `vm.overcommit_memory=1`
+  before startup so Entware's Go `dnscrypt-proxy2` can reserve its runtime heap
+  after router reboot.
 - Optional VPS restricted DNS, when enabled, is not public: host firewall allows
   it only from trusted private sources, while public `53/tcp,udp` is denied.
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist.

@@ -5,12 +5,19 @@ CONFIG="{{ dnscrypt_config_path }}"
 PIDFILE="/opt/var/run/dnscrypt-proxy.pid"
 LOGFILE="/opt/var/log/dnscrypt-proxy.log"
 
+ensure_go_runtime_overcommit() {
+    # Go dnscrypt-proxy needs virtual heap arena reservation. Strict overcommit
+    # on Asuswrt/Entware can make the binary fail before config parsing.
+    [ -w /proc/sys/vm/overcommit_memory ] && echo 1 > /proc/sys/vm/overcommit_memory
+}
+
 start() {
     if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "$NAME already running"
         return 0
     fi
     mkdir -p /opt/var/run /opt/var/log /opt/var/cache/dnscrypt-proxy
+    ensure_go_runtime_overcommit
     nohup "$DAEMON" -config "$CONFIG" -logfile "$LOGFILE" >> "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 2

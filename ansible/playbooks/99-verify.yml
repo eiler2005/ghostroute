@@ -520,6 +520,10 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q ':{{ dnscrypt_port }} '"
       changed_when: false
 
+    - name: dnscrypt-proxy Go runtime overcommit guard is enabled
+      ansible.builtin.shell: "[ \"$(cat /proc/sys/vm/overcommit_memory 2>/dev/null)\" = \"1\" ]"
+      changed_when: false
+
     - name: sing-box SOCKS listener for dnscrypt-proxy is running
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -q '127.0.0.1:{{ singbox_dnscrypt_socks_port }} '"
       changed_when: false
