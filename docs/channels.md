@@ -4,12 +4,12 @@ This document is the short handoff view of the current channel model. All
 managed channels are home-first: the endpoint's first visible remote endpoint is
 the home public IP/DDNS, not the VPS.
 
-DNS policy is documented separately in [dns-policy.md](/docs/dns-policy.md).
+DNS policy is documented separately in [dns-policy.md](dns-policy.md).
 The primary DNS goal is no DNS leak to the mobile operator; BrowserLeaks
 resolver geography is a secondary fingerprint-consistency signal.
 
 The shared routing principles for all channels are documented in
-[routing-policy-principles.md](/docs/routing-policy-principles.md). In short:
+[routing-policy-principles.md](routing-policy-principles.md). In short:
 the endpoint selects the first-hop channel, then the router owns the route
 decision. The default decision is managed-vs-direct split; Channel A also has an
 explicit selected full-VPS override for home Wi-Fi/LAN devices and Home Reality

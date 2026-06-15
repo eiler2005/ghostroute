@@ -3,8 +3,8 @@
 > **Status: archived historical snapshot from 2026-04-26.** Most items here have
 > since been implemented (CI workflow, ADRs, vault offsite backup runbook,
 > SECURITY.md, channel B/C wording). Live tracking of remaining and new
-> improvements lives in [`docs/future-improvements-backlog.md`](/docs/future-improvements-backlog.md)
-> and the latest audit [`docs/repo-review-2026-05-10.md`](/docs/repo-review-2026-05-10.md).
+> improvements lives in [`docs/future-improvements-backlog.md`](../../future-improvements-backlog.md)
+> and the latest audit [`docs/repo-review-2026-05-10.md`](../../repo-review-2026-05-10.md).
 > The body below is preserved for before/after audit reference; do not act on
 > its imperative wording without checking current state first.
 

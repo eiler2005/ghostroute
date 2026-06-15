@@ -11,9 +11,9 @@
 > belongs to focused ops follow-ups such as compact status, active leak checks
 > and Channel C proof in its own change set.
 >
-> Successor audit: [`docs/repo-review-2026-05-10.md`](/docs/repo-review-2026-05-10.md)
+> Successor audit: [`docs/repo-review-2026-05-10.md`](repo-review-2026-05-10.md)
 > is the current snapshot; the live backlog is
-> [`docs/future-improvements-backlog.md`](/docs/future-improvements-backlog.md).
+> [`docs/future-improvements-backlog.md`](future-improvements-backlog.md).
 >
 > The body below intentionally keeps the original findings, including now-stale
 > notes about missing CI, B/C wording, backup cleanup and older connection-limit
@@ -31,21 +31,21 @@
 
 ### 5 главных проблем
 
-1. **Нет CI/CD** — тесты [tests/run-all.sh](/tests/run-all.sh) существуют (8 fixture-тестов), но не запускаются автоматически. Один забытый прогон → secret-scan/syntax regression уйдёт в репо. Самый дешёвый, самый влиятельный фикс.
-2. **Нет визуальных диаграмм архитектуры** — есть text-art в [README.md](/README.md) и [docs/architecture.md](/docs/architecture.md), но Mermaid/PNG отсутствует. Для работодателя это первая «упаковка», и она недоделана.
-3. **Расхождение языка docs ↔ ADR** — [README.md](/README.md) английский, [docs/architecture.md](/docs/architecture.md) русский, [docs/adr/](/docs/adr/) английский, [docs/troubleshooting.md](/docs/troubleshooting.md) русский. Решение «двуязычный проект» нигде не задокументировано — выглядит как не до конца принятое.
-4. **Channel B/C — half-finished** — [docs/channel-c-shadowrocket-debug-research-2026-04-27.md](/docs/channel-c-shadowrocket-debug-research-2026-04-27.md) и [docs/archive/channel-c/](/docs/archive/channel-c/) показывают работу in-flight; для внешнего читателя это «недостроенная этаж». Либо доделать, либо явно пометить как experimental в README.
-5. **Бэкапы vault в репо** — [ansible/secrets/](/ansible/secrets/) содержит 3 `stealth.yml.backup-*` файла. Они gitignored (через `.gitignore` past-rule `/ansible/secrets/*.backup-*`), но создают визуальный шум при `ls`. Минор, но заметно.
+1. **Нет CI/CD** — тесты [tests/run-all.sh](../tests/run-all.sh) существуют (8 fixture-тестов), но не запускаются автоматически. Один забытый прогон → secret-scan/syntax regression уйдёт в репо. Самый дешёвый, самый влиятельный фикс.
+2. **Нет визуальных диаграмм архитектуры** — есть text-art в [README.md](../README.md) и [docs/architecture.md](architecture.md), но Mermaid/PNG отсутствует. Для работодателя это первая «упаковка», и она недоделана.
+3. **Расхождение языка docs ↔ ADR** — [README.md](../README.md) английский, [docs/architecture.md](architecture.md) русский, [docs/adr/](adr/) английский, [docs/troubleshooting.md](troubleshooting.md) русский. Решение «двуязычный проект» нигде не задокументировано — выглядит как не до конца принятое.
+4. **Channel B/C — half-finished** — [archive/channel-c/shadowrocket-debug-research-2026-04-27.md](archive/channel-c/shadowrocket-debug-research-2026-04-27.md) и [docs/archive/channel-c/](archive/channel-c/) показывают работу in-flight; для внешнего читателя это «недостроенная этаж». Либо доделать, либо явно пометить как experimental в README.
+5. **Бэкапы vault в репо** — [ansible/secrets/](../ansible/secrets/) содержит 3 `stealth.yml.backup-*` файла. Они gitignored (через `.gitignore` past-rule `/ansible/secrets/*.backup-*`), но создают визуальный шум при `ls`. Минор, но заметно.
 
 ### 5 самых полезных улучшений (impact / effort)
 
 | # | Улучшение | Impact | Effort | Где |
 |---|---|---|---|---|
 | 1 | GitHub Actions: lint shell + ansible-lint + secret-scan + run tests/run-all.sh на каждый push | High | Low | `.github/workflows/ci.yml` (NEW) |
-| 2 | Mermaid-диаграмма «5-минутная архитектура» в README.md (top fold) | High | Low | [README.md](/README.md) |
-| 3 | Раздел «Demo / 5-minute walkthrough» в README.md | High | Low | [README.md](/README.md) |
+| 2 | Mermaid-диаграмма «5-минутная архитектура» в README.md (top fold) | High | Low | [README.md](../README.md) |
+| 3 | Раздел «Demo / 5-minute walkthrough» в README.md | High | Low | [README.md](../README.md) |
 | 4 | SECURITY.md + краткое threat model в репо | High (для работодателя) | Low | `SECURITY.md` (NEW) |
-| 5 | Закрыть Channel B/C — либо производство, либо явный «experimental, do not use» | Medium | Medium | [README.md](/README.md), [docs/architecture.md](/docs/architecture.md) |
+| 5 | Закрыть Channel B/C — либо производство, либо явный «experimental, do not use» | Medium | Medium | [README.md](../README.md), [docs/architecture.md](architecture.md) |
 
 ### Что обязательно сделать перед реальным использованием
 
@@ -55,7 +55,7 @@
 
 ### Что можно спокойно отложить
 
-- Полный idempotency-rewrite Ansible-ролей (deferred в [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md), правильное решение).
+- Полный idempotency-rewrite Ansible-ролей (deferred в [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md), правильное решение).
 - Внешние alert-каналы (push/email) для health monitor — текущий подход «local STATUS_OK/STATUS_FAIL + ADR 0003» осознанный.
 - SBOM, SOC2-стиль аудит, Galaxy-grade reusable Ansible roles — overengineering для one-person home project.
 
@@ -65,29 +65,29 @@
 
 ### 2.1 Что в архитектуре уже хорошо
 
-- **Модульная декомпозиция** ([modules/](/modules/), 9 модулей + `shared/`) — реальная разделение по operational surface, не просто «папки по типу файлов». ADR 0001 фиксирует правило.
+- **Модульная декомпозиция** ([modules/](../modules/), 9 модулей + `shared/`) — реальная разделение по operational surface, не просто «папки по типу файлов». ADR 0001 фиксирует правило.
 - **Один production data plane + явные manual caveats** — Channel A — единственный production, B/C — «manual lanes», ADR 0006. Это редкая зрелая архитектурная позиция: автор сопротивляется соблазну превратить exp-каналы в auto-failover.
 - **Read-only мониторинг по умолчанию** (ADR 0003) — health monitor не мутирует production routing, пишет только в local `/opt/var/log/router_configuration/health-monitor`. Это правильный operational instinct.
-- **Vault-first secrets discipline** (ADR 0005) — `ansible/secrets/stealth.yml` зашифрован, шаблон `stealth.yml.example`, есть [secret-scan](/modules/secrets-management/bin/secret-scan), все generated артефакты gitignored ([.gitignore](/.gitignore) lines 24-46).
-- **Cold fallback, явный, с dry-run** — [modules/recovery-verification/router/emergency-enable-wgc1.sh](/modules/recovery-verification/router/emergency-enable-wgc1.sh), ADR 0004. WGC1 NVRAM сохранён намеренно, не активен в steady state.
-- **Drift detection встроен в верификацию** — [verify.sh](/verify.sh) → [modules/recovery-verification/bin/verify.sh](/modules/recovery-verification/bin/verify.sh) + [modules/recovery-verification/bin/audit-fixes](/modules/recovery-verification/bin/audit-fixes). Инварианты в [docs/architecture.md](/docs/architecture.md):252-262 явно перечислены.
-- **Boot-safe** — `firewall-start` + `cron-save-ipset` + `stealth-route-init.sh`, документировано в [docs/architecture.md](/docs/architecture.md):204-218. Reboot не ломает routing.
+- **Vault-first secrets discipline** (ADR 0005) — `ansible/secrets/stealth.yml` зашифрован, шаблон `stealth.yml.example`, есть [secret-scan](../modules/secrets-management/bin/secret-scan), все generated артефакты gitignored ([.gitignore](../.gitignore) lines 24-46).
+- **Cold fallback, явный, с dry-run** — [modules/recovery-verification/router/emergency-enable-wgc1.sh](../modules/recovery-verification/router/emergency-enable-wgc1.sh), ADR 0004. WGC1 NVRAM сохранён намеренно, не активен в steady state.
+- **Drift detection встроен в верификацию** — [verify.sh](../verify.sh) → [modules/recovery-verification/bin/verify.sh](../modules/recovery-verification/bin/verify.sh) + [modules/recovery-verification/bin/audit-fixes](../modules/recovery-verification/bin/audit-fixes). Инварианты в [docs/architecture.md](architecture.md):252-262 явно перечислены.
+- **Boot-safe** — `firewall-start` + `cron-save-ipset` + `stealth-route-init.sh`, документировано в [docs/architecture.md](architecture.md):204-218. Reboot не ломает routing.
 - **Два внутренних пути для DNS не leak'ают** — `dnscrypt-proxy` на 127.0.0.1:port → SOCKS через sing-box → upstream. Filter-AAAA при IPv6 OFF.
 
 ### 2.2 Что является настоящим риском
 
 | Риск | Где | Mitigation сейчас | Что не покрыто |
 |---|---|---|---|
-| Reality outage без cold fallback вручную | [modules/recovery-verification/router/emergency-enable-wgc1.sh](/modules/recovery-verification/router/emergency-enable-wgc1.sh) | Скрипт есть, dry-run есть | Нет automated detection «Reality down 30 min → ping operator» |
-| Vault loss / corruption | [ansible/secrets/stealth.yml](/ansible/secrets/stealth.yml) | Локальные `*.backup-*` | Нет offsite/encrypted-USB backup policy документированной |
-| Ansible role contracts слабые | [ansible/roles/](/ansible/roles/) | Часть ролей имеет `defaults/main.yml`/`meta/main.yml` (P1 в roadmap) | Не все роли — runtime ассумпции скрыты |
-| Single VPS — single point of failure | [ansible/group_vars/vps_stealth.yml](/ansible/group_vars/vps_stealth.yml) | Cold fallback на legacy WG | Нет multi-VPS / load balancing |
-| Hardcoded paths в shell-скриптах | [deploy.sh](/deploy.sh), router scripts | Roadmap §P1: «Start extracting hardcoded paths only in later targeted role refactors» | Аккуратно отложено, осознанно |
+| Reality outage без cold fallback вручную | [modules/recovery-verification/router/emergency-enable-wgc1.sh](../modules/recovery-verification/router/emergency-enable-wgc1.sh) | Скрипт есть, dry-run есть | Нет automated detection «Reality down 30 min → ping operator» |
+| Vault loss / corruption | [ansible/secrets/stealth.yml](../ansible/secrets/stealth.yml) | Локальные `*.backup-*` | Нет offsite/encrypted-USB backup policy документированной |
+| Ansible role contracts слабые | [ansible/roles/](../ansible/roles/) | Часть ролей имеет `defaults/main.yml`/`meta/main.yml` (P1 в roadmap) | Не все роли — runtime ассумпции скрыты |
+| Single VPS — single point of failure | [ansible/group_vars/vps_stealth.yml](../ansible/group_vars/vps_stealth.yml) | Cold fallback на legacy WG | Нет multi-VPS / load balancing |
+| Hardcoded paths в shell-скриптах | [deploy.sh](../deploy.sh), router scripts | Roadmap §P1: «Start extracting hardcoded paths only in later targeted role refactors» | Аккуратно отложено, осознанно |
 
 ### 2.3 Что можно не трогать сейчас
 
 - Channel A REDIRECT-architecture (sing-box на роутере, NAT REDIRECT, ipset-based dispatch) — стабильно, проверено.
-- Reality + Vision + iCloud SNI — SOTA для anti-DPI, ротация документирована в [modules/reality-sni-rotation/](/modules/reality-sni-rotation/).
+- Reality + Vision + iCloud SNI — SOTA для anti-DPI, ротация документирована в [modules/reality-sni-rotation/](../modules/reality-sni-rotation/).
 - dnsmasq + ipset как DNS-classifier — простое, надёжное, не хайповое.
 - 6 ADR — короткие, нужны, не разрослись.
 
@@ -103,13 +103,13 @@
 
 Не нашёл. Конфиги распределены логично:
 
-- [configs/dnsmasq-stealth.conf.add](/configs/dnsmasq-stealth.conf.add) — managed domains
-- [configs/static-networks.txt](/configs/static-networks.txt) — managed CIDRs
-- [configs/domains-no-vpn.txt](/configs/domains-no-vpn.txt) — exceptions
-- [ansible/group_vars/](/ansible/group_vars/) — non-secret defaults
-- [ansible/secrets/stealth.yml](/ansible/secrets/stealth.yml) — vault
+- [configs/dnsmasq-stealth.conf.add](../configs/dnsmasq-stealth.conf.add) — managed domains
+- [configs/static-networks.txt](../configs/static-networks.txt) — managed CIDRs
+- [configs/domains-no-vpn.txt](../configs/domains-no-vpn.txt) — exceptions
+- [ansible/group_vars/](../ansible/group_vars/) — non-secret defaults
+- [ansible/secrets/stealth.yml](../ansible/secrets/stealth.yml) — vault
 
-Есть один потенциальный smell: backup-копии vault в [ansible/secrets/](/ansible/secrets/) (3 шт.). Они gitignored, но stale-копии в working tree — operational drift. Хорошо бы script для авто-cleanup старше N дней.
+Есть один потенциальный smell: backup-копии vault в [ansible/secrets/](../ansible/secrets/) (3 шт.). Они gitignored, но stale-копии в working tree — operational drift. Хорошо бы script для авто-cleanup старше N дней.
 
 ---
 
@@ -117,23 +117,23 @@
 
 | Раздел | Есть? | Достаточно для домашнего проекта? | Что улучшить | Приоритет |
 |---|---|---|---|---|
-| README | ✅ ([README.md](/README.md), 476 строк) | Да, очень подробно | Добавить Mermaid-диаграмму в top fold; добавить Demo секцию | High |
-| Quick start | ✅ ([docs/getting-started.md](/docs/getting-started.md), 240 строк) | Да | Добавить «happy path: 5 minutes from clone to first traffic via Reality» | Medium |
-| Install / setup | ✅ ([ansible/README.md](/ansible/README.md), [docs/getting-started.md](/docs/getting-started.md)) | Да | — | — |
-| Описание конфигов | ✅ (распределено по module docs + [configs/](/configs/) + ansible defaults) | Да, но рассыпано | Один сводный «Config reference» был бы полезен | Low |
-| Примеры iPhone/Mac/роутер/VPS | ✅ ([modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md), [docs/getting-started.md](/docs/getting-started.md)) | Да | — | — |
-| Troubleshooting | ✅ ([docs/troubleshooting.md](/docs/troubleshooting.md), 308 строк, 9 разделов сценариев) | **Очень сильно** — лучше чем у большинства home-проектов | — | — |
-| Описание DNS и маршрутизации | ✅ ([docs/architecture.md](/docs/architecture.md):137-202, [modules/routing-core/docs/](/modules/routing-core/docs/)) | Да | — | — |
-| Раздел безопасности | ⚠️ (рассыпано: [modules/secrets-management/](/modules/secrets-management/), ADR 0005, README mention secret-scan) | Нет одного места | Создать `SECURITY.md` в корне | High |
-| Раздел восстановления | ✅ ([modules/recovery-verification/docs/failure-modes.md](/modules/recovery-verification/docs/failure-modes.md), [docs/troubleshooting.md](/docs/troubleshooting.md), [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](/modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md)) | Да | — | — |
-| ADR | ✅ ([docs/adr/](/docs/adr/), 6 ADR + README с правилами) | Да, очень редко в home-projects встречается | Можно добавить ещё 1-2 для Channel terminology, SNI rotation | Low |
-| Roadmap / backlog | ✅ ([docs/future-improvements-backlog.md](/docs/future-improvements-backlog.md) 386 строк, [docs/archive/roadmaps/](/docs/archive/roadmaps/)) | Да, очень структурно | — | — |
+| README | ✅ ([README.md](../README.md), 476 строк) | Да, очень подробно | Добавить Mermaid-диаграмму в top fold; добавить Demo секцию | High |
+| Quick start | ✅ ([docs/getting-started.md](getting-started.md), 240 строк) | Да | Добавить «happy path: 5 minutes from clone to first traffic via Reality» | Medium |
+| Install / setup | ✅ ([ansible/README.md](../ansible/README.md), [docs/getting-started.md](getting-started.md)) | Да | — | — |
+| Описание конфигов | ✅ (распределено по module docs + [configs/](../configs/) + ansible defaults) | Да, но рассыпано | Один сводный «Config reference» был бы полезен | Low |
+| Примеры iPhone/Mac/роутер/VPS | ✅ ([modules/client-profile-factory/docs/client-profiles.md](../modules/client-profile-factory/docs/client-profiles.md), [docs/getting-started.md](getting-started.md)) | Да | — | — |
+| Troubleshooting | ✅ ([docs/troubleshooting.md](troubleshooting.md), 308 строк, 9 разделов сценариев) | **Очень сильно** — лучше чем у большинства home-проектов | — | — |
+| Описание DNS и маршрутизации | ✅ ([docs/architecture.md](architecture.md):137-202, [modules/routing-core/docs/](../modules/routing-core/docs/)) | Да | — | — |
+| Раздел безопасности | ⚠️ (рассыпано: [modules/secrets-management/](../modules/secrets-management/), ADR 0005, README mention secret-scan) | Нет одного места | Создать `SECURITY.md` в корне | High |
+| Раздел восстановления | ✅ ([modules/recovery-verification/docs/failure-modes.md](../modules/recovery-verification/docs/failure-modes.md), [docs/troubleshooting.md](troubleshooting.md), [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](../modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md)) | Да | — | — |
+| ADR | ✅ ([docs/adr/](adr/), 6 ADR + README с правилами) | Да, очень редко в home-projects встречается | Можно добавить ещё 1-2 для Channel terminology, SNI rotation | Low |
+| Roadmap / backlog | ✅ ([docs/future-improvements-backlog.md](future-improvements-backlog.md) 386 строк, [docs/archive/roadmaps/](archive/roadmaps/)) | Да, очень структурно | — | — |
 | Module READMEs | ✅ (9 модулей × README + docs/) | Да | — | — |
-| Architecture | ✅ ([docs/architecture.md](/docs/architecture.md), 263 строки) | Да | + Mermaid | Medium |
+| Architecture | ✅ ([docs/architecture.md](architecture.md), 263 строки) | Да | + Mermaid | Medium |
 
 ### Главный критерий: «через 1-2 месяца сам пойму?»
 
-**Да, с высокой вероятностью.** Causal chain в [docs/architecture.md](/docs/architecture.md), runbook в [docs/troubleshooting.md](/docs/troubleshooting.md), recovery — explicit. 6 ADR фиксируют «почему так» — это самое ценное для будущего себя.
+**Да, с высокой вероятностью.** Causal chain в [docs/architecture.md](architecture.md), runbook в [docs/troubleshooting.md](troubleshooting.md), recovery — explicit. 6 ADR фиксируют «почему так» — это самое ценное для будущего себя.
 
 **Слабые места для re-onboarding:**
 
@@ -150,14 +150,14 @@
 |---|---|---|---|---|---|
 | DNS leak | Низкий | DNS уходит к LTE-оператору | `dig @<router_lan_ip> youtube.com` vs `dig @8.8.8.8 youtube.com`, сравнить, проверить sing-box log на SOCKS-traffic от dnscrypt | Уже OK через DoH+SOCKS+Reality | — |
 | IPv6 leak | Низкий → Medium | AAAA-резолв уходит к оператору | `dig AAAA youtube.com @<router_lan_ip>` (должен быть пустой) | `filter-AAAA` уже включён, есть verify-проверка | — |
-| WebRTC leak | На клиенте, не на роутере | Browser STUN запросы | `https://browserleaks.com/webrtc` через iPhone profile | Это вне scope роутера; добавить caveat в [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) | Medium |
-| SNI fingerprint | Низкий | DPI matches Reality SNI | tcpdump → Wireshark, посмотреть Client Hello SNI | `gateway.icloud.com` — strong cover, ротация документирована в [modules/reality-sni-rotation/docs/sni-rotation-candidates.md](/modules/reality-sni-rotation/docs/sni-rotation-candidates.md) | — |
+| WebRTC leak | На клиенте, не на роутере | Browser STUN запросы | `https://browserleaks.com/webrtc` через iPhone profile | Это вне scope роутера; добавить caveat в [modules/client-profile-factory/docs/client-profiles.md](../modules/client-profile-factory/docs/client-profiles.md) | Medium |
+| SNI fingerprint | Низкий | DPI matches Reality SNI | tcpdump → Wireshark, посмотреть Client Hello SNI | `gateway.icloud.com` — strong cover, ротация документирована в [modules/reality-sni-rotation/docs/sni-rotation-candidates.md](../modules/reality-sni-rotation/docs/sni-rotation-candidates.md) | — |
 | Protocol fingerprint | Низкий | Reality detection (TLS-fingerprint mismatch с реальным iCloud) | YouTube stream + iperf3 timing analysis | Vision flow + xtls-rprx-vision корректно скрывают TLS overhead | — |
 | Endpoint blocking | Medium | VPS IP заблокирован Hetzner-side или на пути | curl ifconfig.me с iPhone (через VPN), сравнить с прямым | Есть emergency direct-VPS profile (отдельный от home QR) | — |
 | DPI interference (RST, throttle) | Medium | Reality handshake fails / TCP RST после установления | tcpdump на роутере + VPS, искать TCP RST | Нет detection automation; добавить в health-monitor | Medium |
-| LTE стабильность | Low → Medium | Mobile traffic не идёт через домашний роутер | speedtest через `iphone-1` profile + traffic-report check | Документирован MSS clamp 1360, connlimit 300, [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) | — |
+| LTE стабильность | Low → Medium | Mobile traffic не идёт через домашний роутер | speedtest через `iphone-1` profile + traffic-report check | Документирован MSS clamp 1360, connlimit 300, [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](../modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) | — |
 | Смена оператора | Low | Билинг как international | LTE-оператор видит home IP destination → domestic | Архитектурно гарантировано Reality home ingress | — |
-| Split routing correctness | Low | RU сайты видят DE IP | traffic-report rule mistake checks | Уже есть [modules/traffic-observatory/](/modules/traffic-observatory/) checks | — |
+| Split routing correctness | Low | RU сайты видят DE IP | traffic-report rule mistake checks | Уже есть [modules/traffic-observatory/](../modules/traffic-observatory/) checks | — |
 | Fail-closed vs fail-open | **Medium** | При Reality outage clients идут direct WAN (managed → fail open) | Manual test: power-off VPS, проверить что managed traffic не идёт | **Документировано: fail-open для managed.** Нет explicit kill-switch | High |
 | Catalog maxelem overflow | Low | STEALTH_DOMAINS заполнен → новые managed домены не попадают | `ipset list STEALTH_DOMAINS` headroom | Уже есть Growth Trends в health-report | — |
 
@@ -165,7 +165,7 @@
 
 1. **Перед каждым релизом:** `./verify.sh --verbose && cd ansible && ansible-playbook playbooks/99-verify.yml --limit routers,vps_stealth` — должно быть green.
 2. **После router reboot:** `ipset list STEALTH_DOMAINS` headroom check.
-3. **При смене SNI:** [modules/reality-sni-rotation/docs/sni-rotation-candidates.md](/modules/reality-sni-rotation/docs/sni-rotation-candidates.md) protocol — `validate-sni-candidate.sh`.
+3. **При смене SNI:** [modules/reality-sni-rotation/docs/sni-rotation-candidates.md](../modules/reality-sni-rotation/docs/sni-rotation-candidates.md) protocol — `validate-sni-candidate.sh`.
 4. **Перед поездкой / important demo:** speedtest через iphone-N profile, traffic-report для smoke check.
 
 ### 4.3 Что реально повышает устойчивость
@@ -198,13 +198,13 @@
 
 | Вопрос | Ответ — есть | Где |
 |---|---|---|
-| Какой сейчас внешний IP? | ✅ Через traffic-report или ручной curl ifconfig.me | [modules/traffic-observatory/bin/traffic-report](/modules/traffic-observatory/bin/traffic-report) |
-| Какой DNS используется? | ✅ Через router-health-report | [modules/ghostroute-health-monitor/bin/router-health-report](/modules/ghostroute-health-monitor/bin/router-health-report) |
+| Какой сейчас внешний IP? | ✅ Через traffic-report или ручной curl ifconfig.me | [modules/traffic-observatory/bin/traffic-report](../modules/traffic-observatory/bin/traffic-report) |
+| Какой DNS используется? | ✅ Через router-health-report | [modules/ghostroute-health-monitor/bin/router-health-report](../modules/ghostroute-health-monitor/bin/router-health-report) |
 | Активен ли VPN/proxy? | ✅ STATUS_OK / STATUS_FAIL | router `/opt/var/log/router_configuration/health-monitor/status.json` |
-| Какой маршрут выбран? | ✅ traffic-report показывает per-device, per-domain | [modules/traffic-observatory/](/modules/traffic-observatory/) |
-| Packet loss / latency? | ⚠️ Частично — нет regular timing benchmarks | [modules/performance-diagnostics/](/modules/performance-diagnostics/) — manual diagnostics |
+| Какой маршрут выбран? | ✅ traffic-report показывает per-device, per-domain | [modules/traffic-observatory/](../modules/traffic-observatory/) |
+| Packet loss / latency? | ⚠️ Частично — нет regular timing benchmarks | [modules/performance-diagnostics/](../modules/performance-diagnostics/) — manual diagnostics |
 | Когда был последний reconnect? | ⚠️ Только в sing-box log, не aggregate'ится | — |
-| Куда ушёл конкретный тип трафика? | ✅ traffic-report «Top by Reality / Top by Direct WAN» | [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) |
+| Куда ушёл конкретный тип трафика? | ✅ traffic-report «Top by Reality / Top by Direct WAN» | [modules/traffic-observatory/docs/traffic-observability.md](../modules/traffic-observatory/docs/traffic-observability.md) |
 | Была ли утечка DNS/IP? | ⚠️ Health-report показывает invariants, но нет explicit «leak check probe» | — |
 
 ### 5.2 Что добавить (легко, по убыванию impact)
@@ -213,7 +213,7 @@
 2. **Last-reconnect aggregator.** Парсить sing-box log на `outbound restart`/`connection reset to vps` события, выводить «last 5 reconnects» в `router-health-report`.
 3. **External-IP probe.** Опционально: cron на роутере `curl --proxy socks5h://localhost:port https://ifconfig.me` → лог. Caveat: сам факт probe виден стороннему observer'у. Запускать редко (раз в час max).
 4. **Compact CLI status** — `./modules/ghostroute-health-monitor/bin/status` (новый) — 5-строчный вывод: VPN status / current SNI / managed domain count / last reconnect / DNS source.
-5. **Simple status page** (опционально, на `127.0.0.1:9999` через busybox httpd) — для iOS Shortcut self-check. Уже упоминается в [modules/ghostroute-health-monitor/docs/](/modules/ghostroute-health-monitor/docs/).
+5. **Simple status page** (опционально, на `127.0.0.1:9999` через busybox httpd) — для iOS Shortcut self-check. Уже упоминается в [modules/ghostroute-health-monitor/docs/](../modules/ghostroute-health-monitor/docs/).
 
 ### 5.3 Чего не нужно делать (overengineering)
 
@@ -276,21 +276,21 @@
 | # | Что | Зачем | Где | Сложность | Критерий готовности |
 |---|---|---|---|---|---|
 | M1 | GitHub Actions: shell-lint + ansible-lint + secret-scan + tests/run-all.sh | Protect against regressions; signal of engineering discipline | `.github/workflows/ci.yml` (NEW) | S | PR создаёт green status check |
-| M2 | Mermaid-диаграмма в README (top fold, до Quick Start) | Первое впечатление работодателя | [README.md](/README.md) | S | На GitHub UI диаграмма рендерится |
+| M2 | Mermaid-диаграмма в README (top fold, до Quick Start) | Первое впечатление работодателя | [README.md](../README.md) | S | На GitHub UI диаграмма рендерится |
 | M3 | SECURITY.md: threat model, secrets policy, scope | Security signal для работодателя | `SECURITY.md` (NEW) | S | Содержит threat model, что НЕ покрывает, recovery contacts |
-| M4 | README «Demo» section | «Show, don't tell» | [README.md](/README.md) | S | Скриншот / asciinema / sample output |
-| M5 | Channel B/C status decision | Закрыть half-finished work | [README.md](/README.md), [docs/architecture.md](/docs/architecture.md) | M | Либо «works on iOS» либо «experimental, see debug research» |
-| M6 | Vault offline backup runbook | Real risk: vault loss = total loss | [modules/secrets-management/docs/](/modules/secrets-management/docs/) | S | Runbook с шагами «restore from backup» |
+| M4 | README «Demo» section | «Show, don't tell» | [README.md](../README.md) | S | Скриншот / asciinema / sample output |
+| M5 | Channel B/C status decision | Закрыть half-finished work | [README.md](../README.md), [docs/architecture.md](architecture.md) | M | Либо «works on iOS» либо «experimental, see debug research» |
+| M6 | Vault offline backup runbook | Real risk: vault loss = total loss | [modules/secrets-management/docs/](../modules/secrets-management/docs/) | S | Runbook с шагами «restore from backup» |
 
 ### High impact / low effort (быстрые улучшения)
 
 | # | Что | Зачем | Где |
 |---|---|---|---|
-| H1 | DNS leak probe in health-monitor | Real security check | [modules/ghostroute-health-monitor/](/modules/ghostroute-health-monitor/) |
-| H2 | Compact `status` CLI (5-line current state) | UX for daily use | [modules/ghostroute-health-monitor/bin/](/modules/ghostroute-health-monitor/bin/) |
-| H3 | Cleanup script для stale `*.backup-*` в ansible/secrets/ | Hygiene | [modules/secrets-management/bin/](/modules/secrets-management/bin/) |
+| H1 | DNS leak probe in health-monitor | Real security check | [modules/ghostroute-health-monitor/](../modules/ghostroute-health-monitor/) |
+| H2 | Compact `status` CLI (5-line current state) | UX for daily use | [modules/ghostroute-health-monitor/bin/](../modules/ghostroute-health-monitor/bin/) |
+| H3 | Cleanup script для stale `*.backup-*` в ansible/secrets/ | Hygiene | [modules/secrets-management/bin/](../modules/secrets-management/bin/) |
 | H4 | LICENSE, CHANGELOG.md в корне | Repo polish | `/` |
-| H5 | README badges для CI status, license, last-commit | Visual professionalism | [README.md](/README.md) |
+| H5 | README badges для CI status, license, last-commit | Visual professionalism | [README.md](../README.md) |
 
 ### Later
 
@@ -324,7 +324,7 @@
 | Архитектурная диаграмма | Text-art ASCII. Читается, но в 2026 году выглядит дёшево. | «Старая школа. Видно что человек понимает, но визуально не вкладывается.» | Mermaid + один screenshot/PNG для серьёзности. | High |
 | ADR | 6 коротких ADR с README объясняющим когда добавлять. **Это редко.** | «О, человек знает что такое ADR и реально их пишет, не для галочки.» | — | — |
 | Module structure | 9 модулей с README + docs/ + bin/ + tests/. Module-native ADR. | «Видно архитектурное мышление. Не плоский скрипт-кладбище.» | — | — |
-| Trade-offs | Описаны в [docs/future-improvements-backlog.md](/docs/future-improvements-backlog.md) (что не делать), [docs/archive/roadmaps/](/docs/archive/roadmaps/) (deferred). | «Видно что решения принимаются осознанно, не cargo-cult.» | — | — |
+| Trade-offs | Описаны в [docs/future-improvements-backlog.md](future-improvements-backlog.md) (что не делать), [docs/archive/roadmaps/](archive/roadmaps/) (deferred). | «Видно что решения принимаются осознанно, не cargo-cult.» | — | — |
 | Configs без секретов | `secrets/stealth.yml.example`, `.env.example`. Все генерируемые артефакты gitignored. | «Hygiene есть.» | Можно добавить explicit «no secrets ever in git» policy в README. | Low |
 | Мусор / хаос | Минимум. `__pycache__/` в gitignore, нет `.DS_Store`, нет TODO в коде. | «Аккуратный.» | — | — |
 | Recent commits | `docs: rollback global README additions` / `docs: document current A/B channel architecture` / `Channel B: home-first relay...`. Профессионально. | «Видно что delete commits есть — работа не только дополняется, но и refactor'ится.» | — | — |
@@ -353,7 +353,7 @@
 2. **Architecture diagram** (Mermaid).
 3. **Demo** (asciinema или скриншоты).
 4. **Trade-offs / Limitations** (явный раздел из текущего future-improvements).
-5. **Architecture Decisions** (1 абзац + ссылка на [docs/adr/](/docs/adr/) с table).
+5. **Architecture Decisions** (1 абзац + ссылка на [docs/adr/](adr/) с table).
 6. **Security Considerations** (1 абзац + ссылка на SECURITY.md).
 7. **Why this exists** (1 абзац — personal context: «I needed home-first Reality for LTE billing reasons + RKN bypass + per-app routing without VPN apps on home devices»).
 
@@ -361,7 +361,7 @@
 
 **Один уровень — top-fold:** упрощённая Mermaid (4-5 узлов): Mobile → Router → VPS → Internet, с двумя стрелками «managed/non-managed».
 
-**Второй уровень — в [docs/architecture.md](/docs/architecture.md):** более детальная Mermaid с layers (DNS, ipset, sing-box, Caddy L4, Xray Reality), показывая каждый компонент.
+**Второй уровень — в [docs/architecture.md](architecture.md):** более детальная Mermaid с layers (DNS, ipset, sing-box, Caddy L4, Xray Reality), показывая каждый компонент.
 
 **Не делать:** один гигантский диаграмм со всем сразу. Это пугает.
 

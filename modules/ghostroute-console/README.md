@@ -13,11 +13,11 @@ Console UI and module docs should describe factual read-only evidence, not imply
 live control-plane authority.
 
 Architecture details live in
-[`docs/ghostroute-console-architecture.md`](/docs/ghostroute-console-architecture.md).
+[`docs/ghostroute-console-architecture.md`](../../docs/ghostroute-console-architecture.md).
 Monitoring semantics live in
-[`monitoring-principles.md`](/modules/ghostroute-console/docs/monitoring-principles.md).
+[`monitoring-principles.md`](docs/monitoring-principles.md).
 Operational details live in
-[`operator-runbook.md`](/modules/ghostroute-console/docs/operator-runbook.md).
+[`operator-runbook.md`](docs/operator-runbook.md).
 
 ---
 
@@ -402,7 +402,7 @@ ansible-playbook ../modules/ghostroute-console/vps/deploy-readonly.yml -e ghostr
 The reset quarantines old SQLite files under the VPS Console data backups
 directory and starts fresh collection from the new registry/collector contract.
 
-More detail: [operator-runbook.md](/modules/ghostroute-console/docs/operator-runbook.md).
+More detail: [operator-runbook.md](docs/operator-runbook.md).
 
 ## Local Development
 
@@ -426,7 +426,7 @@ today/week/month traffic windows.
 
 Module-owned checks live under `modules/ghostroute-console/app`. The root
 `tests/` layer orchestrates them through
-[`tests/run-console.sh`](/tests/run-console.sh) without owning Console internals.
+[`tests/run-console.sh`](../../tests/run-console.sh) without owning Console internals.
 
 ```bash
 cd modules/ghostroute-console/app
@@ -546,14 +546,16 @@ listener/proxy/client path first, not Channel A/B/C, managed DNS, sing-box or
 router firewall.
 
 Detailed runbook:
-[`operator-runbook.md`](/modules/ghostroute-console/docs/operator-runbook.md).
+[`operator-runbook.md`](docs/operator-runbook.md).
 
 ## Further Reading
 
-- [Root GhostRoute README](/README.md)
-- [GhostRoute Console architecture](/docs/ghostroute-console-architecture.md)
-- [Monitoring principles](/modules/ghostroute-console/docs/monitoring-principles.md)
-- [Data pyramid](/modules/ghostroute-console/docs/data-pyramid.md)
-- [Operator runbook](/modules/ghostroute-console/docs/operator-runbook.md)
-- [Root test orchestration](/tests/README.md)
-- [Console post-MVP roadmap](/docs/ghostroute-console-post-mvp-roadmap.md)
+- [Root GhostRoute README](../../README.md)
+- [GhostRoute Console architecture](../../docs/ghostroute-console-architecture.md)
+- [Monitoring principles](docs/monitoring-principles.md)
+- [Data pyramid](docs/data-pyramid.md)
+- [Database schema reference](docs/database-schema.md)
+- [API contracts](docs/api-contracts.md)
+- [Operator runbook](docs/operator-runbook.md)
+- [Root test orchestration](../../tests/README.md)
+- [Console post-MVP roadmap](../../docs/ghostroute-console-post-mvp-roadmap.md)

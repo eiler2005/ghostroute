@@ -7,7 +7,7 @@ credentials and deployment-specific values stay in Vault, gitignored
 `secrets/`, generated artifacts or health reports.
 
 For the machine-readable source of truth, see
-[`configs/runtime-inventory.yml`](/configs/runtime-inventory.yml). For live
+[`configs/runtime-inventory.yml`](../configs/runtime-inventory.yml). For live
 verification, run `./verify.sh --verbose` or
 `cd ansible && ansible-playbook playbooks/99-verify.yml`.
 
@@ -303,12 +303,12 @@ run the matching playbook in `--check --diff` before any deploy.
 
 ## Related Docs
 
-- [`architecture.md`](/docs/architecture.md) - layered routing model.
-- [`channels.md`](/docs/channels.md) - channel handoff view.
-- [`channel-d.md`](/docs/channel-d.md) - Channel D NaiveProxy lab details.
-- [`channel-m-environment.md`](/docs/channel-m-environment.md) - Channel M reverse egress details.
-- [`dns-policy.md`](/docs/dns-policy.md) - DNS consistency and leak policy.
-- [`runtime-inventory.md`](/docs/runtime-inventory.md) - inventory policy and upgrade gates.
+- [`architecture.md`](architecture.md) - layered routing model.
+- [`channels.md`](channels.md) - channel handoff view.
+- [`channel-d.md`](channel-d.md) - Channel D NaiveProxy lab details.
+- [`channel-m-environment.md`](channel-m-environment.md) - Channel M reverse egress details.
+- [`dns-policy.md`](dns-policy.md) - DNS consistency and leak policy.
+- [`runtime-inventory.md`](runtime-inventory.md) - inventory policy and upgrade gates.
 - [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map.
-- [`modules/routing-core/README.md`](/modules/routing-core/README.md) - routing-core module ownership.
-- [`modules/recovery-verification/docs/failure-modes.md`](/modules/recovery-verification/docs/failure-modes.md) - recovery runbook.
+- [`modules/routing-core/README.md`](../modules/routing-core/README.md) - routing-core module ownership.
+- [`modules/recovery-verification/docs/failure-modes.md`](../modules/recovery-verification/docs/failure-modes.md) - recovery runbook.

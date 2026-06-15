@@ -76,5 +76,5 @@ Use it as the LLM/offline-analysis input, then promote only stable findings into
 deterministic local rules. The GUI should display and filter this queue, not ask
 the operator to classify large traffic volumes one button at a time.
 
-See [`docs/traffic-intelligence-layer-plan.md`](/docs/traffic-intelligence-layer-plan.md)
+See [`docs/traffic-intelligence-layer-plan.md`](../../docs/traffic-intelligence-layer-plan.md)
 for the schema boundaries, taxonomy, GUI plan and verification path.

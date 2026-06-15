@@ -137,7 +137,7 @@ worked around.
 Vault loss is a critical operational risk. Keep an encrypted offsite backup and
 periodically test restore without touching production runtime. The runbook lives
 at
-[modules/secrets-management/docs/vault-offsite-backup.md](/modules/secrets-management/docs/vault-offsite-backup.md).
+[modules/secrets-management/docs/vault-offsite-backup.md](modules/secrets-management/docs/vault-offsite-backup.md).
 
 ## Reporting Issues
 

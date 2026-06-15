@@ -274,6 +274,6 @@ ip route get <resolved-ip> mark 0x1000
 ## 11. What To Read Next
 
 - [architecture.md](architecture.md)
-- [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md)
-- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md)
+- [modules/routing-core/docs/channel-routing-operations.md](../modules/routing-core/docs/channel-routing-operations.md)
+- [modules/dns-catalog-intelligence/docs/domain-management.md](../modules/dns-catalog-intelligence/docs/domain-management.md)
 - [troubleshooting.md](troubleshooting.md)

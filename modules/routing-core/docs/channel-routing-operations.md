@@ -32,7 +32,7 @@ Per-domain `@wgc1` DNS upstreams are retired. `wgs1`/`wgc1` are inactive in
 steady state; `wgc1_*` NVRAM is preserved only for cold fallback. New mobile
 clients should use the QR profile that points at the home public IP.
 
-Full flow map: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
+Full flow map: [modules/routing-core/docs/network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ---
 
@@ -418,4 +418,4 @@ vless://00000000-0000-4000-8000-000000000000@example.invalid:443?type=tcp&securi
 | Static service broken | `VPN_STATIC_NETS`, REDIRECT counters, source-specific route |
 | Reality tunnel down | `sing-box` status/log, VPS Caddy/Xray, `99-verify.yml` |
 
-Full guide: [troubleshooting.md](troubleshooting.md).
+Full guide: [troubleshooting.md](../../../docs/troubleshooting.md).

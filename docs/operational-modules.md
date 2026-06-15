@@ -9,11 +9,11 @@ remain local or on router/VPS runtime storage.
 
 For the Ansible-specific deployment map of what is installed on the router,
 what is installed on the VPS, and what remains local control-machine output,
-see [ansible/README.md](/ansible/README.md).
+see [ansible/README.md](../ansible/README.md).
 
 For the sanitized runtime component, version and port/listener registry, see
-[runtime-inventory.md](/docs/runtime-inventory.md). Its machine-readable source
-is [configs/runtime-inventory.yml](/configs/runtime-inventory.yml).
+[runtime-inventory.md](runtime-inventory.md). Its machine-readable source
+is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 
 ## Module Map
 

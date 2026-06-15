@@ -48,7 +48,7 @@ bash -n verify.sh tests/run-all.sh tests/run-fast.sh
 - Use [language tags](docs/repo-review-2026-05-10.md) for non-EN-primary docs:
   `[RU primary]` at the top of any doc that is operator-Russian, plus a
   cross-link to its EN entry point if one exists.
-- Internal links use repo-root paths (e.g. `[docs/architecture.md](/docs/architecture.md)`)
+- Internal links use repo-root paths (e.g. `[docs/architecture.md](docs/architecture.md)`)
   so they resolve identically on GitHub and locally.
 - Module-owned deep dives live in `modules/<module>/docs/`. Cross-cutting docs
   live in `docs/`.

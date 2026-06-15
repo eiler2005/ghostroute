@@ -221,7 +221,7 @@ before implementation:
 
 Статус:
 
-- стартовый audit создан в [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md)
+- стартовый audit создан в [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](../modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md)
 - runtime catalog не менялся
 - future implementation должна быть report-only до отдельного решения
 
@@ -634,10 +634,10 @@ direct/RU/default трафик остается на home WAN.
 ## Связанные документы
 
 - [architecture.md](architecture.md)
-- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md)
-- [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md)
-- [modules/traffic-observatory/docs/llm-traffic-runbook.md](/modules/traffic-observatory/docs/llm-traffic-runbook.md)
+- [modules/dns-catalog-intelligence/docs/domain-management.md](../modules/dns-catalog-intelligence/docs/domain-management.md)
+- [modules/traffic-observatory/docs/traffic-observability.md](../modules/traffic-observatory/docs/traffic-observability.md)
+- [modules/traffic-observatory/docs/llm-traffic-runbook.md](../modules/traffic-observatory/docs/llm-traffic-runbook.md)
 - [remote-access-overlay-migration.md](remote-access-overlay-migration.md)
 - [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md)
 - [ghostroute-console-post-mvp-roadmap.md](ghostroute-console-post-mvp-roadmap.md)
-- [modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md](/modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md)
+- [modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md](../modules/dns-catalog-intelligence/docs/x3mrouting-roadmap.md)

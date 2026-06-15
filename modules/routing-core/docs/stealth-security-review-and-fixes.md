@@ -387,7 +387,7 @@ Recommendation: use `gateway.icloud.com` as the primary replacement for Microsof
 
 ### Fix
 
-Exact procedure is already documented in [modules/reality-sni-rotation/docs/sni-rotation-candidates.md §4](/modules/reality-sni-rotation/docs/sni-rotation-candidates.md). Summary of the switch:
+Exact procedure is already documented in [modules/reality-sni-rotation/docs/sni-rotation-candidates.md §4](../../reality-sni-rotation/docs/sni-rotation-candidates.md). Summary of the switch:
 
 1. Pre-flight validate the candidate:
    ```

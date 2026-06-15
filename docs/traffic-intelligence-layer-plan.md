@@ -1,5 +1,7 @@
 # Traffic Intelligence Layer Plan
 
+> **Status: planning / future direction — not current runtime state.**
+
 ## Summary
 
 The v3 traffic accounting and evidence pipeline is the foundation for facts:

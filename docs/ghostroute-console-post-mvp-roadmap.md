@@ -1,5 +1,7 @@
 # GhostRoute Console Post-MVP Roadmap
 
+> **Status: planning / future direction — not current runtime state.** `[RU primary]`
+
 Этот документ фиксирует будущий roadmap для `modules/ghostroute-console/` и
 смежных operational-модулей. Текущий MVP остаётся factual read-only Console:
 normal UI строится только на реальных snapshots/SQLite, fixtures и mock-данные

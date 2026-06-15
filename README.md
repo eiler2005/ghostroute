@@ -78,7 +78,7 @@ The layered model separates the main traffic responsibilities:
 - Layer 1 is the managed channel layer. Channel A, Channel B, Channel C and
   experimental Channel D are
   home-first: the first network sees endpoint -> home endpoint, not endpoint ->
-  VPS. See [docs/channels.md](/docs/channels.md) for the compact A/B/C/D handoff
+  VPS. See [docs/channels.md](docs/channels.md) for the compact A/B/C/D handoff
   model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
   Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
   client with Naive outbound support. Channel D is a disabled-by-default
@@ -224,9 +224,9 @@ core, not just a set of firewall scripts:
   client, health, live and catalog evidence. It renders full desktop
   workbenches plus compact mobile `/m` triage pages, while remaining a
   read-model consumer rather than a router/VPS runtime owner. See
-  [modules/ghostroute-console/README.md](/modules/ghostroute-console/README.md)
+  [modules/ghostroute-console/README.md](modules/ghostroute-console/README.md)
   and
-  [docs/ghostroute-console-architecture.md](/docs/ghostroute-console-architecture.md).
+  [docs/ghostroute-console-architecture.md](docs/ghostroute-console-architecture.md).
 - **DNS & Catalog Intelligence** — DNS lookup observation, domain discovery
   and managed-catalog maintenance. It helps identify which domains a service
   uses, keeps manual and auto-discovered rules separated, and feeds
@@ -234,11 +234,11 @@ core, not just a set of firewall scripts:
   devices.
 - **Routing Policy Principles** — the compact contract for endpoint policy,
   channel ingress, router managed split and VPS/home egress decisions. See
-  [docs/routing-policy-principles.md](/docs/routing-policy-principles.md).
+  [docs/routing-policy-principles.md](docs/routing-policy-principles.md).
 - **DNS Policy** — channel proof guidance for DNS leak vs resolver fingerprint:
   the primary goal is no DNS leakage to the mobile operator; resolver geography
   shown by BrowserLeaks is a secondary consistency signal. See
-  [docs/dns-policy.md](/docs/dns-policy.md).
+  [docs/dns-policy.md](docs/dns-policy.md).
 - **Performance Diagnostics Toolkit** — checks and documentation for latency,
   retransmits, TCP tuning, MSS clamp, keepalive behavior and LTE/Home Reality
   performance symptoms, so speed issues can be diagnosed separately from
@@ -261,8 +261,8 @@ Together these modules make the repo auditable: routing, health, traffic,
 performance and recovery procedures are documented as separate operational
 surfaces with clear read-only diagnostics and explicit manual recovery steps.
 See the full module map in
-[docs/operational-modules.md](/docs/operational-modules.md).
-For a compact channel handoff, see [docs/channels.md](/docs/channels.md).
+[docs/operational-modules.md](docs/operational-modules.md).
+For a compact channel handoff, see [docs/channels.md](docs/channels.md).
 
 ---
 
@@ -441,7 +441,7 @@ home WAN IP unless the Home Reality profile is explicitly selected for Channel A
 full-VPS mode.
 
 Detailed workflow, ports, components and observer model:
-[modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
+[modules/routing-core/docs/network-flow-and-observer-model.md](modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ### 4. Cold Fallback
 
@@ -476,10 +476,10 @@ router DNS, TUN state or automatic failover. Treat generated
 `ansible/out/clients-channel-b/` artifacts as selected-client production
 credentials and generated `ansible/out/clients-channel-c/` artifacts as
 selected-client Channel C artifacts. Shadowrocket compatibility is not proof of
-native Naive; see [docs/channels.md](/docs/channels.md) and
-[docs/channel-c.md](/docs/channel-c.md). Treat generated
+native Naive; see [docs/channels.md](docs/channels.md) and
+[docs/channel-c.md](docs/channel-c.md). Treat generated
 `ansible/out/clients-channel-d/` artifacts as experimental Channel D credentials;
-see [docs/channel-d.md](/docs/channel-d.md).
+see [docs/channel-d.md](docs/channel-d.md).
 
 ### 6. Channel M MAX Service Egress
 
@@ -589,10 +589,10 @@ docs/
 ```
 
 The detailed physical module map lives in
-[docs/operational-modules.md](/docs/operational-modules.md). The global README
+[docs/operational-modules.md](docs/operational-modules.md). The global README
 keeps the high-level workflow; module folders contain local implementation
 overviews. The Ansible router/VPS deployment component map lives in
-[ansible/README.md](/ansible/README.md).
+[ansible/README.md](ansible/README.md).
 
 ---
 
@@ -684,7 +684,7 @@ traffic cards. Console machine accounting reads `traffic-facts` v3 from raw
 much went through the VPS, how much stayed on the home WAN, which devices and
 Home Reality ingress clients were active, and whether likely routing mistakes
 appeared. See
-[modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
+[modules/traffic-observatory/docs/traffic-observability.md](modules/traffic-observatory/docs/traffic-observability.md).
 Traffic interpretation is a separate local layer: `traffic_facts` keeps bytes,
 DNS/route evidence and accounting status, while Traffic Intelligence writes
 labels, explanations and dry-run decision candidates for the Console
@@ -780,7 +780,7 @@ The `router.conf` profile still targets the VPS directly because it is the route
 
 Never commit or paste real VLESS URIs, UUIDs, Reality keys, short IDs, admin paths or QR payloads into documentation. Use fake placeholders only.
 
-See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) and [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md).
+See [modules/client-profile-factory/docs/client-profiles.md](modules/client-profile-factory/docs/client-profiles.md) and [modules/secrets-management/docs/secrets-management.md](modules/secrets-management/docs/secrets-management.md).
 
 ---
 
@@ -860,18 +860,18 @@ contracts.
 
 | ADR | Decision |
 |---|---|
-| [0001](/docs/adr/0001-module-native-repo.md) | Keep the repository module-native rather than script-bucket oriented. |
-| [0002](/docs/adr/0002-scripts-reserved-policy.md) | Reserve `scripts/` for future cross-module utilities. |
-| [0003](/docs/adr/0003-local-only-health-alerts.md) | Keep health alerts local and read-only by default. |
-| [0004](/docs/adr/0004-deprecated-wireguard-cold-fallback.md) | Preserve WireGuard only as an explicit cold fallback. |
-| [0005](/docs/adr/0005-secrets-outside-git.md) | Keep real credentials and generated artifacts outside git. |
-| [0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Define initial channel terminology and no automatic B/C failover. |
-| [0007](/docs/adr/0007-channel-b-production-channel-c-planned.md) | Record current B/C channel maturity. |
-| [0008](/docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Record Channel C live compatibility and native Naive blocker. |
-| [0009](/docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Keep managed DNS on dnscrypt-backed forwarding; public VPS 443 open for Reality, public DNS 53 closed. |
-| [0010](/docs/adr/0010-channel-a-selected-full-vps.md) | Add Channel A selected full-VPS override for selected home Wi-Fi/LAN devices and Home Reality profiles. |
+| [0001](docs/adr/0001-module-native-repo.md) | Keep the repository module-native rather than script-bucket oriented. |
+| [0002](docs/adr/0002-scripts-reserved-policy.md) | Reserve `scripts/` for future cross-module utilities. |
+| [0003](docs/adr/0003-local-only-health-alerts.md) | Keep health alerts local and read-only by default. |
+| [0004](docs/adr/0004-deprecated-wireguard-cold-fallback.md) | Preserve WireGuard only as an explicit cold fallback. |
+| [0005](docs/adr/0005-secrets-outside-git.md) | Keep real credentials and generated artifacts outside git. |
+| [0006](docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Define initial channel terminology and no automatic B/C failover. |
+| [0007](docs/adr/0007-channel-b-production-channel-c-planned.md) | Record current B/C channel maturity. |
+| [0008](docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Record Channel C live compatibility and native Naive blocker. |
+| [0009](docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Keep managed DNS on dnscrypt-backed forwarding; public VPS 443 open for Reality, public DNS 53 closed. |
+| [0010](docs/adr/0010-channel-a-selected-full-vps.md) | Add Channel A selected full-VPS override for selected home Wi-Fi/LAN devices and Home Reality profiles. |
 
-See [docs/adr/](/docs/adr/) for the full index and when to add a new record.
+See [docs/adr/](docs/adr/) for the full index and when to add a new record.
 
 ---
 
@@ -880,42 +880,42 @@ See [docs/adr/](/docs/adr/) for the full index and when to add a new record.
 The public repo intentionally contains implementation logic, placeholders and
 sanitized examples only. Real endpoints, listener ports, UUIDs, keys, QR
 payloads, admin paths and generated profiles stay in Vault or gitignored local
-directories. See [SECURITY.md](/SECURITY.md) and
-[modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md).
+directories. See [SECURITY.md](SECURITY.md) and
+[modules/secrets-management/docs/secrets-management.md](modules/secrets-management/docs/secrets-management.md).
 
 ---
 
 ## Detailed Documentation
 
 - [README-ru.md](README-ru.md) - localized documentation
-- [CONTRIBUTING.md](/CONTRIBUTING.md) - developer setup, commit/PR conventions, safety boundaries
-- [SECURITY.md](/SECURITY.md) - threat model, protected assets, non-goals and recovery boundaries
-- [docs/glossary.md](/docs/glossary.md) - definitions for managed domain, split routing, channels, Reality terms
-- [docs/deployment-and-rollback.md](/docs/deployment-and-rollback.md) - pre-deploy checklist, per-component rollback, hard rules
-- [docs/operational-slos.md](/docs/operational-slos.md) - availability/latency/correctness targets and how to measure them
-- [ansible/README.md](/ansible/README.md) - deployment, Vault, profile generation and live verification control plane
-- [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map and operating surfaces
-- [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
-- [docs/adr/](/docs/adr/) - concise architecture decision records
-- [docs/routing-policy-principles.md](/docs/routing-policy-principles.md) - compact routing policy contract across Channels A/B/C
-- [docs/channel-a-selected-full-vps.md](/docs/channel-a-selected-full-vps.md) - optional selected-device full-VPS sets for home LAN/Wi-Fi and Channel A Home Reality profiles
-- [docs/architecture.md](/docs/architecture.md) - current routing architecture
-- [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
-- [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
-- [modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md](/modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md) - GhostRoute health monitor implementation
-- [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](/modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md) - health monitor alerts and recovery runbook
-- [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
-- [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md) - day-2 operations and channel switching
-- [modules/routing-core/docs/stealth-channel-implementation-guide.md](/modules/routing-core/docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
-- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md) - domain and static-network catalog management
-- [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
-- [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md) - vault, local secrets and pre-push scan
-- [modules/secrets-management/docs/vault-offsite-backup.md](/modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill
-- [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
-- [docs/troubleshooting.md](/docs/troubleshooting.md) - incident diagnostics (RU primary; English equivalents in module runbooks such as `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`)
-- [docs/future-improvements-backlog.md](/docs/future-improvements-backlog.md) - long-running improvement backlog (RU primary; EN summary at the top)
-- [docs/repo-review-2026-05-10.md](/docs/repo-review-2026-05-10.md) - latest repository quality audit and prioritized fixlist
-- [docs/traffic-facts-v3-and-pyramid-plan.md](/docs/traffic-facts-v3-and-pyramid-plan.md) - active refactor plan: traffic-evidence + traffic-facts v3 + Console pyramid + filter scaffold
+- [CONTRIBUTING.md](CONTRIBUTING.md) - developer setup, commit/PR conventions, safety boundaries
+- [SECURITY.md](SECURITY.md) - threat model, protected assets, non-goals and recovery boundaries
+- [docs/glossary.md](docs/glossary.md) - definitions for managed domain, split routing, channels, Reality terms
+- [docs/deployment-and-rollback.md](docs/deployment-and-rollback.md) - pre-deploy checklist, per-component rollback, hard rules
+- [docs/operational-slos.md](docs/operational-slos.md) - availability/latency/correctness targets and how to measure them
+- [ansible/README.md](ansible/README.md) - deployment, Vault, profile generation and live verification control plane
+- [docs/operational-modules.md](docs/operational-modules.md) - canonical module map and operating surfaces
+- [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - archived architecture/security improvement roadmap
+- [docs/adr/](docs/adr/) - concise architecture decision records
+- [docs/routing-policy-principles.md](docs/routing-policy-principles.md) - compact routing policy contract across Channels A/B/C
+- [docs/channel-a-selected-full-vps.md](docs/channel-a-selected-full-vps.md) - optional selected-device full-VPS sets for home LAN/Wi-Fi and Channel A Home Reality profiles
+- [docs/architecture.md](docs/architecture.md) - current routing architecture
+- [modules/routing-core/docs/network-flow-and-observer-model.md](modules/routing-core/docs/network-flow-and-observer-model.md) - detailed traffic flows and observer model
+- [modules/traffic-observatory/docs/traffic-observability.md](modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, device/app popularity and routing mistake checks
+- [modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md](modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md) - GhostRoute health monitor implementation
+- [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md) - health monitor alerts and recovery runbook
+- [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) - LTE/Home Reality performance diagnostics and fixes
+- [modules/routing-core/docs/channel-routing-operations.md](modules/routing-core/docs/channel-routing-operations.md) - day-2 operations and channel switching
+- [modules/routing-core/docs/stealth-channel-implementation-guide.md](modules/routing-core/docs/stealth-channel-implementation-guide.md) - implemented VLESS+Reality guide
+- [modules/dns-catalog-intelligence/docs/domain-management.md](modules/dns-catalog-intelligence/docs/domain-management.md) - domain and static-network catalog management
+- [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory STEALTH_DOMAINS curation review
+- [modules/secrets-management/docs/secrets-management.md](modules/secrets-management/docs/secrets-management.md) - vault, local secrets and pre-push scan
+- [modules/secrets-management/docs/vault-offsite-backup.md](modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill
+- [modules/client-profile-factory/docs/client-profiles.md](modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
+- [docs/troubleshooting.md](docs/troubleshooting.md) - incident diagnostics (RU primary; English equivalents in module runbooks such as `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`)
+- [docs/future-improvements-backlog.md](docs/future-improvements-backlog.md) - long-running improvement backlog (RU primary; EN summary at the top)
+- [docs/repo-review-2026-05-10.md](docs/repo-review-2026-05-10.md) - latest repository quality audit and prioritized fixlist
+- [docs/traffic-facts-v3-and-pyramid-plan.md](docs/traffic-facts-v3-and-pyramid-plan.md) - active refactor plan: traffic-evidence + traffic-facts v3 + Console pyramid + filter scaffold
 
 ---
 

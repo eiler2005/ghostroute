@@ -339,7 +339,7 @@ requests instead of rendering full evidence sets in one response.
 ## Channel A / Channel B / Channel C (текущая схема)
 
 For the compact handoff version of A/B/C, see
-[docs/channels.md](/docs/channels.md).
+[docs/channels.md](channels.md).
 
 ### Channel A
 
@@ -460,7 +460,7 @@ the architectural status of Channel A.
 ### Cold fallback: manual WireGuard recovery only
 
 WireGuard (`wgs1` + `wgc1`) is **not** active in steady state. The runtime
-invariants in [`SECURITY.md`](/SECURITY.md) and `AGENTS.md` require
+invariants in [`SECURITY.md`](../SECURITY.md) and `AGENTS.md` require
 `wgs1_enable=0`, `wgc1_enable=0`, no `RC_VPN_ROUTE` and no `0x1000` outside the
 fallback script. The preserved `wgc1_*` NVRAM exists for one purpose only:
 manual recovery during a catastrophic Reality outage.
@@ -469,8 +469,8 @@ Activation rules:
 
 - Manual only — there is **no automatic failover** from Channel A/B/C to
   WireGuard. Auto-promotion is intentionally not implemented (see
-  [ADR-0004](/docs/adr/0004-deprecated-wireguard-cold-fallback.md) and
-  [ADR-0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md)).
+  [ADR-0004](adr/0004-deprecated-wireguard-cold-fallback.md) and
+  [ADR-0006](adr/0006-channel-terminology-and-manual-fallbacks.md)).
 - Single entry point:
 
   ```bash
@@ -620,7 +620,7 @@ client app
 
 The first network sees endpoint -> home endpoint traffic for Channel A/B managed
 sessions. Websites still see the active managed egress exit for managed traffic; non-managed
-destinations see the home WAN IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md)
+destinations see the home WAN IP. See [modules/routing-core/docs/network-flow-and-observer-model.md](../modules/routing-core/docs/network-flow-and-observer-model.md)
 for the full workflow and observer table.
 
 ### Router-Originated Traffic

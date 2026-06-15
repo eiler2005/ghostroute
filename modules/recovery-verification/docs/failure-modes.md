@@ -10,7 +10,7 @@ Mobile QR -> home Reality ingress :<home-reality-port> -> Reality
 Legacy WireGuard (`wgs1`/`wgc1`) is decommissioned. `wgc1_*` NVRAM remains only for
 manual cold fallback through `/jffs/scripts/emergency-enable-wgc1.sh`.
 
-Use [docs/runtime-inventory.md](/docs/runtime-inventory.md) before runtime
+Use [docs/runtime-inventory.md](../../../docs/runtime-inventory.md) before runtime
 upgrades or port changes. It records the sanitized component inventory,
 proven-good version policy, listener ownership and required upgrade gates.
 
