@@ -2,6 +2,8 @@
 set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+command -v rg >/dev/null 2>&1 || { echo "run-fast: ripgrep (rg) is required" >&2; exit 1; }
+
 "${PROJECT_ROOT}/tests/check-shell-syntax.sh"
 "${PROJECT_ROOT}/tests/test-singbox-init-static.sh"
 "${PROJECT_ROOT}/tests/test-runtime-supervisor-static.sh"
