@@ -211,3 +211,10 @@ access and live targets; run them only when appropriate for the task.
 - `docs/architecture.md`, `docs/channels.md`, and
   `docs/routing-policy-principles.md` for routing behavior.
 - Relevant `modules/<module>/docs/` files before changing a module.
+
+<!-- lean-ctx -->
+## lean-ctx
+
+Prefer lean-ctx MCP tools over native equivalents for token savings.
+Full rules: @LEAN-CTX.md
+<!-- /lean-ctx -->

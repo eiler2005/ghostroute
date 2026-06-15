@@ -15,3 +15,7 @@ modules/**/vps/* text eol=lf
 modules/**/vps/ghostroute-readonly-shell text eol=lf
 tests/*.sh text eol=lf
 configs/** text eol=lf
+.gitignore text eol=lf
+AGENTS.md text eol=lf
+CLAUDE.md text eol=lf
+LEAN-CTX.md text eol=lf
