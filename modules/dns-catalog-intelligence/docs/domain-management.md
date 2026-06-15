@@ -13,7 +13,7 @@
 | `configs/domains-no-vpn.txt` | no ipset | запрет auto-add для чувствительных direct-доменов | direct/home WAN |
 
 Advisory-only идеи по сужению каталога лежат в
-[modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md). Этот
+[modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](stealth-domains-curation-audit.md). Этот
 документ ничего не удаляет из runtime catalog; он фиксирует evidence и будущие
 предложения.
 
@@ -29,7 +29,7 @@ sing-box использует rule-set, собранный из `STEALTH_DOMAINS
 `VPN_STATIC_NETS`: managed-направления уходят в Reality outbound до VPS,
 non-managed-направления уходят через `direct-out` и домашний WAN.
 
-Полная схема: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
+Полная схема: [modules/routing-core/docs/network-flow-and-observer-model.md](../../routing-core/docs/network-flow-and-observer-model.md).
 
 Пример: imo Messenger остаётся managed через `imo.im` в
 `STEALTH_DOMAINS`, а media/CDN fallback закрывается PageBites-сетями в

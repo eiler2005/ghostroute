@@ -175,7 +175,7 @@ is exclusive. Run `--dry-run` first on live data. If the retained source rows ar
 already gone, the command records `missing_source` in `aggregate_state` and does
 not delete existing historical aggregate chunks.
 The detailed data-pyramid contract is documented in
-[data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
+[data-pyramid.md](data-pyramid.md).
 
 ## Post-Deploy Collector Guard
 

@@ -55,10 +55,10 @@ ordinary home Wi-Fi.
 
 These changes are managed by:
 
-- [ansible/group_vars/routers.yml](../ansible/group_vars/routers.yml)
-- [ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2](../ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2)
-- [ansible/playbooks/99-verify.yml](../ansible/playbooks/99-verify.yml)
-- [modules/shared/lib/router-health-common.sh](../modules/shared/lib/router-health-common.sh)
+- [ansible/group_vars/routers.yml](../../../ansible/group_vars/routers.yml)
+- [ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2](../../../ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2)
+- [ansible/playbooks/99-verify.yml](../../../ansible/playbooks/99-verify.yml)
+- [modules/shared/lib/router-health-common.sh](../../shared/lib/router-health-common.sh)
 
 ## 2. MTU / MSS Problems
 
@@ -290,7 +290,7 @@ DNS latency can still affect page-load feel if the mobile app does not cache or
 fake DNS efficiently. This is usually visible as slow initial page start rather
 than low sustained video/download throughput.
 
-See [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) for client-side DNS settings.
+See [modules/client-profile-factory/docs/client-profiles.md](../../client-profile-factory/docs/client-profiles.md) for client-side DNS settings.
 
 ## 7. How To Test After Changes
 

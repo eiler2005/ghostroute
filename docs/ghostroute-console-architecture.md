@@ -385,7 +385,7 @@ APIs for `today`, `week` and `month`. Week/month request paths must not scan
 temporary rollback switch is `GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS=0`, but
 the steady-state large-database contract is prepared-window reads only.
 The detailed anti-warehouse-rebuild contract is documented in
-[data-pyramid.md](/modules/ghostroute-console/docs/data-pyramid.md).
+[data-pyramid.md](../modules/ghostroute-console/docs/data-pyramid.md).
 
 Schema v15 is the current guard for the trustworthy v3 pipeline and the local
 Traffic Intelligence read model. It ensures factual tables carry the v3

@@ -5,7 +5,7 @@
 GhostRoute больше не использует active Legacy WireGuard. Текущая модель:
 
 Короткий принципиальный контракт по A/B/C вынесен в
-[docs/routing-policy-principles.md](/docs/routing-policy-principles.md). Этот
+[docs/routing-policy-principles.md](../../../docs/routing-policy-principles.md). Этот
 файл ниже описывает текущую реализацию того же контракта.
 
 ```text
@@ -64,7 +64,7 @@ only for `modules/recovery-verification/router/emergency-enable-wgc1.sh`.
    специально идет через VPS.
 
 Подробная схема от клиента до конечного сайта, включая процессы, порты и
-observer model: [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
+observer model: [modules/routing-core/docs/network-flow-and-observer-model.md](network-flow-and-observer-model.md).
 
 ## Доменный каталог
 

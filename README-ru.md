@@ -184,13 +184,13 @@ GhostRoute устроен как небольшая операционная п�
   evidence-снимками: route, traffic, client, health, live и catalog. Полные
   desktop-страницы плюс компактные mobile `/m`-страницы; консоль читает
   готовые модели, а не управляет роутером/VPS. См.
-  [modules/ghostroute-console/README.md](/modules/ghostroute-console/README.md).
+  [modules/ghostroute-console/README.md](modules/ghostroute-console/README.md).
 - **Routing Policy Principles** — компактный contract: endpoint policy, channel
   ingress, router managed split и VPS/home egress. См.
-  [docs/routing-policy-principles.md](/docs/routing-policy-principles.md).
+  [docs/routing-policy-principles.md](docs/routing-policy-principles.md).
 - **DNS Policy** — channel proof guidance: главное — отсутствие DNS leak в
   мобильного оператора; resolver geography через BrowserLeaks — вторичный
-  consistency-сигнал. См. [docs/dns-policy.md](/docs/dns-policy.md).
+  consistency-сигнал. См. [docs/dns-policy.md](docs/dns-policy.md).
 - **DNS & Catalog Intelligence** — наблюдение за DNS lookup, discovery доменов
   и обслуживание managed-каталогов. Модуль помогает понять, какие домены
   использует конкретный сервис, разделяет ручные и auto-discovered правила и
@@ -217,7 +217,7 @@ GhostRoute устроен как небольшая операционная п�
 Вместе эти модули делают репозиторий auditable: routing, health, traffic,
 performance и recovery описаны как отдельные операционные поверхности с
 read-only диагностикой и явными ручными шагами восстановления. Полная карта
-модулей: [docs/operational-modules.md](/docs/operational-modules.md).
+модулей: [docs/operational-modules.md](docs/operational-modules.md).
 
 ---
 
@@ -388,7 +388,7 @@ exit. Non-managed сайты видят home WAN IP, кроме явно выб�
 full-VPS профилей.
 
 Подробная схема с полным workflow, портами, компонентами и таблицей "кто что
-видит": [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md).
+видит": [modules/routing-core/docs/network-flow-and-observer-model.md](modules/routing-core/docs/network-flow-and-observer-model.md).
 
 ### 4. Cold fallback
 
@@ -518,10 +518,10 @@ docs/
   future-improvements-backlog.md
 ```
 
-Подробная физическая карта модулей: [docs/operational-modules.md](/docs/operational-modules.md).
+Подробная физическая карта модулей: [docs/operational-modules.md](docs/operational-modules.md).
 Глобальный README остаётся верхнеуровневым workflow; внутри `modules/` лежат
 локальные overview по реализации каждого модуля. Карта Ansible-деплоя по
-компонентам router/VPS описана в [ansible/README.md](/ansible/README.md).
+компонентам router/VPS описана в [ansible/README.md](ansible/README.md).
 
 ---
 
@@ -601,7 +601,7 @@ Traffic и observability:
 ушло через VPS, сколько осталось на home WAN, какие устройства и Home Reality
 ingress clients были активны, какие сайты/приложения популярны и не появились
 ли ошибки маршрутизации. Подробно:
-[modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md).
+[modules/traffic-observatory/docs/traffic-observability.md](modules/traffic-observatory/docs/traffic-observability.md).
 Интерпретация трафика вынесена отдельно: `traffic_facts` хранит байты,
 DNS/route evidence и accounting status, а Traffic Intelligence пишет labels,
 объяснения и dry-run decision candidates для Console `/intelligence`. Этот слой
@@ -690,7 +690,7 @@ VPS observer хранит свой local-only статус на VPS в
 
 Нельзя коммитить или вставлять в чат реальные VLESS URI, UUID, Reality keys, short IDs, admin paths или QR payloads. В документации допустимы только fake placeholders.
 
-Подробно: [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) и [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md).
+Подробно: [modules/client-profile-factory/docs/client-profiles.md](modules/client-profile-factory/docs/client-profiles.md) и [modules/secrets-management/docs/secrets-management.md](modules/secrets-management/docs/secrets-management.md).
 
 ---
 
@@ -701,41 +701,41 @@ runtime layout, secret handling, public command structure и monitoring contract
 
 | ADR | Решение |
 |---|---|
-| [0001](/docs/adr/0001-module-native-repo.md) | Хранить репозиторий как module-native, а не как набор скриптов. |
-| [0002](/docs/adr/0002-scripts-reserved-policy.md) | Резервировать `scripts/` под будущие cross-module утилиты. |
-| [0003](/docs/adr/0003-local-only-health-alerts.md) | Health alerts остаются локальными и read-only по умолчанию. |
-| [0004](/docs/adr/0004-deprecated-wireguard-cold-fallback.md) | WireGuard сохраняется только как явный cold fallback. |
-| [0005](/docs/adr/0005-secrets-outside-git.md) | Реальные креды и generated artifacts остаются вне git. |
-| [0006](/docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Зафиксирована терминология каналов и отсутствие automatic B/C failover. |
-| [0007](/docs/adr/0007-channel-b-production-channel-c-planned.md) | Зафиксирована текущая B/C channel maturity. |
-| [0008](/docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Зафиксирована Channel C live compatibility и блокер native Naive. |
-| [0009](/docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Managed DNS остаётся на dnscrypt-backed forwarding; public VPS 443 открыт под Reality, public DNS 53 закрыт. |
-| [0010](/docs/adr/0010-channel-a-selected-full-vps.md) | Channel A selected full-VPS override для выбранных домашних Wi-Fi/LAN устройств и Home Reality профилей. |
+| [0001](docs/adr/0001-module-native-repo.md) | Хранить репозиторий как module-native, а не как набор скриптов. |
+| [0002](docs/adr/0002-scripts-reserved-policy.md) | Резервировать `scripts/` под будущие cross-module утилиты. |
+| [0003](docs/adr/0003-local-only-health-alerts.md) | Health alerts остаются локальными и read-only по умолчанию. |
+| [0004](docs/adr/0004-deprecated-wireguard-cold-fallback.md) | WireGuard сохраняется только как явный cold fallback. |
+| [0005](docs/adr/0005-secrets-outside-git.md) | Реальные креды и generated artifacts остаются вне git. |
+| [0006](docs/adr/0006-channel-terminology-and-manual-fallbacks.md) | Зафиксирована терминология каналов и отсутствие automatic B/C failover. |
+| [0007](docs/adr/0007-channel-b-production-channel-c-planned.md) | Зафиксирована текущая B/C channel maturity. |
+| [0008](docs/adr/0008-channel-c-live-compatibility-and-native-naive-blocker.md) | Зафиксирована Channel C live compatibility и блокер native Naive. |
+| [0009](docs/adr/0009-managed-dns-dnscrypt-backed-forwarder.md) | Managed DNS остаётся на dnscrypt-backed forwarding; public VPS 443 открыт под Reality, public DNS 53 закрыт. |
+| [0010](docs/adr/0010-channel-a-selected-full-vps.md) | Channel A selected full-VPS override для выбранных домашних Wi-Fi/LAN устройств и Home Reality профилей. |
 
-Полный индекс и условия добавления нового ADR: [docs/adr/](/docs/adr/).
+Полный индекс и условия добавления нового ADR: [docs/adr/](docs/adr/).
 
 ---
 
 ## Документация
 
 - [README.md](README.md) - English overview
-- [ansible/README.md](/ansible/README.md) - control plane для deploy, Vault, QR/profile generation и live verification
-- [docs/operational-modules.md](/docs/operational-modules.md) - canonical module map и operating surfaces
-- [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](/docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - архивный roadmap архитектурных/security улучшений
-- [docs/adr/](/docs/adr/) - короткие architecture decision records
-- [docs/architecture.md](/docs/architecture.md) - текущая routing architecture
-- [modules/routing-core/docs/network-flow-and-observer-model.md](/modules/routing-core/docs/network-flow-and-observer-model.md) - подробная схема потоков и кто что видит
-- [modules/traffic-observatory/docs/traffic-observability.md](/modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, популярность устройств/приложений и проверки ошибок маршрутизации
-- [modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md](/modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md) - реализация модуля мониторинга работоспособности
-- [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](/modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md) - алерты на диске роутера и recovery runbook
-- [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](/modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) - диагностика и фиксы производительности LTE/Home Reality
-- [modules/routing-core/docs/channel-routing-operations.md](/modules/routing-core/docs/channel-routing-operations.md) - day-2 operations и переключение каналов
-- [modules/routing-core/docs/stealth-channel-implementation-guide.md](/modules/routing-core/docs/stealth-channel-implementation-guide.md) - реализованный VLESS+Reality guide
-- [modules/dns-catalog-intelligence/docs/domain-management.md](/modules/dns-catalog-intelligence/docs/domain-management.md) - управление domain/static-network каталогами
-- [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](/modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory-аудит curation для STEALTH_DOMAINS
-- [modules/secrets-management/docs/secrets-management.md](/modules/secrets-management/docs/secrets-management.md) - vault, local secrets и pre-push scan
-- [modules/client-profile-factory/docs/client-profiles.md](/modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
-- [docs/troubleshooting.md](/docs/troubleshooting.md) - диагностика инцидентов
+- [ansible/README.md](ansible/README.md) - control plane для deploy, Vault, QR/profile generation и live verification
+- [docs/operational-modules.md](docs/operational-modules.md) - canonical module map и operating surfaces
+- [docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md](docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md) - архивный roadmap архитектурных/security улучшений
+- [docs/adr/](docs/adr/) - короткие architecture decision records
+- [docs/architecture.md](docs/architecture.md) - текущая routing architecture
+- [modules/routing-core/docs/network-flow-and-observer-model.md](modules/routing-core/docs/network-flow-and-observer-model.md) - подробная схема потоков и кто что видит
+- [modules/traffic-observatory/docs/traffic-observability.md](modules/traffic-observatory/docs/traffic-observability.md) - traffic reports, популярность устройств/приложений и проверки ошибок маршрутизации
+- [modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md](modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md) - реализация модуля мониторинга работоспособности
+- [modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md](modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md) - алерты на диске роутера и recovery runbook
+- [modules/performance-diagnostics/docs/routing-performance-troubleshooting.md](modules/performance-diagnostics/docs/routing-performance-troubleshooting.md) - диагностика и фиксы производительности LTE/Home Reality
+- [modules/routing-core/docs/channel-routing-operations.md](modules/routing-core/docs/channel-routing-operations.md) - day-2 operations и переключение каналов
+- [modules/routing-core/docs/stealth-channel-implementation-guide.md](modules/routing-core/docs/stealth-channel-implementation-guide.md) - реализованный VLESS+Reality guide
+- [modules/dns-catalog-intelligence/docs/domain-management.md](modules/dns-catalog-intelligence/docs/domain-management.md) - управление domain/static-network каталогами
+- [modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md](modules/dns-catalog-intelligence/docs/stealth-domains-curation-audit.md) - advisory-аудит curation для STEALTH_DOMAINS
+- [modules/secrets-management/docs/secrets-management.md](modules/secrets-management/docs/secrets-management.md) - vault, local secrets и pre-push scan
+- [modules/client-profile-factory/docs/client-profiles.md](modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
+- [docs/troubleshooting.md](docs/troubleshooting.md) - диагностика инцидентов
 
 ---
 
