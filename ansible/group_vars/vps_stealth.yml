@@ -50,3 +50,8 @@ channel_b_xhttp_path: "{{ vault_channel_b_xhttp_path | default('/assets/update')
 channel_b_xhttp_mode: packet-up
 channel_b_xhttp_clients: "{{ vault_channel_b_xhttp_clients | default([]) }}"
 channel_b_xhttp_block_udp_443: "{{ vault_channel_b_xhttp_block_udp_443 | default(false) }}"
+
+# Channel M: path to the maxtg_bridge project root on this VPS.
+# Only used by 23-channel-m-reverse.yml to write the compose-level .env file
+# so Docker Compose variable substitution picks up MAX_EGRESS_PROXY_HOST.
+channel_m_maxtg_bridge_project_root: "{{ vault_channel_m_maxtg_bridge_project_root | default('/opt/maxtg-bridge') }}"
