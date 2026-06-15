@@ -293,6 +293,18 @@
           {{ hostvars['channel-m-reverse-key'].channel_m_reverse_public_key }}
       no_log: true
 
+    - name: Write compose-level .env for Channel M reverse variable substitution
+      ansible.builtin.copy:
+        dest: "{{ channel_m_maxtg_bridge_project_root }}/deploy/.env"
+        mode: "0600"
+        content: |
+          # Written by 23-channel-m-reverse.yml — do not edit manually.
+          # Provides MAX_EGRESS_PROXY_HOST/GATEWAY for Docker Compose extra_hosts.
+          # host-gateway is intentionally NOT used: the tunnel binds on the
+          # deploy_default network gateway, not on docker0 (172.17.0.1).
+          MAX_EGRESS_PROXY_HOST={{ ghostroute_router_remote_host }}
+          MAX_EGRESS_PROXY_GATEWAY={{ channel_m_reverse_docker0_ip.stdout }}
+
     - name: Share Channel M reverse docker bridge IPv4
       ansible.builtin.add_host:
         name: channel-m-reverse-vps
