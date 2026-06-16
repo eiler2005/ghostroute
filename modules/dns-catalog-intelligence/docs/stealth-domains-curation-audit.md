@@ -1,6 +1,6 @@
 # STEALTH_DOMAINS Curation Audit
 
-**Status:** advisory-only, current as of 2026-04-25.
+**Status:** advisory-only, current as of 2026-06-16.
 
 This document reviews `configs/dnsmasq-stealth.conf.add` for performance and
 operational clarity. It does **not** remove or change any domain. Runtime
@@ -55,7 +55,7 @@ otherwise.
 | Domain family | Reason | Action |
 |---|---|---|
 | YouTube / Google media: `youtube.com`, `youtu.be`, `youtube-nocookie.com`, `youtube.googleapis.com`, `youtubei.googleapis.com`, `googlevideo.com`, `ytimg.com`, `ggpht.com` | Core managed video path and common block/quality-sensitive traffic. | `keep` |
-| Telegram: `telegram.org`, `telegram.me`, `telegram.com`, `telegram.dog`, `telegram.space`, `t.me`, `telegra.ph`, `graph.org`, `cdn-telegram.org`, `telegram-cdn.org`, `tdesktop.com`, `telega.one`, `telesco.pe`, `comments.app`, `contest.com`, `fragment.com`, `tg.dev`, `tx.me` | Core messenger/media path. | `keep` |
+| Telegram: `telegram.org`, `telegram.me`, `telegram.com`, `telegram.dog`, `telegram.space`, `t.me`, `telegra.ph`, `legra.ph`, `graph.org`, `cdn-telegram.org`, `telegram-cdn.org`, `tdesktop.com`, `telega.one`, `telesco.pe`, `comments.app`, `contest.com`, `fragment.com`, `quiz.directory`, `tg.dev`, `tx.me`, `stel.com`, `ton.org`, `toncenter.com` | Core messenger/media path plus Telegram/TON ecosystem domains from public rule lists. | `keep` |
 | Instagram/Facebook/Messenger: `instagram.com`, `cdninstagram.com`, `facebook.com`, `fb.com`, `fbcdn.net`, `fbsbx.com`, `messenger.com` | Social/media access that commonly needs managed routing. | `keep` |
 | TikTok/ByteDance: `tiktok.com`, `tiktokcdn.com`, `tiktokcdn-eu.com`, `tiktokcdn-us.com`, `tiktokv.com`, `ttwstatic.com`, `byteimg.com`, `byteoversea.com`, `ibytedtos.com`, `muscdn.com` | Video/social traffic where direct availability and quality vary. | `keep` |
 | WhatsApp: `whatsapp.com`, `whatsapp.net`, `wa.me`, `wl.co` | Messenger/media path; static Meta CIDR coverage lives separately. | `keep` |

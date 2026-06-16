@@ -117,6 +117,7 @@
 # Источники:
 #   Официальный:  https://core.telegram.org/resources/cidr.txt
 #   BGP/AS:       https://bgp.he.net/irr/as-set/AS-TELEGRAM (AS62041, AS62014)
+#   Public rules: itdoginfo/allow-domains, Loyalsoldier, blackmatrix7
 #   Wireshark:    захват из живых Telegram-сессий
 #   Обсуждение:   https://github.com/Flowseal/zapret-discord-youtube/issues/5820
 
@@ -141,8 +142,11 @@
 # 95.161.64.0/19 — принадлежит Global Network Management (GlobalNet),
 # но фактически анонсируется через AS62041. В официальном cidr.txt
 # отсутствует. Wireshark показывает /19 (шире рекомендуемого /20).
-5.28.192.0/21
-5.28.248.0/21
+#
+# 5.28.192.0/18 — укрупнённое покрытие Telegram AS/peering, которое используют
+# публичные Telegram rule lists. Оно включает ранее наблюдавшиеся
+# 5.28.192.0/21 и 5.28.248.0/21 без добавления shared CDN-провайдеров.
+5.28.192.0/18
 95.161.64.0/19
 
 # --- Legacy / observed ---

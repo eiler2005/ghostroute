@@ -22,6 +22,15 @@ assert_contains_regex() {
   fi
 }
 
+assert_not_contains_regex() {
+  local path="$1"
+  local pattern="$2"
+  if rg -n -- "$pattern" "${PROJECT_ROOT}/${path}" >/dev/null; then
+    echo "Expected ${path} not to contain pattern: ${pattern}" >&2
+    exit 1
+  fi
+}
+
 assert_file_contains_fixed() {
   local path="$1"
   local needle="$2"
@@ -83,6 +92,14 @@ AUTO_ADD_SCRIPT="modules/dns-catalog-intelligence/router/domain-auto-add.sh"
 # LAN/Wi-Fi dnsmasq ipsets and mobile sing-box rule-sets after deploy.
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/telegram.org/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/t.me/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/quiz.directory/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/ton.org/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/toncenter.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/legra.ph/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/stel.com/STEALTH_DOMAINS"
+assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/telegramdownload.com/STEALTH_DOMAINS"
+assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/api.imem.app/STEALTH_DOMAINS"
+assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/api.swiftgram.app/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/whatsapp.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imo.im/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/openai.com/STEALTH_DOMAINS"
@@ -115,6 +132,10 @@ assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/doh.dns.apple.com/STEALTH_DOMAI
 # that can connect by IP before a DNS-populated ipset entry exists.
 assert_contains_regex "$STATIC_CATALOG" '^17[.]0[.]0[.]0/8'
 assert_contains_regex "$STATIC_CATALOG" '^31[.]13[.]64[.]0/18'
+assert_contains_regex "$STATIC_CATALOG" '^5[.]28[.]192[.]0/18'
+assert_not_contains_regex "$STATIC_CATALOG" '^5[.]28[.]192[.]0/21'
+assert_not_contains_regex "$STATIC_CATALOG" '^5[.]28[.]248[.]0/21'
+assert_not_contains_regex "$STATIC_CATALOG" '^91[.]108[.]0[.]0/16'
 assert_contains_regex "$STATIC_CATALOG" '^91[.]108[.]4[.]0/22'
 assert_contains_regex "$STATIC_CATALOG" '^149[.]154[.]160[.]0/20'
 assert_contains_regex "$STATIC_CATALOG" '^5[.]150[.]156[.]0/22'
