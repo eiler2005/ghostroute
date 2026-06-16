@@ -42,6 +42,54 @@ pasted into chat. Treat geolocation as the intended country source for that
 note; RIR whois `country` can describe registry ownership rather than the actual
 egress location.
 
+## Egress Backend Bank
+
+Three backends can sit behind the stable `reality-out` tag at any time. They
+differ in ownership and deployment model, never in the contract the router or
+clients see:
+
+| Role | Ownership / type | Deploy model | What is installed | Deployed by |
+|---|---|---|---|---|
+| `primary_vps` | Owned, production | Native system Caddy (`system_listener_wrapper`) | Caddy layer4 + Xray/3x-ui Reality + optional restricted DNS + UFW + VPS health monitor | [`ansible/playbooks/10-stealth-vps.yml`](../ansible/playbooks/10-stealth-vps.yml) |
+| `backup_reality` | External, incident reserve | Not deployed by this repo | A third-party Reality endpoint configured purely via Vault references (host/port/SNI) | n/a — operator-managed externally |
+| `hermes_vps` | Owned, clone candidate | Docker-sidecar Caddy (`docker_sidecar`) | Caddy layer4 sidecar + Xray/Reality clone + restricted DNS resolver + UFW + VPS health monitor, isolated on its own Docker bridge network | [`ansible/playbooks/12-hermes-egress-vps.yml`](../ansible/playbooks/12-hermes-egress-vps.yml) |
+
+`primary_vps` and `hermes_vps` are infrastructure this repo's Ansible owns and
+can redeploy end-to-end. `backup_reality` is intentionally outside that graph:
+it is a Vault-configured fallback target only, so an incident can switch to it
+even if Ansible cannot currently reach the primary host.
+
+### How the bank is proven to actually work
+
+A backend is not trusted just because a deploy finished `ok=N`. Two
+complementary, read-only checks exist, plus an offline test for the tool
+itself:
+
+- [`managed-egress-check`](../modules/ghostroute-health-monitor/bin/managed-egress-check) —
+  compares the active backend's reachability against the others (TCP +
+  advisory TLS probes) without printing real hosts.
+- [`egress-backend-health`](../modules/ghostroute-health-monitor/bin/egress-backend-health) —
+  prints the full bank (role, configured/TCP/TLS per backend) plus live
+  **application canaries** (Telegram, YouTube, Google, Claude/Anthropic,
+  OpenAI, `api.ipify.org`) run through the *active* backend over the router's
+  own SOCKS path. Inactive-backend TCP/TLS is advisory only; the live app
+  canaries are the canonical proof that a backend actually carries real
+  traffic to real destinations — see the canary bank in
+  [`managed-app-canaries.tsv`](../modules/ghostroute-health-monitor/config/managed-app-canaries.tsv).
+- [`test-egress-backend-health.sh`](../modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh) —
+  an offline, mock-driven fixture test (stubs `ssh`/`ansible-vault`/`curl`)
+  that exercises the same reporting tool end-to-end in CI, so the bank/canary
+  reporting logic stays covered even without a live backend to test against.
+
+To switch backends and immediately re-prove the new one, chain the switch with
+both live checks:
+
+```bash
+./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/egress-backend-health
+```
+
 ## Implemented Manual Reserve Mode
 
 Ansible now renders the router `sing-box` `reality-out` outbound from one of
