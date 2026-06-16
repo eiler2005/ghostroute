@@ -25,8 +25,8 @@ router or VPS access.
 
 Prerequisites:
 
-- Node.js 22 (matches `.github/workflows/ci.yml`). If you use `nvm`, run
-  `nvm use 22` (a `.nvmrc` is on the backlog).
+- Node.js 22 (matches `.nvmrc` and `.github/workflows/ci.yml`). If you use
+  `nvm`, run `nvm use`.
 - Python 3.x for Ansible-related tooling.
 - POSIX shell (`bash` for control-machine scripts, BusyBox `ash` compatibility
   required for anything running on the router).
@@ -131,6 +131,8 @@ human or AI:
   `○ deferred`).
 - A repo-wide review: write a snapshot under
   `docs/repo-review-YYYY-MM-DD.md` (latest:
+  [`docs/repo-review-2026-06-16.md`](docs/repo-review-2026-06-16.md);
+  previous:
   [`docs/repo-review-2026-05-10.md`](docs/repo-review-2026-05-10.md)).
 
 ## Reporting security issues
