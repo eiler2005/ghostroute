@@ -37,7 +37,9 @@ belong in Ansible Vault or gitignored operator notes.
 If the operator needs role-to-country context, keep it in the gitignored local
 note `docs/private/managed-egress-backends.local.md`. That file may record
 country codes by mnemonic role, but it must not be committed, quoted in public
-docs, or pasted into chat.
+docs, or pasted into chat. Treat geolocation as the intended country source for
+that note; RIR whois `country` can describe registry ownership rather than the
+actual egress location.
 
 ## Implemented Manual Reserve Mode
 
