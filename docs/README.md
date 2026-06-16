@@ -15,14 +15,19 @@ local runbooks or historical planning notes.
 
 ## Start Here
 
+- [product-requirements.md](product-requirements.md) - product brief: users, goals, non-goals, requirements and success metrics.
 - [operational-modules.md](operational-modules.md) - canonical module map and ownership table.
 - [architecture.md](architecture.md) - high-level GhostRoute architecture.
 - [router-runtime-map.md](router-runtime-map.md) - sanitized map of what is installed on the ASUS Merlin router, with diagrams and runtime guardrails.
 - [praefectus-ai/docs/vps-runtime-map.md](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map for Channel M, Console and routing/app surfaces.
-- [channels.md](channels.md) - compact handoff view of Channel A, B and C.
+- [channels.md](channels.md) - compact handoff view of Channel A, B, C and D.
+- [routing-policy-principles.md](routing-policy-principles.md) - compact routing decision contract across endpoints, channels, router and egress.
 - [dns-policy.md](dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
 - [channel-c.md](channel-c.md) - detailed Channel C C1 native Naive and Shadowrocket compatibility status.
 - [SECURITY.md](../SECURITY.md) - threat model, protected assets, non-goals and security workflow.
+- [testing.md](testing.md) - test layers, CI contract, local verification and live-check boundaries.
+- [deployment-and-rollback.md](deployment-and-rollback.md) - pre-deploy checklist, rollback triggers and recovery paths.
+- [operational-slos.md](operational-slos.md) - availability, correctness, privacy and recovery targets.
 - [ansible/README.md](../ansible/README.md) - deployment, Vault, profile generation and verification control plane.
 - [getting-started.md](getting-started.md) - first deploy and local setup workflow.
 - [troubleshooting.md](troubleshooting.md) - cross-module incident diagnostics.
@@ -54,3 +59,8 @@ today."
 - [traffic-facts-v3-and-pyramid-plan.md](traffic-facts-v3-and-pyramid-plan.md) - traffic-facts v3 machine-contract and Console pyramid refactor plan.
 - [traffic-intelligence-layer-plan.md](traffic-intelligence-layer-plan.md) - traffic intelligence layer design on top of the v3 pipeline.
 - [managed-domain-app-family-draft.md](managed-domain-app-family-draft.md) - draft app-family catalog over the active managed domains.
+
+## Review Snapshots
+
+- [repo-review-2026-06-16.md](repo-review-2026-06-16.md) - public-repo polish review after the latest docs/schema/API commits.
+- [repo-review-2026-05-10.md](repo-review-2026-05-10.md) - previous repository quality audit and prioritized fixlist.
