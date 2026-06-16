@@ -54,6 +54,7 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/live-check`
 - `./modules/ghostroute-health-monitor/bin/managed-egress-check`
 - `./modules/ghostroute-health-monitor/bin/egress-backend-health`
+- `./modules/ghostroute-health-monitor/bin/egress-dpi-probe`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
 
 `status` is the compact daily view: overall drift count, STEALTH capacity,
@@ -85,6 +86,30 @@ selected backend works for managed traffic. The command emits human text or
 `--json` with `schema_version`, `active_backend`, `channel_d_backend`,
 `backend_bank[]`, `app_canaries[]` and `rollup`, without printing raw endpoints,
 provider values, IP addresses or keys.
+
+`egress-dpi-probe` is the path / censorship-signature classifier for the same
+backend bank. Where `egress-backend-health` proves the *active* backend carries
+app traffic through the tunnel, this probes the *raw* TLS path to each backend's
+public endpoint and gives each vantage a descriptive verdict — `open` (handshake
+completed, usually on the Reality cover/decoy), `reset` (RST on/after the TLS
+ClientHello), `refused`, `timeout`, or `tls_reject` (fast TLS rejection, typical
+of a Reality server refusing a plain probe). The real signal is the comparison:
+because each backend's Reality config is constant across vantages, a difference
+isolates the network path while agreement points at the endpoint. With
+`--from both` (default) a router-open but control-degraded backend is reported as
+`network_specific_filtering` (the current network is interfering, so switching
+backend will not help); matching results are `consistent_degraded` (cross-check
+the app canaries). Use `--from control|router` for a single vantage. Output is
+human text or `--json` (`schema_version`, `from`, `active_backend`, `results[]`
+with per-vantage `stage`/`verdict` and a `cross_verdict`), always sanitized of
+hosts/IPs/SNIs. This is an advisory heuristic — a healthy Reality backend can
+legitimately reset a plain probe — so cross-check against the
+`egress-backend-health` live app canaries before acting. The "control" vantage
+is whatever network the command actually runs from — confirm that before
+trusting a `network_specific_filtering` verdict as "this is my current
+network": if a coding agent or CI runner executes this from a sandbox/VPN, its
+egress ASN can differ from the operator's real network, which silently changes
+what the comparison proves.
 
 `live-check` is the canonical short "are A/B/C alive now?" check. Default mode
 is config/log based and normally takes 1-8 seconds: listeners, firewall rules,

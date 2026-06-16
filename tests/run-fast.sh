@@ -18,6 +18,7 @@ command -v rg >/dev/null 2>&1 || { echo "run-fast: ripgrep (rg) is required" >&2
 "${PROJECT_ROOT}/tests/test-traffic-summary-midnight.sh"
 "${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-health-monitor.sh"
 "${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh"
+"${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-egress-dpi-probe.sh"
 "${PROJECT_ROOT}/modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh"
 "${PROJECT_ROOT}/tests/test-deploy-risk.sh"
 "${PROJECT_ROOT}/tests/run-console.sh" --fast

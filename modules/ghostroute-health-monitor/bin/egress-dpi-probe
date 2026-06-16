@@ -1,0 +1,372 @@
+#!/bin/bash
+# Read-only path / DPI-signature probe for the managed egress backend bank.
+#
+# Where egress-backend-health proves the ACTIVE backend carries real app
+# traffic through the tunnel, this classifies the RAW path to each backend's
+# public Reality endpoint and compares two vantage points:
+#   - control : this machine / current network (where censorship is felt)
+#   - router  : the home router (a known-good production path baseline)
+#
+# It layers TCP connect -> TLS ClientHello (with the real SNI) and records how
+# the connection behaves. A reset during/after the ClientHello is the classic
+# SNI-based RST-injection signature; a clean handshake means the path is open
+# (it most likely terminated on the Reality cover/decoy, which is expected and
+# is exactly what we want for a path test). If router is clear but control is
+# reset/blackholed, that points to filtering specific to the current network,
+# and switching backends will not help.
+#
+# This is a heuristic signal, not a certainty: a healthy Reality backend can
+# legitimately reset a plain (non-VLESS) probe. Cross-check with the live app
+# canaries in egress-backend-health before acting.
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
+ANSIBLE_CONFIG_FILE="${GHOSTROUTE_ANSIBLE_CONFIG_FILE:-${ANSIBLE_DIR}/ansible.cfg}"
+VAULT_FILE="${GHOSTROUTE_STEALTH_VAULT_FILE:-${ANSIBLE_DIR}/secrets/stealth.yml}"
+MODULE_DIR="${PROJECT_ROOT}/modules/ghostroute-health-monitor"
+BACKENDS_FILE_DEFAULT="${MODULE_DIR}/config/managed-egress-backends.tsv"
+
+JSON=0
+FROM="both"
+ONLY_ROLE=""
+BACKENDS_FILE="${GHOSTROUTE_MANAGED_EGRESS_BACKENDS_FILE:-$BACKENDS_FILE_DEFAULT}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./modules/ghostroute-health-monitor/bin/egress-dpi-probe [--json] [--from control|router|both] [--role <role>] [--backends <file>]
+
+Probes the raw TLS path to each backend in the bank (primary_vps,
+backup_reality, hermes_vps) from one or both vantage points and classifies how
+the connection behaves (clean / RST / timeout). Compares vantages so that a
+router-clear but control-filtered result is called out as network-specific
+filtering.
+
+Options:
+  --json                    Machine-readable output.
+  --from control|router|both  Vantage point(s). Default: both.
+  --role <role>             Probe a single backend role instead of the bank.
+  --backends <file>         Override the backend bank TSV.
+
+Read-only: resolves Vault values locally, opens TCP/TLS probes, never mutates
+routing, Vault, router or VPS state. Output is sanitized: no hosts/IPs/SNIs.
+USAGE
+}
+
+die() { printf 'egress-dpi-probe: %s\n' "$*" >&2; exit 1; }
+
+# Defensive IP/IPv6/email mask; the probe itself emits no hostnames/SNIs.
+sanitize_detail() {
+  sed -E \
+    -e 's/[0-9]{1,3}(\.[0-9]{1,3}){3}/<ip>/g' \
+    -e 's/([A-Fa-f0-9]{1,4}:){2,}[A-Fa-f0-9:]+/<ipv6>/g' \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/<user>@<host>/g'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --from) [ "$#" -ge 2 ] || die "--from needs control|router|both"; FROM="$2"; shift 2 ;;
+    --from=*) FROM="${1#*=}"; shift ;;
+    --role) [ "$#" -ge 2 ] || die "--role needs a value"; ONLY_ROLE="$2"; shift 2 ;;
+    --role=*) ONLY_ROLE="${1#*=}"; shift ;;
+    --backends) [ "$#" -ge 2 ] || die "--backends needs a file"; BACKENDS_FILE="$2"; shift 2 ;;
+    --backends=*) BACKENDS_FILE="${1#*=}"; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+case "$FROM" in control|router|both) ;; *) die "invalid --from '$FROM' (control|router|both)" ;; esac
+
+command -v ansible-vault >/dev/null 2>&1 || die "ansible-vault not found"
+command -v ruby >/dev/null 2>&1 || die "ruby not found"
+[ -f "$VAULT_FILE" ] || die "vault not found: $VAULT_FILE"
+[ -f "$BACKENDS_FILE" ] || die "backend bank not found: $BACKENDS_FILE"
+
+WANT_CONTROL=0; WANT_ROUTER=0
+[ "$FROM" = "control" ] || [ "$FROM" = "both" ] && WANT_CONTROL=1
+[ "$FROM" = "router" ] || [ "$FROM" = "both" ] && WANT_ROUTER=1
+
+if [ "$WANT_ROUTER" = "1" ]; then
+  router_health_load_env || die "cannot reach the router (set ROUTER in secrets/router.env)"
+fi
+
+TMPDIR="$(mktemp -d)"
+trap '[ -n "${TMPDIR:-}" ] && rm -rf "$TMPDIR"' EXIT
+
+( umask 077; ( cd "$ANSIBLE_DIR"; ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-vault view "$VAULT_FILE"; ) >"$TMPDIR/vault.yml" )
+
+vault_scalar() {
+  local key="$1" def="${2:-}"
+  awk -v key="${key}:" -v def="$def" '
+    $1 == key {
+      sub(/^[^:]+:[[:space:]]*/, "")
+      gsub(/^[\"\047]|[\"\047]$/, "")
+      print
+      found = 1
+      exit
+    }
+    END { if (!found) print def }
+  ' "$TMPDIR/vault.yml"
+}
+
+vault_list_first() {
+  local key="$1" def="${2:-}"
+  awk -v key="${key}:" -v def="$def" '
+    $1 == key { in_list = 1; next }
+    in_list && $1 == "-" {
+      sub(/^[[:space:]]*-[[:space:]]*/, "")
+      gsub(/^[\"\047]|[\"\047]$/, "")
+      print
+      found = 1
+      exit
+    }
+    in_list && $0 !~ /^[[:space:]]/ { in_list = 0 }
+    END { if (!found) print def }
+  ' "$TMPDIR/vault.yml"
+}
+
+vault_ref() {
+  local ref="$1" def="${2:-}" item value
+  OLDIFS="$IFS"; IFS='|'
+  for item in $ref; do
+    IFS="$OLDIFS"
+    case "$item" in
+      ""|"-") value="" ;;
+      *\[0\]) value="$(vault_list_first "${item%\[0\]}" "")" ;;
+      [0-9]*) value="$item" ;;
+      *) value="$(vault_scalar "$item" "")" ;;
+    esac
+    [ -n "$value" ] && { printf '%s' "$value"; IFS="$OLDIFS"; return 0; }
+    IFS='|'
+  done
+  IFS="$OLDIFS"
+  printf '%s' "$def"
+}
+
+ACTIVE_BACKEND="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
+
+# Self-contained probe wrapper: identical behavior locally and on the router.
+# Args: HOST PORT SNI ROLE. Emits: ROLE<TAB>STAGE<TAB>BYTES<TAB>ELAPSED.
+cat >"$TMPDIR/probe.sh" <<'PROBE'
+#!/bin/sh
+HOST="$1"; PORT="$2"; SNI="$3"; ROLE="$4"
+PY=/opt/bin/python3
+[ -x "$PY" ] || PY="$(command -v python3 2>/dev/null || true)"
+if [ -z "$PY" ]; then printf '%s\tpython3_missing\t0\t0.000\n' "$ROLE"; exit 0; fi
+PROBE_HOST="$HOST" PROBE_PORT="$PORT" PROBE_SNI="$SNI" PROBE_ROLE="$ROLE" "$PY" - <<'PYEOF'
+import os, socket, ssl, sys, time
+host = os.environ.get("PROBE_HOST", "")
+port = int(os.environ.get("PROBE_PORT", "443") or "443")
+sni  = os.environ.get("PROBE_SNI", "")
+role = os.environ.get("PROBE_ROLE", "backend")
+
+def emit(stage, nbytes, t0):
+    print("%s\t%s\t%d\t%.3f" % (role, stage, nbytes, time.time() - t0))
+    sys.exit(0)
+
+if not host or not sni:
+    print("%s\tnot_configured\t0\t0.000" % role); sys.exit(0)
+
+t0 = time.time()
+try:
+    raw = socket.create_connection((host, port), timeout=8)
+except socket.timeout:
+    emit("tcp_timeout", 0, t0)
+except ConnectionRefusedError:
+    emit("tcp_refused", 0, t0)
+except OSError:
+    emit("tcp_error", 0, t0)
+
+raw.settimeout(8)
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+try:
+    tls = ctx.wrap_socket(raw, server_hostname=sni)
+except socket.timeout:
+    emit("tls_timeout", 0, t0)
+except ConnectionResetError:
+    emit("tls_reset", 0, t0)
+except ssl.SSLError:
+    emit("tls_handshake_fail", 0, t0)
+except OSError:
+    emit("tls_error", 0, t0)
+
+try:
+    tls.sendall(("HEAD / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n" % sni).encode())
+except Exception:
+    pass
+
+total = 0
+try:
+    while True:
+        chunk = tls.recv(4096)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > 4096:
+            break
+except socket.timeout:
+    emit("data_timeout", total, t0)
+except ConnectionResetError:
+    emit("data_reset", total, t0)
+except OSError:
+    emit("data_error", total, t0)
+
+emit("ok", total, t0)
+PYEOF
+PROBE
+
+run_probe() {
+  # vantage role host port sni -> appends "vantage<TAB>role<TAB>stage<TAB>bytes<TAB>elapsed"
+  local vantage="$1" role="$2" host="$3" port="$4" sni="$5" line
+  if [ -n "${GHOSTROUTE_DPI_PROBE_STUB_DIR:-}" ]; then
+    line="$(cat "${GHOSTROUTE_DPI_PROBE_STUB_DIR}/${vantage}-${role}.tsv" 2>/dev/null || printf '%s\tstub_missing\t0\t0.000' "$role")"
+  elif [ "$vantage" = "router" ]; then
+    line="$(router_ssh "sh -s '$host' '$port' '$sni' '$role'" <"$TMPDIR/probe.sh" 2>/dev/null || printf '%s\trouter_probe_failed\t0\t0.000' "$role")"
+  else
+    line="$(sh "$TMPDIR/probe.sh" "$host" "$port" "$sni" "$role" 2>/dev/null || printf '%s\tcontrol_probe_failed\t0\t0.000' "$role")"
+  fi
+  printf '%s\t%s\n' "$vantage" "$(printf '%s' "$line" | sanitize_detail)" >>"$TMPDIR/results.tsv"
+}
+
+: >"$TMPDIR/results.tsv"
+while IFS=$'\t' read -r role label host_ref port_ref port_default sni_ref note; do
+  case "$role" in ''|\#*) continue ;; esac
+  [ -z "$ONLY_ROLE" ] || [ "$role" = "$ONLY_ROLE" ] || continue
+  host="$(vault_ref "$host_ref" "")"
+  port="$(vault_ref "$port_ref" "$port_default")"
+  sni="$(vault_ref "$sni_ref" "")"
+  printf '%s\t%s\t%s\n' "$role" "$label" "$([ "$role" = "$ACTIVE_BACKEND" ] && printf yes || printf no)" >>"$TMPDIR/meta.tsv"
+  [ "$WANT_CONTROL" = "1" ] && run_probe control "$role" "$host" "$port" "$sni"
+  [ "$WANT_ROUTER" = "1" ] && run_probe router "$role" "$host" "$port" "$sni"
+done <"$BACKENDS_FILE"
+
+[ -s "$TMPDIR/results.tsv" ] || die "no backend rows matched (check --role / backend bank file)"
+
+GR_JSON="$JSON" GR_FROM="$FROM" GR_ACTIVE="$ACTIVE_BACKEND" \
+ruby - "$TMPDIR/meta.tsv" "$TMPDIR/results.tsv" <<'RUBY'
+require 'json'
+
+meta = {}
+File.readlines(ARGV[0], chomp: true).each do |line|
+  role, label, active = line.split("\t", 3)
+  meta[role] = { 'label' => label, 'active' => active == 'yes' }
+end
+
+probes = Hash.new { |h, k| h[k] = {} }
+File.readlines(ARGV[1], chomp: true).each do |line|
+  vantage, role, stage, nbytes, elapsed = line.split("\t", 5)
+  probes[role][vantage] = { 'stage' => stage, 'bytes' => nbytes.to_i, 'elapsed_s' => elapsed.to_f }
+end
+
+# Map a raw stage to a descriptive, non-alarmist per-vantage verdict. The
+# actionable interpretation lives in the cross verdict, because a lone reset or
+# fast TLS reject is ambiguous against a Reality endpoint (healthy Reality
+# servers routinely reject plain, non-VLESS probes).
+def verdict(stage)
+  case stage
+  when 'ok'                              then 'open'        # handshake completed; path open (likely the decoy)
+  when 'tls_reset', 'data_reset'         then 'reset'       # RST on/after ClientHello
+  when 'tcp_refused'                     then 'refused'     # host down or firewall closing the port
+  when 'tcp_timeout', 'tls_timeout', 'data_timeout' then 'timeout' # drop-based: filtering OR unreachable
+  when 'tls_handshake_fail', 'tls_error', 'tcp_error', 'data_error' then 'tls_reject'
+  when 'not_configured'                  then 'skipped'
+  when 'python3_missing'                 then 'inconclusive'
+  else 'inconclusive'
+  end
+end
+
+VERDICT_NOTE = {
+  'open'         => 'Handshake completed; path open (most likely the Reality cover/decoy — expected).',
+  'reset'        => 'Reset on/after the TLS ClientHello.',
+  'refused'      => 'TCP refused — host down or a firewall is closing the port.',
+  'timeout'      => 'Timed out with no response.',
+  'tls_reject'   => 'TLS handshake rejected fast — typical of a Reality server refusing a plain probe.',
+  'skipped'      => 'Backend role has no host/SNI configured in Vault.',
+  'inconclusive' => 'Could not classify (e.g. python3 missing on the probe host).'
+}.freeze
+
+DEGRADED = %w[reset refused timeout tls_reject].freeze
+
+# The cross verdict is the real signal: per-backend Reality/decoy config is
+# constant across vantages, so a difference between control and router isolates
+# the path (i.e. the network), while agreement points at the endpoint itself.
+def cross(control_v, router_v)
+  return nil unless control_v && router_v
+  return 'clear_both' if control_v == 'open' && router_v == 'open'
+  if router_v == 'open' && DEGRADED.include?(control_v)
+    return 'network_specific_filtering'
+  end
+  if control_v == 'open' && DEGRADED.include?(router_v)
+    return 'router_path_degraded'
+  end
+  return 'consistent_degraded' if control_v == router_v
+  'mixed_degraded'
+end
+
+CROSS_NOTE = {
+  'clear_both'                 => 'Both vantages open — no path interference detected from here.',
+  'network_specific_filtering' => 'Router path is open but this network is not: interference is local to the current network. Switching backend will NOT help — try a different SNI/port/network.',
+  'router_path_degraded'       => 'This network is open but the router path is not — unusual; check the router WAN / backend rather than the current network.',
+  'consistent_degraded'        => 'Both vantages behave the same way (no vantage-specific filtering). For a Reality endpoint this is often its normal reaction to a plain probe — cross-check the app canaries before concluding the backend is down.',
+  'mixed_degraded'             => 'Both vantages degraded but differently — re-run or inspect manually.'
+}.freeze
+
+results = meta.map do |role, m|
+  vantages = probes[role].map do |vantage, p|
+    [vantage, p.merge('verdict' => verdict(p['stage']), 'note' => VERDICT_NOTE[verdict(p['stage'])])]
+  end.to_h
+  cv = vantages.dig('control', 'verdict')
+  rv = vantages.dig('router', 'verdict')
+  xr = cross(cv, rv)
+  {
+    'role' => role, 'label' => m['label'], 'active' => m['active'],
+    'vantages' => vantages,
+    'cross_verdict' => xr,
+    'cross_note' => xr ? CROSS_NOTE[xr] : nil
+  }
+end
+
+if ENV['GR_JSON'] == '1'
+  puts JSON.pretty_generate({
+    'schema_version' => 1,
+    'command' => 'ghostroute-health-monitor egress-dpi-probe',
+    'from' => ENV['GR_FROM'],
+    'active_backend' => ENV['GR_ACTIVE'],
+    'results' => results
+  })
+else
+  order = %w[control router].select { |v| results.any? { |r| r['vantages'].key?(v) } }
+  role_w = [results.map { |r| r['role'].length }.max || 4, 12].max
+  puts "egress path / DPI probe: from=#{ENV['GR_FROM']} active=#{ENV['GR_ACTIVE']}"
+  puts
+  printf "%-#{role_w}s  active  %-9s  %-12s  %-7s  verdict\n", 'role', 'vantage', 'stage', 'elapsed'
+  puts '-' * (role_w + 48)
+  results.each do |r|
+    order.each do |v|
+      p = r['vantages'][v]
+      next unless p
+      printf "%-#{role_w}s  %-6s  %-9s  %-12s  %-7s  %s\n",
+             r['role'], (r['active'] ? 'yes' : 'no'), v, p['stage'],
+             format('%.2fs', p['elapsed_s']), p['verdict']
+    end
+  end
+  puts
+  results.each do |r|
+    if r['cross_verdict']
+      puts "#{r['role']}: #{r['cross_note']}"
+    else
+      r['vantages'].each { |v, p| puts "#{r['role']} (#{v}): #{p['note']}" }
+    end
+  end
+  puts
+  puts 'heuristic signal, not a certainty — cross-check with egress-backend-health live app canaries'
+  puts 'roles map to backend selectors only; endpoint evidence is masked'
+end
+RUBY
