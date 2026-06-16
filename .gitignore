@@ -1,12 +1,16 @@
-# Персональные переменные окружения (IP роутера, SSH-ключ и т.п.)
+# Local environment and operator secrets
 .env
+.env.*
+!.env.example
+*.local.env
+/secrets/
 
-# Конфиги WireGuard с приватными ключами
+# WireGuard / VPN configs with private keys
 *.conf.wg
 wireguard/
 wg*.conf
 
-# Любые файлы с приватными/чувствительными данными
+# Keys, certificates and credential material
 *.key
 *.pem
 *.p12
@@ -16,23 +20,24 @@ id_ed25519
 id_ecdsa
 *.pub
 
-# Claude Code
+# AI assistant local state
 .claude/
 
-# VPN domain journal (local-only, не для репозитория)
+# Local reports, journals and private operator notes
+reports/
 docs/vpn-domain-journal.md
 docs/router-health-latest.md
 docs/catalog-review-latest.md
 docs/private/
 configs/private/
-reports/
+
+# Keep tracked Next.js route folders named reports/ inside the Console app
 !modules/ghostroute-console/app/src/app/reports/
 !modules/ghostroute-console/app/src/app/reports/**
 !modules/ghostroute-console/app/src/app/api/reports/
 !modules/ghostroute-console/app/src/app/api/reports/**
 
-# Локальные secrets / overrides с персональными IP, ключами и bypass-правилами
-/secrets/
+# Ansible Vault and generated client artifacts
 /ansible/secrets/*.yml
 !/ansible/secrets/*.yml.example
 /ansible/secrets/*.backup-*
@@ -61,19 +66,30 @@ reports/
 /ansible/out/clients-home-backup-*/
 ansible/*.retry
 
-# macOS
-.DS_Store
-__pycache__/
-
-# Node/Next module-local artifacts
+# Node / Next.js / Playwright artifacts
 node_modules/
 .next/
+out/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 modules/ghostroute-console/app/node_modules/
 modules/ghostroute-console/app/.next/
+modules/ghostroute-console/app/out/
+modules/ghostroute-console/app/coverage/
 modules/ghostroute-console/app/test-results/
+modules/ghostroute-console/app/playwright-report/
 modules/ghostroute-console/data/
 
-# Редакторы
+# Python / shell local artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS and editor noise
+.DS_Store
 *.swp
 *.swo
 *~
