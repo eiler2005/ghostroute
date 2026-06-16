@@ -105,8 +105,16 @@ upstream; Channel D and Channel M are never switched here):
 | Normal owned VPS | `primary_vps` | `managed-egress-mode set primary_vps --deploy-router` |
 | Incident reserve | `backup_reality` | `managed-egress-mode set backup_reality --deploy-router` |
 | Owned Hermes clone (Hostkey) | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
-| Show active backend | — | `managed-egress-mode status` |
+| Canary Hermes on Channel D only | `hermes_vps` (D) | `managed-egress-mode set hermes_vps --channel d --deploy-router` |
+| Return Channel D to shared backend | `follow` (D) | `managed-egress-mode set follow --channel d --deploy-router` |
+| Show active backends (A/B/C + D) | — | `managed-egress-mode status` |
 | Verify after a switch | — | `managed-egress-check` then `live-check --active-probe channel-a` |
+
+The optional `--channel d` selector pins **Channel D** to its own backend behind
+`reality-out-d`, independent of A/B/C (which stay on `reality-out`). Default is
+`follow` (D = A/B/C). This is the canary path: validate a new owned backend on
+isolated Channel D traffic before moving A/B/C. Channel D deploys via
+`24-channel-d-router.yml`; Channel M is still never switched here.
 
 `set` without `--deploy-router` only updates the Vault selector (with an encrypted
 backup) so you can review before rendering the router config. The same one active

@@ -237,6 +237,7 @@ router_health_load_env
 read_vault
 
 mode="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
+channel_d_mode="$(vault_scalar vault_channel_d_managed_egress_mode follow)"
 primary_host="$(vault_scalar vps_ssh_host)"
 primary_sni="$(vault_list_first reality_server_names gateway.icloud.com)"
 backup_host="$(vault_scalar vault_router_backup_reality_server)"
@@ -246,7 +247,13 @@ hermes_host="$(vault_scalar vault_router_hermes_vps_host "$(vault_scalar vault_r
 hermes_port="$(vault_scalar vault_router_hermes_vps_port 443)"
 hermes_sni="$(vault_scalar vault_router_hermes_vps_server_name "$primary_sni")"
 
-emit active_mode OK "Router managed egress mode is recorded in Vault." "mode=$mode" "Use ansible-vault edit for manual switchback or incident cutover."
+emit active_mode OK "Router managed egress mode is recorded in Vault." "mode=$mode" "Use managed-egress-mode set for manual switchback or incident cutover."
+
+if [ "$channel_d_mode" = "follow" ]; then
+  emit active_mode_d OK "Channel D follows the shared A/B/C managed egress." "channel_d_mode=follow shared=$mode" "Pin Channel D with managed-egress-mode set <mode> --channel d for a canary lane."
+else
+  emit active_mode_d OK "Channel D is pinned to an independent managed egress." "channel_d_mode=$channel_d_mode" "Return Channel D with managed-egress-mode set follow --channel d when the canary is done."
+fi
 
 run_router_endpoint_probes "$primary_host" "$primary_sni" "$backup_host" "$backup_port" "$backup_sni" "$hermes_host" "$hermes_port" "$hermes_sni"
 

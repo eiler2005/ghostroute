@@ -59,6 +59,10 @@ inspect its state, but must not silently change routing.
 Channel A/B/C managed upstream behind `reality-out`. It edits only the Vault
 selector, saves an encrypted backup and can optionally deploy
 `20-stealth-router.yml`; it does not regenerate client QR/VLESS artifacts.
+`set <mode> --channel d` selects an independent Channel D backend behind
+`reality-out-d` (default `follow` = same as A/B/C), deploying
+`24-channel-d-router.yml`; this is the canary lane for validating a new owned
+backend on Channel D before moving A/B/C. Channel M is never switched here.
 
 ## Runtime Storage & Artifacts
 

@@ -13,7 +13,7 @@ LOG_DIR="${GHOSTROUTE_LIVE_CHECK_LOG_DIR:-${PROJECT_ROOT}/reports/live-check}"
 
 usage() {
   cat <<'USAGE'
-Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-probe] [--deploy-gate] [--no-log] [all|channel-a|channel-b|channel-c]
+Usage: ./modules/ghostroute-health-monitor/bin/live-check [--json] [--active-probe] [--deploy-gate] [--no-log] [all|channel-a|channel-b|channel-c|channel-d]
 
 Read-only live runtime-chain check.
 Default mode checks listeners, firewall rules, sing-box split rules, DNS/catalog
@@ -58,6 +58,10 @@ while [ $# -gt 0 ]; do
       ;;
     channel-c|c)
       CHANNEL="channel-c"
+      shift
+      ;;
+    channel-d|d)
+      CHANNEL="channel-d"
       shift
       ;;
     -h|--help|help)
@@ -269,6 +273,9 @@ native_port="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PORT)"
 sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
 sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
 sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
+channel_d_enabled="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
+channel_d_public="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PUBLIC_PORT)"
+channel_d_socks_port="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT)"
 runtime_supervisor="$(env_value GHOSTROUTE_RUNTIME_SUPERVISOR)"
 services_start_hook="$(env_value GHOSTROUTE_SERVICES_START)"
 channel_m_reverse_enabled="$(env_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED)"
@@ -302,6 +309,9 @@ native_port="${native_port:-41955}"
 sr_enabled="${sr_enabled:-0}"
 sr_public="${sr_public:-4443}"
 sr_port="${sr_port:-41956}"
+channel_d_enabled="${channel_d_enabled:-0}"
+channel_d_public="${channel_d_public:-0}"
+channel_d_socks_port="${channel_d_socks_port:-0}"
 runtime_supervisor="${runtime_supervisor:-/jffs/scripts/ghostroute-runtime-supervisor.sh}"
 services_start_hook="${services_start_hook:-/jffs/scripts/services-start}"
 channel_m_reverse_enabled="${channel_m_reverse_enabled:-0}"
@@ -333,6 +343,14 @@ lan_redirect_ok() { printf '%s\n' "$nat_prerouting" | grep -F -- "-i br0" | grep
 split_ok() {
   inbound="$1"
   printf '%s\n' "$singbox_compact" | grep -Fq "\"inbound\":\"$inbound\",\"rule_set\":[\"stealth-domains\",\"stealth-static\"],\"outbound\":\"reality-out\"" &&
+    printf '%s\n' "$singbox_compact" | grep -Fq "\"inbound\":\"$inbound\",\"outbound\":\"direct-out\""
+}
+
+# Channel D managed split may exit via reality-out (follow A/B/C) or reality-out-d
+# (pinned to its own backend), so accept either managed outbound tag.
+split_ok_d() {
+  inbound="$1"
+  printf '%s\n' "$singbox_compact" | grep -Eq "\"inbound\":\"$inbound\",\"rule_set\":\[\"stealth-domains\",\"stealth-static\"\],\"outbound\":\"reality-out(-d)?\"" &&
     printf '%s\n' "$singbox_compact" | grep -Fq "\"inbound\":\"$inbound\",\"outbound\":\"direct-out\""
 }
 udp_drop_ok() {
@@ -374,6 +392,16 @@ if [ "$filter" = all ] || [ "$filter" = channel-c ]; then
   listener_ok "$native_port" && input_ok "$native_port" && { [ "$native_public" = "$native_port" ] || redirect_ok "$native_public" "$native_port"; } && split_ok channel-c-naive-in && emit channel_c_native_chain OK "Channel C/native Naive" "Native Naive listener, redirect, INPUT and split are present" "public_port=$native_public internal_port=$native_port" "No action." || emit channel_c_native_chain WARN "Channel C/native Naive" "Native Naive runtime chain is incomplete" "public_port=$native_public internal_port=$native_port" "Native Naive is experimental; check only if testing an SFI client."
   native_recent="$(line_count 'inbound/naive[channel-c-naive-in]')"; native_last="$(last_line 'inbound/naive[channel-c-naive-in]')"
   [ "$native_recent" -gt 0 ] && emit channel_c_native_recent OK "Channel C/native Naive" "Recent native Naive evidence is visible" "recent_log_lines=$native_recent last_seen=\"${native_last:-n/a}\"" "No action." || emit channel_c_native_recent IDLE "Channel C/native Naive" "No recent native Naive client event; expected for tested iPhone SFI builds" "recent_log_lines=0" "No action unless actively testing native Naive support."
+fi
+
+if [ "$filter" = all ] || [ "$filter" = channel-d ]; then
+  if [ "$channel_d_enabled" = 1 ]; then
+    listener_ok "$channel_d_socks_port" && split_ok_d channel-d-naiveproxy-socks-in && emit channel_d_chain OK "Channel D/NaiveProxy" "Channel D SOCKS inbound and managed split are present" "socks_port=$channel_d_socks_port public_port=$channel_d_public recent_log_lines=$(line_count 'inbound/socks[channel-d-naiveproxy-socks-in]')" "No action." || emit channel_d_chain WARN "Channel D/NaiveProxy" "Channel D runtime chain is incomplete" "socks_port=$channel_d_socks_port public_port=$channel_d_public" "Channel D is an experimental lab lane; check the Caddy naive ingress, SOCKS inbound and managed split."
+  else
+    emit channel_d_chain N/A "Channel D/NaiveProxy" "Channel D is disabled in runtime config" "enabled=0" "No action unless Channel D should be enabled."
+  fi
+  d_recent="$(line_count 'inbound/socks[channel-d-naiveproxy-socks-in]')"; d_last="$(last_line 'inbound/socks[channel-d-naiveproxy-socks-in]')"
+  [ "$d_recent" -gt 0 ] && emit channel_d_recent OK "Channel D/NaiveProxy" "Recent Channel D evidence is visible" "recent_log_lines=$d_recent last_seen=\"${d_last:-n/a}\"" "No action." || emit channel_d_recent IDLE "Channel D/NaiveProxy" "No recent Channel D client event in log tail" "recent_log_lines=0" "If a Karing client is trying now, check the Channel D profile and public port."
 fi
 
 if [ "$filter" = all ]; then

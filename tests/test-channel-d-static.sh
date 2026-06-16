@@ -7,7 +7,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 assert_contains() {
   local path="$1"
   local pattern="$2"
-  if ! rg -n "$pattern" "${PROJECT_ROOT}/${path}" >/dev/null; then
+  if ! rg -n -- "$pattern" "${PROJECT_ROOT}/${path}" >/dev/null; then
     echo "Expected ${path} to contain pattern: ${pattern}" >&2
     exit 1
   fi
@@ -16,7 +16,7 @@ assert_contains() {
 assert_contains_fixed() {
   local path="$1"
   local pattern="$2"
-  if ! rg -n -F "$pattern" "${PROJECT_ROOT}/${path}" >/dev/null; then
+  if ! rg -n -F -- "$pattern" "${PROJECT_ROOT}/${path}" >/dev/null; then
     echo "Expected ${path} to contain fixed string: ${pattern}" >&2
     exit 1
   fi
@@ -59,10 +59,38 @@ assert_not_contains "modules/routing-core/bin/build-channel-d-caddy" 'github.com
 
 assert_contains "ansible/roles/singbox_client/templates/config.json.j2" '"tag": "channel-d-naiveproxy-socks-in"'
 assert_contains "ansible/roles/singbox_client/templates/config.json.j2" '"listen": "127.0.0.1"'
-assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" '"inbound": "channel-d-naiveproxy-socks-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out"'
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" '"inbound": "channel-d-naiveproxy-socks-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "{{ d_out }}"'
 assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" '"inbound": "channel-d-naiveproxy-socks-in", "outbound": "direct-out"'
 assert_contains "ansible/roles/singbox_client/tasks/main.yml" 'Validate Channel D NaiveProxy sing-box relay settings'
 assert_contains "ansible/roles/singbox_client/tasks/main.yml" 'opkg list-installed'
+
+# Channel D independent managed egress selector (reality-out-d canary lane).
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" "set d_mode = channel_d_managed_egress_mode | default('follow')"
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" 'set d_effective_mode = managed_egress_mode if d_mode'
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" "set d_out = 'reality-out' if d_mode == 'follow' else 'reality-out-d'"
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" 'macro reality_outbound_body(mode)'
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" '"tag": "reality-out-d"'
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" "if d_mode != 'follow'"
+assert_contains_fixed "ansible/roles/singbox_client/templates/config.json.j2" 'reality_outbound_body(d_effective_mode)'
+assert_contains_fixed "ansible/group_vars/routers.yml" "channel_d_managed_egress_mode: \"{{ vault_channel_d_managed_egress_mode | default('follow') }}\""
+assert_contains_fixed "ansible/secrets/stealth.yml.example" 'vault_channel_d_managed_egress_mode: "follow"'
+assert_contains_fixed "ansible/roles/singbox_client/tasks/main.yml" "channel_d_managed_egress_mode | default('follow') in ['follow', 'primary_vps', 'backup_reality', 'hermes_vps']"
+assert_contains_fixed "ansible/roles/singbox_client/tasks/main.yml" "channel_d_managed_egress_mode | default('follow') == 'hermes_vps'"
+assert_contains_fixed "ansible/roles/singbox_client/tasks/main.yml" "channel_d_managed_egress_mode | default('follow') == 'backup_reality'"
+assert_contains_fixed "modules/routing-core/bin/managed-egress-mode" 'D_MODES="follow primary_vps backup_reality hermes_vps"'
+assert_contains_fixed "modules/routing-core/bin/managed-egress-mode" '--channel'
+assert_contains "modules/routing-core/bin/managed-egress-mode" 'vault_channel_d_managed_egress_mode'
+assert_contains "modules/routing-core/bin/managed-egress-mode" '24-channel-d-router.yml'
+
+# Operator verify commands at parity with Channel A/B/C: live-check channel-d + managed-egress-check D selector.
+assert_contains_fixed "modules/ghostroute-health-monitor/bin/live-check" 'channel-d|d)'
+assert_contains_fixed "modules/ghostroute-health-monitor/bin/live-check" 'all|channel-a|channel-b|channel-c|channel-d'
+assert_contains "modules/ghostroute-health-monitor/bin/live-check" 'split_ok_d'
+assert_contains "modules/ghostroute-health-monitor/bin/live-check" 'channel_d_chain'
+assert_contains "modules/ghostroute-health-monitor/bin/live-check" 'GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT'
+assert_contains_fixed "modules/ghostroute-health-monitor/bin/live-check" 'reality-out(-d)?'
+assert_contains "modules/ghostroute-health-monitor/bin/managed-egress-check" 'active_mode_d'
+assert_contains "modules/ghostroute-health-monitor/bin/managed-egress-check" 'vault_channel_d_managed_egress_mode'
 
 assert_contains "ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2" 'CHANNEL_D_NAIVEPROXY_PUBLIC_PORT'
 assert_contains "ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2" 'mobile-naiveproxy-channel-d-ingress'

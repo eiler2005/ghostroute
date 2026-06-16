@@ -141,6 +141,11 @@ vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | def
 # manual reserve mode for a Vault-backed router-only VLESS/Reality provider
 # profile for emergency managed egress.
 router_managed_egress_mode: "{{ vault_router_managed_egress_mode | default('primary_vps') }}"
+# Independent Channel D managed egress selector. 'follow' (default) keeps Channel D
+# on the shared reality-out backend as Channel A/B/C; primary_vps/backup_reality/
+# hermes_vps pin Channel D to its own reality-out-d backend (canary lane). Pins
+# reuse the existing router_hermes_vps_* / router_backup_reality_* endpoints.
+channel_d_managed_egress_mode: "{{ vault_channel_d_managed_egress_mode | default('follow') }}"
 router_backup_dns_mode: "{{ vault_router_backup_dns_mode | default('cover_dns') }}"
 router_backup_reality_server: "{{ vault_router_backup_reality_server | default('') }}"
 router_backup_reality_server_port: "{{ vault_router_backup_reality_server_port | default(443) }}"
