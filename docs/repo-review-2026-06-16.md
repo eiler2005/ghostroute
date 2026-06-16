@@ -121,6 +121,16 @@ pre-commit hooks and safety boundaries together.
 Hiring signal strengthened: developer experience, consistency between local and
 CI environments, and PR discipline.
 
+### Pull request template
+
+Added `.github/pull_request_template.md`.
+
+Why: contributor docs are useful, but a PR template makes the expected behavior
+visible at the moment of change: scope, tests, risk, rollback and secret review.
+
+Hiring signal strengthened: code-review process, operational risk management and
+security review discipline.
+
 ## Risks and findings
 
 | Finding | Risk | Remediation |
@@ -148,15 +158,13 @@ this review did not execute local tooling.
 1. Add a short "Reviewer map" near the top of `README.md` linking directly to
    Product Requirements, Architecture, Testing, Security, SLOs, Deployment /
    Rollback and Console API/Schema docs.
-2. Consider adding a small PR template under `.github/pull_request_template.md`
-   that mirrors `CONTRIBUTING.md`: summary, scope, tests, risk, secrets.
-3. Consider a `docs/public-sanitization-checklist.md` only if secret-review steps
-   keep spreading across docs. For now `SECURITY.md`, `CONTRIBUTING.md` and
-   `docs/testing.md` are enough.
-4. Keep future Console API docs synchronized with route changes. If response
+2. Consider a `docs/public-sanitization-checklist.md` only if secret-review steps
+   keep spreading across docs. For now `SECURITY.md`, `CONTRIBUTING.md`, the PR
+   template and `docs/testing.md` are enough.
+3. Keep future Console API docs synchronized with route changes. If response
    shapes grow, document representative schemas close to route handlers rather
    than bloating the top-level API table.
-5. Run the full repo checks and CI before merging this docs/hygiene branch.
+4. Run the full repo checks and CI before merging this docs/hygiene branch.
 
 ## Verification to run before merge
 
