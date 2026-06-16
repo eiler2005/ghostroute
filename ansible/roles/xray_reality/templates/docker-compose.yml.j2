@@ -31,3 +31,13 @@ volumes:
   caddy_data:
   caddy_config:
 {% endif %}
+{% if xray_reality_docker_network_subnet | default('') | length > 0 %}
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: {{ xray_reality_docker_network_subnet }}
+{% if xray_reality_docker_network_gateway | default('') | length > 0 %}
+          gateway: {{ xray_reality_docker_network_gateway }}
+{% endif %}
+{% endif %}

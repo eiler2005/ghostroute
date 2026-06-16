@@ -6,6 +6,13 @@
 {% set control_plane_direct_domain_suffixes = router_control_plane_direct_domain_suffixes | default([]) %}
 {% set control_plane_direct_ports = router_control_plane_direct_ports | default([]) %}
 {% set control_plane_direct_enabled = (control_plane_direct_domain_suffixes | length > 0) and (control_plane_direct_ports | length > 0) %}
+{% set selected_vps_dns_host = vps_unbound_reality_target_host | default(vps_unbound_listen_host | default('127.0.0.1')) %}
+{% set selected_vps_dns_port = vps_unbound_listen_port | default(15353) %}
+{% if managed_egress_mode == 'hermes_vps' %}
+{% set selected_vps_dns_host = router_hermes_vps_unbound_target_host | default(router_hermes_vps_host, true) %}
+{% set selected_vps_dns_port = router_hermes_vps_unbound_port | default(vps_unbound_listen_port | default(15353), true) %}
+{% endif %}
+{% set use_cover_dns = (managed_egress_mode == 'backup_reality' and router_backup_dns_mode | default('cover_dns') == 'cover_dns') or (managed_egress_mode == 'hermes_vps' and router_hermes_dns_mode | default('managed_vps_dns') == 'cover_dns') %}
 {
   "log": {
     "level": "info",
@@ -23,8 +30,8 @@
       {
         "type": "tcp",
         "tag": "vps-dns-server",
-        "server": "{{ vps_unbound_reality_target_host | default(vps_unbound_listen_host | default('127.0.0.1')) }}",
-        "server_port": {{ vps_unbound_listen_port | default(15353) }},
+        "server": "{{ selected_vps_dns_host }}",
+        "server_port": {{ selected_vps_dns_port }},
         "detour": "reality-out"
       }
     ],
@@ -34,7 +41,7 @@
         "server": "cover-dns-server"
       }
     ],
-    "final": "{% if managed_egress_mode == 'backup_reality' and router_backup_dns_mode | default('cover_dns') == 'cover_dns' %}cover-dns-server{% else %}vps-dns-server{% endif %}"
+    "final": "{% if use_cover_dns %}cover-dns-server{% else %}vps-dns-server{% endif %}"
   }{% endif %},
   "inbounds": [
     {
@@ -221,6 +228,31 @@
           "enabled": true,
           "public_key": "{{ router_backup_reality_public_key }}",
           "short_id": "{{ router_backup_reality_short_id }}"
+        }
+      }
+{% elif managed_egress_mode == 'hermes_vps' %}
+      "server": "{{ router_hermes_vps_host }}",
+      "server_port": {{ router_hermes_vps_port }},
+      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ router_hermes_vps_server_name }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "{{ router_hermes_vps_utls_fingerprint | default('chrome') }}"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ reality_server_public_key }}",
+          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
         }
       }
 {% else %}

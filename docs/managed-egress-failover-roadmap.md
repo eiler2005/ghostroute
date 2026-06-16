@@ -29,7 +29,7 @@ egress is used for managed traffic.
 ## Implemented Manual Reserve Mode
 
 Ansible now renders the router `sing-box` `reality-out` outbound from one of
-two sources:
+three sources:
 
 ```text
 router_managed_egress_mode=primary_vps
@@ -37,6 +37,9 @@ router_managed_egress_mode=primary_vps
 
 router_managed_egress_mode=backup_reality
   -> Vault-backed router-only VLESS/Reality backup profile
+
+router_managed_egress_mode=hermes_vps
+  -> owned clone VPS Reality/Vision backend
 ```
 
 Current operating stance:
@@ -44,6 +47,7 @@ Current operating stance:
 ```text
 active managed egress = backup_reality
 primary VPS           = observed recovery candidate, not active switchback target
+Hermes VPS            = owned clone candidate, selected manually when proven
 ```
 
 This means the external reserve provider is the working managed egress for now.
@@ -65,7 +69,7 @@ be less tidy than normal primary mode.
 Vault variables:
 
 ```yaml
-vault_router_managed_egress_mode: "primary_vps"   # or "backup_reality"
+vault_router_managed_egress_mode: "primary_vps"   # or "backup_reality", "hermes_vps"
 vault_router_backup_dns_mode: "cover_dns"         # or "managed_vps_dns"
 vault_router_backup_reality_server: "<backup_reality_host_or_ip>"
 vault_router_backup_reality_server_port: 443
@@ -76,37 +80,69 @@ vault_router_backup_reality_server_name: "<backup_reality_sni>"
 vault_router_backup_reality_utls_fingerprint: "chrome"
 vault_router_backup_reality_public_key: "<backup_reality_public_key>"
 vault_router_backup_reality_short_id: "<backup_reality_short_id>"
+vault_router_hermes_dns_mode: "managed_vps_dns"   # or "cover_dns"
+vault_router_hermes_vps_host: "<hermes_public_reality_host_or_ip>"
+vault_router_hermes_vps_port: 443
+vault_router_hermes_vps_server_name: "<hermes_reality_sni>"
+vault_router_hermes_vps_utls_fingerprint: "chrome"
+vault_router_hermes_vps_unbound_target_host: "172.22.0.1"
+vault_router_hermes_vps_unbound_port: 15353
+vault_router_hermes_vps_ssh_host: "<hermes_ssh_host_or_ip>"
+vault_router_hermes_vps_ssh_user: "<hermes_ssh_user>"
+vault_router_hermes_vps_ssh_port: 22
+vault_router_hermes_vps_ssh_key: "<path_to_hermes_ssh_private_key>"
 ```
 
 Do not store the original provider URI in tracked files. Keep the generated
 provider profile in Vault or another gitignored secret store, and keep it
 router-only.
 
-Manual activation flow:
+Quick switch cheatsheet (one selector for the shared Channel A/B/C `reality-out`
+upstream; Channel D and Channel M are never switched here):
+
+| Goal | Backend | Command |
+|---|---|---|
+| Normal owned VPS | `primary_vps` | `managed-egress-mode set primary_vps --deploy-router` |
+| Incident reserve | `backup_reality` | `managed-egress-mode set backup_reality --deploy-router` |
+| Owned Hermes clone (Hostkey) | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
+| Show active backend | — | `managed-egress-mode status` |
+| Verify after a switch | — | `managed-egress-check` then `live-check --active-probe channel-a` |
+
+`set` without `--deploy-router` only updates the Vault selector (with an encrypted
+backup) so you can review before rendering the router config. The same one active
+backend serves Channel A LAN/Wi-Fi/Home Reality, Channel B and Channel C; client
+QR/VLESS artifacts, ingress ports and managed catalogs never change.
+
+During a real incident the live-check deploy gate will normally be WARN (suspect
+primary path, idle Channel B/C, Console collector against the down primary), and a
+plain `--deploy-router` will refuse to apply. Add `--skip-deploy-gate` to force the
+emergency switch, then re-check with `managed-egress-check` and
+`live-check --active-probe channel-a`:
 
 ```bash
-cd ansible
-ansible-vault edit secrets/stealth.yml
-# set vault_router_managed_egress_mode: "backup_reality"
-ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-ansible-playbook playbooks/20-stealth-router.yml
-../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+./modules/routing-core/bin/managed-egress-mode set backup_reality --deploy-router --skip-deploy-gate
 ```
 
-Manual return to primary:
+Operator activation flow:
 
 ```bash
-cd ansible
-ansible-vault edit secrets/stealth.yml
-# set vault_router_managed_egress_mode: "primary_vps"
-ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-ansible-playbook playbooks/20-stealth-router.yml
-../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+./modules/routing-core/bin/managed-egress-mode status
+./modules/routing-core/bin/managed-egress-mode set backup_reality --deploy-router
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+```
+
+Operator return to primary:
+
+```bash
+./modules/routing-core/bin/managed-egress-mode set primary_vps --deploy-router
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
 ```
 
 During incident recovery, run the live check before and after a switch. If the
-post-switch check fails, restore the previous Vault mode and redeploy the router
-role.
+post-switch check fails, restore the previous mode with
+`managed-egress-mode set <previous_mode> --deploy-router`. The helper edits only
+`vault_router_managed_egress_mode`, saves an encrypted Vault backup and never
+generates client QR/VLESS artifacts.
 
 The current operator check for this layer is:
 
@@ -135,13 +171,9 @@ This is intentionally a live operator switch, not automatic failover. The
 procedure is:
 
 ```bash
-cd ansible
-ansible-vault edit secrets/stealth.yml
-# update vault_router_managed_egress_mode
-ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-ansible-playbook playbooks/20-stealth-router.yml
-../modules/ghostroute-health-monitor/bin/managed-egress-check
-../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
 ```
 
 Future managed egress backends can use the same pattern if they can be rendered
@@ -149,6 +181,37 @@ behind the logical `reality-out` tag and prove application canaries. This should
 not be confused with Channel B or Channel C failover: B/C are ingress lanes for
 selected clients, while this switch changes only the upstream managed egress
 after the router has already made the managed-vs-direct decision.
+
+Channel D and Channel M stay outside this helper. Channel D has router-native
+ingress/runtime pieces, and Channel M uses its own home-WAN reverse model.
+
+## Owned Clone Egress Candidate
+
+For a second owned VPS candidate, such as a freshly prepared host from the
+operator's VPS-management inventory, do not copy the old server filesystem or
+generate new global Reality material by accident. Deploy the GhostRoute VPS edge
+with the existing `reality_server_private_key`, `reality_short_ids` and router
+client UUIDs, and set:
+
+```yaml
+xray_reality_seed_existing_material: true
+xray_reality_persist_generated_secrets: false
+stealth_caddy_mode: docker_sidecar
+```
+
+Hermes uses a deterministic Docker bridge for restricted resolver access:
+Unbound listens on loopback and `172.22.0.1:15353`, while router DNS queries to
+Hermes travel through the selected VLESS/Reality egress and target that bridge
+address. Do not bind Unbound to the public VPS address.
+
+This seeds the new VPS with a compatible `stealth-reality` inbound without
+rewriting `ansible/secrets/stealth.yml`. Do not regenerate QR or VLESS client
+artifacts for this operation: endpoint clients keep their existing first-hop
+profiles, while the router changes only the upstream backend behind
+`reality-out`. After the candidate proves Telegram and general application
+canaries, switch `vault_router_managed_egress_mode` to `hermes_vps` manually.
+Keep this as an operator-selected backend; do not add automatic failover without
+separate design and tests.
 
 ## Primary VPS Path Recovery Checks
 

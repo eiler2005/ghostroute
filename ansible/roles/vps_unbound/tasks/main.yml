@@ -58,6 +58,12 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
+- name: Reset failed Unbound start-limit state before start
+  ansible.builtin.command: systemctl reset-failed unbound
+  changed_when: false
+  failed_when: false
+  when: vps_unbound_enabled | bool
+
 - name: Enable Unbound loopback resolver
   ansible.builtin.service:
     name: unbound

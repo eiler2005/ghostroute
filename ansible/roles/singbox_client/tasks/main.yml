@@ -116,9 +116,10 @@
 - name: Validate managed egress mode before rendering config
   ansible.builtin.assert:
     that:
-      - router_managed_egress_mode in ['primary_vps', 'backup_reality']
+      - router_managed_egress_mode in ['primary_vps', 'backup_reality', 'hermes_vps']
       - router_backup_dns_mode in ['cover_dns', 'managed_vps_dns']
-    fail_msg: "router_managed_egress_mode must be primary_vps or backup_reality."
+      - router_hermes_dns_mode | default('managed_vps_dns') in ['cover_dns', 'managed_vps_dns']
+    fail_msg: "router_managed_egress_mode must be primary_vps, backup_reality or hermes_vps."
 
 - name: Validate backup Reality managed egress settings
   ansible.builtin.assert:
@@ -135,6 +136,20 @@
       - router_backup_reality_short_id | string | length > 0
     fail_msg: "backup_reality mode needs a complete router-only VLESS/Reality provider profile in Vault."
   when: router_managed_egress_mode == 'backup_reality'
+  no_log: true
+
+- name: Validate Hermes owned managed egress settings
+  ansible.builtin.assert:
+    that:
+      - router_hermes_vps_host | string | length > 0
+      - router_hermes_vps_port | int > 0
+      - router_hermes_vps_port | int <= 65535
+      - router_hermes_vps_server_name | string | length > 0
+      - router_hermes_vps_utls_fingerprint | string | length > 0
+      - reality_server_public_key | string | length > 0
+      - (clients | selectattr('name','equalto','router') | list | length) == 1
+    fail_msg: "hermes_vps mode needs a complete owned VPS endpoint and the existing router Reality client identity."
+  when: router_managed_egress_mode == 'hermes_vps'
   no_log: true
 
 - name: Validate Channel C1 home Naive settings

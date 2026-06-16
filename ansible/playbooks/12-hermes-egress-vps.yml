@@ -1,0 +1,83 @@
+- name: Deploy Hermes owned managed egress
+  hosts: vps_egress_hermes
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  vars:
+    stealth_stack_dir: /opt/stealth
+    vps_ssh_host: "{{ vault_router_hermes_vps_ssh_host | default(vault_router_hermes_vps_host, true) }}"
+    vps_ssh_user: "{{ vault_router_hermes_vps_ssh_user }}"
+    ufw_stealth_ssh_port: "{{ vault_router_hermes_vps_ssh_port | default('22', true) | string }}"
+    vps_unbound_docker_bridge_host: 172.22.0.1
+    vps_unbound_docker_bridge_cidr: 172.22.0.0/16
+    vps_unbound_reality_listen_host: ""
+    vps_unbound_reality_target_host: "{{ vps_unbound_docker_bridge_host }}"
+  pre_tasks:
+    - name: Validate Hermes SSH and endpoint variables before mutating
+      ansible.builtin.assert:
+        that:
+          - vault_router_hermes_vps_ssh_host | default(vault_router_hermes_vps_host | default(''), true) | string | length > 0
+          - vault_router_hermes_vps_ssh_user | string | length > 0
+          - vault_router_hermes_vps_ssh_key | string | length > 0
+          - vault_router_hermes_vps_host | default(vault_router_hermes_vps_ssh_host | default(''), true) | string | length > 0
+          - reality_server_private_key | string | length > 0
+          - reality_server_public_key | string | length > 0
+          - reality_short_ids | length > 0
+          - (clients | selectattr('name','equalto','router') | list | length) == 1
+        fail_msg: "Hermes egress deploy needs SSH values, endpoint values and existing Reality material in Vault."
+      no_log: true
+    - name: Set Hermes owned-egress runtime facts after Vault load
+      ansible.builtin.set_fact:
+        vps_unbound_docker_bridge_host: 172.22.0.1
+        vps_unbound_docker_bridge_cidr: 172.22.0.0/16
+        vps_unbound_reality_listen_host: ""
+        vps_unbound_reality_target_host: 172.22.0.1
+    - name: Inspect Hermes Docker network before owned-egress deploy
+      ansible.builtin.command: docker network inspect stealth_default
+      register: hermes_stealth_network
+      changed_when: false
+      failed_when: false
+    - name: Stop Hermes stealth stack before Docker network CIDR change
+      community.docker.docker_compose_v2:
+        project_src: "{{ stealth_stack_dir }}"
+        state: absent
+      when:
+        - hermes_stealth_network.rc == 0
+        - vps_unbound_docker_bridge_host not in hermes_stealth_network.stdout
+    - name: Remove stale Hermes Docker network before deterministic recreate
+      ansible.builtin.command: docker network rm stealth_default
+      register: hermes_remove_network
+      changed_when: hermes_remove_network.rc == 0
+      failed_when: false
+      when:
+        - hermes_stealth_network.rc == 0
+        - vps_unbound_docker_bridge_host not in hermes_stealth_network.stdout
+  roles:
+    - role: caddy_l4
+      vars:
+        stealth_caddy_mode: docker_sidecar
+        system_caddy_site_enabled: false
+        channel_b_xhttp_enabled: false
+    - role: xray_reality
+      vars:
+        stealth_caddy_mode: docker_sidecar
+        xray_reality_docker_network_subnet: "{{ vps_unbound_docker_bridge_cidr }}"
+        xray_reality_docker_network_gateway: "{{ vps_unbound_docker_bridge_host }}"
+        vps_unbound_reality_target_host: "{{ vps_unbound_docker_bridge_host }}"
+        xray_reality_seed_existing_material: true
+        xray_reality_persist_generated_secrets: false
+    - role: vps_unbound
+      vars:
+        vps_unbound_docker_bridge_host: 172.22.0.1
+        vps_unbound_docker_bridge_cidr: 172.22.0.0/16
+        vps_unbound_reality_listen_host: ""
+        vps_unbound_reality_target_host: 172.22.0.1
+    - role: ufw_stealth
+      vars:
+        ufw_stealth_manage_ssh_allow: true
+        ufw_stealth_enable_firewall: true
+    - role: vps_health_monitor
+      tags:
+        - vps_health_monitor

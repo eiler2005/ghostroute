@@ -1,22 +1,73 @@
+- name: Probe 3x-ui CSRF token endpoints for seed login
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item }}/csrf-token"
+    method: GET
+    headers:
+      X-Requested-With: XMLHttpRequest
+    status_code: [200, 403, 404]
+    return_content: true
+  register: xui_seed_csrf_probe
+  loop: "{{ _xui_api_base_path_candidates | default([xui_admin_web_path | regex_replace('/+$', ''), ''] | unique | list) }}"
+  loop_control:
+    label: redacted-api-base
+  failed_when: false
+  when: _xui_login_candidates is not defined
+  no_log: true
+
+- name: Build 3x-ui seed login candidates
+  ansible.builtin.set_fact:
+    _xui_login_candidates: "{{ (_xui_login_candidates | default([])) + [ _xui_login_candidate ] }}"
+  vars:
+    _xui_login_candidate:
+      base_path: "{{ item.item }}"
+      login_path: "{{ (item.item ~ '/login') | regex_replace('//+', '/') }}"
+      csrf_token: "{{ item.json.obj | default('') }}"
+      csrf_cookie: "{{ item.cookies_string | default('') }}"
+  loop: "{{ xui_seed_csrf_probe.results | default([]) }}"
+  loop_control:
+    label: redacted-api-base
+  when: _xui_login_candidates is not defined
+  no_log: true
+
 - name: Login to 3x-ui and capture session
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item.login_path }}"
     method: POST
+    headers:
+      X-Requested-With: XMLHttpRequest
+      X-CSRF-Token: "{{ item.csrf_token }}"
+      Cookie: "{{ item.csrf_cookie }}"
     body_format: form-urlencoded
     body:
       username: "{{ xui_admin_username }}"
       password: "{{ xui_admin_password }}"
     return_content: true
     status_code: 200
-  register: xui_login
-  failed_when: not (xui_login.json.success | default(false))
+  register: xui_login_attempts
+  loop: "{{ _xui_login_candidates }}"
+  loop_control:
+    label: redacted-login-endpoint
+  failed_when: false
+  no_log: true
+
+- name: Select 3x-ui login session
+  ansible.builtin.set_fact:
+    xui_login: "{{ _xui_successful_login }}"
+    _xui_api_base_path: "{{ _xui_successful_login.item.base_path | default('') }}"
+  vars:
+    _xui_json_successes: "{{ xui_login_attempts.results | default([]) | selectattr('json', 'defined') | selectattr('json.success', 'equalto', true) | list }}"
+    _xui_content_successes: "{{ xui_login_attempts.results | default([]) | selectattr('content', 'defined') | selectattr('content', 'search', '\"success\"\\s*:\\s*true') | list }}"
+    _xui_successful_login: "{{ (_xui_json_successes + _xui_content_successes) | first | default({}) }}"
+  failed_when: _xui_successful_login | length == 0
   no_log: true
 
 - name: List existing 3x-ui inbounds
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/panel/api/inbounds/list"
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ _xui_api_base_path }}/panel/api/inbounds/list"
     method: GET
     headers:
+      X-Requested-With: XMLHttpRequest
+      X-CSRF-Token: "{{ xui_login.item.csrf_token | default('') }}"
       Cookie: "{{ xui_login.cookies_string }}"
     return_content: true
     status_code: 200
@@ -31,8 +82,21 @@
 
 - name: Parse existing inbound stream settings
   ansible.builtin.set_fact:
-    _existing_stream_settings: "{{ (_existing_stealth_inbound.streamSettings | default('{}')) | from_json }}"
+    _existing_stream_settings: >-
+      {{
+        _existing_stealth_inbound.streamSettings
+        if _existing_stealth_inbound.streamSettings is mapping
+        else ((_existing_stealth_inbound.streamSettings | default('{}')) | from_json)
+      }}
   when: _has_existing_stealth_inbound
+  no_log: true
+
+- name: Reuse configured Reality private key for a new clone inbound
+  ansible.builtin.set_fact:
+    _reality_priv: "{{ reality_server_private_key }}"
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_server_private_key | default('') | length > 0
   no_log: true
 
 - name: Generate Reality x25519 keypair via Xray binary
@@ -40,26 +104,137 @@
     docker exec xray /app/bin/xray-linux-amd64 x25519
   register: xray_x25519
   changed_when: false
-  when: not _has_existing_stealth_inbound
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_server_private_key | default('') | length == 0
 
 - name: Parse public/private keys from xray output
   ansible.builtin.set_fact:
     _reality_priv: "{{ xray_x25519.stdout | regex_search('PrivateKey:\\s*(\\S+)', '\\1') | first }}"
     _reality_pub:  "{{ xray_x25519.stdout | regex_search('PublicKey\\):\\s*(\\S+)', '\\1') | first }}"
-  when: not _has_existing_stealth_inbound
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_server_private_key | default('') | length == 0
+  no_log: true
+
+- name: Derive Reality public key from configured private key
+  ansible.builtin.shell: |
+    docker exec xray /app/bin/xray-linux-amd64 x25519 -i "{{ _reality_priv }}"
+  register: xray_configured_x25519
+  changed_when: false
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_server_private_key | default('') | length > 0
+  no_log: true
+
+- name: Parse public key from configured Reality private key
+  ansible.builtin.set_fact:
+    _reality_pub: "{{ xray_configured_x25519.stdout | regex_search('PublicKey\\):\\s*(\\S+)', '\\1') | first }}"
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_server_private_key | default('') | length > 0
+  no_log: true
+
+- name: Reuse configured Reality short IDs for a new clone inbound
+  ansible.builtin.set_fact:
+    _reality_sids: "{{ reality_short_ids }}"
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_short_ids | default([]) | length > 0
   no_log: true
 
 - name: Generate 8 short IDs
   ansible.builtin.set_fact:
     _reality_sids: "{{ lookup('ansible.builtin.pipe', 'for i in $(seq 1 8); do openssl rand -hex 8; done').splitlines() }}"
-  when: not _has_existing_stealth_inbound
+  when:
+    - not _has_existing_stealth_inbound
+    - reality_short_ids | default([]) | length == 0
+
+- name: Reuse configured Reality material for an existing clone inbound
+  ansible.builtin.set_fact:
+    _reality_priv: "{{ reality_server_private_key }}"
+    _reality_sids: "{{ reality_short_ids }}"
+  when:
+    - _has_existing_stealth_inbound
+    - xray_reality_seed_existing_material | default(false) | bool
+    - reality_server_private_key | default('') | length > 0
+    - reality_short_ids | default([]) | length > 0
+  no_log: true
 
 - name: Recover Reality private key and short IDs from existing inbound
   ansible.builtin.set_fact:
     _reality_priv: "{{ _existing_stream_settings.realitySettings.privateKey }}"
     _reality_sids: "{{ _existing_stream_settings.realitySettings.shortIds }}"
-  when: _has_existing_stealth_inbound
+  when:
+    - _has_existing_stealth_inbound
+    - not (
+        xray_reality_seed_existing_material | default(false) | bool
+        and reality_server_private_key | default('') | length > 0
+        and reality_short_ids | default([]) | length > 0
+      )
   no_log: true
+
+- name: Sync existing clone Reality private key and short IDs
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker exec -i \
+      -e REALITY_KEY_MATERIAL={{ _reality_priv | quote }} \
+      -e REALITY_SHORT_IDS={{ _reality_sids | to_json | quote }} \
+      xray python3 - <<'PY'
+    import json
+    import os
+    import sqlite3
+
+    db = "/etc/x-ui/x-ui.db"
+    key_material = os.environ["REALITY_KEY_MATERIAL"]
+    short_ids = json.loads(os.environ["REALITY_SHORT_IDS"])
+
+    con = sqlite3.connect(db)
+    cols = {row[1] for row in con.execute("pragma table_info(inbounds)")}
+    stream_col = "stream_settings" if "stream_settings" in cols else "streamSettings"
+
+    row = con.execute(
+        f"select id, {stream_col} from inbounds where remark = ?",
+        ("stealth-reality",),
+    ).fetchone()
+    if not row:
+        raise SystemExit("stealth-reality inbound not found")
+
+    inbound_id, stream_raw = row
+    stream = json.loads(stream_raw or "{}")
+    reality = stream.setdefault("realitySettings", {})
+
+    changed = False
+    if reality.get("privateKey") != key_material:
+        reality["privateKey"] = key_material
+        changed = True
+    if reality.get("shortIds") != short_ids:
+        reality["shortIds"] = short_ids
+        changed = True
+
+    if changed:
+        con.execute(
+            f"update inbounds set {stream_col} = ? where id = ?",
+            (json.dumps(stream, separators=(",", ":")), inbound_id),
+        )
+        con.commit()
+        print("changed")
+    else:
+        print("ok")
+    PY
+  args:
+    executable: /bin/bash
+  register: xui_clone_material_sync
+  changed_when: xui_clone_material_sync.stdout | trim == "changed"
+  when:
+    - _has_existing_stealth_inbound
+    - xray_reality_seed_existing_material | default(false) | bool
+  no_log: true
+
+- name: Restart xray container after clone Reality material sync
+  ansible.builtin.command:
+    argv: [docker, restart, xray]
+  when: xui_clone_material_sync is changed
 
 - name: Normalize existing Reality inbound listen address for Docker publishing
   ansible.builtin.shell: |
@@ -119,9 +294,11 @@
 
 - name: Create inbound via 3x-ui API
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/panel/api/inbounds/add"
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ _xui_api_base_path }}/panel/api/inbounds/add"
     method: POST
     headers:
+      X-Requested-With: XMLHttpRequest
+      X-CSRF-Token: "{{ xui_login.item.csrf_token | default('') }}"
       Cookie: "{{ xui_login.cookies_string }}"
     body_format: json
     body:
@@ -194,6 +371,7 @@
   delegate_to: localhost
   become: false
   no_log: true
+  when: xray_reality_persist_generated_secrets | default(true) | bool
 
 - name: Encrypt updated stealth secrets locally
   ansible.builtin.shell: |
@@ -217,3 +395,4 @@
   delegate_to: localhost
   become: false
   no_log: true
+  when: xray_reality_persist_generated_secrets | default(true) | bool
