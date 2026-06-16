@@ -34,12 +34,13 @@ role-style name. Do not publish the real provider, ASN, account, host family,
 endpoint, SNI, IP, key material or the role-to-provider mapping. Those values
 belong in Ansible Vault or gitignored operator notes.
 
-If the operator needs role-to-country context, keep it in the gitignored local
-note `docs/private/managed-egress-backends.local.md`. That file may record
-country codes by mnemonic role, but it must not be committed, quoted in public
-docs, or pasted into chat. Treat geolocation as the intended country source for
-that note; RIR whois `country` can describe registry ownership rather than the
-actual egress location.
+If the operator needs role-to-country or role-to-provider context, keep it in
+the gitignored local note `docs/private/managed-egress-backends.local.md` and in
+Vault-only metadata. That private metadata may record country codes and provider
+labels by mnemonic role, but it must not be committed, quoted in public docs, or
+pasted into chat. Treat geolocation as the intended country source for that
+note; RIR whois `country` can describe registry ownership rather than the actual
+egress location.
 
 ## Implemented Manual Reserve Mode
 
