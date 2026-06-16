@@ -69,6 +69,7 @@ ipset=/telegram.com/STEALTH_DOMAINS
 ipset=/t.me/STEALTH_DOMAINS
 ipset=/telegram.me/STEALTH_DOMAINS
 ipset=/telegra.ph/STEALTH_DOMAINS
+ipset=/legra.ph/STEALTH_DOMAINS
 ipset=/telesco.pe/STEALTH_DOMAINS
 ipset=/tg.dev/STEALTH_DOMAINS
 # Telegram CDN
@@ -79,9 +80,14 @@ ipset=/fragment.com/STEALTH_DOMAINS
 ipset=/graph.org/STEALTH_DOMAINS
 ipset=/contest.com/STEALTH_DOMAINS
 ipset=/comments.app/STEALTH_DOMAINS
+ipset=/quiz.directory/STEALTH_DOMAINS
 ipset=/usercontent.dev/STEALTH_DOMAINS
 ipset=/tdesktop.com/STEALTH_DOMAINS
-# Telegram extra domains (source: github.com/RockBlack-VPN/ip-address telegram_domain)
+ipset=/stel.com/STEALTH_DOMAINS
+ipset=/ton.org/STEALTH_DOMAINS
+ipset=/toncenter.com/STEALTH_DOMAINS
+# Telegram extra domains (sources: itdoginfo, v2fly/domain-list-community,
+# blackmatrix7 and prior RockBlack-VPN telegram_domain coverage)
 ipset=/tx.me/STEALTH_DOMAINS
 ipset=/telega.one/STEALTH_DOMAINS
 ipset=/telegram.dog/STEALTH_DOMAINS

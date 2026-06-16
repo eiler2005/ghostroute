@@ -18,7 +18,7 @@ The intent is to keep routing policy separate from traffic explanation:
   fallback, or diagnostics.
 - `confidence`: how safe the attribution is from the domain alone.
 
-The draft covers 243 managed domains from the active catalog. Runtime app-family
+The draft covers 248 managed domains from the active catalog. Runtime app-family
 classification keeps factual byte rows separate from DNS popularity. Console may
 also build an explicitly inferred attribution layer for selected-client
 aggregate residual bytes, but those rows must carry estimated/inferred metadata
@@ -40,7 +40,7 @@ and must not be presented as exact per-domain byte accounting.
 | GitLab / Bitbucket / Azure DevOps | developer_platform | client | high | `gitlab.com`, `gitlab-static.net`, `bitbucket.org`, `dev.azure.com`, `visualstudio.com` |
 | Developer / SaaS tools | developer_saas | client | medium | `atlassian.com`, `bintray.com`, `datacamp.com`, `hackernoon.com`, `harvestapp.com`, `jetbrains.com`, `netpeaksoftware.com`, `redis.io`, `redislabs.com`, `semrush.com`, `splunkcloud.com`, `tableau.com`, `tableausoftware.com`, `tableauusercontent.com` |
 | Hosting / cloud providers | provider_or_admin | provider_fallback | medium | `cloudflare.com`, `digitalocean.com`, `hetzner.com`, `console.hetzner.com`, `hetzner.cloud`, `hostinger.com` |
-| Telegram | messenger | client | high | `telegram.org`, `telegram.com`, `t.me`, `telegram.me`, `telegra.ph`, `telesco.pe`, `tg.dev`, `cdn-telegram.org`, `telegram-cdn.org`, `fragment.com`, `graph.org`, `contest.com`, `comments.app`, `usercontent.dev`, `tdesktop.com`, `tx.me`, `telega.one`, `telegram.dog`, `telegram.space` |
+| Telegram | messenger | client | high | `telegram.org`, `telegram.com`, `t.me`, `telegram.me`, `telegra.ph`, `legra.ph`, `telesco.pe`, `tg.dev`, `cdn-telegram.org`, `telegram-cdn.org`, `fragment.com`, `graph.org`, `contest.com`, `comments.app`, `quiz.directory`, `usercontent.dev`, `tdesktop.com`, `stel.com`, `ton.org`, `toncenter.com`, `tx.me`, `telega.one`, `telegram.dog`, `telegram.space` |
 | WhatsApp | messenger | client | high | `whatsapp.com`, `whatsapp.net`, `wa.me`, `wl.co` |
 | imo Messenger | messenger | client | high | `imo.im` |
 | Discord | messenger_voice | client | high | `discord.com`, `discord.gg`, `discord.media`, `discordapp.com`, `discordapp.net` |

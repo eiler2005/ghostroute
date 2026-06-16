@@ -2193,6 +2193,8 @@ test("app-family catalog classifies managed and observed client apps", () => {
   assert.equal(classifyAppFamily("rr4---sn-n8v7kn7r.googlevideo.com").app_family, "YouTube");
   assert.equal(classifyAppFamily("youtubei.googleapis.com").app_family, "YouTube");
   assert.equal(classifyAppFamily("scontent.cdninstagram.com").app_family, "Instagram / Meta");
+  assert.equal(classifyAppFamily("quiz.directory").app_family, "Telegram");
+  assert.equal(classifyAppFamily("api.toncenter.com").app_family, "Telegram");
   assert.equal(classifyAppFamily("cdn.openai.com").app_family, "OpenAI / ChatGPT");
   assert.equal(classifyAppFamily("api.ozon.ru").app_family, "Shopping / marketplaces");
   assert.equal(classifyAppFamily("static-basket-01.wbbasket.ru").app_family, "Shopping / marketplaces");

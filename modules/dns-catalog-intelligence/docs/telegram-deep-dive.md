@@ -37,6 +37,7 @@ Telegram устроен иначе. Помимо DNS-резолвимых дом
 | `t.me` | Короткие ссылки |
 | `telegram.me` | Старый короткий домен |
 | `telegra.ph` | Telegraph — платформа статей |
+| `legra.ph` | Короткий/legacy Telegraph alias из публичных rule lists |
 | `telesco.pe` | Web-представление публичных медиа |
 | `tg.dev` | Технические и служебные хосты |
 
@@ -55,8 +56,12 @@ Telegram устроен иначе. Помимо DNS-резолвимых дом
 | `graph.org` | Альтернативный домен Telegraph |
 | `contest.com` | Платформа конкурсов Telegram |
 | `comments.app` | Виджет комментариев для каналов |
+| `quiz.directory` | Каталог Telegram Quiz Bot |
 | `usercontent.dev` | Доставка пользовательского контента |
 | `tdesktop.com` | Домен Telegram Desktop |
+| `stel.com` | Служебный Telegram-домен для mail/login flows |
+| `ton.org` | TON/Telegram ecosystem |
+| `toncenter.com` | TON API ecosystem, включён в v2fly Telegram list |
 
 ## IPv4-подсети
 
@@ -84,8 +89,7 @@ Telegram устроен иначе. Помимо DNS-резолвимых дом
 Эти подсети не входят в официальный `cidr.txt`, но анонсируются через автономную систему Telegram (AS62041) и используются как CDN/пиринг для доставки медиа:
 
 ```
-5.28.192.0/21
-5.28.248.0/21
+5.28.192.0/18
 95.161.64.0/19
 ```
 
@@ -97,9 +101,12 @@ Telegram устроен иначе. Помимо DNS-резолвимых дом
 
 Wireshark-анализ живого трафика показывает `/19` (шире, чем рекомендуемый `/20`). Используем `/19` для полноты покрытия.
 
-**Про 5.28.192.0/21 и 5.28.248.0/21:**
+**Про 5.28.192.0/18:**
 
-Подсети зафиксированы при Wireshark-анализе Telegram-сессий. Относятся к инфраструктуре доставки контента.
+Укрупнённый диапазон используется несколькими публичными Telegram rule lists
+(`itdoginfo/allow-domains`, `Loyalsoldier`, `blackmatrix7`) и покрывает ранее
+зафиксированные `5.28.192.0/21` и `5.28.248.0/21`. Это всё ещё Telegram
+AS/peering coverage, а не shared CDN-провайдеры.
 
 ### Legacy / observed
 
