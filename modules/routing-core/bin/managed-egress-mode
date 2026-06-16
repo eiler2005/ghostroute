@@ -1,0 +1,181 @@
+#!/bin/bash
+# Local operator helper for the shared Channel A/B/C managed egress selector.
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
+ANSIBLE_CONFIG_FILE="${ANSIBLE_DIR}/ansible.cfg"
+VAULT_FILE="${ANSIBLE_DIR}/secrets/stealth.yml"
+VALID_MODES="primary_vps backup_reality hermes_vps"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./modules/routing-core/bin/managed-egress-mode status
+  ./modules/routing-core/bin/managed-egress-mode set <primary_vps|backup_reality|hermes_vps> [--deploy-router] [--skip-deploy-gate]
+
+Options:
+  --deploy-router      Render and apply 20-stealth-router.yml after the Vault edit.
+  --skip-deploy-gate   Emergency only: bypass the live-check deploy gate so an
+                       egress switch is not blocked by unrelated WARN checks
+                       (e.g. suspect primary path, idle Channel B/C). Verify with
+                       managed-egress-check + live-check after.
+
+Scope:
+  Switches the shared managed egress used by Channel A/B/C via router reality-out.
+  Channel D and Channel M are not switched by this helper.
+  Client QR/VLESS artifacts are not generated or modified.
+USAGE
+}
+
+die() {
+  printf 'managed-egress-mode: %s\n' "$*" >&2
+  exit 1
+}
+
+is_valid_mode() {
+  local mode="$1"
+  case " ${VALID_MODES} " in
+    *" ${mode} "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+vault_view() {
+  (
+    cd "$ANSIBLE_DIR"
+    ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-vault view "$VAULT_FILE"
+  )
+}
+
+extract_mode() {
+  awk '
+    $1 == "vault_router_managed_egress_mode:" {
+      sub(/^[^:]+:[[:space:]]*/, "")
+      gsub(/^[\"\047]|[\"\047]$/, "")
+      print
+      found = 1
+      exit
+    }
+    END { if (!found) print "primary_vps" }
+  '
+}
+
+current_mode() {
+  vault_view | extract_mode
+}
+
+status() {
+  local mode
+  mode="$(current_mode)"
+  printf 'managed egress mode: %s\n' "$mode"
+  printf 'available modes: %s\n' "$VALID_MODES"
+  printf 'scope: Channel A/B/C managed destinations through router reality-out\n'
+  printf 'unchanged: Channel D, Channel M, client QR/VLESS artifacts\n'
+}
+
+set_mode() {
+  local mode="$1"
+  shift
+
+  local deploy_router=0
+  local skip_gate=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --deploy-router)
+        deploy_router=1
+        shift
+        ;;
+      --skip-deploy-gate)
+        skip_gate=1
+        shift
+        ;;
+      -h|--help|help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option for set: $1"
+        ;;
+    esac
+  done
+
+  is_valid_mode "$mode" || die "invalid mode '$mode' (valid: $VALID_MODES)"
+
+  local before
+  before="$(current_mode)"
+  if [ "$before" = "$mode" ]; then
+    printf 'managed egress mode already %s\n' "$mode"
+  else
+    local tmpdir backup
+    tmpdir="$(mktemp -d)"
+    trap '[ -n "${tmpdir:-}" ] && rm -rf "$tmpdir"' RETURN
+
+    backup="${VAULT_FILE}.backup-managed-egress-$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -p "$VAULT_FILE" "$backup"
+
+    vault_view >"$tmpdir/stealth.yml"
+    ruby - "$tmpdir/stealth.yml" "$mode" <<'RUBY'
+path, mode = ARGV
+text = File.read(path)
+line = %(vault_router_managed_egress_mode: "#{mode}")
+if text.match?(/^vault_router_managed_egress_mode:[^\n]*$/)
+  text = text.sub(/^vault_router_managed_egress_mode:[^\n]*$/, line)
+else
+  text << "\n" unless text.end_with?("\n")
+  text << line << "\n"
+end
+File.write(path, text)
+RUBY
+
+    (
+      cd "$ANSIBLE_DIR"
+      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-vault encrypt "$tmpdir/stealth.yml" --output "$VAULT_FILE"
+    ) >/dev/null
+
+    local after
+    after="$(current_mode)"
+    [ "$after" = "$mode" ] || die "Vault update verification failed; backup is $backup"
+    printf 'managed egress mode changed: %s -> %s\n' "$before" "$mode"
+    printf 'encrypted backup: %s\n' "$backup"
+  fi
+
+  if [ "$deploy_router" = "1" ]; then
+    local gate_args=""
+    if [ "$skip_gate" = "1" ]; then
+      gate_args="-e ghostroute_skip_deploy_gate=true"
+      printf 'deploy gate skipped (emergency egress switch); verify with managed-egress-check after\n'
+    fi
+    (
+      cd "$ANSIBLE_DIR"
+      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook --syntax-check playbooks/20-stealth-router.yml
+      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook playbooks/20-stealth-router.yml $gate_args
+    )
+  else
+    printf 'router deploy not run; add --deploy-router to apply the selected mode\n'
+  fi
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    status|current)
+      shift || true
+      [ "$#" -eq 0 ] || die "status takes no arguments"
+      status
+      ;;
+    set)
+      shift
+      [ "$#" -ge 1 ] || die "set requires a mode"
+      set_mode "$@"
+      ;;
+    -h|--help|help|"")
+      usage
+      ;;
+    *)
+      die "unknown command: $cmd"
+      ;;
+  esac
+}
+
+main "$@"

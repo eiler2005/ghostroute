@@ -151,6 +151,17 @@ router_backup_reality_server_name: "{{ vault_router_backup_reality_server_name |
 router_backup_reality_utls_fingerprint: "{{ vault_router_backup_reality_utls_fingerprint | default('chrome') }}"
 router_backup_reality_public_key: "{{ vault_router_backup_reality_public_key | default('') }}"
 router_backup_reality_short_id: "{{ vault_router_backup_reality_short_id | default('') }}"
+router_hermes_dns_mode: "{{ vault_router_hermes_dns_mode | default('managed_vps_dns') }}"
+router_hermes_vps_host: "{{ vault_router_hermes_vps_host | default(vault_router_hermes_vps_ssh_host | default(''), true) }}"
+router_hermes_vps_port: "{{ vault_router_hermes_vps_port | default(443) }}"
+router_hermes_vps_server_name: "{{ vault_router_hermes_vps_server_name | default((reality_server_names | default(['']))[0], true) }}"
+router_hermes_vps_utls_fingerprint: "{{ vault_router_hermes_vps_utls_fingerprint | default('chrome') }}"
+router_hermes_vps_unbound_target_host: "{{ vault_router_hermes_vps_unbound_target_host | default(router_hermes_vps_host, true) }}"
+router_hermes_vps_unbound_port: "{{ vault_router_hermes_vps_unbound_port | default(vps_unbound_listen_port | default(15353), true) }}"
+router_hermes_vps_ssh_host: "{{ vault_router_hermes_vps_ssh_host | default(router_hermes_vps_host, true) }}"
+router_hermes_vps_ssh_user: "{{ vault_router_hermes_vps_ssh_user | default('') }}"
+router_hermes_vps_ssh_port: "{{ vault_router_hermes_vps_ssh_port | default(22) }}"
+router_hermes_vps_ssh_key: "{{ vault_router_hermes_vps_ssh_key | default('') }}"
 
 stealth_route_init_script: /jffs/scripts/stealth-route-init.sh
 stealth_dnsmasq_conf_path: /jffs/configs/dnsmasq-stealth.conf.add

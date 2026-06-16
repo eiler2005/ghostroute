@@ -322,19 +322,26 @@ DPI-фильтрация именно router -> primary VPS Reality/TLS пути
 router-side тегом `reality-out`:
 
 ```text
-vault_router_managed_egress_mode: "primary_vps"     # normal owned VPS
+vault_router_managed_egress_mode: "primary_vps"    # normal owned VPS
 vault_router_managed_egress_mode: "backup_reality" # router-only reserve profile
+vault_router_managed_egress_mode: "hermes_vps"     # owned Hermes clone (Hostkey VPS)
 ```
 
-Аварийное включение:
+Аварийное включение через локальный оператор-хелпер (правит только Vault-селектор,
+делает зашифрованный backup и опционально redeploy router):
 
 ```sh
-cd ansible
-ansible-vault edit secrets/stealth.yml
-ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-ansible-playbook playbooks/20-stealth-router.yml
-../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+./modules/routing-core/bin/managed-egress-mode status
+# Во время инцидента primary path обычно WARN и блокирует deploy gate,
+# поэтому для аварийного переключения добавляй --skip-deploy-gate:
+./modules/routing-core/bin/managed-egress-mode set backup_reality --deploy-router --skip-deploy-gate
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
 ```
+
+`primary_vps`, `backup_reality` и `hermes_vps` — это backend-ы за стабильным
+`reality-out`; переключение не трогает client QR/VLESS artifacts, Channel A/B/C
+ingress-порты, managed-каталоги, Channel D и Channel M.
 
 Для проверки восстановления primary VPS, пока reserve mode активен:
 
@@ -352,9 +359,9 @@ router_ssh 'curl -k --connect-timeout 5 --max-time 12 \
   -o /dev/null -sS -w "code=%{http_code} app=%{time_appconnect} total=%{time_total}\n"'
 ```
 
-Возврат на primary делайте только вручную: выставьте
-`vault_router_managed_egress_mode: "primary_vps"`, redeploy router playbook и
-снова запустите `live-check --active-probe channel-a`.
+Возврат на primary делайте только вручную:
+`./modules/routing-core/bin/managed-egress-mode set primary_vps --deploy-router`,
+затем снова запустите `live-check --active-probe channel-a`.
 
 ## VPS TCP/443 Или Public DNS 53 Настроены Неверно
 

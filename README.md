@@ -159,9 +159,11 @@ diagnostic.
 - Shared static CIDR catalog for direct-IP services via `VPN_STATIC_NETS`.
 - Optional Layer 0 endpoint/client-side routing for devices that support
   rule-based client profiles such as Shadowrocket-style configs.
-- Channel A managed egress through the stable `reality-out` tag: normally the
-  owned VPS Reality/Vision host behind shared Caddy L4 on TCP/443, with an
-  explicit Vault-backed backup Reality provider mode for incidents.
+- Channel A managed egress through the stable `reality-out` tag with three
+  operator-selectable backends: the primary owned VPS Reality/Vision host behind
+  shared Caddy L4 on TCP/443, a Vault-backed backup Reality provider for
+  incidents, and an owned Hermes clone VPS (a Hostkey host) for owned-egress
+  migration. The route contract stays fixed; only the backend swaps.
 - Optional Channel A selected full-VPS sets for home LAN/Wi-Fi devices and Home
   Reality profiles that should send all internet-bound traffic through
   `reality-out`, while non-selected devices keep the managed-domain split. This
@@ -198,6 +200,24 @@ diagnostic.
 - Read-only GhostRoute Console with full desktop workbenches and compact mobile
   `/m` pages over prepared route, traffic, client, health, live and catalog
   evidence.
+
+### Switching the managed egress backend
+
+One local operator helper selects which backend serves the shared `reality-out`
+upstream for Channel A/B/C. It edits only the Vault selector, saves an encrypted
+backup, and optionally redeploys the router:
+
+```bash
+./modules/routing-core/bin/managed-egress-mode status
+./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+```
+
+Valid modes are `primary_vps`, `backup_reality` and `hermes_vps`. The switch
+changes only the upstream managed egress, never client QR/VLESS artifacts,
+ingress ports or managed catalogs. Channel D and Channel M are not affected. See
+[docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md)
+for the full procedure and recovery checks.
 
 ---
 

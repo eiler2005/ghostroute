@@ -197,6 +197,13 @@ Sites and checkers see the VPS IP for managed catalog matches and for selected
 Channel A full-VPS internet-bound traffic; non-selected non-managed traffic
 selected as `DIRECT` or home-WAN direct does not use the VPS egress.
 
+The `active managed egress` behind `reality-out` is an operator-selected backend
+(primary owned VPS, Vault-backed backup Reality provider, or an owned Hermes
+clone VPS) chosen via `./modules/routing-core/bin/managed-egress-mode`. Swapping
+the backend does not change the route contract, client profiles, or Channel
+D/M behavior. See
+[managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).
+
 Policy-split managed DNS is generated on the router and normally uses the
 router-local dnscrypt listener. dnscrypt sends upstream DoH through sing-box
 SOCKS and `reality-out`, so the protected path remains Reality-backed without

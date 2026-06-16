@@ -93,9 +93,12 @@ run_router_endpoint_probes() {
   local backup_host="$3"
   local backup_port="$4"
   local backup_sni="$5"
+  local hermes_host="$6"
+  local hermes_port="$7"
+  local hermes_sni="$8"
 
   router_ssh \
-    "PRIMARY_HOST='$primary_host' PRIMARY_SNI='$primary_sni' BACKUP_HOST='$backup_host' BACKUP_PORT='$backup_port' BACKUP_SNI='$backup_sni' sh -s" \
+    "PRIMARY_HOST='$primary_host' PRIMARY_SNI='$primary_sni' BACKUP_HOST='$backup_host' BACKUP_PORT='$backup_port' BACKUP_SNI='$backup_sni' HERMES_HOST='$hermes_host' HERMES_PORT='$hermes_port' HERMES_SNI='$hermes_sni' sh -s" \
     >"$TMPDIR/router-probes.tsv" <<'REMOTE'
 set -u
 
@@ -151,6 +154,14 @@ if [ -n "$BACKUP_HOST" ] && [ -n "$BACKUP_SNI" ]; then
 else
   printf 'backup_tcp\tUNKNOWN\tbackup_not_configured\n'
   printf 'backup_tls\tUNKNOWN\tbackup_not_configured\n'
+fi
+
+if [ -n "$HERMES_HOST" ] && [ -n "$HERMES_SNI" ]; then
+  tcp_probe hermes "$HERMES_HOST" "${HERMES_PORT:-443}"
+  tls_probe hermes "$HERMES_HOST" "${HERMES_PORT:-443}" "$HERMES_SNI"
+else
+  printf 'hermes_tcp\tUNKNOWN\thermes_not_configured\n'
+  printf 'hermes_tls\tUNKNOWN\thermes_not_configured\n'
 fi
 REMOTE
 }
@@ -231,10 +242,13 @@ primary_sni="$(vault_list_first reality_server_names gateway.icloud.com)"
 backup_host="$(vault_scalar vault_router_backup_reality_server)"
 backup_port="$(vault_scalar vault_router_backup_reality_server_port 443)"
 backup_sni="$(vault_scalar vault_router_backup_reality_server_name)"
+hermes_host="$(vault_scalar vault_router_hermes_vps_host "$(vault_scalar vault_router_hermes_vps_ssh_host)")"
+hermes_port="$(vault_scalar vault_router_hermes_vps_port 443)"
+hermes_sni="$(vault_scalar vault_router_hermes_vps_server_name "$primary_sni")"
 
 emit active_mode OK "Router managed egress mode is recorded in Vault." "mode=$mode" "Use ansible-vault edit for manual switchback or incident cutover."
 
-run_router_endpoint_probes "$primary_host" "$primary_sni" "$backup_host" "$backup_port" "$backup_sni"
+run_router_endpoint_probes "$primary_host" "$primary_sni" "$backup_host" "$backup_port" "$backup_sni" "$hermes_host" "$hermes_port" "$hermes_sni"
 
 while IFS=$'\t' read -r probe status detail; do
   case "$probe" in
@@ -256,6 +270,16 @@ while IFS=$'\t' read -r probe status detail; do
         emit backup_tls WARN "Raw TLS probe to backup endpoint is not definitive for Reality." "endpoint=backup detail=$detail" "Use active_managed_app as canonical backup proof."
       else
         emit backup_tls "$status" "Router raw TLS/SNI probe to backup endpoint." "endpoint=backup detail=$detail" "Use active_managed_app as canonical backup proof."
+      fi
+      ;;
+    hermes_tcp)
+      emit hermes_tcp "$status" "Router can open TCP to Hermes owned managed egress." "endpoint=hermes detail=$detail" "If CRIT, deploy or investigate the Hermes edge before selecting hermes_vps."
+      ;;
+    hermes_tls)
+      if [ "$status" = "CRIT" ]; then
+        emit hermes_tls WARN "Raw TLS probe to Hermes endpoint is not definitive for Reality." "endpoint=hermes detail=$detail" "Use active_managed_app after selecting hermes_vps as canonical proof."
+      else
+        emit hermes_tls "$status" "Router raw TLS/SNI probe to Hermes endpoint." "endpoint=hermes detail=$detail" "Use active_managed_app after selecting hermes_vps as canonical proof."
       fi
       ;;
   esac

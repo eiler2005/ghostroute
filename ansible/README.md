@@ -96,8 +96,9 @@ Playbook ownership is intentionally narrow:
 | Playbook | Target | Owns | Reason |
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
-| `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, optional restricted DNS support, UFW and VPS health monitor. | Refresh the public Reality edge, firewall boundary and observer. |
+| `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, optional restricted DNS support, UFW and VPS health monitor. | Refresh the primary public Reality edge, firewall boundary and observer. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
+| `12-hermes-egress-vps.yml` | Hermes VPS | Docker-sidecar Caddy L4, Xray Reality clone, restricted DNS support, UFW and VPS health monitor. | Deploy the owned Hermes managed-egress candidate without mutating the primary VPS or regenerating client QR artifacts. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, optional Channel M service ingress, cron persistence and health monitor. | Restore or refresh the production router-managed data plane and service-only MAX egress lane. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
@@ -298,17 +299,16 @@ ansible-playbook playbooks/20-stealth-router.yml
 Switch managed egress backend during an incident or drill:
 
 ```bash
-cd ansible
-ansible-vault edit secrets/stealth.yml
-# Set vault_router_managed_egress_mode to primary_vps or backup_reality.
-ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-ansible-playbook playbooks/20-stealth-router.yml
-../modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
+./modules/routing-core/bin/managed-egress-mode status
+./modules/routing-core/bin/managed-egress-mode set backup_reality --deploy-router
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
 ```
 
-`backup_reality` must use a dedicated router-only profile stored in Vault. It
-does not change client profiles, Channel A/B/C ingress ports, managed catalogs
-or direct traffic policy.
+`primary_vps`, `backup_reality` and `hermes_vps` are router-side managed egress
+backends behind the stable `reality-out` tag. The helper edits only
+`vault_router_managed_egress_mode`; it does not change client profiles, QR/VLESS
+artifacts, Channel A/B/C ingress ports, managed catalogs or direct traffic
+policy. Channel D and Channel M are not switched by this helper.
 
 Generate local client profiles:
 

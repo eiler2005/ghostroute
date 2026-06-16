@@ -139,7 +139,11 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
 - Общий static CIDR каталог для direct-IP сервисов через `VPN_STATIC_NETS`.
 - Optional Layer 0 endpoint/client-side routing для устройств с rule-based
   client profiles, например Shadowrocket-style configs.
-- Channel A VLESS+Reality+Vision egress через VPS host за общим Caddy L4 на TCP/443.
+- Channel A managed egress за стабильным тегом `reality-out` с тремя
+  operator-selectable backend-ами: primary owned VPS Reality/Vision за общим
+  Caddy L4 на TCP/443, Vault-backed backup Reality provider для инцидентов и
+  owned Hermes clone VPS (Hostkey host) для owned-egress миграции. Route contract
+  не меняется — меняется только backend.
 - Optional Channel A selected full-VPS set: выбранные домашние Wi-Fi/LAN
   устройства или Home Reality профили могут целиком выходить через VPS, пока
   остальные устройства сохраняют managed-domain split. Это Channel A override,
@@ -172,6 +176,24 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
 - Локальный модуль мониторинга работоспособности с `STATUS_OK` /
   `STATUS_FAIL`, `summary-latest.md` и внутренними alert-журналами на диске
   роутера.
+
+### Переключение managed egress backend
+
+Один локальный оператор-хелпер выбирает, какой backend обслуживает общий
+`reality-out` для Channel A/B/C. Он правит только Vault-селектор, сохраняет
+зашифрованный backup и опционально redeploy роутера:
+
+```bash
+./modules/routing-core/bin/managed-egress-mode status
+./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
+./modules/ghostroute-health-monitor/bin/managed-egress-check
+```
+
+Доступные режимы: `primary_vps`, `backup_reality`, `hermes_vps`. Переключение
+меняет только upstream managed egress — не трогает client QR/VLESS artifacts,
+ingress-порты и managed-каталоги. Channel D и Channel M не затрагиваются.
+Полная процедура — в
+[docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md).
 
 ---
 

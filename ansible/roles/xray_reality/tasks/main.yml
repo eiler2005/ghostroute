@@ -49,6 +49,11 @@
     _xui_current_path: "{{ ((xui_settings.stdout | regex_search('webBasePath:\\s+(\\S+)', '\\1') | first | default('/')) | regex_replace('/+$', '')) or '/' }}"
     _xui_has_default_credential: "{{ (xui_settings.stdout | regex_search('hasDefaultCredential:\\s+(\\S+)', '\\1') | first | default('false')) == 'true' }}"
 
+- name: Build 3x-ui API endpoint candidates
+  ansible.builtin.set_fact:
+    _xui_web_base_path: "{{ '' if _xui_desired_path == '/' else _xui_desired_path }}"
+    _xui_api_base_path_candidates: "{{ [ ('' if _xui_desired_path == '/' else _xui_desired_path), '' ] | unique | list }}"
+
 - name: Apply desired 3x-ui settings when panel config drift is detected
   ansible.builtin.command:
     argv:
@@ -84,10 +89,43 @@
     port: "{{ xui_admin_web_port }}"
     timeout: 60
 
+- name: Probe 3x-ui CSRF token endpoints
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item }}/csrf-token"
+    method: GET
+    headers:
+      X-Requested-With: XMLHttpRequest
+    status_code: [200, 403, 404]
+    return_content: true
+  register: xui_csrf_probe
+  loop: "{{ _xui_api_base_path_candidates }}"
+  loop_control:
+    label: redacted-api-base
+  failed_when: false
+  no_log: true
+
+- name: Build 3x-ui login candidates
+  ansible.builtin.set_fact:
+    _xui_login_candidates: "{{ (_xui_login_candidates | default([])) + [ _xui_login_candidate ] }}"
+  vars:
+    _xui_login_candidate:
+      base_path: "{{ item.item }}"
+      login_path: "{{ (item.item ~ '/login') | regex_replace('//+', '/') }}"
+      csrf_token: "{{ item.json.obj | default('') }}"
+      csrf_cookie: "{{ item.cookies_string | default('') }}"
+  loop: "{{ xui_csrf_probe.results | default([]) }}"
+  loop_control:
+    label: redacted-api-base
+  no_log: true
+
 - name: Probe 3x-ui login with desired credentials
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item.login_path }}"
     method: POST
+    headers:
+      X-Requested-With: XMLHttpRequest
+      X-CSRF-Token: "{{ item.csrf_token }}"
+      Cookie: "{{ item.csrf_cookie }}"
     body_format: form-urlencoded
     body:
       username: "{{ xui_admin_username }}"
@@ -95,6 +133,9 @@
     status_code: 200
     return_content: true
   register: xui_login_probe
+  loop: "{{ _xui_login_candidates }}"
+  loop_control:
+    label: redacted-login-endpoint
   failed_when: false
   no_log: true
 
@@ -116,7 +157,21 @@
       - "{{ _xui_desired_base_path }}"
   register: xui_apply_settings_forced
   changed_when: true
-  when: not (xui_login_probe.json.success | default(false))
+  when: ((_xui_initial_json_successes | length) + (_xui_initial_content_successes | length)) == 0
+  vars:
+    _xui_initial_json_successes: "{{ xui_login_probe.results | default([]) | selectattr('json', 'defined') | selectattr('json.success', 'equalto', true) | list }}"
+    _xui_initial_content_successes: "{{ xui_login_probe.results | default([]) | selectattr('content', 'defined') | selectattr('content', 'search', '\"success\"\\s*:\\s*true') | list }}"
+  no_log: true
+
+- name: Keep only working 3x-ui login candidate after successful probe
+  ansible.builtin.set_fact:
+    _xui_login_candidates:
+      - "{{ _xui_successful_probe.item }}"
+  vars:
+    _xui_json_successes: "{{ xui_login_probe.results | default([]) | selectattr('json', 'defined') | selectattr('json.success', 'equalto', true) | list }}"
+    _xui_content_successes: "{{ xui_login_probe.results | default([]) | selectattr('content', 'defined') | selectattr('content', 'search', '\"success\"\\s*:\\s*true') | list }}"
+    _xui_successful_probe: "{{ (_xui_json_successes + _xui_content_successes) | first | default({}) }}"
+  when: _xui_successful_probe | length > 0
   no_log: true
 
 - name: Restart xray container after forced 3x-ui credential reset
@@ -124,20 +179,95 @@
     argv: [docker, restart, xray]
   when: xui_apply_settings_forced is changed
 
-- name: Wait for 3x-ui to be ready with desired credentials
+- name: Reset 3x-ui login candidates after forced credential reset
+  ansible.builtin.set_fact:
+    _xui_login_candidates: []
+  when: xui_apply_settings_forced is changed
+  no_log: true
+
+- name: Refresh 3x-ui CSRF token endpoints after forced credential reset
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ xui_admin_web_path }}/login"
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item }}/csrf-token"
+    method: GET
+    headers:
+      X-Requested-With: XMLHttpRequest
+    status_code: [200, 403, 404]
+    return_content: true
+  register: xui_csrf_probe
+  loop: "{{ _xui_api_base_path_candidates }}"
+  loop_control:
+    label: redacted-api-base
+  failed_when: false
+  when: xui_apply_settings_forced is changed
+  no_log: true
+
+- name: Rebuild 3x-ui login candidates after forced credential reset
+  ansible.builtin.set_fact:
+    _xui_login_candidates: "{{ (_xui_login_candidates | default([])) + [ _xui_login_candidate ] }}"
+  vars:
+    _xui_login_candidate:
+      base_path: "{{ item.item }}"
+      login_path: "{{ (item.item ~ '/login') | regex_replace('//+', '/') }}"
+      csrf_token: "{{ item.json.obj | default('') }}"
+      csrf_cookie: "{{ item.cookies_string | default('') }}"
+  loop: "{{ xui_csrf_probe.results | default([]) }}"
+  loop_control:
+    label: redacted-api-base
+  when: xui_apply_settings_forced is changed
+  no_log: true
+
+- name: Probe 3x-ui login after forced credential reset
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ xui_admin_web_port }}{{ item.login_path }}"
     method: POST
+    headers:
+      X-Requested-With: XMLHttpRequest
+      X-CSRF-Token: "{{ item.csrf_token }}"
+      Cookie: "{{ item.csrf_cookie }}"
     body_format: form-urlencoded
     body:
       username: "{{ xui_admin_username }}"
       password: "{{ xui_admin_password }}"
     status_code: 200
     return_content: true
-  register: xui_health
-  retries: 30
-  delay: 2
-  until: xui_health.json.success | default(false)
+  register: xui_forced_login_probe
+  loop: "{{ _xui_login_candidates }}"
+  loop_control:
+    label: redacted-login-endpoint
+  failed_when: false
+  when: xui_apply_settings_forced is changed
+  no_log: true
+
+- name: Validate desired 3x-ui login is healthy
+  ansible.builtin.assert:
+    that:
+      - ((_xui_effective_json_successes | length) + (_xui_effective_content_successes | length)) > 0
+    fail_msg: "3x-ui login did not accept the desired Vault credentials on any known API base path."
+  vars:
+    _xui_effective_login_results: >-
+      {{
+        (xui_forced_login_probe.results | default([]))
+        if (xui_apply_settings_forced is changed)
+        else (xui_login_probe.results | default([]))
+      }}
+    _xui_effective_json_successes: "{{ _xui_effective_login_results | selectattr('json', 'defined') | selectattr('json.success', 'equalto', true) | list }}"
+    _xui_effective_content_successes: "{{ _xui_effective_login_results | selectattr('content', 'defined') | selectattr('content', 'search', '\"success\"\\s*:\\s*true') | list }}"
+  no_log: true
+
+- name: Select working 3x-ui API base path
+  ansible.builtin.set_fact:
+    _xui_api_base_path: "{{ _xui_working_login.item.base_path | default('') }}"
+  vars:
+    _xui_effective_login_results: >-
+      {{
+        (xui_forced_login_probe.results | default([]))
+        if (xui_apply_settings_forced is changed)
+        else (xui_login_probe.results | default([]))
+      }}
+    _xui_json_successes: "{{ _xui_effective_login_results | selectattr('json', 'defined') | selectattr('json.success', 'equalto', true) | list }}"
+    _xui_content_successes: "{{ _xui_effective_login_results | selectattr('content', 'defined') | selectattr('content', 'search', '\"success\"\\s*:\\s*true') | list }}"
+    _xui_working_login: "{{ (_xui_json_successes + _xui_content_successes) | first | default({}) }}"
+  failed_when: _xui_working_login | length == 0
   no_log: true
 
 - name: Build VPS Reality client source of truth
@@ -147,7 +277,7 @@
 
 - name: Seed Reality inbound (first run)
   ansible.builtin.include_tasks: seed_reality.yml
-  when: reality_server_public_key | length == 0
+  when: reality_server_public_key | length == 0 or (xray_reality_seed_existing_material | default(false) | bool)
 
 - name: Sync existing Reality inbound cover SNI
   ansible.builtin.shell: |

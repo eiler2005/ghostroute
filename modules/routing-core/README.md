@@ -51,8 +51,14 @@ inspect its state, but must not silently change routing.
 ## Public Commands
 
 - `./deploy.sh`
+- `./modules/routing-core/bin/managed-egress-mode`
 - `./modules/routing-core/router/update-singbox-rule-sets.sh`
 - Runtime-only router hooks under `/jffs/scripts/*`
+
+`managed-egress-mode status|set` is the local operator switch for the shared
+Channel A/B/C managed upstream behind `reality-out`. It edits only the Vault
+selector, saves an encrypted backup and can optionally deploy
+`20-stealth-router.yml`; it does not regenerate client QR/VLESS artifacts.
 
 ## Runtime Storage & Artifacts
 

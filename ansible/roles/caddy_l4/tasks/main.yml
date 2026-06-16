@@ -29,6 +29,7 @@
           path: "{{ stealth_stack_dir }}/caddy"
           pull: true
         force_source: false
+      when: not ansible_check_mode
 
 - name: Manage host-level Caddy with layer4 listener wrapper
   when: stealth_caddy_mode == 'system_listener_wrapper'

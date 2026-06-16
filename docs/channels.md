@@ -62,6 +62,12 @@ Main role:
 - Selected full-VPS routing is driven by two explicit sets:
   reserved home Wi-Fi/LAN source IPs and Home Reality `auth_user` profile names.
 - Channel A owns router REDIRECT/DNS/catalog behavior.
+- The `active managed egress` behind `reality-out` is operator-selectable between
+  the primary owned VPS, a Vault-backed backup Reality provider and an owned
+  Hermes clone VPS. See
+  [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md) and
+  `./modules/routing-core/bin/managed-egress-mode` for how the backend is selected;
+  the route contract and client profiles do not change.
 
 Selected full-VPS is not a separate channel:
 
