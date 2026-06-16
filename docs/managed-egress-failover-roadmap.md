@@ -34,6 +34,11 @@ role-style name. Do not publish the real provider, ASN, account, host family,
 endpoint, SNI, IP, key material or the role-to-provider mapping. Those values
 belong in Ansible Vault or gitignored operator notes.
 
+If the operator needs role-to-country context, keep it in the gitignored local
+note `docs/private/managed-egress-backends.local.md`. That file may record
+country codes by mnemonic role, but it must not be committed, quoted in public
+docs, or pasted into chat.
+
 ## Implemented Manual Reserve Mode
 
 Ansible now renders the router `sing-box` `reality-out` outbound from one of
