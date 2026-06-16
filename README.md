@@ -40,6 +40,37 @@ For the companion VPS-side runtime map used by Channel M, GhostRoute Console
 and the routing/app surfaces, see
 [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).
 
+## Engineering Highlights
+
+What this project demonstrates, with proof in-repo:
+
+- **Architecture** — a module-native platform: 13 independently-owned modules
+  (routing, health, traffic accounting + intelligence, DNS catalog, client
+  profiles, secrets, recovery) each with their own runtime, docs and tests. See
+  the ownership table in
+  [`docs/operational-modules.md`](docs/operational-modules.md) and the decisions
+  in [`docs/adr/`](docs/adr/) (10 ADRs).
+- **Testing** — a layered pyramid (static contract checks -> mock/fixture
+  integration -> Console smoke -> Playwright e2e), CI-gated on every push/PR via
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Health tooling is
+  driven end-to-end against stubbed `ssh`/`vault`/`curl` (see
+  [`docs/testing.md`](docs/testing.md)).
+- **Security & privacy** — secrets stay out of git (Ansible Vault), a
+  `secret-scan` gate runs in CI, and operational tooling is **role-only**: it
+  prints mnemonic roles (`primary_vps` / `backup_reality` / `hermes_vps`),
+  resolves real endpoints from Vault locally, and sanitizes IPs/hosts/users out
+  of all output. See [`SECURITY.md`](SECURITY.md).
+- **Product thinking** — an explicit channel model, measurable SLOs
+  ([`docs/operational-slos.md`](docs/operational-slos.md)), and a deliberate,
+  documented egress-failover design
+  ([`docs/managed-egress-failover-roadmap.md`](docs/managed-egress-failover-roadmap.md)).
+  The problem framing and decisions live in [`docs/prd.md`](docs/prd.md).
+- **Operability & recovery** — read-only health monitors, a recovery-verification
+  module, deterministic `deploy.sh` / `verify.sh` entrypoints, sanitized runtime
+  maps and a machine-readable traffic-accounting contract.
+- **Maintainability & DX** — ADR discipline, bilingual docs, contributor review
+  gate, and reproducible local checks (`./tests/run-fast.sh`).
+
 ## Channel Status
 
 | Channel | Status | First hop | Scope | Automatic failover |
@@ -294,6 +325,24 @@ For a compact channel handoff, see [docs/channels.md](docs/channels.md).
 ---
 
 ## Architecture At A Glance
+
+```mermaid
+flowchart LR
+  LAN[Home LAN / Wi-Fi]
+  RC[Remote clients A/B/C/D]
+  LAN --> ROUTER
+  RC --> ROUTER
+  ROUTER{{ASUS Merlin router: sing-box policy split}}
+  ROUTER -->|managed: STEALTH_DOMAINS / VPN_STATIC_NETS| RO[reality-out]
+  ROUTER -->|non-managed| DIRECT[direct-out via home WAN]
+  RO --> ACTIVE{active managed egress}
+  ACTIVE --> PRIMARY[primary_vps]
+  ACTIVE --> BACKUP[backup_reality]
+  ACTIVE --> HERMES[hermes_vps]
+  ROUTER -. Channel D canary pin .-> ROD[reality-out-d] --> ACTIVE
+```
+
+The text map below shows the same flow in full detail (placeholders for ports):
 
 ```text
                          Control machine
@@ -620,6 +669,24 @@ The detailed physical module map lives in
 keeps the high-level workflow; module folders contain local implementation
 overviews. The Ansible router/VPS deployment component map lives in
 [ansible/README.md](ansible/README.md).
+
+### Repository conventions
+
+A few intentional artifacts that a first-time reader may wonder about:
+
+- `AGENTS.md`, `CLAUDE.md`, `LEAN-CTX.md` are **agent-workflow configuration** —
+  shared instructions for coding agents (Codex, Claude Code) so they inherit the
+  same durable project rules. They document how this repo is maintained, not
+  product behavior.
+- `docs/repo-review-*.md` are a **rolling contributor review gate** referenced by
+  [`CONTRIBUTING.md`](CONTRIBUTING.md); the newest one is the active gate.
+- `docs/vpn-domain-journal.md` is an **operational data artifact** read by
+  catalog/health tooling, not a freeform note.
+- Generated artifacts (`ansible/out/`, `reports/`, `docs/private/`) and real
+  secrets are gitignored; tracked docs use placeholders and mnemonic roles only.
+
+The presentation roadmap for this repository lives in
+[`docs/repo-presentation-roadmap.md`](docs/repo-presentation-roadmap.md).
 
 ---
 

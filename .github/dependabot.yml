@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # GhostRoute Console (Node app).
+  - package-ecosystem: npm
+    directory: /modules/ghostroute-console/app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore(deps)
+
+  # GitHub Actions used by CI.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: chore(ci)

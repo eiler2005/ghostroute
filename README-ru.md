@@ -24,6 +24,27 @@ watchdog'ами и схемами каналов:
 поверхностей:
 [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).
 
+## Инженерные highlights
+
+Что демонстрирует проект (с пруфами в репо):
+
+- **Архитектура** — module-native платформа: 13 независимо-владеемых модулей,
+  у каждого свой runtime, доки и тесты. См.
+  [`docs/operational-modules.md`](docs/operational-modules.md) и
+  [`docs/adr/`](docs/adr/) (10 ADR).
+- **Тестирование** — слоистая пирамида (static -> mock/fixture -> smoke ->
+  Playwright e2e), CI на каждый push/PR
+  ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); подробности —
+  [`docs/testing.md`](docs/testing.md).
+- **Безопасность** — секреты вне git (Vault), `secret-scan` gate в CI,
+  **role-only** тулинг: печатает только мнемо-роли, резолвит endpoint-ы из Vault
+  локально, маскирует IP/host/user. См. [`SECURITY.md`](SECURITY.md).
+- **Product thinking** — явная модель каналов, измеримые SLO
+  ([`docs/operational-slos.md`](docs/operational-slos.md)), продуманный
+  egress-failover; постановка задачи — [`docs/prd.md`](docs/prd.md).
+- **Operability & DX** — read-only health-мониторы, recovery-verification,
+  детерминированные `deploy.sh`/`verify.sh`, ADR-дисциплина, bilingual-доки.
+
 ## Статус каналов
 
 | Канал | Статус | Первый hop | Scope | Автоматический failover |

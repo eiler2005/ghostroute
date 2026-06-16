@@ -1,0 +1,11 @@
+# Code ownership for GhostRoute.
+# This is a single-operator platform; the maintainer owns all areas by default.
+# Module-native ownership is documented in docs/operational-modules.md.
+
+*                                   @eiler2005
+
+# Security- and secrets-sensitive paths (extra review attention).
+/SECURITY.md                        @eiler2005
+/modules/secrets-management/        @eiler2005
+/ansible/secrets/                   @eiler2005
+/.github/                           @eiler2005
