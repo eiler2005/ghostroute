@@ -1,0 +1,371 @@
+#!/bin/bash
+# Read-only backend-bank and application-canary health for managed egress.
+#
+# Backend rows are role-only: primary_vps, backup_reality and hermes_vps. The
+# script resolves their Vault/runtime references locally, probes TCP/TLS from
+# the router, and never prints raw endpoints. Application canaries are the
+# canonical proof for the backend currently used by router SOCKS.
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
+
+ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
+ANSIBLE_CONFIG_FILE="${GHOSTROUTE_ANSIBLE_CONFIG_FILE:-${ANSIBLE_DIR}/ansible.cfg}"
+VAULT_FILE="${GHOSTROUTE_STEALTH_VAULT_FILE:-${ANSIBLE_DIR}/secrets/stealth.yml}"
+MODULE_DIR="${PROJECT_ROOT}/modules/ghostroute-health-monitor"
+BACKENDS_FILE_DEFAULT="${MODULE_DIR}/config/managed-egress-backends.tsv"
+CANARIES_FILE_DEFAULT="${MODULE_DIR}/config/managed-app-canaries.tsv"
+
+JSON=0
+CHANNEL="abc"
+BACKENDS_FILE="${GHOSTROUTE_MANAGED_EGRESS_BACKENDS_FILE:-$BACKENDS_FILE_DEFAULT}"
+CANARIES_FILE="${GHOSTROUTE_MANAGED_APP_CANARIES_FILE:-$CANARIES_FILE_DEFAULT}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./modules/ghostroute-health-monitor/bin/egress-backend-health [--json] [--channel <abc|d>] [--backends <file>] [--canaries <file>]
+
+Reports the managed egress backend bank and probes application canaries through
+the router's active managed SOCKS path.
+
+Options:
+  --json              Machine-readable output.
+  --channel <abc|d>   abc (default) = shared A/B/C managed egress (reality-out);
+                      d = Channel D managed egress (reality-out-d when pinned).
+  --backends <file>   Override the backend bank TSV.
+  --canaries <file>   Override the application canary TSV.
+  --endpoints <file>  Backward-compatible alias for --canaries.
+
+Read-only: uses Vault values and router SSH probes, opens a local SOCKS tunnel
+for canaries, and never mutates routing, Vault, router or VPS state.
+USAGE
+}
+
+die() { printf 'egress-backend-health: %s\n' "$*" >&2; exit 1; }
+
+sanitize_detail() {
+  sed -E \
+    -e 's/[0-9]{1,3}(\.[0-9]{1,3}){3}/<ip>/g' \
+    -e 's/([A-Fa-f0-9]{1,4}:){2,}[A-Fa-f0-9:]+/<ipv6>/g' \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/<user>@<host>/g'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --channel) [ "$#" -ge 2 ] || die "--channel needs a value (abc or d)"; CHANNEL="$2"; shift 2 ;;
+    --channel=*) CHANNEL="${1#*=}"; shift ;;
+    --backends) [ "$#" -ge 2 ] || die "--backends needs a file"; BACKENDS_FILE="$2"; shift 2 ;;
+    --backends=*) BACKENDS_FILE="${1#*=}"; shift ;;
+    --canaries|--endpoints) [ "$#" -ge 2 ] || die "$1 needs a file"; CANARIES_FILE="$2"; shift 2 ;;
+    --canaries=*|--endpoints=*) CANARIES_FILE="${1#*=}"; shift ;;
+    -h|--help|help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+case "$CHANNEL" in abc|a) CHANNEL="abc" ;; d) ;; *) die "unknown --channel '$CHANNEL' (valid: abc, d)" ;; esac
+
+command -v ansible-vault >/dev/null 2>&1 || die "ansible-vault not found"
+command -v curl >/dev/null 2>&1 || die "curl not found"
+command -v ruby >/dev/null 2>&1 || die "ruby not found"
+[ -f "$VAULT_FILE" ] || die "vault not found: $VAULT_FILE"
+[ -f "$BACKENDS_FILE" ] || die "backend bank not found: $BACKENDS_FILE"
+[ -f "$CANARIES_FILE" ] || die "canary bank not found: $CANARIES_FILE"
+
+router_health_load_env || die "cannot reach the router (set ROUTER in secrets/router.env)"
+
+TMPDIR="$(mktemp -d)"
+TUNNEL_PID=""
+cleanup() {
+  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" >/dev/null 2>&1 || true
+  [ -n "$TUNNEL_PID" ] && wait "$TUNNEL_PID" >/dev/null 2>&1 || true
+  rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
+
+( umask 077; ( cd "$ANSIBLE_DIR"; ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-vault view "$VAULT_FILE"; ) >"$TMPDIR/vault.yml" )
+
+vault_scalar() {
+  local key="$1" def="${2:-}"
+  awk -v key="${key}:" -v def="$def" '
+    $1 == key {
+      sub(/^[^:]+:[[:space:]]*/, "")
+      gsub(/^[\"\047]|[\"\047]$/, "")
+      print
+      found = 1
+      exit
+    }
+    END { if (!found) print def }
+  ' "$TMPDIR/vault.yml"
+}
+
+vault_list_first() {
+  local key="$1" def="${2:-}"
+  awk -v key="${key}:" -v def="$def" '
+    $1 == key { in_list = 1; next }
+    in_list && $1 == "-" {
+      sub(/^[[:space:]]*-[[:space:]]*/, "")
+      gsub(/^[\"\047]|[\"\047]$/, "")
+      print
+      found = 1
+      exit
+    }
+    in_list && $0 !~ /^[[:space:]]/ { in_list = 0 }
+    END { if (!found) print def }
+  ' "$TMPDIR/vault.yml"
+}
+
+vault_ref() {
+  local ref="$1" def="${2:-}" item value
+  OLDIFS="$IFS"; IFS='|'
+  for item in $ref; do
+    IFS="$OLDIFS"
+    case "$item" in
+      ""|"-")
+        value=""
+        ;;
+      *\[0\])
+        value="$(vault_list_first "${item%\[0\]}" "")"
+        ;;
+      [0-9]*)
+        value="$item"
+        ;;
+      *)
+        value="$(vault_scalar "$item" "")"
+        ;;
+    esac
+    [ -n "$value" ] && { printf '%s' "$value"; IFS="$OLDIFS"; return 0; }
+    IFS='|'
+  done
+  IFS="$OLDIFS"
+  printf '%s' "$def"
+}
+
+ACTIVE_BACKEND="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
+CHANNEL_D_BACKEND="$(vault_scalar vault_channel_d_managed_egress_mode follow)"
+
+RUNTIME_ENV="$(router_ssh 'cat /jffs/scripts/ghostroute-runtime.env 2>/dev/null || cat /jffs/scripts/ghostroute-runtime-env 2>/dev/null' || true)"
+runtime_get() { printf '%s\n' "$RUNTIME_ENV" | awk -F= -v k="$1" '$1==k{print $2; exit}'; }
+
+if [ "$CHANNEL" = "d" ]; then
+  [ "$(runtime_get GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)" = "1" ] || die "Channel D is not enabled on the router"
+  ROUTER_SOCKS="$(runtime_get GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT)"
+  [ -n "$ROUTER_SOCKS" ] || die "cannot resolve Channel D SOCKS port from router runtime env"
+  if [ "$CHANNEL_D_BACKEND" = "follow" ]; then
+    CANARY_BACKEND="$ACTIVE_BACKEND"
+    CANARY_LABEL="channel-d:follow(=${ACTIVE_BACKEND})"
+  else
+    CANARY_BACKEND="$CHANNEL_D_BACKEND"
+    CANARY_LABEL="channel-d:${CHANNEL_D_BACKEND}"
+  fi
+  SPLIT_NOTE="Channel D canary follows Channel D split; non-managed apps may exit via home WAN."
+else
+  ROUTER_SOCKS="$(runtime_get GHOSTROUTE_DNSCRYPT_SOCKS_PORT)"
+  [ -n "$ROUTER_SOCKS" ] || ROUTER_SOCKS="${GHOSTROUTE_DNSCRYPT_SOCKS_PORT:-1080}"
+  CANARY_BACKEND="$ACTIVE_BACKEND"
+  CANARY_LABEL="active:${ACTIVE_BACKEND}"
+  SPLIT_NOTE=""
+fi
+
+probe_backend() {
+  local role="$1" host="$2" port="$3" sni="$4"
+  if [ -z "$host" ] || [ -z "$sni" ]; then
+    printf '%s\tUNKNOWN\tbackend_not_configured\n' "${role}_tcp"
+    printf '%s\tUNKNOWN\tbackend_not_configured\n' "${role}_tls"
+    return 0
+  fi
+
+  router_ssh \
+    "GHOSTROUTE_PROBE_ROLE='$role' BACKEND_HOST='$host' BACKEND_PORT='${port:-443}' BACKEND_SNI='$sni' sh -s" <<'REMOTE' | sanitize_detail
+role="${GHOSTROUTE_PROBE_ROLE:-backend}"
+host="${BACKEND_HOST:-}"
+port="${BACKEND_PORT:-443}"
+sni="${BACKEND_SNI:-}"
+
+if [ -x /opt/bin/ncat ]; then
+  if /opt/bin/ncat -z -w 5 "$host" "$port" >/dev/null 2>&1; then
+    printf '%s_tcp\tOK\tconnect_ok\n' "$role"
+  else
+    printf '%s_tcp\tCRIT\tconnect_failed\n' "$role"
+  fi
+else
+  printf '%s_tcp\tUNKNOWN\tncat_missing\n' "$role"
+fi
+
+if [ -x /opt/bin/openssl ]; then
+  out="/tmp/egress-backend-${role}-tls.out.$$"
+  err="/tmp/egress-backend-${role}-tls.err.$$"
+  printf '' | timeout 8 /opt/bin/openssl s_client -connect "$host:$port" -servername "$sni" -brief >"$out" 2>"$err" || true
+  if grep -q 'CONNECTION ESTABLISHED' "$out"; then
+    protocol="$(awk -F: '/Protocol version:/ { gsub(/^[ \t]+/, "", $2); print $2; exit }' "$out")"
+    printf '%s_tls\tOK\t%s\n' "$role" "${protocol:-tls_established}"
+  else
+    reason="$(head -1 "$err")"
+    [ -n "$reason" ] || reason="tls_not_established"
+    printf '%s_tls\tWARN\t%s\n' "$role" "$reason"
+  fi
+  rm -f "$out" "$err"
+else
+  printf '%s_tls\tUNKNOWN\topenssl_missing\n' "$role"
+fi
+REMOTE
+}
+
+: >"$TMPDIR/backend-probes.tsv"
+while IFS=$'\t' read -r role label host_ref port_ref port_default sni_ref note; do
+  case "$role" in ''|\#*) continue ;; esac
+  host="$(vault_ref "$host_ref" "")"
+  port="$(vault_ref "$port_ref" "$port_default")"
+  sni="$(vault_ref "$sni_ref" "")"
+  configured=OK
+  [ -n "$host" ] && [ -n "$sni" ] || configured=UNKNOWN
+  active=no
+  [ "$role" = "$ACTIVE_BACKEND" ] && active=yes
+  channel_d=no
+  [ "$CHANNEL_D_BACKEND" = "follow" ] && [ "$role" = "$ACTIVE_BACKEND" ] && channel_d=follow
+  [ "$role" = "$CHANNEL_D_BACKEND" ] && channel_d=yes
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$label" "$active" "$channel_d" "$configured" "$host_ref" "$port_ref" "$sni_ref" "$note" "" "" \
+    >>"$TMPDIR/backend-probes.tsv"
+  probe_backend "$role" "$host" "$port" "$sni" >>"$TMPDIR/backend-probes.raw"
+done <"$BACKENDS_FILE"
+
+: >"$TMPDIR/backend-results.tsv"
+while IFS=$'\t' read -r role label active channel_d configured host_ref port_ref sni_ref note _tcp _tls; do
+  tcp_status=UNKNOWN; tcp_detail=not_probed
+  tls_status=UNKNOWN; tls_detail=not_probed
+  if [ -f "$TMPDIR/backend-probes.raw" ]; then
+    tcp_line="$(awk -F'\t' -v p="${role}_tcp" '$1 == p { print; exit }' "$TMPDIR/backend-probes.raw")"
+    tls_line="$(awk -F'\t' -v p="${role}_tls" '$1 == p { print; exit }' "$TMPDIR/backend-probes.raw")"
+    [ -n "$tcp_line" ] && { tcp_status="$(printf '%s\n' "$tcp_line" | cut -f2)"; tcp_detail="$(printf '%s\n' "$tcp_line" | cut -f3-)"; }
+    [ -n "$tls_line" ] && { tls_status="$(printf '%s\n' "$tls_line" | cut -f2)"; tls_detail="$(printf '%s\n' "$tls_line" | cut -f3-)"; }
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$role" "$label" "$active" "$channel_d" "$configured" "$tcp_status" "$tls_status" \
+    "$host_ref" "$port_ref" "$sni_ref" "$note" "$tcp_detail" "$tls_detail" \
+    >>"$TMPDIR/backend-results.tsv"
+done <"$TMPDIR/backend-probes.tsv"
+
+LOCAL_PORT=$((19000 + (RANDOM % 800)))
+ssh "${SSH_OPTS[@]}" -N -L "127.0.0.1:${LOCAL_PORT}:127.0.0.1:${ROUTER_SOCKS}" "${ROUTER_USER}@${ROUTER}" >/dev/null 2>&1 &
+TUNNEL_PID=$!
+sleep 2
+kill -0 "$TUNNEL_PID" >/dev/null 2>&1 || die "SSH tunnel to router SOCKS failed"
+
+: >"$TMPDIR/canaries.tsv"
+while IFS=$'\t' read -r app url expect; do
+  case "$app" in ''|\#*) continue ;; esac
+  [ -n "$url" ] || continue
+  [ -n "$expect" ] || expect="2,3"
+  resp="$(curl -sS -o /dev/null --socks5-hostname "127.0.0.1:${LOCAL_PORT}" \
+            --connect-timeout 8 --max-time 25 \
+            -w '%{http_code} %{time_total}' "$url" 2>/dev/null || printf '000 0')"
+  code="${resp%% *}"
+  tval="${resp##* }"
+  if [ "$code" = "000" ]; then
+    status="CRIT"
+  else
+    matched=0
+    OLDIFS="$IFS"; IFS=,
+    for e in $expect; do
+      case "$code" in ${e}*) matched=1 ;; esac
+    done
+    IFS="$OLDIFS"
+    [ "$matched" = "1" ] && status="OK" || status="DEGRADED"
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$app" "$status" "$code" "$tval" >>"$TMPDIR/canaries.tsv"
+done <"$CANARIES_FILE"
+
+GR_JSON="$JSON" \
+GR_CHANNEL="$CHANNEL" \
+GR_ACTIVE_BACKEND="$ACTIVE_BACKEND" \
+GR_CHANNEL_D_BACKEND="$CHANNEL_D_BACKEND" \
+GR_CANARY_BACKEND="$CANARY_BACKEND" \
+GR_CANARY_LABEL="$CANARY_LABEL" \
+GR_SPLIT_NOTE="$SPLIT_NOTE" \
+ruby - "$TMPDIR/backend-results.tsv" "$TMPDIR/canaries.tsv" <<'RUBY'
+require 'json'
+
+backend_rows = File.readlines(ARGV[0], chomp: true).map { |line| line.split("\t", 13) }.select { |row| row.length >= 13 }
+canary_rows = File.readlines(ARGV[1], chomp: true).map { |line| line.split("\t", 4) }.select { |row| row.length == 4 }
+
+crit = canary_rows.count { |row| row[1] == 'CRIT' }
+deg = canary_rows.count { |row| row[1] == 'DEGRADED' }
+rollup =
+  if canary_rows.empty?
+    'skipped'
+  elsif crit == canary_rows.length
+    'down'
+  elsif crit.positive?
+    'partial'
+  elsif deg.positive?
+    'degraded'
+  else
+    'healthy'
+  end
+
+backend_bank = backend_rows.map do |role, label, active, channel_d, configured, tcp_status, tls_status, host_ref, port_ref, sni_ref, note, tcp_detail, tls_detail|
+  {
+    'role' => role,
+    'label' => label,
+    'active' => active == 'yes',
+    'channel_d' => channel_d,
+    'configured' => configured,
+    'tcp_status' => tcp_status,
+    'tls_status' => tls_status,
+    'host_ref' => host_ref,
+    'port_ref' => port_ref,
+    'sni_ref' => sni_ref,
+    'note' => note,
+    'tcp_detail' => tcp_detail,
+    'tls_detail' => tls_detail
+  }
+end
+
+app_canaries = canary_rows.map do |app, status, code, time_s|
+  { 'app' => app, 'status' => status, 'http_code' => code, 'time_s' => time_s }
+end
+
+if ENV['GR_JSON'] == '1'
+  puts JSON.pretty_generate({
+    'schema_version' => 1,
+    'command' => 'ghostroute-health-monitor egress-backend-health',
+    'probe_channel' => ENV['GR_CHANNEL'],
+    'active_backend' => ENV['GR_ACTIVE_BACKEND'],
+    'channel_d_backend' => ENV['GR_CHANNEL_D_BACKEND'],
+    'canary_backend' => ENV['GR_CANARY_BACKEND'],
+    'rollup' => rollup,
+    'note' => ENV['GR_SPLIT_NOTE'].to_s.empty? ? nil : ENV['GR_SPLIT_NOTE'],
+    'backend_bank' => backend_bank,
+    'app_canaries' => app_canaries
+  })
+else
+  puts "managed egress backend bank: active=#{ENV['GR_ACTIVE_BACKEND']} channel_d=#{ENV['GR_CHANNEL_D_BACKEND']} canary=#{ENV['GR_CANARY_LABEL']} rollup=#{rollup}"
+  puts
+  puts 'Backend bank'
+  role_w = [backend_rows.map { |row| row[0].length }.max || 4, 12].max
+  label_w = [backend_rows.map { |row| row[1].length }.max || 5, 20].max
+  puts "#{'role'.ljust(role_w)}  #{'label'.ljust(label_w)}  active  channel_d  cfg      tcp      tls"
+  puts '-' * (role_w + label_w + 45)
+  backend_bank.each do |row|
+    puts "#{row['role'].ljust(role_w)}  #{row['label'].ljust(label_w)}  #{(row['active'] ? 'yes' : 'no').ljust(6)}  #{row['channel_d'].ljust(9)}  #{row['configured'].ljust(7)}  #{row['tcp_status'].ljust(7)}  #{row['tls_status']}"
+  end
+  puts
+  puts 'Application canaries'
+  app_w = [canary_rows.map { |row| row[0].length }.max || 3, 9].max
+  puts "#{'app'.ljust(app_w)}  status    http  time_s"
+  puts '-' * (app_w + 25)
+  app_canaries.each do |row|
+    puts "#{row['app'].ljust(app_w)}  #{row['status'].ljust(8)}  #{row['http_code'].ljust(4)}  #{row['time_s']}"
+  end
+  puts
+  puts "note: #{ENV['GR_SPLIT_NOTE']}" unless ENV['GR_SPLIT_NOTE'].to_s.empty?
+  puts 'inactive backend TCP/TLS probes are advisory; active app canaries are canonical live proof'
+  puts 'roles map to backend selectors only; endpoint evidence is masked'
+end
+RUBY
+
+grep -q $'\tCRIT\t' "$TMPDIR/canaries.tsv" && exit 1
+exit 0

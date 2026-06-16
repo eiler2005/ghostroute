@@ -1158,7 +1158,7 @@
         dest: "{{ channel_m_out_dir }}/{{ item.name }}.env"
         mode: "0600"
         content: |
-          # Source/copy MAX_EGRESS_PROXY_URL into maxtg_bridge .env.secrets on Hetzner.
+          # Source/copy MAX_EGRESS_PROXY_URL into maxtg_bridge .env.secrets on the VPS bridge.
           # Source/copy MAX_EGRESS_PROXY_HOST into maxtg_bridge .env.host for compose extra_hosts.
           # Optional app-side recovery: keep router SSH target/key in VPS runtime secrets.
           # Run the router command below through that restricted SSH profile when MAX egress needs repair.
@@ -1197,7 +1197,7 @@
           ```
 
           Use the generated `<client>.env` fragment only on the maxtg_bridge
-          Hetzner host as `.env.secrets` / `.env.host` input. It contains
+          VPS bridge host as `.env.secrets` / `.env.host` input. It contains
           `MAX_EGRESS_PROXY_URL` and must stay out of git, tickets and chat
           logs. `MAX_EGRESS_PROXY_GATEWAY` is deployment-specific and should be
           set on the VPS to the compose docker gateway address.
@@ -1218,7 +1218,7 @@
           - reverse inbound tag: `channel-m-maxtg-reverse-egress`
           - route: `channel-m-maxtg-reverse-egress -> direct-out`
           - reverse SSH listener: VPS docker bridge port `{{ channel_m_maxtg_reverse_listen_port }}`
-          - source allowlist: Vault-configured Hetzner/VPS CIDR only
+          - source allowlist: Vault-configured VPS bridge CIDR only
           - not Channel A/B/C failover
           - not `reality-out`, `STEALTH_DOMAINS`, `VPN_STATIC_NETS` or policy DNS
           - no home inbound public port is required for the reverse lane

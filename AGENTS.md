@@ -104,6 +104,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   SSH users, local-only aliases, bypass rules, UUIDs, Reality keys, short IDs,
   admin paths, QR payloads, VLESS URIs, Vault values, or generated client
   profiles.
+- Public managed-egress documentation and commit text must use mnemonic backend
+  roles only: `primary_vps`, `backup_reality`, `hermes_vps` and future
+  role-style names. Do not name the real provider, ASN, account, host family,
+  SNI, endpoint, or any detail that lets a public reader identify the actual
+  egress.
 - Keep real secrets and deployment-specific values in Ansible Vault, the
   appropriate secrets store, or gitignored local files only.
 - Generated artifacts under `ansible/out/`, local `reports/`, private docs, and

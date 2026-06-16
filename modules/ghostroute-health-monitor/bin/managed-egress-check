@@ -270,7 +270,7 @@ while IFS=$'\t' read -r probe status detail; do
       fi
       ;;
     backup_tcp)
-      emit backup_tcp "$status" "Router can open TCP to backup managed egress." "endpoint=backup detail=$detail" "If CRIT, keep primary or investigate backup provider reachability."
+      emit backup_tcp "$status" "Router can open TCP to backup managed egress." "endpoint=backup detail=$detail" "If CRIT, keep primary or investigate backup reachability."
       ;;
     backup_tls)
       if [ "$status" = "CRIT" ]; then

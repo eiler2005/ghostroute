@@ -101,7 +101,7 @@ target is paired with the specific local check that measures it.
 - **Target**: external IP-checker returns the active managed egress public IP
   for any managed-domain request from any production endpoint. In normal mode
   this is the configured VPS public IP; in explicit reserve mode it is the
-  selected backup provider exit.
+  selected mnemonic reserve backend.
 - **Measure**: `traffic-report today` shows VPS-vs-direct ratios; manual
   spot-check via the test client.
 - **Action threshold**: any "managed→direct" mistake in `traffic-report

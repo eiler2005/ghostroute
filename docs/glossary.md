@@ -42,7 +42,8 @@ intended source of truth. For deeper context, follow the cross-references.
 - **Reality egress / `reality-out`** — stable sing-box outbound tag on the
   router for managed traffic. In normal mode it points at the owned VPS
   Reality/Vision edge; in explicit reserve mode it can point at a Vault-backed
-  router-only backup Reality provider profile.
+  router-only backup Reality profile. Public docs name backends by mnemonic
+  roles only, for example `primary_vps`, `backup_reality` and `hermes_vps`.
 - **Direct out / `direct-out`** — non-managed traffic exits via the home WAN
   link without going through Reality.
 - **WAN exit** — the home internet uplink as seen by the public internet for

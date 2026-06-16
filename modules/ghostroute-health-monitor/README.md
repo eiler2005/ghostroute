@@ -16,8 +16,9 @@ digests and disk-based alert ledgers without changing production routing state.
 - Compact daily status and active leak-check commands for operator triage.
 - Short live A/B/C runtime-chain check with text/JSON output, local logging and
   optional active probes.
-- Managed egress path comparison for the owned primary VPS and the active
-  router `reality-out` backend.
+- Managed egress path comparison and backend-bank health for the owned primary
+  VPS, reserve Reality profile, owned clone VPS and the active router
+  `reality-out` backend.
 - Local-only alert ledgers and merged control-machine reports.
 - Rolling baseline learning for RTT and retransmit degradation.
 
@@ -52,6 +53,7 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/leak-check`
 - `./modules/ghostroute-health-monitor/bin/live-check`
 - `./modules/ghostroute-health-monitor/bin/managed-egress-check`
+- `./modules/ghostroute-health-monitor/bin/egress-backend-health`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
 
 `status` is the compact daily view: overall drift count, STEALTH capacity,
@@ -74,6 +76,15 @@ cover endpoint, raw backup TCP/TLS reachability when a backup profile is
 configured, and the real application path through router SOCKS canaries. It
 sanitizes endpoint evidence and treats backup raw TLS as advisory because some
 Reality endpoints intentionally close generic TLS handshakes.
+
+`egress-backend-health` reports the managed egress backend bank by role
+(`primary_vps`, `backup_reality`, `hermes_vps`) and then probes application
+canaries through the active router SOCKS path. Inactive backend TCP/TLS probes
+are advisory; active application canaries are the canonical proof that the
+selected backend works for managed traffic. The command emits human text or
+`--json` with `schema_version`, `active_backend`, `channel_d_backend`,
+`backend_bank[]`, `app_canaries[]` and `rollup`, without printing raw endpoints,
+provider values, IP addresses or keys.
 
 `live-check` is the canonical short "are A/B/C alive now?" check. Default mode
 is config/log based and normally takes 1-8 seconds: listeners, firewall rules,
@@ -120,6 +131,7 @@ mutating deploy entrypoints still run their own pre/post deploy gate.
 ## Tests
 
 - `./modules/ghostroute-health-monitor/tests/test-health-monitor.sh`
+- `./modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh`
 - `./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh`
 - `./tests/run-all.sh`
 
