@@ -34,7 +34,7 @@ EOF
 cat >"$CANARIES_FILE" <<'EOF'
 telegram	https://core.telegram.org/	2,3
 google	https://www.google.com/generate_204	2
-claude	https://claude.ai/	2,3
+blocked-app	https://blocked.example.invalid/	2,3
 EOF
 
 cat >"$STUB_BIN/ansible-vault" <<'EOF'
@@ -111,7 +111,7 @@ done
 case "$last" in
   *core.telegram.org*) printf '200 0.100000' ;;
   *google.com*) printf '204 0.050000' ;;
-  *claude.ai*) printf '403 0.200000' ;;
+  *blocked.example.invalid*) printf '403 0.200000' ;;
   *) printf '000 0' ;;
 esac
 EOF
@@ -159,7 +159,7 @@ assert_contains "$HUMAN_OUT" "backup_reality"
 assert_contains "$HUMAN_OUT" "hermes_vps"
 assert_contains "$HUMAN_OUT" "primary_vps"
 assert_contains "$HUMAN_OUT" "OK       OK       WARN"
-assert_contains "$HUMAN_OUT" "claude     DEGRADED"
+assert_contains "$HUMAN_OUT" "blocked-app  DEGRADED"
 assert_contains "$HUMAN_OUT" "inactive backend TCP/TLS probes are advisory"
 
 for secretish in primary.example.invalid backup.example.invalid hermes.example.invalid cover.example.invalid 198.51.100 203.0.113; do
@@ -179,8 +179,8 @@ raise "channel d" unless j["channel_d_backend"] == "follow"
 raise "rollup" unless j["rollup"] == "degraded"
 raise "backend rows" unless j["backend_bank"].length == 3
 raise "canary rows" unless j["app_canaries"].length == 3
-claude = j["app_canaries"].find { |row| row["app"] == "claude" }
-raise "claude degraded" unless claude && claude["status"] == "DEGRADED"
+blocked = j["app_canaries"].find { |row| row["app"] == "blocked-app" }
+raise "blocked-app degraded" unless blocked && blocked["status"] == "DEGRADED"
 backup = j["backend_bank"].find { |row| row["role"] == "backup_reality" }
 raise "backup active" unless backup && backup["active"] == true
 primary = j["backend_bank"].find { |row| row["role"] == "primary_vps" }
