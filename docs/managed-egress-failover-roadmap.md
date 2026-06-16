@@ -183,6 +183,16 @@ prints the backend bank (`primary_vps`, `backup_reality`, `hermes_vps`) using
 Vault references only, treats inactive TCP/TLS checks as advisory, and uses
 active app canaries as the canonical live proof.
 
+**Known canary limitation:** the `claude` canary in
+[`managed-app-canaries.tsv`](../modules/ghostroute-health-monitor/config/managed-app-canaries.tsv)
+expects HTTP `403` from `claude.ai` in addition to `2xx/3xx`. Cloudflare's
+bot-protection on that domain blocks `curl`'s TLS/JA3 fingerprint regardless of
+egress path or `User-Agent` header — confirmed by reproducing the same `403`
+on a direct connection with no GhostRoute egress involved at all. A `403` from
+the real Cloudflare edge still proves TCP/TLS reachability through the active
+backend, so it is accepted rather than treated as `DEGRADED`. This is a
+property of the destination's anti-bot layer, not a backend health signal.
+
 ## Live Managed Egress Switching Model
 
 `reality-out` is the stable router-side contract. The active backend can change
