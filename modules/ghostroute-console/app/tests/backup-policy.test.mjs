@@ -82,6 +82,7 @@ test("SQLite backup retention enforces both max count and max total bytes", () =
 
   const result = runSqliteBackupRetention({
     dataDir,
+    now: new Date("2026-05-19T10:00:00.000Z"),
     env: {
       GHOSTROUTE_DB_BACKUP_MODE: "local_daily",
       GHOSTROUTE_BACKUP_RETENTION_DAYS: "3650",
