@@ -156,6 +156,51 @@ attribution. Until that follow-up is implemented, use `99-verify.yml`,
 `verify.sh --verbose`, `router-health-report` and router logs for Channel D
 proof.
 
+## Managed Egress Selection (Independent Backend)
+
+Channel D managed traffic exits behind a sing-box outbound, exactly like
+Channel A/B/C. By default Channel D **follows** the shared `reality-out` backend
+selected by `vault_router_managed_egress_mode`, so switching A/B/C also switches
+Channel D.
+
+Channel D can instead be **pinned** to its own backend through a second outbound
+`reality-out-d`, selected by `vault_channel_d_managed_egress_mode`:
+
+```text
+channel_d_managed_egress_mode = follow          -> reality-out   (= A/B/C backend)
+channel_d_managed_egress_mode = primary_vps      -> reality-out-d -> owned VPS
+channel_d_managed_egress_mode = backup_reality   -> reality-out-d -> backup Reality
+channel_d_managed_egress_mode = hermes_vps       -> reality-out-d -> owned Hermes clone
+```
+
+The primary use is a **canary lane**: pin only Channel D to a new owned backend
+(for example `hermes_vps`) on isolated experimental traffic while Channel A/B/C
+stay on the proven backend, validate it, then move A/B/C with confidence. Pins
+reuse the existing `router_hermes_vps_*` / `router_backup_reality_*` endpoints;
+no new endpoints or client artifacts are introduced.
+
+Switch with the shared operator helper:
+
+```bash
+./modules/routing-core/bin/managed-egress-mode status
+./modules/routing-core/bin/managed-egress-mode set hermes_vps --channel d --deploy-router
+./modules/ghostroute-health-monitor/bin/managed-egress-check          # active_mode_d shows the D pin
+./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-d
+# verified the canary, then return D to the shared backend:
+./modules/routing-core/bin/managed-egress-mode set follow --channel d --deploy-router
+```
+
+The verify commands mirror Channel A/B/C: `managed-egress-check` reports both the
+shared mode and the `active_mode_d` selector, and `live-check channel-d` checks the
+Channel D SOCKS inbound and managed split (accepting either `reality-out` or
+`reality-out-d`).
+
+DNS note (v1 simplification): the Channel D managed split is `rule_set`-based
+(`stealth-domains`/`stealth-static`), so it is DNS-independent. When Channel D is
+pinned, its data exits via `reality-out-d`, while managed-domain DNS resolution
+still uses the shared `vps-dns-server` over `reality-out`. This is acceptable
+because managed classification keys on domain/IP, not on which resolver answered.
+
 ## Deploy And Rollback
 
 Channel D is disabled by default. Enable it only with explicit Vault values and
@@ -173,6 +218,8 @@ rules.
 
 ## Proof Signals
 
-- Managed domains produce `channel-d-naiveproxy-socks-in -> reality-out`.
+- Managed domains produce `channel-d-naiveproxy-socks-in -> reality-out` when
+  Channel D follows A/B/C, or `-> reality-out-d` when Channel D is pinned to its
+  own backend.
 - Non-managed destinations produce `channel-d-naiveproxy-socks-in -> direct-out`.
 - The mobile carrier sees the home endpoint first, not the VPS.

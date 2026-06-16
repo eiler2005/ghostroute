@@ -215,7 +215,9 @@ backup, and optionally redeploys the router:
 
 Valid modes are `primary_vps`, `backup_reality` and `hermes_vps`. The switch
 changes only the upstream managed egress, never client QR/VLESS artifacts,
-ingress ports or managed catalogs. Channel D and Channel M are not affected. See
+ingress ports or managed catalogs. Channel D follows this shared backend by
+default but can be pinned to its own backend behind `reality-out-d` with
+`set <mode> --channel d` (canary lane); Channel M is never affected. See
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md)
 for the full procedure and recovery checks.
 

@@ -13,6 +13,87 @@
 {% set selected_vps_dns_port = router_hermes_vps_unbound_port | default(vps_unbound_listen_port | default(15353), true) %}
 {% endif %}
 {% set use_cover_dns = (managed_egress_mode == 'backup_reality' and router_backup_dns_mode | default('cover_dns') == 'cover_dns') or (managed_egress_mode == 'hermes_vps' and router_hermes_dns_mode | default('managed_vps_dns') == 'cover_dns') %}
+{% set d_mode = channel_d_managed_egress_mode | default('follow') %}
+{% set d_effective_mode = managed_egress_mode if d_mode == 'follow' else d_mode %}
+{% set d_out = 'reality-out' if d_mode == 'follow' else 'reality-out-d' %}
+{% macro reality_outbound_body(mode) -%}
+{% if mode == 'backup_reality' %}
+      "server": "{{ router_backup_reality_server }}",
+      "server_port": {{ router_backup_reality_server_port }},
+      "uuid": "{{ router_backup_reality_uuid }}",
+      "flow": "{{ router_backup_reality_flow | default('xtls-rprx-vision') }}",
+      "packet_encoding": "{{ router_backup_reality_packet_encoding | default('xudp') }}",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ router_backup_reality_server_name }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "{{ router_backup_reality_utls_fingerprint | default('chrome') }}"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ router_backup_reality_public_key }}",
+          "short_id": "{{ router_backup_reality_short_id }}"
+        }
+      }
+{% elif mode == 'hermes_vps' %}
+      "server": "{{ router_hermes_vps_host }}",
+      "server_port": {{ router_hermes_vps_port }},
+      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ router_hermes_vps_server_name }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "{{ router_hermes_vps_utls_fingerprint | default('chrome') }}"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ reality_server_public_key }}",
+          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
+        }
+      }
+{% else %}
+      "server": "{{ vps_ssh_host }}",
+      "server_port": 443,
+      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": false,
+      "tcp_keep_alive_interval": "30s",
+      "connect_timeout": "10s",
+      "multiplex": {
+        "enabled": false
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "{{ reality_server_names[0] }}",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "{{ reality_server_public_key }}",
+          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
+        }
+      }
+{% endif %}
+{%- endmacro %}
 {
   "log": {
     "level": "info",
@@ -205,83 +286,15 @@
     {
       "type": "vless",
       "tag": "reality-out",
-{% if managed_egress_mode == 'backup_reality' %}
-      "server": "{{ router_backup_reality_server }}",
-      "server_port": {{ router_backup_reality_server_port }},
-      "uuid": "{{ router_backup_reality_uuid }}",
-      "flow": "{{ router_backup_reality_flow | default('xtls-rprx-vision') }}",
-      "packet_encoding": "{{ router_backup_reality_packet_encoding | default('xudp') }}",
-      "tcp_fast_open": false,
-      "tcp_keep_alive_interval": "30s",
-      "connect_timeout": "10s",
-      "multiplex": {
-        "enabled": false
-      },
-      "tls": {
-        "enabled": true,
-        "server_name": "{{ router_backup_reality_server_name }}",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "{{ router_backup_reality_utls_fingerprint | default('chrome') }}"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "{{ router_backup_reality_public_key }}",
-          "short_id": "{{ router_backup_reality_short_id }}"
-        }
-      }
-{% elif managed_egress_mode == 'hermes_vps' %}
-      "server": "{{ router_hermes_vps_host }}",
-      "server_port": {{ router_hermes_vps_port }},
-      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
-      "flow": "xtls-rprx-vision",
-      "packet_encoding": "xudp",
-      "tcp_fast_open": false,
-      "tcp_keep_alive_interval": "30s",
-      "connect_timeout": "10s",
-      "multiplex": {
-        "enabled": false
-      },
-      "tls": {
-        "enabled": true,
-        "server_name": "{{ router_hermes_vps_server_name }}",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "{{ router_hermes_vps_utls_fingerprint | default('chrome') }}"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "{{ reality_server_public_key }}",
-          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
-        }
-      }
-{% else %}
-      "server": "{{ vps_ssh_host }}",
-      "server_port": 443,
-      "uuid": "{{ (clients | selectattr('name','equalto','router') | list | first).uuid }}",
-      "flow": "xtls-rprx-vision",
-      "packet_encoding": "xudp",
-      "tcp_fast_open": false,
-      "tcp_keep_alive_interval": "30s",
-      "connect_timeout": "10s",
-      "multiplex": {
-        "enabled": false
-      },
-      "tls": {
-        "enabled": true,
-        "server_name": "{{ reality_server_names[0] }}",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "{{ reality_server_public_key }}",
-          "short_id": "{{ (clients | selectattr('name','equalto','router') | list | first).short_id }}"
-        }
-      }
-{% endif %}
+{{ reality_outbound_body(managed_egress_mode) }}
     },
+{% if d_mode != 'follow' %}
+    {
+      "type": "vless",
+      "tag": "reality-out-d",
+{{ reality_outbound_body(d_effective_mode) }}
+    },
+{% endif %}
     { "type": "direct", "tag": "direct-out" }
   ],
   "route": {
@@ -520,7 +533,7 @@
         ],
         "outbound": "direct-out"
       },
-      { "inbound": "channel-d-naiveproxy-socks-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "reality-out" },
+      { "inbound": "channel-d-naiveproxy-socks-in", "rule_set": ["stealth-domains", "stealth-static"], "outbound": "{{ d_out }}" },
       { "inbound": "channel-d-naiveproxy-socks-in", "outbound": "direct-out" }
 {% endif %}{% if channel_m_maxtg_enabled | default(false) | bool %},
       { "inbound": "channel-m-maxtg-max-egress", "outbound": "direct-out" }

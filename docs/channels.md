@@ -249,7 +249,11 @@ Current production interpretation:
   unauthenticated CONNECT must not become an open proxy.
 - Channel D has separate credentials, Karing artifacts and deploy playbook.
 - Proof logs must show `channel-d-naiveproxy-socks-in -> reality-out` for
-  managed destinations and `direct-out` for non-managed destinations.
+  managed destinations and `direct-out` for non-managed destinations. When
+  Channel D is pinned to its own backend (`channel_d_managed_egress_mode` other
+  than `follow`), the managed proof tag is `reality-out-d` instead. See
+  [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md) and
+  `managed-egress-mode --channel d`.
 - It does not prove Channel C native Naive; Channel C proof still lands in
   `channel-c-naive-in`.
 

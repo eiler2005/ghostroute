@@ -1,30 +1,42 @@
 #!/bin/bash
-# Local operator helper for the shared Channel A/B/C managed egress selector.
+# Local operator helper for the Channel A/B/C and Channel D managed egress selectors.
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
 ANSIBLE_CONFIG_FILE="${ANSIBLE_DIR}/ansible.cfg"
 VAULT_FILE="${ANSIBLE_DIR}/secrets/stealth.yml"
-VALID_MODES="primary_vps backup_reality hermes_vps"
+ABC_MODES="primary_vps backup_reality hermes_vps"
+D_MODES="follow primary_vps backup_reality hermes_vps"
 
 usage() {
   cat <<'USAGE'
 Usage:
   ./modules/routing-core/bin/managed-egress-mode status
-  ./modules/routing-core/bin/managed-egress-mode set <primary_vps|backup_reality|hermes_vps> [--deploy-router] [--skip-deploy-gate]
+  ./modules/routing-core/bin/managed-egress-mode set <mode> [--channel <abc|d>] [--deploy-router] [--skip-deploy-gate]
+
+Channels:
+  --channel abc  (default) Shared Channel A/B/C backend behind reality-out.
+                 Modes: primary_vps | backup_reality | hermes_vps
+                 Deploys 20-stealth-router.yml.
+  --channel d    Independent Channel D backend behind reality-out-d.
+                 Modes: follow | primary_vps | backup_reality | hermes_vps
+                 'follow' keeps Channel D on the shared A/B/C backend; the other
+                 modes pin Channel D to its own backend (canary lane, e.g. test
+                 hermes_vps on Channel D while A/B/C stay on backup_reality).
+                 Deploys 24-channel-d-router.yml.
 
 Options:
-  --deploy-router      Render and apply 20-stealth-router.yml after the Vault edit.
+  --deploy-router      Render and apply the channel playbook after the Vault edit.
   --skip-deploy-gate   Emergency only: bypass the live-check deploy gate so an
                        egress switch is not blocked by unrelated WARN checks
                        (e.g. suspect primary path, idle Channel B/C). Verify with
                        managed-egress-check + live-check after.
 
 Scope:
-  Switches the shared managed egress used by Channel A/B/C via router reality-out.
-  Channel D and Channel M are not switched by this helper.
-  Client QR/VLESS artifacts are not generated or modified.
+  Switches managed destinations only, behind reality-out (A/B/C) or reality-out-d
+  (Channel D pin). Channel M is not switched by this helper. Client QR/VLESS
+  artifacts are not generated or modified.
 USAGE
 }
 
@@ -34,8 +46,8 @@ die() {
 }
 
 is_valid_mode() {
-  local mode="$1"
-  case " ${VALID_MODES} " in
+  local mode="$1" valid="$2"
+  case " ${valid} " in
     *" ${mode} "*) return 0 ;;
     *) return 1 ;;
   esac
@@ -49,29 +61,37 @@ vault_view() {
 }
 
 extract_mode() {
-  awk '
-    $1 == "vault_router_managed_egress_mode:" {
+  local key="$1" def="$2"
+  awk -v key="${key}:" -v def="$def" '
+    $1 == key {
       sub(/^[^:]+:[[:space:]]*/, "")
       gsub(/^[\"\047]|[\"\047]$/, "")
       print
       found = 1
       exit
     }
-    END { if (!found) print "primary_vps" }
+    END { if (!found) print def }
   '
 }
 
 current_mode() {
-  vault_view | extract_mode
+  vault_view | extract_mode "$1" "$2"
 }
 
 status() {
-  local mode
-  mode="$(current_mode)"
-  printf 'managed egress mode: %s\n' "$mode"
-  printf 'available modes: %s\n' "$VALID_MODES"
-  printf 'scope: Channel A/B/C managed destinations through router reality-out\n'
-  printf 'unchanged: Channel D, Channel M, client QR/VLESS artifacts\n'
+  local abc d
+  abc="$(current_mode vault_router_managed_egress_mode primary_vps)"
+  d="$(current_mode vault_channel_d_managed_egress_mode follow)"
+  printf 'A/B/C managed egress mode: %s\n' "$abc"
+  if [ "$d" = "follow" ]; then
+    printf 'Channel D managed egress mode: follow (= A/B/C: %s)\n' "$abc"
+  else
+    printf 'Channel D managed egress mode: %s (independent, via reality-out-d)\n' "$d"
+  fi
+  printf 'available A/B/C modes: %s\n' "$ABC_MODES"
+  printf 'available Channel D modes: %s\n' "$D_MODES"
+  printf 'scope: managed destinations via reality-out (A/B/C) / reality-out-d (Channel D pin)\n'
+  printf 'unchanged: Channel M, client QR/VLESS artifacts\n'
 }
 
 set_mode() {
@@ -80,6 +100,7 @@ set_mode() {
 
   local deploy_router=0
   local skip_gate=0
+  local channel="abc"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --deploy-router)
@@ -88,6 +109,15 @@ set_mode() {
         ;;
       --skip-deploy-gate)
         skip_gate=1
+        shift
+        ;;
+      --channel)
+        [ "$#" -ge 2 ] || die "--channel needs a value (abc or d)"
+        channel="$2"
+        shift 2
+        ;;
+      --channel=*)
+        channel="${1#*=}"
         shift
         ;;
       -h|--help|help)
@@ -100,12 +130,33 @@ set_mode() {
     esac
   done
 
-  is_valid_mode "$mode" || die "invalid mode '$mode' (valid: $VALID_MODES)"
+  local key default valid playbook label
+  case "$channel" in
+    abc|a)
+      key="vault_router_managed_egress_mode"
+      default="primary_vps"
+      valid="$ABC_MODES"
+      playbook="20-stealth-router.yml"
+      label="A/B/C"
+      ;;
+    d)
+      key="vault_channel_d_managed_egress_mode"
+      default="follow"
+      valid="$D_MODES"
+      playbook="24-channel-d-router.yml"
+      label="Channel D"
+      ;;
+    *)
+      die "unknown --channel '$channel' (valid: abc, d)"
+      ;;
+  esac
+
+  is_valid_mode "$mode" "$valid" || die "invalid mode '$mode' for $label (valid: $valid)"
 
   local before
-  before="$(current_mode)"
+  before="$(current_mode "$key" "$default")"
   if [ "$before" = "$mode" ]; then
-    printf 'managed egress mode already %s\n' "$mode"
+    printf '%s managed egress mode already %s\n' "$label" "$mode"
   else
     local tmpdir backup
     tmpdir="$(mktemp -d)"
@@ -115,12 +166,13 @@ set_mode() {
     cp -p "$VAULT_FILE" "$backup"
 
     vault_view >"$tmpdir/stealth.yml"
-    ruby - "$tmpdir/stealth.yml" "$mode" <<'RUBY'
-path, mode = ARGV
+    ruby - "$tmpdir/stealth.yml" "$key" "$mode" <<'RUBY'
+path, key, mode = ARGV
 text = File.read(path)
-line = %(vault_router_managed_egress_mode: "#{mode}")
-if text.match?(/^vault_router_managed_egress_mode:[^\n]*$/)
-  text = text.sub(/^vault_router_managed_egress_mode:[^\n]*$/, line)
+line = %(#{key}: "#{mode}")
+re = /^#{Regexp.escape(key)}:[^\n]*$/
+if text.match?(re)
+  text = text.sub(re, line)
 else
   text << "\n" unless text.end_with?("\n")
   text << line << "\n"
@@ -134,9 +186,9 @@ RUBY
     ) >/dev/null
 
     local after
-    after="$(current_mode)"
+    after="$(current_mode "$key" "$default")"
     [ "$after" = "$mode" ] || die "Vault update verification failed; backup is $backup"
-    printf 'managed egress mode changed: %s -> %s\n' "$before" "$mode"
+    printf '%s managed egress mode changed: %s -> %s\n' "$label" "$before" "$mode"
     printf 'encrypted backup: %s\n' "$backup"
   fi
 
@@ -148,8 +200,8 @@ RUBY
     fi
     (
       cd "$ANSIBLE_DIR"
-      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook --syntax-check playbooks/20-stealth-router.yml
-      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook playbooks/20-stealth-router.yml $gate_args
+      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook --syntax-check "playbooks/$playbook"
+      ANSIBLE_CONFIG="$ANSIBLE_CONFIG_FILE" ansible-playbook "playbooks/$playbook" $gate_args
     )
   else
     printf 'router deploy not run; add --deploy-router to apply the selected mode\n'

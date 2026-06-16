@@ -191,8 +191,10 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
 
 Доступные режимы: `primary_vps`, `backup_reality`, `hermes_vps`. Переключение
 меняет только upstream managed egress — не трогает client QR/VLESS artifacts,
-ingress-порты и managed-каталоги. Channel D и Channel M не затрагиваются.
-Полная процедура — в
+ingress-порты и managed-каталоги. Channel D по умолчанию следует за этим общим
+backend, но может быть запинен на собственный backend за `reality-out-d` через
+`set <mode> --channel d` (canary-линия); Channel M не затрагивается. Полная
+процедура — в
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md).
 
 ---
