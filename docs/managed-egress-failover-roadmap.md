@@ -90,6 +90,62 @@ both live checks:
 ./modules/ghostroute-health-monitor/bin/egress-backend-health
 ```
 
+### Diagnosing a filtered path vs a dead backend
+
+When a backend looks unreachable, the next question is *why*: is the host down,
+or is the path being actively filtered? `egress-backend-health` answers "does
+the active backend carry app traffic"; it does not distinguish a firewall from
+DPI. [`egress-dpi-probe`](../modules/ghostroute-health-monitor/bin/egress-dpi-probe)
+fills that gap. It opens a raw TCP + TLS-ClientHello probe to each backend's
+public endpoint and gives each vantage a descriptive verdict — `open` (handshake
+completed, path open, usually terminating on the Reality cover/decoy), `reset`
+(RST on/after the ClientHello), `refused` (TCP refused — host or firewall),
+`timeout` (no response), or `tls_reject` (fast TLS rejection, typical of a
+Reality server refusing a plain probe).
+
+The real signal is the **comparison** between vantages, because each backend's
+Reality/decoy config is constant across vantages — so a difference isolates the
+network path, while agreement points at the endpoint itself:
+
+```bash
+./modules/ghostroute-health-monitor/bin/egress-dpi-probe            # --from both (default)
+./modules/ghostroute-health-monitor/bin/egress-dpi-probe --from control --json
+```
+
+Cross verdicts:
+
+- `clear_both` — both vantages open; no path interference from here.
+- `network_specific_filtering` — router path open but the current network is not;
+  interference is local to this network, so **switching backend will not help**
+  (try a different SNI/port or network).
+- `router_path_degraded` — current network open but the router path is not; check
+  the router WAN / backend rather than the network.
+- `consistent_degraded` — both vantages behave the same; for a Reality endpoint
+  this is often its normal reaction to a plain probe, so cross-check the app
+  canaries before concluding the backend is down.
+
+This is a heuristic, not proof: a healthy Reality backend can legitimately reset
+or reject a plain TLS probe, so never treat a single verdict as standalone —
+cross-check against the `egress-backend-health` app canaries. The tool is
+read-only and sanitizes all host/IP/SNI evidence out of its output.
+
+**Vantage caveat:** "control" is whatever network the command runs from, not
+necessarily the operator's real current network. A coding agent or CI runner
+may execute from a sandbox/VPN with a different egress ASN than the operator's
+home ISP — in that case a `network_specific_filtering` verdict says something
+true about *that* network, not necessarily the operator's. Before trusting it,
+compare public-IP ASN of the control vantage against the router's WAN ASN
+(e.g. `curl https://api.ipify.org/` from each, then look up the org for both).
+Two genuinely unrelated networks agreeing on a failure is still useful signal
+— it just isn't proof that the *operator's* ISP is uninvolved or involved.
+If the endpoint itself needs to be cleared, the conclusive check is on the VPS:
+`ansible vps_stealth -m ping`, service/container status, and a loopback
+`curl https://127.0.0.1:443/` — if that hangs too, no network is involved at
+all and the cause is local to the Caddy/Xray stack (commonly just its layer4
+matcher timing out waiting on a non-VLESS probe, see the journalctl pattern
+`caddy.listeners.layer4 ... aborted matching according to timeout`, which is
+normal Reality behavior, not a fault).
+
 ## Implemented Manual Reserve Mode
 
 Ansible now renders the router `sing-box` `reality-out` outbound from one of
@@ -303,7 +359,19 @@ separate design and tests.
 ## Primary VPS Path Recovery Checks
 
 While backup mode is active, keep checking whether the owned VPS path has
-recovered before switching back:
+recovered before switching back. The fastest read-only check is
+[`egress-dpi-probe`](../modules/ghostroute-health-monitor/bin/egress-dpi-probe)
+— it runs the same TCP/TLS check below against the whole bank automatically and
+compares vantages; a multi-second `timeout` (rather than a fast `open`/`reject`)
+on `primary_vps` from both vantages means the endpoint itself needs attention,
+not the network:
+
+```bash
+./modules/ghostroute-health-monitor/bin/egress-dpi-probe --role primary_vps
+```
+
+The manual commands below give the same answer with finer-grained service
+detail when the probe above shows a problem:
 
 ```bash
 # Control machine: SSH/API reachability to the VPS.
