@@ -25,7 +25,7 @@ Russian WAN. By default only managed
 destinations use the active Reality egress; selected home Wi-Fi/LAN devices and
 selected Channel A Home Reality profiles can opt into full-VPS mode where all
 internet-bound traffic uses `reality-out`. The active egress is normally the
-owned VPS, or an explicit reserve provider during incidents. The repo is
+owned VPS, or an explicit reserve backend during incidents. The repo is
 intentionally module-native: routing, health, traffic, catalog, client profiles,
 secrets and recovery all have separate ownership and tests.
 
@@ -160,10 +160,10 @@ diagnostic.
 - Optional Layer 0 endpoint/client-side routing for devices that support
   rule-based client profiles such as Shadowrocket-style configs.
 - Channel A managed egress through the stable `reality-out` tag with three
-  operator-selectable backends: the primary owned VPS Reality/Vision host behind
-  shared Caddy L4 on TCP/443, a Vault-backed backup Reality provider for
-  incidents, and an owned Hermes clone VPS (a Hostkey host) for owned-egress
-  migration. The route contract stays fixed; only the backend swaps.
+  operator-selectable mnemonic backends: `primary_vps`, `backup_reality` and
+  `hermes_vps`. The route contract stays fixed; only the backend behind the role
+  swaps. Public docs must not map those roles to real providers, endpoints or
+  host families.
 - Optional Channel A selected full-VPS sets for home LAN/Wi-Fi devices and Home
   Reality profiles that should send all internet-bound traffic through
   `reality-out`, while non-selected devices keep the managed-domain split. This
@@ -185,7 +185,7 @@ diagnostic.
   cover site for ordinary unauthenticated HTTPS GET probes. It is disabled by
   default and is not Channel C proof.
 - Channel M service lane for `maxtg_bridge`: the home router opens an SSH
-  remote-forward to the Hetzner/VPS docker bridge; `maxtg_bridge` uses
+  remote-forward to the VPS docker bridge; `maxtg_bridge` uses
   authenticated HTTP CONNECT through that reverse tunnel, and router sing-box
   routes `channel-m-maxtg-reverse-egress` only to `direct-out` so MAX API/CDN
   sees the home Russian WAN IP.
@@ -211,6 +211,7 @@ backup, and optionally redeploys the router:
 ./modules/routing-core/bin/managed-egress-mode status
 ./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
 ./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/egress-backend-health
 ```
 
 Valid modes are `primary_vps`, `backup_reality` and `hermes_vps`. The switch
@@ -220,6 +221,10 @@ default but can be pinned to its own backend behind `reality-out-d` with
 `set <mode> --channel d` (canary lane); Channel M is never affected. See
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md)
 for the full procedure and recovery checks.
+
+Public documentation and commits refer to managed egresses only by mnemonic
+roles. The real provider, endpoint, ASN, host family, account and role mapping
+belong in Vault or gitignored operator notes.
 
 ---
 

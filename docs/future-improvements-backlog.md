@@ -592,12 +592,12 @@ Channel A RF-like profile
 Отдельный future-roadmap зафиксирован в
 [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).
 
-Идея: если primary Hetzner/VPS как foreign managed egress недоступен, роутер
+Идея: если `primary_vps` как foreign managed egress недоступен, роутер
 может полуавтоматически переключить только managed destinations на резервный
 foreign egress. Первый практический v1-кандидат для proof-of-logic теперь
-зафиксирован как external backup `VLESS/Reality` provider profile; долгосрочный
-вариант собственного второго `VLESS + Reality/Vision` VPS у другого
-провайдера/ASN остаётся совместимым с тем же router-side contract.
+зафиксирован как `backup_reality`; долгосрочный вариант собственного второго
+`VLESS + Reality/Vision` VPS с независимой инфраструктурой остаётся совместимым
+с тем же router-side contract. Provider/ASN mapping остается приватным.
 Router-managed split остается владельцем policy: `STEALTH_DOMAINS` /
 `VPN_STATIC_NETS` по-прежнему решают, что идет через foreign egress, а
 direct/RU/default трафик остается на home WAN.

@@ -135,7 +135,7 @@
       - router_backup_reality_utls_fingerprint | string | length > 0
       - router_backup_reality_public_key | string | length > 0
       - router_backup_reality_short_id | string | length > 0
-    fail_msg: "backup_reality mode needs a complete router-only VLESS/Reality provider profile in Vault."
+    fail_msg: "backup_reality mode needs a complete router-only VLESS/Reality reserve profile in Vault."
   when: router_managed_egress_mode == 'backup_reality' or channel_d_managed_egress_mode | default('follow') == 'backup_reality'
   no_log: true
 

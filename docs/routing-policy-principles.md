@@ -101,8 +101,9 @@ Layer 3 is the upstream exit.
 
 - `reality-out` is the stable logical managed egress tag. In normal mode it
   uses Reality/Vision toward the owned VPS; in explicit reserve mode it can use
-  a Vault-backed router-only backup Reality provider profile. Target sites see
-  the active managed egress, not the home WAN.
+  a Vault-backed router-only backup Reality profile. Public docs use only
+  mnemonic backend roles; target sites see the active managed egress, not the
+  home WAN.
 - `direct-out` uses the home WAN; target sites see the home Russian IP.
 - The VPS should not be visible to the mobile operator as the first hop for
   home-first mobile channels.

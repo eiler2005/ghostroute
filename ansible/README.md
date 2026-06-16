@@ -152,8 +152,8 @@ and router sing-box routes `channel-m-maxtg-reverse-egress` only to
 Managed egress reserve mode is separate from Channel B/C. The router keeps the
 same managed split and the same `reality-out` route target, while
 `router_managed_egress_mode` chooses which backend is rendered behind that tag:
-`primary_vps` for the owned VPS, or `backup_reality` for a Vault-backed
-router-only provider profile. See
+`primary_vps` for the owned VPS, `backup_reality` for a Vault-backed
+router-only reserve profile, or `hermes_vps` for the owned clone role. See
 [`docs/managed-egress-failover-roadmap.md`](../docs/managed-egress-failover-roadmap.md).
 During an incident, the operator can treat `backup_reality` as the active
 managed egress while the owned VPS remains an observed switchback candidate.
@@ -301,6 +301,7 @@ Switch managed egress backend during an incident or drill:
 ```bash
 ./modules/routing-core/bin/managed-egress-mode status
 ./modules/routing-core/bin/managed-egress-mode set backup_reality --deploy-router
+./modules/ghostroute-health-monitor/bin/egress-backend-health
 ./modules/ghostroute-health-monitor/bin/live-check --active-probe channel-a
 ```
 
@@ -309,6 +310,8 @@ backends behind the stable `reality-out` tag. The helper edits only
 `vault_router_managed_egress_mode`; it does not change client profiles, QR/VLESS
 artifacts, Channel A/B/C ingress ports, managed catalogs or direct traffic
 policy. Channel D and Channel M are not switched by this helper.
+Public docs and commit text must keep these as mnemonic roles only; real
+provider, endpoint, ASN and role mappings stay in Vault or gitignored notes.
 
 Generate local client profiles:
 

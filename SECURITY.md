@@ -10,6 +10,8 @@ router/VPS mutation paths and making recovery explicit.
 - Generated client profiles, QR codes and URI payloads under `ansible/out/`.
 - Reality private keys, public keys, short IDs, client UUIDs and admin paths.
 - Real router/VPS hostnames, listener ports, SSH users and private bypass rules.
+- Managed egress provider identity, ASN, account details, host family, endpoint
+  metadata and any mapping from public backend roles to real infrastructure.
 - Local reports that may reveal device names, traffic patterns or private
   network layout.
 
@@ -87,6 +89,10 @@ The operator explicitly accepts:
 ## Secrets Policy
 
 - Keep real values in Ansible Vault or gitignored local files only.
+- Public managed-egress references must use mnemonic backend roles only:
+  `primary_vps`, `backup_reality`, `hermes_vps` and future role-style names.
+  Do not publish the real provider, ASN, host family, account, endpoint, SNI or
+  role-to-provider mapping.
 - Use placeholders such as `<router_lan_ip>`, `<home-reality-port>` and
   `example.invalid` in tracked docs.
 - Never commit generated QR images, VLESS URIs, client config files, real UUIDs,

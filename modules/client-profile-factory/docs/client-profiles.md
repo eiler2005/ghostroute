@@ -557,7 +557,7 @@ with the existing hostname certificate and no proven SNI override.
 ## Channel M maxtg Service Egress Artifact
 
 Channel M artifacts are not client QR profiles. They are local service fragments
-for wiring `maxtg_bridge` on Hetzner to the home-router MAX egress lane:
+for wiring `maxtg_bridge` on the VPS bridge to the home-router MAX egress lane:
 
 ```text
 maxtg_bridge container -> HTTP CONNECT -> VPS docker bridge :<channel-m-reverse-listen-port>
@@ -596,7 +596,7 @@ Router invariants after deploy:
   to `direct-out`.
 - Reverse Channel M uses router-initiated SSH remote-forwarding; it does not
   require a home inbound public port and does not reuse Channel C.
-- Source allowlist permits only the Vault-configured Hetzner/VPS CIDR for the
+- Source allowlist permits only the Vault-configured VPS bridge CIDR for the
   optional direct public lane.
 - Channel M is not Channel A/B/C failover and does not touch LAN/Wi-Fi routing.
 - VPS/app on-demand recovery may call only

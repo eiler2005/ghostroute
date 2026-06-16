@@ -298,8 +298,8 @@ is consciously changed to a foreign-default mode.
 
 - Do not switch all DNS to VPS; that leaks VPS resolver identity to Russian and
   direct/default sites.
-- Do not switch all DNS to the home ISP resolver; that breaks the VPS/Hetzner
-  consistency proof for managed foreign services.
+- Do not switch all DNS to the home ISP resolver; that breaks the managed VPS
+  resolver consistency proof for foreign services.
 - Do not enable IPv6 until there is a separate dual-stack routing design.
 - Do not treat Google/Cloudflare resolver geography as proof of mobile-carrier
   DNS leakage.

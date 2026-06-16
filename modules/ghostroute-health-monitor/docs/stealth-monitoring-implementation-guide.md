@@ -317,6 +317,7 @@ sh -n modules/ghostroute-health-monitor/router/lib.sh \
   modules/ghostroute-health-monitor/router/run-once
 
 ./modules/ghostroute-health-monitor/tests/test-health-monitor.sh
+./modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh
 ./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh
 ./modules/recovery-verification/tests/test-router-health.sh
 ./modules/dns-catalog-intelligence/tests/test-catalog-review.sh

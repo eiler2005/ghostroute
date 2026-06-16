@@ -266,7 +266,7 @@ home router
   -> outbound SSH remote-forward
   -> VPS docker bridge :<channel-m-reverse-listen-port>
 
-maxtg_bridge container on Hetzner/VPS
+maxtg_bridge container on the VPS bridge
   -> authenticated HTTP CONNECT to the VPS-local reverse listener
   -> SSH remote-forward target on router loopback
   -> router sing-box HTTP inbound `channel-m-maxtg-reverse-egress`

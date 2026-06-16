@@ -1,0 +1,6 @@
+# Managed egress backend bank for egress-backend-health.
+# No endpoints or secrets belong here. Columns:
+# role<TAB>label<TAB>host_ref<TAB>port_ref<TAB>port_default<TAB>sni_ref<TAB>note
+primary_vps	primary owned VPS	vps_ssh_host	-	443	reality_server_names[0]	owned production backend behind reality-out
+backup_reality	reserve Reality backend	vault_router_backup_reality_server	vault_router_backup_reality_server_port	443	vault_router_backup_reality_server_name	incident reserve backend
+hermes_vps	owned clone VPS	vault_router_hermes_vps_host|vault_router_hermes_vps_ssh_host	vault_router_hermes_vps_port	443	vault_router_hermes_vps_server_name|reality_server_names[0]	owned clone candidate

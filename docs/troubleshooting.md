@@ -219,9 +219,9 @@ Found many DNS servers
 оператор увидел DNS-запросы. Текущий default — privacy-first: DNS должен идти
 через активный канал/tunnel и не должен уходить напрямую к LTE resolver.
 После policy-based DNS split для managed-доменов ожидается более строгая
-картина: managed foreign sites вроде `browserleaks.com` должны показывать VPS
-IP и VPS/Hetzner DNS, а RU/direct/default sites должны оставаться на home/RF
-DNS.
+картина: managed foreign sites вроде `browserleaks.com` должны показывать
+active managed egress и managed VPS DNS, а RU/direct/default sites должны
+оставаться на home/RF DNS.
 
 Если `browserleaks.com` показывает VPS IP, но DNS home/RF или Google/Cloudflare:
 
@@ -324,7 +324,7 @@ router-side тегом `reality-out`:
 ```text
 vault_router_managed_egress_mode: "primary_vps"    # normal owned VPS
 vault_router_managed_egress_mode: "backup_reality" # router-only reserve profile
-vault_router_managed_egress_mode: "hermes_vps"     # owned Hermes clone (Hostkey VPS)
+vault_router_managed_egress_mode: "hermes_vps"     # owned clone mnemonic backend
 ```
 
 Аварийное включение через локальный оператор-хелпер (правит только Vault-селектор,
@@ -398,7 +398,7 @@ reality-out`, но это не основной generated managed-domain target.
 
 ```text
 vtb.ru / championat.com / .ru control:
-  DNS не должен быть VPS/Hetzner
+  DNS не должен быть managed VPS DNS
   traffic должен идти direct/home WAN, если домен не классифицирован как managed
 ```
 

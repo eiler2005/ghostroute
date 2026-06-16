@@ -26,6 +26,14 @@ The router remains the policy owner. `STEALTH_DOMAINS` and `VPN_STATIC_NETS`
 continue to define what is managed; reserve mode only changes which foreign
 egress is used for managed traffic.
 
+## Public Mnemonic Contract
+
+Tracked docs, commit messages and issue text must name managed egress backends
+only by mnemonic role: `primary_vps`, `backup_reality`, `hermes_vps` or a future
+role-style name. Do not publish the real provider, ASN, account, host family,
+endpoint, SNI, IP, key material or the role-to-provider mapping. Those values
+belong in Ansible Vault or gitignored operator notes.
+
 ## Implemented Manual Reserve Mode
 
 Ansible now renders the router `sing-box` `reality-out` outbound from one of
@@ -50,12 +58,12 @@ primary VPS           = observed recovery candidate, not active switchback targe
 Hermes VPS            = owned clone candidate, selected manually when proven
 ```
 
-This means the external reserve provider is the working managed egress for now.
+This means the mnemonic reserve backend is the working managed egress for now.
 The owned VPS remains the preferred long-term egress, but it should not be
 restored as active until primary path checks prove that router -> primary
 TLS/SNI/Reality traffic is no longer filtered or blackholed.
 
-The first live reserve profile is an external backup VLESS/Reality profile dedicated
+The first live reserve profile is a backup VLESS/Reality profile dedicated
 to the router. This is an availability reserve, not a replacement for the owned
 VPS architecture. The route contract is intentionally unchanged: LAN/Wi-Fi,
 Home Reality, Channel B and Channel C still route managed destinations to
@@ -93,8 +101,8 @@ vault_router_hermes_vps_ssh_port: 22
 vault_router_hermes_vps_ssh_key: "<path_to_hermes_ssh_private_key>"
 ```
 
-Do not store the original provider URI in tracked files. Keep the generated
-provider profile in Vault or another gitignored secret store, and keep it
+Do not store the original provider URI or role mapping in tracked files. Keep the
+generated reserve profile in Vault or another gitignored secret store, and keep it
 router-only.
 
 Quick switch cheatsheet (one selector for the shared Channel A/B/C `reality-out`
@@ -104,7 +112,7 @@ upstream; Channel D and Channel M are never switched here):
 |---|---|---|
 | Normal owned VPS | `primary_vps` | `managed-egress-mode set primary_vps --deploy-router` |
 | Incident reserve | `backup_reality` | `managed-egress-mode set backup_reality --deploy-router` |
-| Owned Hermes clone (Hostkey) | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
+| Owned clone backend | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
 | Canary Hermes on Channel D only | `hermes_vps` (D) | `managed-egress-mode set hermes_vps --channel d --deploy-router` |
 | Return Channel D to shared backend | `follow` (D) | `managed-egress-mode set follow --channel d --deploy-router` |
 | Show active backends (A/B/C + D) | — | `managed-egress-mode status` |
@@ -157,10 +165,15 @@ The current operator check for this layer is:
 ```bash
 ./modules/ghostroute-health-monitor/bin/managed-egress-check
 ./modules/ghostroute-health-monitor/bin/managed-egress-check --json
+./modules/ghostroute-health-monitor/bin/egress-backend-health
+./modules/ghostroute-health-monitor/bin/egress-backend-health --json
 ```
 
-It compares primary and active managed egress reachability without printing real
-hosts, IPs or provider names.
+`managed-egress-check` compares primary and active managed egress reachability
+without printing real hosts, IPs or provider names. `egress-backend-health`
+prints the backend bank (`primary_vps`, `backup_reality`, `hermes_vps`) using
+Vault references only, treats inactive TCP/TLS checks as advisory, and uses
+active app canaries as the canonical live proof.
 
 ## Live Managed Egress Switching Model
 
@@ -307,8 +320,8 @@ added later.
   backup `VLESS + Reality/Vision` VPS, but the first practical v1 candidate is
   an external backup `VLESS/Reality` profile if the router's `sing-box` accepts it.
 - Keep the current primary VPS as the normal default egress.
-- Prefer a backup VPS on a different provider and ASN from the primary Hetzner
-  host for the owned long-term target.
+- Prefer a backup VPS with independent infrastructure from the primary owned
+  backend for the long-term owned target; keep the provider/ASN mapping private.
 - Use the existing router health-monitor model as the decision source, because
   the router is the system that actually experiences "primary VPS unavailable".
 - Keep failover semi-automatic with a latch: once backup is selected, stay on
@@ -342,15 +355,15 @@ Protocol choice:
   interfaces, policy-routing state and rollback risks that GhostRoute already
   retired from steady state.
 - The backup profile must be dedicated to the router. Do not reuse the same
-  provider configuration on phones, laptops or other clients.
+  reserve configuration on phones, laptops or other clients.
 
 Router logic target:
 
 - Keep the route contract stable: managed rules still point to `reality-out`.
 - Add `reality-primary` for the current VPS and `reality-backup` for the backup
-  provider profile. If the backup transport is not Reality, the tag is still a
+  reserve profile. If the backup transport is not Reality, the tag is still a
   compatibility name for the existing routing contract, not a claim about the
-  provider protocol.
+  transport protocol.
 - Add local-only probe paths for both egresses so the router can test primary
   and backup without moving production traffic first.
 - The controller may switch only after repeated primary failures and positive
@@ -379,11 +392,11 @@ Operator surface:
 
 Secrets and public docs:
 
-- Store backup provider URI/profile material only in Ansible Vault or another
+- Store backup URI/profile material only in Ansible Vault or another
   gitignored secret store.
-- Public docs must use placeholders only. Do not commit real provider hostnames,
-  UUIDs, short IDs, keys, ports, subscription URLs, generated VLESS URIs or
-  account identifiers.
+- Public docs must use placeholders and mnemonic roles only. Do not commit real
+  hostnames, UUIDs, short IDs, keys, ports, subscription URLs, generated VLESS
+  URIs, provider/ASN details, account identifiers or role mappings.
 - Prefer an IP literal or cached last-known-good address for the backup server
   during probes so failover does not depend on DNS that may currently be routed
   through the failed primary path.
@@ -449,14 +462,14 @@ restore the normal generated include during manual switchback to primary.
 - Do not open a public DNS resolver on the backup VPS.
 - Do not move managed-vs-direct policy from the router to endpoint profiles.
 - Do not treat this as a replacement for the existing home-first channel model.
-- Do not commit or paste real backup provider account, subscription or VLESS profile
+- Do not commit or paste real backup account, subscription or VLESS profile
   details into tracked docs, tests, commits or chat transcripts.
 
 ## Future Implementation Phases
 
-1. Document and store backup provider profile material outside git. Done for
+1. Document and store backup profile material outside git. Done for
    manual reserve mode.
-2. Validate that the router `sing-box` version accepts the external backup provider
+2. Validate that the router `sing-box` version accepts the backup
    `VLESS (XTLS)` profile shape. If not, stop and reassess Xray sidecar or an
    owned second VPS. Done for the first router-only profile.
 3. Add router-side backup outbound rendering while keeping managed split rules
@@ -467,13 +480,13 @@ restore the normal generated include during manual switchback to primary.
 7. Add availability-first backup DNS handling.
 8. Run a live drill by blocking the primary VPS path and confirming backup
    managed egress without changing direct/RU/default traffic.
-9. Later, if desired, replace or supplement external backup provider with an owned second
-   `VLESS + Reality/Vision` VPS on a different provider/ASN.
+9. Later, if desired, replace or supplement `backup_reality` with an owned
+   second `VLESS + Reality/Vision` VPS on independent infrastructure.
 
 ## Acceptance Scenarios
 
 - Primary healthy: managed traffic uses the primary VPS.
-- Primary down and backup provider healthy: managed traffic switches to
+- Primary down and `backup_reality` healthy: managed traffic switches to
   backup.
 - Primary and backup down: no unsafe switch; clear critical alert is emitted.
 - Direct, RU and default traffic remain on home WAN unless explicitly managed.

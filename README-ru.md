@@ -140,10 +140,10 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
 - Optional Layer 0 endpoint/client-side routing для устройств с rule-based
   client profiles, например Shadowrocket-style configs.
 - Channel A managed egress за стабильным тегом `reality-out` с тремя
-  operator-selectable backend-ами: primary owned VPS Reality/Vision за общим
-  Caddy L4 на TCP/443, Vault-backed backup Reality provider для инцидентов и
-  owned Hermes clone VPS (Hostkey host) для owned-egress миграции. Route contract
-  не меняется — меняется только backend.
+  operator-selectable mnemonic backend-ами: `primary_vps`, `backup_reality` и
+  `hermes_vps`. Route contract не меняется — меняется только backend за ролью.
+  Public docs не должны раскрывать real provider, endpoint, ASN, host family или
+  mapping роли к инфраструктуре.
 - Optional Channel A selected full-VPS set: выбранные домашние Wi-Fi/LAN
   устройства или Home Reality профили могут целиком выходить через VPS, пока
   остальные устройства сохраняют managed-domain split. Это Channel A override,
@@ -163,7 +163,7 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   остается Karing-like; cover site отвечает на обычный unauthenticated HTTPS
   GET. Channel D выключен по умолчанию и не является Channel C proof.
 - Channel M service lane для `maxtg_bridge`: домашний роутер открывает SSH
-  remote-forward на Hetzner/VPS docker bridge; bridge использует authenticated
+  remote-forward на VPS docker bridge; bridge использует authenticated
   HTTP CONNECT внутри этого туннеля, а router-side sing-box ведет
   `channel-m-maxtg-reverse-egress` только в `direct-out`, чтобы MAX API/CDN
   видел домашний РФ WAN IP.
@@ -187,6 +187,7 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
 ./modules/routing-core/bin/managed-egress-mode status
 ./modules/routing-core/bin/managed-egress-mode set hermes_vps --deploy-router
 ./modules/ghostroute-health-monitor/bin/managed-egress-check
+./modules/ghostroute-health-monitor/bin/egress-backend-health
 ```
 
 Доступные режимы: `primary_vps`, `backup_reality`, `hermes_vps`. Переключение
@@ -196,6 +197,9 @@ backend, но может быть запинен на собственный bac
 `set <mode> --channel d` (canary-линия); Channel M не затрагивается. Полная
 процедура — в
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md).
+В публичных docs и commit text managed egress называется только mnemonic-ролью;
+real provider/ASN/endpoint/host family/account mapping остаются в Vault или
+gitignored operator notes.
 
 ---
 
@@ -472,7 +476,7 @@ artifacts: C1-Shadowrocket live-proven, C1-sing-box native target.
 ### 6. Channel M MAX service egress
 
 Channel M — служебный канал для `maxtg_bridge`, а не client failover. Bridge на
-Hetzner подключается к VPS-local listener по authenticated HTTP CONNECT, а этот
+VPS подключается к VPS-local listener по authenticated HTTP CONNECT, а этот
 listener существует за счет исходящего SSH remote-forward с домашнего роутера.
 Router-side sing-box принимает поток как `channel-m-maxtg-reverse-egress` и
 сразу ведет его в `direct-out`, чтобы MAX API/CDN видел домашний WAN IP.

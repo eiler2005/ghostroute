@@ -1,0 +1,10 @@
+# Managed application canaries for egress-backend-health.
+# Public domains only. Columns: name<TAB>url<TAB>expect_codes(optional, default "2,3").
+# expect_codes is a comma list of HTTP code prefixes treated as healthy.
+telegram	https://core.telegram.org/	2,3
+youtube	https://www.youtube.com/generate_204	2
+google	https://www.google.com/generate_204	2
+claude	https://claude.ai/	2,3
+anthropic	https://www.anthropic.com/	2,3
+openai	https://chatgpt.com/cdn-cgi/trace	2
+egress-ip	https://api.ipify.org/	2
