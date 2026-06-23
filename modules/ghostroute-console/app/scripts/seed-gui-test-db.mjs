@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, rebuildPreparedWindows } from "./lib/normalize.mjs";
+import { buildPreparedMobileHomeSummary, ensureConsoleSchema, rebuildPreparedWindows } from "./lib/normalize.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const defaultDataDir = path.resolve(appDir, "..", "data", "gui-test");
@@ -1014,6 +1014,7 @@ function seed(db) {
   const summaryStmt = db.prepare("insert into console_page_summaries(page, source_version, rebuilt_at, payload_json) values (?, ?, ?, ?)");
   summaryStmt.run("health_mobile", "test-seed", iso(now), JSON.stringify(healthSummary));
   summaryStmt.run("health_shell", "test-seed", iso(now), JSON.stringify(healthSummary));
+  summaryStmt.run("mobile_home", "test-seed", iso(now), JSON.stringify(buildPreparedMobileHomeSummary(db, iso(now), healthSummary)));
   summaryStmt.run("live_mobile", "test-seed", iso(now), JSON.stringify({
     rebuiltAt: iso(now),
     snapshotTimes: healthSummary.snapshotTimes,
@@ -1029,7 +1030,7 @@ function seed(db) {
   stateStmt.run("dns_query_log", "test-seed", iso(now), 266, 1, "ok", "local synthetic rows");
   stateStmt.run("device_inventory", "test-seed", iso(now), 12, 1, "ok", "local synthetic rows");
   stateStmt.run("alarm_events", "test-seed", iso(now), 4, 1, "ok", "local synthetic rows");
-  stateStmt.run("console_page_summaries", "test-seed", iso(now), 3, 1, "ok", "local synthetic rows");
+  stateStmt.run("console_page_summaries", "test-seed", iso(now), 4, 1, "ok", "local synthetic rows");
 }
 
 resetDataDir();
@@ -1046,4 +1047,4 @@ for (const table of ["dns_log_5min", "dns_log_hourly", "dns_log_daily", "dns_log
 db.close();
 
 console.log(`seeded GUI test DB: ${dbFile}`);
-console.log("rows: flow_sessions=325 dns_query_log=266 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=3 prepared_windows=today/week/month");
+console.log("rows: flow_sessions=325 dns_query_log=266 events=360 route_decisions=180 device_inventory=12 alarm_events=4 console_page_summaries=4 prepared_windows=today/week/month");

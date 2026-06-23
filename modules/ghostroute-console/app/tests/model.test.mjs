@@ -1167,7 +1167,7 @@ test("observability rebuild writes capped prepared health summaries", () => {
     checks: Array.from({ length: 12 }, (_, i) => ({ id: `deploy-${i}`, component: "test", status: "WARN", summary: `deploy check ${i}` })),
   });
   const result = rebuildObservabilityReadModels(db);
-  assert.equal(result.summaryCount, 3);
+  assert.equal(result.summaryCount, 4);
   const row = db.prepare("select payload_json from console_page_summaries where page = 'health_mobile'").get();
   assert.ok(row);
   const summary = JSON.parse(row.payload_json);
@@ -1175,6 +1175,17 @@ test("observability rebuild writes capped prepared health summaries", () => {
   assert.equal(summary.deployGate.checks.length, 10);
   assert.equal(summary.health.checks.length, 20);
   assert.equal(summary.leaks.evidence.length, 10);
+  const mobileHomeRow = db.prepare("select payload_json from console_page_summaries where page = 'mobile_home'").get();
+  assert.ok(mobileHomeRow);
+  const mobileHome = JSON.parse(mobileHomeRow.payload_json);
+  assert.ok(Array.isArray(mobileHome.flows));
+  assert.ok(Array.isArray(mobileHome.dnsRows));
+  assert.ok(Array.isArray(mobileHome.clients));
+  assert.ok(Array.isArray(mobileHome.live));
+  assert.ok(mobileHome.flows.length <= 5);
+  assert.ok(mobileHome.dnsRows.length <= 5);
+  assert.ok(mobileHome.clients.length <= 5);
+  assert.ok(mobileHome.live.length <= 5);
   assert.ok(db.prepare("select 1 from read_model_state where model = 'console_page_summaries'").get());
   db.close();
 });

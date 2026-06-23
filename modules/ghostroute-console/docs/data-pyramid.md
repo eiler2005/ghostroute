@@ -60,6 +60,9 @@ client_traffic_monthly / client_destination_traffic_monthly / dns_log_monthly
 traffic_window_snapshots
   -> small prepared payloads for today/week/month
 
+console_page_summaries
+  -> small prepared Health/Live/mobile first-screen payloads
+
 client_traffic_by_lane / client_destination_by_lane
   -> GUI-ready client lane summary and destination drilldown
 

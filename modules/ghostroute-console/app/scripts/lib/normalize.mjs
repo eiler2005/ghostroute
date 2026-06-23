@@ -3694,6 +3694,186 @@ function compactPreparedCheck(row) {
   };
 }
 
+export function buildPreparedMobileHomeSummary(db, rebuiltAt, healthSummary = {}) {
+  const flows = db.prepare(`
+    select id, snapshot_id, collected_at, first_seen, last_seen, event_ts_utc, observed_at_utc,
+           display_ts_utc, time_precision, client, client_ip, device_key, channel, destination,
+           destination_ip, destination_port, protocol, route, policy, matched_rule, outbound,
+           dns_qname, dns_answer_ip, sni, confidence, traffic_class, via_vps_bytes, direct_bytes,
+           unknown_bytes, bytes, connections
+      from flow_sessions
+     where (bytes > 0 or connections > 1)
+       and lower(coalesce(nullif(client, ''), nullif(client_ip, ''), nullif(device_key, ''), 'unknown')) not in ('unknown', 'not observed')
+       and lower(coalesce(nullif(destination, ''), nullif(dns_qname, ''), nullif(sni, ''), nullif(destination_ip, ''), '')) not in ('', 'unknown', 'unknown destination', 'n/a')
+       and lower(coalesce(traffic_class, 'client')) in ('client', 'personal_cloud')
+     order by bytes desc, coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) desc, id desc
+     limit 5
+  `).all().map((row) => ({
+    id: text(row.id),
+    snapshot_id: row.snapshot_id,
+    collected_at: text(row.collected_at),
+    first_seen: text(row.first_seen),
+    last_seen: text(row.last_seen),
+    event_ts_utc: text(row.event_ts_utc),
+    observed_at_utc: text(row.observed_at_utc),
+    display_ts_utc: text(row.display_ts_utc),
+    time_precision: text(row.time_precision || "collector_ms"),
+    client: text(row.client || row.client_ip || row.device_key || "Unknown client"),
+    client_ip: text(row.client_ip),
+    device_key: text(row.device_key),
+    channel: text(row.channel || "Unknown"),
+    destination: text(row.destination),
+    destination_ip: text(row.destination_ip),
+    destination_port: text(row.destination_port),
+    protocol: text(row.protocol),
+    route: text(row.route || "Unknown"),
+    confidence: confidence(row.confidence),
+    bytes: number(row.bytes),
+    total_bytes: number(row.bytes),
+    connections: number(row.connections),
+    dns_qname: text(row.dns_qname),
+    dns_answer_ip: text(row.dns_answer_ip),
+    sni: text(row.sni),
+    outbound: text(row.outbound),
+    matched_rule: text(row.matched_rule || row.policy),
+    rule_set: text(row.policy),
+    traffic_class: text(row.traffic_class || "client"),
+    via_vps_bytes: number(row.via_vps_bytes),
+    direct_bytes: number(row.direct_bytes),
+    unknown_bytes: number(row.unknown_bytes),
+  }));
+
+  const dnsRows = db.prepare(`
+    select id, snapshot_id, collected_at, event_ts, event_ts_utc, observed_at_utc, display_ts_utc,
+           time_precision, client, client_ip, device_key, domain, qtype, answer_ip, route,
+           catalog_status, status, count, risk, confidence
+      from dns_query_log
+     where lower(coalesce(domain, '')) not in ('', 'unknown', 'n/a')
+       and lower(coalesce(nullif(client, ''), nullif(client_ip, ''), nullif(device_key, ''), 'unknown')) not in ('unknown', 'not observed')
+     order by count desc, coalesce(nullif(display_ts_utc, ''), nullif(event_ts, ''), collected_at) desc, id desc
+     limit 5
+  `).all().map((row) => ({
+    id: text(row.id),
+    snapshot_id: row.snapshot_id,
+    collected_at: text(row.collected_at),
+    event_ts: text(row.event_ts),
+    event_ts_utc: text(row.event_ts_utc),
+    observed_at_utc: text(row.observed_at_utc),
+    display_ts_utc: text(row.display_ts_utc),
+    time_precision: text(row.time_precision || "collector_ms"),
+    client: text(row.client || row.client_ip || row.device_key || "Unknown client"),
+    client_ip: text(row.client_ip),
+    device_key: text(row.device_key),
+    destination: text(row.domain),
+    domain: text(row.domain),
+    dns_qname: text(row.domain),
+    qtype: text(row.qtype),
+    answer_ip: text(row.answer_ip),
+    dns_answer_ip: text(row.answer_ip),
+    route: text(row.route || "Unknown"),
+    catalog_status: text(row.catalog_status || "unknown"),
+    status: text(row.status || "OK"),
+    count: number(row.count),
+    risk: text(row.risk || "low"),
+    confidence: confidence(row.confidence, "dns-interest"),
+  }));
+
+  const clients = db.prepare(`
+    select device_key, label, ip, hostname, profile, trust_state, device_type, channel, route,
+           confidence, last_seen, total_bytes, via_vps_bytes, direct_bytes, unknown_bytes,
+           health_status, risk
+      from device_inventory
+     where total_bytes > 0
+     order by total_bytes desc, last_seen desc, device_key asc
+     limit 5
+  `).all().map((row) => ({
+    id: text(row.device_key || row.label),
+    device_key: text(row.device_key),
+    label: text(row.label || row.device_key || "Unknown device"),
+    device_label: text(row.label || row.device_key || "Unknown device"),
+    ip: text(row.ip),
+    hostname: text(row.hostname),
+    profile: text(row.profile),
+    owner: text(row.profile || row.device_type || "Inventory"),
+    trust_state: text(row.trust_state || "unknown"),
+    device_type: text(row.device_type || "unknown"),
+    channel: text(row.channel || "Unknown"),
+    route: text(row.route || "Unknown"),
+    confidence: confidence(row.confidence),
+    last_seen: text(row.last_seen),
+    total_bytes: number(row.total_bytes),
+    via_vps_bytes: number(row.via_vps_bytes),
+    direct_bytes: number(row.direct_bytes),
+    unknown_bytes: number(row.unknown_bytes),
+    health_status: text(row.health_status || "unknown"),
+    risk: text(row.risk || "low"),
+  }));
+
+  const live = [
+    ...db.prepare(`
+      select 'event' as kind, id, event_type, occurred_at, event_ts_utc, observed_at_utc,
+             display_ts_utc, time_precision, client, client_ip, channel, destination,
+             dns_qname, destination_ip, route, confidence, summary, source_log
+        from events
+       order by occurred_at desc, id desc
+       limit 5
+    `).all(),
+    ...db.prepare(`
+      select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at,
+             event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
+             channel, destination, dns_qname, destination_ip, route, confidence, '' as summary,
+             source_log
+        from route_decisions
+       order by occurred_at desc, id desc
+       limit 5
+    `).all(),
+  ].sort((a, b) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || number(b.id) - number(a.id))
+    .slice(0, 5)
+    .map((row) => {
+      const client = text(row.client || row.client_ip);
+      const source = lower(row.source_log);
+      const origin = client && !["unknown", "not observed"].includes(client.toLowerCase())
+        ? client
+        : source.includes("dnsmasq") ? "Router DNS service"
+          : source.includes("sing-box") ? "Router/sing-box"
+            : String(row.event_type || "").includes("collector") ? "Collector" : "System";
+      return {
+        id: `${row.kind}:${row.id}`,
+        source_kind: text(row.kind),
+        event_type: text(row.event_type || "route.decision"),
+        occurred_at: text(row.occurred_at),
+        event_ts_utc: text(row.event_ts_utc),
+        observed_at_utc: text(row.observed_at_utc),
+        display_ts_utc: text(row.display_ts_utc),
+        time_precision: text(row.time_precision || "collector_ms"),
+        origin,
+        client: text(row.client),
+        client_ip: text(row.client_ip),
+        channel: text(row.channel || "Unknown"),
+        destination: text(row.destination || row.dns_qname || row.summary || row.destination_ip),
+        dns_qname: text(row.dns_qname),
+        destination_ip: text(row.destination_ip),
+        route: text(row.route || "Unknown"),
+        confidence: confidence(row.confidence),
+        summary: text(row.summary),
+        source_log: text(row.source_log),
+      };
+    });
+
+  return {
+    rebuiltAt,
+    snapshotTimes: healthSummary.snapshotTimes || {},
+    statusCards: Array.isArray(healthSummary.statusCards) ? healthSummary.statusCards : [],
+    alarmCounts: healthSummary.alarmCounts || {},
+    totals: healthSummary.totals || {},
+    alarms: Array.isArray(healthSummary.alarms) ? healthSummary.alarms.slice(0, 5) : [],
+    flows,
+    dnsRows,
+    clients,
+    live,
+  };
+}
+
 function buildPreparedHealthSummary(db, rebuiltAt) {
   const snapshots = latestSnapshotPayloads(db, ["traffic_summary", "health", "leaks", "deploy_gate"]);
   const health = snapshots.health?.payload || {};
@@ -4263,6 +4443,7 @@ export function rebuildObservabilityReadModels(db) {
     `);
     summaryInsert.run("health_mobile", summarySourceVersion, now, json(healthSummary));
     summaryInsert.run("health_shell", summarySourceVersion, now, json(healthSummary));
+    summaryInsert.run("mobile_home", summarySourceVersion, now, json(buildPreparedMobileHomeSummary(db, now, healthSummary)));
     summaryInsert.run("live_mobile", summarySourceVersion, now, json({
       rebuiltAt: now,
       snapshotTimes: healthSummary.snapshotTimes,
@@ -4270,7 +4451,7 @@ export function rebuildObservabilityReadModels(db) {
       alarmCounts: healthSummary.alarmCounts,
       totals: healthSummary.totals,
     }));
-    summaryCount = 3;
+    summaryCount = 4;
   })();
 
   writeReadModelState(db, "flow_sessions", sourceVersion, flowCount, startedAt);
