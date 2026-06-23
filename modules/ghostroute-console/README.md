@@ -345,7 +345,9 @@ payloads. If a prepared historical window is absent, the UI should render a
 bounded empty/fallback state until the next collector rebuild rather than doing
 heavy request-time work. The root Dashboard combines the prepared dashboard
 window with lightweight shell summaries so cold opens do not rebuild full
-health/alarm evidence on the request path.
+health/alarm evidence on the request path. Mobile Traffic uses the same
+prepared first-page rows for unfiltered opens and falls back to the full Flow
+Explorer selector when filters, search or deeper pagination are requested.
 
 Operational pruning keeps raw normalized traffic/DNS/live rows bounded by
 retention defaults while the aggregate/read-model tables carry the UI history.
