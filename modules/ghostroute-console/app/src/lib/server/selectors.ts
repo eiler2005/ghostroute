@@ -3959,7 +3959,7 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
   const period = filters.period || "today";
   const prepared = preparedDashboard(period, filters.trafficClass || "all");
   if (prepared) {
-    const shell = buildShellModel(filters, {
+    const shell = buildLightweightShellModel(filters, {
       devices: (prepared.devices || []).map((row: any) => decorateTrafficRow(row)),
       flows: (prepared.flows || []).map((row: any) => decorateTrafficRow(row)),
       totals: prepared.totals || undefined,
@@ -3974,7 +3974,7 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
     };
   }
   if (USE_PREPARED_WINDOWS && period !== "today") {
-    return { ...buildShellModel(filters), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence({}, filters, { allowEvidenceFallback: false }) };
+    return { ...buildLightweightShellModel(filters), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence({}, filters, { allowEvidenceFallback: false }) };
   }
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
