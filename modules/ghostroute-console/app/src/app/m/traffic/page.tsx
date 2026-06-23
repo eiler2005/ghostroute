@@ -1,5 +1,6 @@
 import { MobileShell } from "@/components/MobileShell";
 import { Pagination } from "@/components/Widgets";
+import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
 import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
@@ -10,8 +11,24 @@ export default async function MobileTrafficPage({ searchParams }: { searchParams
   const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = mobilePageSize(scalar(params.pageSize));
-  const trafficPage = listFlowSessions({ page, pageSize, filters });
-  const model = buildLightweightShellModel(filters, { flows: trafficPage.rows });
+  const canUsePreparedFirstPage = page === 1
+    && !filters.search
+    && (filters.route || "all") === "all"
+    && (filters.channel || "all") === "all"
+    && (filters.confidence || "all") === "all"
+    && (filters.client || "all") === "all";
+  const preparedModel = canUsePreparedFirstPage ? buildDashboardModel(filters) : null;
+  const preparedRows = preparedModel?.flows?.slice(0, pageSize) || [];
+  const trafficPage = preparedRows.length
+    ? {
+        rows: preparedRows,
+        total: preparedModel?.flows?.length || preparedRows.length,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil((preparedModel?.flows?.length || preparedRows.length) / pageSize)),
+      }
+    : listFlowSessions({ page, pageSize, filters });
+  const model = preparedModel || buildLightweightShellModel(filters, { flows: trafficPage.rows });
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
     trafficClass: filters.trafficClass !== "all" ? filters.trafficClass : undefined,
