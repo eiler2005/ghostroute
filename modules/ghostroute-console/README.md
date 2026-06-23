@@ -159,7 +159,7 @@ same prepared data.
      dns_query_log          -> DNS Query Log and DNS-interest evidence
      device_inventory       -> Clients physical inventory and attribution
      alarm_events           -> Alarm Center and operator state overlay
-     console_page_summaries -> fast Health, Live and mobile shells
+     console_page_summaries -> fast Health, Live and mobile home/shell summaries
      read_model_state       -> freshness, source versions and cache keys
 
 4. Request-time selectors stay bounded
@@ -174,7 +174,8 @@ same prepared data.
      filters, selected-row panels, charts and deeper evidence where useful.
 
 6. Mobile Console serves remote triage
-     /m/* uses the same read models with capped rows and plain links.
+     /m uses the prepared mobile_home summary for the first screen; deeper /m/*
+     pages use the same read models with capped rows and plain links.
      /m/health is raw no-JS HTML so iPhone/Safari can read health state from one
      authenticated document without waiting for React hydration.
 ```
@@ -236,7 +237,7 @@ Core read models are rebuilt from factual snapshots:
 | `top_clients_window`, `top_destinations_window` | Pre-ranked today/week/month lists built by the collector for every traffic class. |
 | `traffic_window_snapshots` | Prepared today/week/month dashboard, client, DNS and report payloads for `all`, `client`, `personal_cloud`, `service_background` and `unclassified`. |
 | `aggregate_state` | Watermarks/status for prepared aggregate layers and dashboard windows. |
-| `console_page_summaries` | Prepared Health/Live/mobile summaries for fast request paths. |
+| `console_page_summaries` | Prepared Health/Live/mobile summaries, including `mobile_home`, for fast request paths. |
 | `read_model_state` | Rebuild freshness, source version and cache keys. |
 | `console_settings` | Non-secret settings and runtime posture. |
 

@@ -1,9 +1,5 @@
 import { MobileShell } from "@/components/MobileShell";
 import { bytes } from "@/components/Widgets";
-import { listClientInventory } from "@/lib/server/selectors/clients";
-import { listDnsQueryLog } from "@/lib/server/selectors/dns";
-import { listFlowSessions } from "@/lib/server/selectors/traffic";
-import { listLiveEvents } from "@/lib/server/selectors/live";
 import { buildLightweightShellModel, getConsolePageSummary } from "@/lib/server/selectors/shell";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { MobileAlarmList, MobileClientList, MobileDnsList, MobileFlowList, MobileLiveList, MobileSection } from "./mobile-ui";
@@ -11,16 +7,21 @@ import { MobileAlarmList, MobileClientList, MobileDnsList, MobileFlowList, Mobil
 export default async function MobileHomePage({ searchParams }: { searchParams?: SearchParams }) {
   const params = searchParams ? await searchParams : {};
   const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
+  const mobileHome = getConsolePageSummary("mobile_home")?.payload || {};
   const healthSummary = getConsolePageSummary("health_mobile")?.payload || {};
-  const summaryAlarms = Array.isArray(healthSummary.alarms) ? healthSummary.alarms : [];
+  const summaryAlarms = Array.isArray(mobileHome.alarms)
+    ? mobileHome.alarms
+    : Array.isArray(healthSummary.alarms) ? healthSummary.alarms : [];
   const model = buildLightweightShellModel(filters, {
     alerts: summaryAlarms,
-    statusCards: Array.isArray(healthSummary.statusCards) ? healthSummary.statusCards : undefined,
+    statusCards: Array.isArray(mobileHome.statusCards)
+      ? mobileHome.statusCards
+      : Array.isArray(healthSummary.statusCards) ? healthSummary.statusCards : undefined,
   });
-  const flows = listFlowSessions({ page: 1, pageSize: 5, filters }).rows;
-  const dnsRows = listDnsQueryLog({ page: 1, pageSize: 5, filters: { ...filters, trafficClass: "all" } }).rows;
-  const clients = listClientInventory({ page: 1, pageSize: 5, filters }).rows;
-  const live = listLiveEvents({ page: 1, pageSize: 5, filters }).rows;
+  const flows = Array.isArray(mobileHome.flows) ? mobileHome.flows : [];
+  const dnsRows = Array.isArray(mobileHome.dnsRows) ? mobileHome.dnsRows : [];
+  const clients = Array.isArray(mobileHome.clients) ? mobileHome.clients : [];
+  const live = Array.isArray(mobileHome.live) ? mobileHome.live : [];
   const alarms = summaryAlarms.slice(0, 5);
   return (
     <MobileShell active="/m" model={model} filters={filters} desktopPath="/">

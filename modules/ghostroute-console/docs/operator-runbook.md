@@ -142,11 +142,11 @@ than promoting pseudo buckets such as encrypted ingress to primary site names.
 
 GUI request paths should read prepared tables and small snapshot payloads only.
 Health, Live, mobile pages and JSON APIs use snapshot metadata for cache
-versioning and the prepared `health_mobile` / `health_shell` / `live_mobile`
-summaries for status cards, capped alarms, Deploy Gate, leak evidence and
-freshness. They must not parse the full latest traffic report or rebuild the
-desktop Health model just to render the shell, freshness strip or navigation
-chrome.
+versioning and the prepared `health_mobile` / `health_shell` / `mobile_home` /
+`live_mobile` summaries for status cards, capped alarms, Deploy Gate, leak
+evidence, freshness and the mobile first screen. They must not parse the full
+latest traffic report or rebuild the desktop Health model just to render the
+shell, freshness strip, navigation chrome or `/m` root cards.
 
 Traffic windows are prepared after each collector pass. Source timestamps stay in
 UTC in SQLite, while `today`, `week` and `month` are keyed by Moscow local time.
