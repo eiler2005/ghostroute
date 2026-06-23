@@ -3923,11 +3923,29 @@ function dashboardEvidenceAnalytics(filters: ConsoleFilters = {}) {
   };
 }
 
-function mergeDashboardAnalyticsWithEvidence(base: Record<string, any> = {}, filters: ConsoleFilters = {}) {
+function mergeDashboardAnalyticsWithEvidence(
+  base: Record<string, any> = {},
+  filters: ConsoleFilters = {},
+  options: { allowEvidenceFallback?: boolean } = {}
+) {
+  const normalizedBase = {
+    ...base,
+    topDestinations: Array.isArray(base.topDestinations) ? base.topDestinations : [],
+    topAppFamilies: Array.isArray(base.topAppFamilies) ? base.topAppFamilies : [],
+    serviceBackgroundTraffic: Array.isArray(base.serviceBackgroundTraffic) ? base.serviceBackgroundTraffic : [],
+  };
+  if (normalizedBase.topDestinations.length > 0 || options.allowEvidenceFallback === false) {
+    return {
+      ...normalizedBase,
+      topDestinations: normalizedBase.topDestinations,
+      topAppFamilies: normalizedBase.topAppFamilies,
+      serviceBackgroundTraffic: normalizedBase.serviceBackgroundTraffic,
+    };
+  }
   const evidence = dashboardEvidenceAnalytics(filters);
   return {
-    ...base,
-    topDestinations: evidence.topDestinations.length ? evidence.topDestinations : base.topDestinations || [],
+    ...normalizedBase,
+    topDestinations: evidence.topDestinations.length ? evidence.topDestinations : normalizedBase.topDestinations,
     topAppFamilies: evidence.topAppFamilies,
     serviceBackgroundTraffic: evidence.serviceBackgroundTraffic,
   };
@@ -3952,11 +3970,11 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
       generatedAt: prepared.generatedAt || shell.generatedAt,
       totals: prepared.totals || shell.totals,
       destinationAttributionCoverage: prepared.destinationAttributionCoverage || shell.destinationAttributionCoverage,
-      dashboardAnalytics: mergeDashboardAnalyticsWithEvidence(prepared.dashboardAnalytics || {}, filters),
+      dashboardAnalytics: mergeDashboardAnalyticsWithEvidence(prepared.dashboardAnalytics || {}, filters, { allowEvidenceFallback: false }),
     };
   }
   if (USE_PREPARED_WINDOWS && period !== "today") {
-    return { ...buildShellModel(filters), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence({}, filters) };
+    return { ...buildShellModel(filters), dashboardAnalytics: mergeDashboardAnalyticsWithEvidence({}, filters, { allowEvidenceFallback: false }) };
   }
   const allFilters = { ...filters, trafficClass: "all" };
   const flows = listFlowSessions({ page: 1, pageSize: 100, filters: allFilters, diagnostics: true }).rows;
