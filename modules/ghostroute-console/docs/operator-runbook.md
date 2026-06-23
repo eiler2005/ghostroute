@@ -313,6 +313,9 @@ If the page is currently fast, leave runtime unchanged and treat the existing
 `nginx -> buffer proxy -> Next.js` path as healthy. The buffer proxy requests
 upstream HTML over HTTP/1.1 with `Connection: close` so Next.js streaming
 responses have a deterministic end before nginx forwards them to browsers.
+The root dashboard should render from prepared dashboard summaries. If optional
+prepared ranking fields are absent, it must show empty/fallback UI instead of
+rescanning raw site evidence during the request.
 
 Browser evidence:
 

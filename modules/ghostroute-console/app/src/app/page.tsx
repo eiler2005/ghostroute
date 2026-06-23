@@ -2,12 +2,11 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
-import { listAppFamilyRows, listClientInventory, listSiteEvidenceRows } from "@/lib/server/selectors/clients";
-import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 import { attributionEligibility, isAttributableSiteRow } from "@/lib/attribution-eligibility.mjs";
+import { classifyAppFamily, isClientFacingAppFamily } from "@/lib/app-family.mjs";
 
 function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
@@ -202,6 +201,74 @@ function trafficIntelSummary(rows: Array<Record<string, any>>) {
   return summary;
 }
 
+function rankPreparedClients(rows: Array<Record<string, any>>, limit = 5) {
+  const visible = rows.filter((row) => observedBytes(row) > 0).slice(0, limit);
+  const total = visible.reduce((sum, row) => sum + observedBytes(row), 0) || 1;
+  return visible.map((row, idx) => ({
+    ...row,
+    rank: idx + 1,
+    key: row.key || row.client_key || row.id || row.label,
+    label: row.label || row.client_label || row.client || row.id || "Unknown client",
+    bytes: observedBytes(row),
+    total_bytes: observedBytes(row),
+    viaVpsBytes: Number(row.via_vps_bytes || row.viaVpsBytes || 0),
+    directBytes: Number(row.direct_bytes || row.directBytes || 0),
+    unknownBytes: unknownBytes(row),
+    sharePct: row.sharePct || share(observedBytes(row), total),
+    status: row.status || (observedBytes(row) > 0 ? "OK" : "Inactive"),
+  }));
+}
+
+function topPreparedRows(rows: Array<Record<string, any>> | undefined, limit = 10): Array<Record<string, any>> {
+  return (rows || [])
+    .filter((row) => observedBytes(row) > 0)
+    .slice(0, limit)
+    .map((row, idx) => ({ ...row, rank: row.rank || idx + 1 }));
+}
+
+function groupAppFamiliesFromRows(rows: Array<Record<string, any>>, limit = 5) {
+  const grouped = new Map<string, Record<string, any>>();
+  for (const row of rows) {
+    const rowBytes = observedBytes(row);
+    if (rowBytes <= 0) continue;
+    const family = classifyAppFamily(row);
+    if (!family?.app_family || !isClientFacingAppFamily(family)) continue;
+    const current = grouped.get(family.app_family) || {
+      app_family: family.app_family,
+      app_category: family.app_category,
+      app_confidence: family.app_confidence,
+      bytes: 0,
+      total_bytes: 0,
+      viaVpsBytes: 0,
+      directBytes: 0,
+      unknownBytes: 0,
+      dns_queries: 0,
+      sample_domains: new Set<string>(),
+      routes: new Set<string>(),
+    };
+    const split = routeSplit(row);
+    current.bytes += rowBytes;
+    current.total_bytes += rowBytes;
+    current.viaVpsBytes += split.viaVps;
+    current.directBytes += split.direct;
+    current.unknownBytes += split.unknown;
+    current.dns_queries += Number(row.dns_queries || row.query_count || 0);
+    const domain = domainForRow(row);
+    if (domain) current.sample_domains.add(domain);
+    if (row.route) current.routes.add(String(row.route));
+    grouped.set(family.app_family, current);
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0))
+    .slice(0, limit)
+    .map((row, idx) => ({
+      ...row,
+      rank: idx + 1,
+      route: routeFromRoutes(row.routes || new Set()),
+      sample_domains: Array.from(row.sample_domains || []).slice(0, 3),
+    }));
+}
+
 function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
   return Math.max(1, ...points.flatMap((point) => keys.map((key) => Number(point[key] || 0))));
 }
@@ -381,45 +448,22 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "today, window not observed";
   const analytics = model.dashboardAnalytics || {};
-  const inventoryTopClientsRaw = listClientInventory({
-    page: 1,
-    pageSize: 5,
-    filters: { ...filters, trafficClass: "all" },
-  }).rows.filter((row) => observedBytes(row) > 0);
-  const inventoryTopTotal = inventoryTopClientsRaw.reduce((sum, row) => sum + observedBytes(row), 0) || 1;
-  const inventoryTopClients = inventoryTopClientsRaw.map((row, idx) => ({
-    ...row,
-    rank: idx + 1,
-    key: row.client_key || row.id || row.label,
-    label: row.label || row.client_label || row.id || "Unknown client",
-    bytes: observedBytes(row),
-    total_bytes: observedBytes(row),
-    viaVpsBytes: Number(row.via_vps_bytes || 0),
-    directBytes: Number(row.direct_bytes || 0),
-    unknownBytes: unknownBytes(row),
-    sharePct: share(observedBytes(row), inventoryTopTotal),
-    status: Number(row.total_bytes || 0) > 0 ? "OK" : "Inactive",
-  }));
-  const topApps = listAppFamilyRows({
-    page: 1,
-    pageSize: 5,
-    filters: { ...filters, trafficClass: "all", client: "all" },
-  }).rows;
-  const detailFlowRows = listFlowSessions({
-    page: 1,
-    pageSize: 500,
-    maxPageSize: 500,
-    maxRows: 5000,
-    filters: { ...filters, trafficClass: "all" },
-    diagnostics: true,
-  }).rows;
-  const observedFlowRows = [...(detailFlowRows.length ? detailFlowRows : model.flows)]
+  const observedFlowRows = [...(model.flows || [])]
     .filter((row) => observedBytes(row) > 0)
     .sort((a, b) => observedBytes(b) - observedBytes(a));
-  const siteEvidenceRows = listSiteEvidenceRows({ ...filters, trafficClass: "all" }, { limit: 5000, perClientLimit: 120, includeService: true })
-    .filter((row) => observedBytes(row) > 0);
-  const topDestinations = groupDashboardDestinations(siteEvidenceRows.filter((row) => !isServiceEvidenceRow(row)), 10);
-  const serviceTraffic = groupDashboardDestinations(siteEvidenceRows.filter(isServiceEvidenceRow), 10);
+  const inventoryTopClients = rankPreparedClients(
+    Array.isArray(analytics.topClients) && analytics.topClients.length ? analytics.topClients : model.devices || [],
+    5
+  );
+  const topDestinations = topPreparedRows(analytics.topDestinations, 10).length
+    ? topPreparedRows(analytics.topDestinations, 10)
+    : groupDashboardDestinations(observedFlowRows.filter((row) => !isServiceEvidenceRow(row)), 10);
+  const topApps = topPreparedRows(analytics.topAppFamilies, 5).length
+    ? topPreparedRows(analytics.topAppFamilies, 5)
+    : groupAppFamiliesFromRows(observedFlowRows, 5);
+  const serviceTraffic = topPreparedRows(analytics.serviceBackgroundTraffic, 10).length
+    ? topPreparedRows(analytics.serviceBackgroundTraffic, 10)
+    : groupDashboardDestinations(observedFlowRows.filter(isServiceEvidenceRow), 10);
   const needsAttribution = groupAttributionRows(
     observedFlowRows.filter(isNeedsAttributionRow),
     10
@@ -427,7 +471,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
   const latestDecisions = observedFlowRows
     .filter((row) => destinationSection(row) === "client" && hasDashboardDestination(row))
     .slice(0, 10);
-  const intelligenceSummary = trafficIntelSummary(model.flows);
+  const intelligenceSummary = analytics.intelligenceSummary || trafficIntelSummary(observedFlowRows);
 
   return (
     <ConsoleShell active="/" model={model} filters={filters}>
