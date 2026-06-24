@@ -50,7 +50,7 @@ function mobileRedirectUrl(request: NextRequest, target: string) {
   const protocol = (forwardedProto || request.nextUrl.protocol.replace(":", "") || "https").replace(/:$/, "");
   const hasPort = host.includes(":");
   const defaultPort = (protocol === "https" && forwardedPort === "443") || (protocol === "http" && forwardedPort === "80");
-  const authority = forwardedPort && !hasPort && !defaultPort ? `${host}:${forwardedPort}` : host;
+  const authority = forwardedPort && !forwardedHost && !hasPort && !defaultPort ? `${host}:${forwardedPort}` : host;
   const url = new URL(`${protocol}://${authority}`);
   url.pathname = target;
   url.search = request.nextUrl.search;
