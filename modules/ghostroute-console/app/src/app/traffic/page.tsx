@@ -3,6 +3,7 @@ import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { FlowDetailPanel } from "@/components/RouteExplanation";
 import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/evidence";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { buildPagedEvidenceContext, listFlowSessions } from "@/lib/server/selectors/traffic";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
@@ -171,15 +172,19 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
   const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics, presentationWeight: true, fastList: !diagnostics });
-  const model = buildPagedEvidenceContext(filters, trafficPage.rows);
-  const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
-  const evidences = evidenceSet.evidences;
   const rows = trafficPage.rows;
+  const model = diagnostics
+    ? buildPagedEvidenceContext(filters, rows)
+    : buildLightweightShellModel(filters, { flows: rows });
+  const evidenceSet = diagnostics
+    ? buildRouteEvidenceSet(model, { includeDiagnostics: true, limit: pageSize, fallbackToDiagnostics: true })
+    : { evidences: [] };
+  const evidences = evidenceSet.evidences;
   const selectedFlowId = scalar(params.flow) || rows[0]?.id || "";
   const selectedRow = rows.find((row) => row.id === selectedFlowId) || rows[0] || null;
   const selectedRowIndex = selectedRow ? rows.indexOf(selectedRow) : 0;
   const selectedRowEvidence = selectedRow ? buildRouteEvidenceForRow(model, selectedRow, selectedRowIndex) : null;
-  const evidence = evidences.find((item) => item.id === selectedFlowId) || selectedRowEvidence || evidences[0] || null;
+  const evidence = (diagnostics ? evidences.find((item) => item.id === selectedFlowId) || evidences[0] : null) || selectedRowEvidence;
   const selectedId = selectedRow?.id || evidence?.id || selectedFlowId;
   const vpsRows = rows.filter((row) => row.route === "VPS");
   const suspiciousRows = rows.filter((row) => row.route === "Direct" && ["medium", "high"].includes(String(row.risk || ""))).length;
