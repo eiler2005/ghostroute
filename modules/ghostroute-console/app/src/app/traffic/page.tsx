@@ -170,7 +170,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
   const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
-  const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics, presentationWeight: true });
+  const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics, presentationWeight: true, fastList: !diagnostics });
   const model = buildPagedEvidenceContext(filters, trafficPage.rows);
   const evidenceSet = buildRouteEvidenceSet(model, { includeDiagnostics: diagnostics, limit: pageSize, fallbackToDiagnostics: true });
   const evidences = evidenceSet.evidences;
