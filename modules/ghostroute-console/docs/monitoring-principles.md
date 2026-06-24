@@ -127,6 +127,12 @@ available from this contract.
 - `test:perf` is the only local Playwright suite with timing budgets. It covers
   individual page/API budgets and rapid sidebar navigation so read-model/cache
   regressions show up before deploy.
+- Browser/frontend dependency updates are not safe until they pass the same
+  desktop and mobile browser contract as feature changes. Next.js, React,
+  Playwright, CSS/build, middleware, nginx, Caddy and buffer-proxy changes must
+  keep the iPhone/Safari `/m` first paint independent of render-blocking external
+  CSS/JS, keep desktop `/traffic` selected-row detail available, and keep
+  browser-compressed public requests within the operator opening budget.
 
 ## GUI Development Workflow
 

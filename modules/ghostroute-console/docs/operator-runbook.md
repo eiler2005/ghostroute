@@ -394,6 +394,49 @@ operator-browser slow means the next change belongs in the Console public
 listener/proxy/client path, not in Channel A/B/C, managed DNS, sing-box or
 router firewall.
 
+## Browser And Dependency Upgrade Gate
+
+Treat browser delivery as a release contract whenever changing Next.js, React,
+Playwright, CSS/build output, middleware, nginx, Caddy or the Console buffer
+proxy. A dependency bump that passes TypeScript but changes streaming, static
+assets, hydration, compression or redirects can still break Safari/iOS.
+
+Before deploy, run the seeded local gate from `modules/ghostroute-console/app`:
+
+```bash
+npm test
+npm run build
+npm run test:e2e:gui
+npm run test:perf
+```
+
+After deploy, confirm the running image exposes the expected
+`GHOSTROUTE_CONSOLE_BUILD_COMMIT`, then run the live performance gate:
+
+```bash
+cd ansible
+ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
+```
+
+Finish with a real public-browser check, not just local curl:
+
+- WebKit/iPhone or real iPhone Safari opens the no-port public URL and lands on
+  `/m`.
+- computed styles prove that mobile CSS is applied; the body background should
+  be the dark mobile shell color and `.mobile-nav` should render as flex.
+- `/m` has inline critical mobile CSS and no render-blocking
+  `/_next/static/css/*.css` link on the first mobile paint.
+- `/m/live` renders `Client activity summary`.
+- desktop `/traffic` keeps the selected-row inline detail panel.
+- public browser-compressed requests for `/traffic`, `/m/live`,
+  `/api/flows?pageSize=25` and `/m` stay inside the 20-30 second operator budget.
+
+Plain identity `curl` can be useful for diagnosing public delivery stalls, but it
+is not the browser compatibility contract. If browser-compressed public requests
+and WebKit/iPhone render checks pass while server-local requests are fast, do not
+change Channel A/B/C/D/M, managed DNS, sing-box, dnsmasq or router firewall to
+chase a Console browser symptom.
+
 References for this runbook:
 
 - Chrome DevTools Network: `https://developer.chrome.com/docs/devtools/network/overview`
