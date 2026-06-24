@@ -14,6 +14,9 @@ system_caddy_site_upstream: 127.0.0.1:8080
 system_caddy_cert_file: /etc/caddy/certs/example-fullchain.pem
 system_caddy_key_file: /etc/caddy/certs/example-privkey.pem
 system_caddy_client_ca_file: /etc/caddy/certs/example-access-ca.crt
+system_caddy_console_alias_enabled: false
+system_caddy_console_alias_host: ""
+system_caddy_console_alias_upstream: https://127.0.0.1:2087
 xray_reality_listen_port: 8443
 reality_server_names:
   - gateway.icloud.com

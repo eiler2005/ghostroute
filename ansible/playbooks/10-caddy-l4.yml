@@ -1,0 +1,16 @@
+---
+- name: Deploy VPS Caddy layer4 wrapper only
+  hosts: vps_stealth
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  pre_tasks:
+    - name: GhostRoute deploy gate before Caddy mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+  roles:
+    - caddy_l4
+  post_tasks:
+    - name: GhostRoute deploy gate after Caddy mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

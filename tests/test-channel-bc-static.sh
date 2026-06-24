@@ -95,6 +95,10 @@ assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'protocols
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'matching_timeout \{\{ caddy_l4_matching_timeout'
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'reverse_proxy 127\.0\.0\.1:\{\{ channel_b_xhttp_local_port \}\}'
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'log channel_b_xhttp'
+assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'system_caddy_console_alias_enabled'
+assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'tls_insecure_skip_verify'
+assert_contains "ansible/roles/caddy_l4/tasks/main.yml" 'Console Caddy alias hostname'
+assert_contains "ansible/roles/caddy_l4/tasks/main.yml" "system_caddy_console_alias_host != reality_server_names\\[0\\]"
 assert_not_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'forward_proxy|channel_c_naive|channel-c-subscriptions|tinyproxy|squid|stunnel'
 assert_not_contains "ansible/roles/caddy_l4/tasks/main.yml" 'channel_c_naive|channel-c-tinyproxy|channel-c-stunnel|channel-c-squid|forward_proxy|Squid|Tinyproxy|stunnel'
 assert_not_contains "ansible/roles/caddy_l4/templates/Dockerfile.j2" 'forwardproxy|channel_c_naive'

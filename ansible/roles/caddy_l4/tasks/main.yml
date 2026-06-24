@@ -54,6 +54,16 @@
         fail_msg: "Channel B hostname must be an ordinary-looking vault-only name with a valid path."
       no_log: true
 
+    - name: Validate Console Caddy alias hostname
+      ansible.builtin.assert:
+        that:
+          - not (system_caddy_console_alias_enabled | bool) or (system_caddy_console_alias_host | length > 0)
+          - not (system_caddy_console_alias_enabled | bool) or (system_caddy_console_alias_host != reality_server_names[0])
+          - not (system_caddy_console_alias_enabled | bool) or (not (channel_b_xhttp_enabled | bool) or system_caddy_console_alias_host != channel_b_xhttp_public_host)
+          - not (system_caddy_console_alias_enabled | bool) or (system_caddy_console_alias_upstream is match('^https://127\\.0\\.0\\.1:[0-9]+$'))
+        fail_msg: "Console Caddy alias must use a vault-only host and loopback HTTPS upstream."
+      no_log: true
+
     - name: Capture current host Caddy semantic version
       ansible.builtin.set_fact:
         _caddy_current_version: "{{ (caddy_version.stdout | trim).split(' ') | first | default('') }}"

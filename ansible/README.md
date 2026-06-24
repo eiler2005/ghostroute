@@ -97,6 +97,7 @@ Playbook ownership is intentionally narrow:
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Base packages and stack directory prerequisites. | Prepare a clean host for the stealth stack. |
 | `10-stealth-vps.yml` | VPS | Caddy L4, Xray Reality, optional restricted DNS support, UFW and VPS health monitor. | Refresh the primary public Reality edge, firewall boundary and observer. |
+| `10-caddy-l4.yml` | VPS | Host Caddy layer4 wrapper only. | Refresh public TLS demux or the Console `:443` alias without touching Xray, DNS or firewall roles. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
 | `12-hermes-egress-vps.yml` | Hermes VPS | Docker-sidecar Caddy L4, Xray Reality clone, restricted DNS support, UFW and VPS health monitor. | Deploy the owned Hermes managed-egress candidate without mutating the primary VPS or regenerating client QR artifacts. |
 | `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, optional Channel M service ingress, cron persistence and health monitor. | Restore or refresh the production router-managed data plane and service-only MAX egress lane. |
@@ -189,6 +190,7 @@ out of that file and use masked tokens instead.
 |---|---|---|---|
 | `00-bootstrap-vps.yml` | VPS | Mutating | Installs base packages and prepares the VPS stack directory. |
 | `10-stealth-vps.yml` | VPS | Mutating | Deploys Caddy layer4, Xray Reality, optional restricted DNS support, UFW policy and VPS health observer. |
+| `10-caddy-l4.yml` | VPS | Mutating | Deploys only the host Caddy layer4 wrapper and runs deploy gates before and after. |
 | `11-channel-b-vps.yml` | VPS | Mutating | Deploys the optional direct-mode Channel B XHTTP backend and checks the existing Caddy route. |
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |

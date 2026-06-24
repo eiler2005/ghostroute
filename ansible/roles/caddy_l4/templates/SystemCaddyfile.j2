@@ -47,6 +47,20 @@ https://{{ channel_b_xhttp_public_host }} {
 }
 {% endif %}
 
+{% if system_caddy_console_alias_enabled | default(false) | bool %}
+https://{{ system_caddy_console_alias_host }} {
+    reverse_proxy {{ system_caddy_console_alias_upstream }} {
+        header_up Host {http.request.host}
+        header_up X-Forwarded-Host {http.request.host}
+        header_up X-Forwarded-Proto https
+        transport http {
+            versions 1.1
+            tls_insecure_skip_verify
+        }
+    }
+}
+{% endif %}
+
 {% if system_caddy_site_enabled | bool %}
 https://{{ system_caddy_site_host }}:{{ system_caddy_site_port | default(9443) }} {
     bind 127.0.0.1

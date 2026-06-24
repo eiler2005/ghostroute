@@ -337,9 +337,11 @@ Facts and interpretation are intentionally separate:
   results are promoted into deterministic local rules.
 
 The VPS deployment keeps the Console app on `127.0.0.1:<console-local-port>`. Public operator
-access uses a dedicated non-443 HTTPS listener with Basic Auth, nginx and a
-small local buffering proxy. This keeps larger Console pages away from the
-shared Reality/layer4 `:443` listener used by Channel A/B/C egress. Large
+access normally uses a dedicated non-443 HTTPS listener with Basic Auth, nginx
+and a small local buffering proxy. When client networks handle the non-standard
+port poorly, host Caddy may also expose the same Console hostname on shared
+`:443` and proxy it back to the local Console nginx listener; the layer4 wrapper
+still intercepts only the configured Reality SNI before HTTP handling. Large
 operator views such as Traffic Explorer use paging and explicit detail/export
 requests instead of rendering full evidence sets in one response.
 
