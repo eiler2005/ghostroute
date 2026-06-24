@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
 COPY ghostroute-console/app/package*.json ./
@@ -10,7 +10,7 @@ RUN npm run build
 FROM builder AS prod-deps
 RUN npm prune --omit=dev
 
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 RUN apk add --no-cache bash openssh-client tini && \
     addgroup -g 10000 ghostroute && \
     adduser -D -u 10000 -G ghostroute ghostroute

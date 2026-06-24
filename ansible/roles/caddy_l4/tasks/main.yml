@@ -54,10 +54,14 @@
         fail_msg: "Channel B hostname must be an ordinary-looking vault-only name with a valid path."
       no_log: true
 
+    - name: Capture current host Caddy semantic version
+      ansible.builtin.set_fact:
+        _caddy_current_version: "{{ (caddy_version.stdout | trim).split(' ') | first | default('') }}"
+
     - name: Decide whether Caddy needs a custom module rebuild
       ansible.builtin.set_fact:
         _caddy_needs_module_rebuild: >-
-          {{ 'layer4' not in caddy_modules.stdout }}
+          {{ ('layer4' not in caddy_modules.stdout) or (_caddy_current_version != system_caddy_target_version) }}
 
     - name: Backup stock Caddy binary before first layer4 build
       ansible.builtin.copy:

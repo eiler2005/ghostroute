@@ -21,7 +21,7 @@ vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.con
 # In this mode we extend that Caddy with the layer4 plugin and a listener wrapper
 # instead of starting a second public-facing Caddy container.
 stealth_caddy_mode: system_listener_wrapper
-system_caddy_target_version: "v2.11.1"
+system_caddy_target_version: "v2.11.4"
 system_caddy_binary_path: /usr/bin/caddy
 system_caddy_backup_path: /usr/bin/caddy.router-configuration.bak
 system_caddyfile_path: /etc/caddy/Caddyfile

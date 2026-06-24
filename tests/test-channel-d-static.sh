@@ -117,6 +117,8 @@ assert_contains "ansible/playbooks/99-verify.yml" 'Channel D NaiveProxy Caddy li
 assert_contains "ansible/playbooks/99-verify.yml" 'Channel D Caddy cover site responds to ordinary TLS GET when enabled'
 assert_contains "ansible/playbooks/99-verify.yml" 'Channel D unauthenticated CONNECT is not an open proxy when enabled'
 assert_contains "ansible/playbooks/99-verify.yml" 'sing-box has Channel D NaiveProxy SOCKS inbound with managed split routing'
+assert_contains_fixed "ansible/playbooks/99-verify.yml" "channel_d_out=\"{{ 'reality-out' if (channel_d_managed_egress_mode | default('follow')) == 'follow' else 'reality-out-d' }}\""
+assert_contains_fixed "ansible/playbooks/99-verify.yml" '\"outbound\":\"$channel_d_out\"'
 assert_contains "ansible/playbooks/99-verify.yml" 'forward_proxy'
 assert_contains "ansible/roles/stealth_routing/templates/ghostroute-runtime.env.j2" 'GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT'
 assert_contains "modules/ghostroute-health-monitor/bin/status" 'proof expects channel-d-naiveproxy-socks-in -> reality-out/direct-out'

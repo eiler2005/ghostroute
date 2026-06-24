@@ -926,12 +926,13 @@
     - name: sing-box has Channel D NaiveProxy SOCKS inbound with managed split routing
       ansible.builtin.shell: |
         cfg="$(awk '{ gsub(/[[:space:]]/, ""); printf "%s", $0 }' {{ singbox_config_path }})"
+        channel_d_out="{{ 'reality-out' if (channel_d_managed_egress_mode | default('follow')) == 'follow' else 'reality-out-d' }}"
         printf '%s' "$cfg" | grep -Fq '"type":"socks"' &&
         printf '%s' "$cfg" | grep -Fq '"tag":"channel-d-naiveproxy-socks-in"' &&
         printf '%s' "$cfg" | grep -Fq '"listen":"127.0.0.1"' &&
         printf '%s' "$cfg" | grep -Fq '"listen_port":{{ channel_d_naiveproxy_upstream_socks_port }}' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","action":"sniff"' &&
-        printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","rule_set":["stealth-domains","stealth-static"],"outbound":"reality-out"' &&
+        printf '%s' "$cfg" | grep -Fq "\"inbound\":\"channel-d-naiveproxy-socks-in\",\"rule_set\":[\"stealth-domains\",\"stealth-static\"],\"outbound\":\"$channel_d_out\"" &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","outbound":"direct-out"' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","port":53,"action":"route-options","override_address":"127.0.0.1","override_port":53' &&
         printf '%s' "$cfg" | grep -Fq '"inbound":"channel-d-naiveproxy-socks-in","port":53,"outbound":"direct-out"' &&
