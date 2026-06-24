@@ -462,6 +462,16 @@ and JSON contracts. It must not contain timing assertions.
 operator-network or VPN curl timings are deployment diagnostics, not
 deterministic Playwright gates.
 
+Browser/frontend dependency updates are part of the GUI contract, not routine
+lockfile churn. Any change to Next.js, React, Playwright, CSS/build tooling,
+middleware, nginx, Caddy or the buffer proxy must preserve both browser editions:
+desktop workbenches and the iPhone/Safari `/m` surface. The minimum pre-deploy
+gate is `npm test`, `npm run build`, `npm run test:e2e:gui` and `npm run
+test:perf`; after deploy, run the live performance playbook and a public
+WebKit/iPhone render check. The mobile check must prove that `/` reaches `/m`,
+critical mobile CSS is applied, `/m/live` renders the Client activity summary and
+the mobile first paint does not depend on external render-blocking Next CSS/JS.
+
 The live VPS performance gate uses the same
 `tests/e2e/performance.spec.ts` against the deployed Console runtime. Run it from
 the control machine after deploy/post-deploy verification:

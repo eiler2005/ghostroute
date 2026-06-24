@@ -67,6 +67,17 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   applied via computed styles or screenshot evidence, and keep the first mobile
   paint independent of render-blocking external CSS/JS when the public path uses
   the shared HTTPS alias.
+- For GhostRoute Console browser, frontend dependency or public-delivery changes
+  (Next.js, React, Playwright, CSS/build output, nginx, Caddy, middleware or the
+  buffer proxy), treat cross-browser delivery as a protected contract. Before
+  deploy, run the seeded GUI checks that cover desktop and mobile. After deploy,
+  run the live performance gate and verify the public no-port URL with a
+  WebKit/iPhone profile or real Safari Web Inspector. Required evidence: `/`
+  reaches the mobile shell on iPhone, critical mobile CSS is applied, `/m/live`
+  renders its activity summary, `/traffic` keeps its inline detail panel, and
+  public browser-compressed requests stay fast. Do not "fix" Console browser
+  delivery by changing Channel A/B/C/D/M ownership, managed DNS, sing-box,
+  dnsmasq or router firewall state.
 - Prefer the narrowest check that proves the current change. Do not run broad
   suites such as `./tests/run-all.sh`, full Ansible verification, live reports,
   or long browser/e2e checks unless the user explicitly asks for them or the
