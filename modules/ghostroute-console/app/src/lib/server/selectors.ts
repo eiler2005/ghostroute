@@ -2538,8 +2538,10 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
      .filter((row) => filterRows([row], filters).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
     .sort(compareFlowRows);
-  const allRows = (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today", trafficClass)) as Array<Record<string, any>>)
-    .sort(compareFlowRows);
+  const allRows = args.fastList
+    ? rawRows
+    : (reconcileTrafficRows(applyFlowWindowDeltas(rawRows), authoritativeTotalsForPeriod(filters.period || "today", trafficClass)) as Array<Record<string, any>>)
+      .sort(compareFlowRows);
   const total = Math.min(maxRows, Math.max(allRows.length, allRows.length >= fetchLimit ? sqlTotal : allRows.length));
   const rows = allRows.slice(offset, offset + pageSize);
   return {
