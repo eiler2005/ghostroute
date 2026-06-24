@@ -273,6 +273,7 @@ function pageArgsKey(args: PageArgs = {}) {
     maxRows: args.maxRows,
     diagnostics: Boolean(args.diagnostics),
     presentationWeight: Boolean(args.presentationWeight),
+    fastList: Boolean(args.fastList),
     clientTarget: args.clientTarget ? {
       id: args.clientTarget.id,
       label: args.clientTarget.label,
@@ -1776,6 +1777,7 @@ type PageArgs = {
   showInactive?: boolean;
   clientTarget?: Record<string, any>;
   presentationWeight?: boolean;
+  fastList?: boolean;
 };
 
 type DnsPageArgs = PageArgs & {
@@ -2314,6 +2316,64 @@ function mapFlowSessionRow(row: any) {
   }));
 }
 
+function mapFlowSessionListRow(row: any) {
+  const rowid = String(row.id || "").replace(/^flow:/, "");
+  return decorateTrafficRow({
+    id: row.id,
+    rowid,
+    snapshot_id: row.snapshot_id,
+    collected_at: row.collected_at,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
+    event_ts_utc: row.event_ts_utc,
+    observed_at_utc: row.observed_at_utc,
+    display_ts_utc: row.display_ts_utc,
+    time_precision: row.time_precision,
+    client: row.client,
+    client_ip: row.client_ip,
+    device_key: row.device_key,
+    channel: row.channel,
+    destination: row.destination,
+    destination_ip: row.destination_ip,
+    destination_port: row.destination_port,
+    route: row.route,
+    confidence: row.confidence,
+    bytes: Number(row.bytes || 0),
+    total_bytes: Number(row.bytes || 0),
+    connections: Number(row.connections || 0),
+    protocol: row.protocol,
+    dns_qname: row.dns_qname,
+    dns_answer_ip: row.dns_answer_ip,
+    sni: row.sni,
+    outbound: row.outbound,
+    matched_rule: row.matched_rule || row.policy,
+    rule_set: row.policy,
+    egress_ip: row.egress_ip,
+    egress_asn: row.egress_asn,
+    egress_country: row.egress_country,
+    ts_confidence: row.ts_confidence,
+    traffic_class: row.traffic_class,
+    via_vps_bytes: Number(row.via_vps_bytes || 0),
+    direct_bytes: Number(row.direct_bytes || 0),
+    unknown_bytes: Number(row.unknown_bytes || 0),
+    route_verification: row.route_verification,
+    route_status: row.route_status,
+    dns_link_id: row.dns_link_id,
+    dns_link_confidence: row.dns_link_confidence,
+    dns_status: row.dns_status,
+    dns_ts_source: row.dns_ts_source,
+    accounting_status: row.accounting_status,
+    policy: row.policy,
+    risk: row.risk,
+    risk_reason: row.risk_reason,
+    duration_seconds: Number(row.duration_seconds || 0),
+    duration_confidence: row.duration_confidence,
+    event_ts: row.display_ts_utc || row.last_seen || row.first_seen || row.collected_at,
+    source_log: row.source_kind,
+    raw: {},
+  });
+}
+
 function dashboardAnalyticsRows(filters: ConsoleFilters = {}) {
   const effectiveFilters = { ...filters, period: "all" };
   if (!readModelHasRows("flow_sessions")) {
@@ -2470,9 +2530,9 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
         where ${whereSql}
         order by bytes desc, coalesce(nullif(last_seen, ''), collected_at) desc, id desc
         limit ?`
-     )
-     .all(...params, fetchLimit)
-     .map(mapFlowSessionRow)
+      )
+      .all(...params, fetchLimit)
+      .map(args.fastList ? mapFlowSessionListRow : mapFlowSessionRow)
     .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], filters).length > 0)

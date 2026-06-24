@@ -351,8 +351,11 @@ Classify the failure before changing anything:
   gzip off and lets the buffer proxy return Brotli to browsers so Chrome-sized
   pages stay below the observed stall threshold where possible. The buffer proxy
   strips Next.js hydration scripts from public HTML so the read-only Console
-  can render as server HTML plus CSS on constrained home/mobile links. If script
-  delivery is explicitly re-enabled, the buffer proxy wraps
+  can render as server HTML plus CSS on constrained home/mobile links. For `/m`
+  routes it also inlines the critical mobile CSS and removes the render-blocking
+  Next stylesheet link, so iOS Safari can paint the mobile shell even when a
+  static asset request stalls behind the shared HTTPS alias. If script delivery
+  is explicitly re-enabled, the buffer proxy wraps
   `/_next/static/*.js` chunks in a small synchronous bootstrap and serves the
   chunk body through smaller same-origin part requests. These are transport
   workarounds only; they do not change Console data collection or routing
@@ -361,6 +364,9 @@ Classify the failure before changing anything:
   The same buffered read-only Console is also available on the standard HTTPS
   host without the dedicated port so constrained networks can avoid the
   non-standard listener path while Reality traffic remains separated by SNI.
+  That Caddy alias forces `/_next/static/*` upstream requests to gzip so CSS and
+  chunk responses have a small deterministic body instead of a long identity
+  stream on mobile networks.
 
 Server-side baseline:
 
@@ -477,7 +483,9 @@ The `/m` pages use the same read-only snapshots and selectors, cap page size to
 Center probes, Leak-check evidence and freshness so remote triage can happen
 from an iPhone without loading the desktop workbench. It is served as a raw
 no-JS HTML route, so Safari does not need to hydrate a React page or fetch
-page-specific chunks before the operator can read the health state.
+page-specific chunks before the operator can read the health state. The public
+buffer proxy inlines critical mobile CSS for `/m` routes so the first paint does
+not depend on the external Next stylesheet.
 
 `/m/live` includes a compact Client activity summary next to the live event
 stream. Each mobile page includes a `Desktop version` link back to the full
@@ -489,7 +497,9 @@ Basic Auth still protects HTML, API and operator data routes; immutable
 to avoid iOS Safari auth loops. The VPS proxy forwards the external host and
 port through `X-Forwarded-*` headers; mobile redirects use those headers so they
 stay on the public Console URL instead of the internal `localhost:<console-local-port>`
-container upstream.
+container upstream. On the standard HTTPS alias, `/_next/static/*` is fetched
+from the local nginx listener with upstream gzip enabled to avoid Safari
+rendering raw HTML while waiting for an uncompressed stylesheet to finish.
 
 ## Release Hardening
 
