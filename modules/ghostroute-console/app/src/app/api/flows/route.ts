@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     page,
     pageSize,
     diagnostics: search.get("diagnostics") === "1",
+    fastList: true,
     filters: {
       period: "today",
       route: search.get("route") || "all",

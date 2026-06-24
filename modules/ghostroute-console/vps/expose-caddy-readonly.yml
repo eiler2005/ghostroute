@@ -16,6 +16,9 @@
     console_nginx_root: "{{ console_root }}/nginx"
     console_buffer_proxy_port: "{{ ghostroute_console_buffer_proxy_port | default(3001) }}"
     console_public_listener: "{{ ghostroute_console_public_listener | default('nginx') }}"
+    console_standard_https_alias_managed: >-
+      {{ (system_caddy_console_alias_enabled | default(false) | bool)
+         and ((system_caddy_console_alias_host | default('')) == console_public_host) }}
     console_basic_auth_user: "{{ ghostroute_console_basic_auth_user | default('ghostroute') }}"
     console_basic_auth_realm: "{{ ghostroute_console_basic_auth_realm | default('GhostRoute Console v2') }}"
     console_basic_auth_file: "{{ playbook_dir }}/../data/console-basic-auth.txt"
@@ -106,6 +109,14 @@
         backup: true
         state: absent
 
+    - name: Remove legacy Console shared HTTPS fallback when caddy_l4 owns the alias
+      ansible.builtin.blockinfile:
+        path: /etc/caddy/Caddyfile
+        marker: "# {mark} GHOSTROUTE CONSOLE CERTIFICATE"
+        backup: true
+        state: absent
+      when: console_standard_https_alias_managed | bool
+
     - name: Expose GhostRoute Console fallback on standard HTTPS through Caddy
       ansible.builtin.blockinfile:
         path: /etc/caddy/Caddyfile
@@ -133,6 +144,7 @@
               }
           }
       no_log: true
+      when: not (console_standard_https_alias_managed | bool)
 
     - name: Expose GhostRoute Console dedicated listener through Caddy
       ansible.builtin.blockinfile:
@@ -547,11 +559,11 @@
       changed_when: false
       no_log: true
 
-    - name: Show Console public URL
+    - name: Show Console public exposure status
       ansible.builtin.debug:
         msg:
-          url: "{{ console_public_url }}"
-          username: "{{ console_basic_auth_user }}"
+          url: "https://<console-host>:<console-port>"
+          username: "<redacted>"
           health_ok: "{{ console_public_health.json.ok | default(false) }}"
           snapshots: "{{ console_public_health.json.snapshots | default('n/a') }}"
           large_response_status: "{{ 'ok' if (console_public_large_response.rc | default(1)) == 0 else 'failed' }}"

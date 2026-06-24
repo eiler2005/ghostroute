@@ -96,6 +96,8 @@ assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'matching_
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'reverse_proxy 127\.0\.0\.1:\{\{ channel_b_xhttp_local_port \}\}'
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'log channel_b_xhttp'
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'system_caddy_console_alias_enabled'
+assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" '@console_next_static path /_next/static/\*'
+assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'header_up Accept-Encoding gzip'
 assert_contains "ansible/roles/caddy_l4/templates/SystemCaddyfile.j2" 'tls_insecure_skip_verify'
 assert_contains "ansible/roles/caddy_l4/tasks/main.yml" 'Console Caddy alias hostname'
 assert_contains "ansible/roles/caddy_l4/tasks/main.yml" "system_caddy_console_alias_host != reality_server_names\\[0\\]"

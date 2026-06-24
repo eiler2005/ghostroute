@@ -754,6 +754,7 @@ test("schema includes collector reliability and post-MVP tables", () => {
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_client_dest'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_dns_links_domain_answer'").get());
   assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_traffic_facts_client_dest'").get());
+  assert.ok(db.prepare("select 1 from sqlite_master where type = 'index' and name = 'idx_flow_sessions_snapshot_bytes'").get());
   db.close();
 });
 

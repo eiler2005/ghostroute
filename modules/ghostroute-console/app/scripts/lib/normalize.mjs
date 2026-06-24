@@ -1890,6 +1890,7 @@ export function ensureConsoleSchema(db) {
     create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
     create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
     create index if not exists idx_flow_sessions_time on flow_sessions(last_seen desc, first_seen desc);
+    create index if not exists idx_flow_sessions_snapshot_bytes on flow_sessions(snapshot_id, bytes desc, last_seen desc, collected_at desc, id);
     create index if not exists idx_flow_sessions_filters on flow_sessions(route, channel, confidence, risk, client, destination);
     create index if not exists idx_flow_sessions_destination on flow_sessions(destination, destination_ip, destination_port);
     create index if not exists idx_dns_query_log_time on dns_query_log(event_ts desc, collected_at desc);

@@ -61,6 +61,12 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   && npm run dev:gui` for visual review and `npm run test:e2e:gui` for browser
   coverage. Do not use the VPS deployment as the first place to discover layout,
   pagination, filtering, or responsive regressions.
+- For GhostRoute Console iPhone/Safari fixes, verify the public URL with a
+  WebKit/iPhone Playwright profile or real Safari Web Inspector before declaring
+  the issue fixed. A fast HTML response is not enough: assert that CSS is
+  applied via computed styles or screenshot evidence, and keep the first mobile
+  paint independent of render-blocking external CSS/JS when the public path uses
+  the shared HTTPS alias.
 - Prefer the narrowest check that proves the current change. Do not run broad
   suites such as `./tests/run-all.sh`, full Ansible verification, live reports,
   or long browser/e2e checks unless the user explicitly asks for them or the

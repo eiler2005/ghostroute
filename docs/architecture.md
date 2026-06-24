@@ -341,7 +341,9 @@ access normally uses a dedicated non-443 HTTPS listener with Basic Auth, nginx
 and a small local buffering proxy. When client networks handle the non-standard
 port poorly, host Caddy may also expose the same Console hostname on shared
 `:443` and proxy it back to the local Console nginx listener; the layer4 wrapper
-still intercepts only the configured Reality SNI before HTTP handling. Large
+still intercepts only the configured Reality SNI before HTTP handling. The
+shared-443 alias keeps static Console assets compressed upstream so mobile
+browsers do not wait on a long identity CSS response before first paint. Large
 operator views such as Traffic Explorer use paging and explicit detail/export
 requests instead of rendering full evidence sets in one response.
 
