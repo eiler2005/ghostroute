@@ -14,7 +14,7 @@ export default async function MobileLivePage({ searchParams }: { searchParams?: 
   const activityPage = Math.max(1, Number.parseInt(scalar(params.activityPage) || "1", 10) || 1);
   const activityPageSize = mobilePageSize(scalar(params.activityPageSize));
   const livePage = listLiveEvents({ page, pageSize, filters });
-  const activity = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 25, filters });
+  const activity = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 25, filters, fastList: true });
   const model = buildLightweightShellModel(filters, { events: livePage.rows, flows: activity.rows });
   const filterParams = {
     route: filters.route !== "all" ? filters.route : undefined,
