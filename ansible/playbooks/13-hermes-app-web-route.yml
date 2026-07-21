@@ -1,0 +1,120 @@
+---
+# Surgical, Hermes-only change: add ONE exact-SNI web route to the outer Caddy
+# layer4 config and recreate ONLY the caddy container. It does NOT touch Xray,
+# UFW, the Docker network, unbound or any other role. Safety: GhostRoute deploy
+# gate before/after, live Caddyfile backup, config validation inside the caddy
+# image before recreate, and automatic rollback to the backup on any failure.
+#
+# The web SNI hostname is read from the app-owned stack env
+# (/opt/cheap-intelligence/.env DIGEST_HOSTNAME) so the outer route and the
+# inner app Caddy always agree, and no IP is committed to git.
+- name: Hermes outer Caddy — add app web SNI route (surgical, caddy-only)
+  hosts: vps_egress_hermes
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vps_stealth.yml
+    - ../secrets/stealth.yml
+  vars:
+    stealth_stack_dir: /opt/stealth
+    stealth_caddy_mode: docker_sidecar
+    ci_env_path: /opt/cheap-intelligence/.env
+  pre_tasks:
+    - name: GhostRoute deploy gate (before)
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Read app stack env for the digest hostname
+      ansible.builtin.slurp:
+        src: "{{ ci_env_path }}"
+      register: _ci_env
+      no_log: true
+
+    - name: Derive caddy_l4_web_sni_host from DIGEST_HOSTNAME
+      ansible.builtin.set_fact:
+        caddy_l4_web_sni_host: "{{ (_ci_env['content'] | b64decode) | regex_search('^DIGEST_HOSTNAME=\\S+', multiline=True) | default('', true) | regex_replace('^DIGEST_HOSTNAME=', '') | trim }}"
+      no_log: true
+
+    - name: Sanity-check derived hostname shape
+      ansible.builtin.assert:
+        that:
+          - caddy_l4_web_sni_host is match('^digest\\.[0-9-]+\\.sslip\\.io$')
+        fail_msg: "Derived web SNI host is not a digest.<ip-dashed>.sslip.io hostname."
+      no_log: true
+
+  tasks:
+    - name: Backup live outer Caddyfile
+      ansible.builtin.copy:
+        src: "{{ stealth_stack_dir }}/caddy/Caddyfile"
+        dest: "{{ stealth_stack_dir }}/caddy/Caddyfile.bak-{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
+        remote_src: true
+        mode: "0644"
+      register: _caddy_backup
+
+    - name: Apply new Caddyfile with validation and rollback
+      block:
+        - name: Render outer Caddyfile with app web SNI route
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../roles/caddy_l4/templates/Caddyfile.j2"
+            dest: "{{ stealth_stack_dir }}/caddy/Caddyfile"
+            mode: "0644"
+          register: _caddy_render
+
+        - name: Validate new Caddyfile inside the caddy-l4 image
+          ansible.builtin.command:
+            argv:
+              - docker
+              - run
+              - --rm
+              - --entrypoint
+              - caddy
+              - -v
+              - "{{ stealth_stack_dir }}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+              - "{{ caddy_image_tag }}"
+              - validate
+              - --config
+              - /etc/caddy/Caddyfile
+              - --adapter
+              - caddyfile
+          changed_when: false
+
+        - name: Recreate ONLY the caddy container
+          community.docker.docker_compose_v2:
+            project_src: "{{ stealth_stack_dir }}"
+            services: [caddy]
+            state: present
+            recreate: always
+          when: _caddy_render is changed
+
+        - name: Settle
+          ansible.builtin.pause:
+            seconds: 4
+
+        - name: Confirm outer Caddy is serving :443 again
+          ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: 443
+            timeout: 20
+
+      rescue:
+        - name: Rollback Caddyfile from backup
+          ansible.builtin.copy:
+            src: "{{ _caddy_backup.dest }}"
+            dest: "{{ stealth_stack_dir }}/caddy/Caddyfile"
+            remote_src: true
+            mode: "0644"
+
+        - name: Recreate caddy with restored config
+          community.docker.docker_compose_v2:
+            project_src: "{{ stealth_stack_dir }}"
+            services: [caddy]
+            state: present
+            recreate: always
+
+        - name: Fail after rollback
+          ansible.builtin.fail:
+            msg: "Caddy web-route apply failed; rolled back to backup Caddyfile."
+
+  post_tasks:
+    - name: GhostRoute deploy gate (after)
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

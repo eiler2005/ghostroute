@@ -21,6 +21,12 @@ xray_reality_listen_port: 8443
 reality_server_names:
   - gateway.icloud.com
 
+# App-owned L7 web service exact-SNI route (docker_sidecar Caddyfile.j2 only).
+# Empty by default => no route rendered; set per-host to divert one SNI to a
+# loopback app upstream. Used by the Hermes app-web-route playbook.
+caddy_l4_web_sni_host: ""
+caddy_l4_web_upstream: "127.0.0.1:8444"
+
 # Channel B direct mode is add-only and disabled until a real vault-only public
 # hostname, path and credentials are supplied. Channel C is router-side only.
 channel_b_xhttp_enabled: false
