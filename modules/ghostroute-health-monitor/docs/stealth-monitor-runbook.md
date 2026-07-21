@@ -219,6 +219,13 @@ service recovery.
 
 Смысл: роутер не может открыть TCP/443 к Reality VPS.
 
+Сначала запустите `live-check --json --active-probe channel-a`: SSH/admin
+доступ и одиночный TCP probe не доказывают managed HTTPS data-plane. Если
+managed egress/HTTP падают при живом direct control, переходите к
+[`docs/managed-egress-vps-boot-recovery.md`](../../../docs/managed-egress-vps-boot-recovery.md).
+Не запускайте broad Docker/Caddy/Xray restart до проверки unit graph, provider
+firewall и host UFW как отдельных плоскостей.
+
 ```sh
 grep -A40 '"tag": "reality-out"' /opt/etc/sing-box/config.json
 nc -z -w 5 <vps_host> 443
@@ -510,7 +517,10 @@ If cron is stopped, restarting cron is a runtime action and needs OK.
 - Likely probes: router `channel_a_reality`, `vps_path`; VPS `caddy_listener`, `xray_reality_listener`, `xray_container`.
 - Read-only diagnostics: `nc -z -w 5 <vps_host> 443`, `ss -tlnp`, `docker ps`.
 - Forbidden: включать emergency fallback без понимания, что VPS или home path сломан.
-- Recovery with OK: service recovery на конкретном сломанном слое.
+- Recovery with OK: service recovery на конкретном сломанном слое; для
+  Docker/resolver boot после restart/reboot используйте
+  [`docs/managed-egress-vps-boot-recovery.md`](../../../docs/managed-egress-vps-boot-recovery.md),
+  а не массовый restart stack.
 - Confirmation: router `STATUS_OK`, VPS `STATUS_OK`, merged report `Overall OK`.
 
 ### 7. `rule_set_sync` CRIT

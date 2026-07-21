@@ -313,6 +313,13 @@ TCP/443 и provider + host firewall. Если rule-set явно устарел, 
 
 ## Managed Egress Падает Только До Primary VPS
 
+Если active managed egress/HTTP probes падают, а direct-control остаётся
+зелёным, сначала используйте
+[managed-egress-vps-boot-recovery.md](managed-egress-vps-boot-recovery.md).
+SSH, provider console и отдельный firewall allow не доказывают состояние
+Reality data-plane; runbook отделяет boot-order cycle, firewall и OOM ветки
+без broad restart или раскрытия deployment values.
+
 Симптом: LAN/Wi-Fi и Channel A/B/C одновременно перестали открывать managed
 HTTPS, `sing-box.log` показывает timeouts на `outbound/vless[reality-out]`, а
 plain HTTP или SSH/admin-доступ к VPS ещё живы. Это может быть блокировка или

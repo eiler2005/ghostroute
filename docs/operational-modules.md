@@ -67,6 +67,6 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 | Rotate Reality SNI | `modules/reality-sni-rotation/docs/sni-rotation-candidates.md` |
 | Generate QR profiles | `modules/client-profile-factory/docs/client-profiles.md` |
 | Prepare or audit secrets | `modules/secrets-management/docs/secrets-management.md` |
-| Recover from incidents | `modules/recovery-verification/docs/failure-modes.md` and `troubleshooting.md` |
+| Recover from incidents | `modules/recovery-verification/docs/failure-modes.md`, `troubleshooting.md` and `managed-egress-vps-boot-recovery.md` |
 | Check component versions and port ownership | `docs/runtime-inventory.md` |
 | Review archived architecture improvement priorities | `docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md` and `docs/adr/` |

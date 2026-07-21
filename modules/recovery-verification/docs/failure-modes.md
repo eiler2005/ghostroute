@@ -139,28 +139,22 @@ configuration.
 
 ## VPS 443 Broken
 
-Symptom: local sing-box is healthy, but Reality handshakes fail.
+Symptom: local sing-box is healthy, but Reality handshakes and active managed
+HTTP checks fail. SSH/admin access is not proof that the data-plane is healthy.
 
-Check from laptop:
-
-```bash
-curl -sk --resolve gateway.icloud.com:443:<vps-ip> -I https://gateway.icloud.com/
-nc -vz <vps-ip> 443
-```
-
-Recover on VPS:
+First classify the path from the control machine:
 
 ```bash
-sudo systemctl restart caddy
-cd /opt/stealth && docker compose up -d
-docker restart xray
+./modules/ghostroute-health-monitor/bin/live-check --json --active-probe channel-a
 ```
 
-Then re-run:
-
-```bash
-ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook ansible/playbooks/10-stealth-vps.yml
-```
+If managed probes fail while direct control passes, follow
+[managed-egress-vps-boot-recovery.md](../../../docs/managed-egress-vps-boot-recovery.md).
+It covers the confirmed Docker/resolver boot-order cycle, provider firewall vs
+host UFW distinction, exact-source temporary access hygiene and post-recovery
+proof. Do not begin with `docker compose up`, `docker restart`, a Caddy restart
+or a broad VPS playbook: those actions can hide the failing layer, create a
+restart loop or make a capacity incident worse.
 
 ## Mobile Home QR Broken
 
