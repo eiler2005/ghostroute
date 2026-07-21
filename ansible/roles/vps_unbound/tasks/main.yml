@@ -47,11 +47,33 @@
     - vps_unbound_enabled | bool
     - vps_unbound_docker_bridge_host | default('') | length > 0
 
+- name: Override Docker unit without Unbound nss lookup ordering
+  ansible.builtin.template:
+    src: docker.service.j2
+    dest: /etc/systemd/system/docker.service
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - vps_unbound_enabled | bool
+    - vps_unbound_docker_bridge_host | default('') | length > 0
+
+- name: Remove deprecated Docker Unbound drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d/ghostroute-unbound-bridge.conf
+    state: absent
+
 - name: Remove Unbound Docker bridge startup guard when not needed
   ansible.builtin.file:
     path: /etc/systemd/system/unbound.service.d/ghostroute-docker-bridge.conf
     state: absent
   notify: restart unbound
+  when: (not (vps_unbound_enabled | bool)) or (vps_unbound_docker_bridge_host | default('') | length == 0)
+
+- name: Remove Docker ordering override when not needed
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service
+    state: absent
   when: (not (vps_unbound_enabled | bool)) or (vps_unbound_docker_bridge_host | default('') | length == 0)
 
 - name: Reload systemd after Unbound unit metadata updates

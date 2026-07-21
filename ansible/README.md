@@ -220,7 +220,7 @@ the gate itself.
 |---|---|
 | `caddy_l4` | VPS public TLS/Reality demux through Caddy layer4. |
 | `xray_reality` | VPS Xray/3x-ui Reality inbound state. |
-| `vps_unbound` | VPS managed-domain resolver for policy-based DNS consistency; forwards through the local system resolver when recursive DNS is unavailable. |
+| `vps_unbound` | VPS managed-domain resolver for policy-based DNS consistency; forwards through the local system resolver when recursive DNS is unavailable, and installs a narrow Docker unit override so the Docker bridge cannot form an Unbound/Docker boot-order cycle. |
 | `ufw_stealth` | VPS firewall exposure policy. |
 | `vps_health_monitor` | VPS-side GhostRoute health observer. |
 | `ipv6_kill` | Router IPv6 policy. |
@@ -356,6 +356,29 @@ the VPS/Caddy surface. If you need an isolated GhostRoute-only run, disable
 them explicitly with:
 `ansible-playbook playbooks/99-verify.yml -e verify_openclaw_checks_enabled=false`.
 
+### Managed-egress Docker/resolver boot order
+
+When the VPS Unbound bridge guard is enabled, the `vps_unbound` role renders a
+narrow Docker system-unit override and removes the legacy bridge drop-in. Its
+only purpose is to keep Docker from waiting for `nss-lookup.target` supplied by
+the resolver that itself waits for Docker's bridge; that dependency cycle can
+leave edge containers down after boot. The role remains the source of truth—do
+not repair this by editing `/etc/systemd/system/docker.service` by hand.
+
+After a Docker/systemd package update, inspect the resulting unit graph before
+the next reboot:
+
+```bash
+systemctl cat docker.service
+systemctl show -p After docker.service
+systemd-analyze verify docker.service <resolver-service>
+```
+
+The expected state has no Docker dependency on the lookup target supplied by
+the guarded resolver and no current-boot ordering-cycle log.
+For active-probe interpretation, firewall boundaries and safe recovery see
+[managed-egress VPS boot recovery](../docs/managed-egress-vps-boot-recovery.md).
+
 ## Related Docs
 
 - [Operational modules](../docs/operational-modules.md)
@@ -364,5 +387,6 @@ them explicitly with:
 - [Routing core guide](../modules/routing-core/docs/stealth-channel-implementation-guide.md)
 - [Channel A selected full-VPS](../docs/channel-a-selected-full-vps.md)
 - [Managed egress reserve mode](../docs/managed-egress-failover-roadmap.md)
+- [Managed egress VPS boot recovery](../docs/managed-egress-vps-boot-recovery.md)
 - [Health monitor guide](../modules/ghostroute-health-monitor/docs/stealth-monitoring-implementation-guide.md)
 - [Recovery and verification](../modules/recovery-verification/docs/failure-modes.md)

@@ -26,6 +26,7 @@ local runbooks or historical planning notes.
 - [ansible/README.md](../ansible/README.md) - deployment, Vault, profile generation and verification control plane.
 - [getting-started.md](getting-started.md) - first deploy and local setup workflow.
 - [troubleshooting.md](troubleshooting.md) - cross-module incident diagnostics.
+- [managed-egress-vps-boot-recovery.md](managed-egress-vps-boot-recovery.md) - managed-egress VPS boot-order diagnosis, safe recovery and post-upgrade gate.
 
 ## Module Docs
 
