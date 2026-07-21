@@ -8,9 +8,15 @@
       route @reality {
         proxy 127.0.0.1:{{ xray_reality_listen_port }}
       }
-      # Future L7 web сервисы добавляются сюда:
-      # @web tls sni web.example.ru
-      # route @web { proxy 127.0.0.1:8444 }
+      # App-owned L7 web service via exact SNI (empty var => not rendered).
+      # Only a matching SNI is diverted to the app inner Caddy on loopback;
+      # everything else keeps falling through to the default Xray route below.
+{% if caddy_l4_web_sni_host | default('') | length > 0 %}
+      @web tls sni {{ caddy_l4_web_sni_host }}
+      route @web {
+        proxy {{ caddy_l4_web_upstream | default('127.0.0.1:8444') }}
+      }
+{% endif %}
 
       # Default: отправляем в Xray, чей Reality fallback на dest проксирует
       # не-Reality трафик на настоящий cover-SNI. Это даёт единое
