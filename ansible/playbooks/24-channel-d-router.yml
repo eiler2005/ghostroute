@@ -35,10 +35,17 @@
       when: channel_d_naiveproxy_enabled | default(false) | bool
       no_log: true
 
-    - name: Channel D TLS certificate files exist on router when enabled
+    - name: Channel D selected TLS certificate is current on router when enabled
       ansible.builtin.raw: |
-        [ -s "{{ channel_d_naiveproxy_tls_cert_path }}" ] &&
-        [ -s "{{ channel_d_naiveproxy_tls_key_path }}" ]
+        if [ "{{ channel_d_naiveproxy_tls_source | default('vault') }}" = asus_acme ]; then
+          cert={{ channel_d_naiveproxy_asus_acme_cert_path | quote }}
+          key={{ channel_d_naiveproxy_asus_acme_key_path | quote }}
+        else
+          cert={{ channel_d_naiveproxy_tls_cert_path | quote }}
+          key={{ channel_d_naiveproxy_tls_key_path | quote }}
+        fi
+        [ -s "$cert" ] && [ -s "$key" ] &&
+        openssl x509 -in "$cert" -noout -checkend 0 >/dev/null
       changed_when: false
       when: channel_d_naiveproxy_enabled | default(false) | bool
       no_log: true
@@ -98,6 +105,13 @@
         sleep 2
       changed_when: false
       when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D Caddy serves a current TLS certificate when enabled
+      ansible.builtin.raw: |
+        timeout 8 openssl s_client -connect 127.0.0.1:{{ channel_d_naiveproxy_ingress_port }} </dev/null 2>/dev/null |
+          openssl x509 -noout -checkend 0 >/dev/null
+      changed_when: false
+      no_log: true
 
     - name: Re-apply stealth routing after Channel D restart
       ansible.builtin.raw: "{{ stealth_route_init_script }}"

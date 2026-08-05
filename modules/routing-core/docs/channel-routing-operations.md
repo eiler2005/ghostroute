@@ -63,6 +63,29 @@ Drift items: 0
 
 ## Live Router Checks
 
+### Channel C/D TLS Renewal
+
+Channel C and Channel D normally share the router ASUS ACME certificate. Check
+the deployed listener material and the supervisor-owned jobs without exposing
+the certificate contents:
+
+```sh
+/jffs/scripts/ghostroute-runtime-supervisor.sh status
+cru l | grep -E 'ChannelCTlsSync|ChannelCAcmeRenew'
+openssl x509 -in /opt/etc/sing-box/channel-c-home-fullchain.pem -noout -checkend 0
+```
+
+Expected: `channel_c_tls=ok`, `channel_d_tls=ok` when D is enabled, a six-hour
+TLS sync job and a daily ACME renewal job. The renewal job opens WAN TCP/80
+only for an HTTP-01 attempt near certificate expiry and removes its temporary
+rules before it exits. It does not change the managed egress, LAN REDIRECT,
+DNS policy or Channel A/B/M ownership.
+
+If a client times out before it appears in the Channel C HTTP or Channel D
+SOCKS logs, verify this certificate state first. A stale PEM from the legacy
+Vault source is deployment-blocking and must not be copied back over the ACME
+material.
+
 ### Channel A REDIRECT
 
 ```sh

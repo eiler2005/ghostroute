@@ -10,6 +10,9 @@ channel_d_naiveproxy_connlimit_above: 300
 channel_d_naiveproxy_mss: 1360
 channel_d_naiveproxy_tls_cert_path: /opt/etc/sing-box/channel-c-home-fullchain.pem
 channel_d_naiveproxy_tls_key_path: /opt/etc/sing-box/channel-c-home-privkey.pem
+channel_d_naiveproxy_tls_source: vault
+channel_d_naiveproxy_asus_acme_cert_path: ""
+channel_d_naiveproxy_asus_acme_key_path: ""
 channel_d_naiveproxy_caddy_bin_path: /opt/bin/caddy-channel-d-naiveproxy
 channel_d_naiveproxy_caddy_config_path: /opt/etc/caddy/channel-d-naiveproxy/Caddyfile
 channel_d_naiveproxy_caddy_init_path: /opt/etc/init.d/S99caddy-channel-d-naiveproxy

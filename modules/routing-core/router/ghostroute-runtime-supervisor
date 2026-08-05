@@ -14,6 +14,8 @@ FIREWALL_START=${GHOSTROUTE_FIREWALL_START:-/jffs/scripts/firewall-start}
 CHANNEL_B_INIT=${GHOSTROUTE_CHANNEL_B_HOME_INIT:-/opt/etc/init.d/S99xray-channel-b-home}
 CHANNEL_D_INIT=${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_INIT:-/opt/etc/init.d/S99caddy-channel-d-naiveproxy}
 CHANNEL_M_REVERSE_SCRIPT=${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_SCRIPT:-/jffs/scripts/channel-m-reverse-tunnel.sh}
+CHANNEL_C_TLS_SYNC=${GHOSTROUTE_CHANNEL_C_TLS_SYNC:-/jffs/scripts/channel-c-tls-sync.sh}
+CHANNEL_C_ACME_RENEW=${GHOSTROUTE_CHANNEL_C_ACME_RENEW:-/jffs/scripts/channel-c-acme-renew.sh}
 
 log() {
   mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
@@ -87,6 +89,8 @@ register_crons() {
   [ -x /jffs/scripts/rotate-singbox-log ] && cron_set RotateSingBoxLog "17 * * * *" "/jffs/scripts/rotate-singbox-log"
   [ -x "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}" ] && cron_set SingBoxWatchdog "* * * * *" "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}"
   [ -x "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}" ] && cron_set DnscryptWatchdog "* * * * *" "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}"
+  [ -x "$CHANNEL_C_TLS_SYNC" ] && cron_set ChannelCTlsSync "17 */6 * * *" "$CHANNEL_C_TLS_SYNC sync"
+  [ -x "$CHANNEL_C_ACME_RENEW" ] && cron_set ChannelCAcmeRenew "43 3 * * *" "$CHANNEL_C_ACME_RENEW renew"
   [ -x /jffs/scripts/health-monitor/run-probes ] && cron_set HealthMonitorProbes "0 * * * *" "/jffs/scripts/health-monitor/run-probes"
   [ -x /jffs/scripts/health-monitor/aggregate ] && cron_set HealthMonitorAggregate "2 * * * *" "/jffs/scripts/health-monitor/aggregate"
   [ -x /jffs/scripts/health-monitor/daily-digest ] && cron_set HealthMonitorDaily "10 3 * * *" "/jffs/scripts/health-monitor/daily-digest"
@@ -218,6 +222,11 @@ ensure_channel_d() {
   listener_present "$caddy_port" || log "Channel D Caddy listener still missing after restart"
 }
 
+ensure_channel_c_tls() {
+  [ -x "$CHANNEL_C_TLS_SYNC" ] || return 0
+  "$CHANNEL_C_TLS_SYNC" sync >/dev/null 2>&1 || log "Channel C/D TLS sync needs attention; retaining current listener state"
+}
+
 ensure_channel_m_reverse() {
   [ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] || return 0
   [ -x "$CHANNEL_M_REVERSE_SCRIPT" ] || return 0
@@ -277,6 +286,7 @@ seed_samples() {
 }
 
 recover_runtime() {
+  ensure_channel_c_tls
   ensure_singbox
   stabilize_routing
   ensure_dnscrypt && service restart_dnsmasq >/dev/null 2>&1 || true
@@ -293,6 +303,17 @@ status_runtime() {
   printf 'dnscrypt_listener=%s\n' "$(listener_present "${GHOSTROUTE_DNSCRYPT_PORT:-}" && echo ok || echo missing)"
   printf 'channel_b=%s\n' "$([ "${GHOSTROUTE_CHANNEL_B_HOME_ENABLED:-0}" = "1" ] && { listener_present "${GHOSTROUTE_CHANNEL_B_HOME_PORT:-}" && echo ok || echo missing; } || echo disabled)"
   printf 'channel_d=%s\n' "$([ "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED:-0}" = "1" ] && { listener_present "${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT:-}" && echo ok || echo missing; } || echo disabled)"
+  if [ -x "$CHANNEL_C_TLS_SYNC" ]; then
+    "$CHANNEL_C_TLS_SYNC" status 2>/dev/null || true
+  else
+    printf 'channel_c_tls=sync-missing\n'
+    printf 'channel_d_tls=sync-missing\n'
+  fi
+  if [ -x "$CHANNEL_C_ACME_RENEW" ]; then
+    "$CHANNEL_C_ACME_RENEW" status 2>/dev/null || true
+  else
+    printf 'channel_c_acme_renewal=script-missing\n'
+  fi
   printf 'channel_m_reverse=%s\n' "$([ "${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED:-0}" = "1" ] && { cru l 2>/dev/null | grep -q 'ChannelMReverse' && echo ok || echo missing; } || echo disabled)"
 }
 

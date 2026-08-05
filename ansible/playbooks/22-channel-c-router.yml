@@ -83,6 +83,14 @@
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
 
+    - name: Channel C1 Shadowrocket listener serves a current TLS certificate when enabled
+      ansible.builtin.raw: |
+        timeout 8 openssl s_client -connect 127.0.0.1:{{ channel_c_shadowrocket_ingress_port }} </dev/null 2>/dev/null |
+          openssl x509 -noout -checkend 0 >/dev/null
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+      no_log: true
+
     - name: C1-Shadowrocket public port redirects to internal HTTP listener when needed
       ansible.builtin.raw: |
         iptables -t nat -S PREROUTING |

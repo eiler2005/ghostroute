@@ -20,6 +20,29 @@ iPhone LTE
 The mobile operator sees only the iPhone connecting to the home endpoint. The
 VPS is not the first visible remote endpoint.
 
+## TLS Lifecycle
+
+Channel C uses the router's ASUS ACME certificate as the production source:
+
+```yaml
+vault_channel_c_home_tls_source: "asus_acme"
+```
+
+The generated certificate remains in the router ACME store. A supervisor-owned
+job checks daily whether it is close to expiry; only then does it open WAN
+TCP/80 for the bounded HTTP-01 exchange and remove that temporary rule when
+the exchange ends. A separate six-hour sync compares the ACME material with
+the listener files and restarts sing-box only after the certificate actually
+changes. Channel D Caddy is restarted at the same time when it shares this
+certificate. Neither job alters Channel A, B, M, managed DNS, firewall policy
+or egress selection.
+
+Use `./modules/ghostroute-health-monitor/bin/live-check channel-c` to see the
+current listener certificate state. `channel_c_tls=expires-soon` is an early
+warning; `invalid` is deployment-blocking. The legacy `vault` PEM source is
+still supported for recovery, but deploy and verification reject an expired
+certificate so it cannot silently replace a renewed ACME certificate.
+
 Old direct-to-VPS Channel C designs are removed from active code. Historical
 Squid/stunnel/tinyproxy/Caddy forward-proxy notes may remain in `docs/archive/`
 only as removed-design debugging records.
