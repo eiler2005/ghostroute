@@ -135,6 +135,21 @@ Generated artifacts:
 ansible/out/clients-channel-b/
 ```
 
+### Channel C/D TLS prerequisite
+
+Before deploying or refreshing either Channel C or Channel D, the selected
+router TLS source must contain a current certificate for each enabled public
+listener hostname. Production uses the ASUS ACME source
+(`channel_c_home_tls_source: asus_acme`); Channel D inherits it unless its own
+source is configured. The playbooks reject expired source material and verify
+the certificate actually served by the local C1-Shadowrocket and Channel D
+listeners, so a stale in-memory process is detected as well.
+
+The router supervisor runs a daily renewal check and a periodic TLS sync. They
+are maintenance of C/D listeners only: the ACME HTTP-01 WAN exception exists
+only during a near-expiry renewal and is removed on success or failure. This
+does not alter Channel A, B or M ownership, routing, DNS, or egress selection.
+
 ## Channel C - Home-First Experimental / Compatibility Lane
 
 Channel C is split into two explicitly different variants.
@@ -240,8 +255,10 @@ Karing / NaiveProxy-style client
 
 Current production interpretation:
 
-- Channel D is operator live-proven with Karing over LTE, but still isolated
-  from Channel A/B/C ownership.
+- The router-side Caddy-to-sing-box chain is independently verifiable, but a
+  successful Karing/LTE client test is still required before treating this
+  experimental lane as available. It remains isolated from Channel A/B/C
+  ownership.
 - The server side is Caddy `forward_proxy@naive` built with a pinned
   `klzgrad/forwardproxy` ref; the current client fingerprint is still Karing,
   not the official Chromium NaiveProxy client.

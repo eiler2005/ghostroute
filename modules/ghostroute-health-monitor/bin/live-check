@@ -273,9 +273,14 @@ native_port="$(env_value GHOSTROUTE_CHANNEL_C_HOME_PORT)"
 sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
 sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
 sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
+channel_c_tls_source="$(env_value GHOSTROUTE_CHANNEL_C_TLS_SOURCE)"
+channel_c_tls_sync="$(env_value GHOSTROUTE_CHANNEL_C_TLS_SYNC)"
+channel_c_acme_renew="$(env_value GHOSTROUTE_CHANNEL_C_ACME_RENEW)"
 channel_d_enabled="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
 channel_d_public="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PUBLIC_PORT)"
+channel_d_port="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_PORT)"
 channel_d_socks_port="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_SOCKS_PORT)"
+channel_d_tls_source="$(env_value GHOSTROUTE_CHANNEL_D_TLS_SOURCE)"
 runtime_supervisor="$(env_value GHOSTROUTE_RUNTIME_SUPERVISOR)"
 services_start_hook="$(env_value GHOSTROUTE_SERVICES_START)"
 channel_m_reverse_enabled="$(env_value GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_ENABLED)"
@@ -309,9 +314,14 @@ native_port="${native_port:-41955}"
 sr_enabled="${sr_enabled:-0}"
 sr_public="${sr_public:-4443}"
 sr_port="${sr_port:-41956}"
+channel_c_tls_source="${channel_c_tls_source:-vault}"
+channel_c_tls_sync="${channel_c_tls_sync:-/jffs/scripts/channel-c-tls-sync.sh}"
+channel_c_acme_renew="${channel_c_acme_renew:-/jffs/scripts/channel-c-acme-renew.sh}"
 channel_d_enabled="${channel_d_enabled:-0}"
 channel_d_public="${channel_d_public:-0}"
+channel_d_port="${channel_d_port:-0}"
 channel_d_socks_port="${channel_d_socks_port:-0}"
+channel_d_tls_source="${channel_d_tls_source:-vault}"
 runtime_supervisor="${runtime_supervisor:-/jffs/scripts/ghostroute-runtime-supervisor.sh}"
 services_start_hook="${services_start_hook:-/jffs/scripts/services-start}"
 channel_m_reverse_enabled="${channel_m_reverse_enabled:-0}"
@@ -353,6 +363,28 @@ split_ok_d() {
   printf '%s\n' "$singbox_compact" | grep -Eq "\"inbound\":\"$inbound\",\"rule_set\":\[\"stealth-domains\",\"stealth-static\"\],\"outbound\":\"reality-out(-d)?\"" &&
     printf '%s\n' "$singbox_compact" | grep -Fq "\"inbound\":\"$inbound\",\"outbound\":\"direct-out\""
 }
+
+tls_listener_state() {
+  port="$1"
+  [ -n "$port" ] && [ "$port" != 0 ] || {
+    printf 'invalid\n'
+    return
+  }
+  certificate="$(timeout 8 openssl s_client -connect "127.0.0.1:$port" </dev/null 2>/dev/null || true)"
+  [ -n "$certificate" ] || {
+    printf 'invalid\n'
+    return
+  }
+  printf '%s\n' "$certificate" | openssl x509 -noout -checkend 0 >/dev/null 2>&1 || {
+    printf 'invalid\n'
+    return
+  }
+  printf '%s\n' "$certificate" | openssl x509 -noout -checkend 2592000 >/dev/null 2>&1 || {
+    printf 'expires-soon\n'
+    return
+  }
+  printf 'current\n'
+}
 udp_drop_ok() {
   printf '%s\n' "$filter_forward" | grep -q -- '--dport 443 .*match-set STEALTH_DOMAINS dst .*DROP' &&
     printf '%s\n' "$filter_forward" | grep -q -- '--dport 443 .*match-set VPN_STATIC_NETS dst .*DROP'
@@ -386,6 +418,20 @@ if [ "$filter" = all ] || [ "$filter" = channel-b ]; then
 fi
 
 if [ "$filter" = all ] || [ "$filter" = channel-c ]; then
+  if [ "$native_enabled" = 1 ] || [ "$sr_enabled" = 1 ]; then
+    if [ "$sr_enabled" = 1 ]; then
+      c_tls_state="$(tls_listener_state "$sr_port")"
+    else
+      c_tls_state="$(tls_listener_state "$native_port")"
+    fi
+    case "$c_tls_state" in
+      current) emit channel_c_tls OK "Channel C TLS" "Channel C listener certificate is current" "source=$channel_c_tls_source" "No action." ;;
+      expires-soon) emit channel_c_tls WARN "Channel C TLS" "Channel C listener certificate expires within 30 days" "source=$channel_c_tls_source" "Run the ACME renewal check and inspect its log." ;;
+      *) emit channel_c_tls CRIT "Channel C TLS" "Channel C listener certificate is missing or invalid" "source=$channel_c_tls_source" "Restore a valid certificate before troubleshooting client profiles." ;;
+    esac
+  else
+    emit channel_c_tls N/A "Channel C TLS" "Channel C is disabled in runtime config" "enabled=0" "No action."
+  fi
   listener_ok "$sr_port" && input_ok "$sr_port" && { [ "$sr_public" = "$sr_port" ] || redirect_ok "$sr_public" "$sr_port"; } && split_ok channel-c-shadowrocket-http-in && emit channel_c_shadowrocket_chain OK "Channel C/C1-Shadowrocket" "C1-Shadowrocket listener, redirect, INPUT and split are present" "public_port=$sr_public internal_port=$sr_port recent_log_lines=$(line_count 'inbound/http[channel-c-shadowrocket-http-in]')" "No action." || emit channel_c_shadowrocket_chain CRIT "Channel C/C1-Shadowrocket" "C1-Shadowrocket runtime chain is incomplete" "public_port=$sr_public internal_port=$sr_port" "Check C1-Shadowrocket listener, redirect, INPUT and split."
   sr_recent="$(line_count 'inbound/http[channel-c-shadowrocket-http-in]')"; sr_last="$(last_line 'inbound/http[channel-c-shadowrocket-http-in]')"
   [ "$sr_recent" -gt 0 ] && emit channel_c_shadowrocket_recent OK "Channel C/C1-Shadowrocket" "Recent C1-Shadowrocket evidence is visible" "recent_log_lines=$sr_recent last_seen=\"${sr_last:-n/a}\"" "No action." || emit channel_c_shadowrocket_recent IDLE "Channel C/C1-Shadowrocket" "No recent C1-Shadowrocket client event in log tail" "recent_log_lines=0" "If a C1 client is trying now, check Shadowrocket profile and public port."
@@ -396,8 +442,15 @@ fi
 
 if [ "$filter" = all ] || [ "$filter" = channel-d ]; then
   if [ "$channel_d_enabled" = 1 ]; then
+    d_tls_state="$(tls_listener_state "$channel_d_port")"
+    case "$d_tls_state" in
+      current) emit channel_d_tls OK "Channel D TLS" "Channel D listener certificate is current" "source=$channel_d_tls_source" "No action." ;;
+      expires-soon) emit channel_d_tls WARN "Channel D TLS" "Channel D listener certificate expires within 30 days" "source=$channel_d_tls_source" "Run the ACME renewal check and inspect its log." ;;
+      *) emit channel_d_tls CRIT "Channel D TLS" "Channel D listener certificate is missing or invalid" "source=$channel_d_tls_source" "Restore a valid certificate before troubleshooting the Karing profile." ;;
+    esac
     listener_ok "$channel_d_socks_port" && split_ok_d channel-d-naiveproxy-socks-in && emit channel_d_chain OK "Channel D/NaiveProxy" "Channel D SOCKS inbound and managed split are present" "socks_port=$channel_d_socks_port public_port=$channel_d_public recent_log_lines=$(line_count 'inbound/socks[channel-d-naiveproxy-socks-in]')" "No action." || emit channel_d_chain WARN "Channel D/NaiveProxy" "Channel D runtime chain is incomplete" "socks_port=$channel_d_socks_port public_port=$channel_d_public" "Channel D is an experimental lab lane; check the Caddy naive ingress, SOCKS inbound and managed split."
   else
+    emit channel_d_tls N/A "Channel D TLS" "Channel D is disabled in runtime config" "enabled=0" "No action."
     emit channel_d_chain N/A "Channel D/NaiveProxy" "Channel D is disabled in runtime config" "enabled=0" "No action unless Channel D should be enabled."
   fi
   d_recent="$(line_count 'inbound/socks[channel-d-naiveproxy-socks-in]')"; d_last="$(last_line 'inbound/socks[channel-d-naiveproxy-socks-in]')"
@@ -425,6 +478,15 @@ if [ "$filter" = all ]; then
     printf '%s\n' "$cron_list" | grep -Fq '/jffs/scripts/singbox-watchdog.sh' && printf '%s\n' "$cron_list" | grep -Fq '/jffs/scripts/dnscrypt-watchdog.sh' && emit runtime_watchdog_crons OK "Runtime supervisor" "Core listener watchdog cron entries are active" "watchdogs=sing-box,dnscrypt" "No action." || emit runtime_watchdog_crons WARN "Runtime supervisor" "Core listener watchdog cron entries are incomplete" "watchdogs=sing-box,dnscrypt" "Run the runtime supervisor recover command."
   else
     emit runtime_watchdog_crons N/A "Runtime supervisor" "Supervisor-owned watchdog cron state has not been deployed yet" "watchdogs=sing-box,dnscrypt" "Run the router runtime hardening deploy."
+  fi
+  if [ "$channel_c_tls_source" = asus_acme ] || [ "$channel_d_tls_source" = asus_acme ]; then
+    if [ "$supervisor_ready" = 1 ] && printf '%s\n' "$cron_list" | grep -Fq "$channel_c_tls_sync" && printf '%s\n' "$cron_list" | grep -Fq "$channel_c_acme_renew"; then
+      emit channel_c_acme_crons OK "Channel C/D TLS" "ACME renewal and TLS sync crons are owned by the runtime supervisor" "renewal=daily sync=6h" "No action."
+    else
+      emit channel_c_acme_crons WARN "Channel C/D TLS" "ACME renewal or TLS sync cron is missing" "renewal=$channel_c_acme_renew sync=$channel_c_tls_sync" "Run the runtime supervisor recover command."
+    fi
+  else
+    emit channel_c_acme_crons N/A "Channel C/D TLS" "Vault-managed TLS source is selected" "source=vault" "Migrate to ASUS ACME before relying on automatic renewal."
   fi
   if [ "$channel_m_reverse_enabled" = 1 ] && [ "$supervisor_ready" = 1 ]; then
     printf '%s\n' "$cron_list" | grep -Fq "$channel_m_reverse_script" && emit channel_m_reverse_cron OK "Channel M" "Channel M reverse cron is owned by supervisor state" "script=$channel_m_reverse_script" "No action." || emit channel_m_reverse_cron WARN "Channel M" "Channel M reverse cron is missing" "script=$channel_m_reverse_script" "Run the runtime supervisor recover command."

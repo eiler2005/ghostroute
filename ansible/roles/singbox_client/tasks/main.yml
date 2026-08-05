@@ -175,6 +175,7 @@
       - channel_c_home_tls_cert_path | string | length > 0
       - channel_c_home_tls_key_path | string | length > 0
       - channel_c_home_tls_cert_path != channel_c_home_tls_key_path
+      - channel_c_home_tls_source | default('vault') in ['vault', 'asus_acme']
     fail_msg: "Channel C1 needs a home host, public/internal ports, TLS cert/key paths and Naive username/password clients."
   when: channel_c_home_enabled | default(false) | bool
   no_log: true
@@ -287,6 +288,7 @@
     mode: "0644"
   when:
     - channel_c_home_enabled | default(false) | bool
+    - channel_c_home_tls_source | default('vault') == 'vault'
     - channel_c_home_tls_cert_pem | default('') | length > 0
   no_log: true
 
@@ -297,7 +299,36 @@
     mode: "0600"
   when:
     - channel_c_home_enabled | default(false) | bool
+    - channel_c_home_tls_source | default('vault') == 'vault'
     - channel_c_home_tls_key_pem | default('') | length > 0
+  no_log: true
+
+- name: Install Channel C1 TLS material from ASUS ACME when selected
+  ansible.builtin.raw: |
+    set -eu
+    source_cert={{ channel_c_home_asus_acme_cert_path | quote }}
+    source_key={{ channel_c_home_asus_acme_key_path | quote }}
+    destination_cert={{ channel_c_home_tls_cert_path | quote }}
+    destination_key={{ channel_c_home_tls_key_path | quote }}
+    [ -s "$source_cert" ] && [ -s "$source_key" ]
+    openssl x509 -in "$source_cert" -noout -checkend 0 >/dev/null
+    install_file() {
+      source_file="$1"
+      destination="$2"
+      mode="$3"
+      temporary="${destination}.new.$$"
+      mkdir -p "$(dirname "$destination")"
+      umask 077
+      cp "$source_file" "$temporary"
+      chmod "$mode" "$temporary"
+      mv "$temporary" "$destination"
+    }
+    install_file "$source_cert" "$destination_cert" 0644
+    install_file "$source_key" "$destination_key" 0600
+  changed_when: false
+  when:
+    - channel_c_home_tls_source | default('vault') == 'asus_acme'
+    - (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool)
   no_log: true
 
 - name: Validate Channel C1 TLS certificate files exist
@@ -306,6 +337,13 @@
     [ -s "{{ channel_c_home_tls_key_path }}" ]
   changed_when: false
   when: channel_c_home_enabled | default(false) | bool
+  no_log: true
+
+- name: Validate Channel C1 TLS certificate is currently valid
+  ansible.builtin.raw: "openssl x509 -in {{ channel_c_home_tls_cert_path | quote }} -noout -checkend 0 >/dev/null"
+  changed_when: false
+  when:
+    - channel_c_home_enabled | default(false) | bool
   no_log: true
 
 - name: Ensure Channel M TLS directory exists

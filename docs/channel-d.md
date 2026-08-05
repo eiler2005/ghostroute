@@ -2,8 +2,8 @@
 
 Channel D is a selected-client home-first lane for Karing /
 NaiveProxy-style clients against a router-native Caddy `forward_proxy@naive`
-runtime. The current router runtime is operator live-proven with Karing over
-LTE, but Channel D remains isolated from Channel C proof and ownership.
+runtime. Its server chain is independently verifiable, but Channel D remains
+isolated from Channel C proof and ownership.
 
 ```text
 Karing / NaiveProxy-style client
@@ -49,6 +49,26 @@ The Caddy binary is built locally with:
 
 The router only receives the finished `linux/arm64` binary. Do not run generic
 NaiveProxy install scripts on the router.
+
+## Shared TLS Lifecycle
+
+By default Channel D uses the same router ASUS ACME certificate as Channel C.
+The ACME renewal job runs only near expiry and temporarily exposes WAN TCP/80
+for the HTTP-01 challenge; the temporary firewall rules are removed at the end
+of every attempt. The TLS sync runs every six hours and restarts Caddy only if
+the certificate or key changed. It does not alter the Channel D egress mode,
+the Channel A/B/M data plane, or the managed split.
+
+Check the effective listener material before diagnosing a Karing profile:
+
+```bash
+./modules/ghostroute-health-monitor/bin/live-check channel-d
+```
+
+`channel_d_tls` must be `OK`. An expired or invalid value is a server-side
+blocker before Caddy can accept the authenticated Naive connection, so it is
+not evidence of a mobile-provider block. The legacy Vault PEM source remains
+available only as an explicit recovery path and is rejected if expired.
 
 ## Naive Compatibility And DPI Reality
 

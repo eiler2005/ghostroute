@@ -175,6 +175,26 @@ the VPS-local reverse listener, while the router-originated SSH tunnel carries
 the request back to the router, so target MAX sites see the home WAN IP. It is
 authenticated and separate from A/B/C client routing.
 
+### Channel C/D TLS Prerequisite
+
+Channel C and Channel D are separate selected-client lanes, but both require a
+currently valid public TLS certificate for every enabled home listener. The
+production source is the router's ASUS ACME certificate
+(`channel_c_home_tls_source: asus_acme`); Channel D inherits that source unless
+it is explicitly configured otherwise. A deploy is allowed only when the
+selected source is current and matches the listener hostname. Checking a PEM on
+disk alone is insufficient: the C1-Shadowrocket and Channel D listeners must
+also serve the current certificate after reload.
+
+The router runtime owns this lifecycle. It synchronizes changed source
+material atomically, reloads only the affected C/D listener, and runs a daily
+renewal *check*. Public ACME certificates have a short maximum lifetime; the
+daily job does nothing while more than the renewal threshold remains. Only a
+near-expiry renewal temporarily exposes the narrowly scoped WAN HTTP-01
+challenge rule, and cleanup removes that rule whether issuance succeeds or
+fails. This TLS maintenance does not change Channel A, B or M routing, DNS,
+firewall ownership, profiles, or managed-egress selection.
+
 ### Layer 2 — Home Router
 
 The home router terminates home-based channels and applies routing and DNS

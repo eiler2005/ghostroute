@@ -644,6 +644,31 @@
       when: channel_c_home_enabled | default(false) | bool
       no_log: true
 
+    - name: Channel C1 TLS certificate is currently valid when enabled
+      ansible.builtin.shell: "openssl x509 -in {{ channel_c_home_tls_cert_path | quote }} -noout -checkend 0 >/dev/null"
+      changed_when: false
+      when: channel_c_home_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel C1 Shadowrocket listener serves a current TLS certificate when enabled
+      ansible.builtin.shell: |
+        timeout 8 openssl s_client -connect 127.0.0.1:{{ channel_c_shadowrocket_ingress_port }} </dev/null 2>/dev/null |
+          openssl x509 -noout -checkend 0 >/dev/null
+      changed_when: false
+      when: channel_c_shadowrocket_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel C1 ASUS ACME source is current when selected
+      ansible.builtin.shell: |
+        [ -s {{ channel_c_home_asus_acme_cert_path | quote }} ] &&
+        [ -s {{ channel_c_home_asus_acme_key_path | quote }} ] &&
+        openssl x509 -in {{ channel_c_home_asus_acme_cert_path | quote }} -noout -checkend 0 >/dev/null
+      changed_when: false
+      when:
+        - channel_c_home_enabled | default(false) | bool
+        - channel_c_home_tls_source | default('vault') == 'asus_acme'
+      no_log: true
+
     - name: Channel C1 public port redirects to internal Naive listener when needed
       ansible.builtin.shell: |
         wan_if="$(nvram get wan0_ifname)"
@@ -725,6 +750,20 @@
       ansible.builtin.shell: "netstat -nlp 2>/dev/null | grep -Eq '(^|[[:space:]])(0\\.0\\.0\\.0|::):{{ channel_d_naiveproxy_ingress_port }}[[:space:]]'"
       changed_when: false
       when: channel_d_naiveproxy_enabled | default(false) | bool
+
+    - name: Channel D NaiveProxy TLS certificate is currently valid when enabled
+      ansible.builtin.shell: "openssl x509 -in {{ channel_d_naiveproxy_tls_cert_path | quote }} -noout -checkend 0 >/dev/null"
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
+
+    - name: Channel D NaiveProxy listener serves a current TLS certificate when enabled
+      ansible.builtin.shell: |
+        timeout 8 openssl s_client -connect 127.0.0.1:{{ channel_d_naiveproxy_ingress_port }} </dev/null 2>/dev/null |
+          openssl x509 -noout -checkend 0 >/dev/null
+      changed_when: false
+      when: channel_d_naiveproxy_enabled | default(false) | bool
+      no_log: true
 
     - name: Channel D NaiveProxy public port redirects to internal Caddy listener when needed
       ansible.builtin.shell: |

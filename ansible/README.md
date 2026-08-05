@@ -272,6 +272,24 @@ cd ansible
 ansible-playbook playbooks/21-channel-b-router.yml
 ```
 
+### Channel C/D TLS prerequisite
+
+Before `22-channel-c-router.yml` or `24-channel-d-router.yml`, configure a
+current certificate source for every enabled public C/D listener. Production
+uses the router ASUS ACME source through
+`vault_channel_c_home_tls_source: "asus_acme"`; Channel D inherits that source
+unless configured separately. Its certificate must match the configured public
+hostname. Do not use an expired Vault PEM as a fallback: the playbooks reject
+expired source material and, after deployment, check the certificate actually
+served by each listener rather than trusting the file alone.
+
+The router supervisor performs a daily ACME renewal check and periodic TLS
+sync. A check does not issue or renew while the certificate is sufficiently
+fresh. Only a near-expiry HTTP-01 renewal creates a temporary, scoped WAN
+exception; it is removed whether the renewal succeeds or fails. This
+maintenance is confined to C/D TLS and does not modify Channel A, B or M
+routing, DNS, firewall ownership, profiles, or managed-egress selection.
+
 Refresh Channel C1 home-first router add-on:
 
 ```bash

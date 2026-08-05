@@ -27,6 +27,8 @@
     - { src: cron-save-ipset, dest: "{{ cron_save_ipset_script }}" }
     - { src: services-start, dest: "{{ services_start_hook }}" }
     - { src: ghostroute-runtime-supervisor, dest: "{{ ghostroute_runtime_supervisor_path }}" }
+    - { src: channel-c-tls-sync.sh, dest: "{{ channel_c_tls_sync_script_path | default('/jffs/scripts/channel-c-tls-sync.sh') }}" }
+    - { src: channel-c-acme-renew.sh, dest: "{{ channel_c_acme_renew_script_path | default('/jffs/scripts/channel-c-acme-renew.sh') }}" }
 
 - name: Install read-only traffic observatory router samplers
   ansible.builtin.copy:
