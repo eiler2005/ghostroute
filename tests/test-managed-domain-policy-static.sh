@@ -155,6 +155,7 @@ assert_contains_fixed "$AUTO_ADD_SCRIPT" 'update-singbox-rule-sets.sh --restart-
 assert_contains_fixed "$STEALTH_TASKS" "configs/dnsmasq-stealth.conf.add"
 assert_contains_fixed "$STEALTH_TASKS" "configs/private/dnsmasq-stealth.local.conf.add"
 assert_contains_fixed "$STEALTH_TASKS" "configs/static-networks.txt"
+assert_contains_fixed "$STEALTH_TASKS" "secrets/static-networks.local.txt"
 assert_contains_fixed "$STEALTH_TASKS" "configs/no-vpn-ip-ports.txt"
 assert_contains_fixed "$STEALTH_TASKS" "secrets/no-vpn-ip-ports.local.txt"
 assert_contains_fixed "$STEALTH_TASKS" "configs/domains-no-vpn.txt"

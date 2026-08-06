@@ -74,7 +74,12 @@
 
 - name: Install Channel A static CIDR catalog
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../configs/static-networks.txt"
+    content: |
+      {{ lookup('ansible.builtin.file', playbook_dir + '/../../configs/static-networks.txt') }}
+      {% set private_static = lookup('ansible.builtin.file', playbook_dir + '/../../secrets/static-networks.local.txt', errors='ignore') | default('', true) %}
+      {% if private_static | length > 0 %}
+      {{ private_static }}
+      {% endif %}
     dest: "{{ static_networks_path }}"
     mode: "0644"
 

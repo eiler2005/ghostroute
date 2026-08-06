@@ -25,6 +25,7 @@ Treat these as secrets or sensitive operational data:
 secrets/router.env                  # local router deploy env; gitignored
 secrets/router-remote-ssh/          # local fallback remote-router key; gitignored
 secrets/no-vpn-ip-ports.local.txt   # personal bypass IP:port rules; gitignored
+secrets/static-networks.local.txt   # local /32 managed-route tests; gitignored
 secrets/device-metadata.local.tsv   # local device aliases; gitignored
 configs/private/dnsmasq-stealth.local.conf.add
                                    # local provider/admin/private domain rules; gitignored
