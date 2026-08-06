@@ -10,6 +10,7 @@
 | `configs/private/dnsmasq-stealth.local.conf.add` | `STEALTH_DOMAINS` | локальные/private overrides, добавляются при deploy | managed -> Reality |
 | `/jffs/configs/dnsmasq-autodiscovered.conf.add` | `STEALTH_DOMAINS` | auto-discovery после DNS-наблюдения и проверок | managed -> Reality |
 | `configs/static-networks.txt` | `VPN_STATIC_NETS` | direct-IP/static CIDR services, например Telegram/Apple/Meta/imo | managed -> Reality |
+| `secrets/static-networks.local.txt` | `VPN_STATIC_NETS` | локальные тестовые/приватные IP, включая SSH-проверку VPS | managed -> Reality |
 | `configs/domains-no-vpn.txt` | no ipset | запрет auto-add для чувствительных direct-доменов | direct/home WAN |
 
 Advisory-only идеи по сужению каталога лежат в
@@ -162,6 +163,33 @@ br0 UDP/443 -> VPN_STATIC_NETS -> DROP -> client fallback to TCP
 ipset test VPN_STATIC_NETS 203.0.113.1
 iptables -t nat -S PREROUTING | grep VPN_STATIC_NETS
 ```
+
+### Проверка доступа к VPS через домашний managed path
+
+Для разовой проверки, блокирует ли домашний провайдер прямой SSH-доступ к
+VPS, не добавляйте реальный адрес в tracked catalog. Запишите конкретный адрес
+VPS как `/32` в gitignored-файл:
+
+```text
+# secrets/static-networks.local.txt
+<hostkey_vps_ip>/32
+```
+
+`deploy.sh` и роль `stealth_routing` объединяют этот файл с публичным
+`configs/static-networks.txt` в `VPN_STATIC_NETS`. После deploy проверяйте SSH
+с клиента в домашней LAN/Wi-Fi, а не из самого роутера:
+
+```bash
+ssh -o ConnectTimeout=10 -p <ssh_port> <ssh_user>@<hostkey_vps_ip>
+```
+
+Если через LAN/Wi-Fi SSH начинает работать, а прямой путь с той же машины
+тайм-аутится, проблема, вероятно, находится в домашнем ISP/его маршруте.
+Удалите `/32` из local-файла и повторите deploy после проверки. Не добавляйте
+широкие provider CIDR: они утащат через VPS посторонний трафик.
+
+Важно: `VPN_STATIC_NETS` влияет на LAN/Wi-Fi forwarding. SSH-команды,
+запущенные самим роутером, не являются эквивалентным тестом этого пути.
 
 ## Удалить домен или сеть
 

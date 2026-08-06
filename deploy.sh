@@ -160,12 +160,16 @@ echo "SSH target: ${ROUTER_USER}@${ROUTER}:${ROUTER_PORT}"
 run_deploy_gate "pre-deploy"
 
 ssh_cmd "mkdir -p '${REMOTE_STAGE}/configs' '${REMOTE_STAGE}/scripts/health-monitor' '${REMOTE_STAGE}/secrets' /jffs/configs /jffs/scripts"
+ssh_cmd "rm -f '${REMOTE_STAGE}/secrets/static-networks.local.txt'"
 
 upload_file "${PROJECT_ROOT}/configs/dnsmasq-stealth.conf.add" "${REMOTE_STAGE}/configs/dnsmasq-stealth.conf.add"
 if [ -f "${PROJECT_ROOT}/configs/private/dnsmasq-stealth.local.conf.add" ]; then
   upload_file "${PROJECT_ROOT}/configs/private/dnsmasq-stealth.local.conf.add" "${REMOTE_STAGE}/secrets/dnsmasq-stealth.local.conf.add"
 fi
 upload_file "${PROJECT_ROOT}/configs/static-networks.txt" "${REMOTE_STAGE}/configs/static-networks.txt"
+if [ -f "${PROJECT_ROOT}/secrets/static-networks.local.txt" ]; then
+  upload_file "${PROJECT_ROOT}/secrets/static-networks.local.txt" "${REMOTE_STAGE}/secrets/static-networks.local.txt"
+fi
 upload_file "${PROJECT_ROOT}/configs/no-vpn-ip-ports.txt" "${REMOTE_STAGE}/configs/no-vpn-ip-ports.txt"
 if [ -f "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" ]; then
   upload_file "${PROJECT_ROOT}/secrets/no-vpn-ip-ports.local.txt" "${REMOTE_STAGE}/secrets/no-vpn-ip-ports.local.txt"
@@ -355,6 +359,9 @@ rm -f /jffs/configs/dnsmasq-vpn-upstream.conf.add
 
 backup_if_present /jffs/configs/router_configuration.static_nets
 cp "$REMOTE_STAGE/configs/static-networks.txt" /jffs/configs/router_configuration.static_nets
+if [ -f "$REMOTE_STAGE/secrets/static-networks.local.txt" ]; then
+  cat "$REMOTE_STAGE/secrets/static-networks.local.txt" >> /jffs/configs/router_configuration.static_nets
+fi
 
 backup_if_present /jffs/configs/router_configuration.no_vpn_ip_ports
 cp "$REMOTE_STAGE/configs/no-vpn-ip-ports.txt" /jffs/configs/router_configuration.no_vpn_ip_ports
