@@ -11,6 +11,8 @@ ipset=/ipify.org/STEALTH_DOMAINS
 
 ipset=/atlassian.com/STEALTH_DOMAINS
 ipset=/anthropic.com/STEALTH_DOMAINS
+# Factory (Droid): public web, API and agent-service subdomains.
+ipset=/factory.ai/STEALTH_DOMAINS
 ipset=/chatgpt.com/STEALTH_DOMAINS
 ipset=/claude.ai/STEALTH_DOMAINS
 ipset=/claude.com/STEALTH_DOMAINS
