@@ -1,6 +1,8 @@
 # Domain Families Reference: AI & Dev Tools
 
-This document explains which domains each service uses and why they need to be routed through VPN. Useful when diagnosing issues or adding similar services.
+This document explains which domains each service uses and why they need the
+managed Reality egress. Useful when diagnosing issues or adding similar
+services.
 
 All domains listed here belong in `configs/dnsmasq-stealth.conf.add`
 (`STEALTH_DOMAINS`). That catalog feeds both LAN Channel A and mobile Home
@@ -11,7 +13,9 @@ rules are retired.
 
 ## How subdomain coverage works
 
-A single `ipset=/github.com/VPN_DOMAINS` rule covers `github.com` **and all its subdomains** (`*.github.com`). You don't need to enumerate subdomains manually — dnsmasq handles this automatically.
+A single `ipset=/github.com/STEALTH_DOMAINS` rule covers `github.com` **and all
+its subdomains** (`*.github.com`). You don't need to enumerate subdomains
+manually — dnsmasq handles this automatically.
 
 Each service below lists only the **registrable domains** needed, not individual subdomains.
 
@@ -65,6 +69,17 @@ chatgpt.com       — ChatGPT web app
 oaistatic.com     — OpenAI static assets and CDN
 oaiusercontent.com — user-uploaded content (images in chats, file uploads)
 ```
+
+---
+
+## Factory / Droid
+
+```
+factory.ai — Factory web app, API and Droid agent-service subdomains
+```
+
+The parent rule covers `www.factory.ai` and service subdomains. Keep it as one
+explicit `STEALTH_DOMAINS` entry rather than enumerating individual hostnames.
 
 ---
 
@@ -137,12 +152,11 @@ When a service doesn't work after adding its main domain, diagnose with:
 # Check dnsmasq log for what domains the service queries
 tail -f /opt/var/log/dnsmasq.log | grep 'query\[A\]'
 
-# Then check if those IPs made it into the ipset
-ipset list VPN_DOMAINS | grep <IP>
+# Then check if those IPs made it into the active ipset
+ipset list STEALTH_DOMAINS | grep <IP>
 
 # Check current paths
 iptables -t nat -vnL PREROUTING | grep 'redir ports <lan-redirect-port>'
-ip route get <IP> mark 0x1000
 ```
 
 Common patterns:

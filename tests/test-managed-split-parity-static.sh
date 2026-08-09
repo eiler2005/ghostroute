@@ -61,6 +61,7 @@ RULESET_SCRIPT="modules/routing-core/router/update-singbox-rule-sets.sh"
 # broader: every domain/CIDR classified as managed after reaching the router
 # must follow the same managed-vs-direct split on LAN/Wi-Fi and Channels A/B/C.
 assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/ipify.org/STEALTH_DOMAINS"
+assert_contains_fixed "configs/dnsmasq-stealth.conf.add" "ipset=/factory.ai/STEALTH_DOMAINS"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_domain: ipify.org"
 assert_contains_fixed "ansible/group_vars/routers.yml" "managed_split_checker_host: api.ipify.org"
 assert_contains_fixed "ansible/playbooks/30-generate-client-profiles.yml" "https://api64.ipify.org   -> must not show LTE/mobile-provider IP"
