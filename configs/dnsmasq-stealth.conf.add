@@ -142,8 +142,11 @@ ipset=/cobalt.tools/STEALTH_DOMAINS
 ipset=/wisprflow.ai/STEALTH_DOMAINS
 ipset=/api.wisprflow.com/STEALTH_DOMAINS
 ipset=/wisprflow.onelink.me/STEALTH_DOMAINS
-# imo Messenger (official domain family; covers auth/beta/tunnel subdomains)
+# imo Messenger (official app/control/asset domain families; parent rules cover
+# auth/beta/tunnel.imo.im and front-perf/static-web/activity.imoim.net)
 ipset=/imo.im/STEALTH_DOMAINS
+ipset=/imoim.net/STEALTH_DOMAINS
+ipset=/imoapp.com/STEALTH_DOMAINS
 # WhatsApp (домены; IP-подсети Meta см. configs/static-networks.txt)
 ipset=/whatsapp.com/STEALTH_DOMAINS
 ipset=/whatsapp.net/STEALTH_DOMAINS

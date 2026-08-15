@@ -102,6 +102,8 @@ assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/api.imem.app/STEALTH_DOMAIN
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/api.swiftgram.app/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/whatsapp.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imo.im/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imoim.net/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imoapp.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/openai.com/STEALTH_DOMAINS"
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/gmail.com/STEALTH_DOMAINS"
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/googlemail.com/STEALTH_DOMAINS"
@@ -139,7 +141,13 @@ assert_not_contains_regex "$STATIC_CATALOG" '^91[.]108[.]0[.]0/16'
 assert_contains_regex "$STATIC_CATALOG" '^91[.]108[.]4[.]0/22'
 assert_contains_regex "$STATIC_CATALOG" '^149[.]154[.]160[.]0/20'
 assert_contains_regex "$STATIC_CATALOG" '^5[.]150[.]156[.]0/22'
+assert_contains_regex "$STATIC_CATALOG" '^169[.]136[.]141[.]0/24'
 assert_contains_regex "$STATIC_CATALOG" '^192[.]12[.]31[.]0/24'
+assert_contains_regex "$STATIC_CATALOG" '^198[.]51[.]96[.]0/24'
+assert_not_contains_regex "$STATIC_CATALOG" '^45[.]249[.]44[.]0/22'
+assert_not_contains_regex "$STATIC_CATALOG" '^103[.]208[.]252[.]0/22'
+assert_not_contains_regex "$STATIC_CATALOG" '^169[.]136[.]68[.]0/22'
+assert_not_contains_regex "$STATIC_CATALOG" '^185[.]155[.]136[.]0/22'
 
 # Direct/skip policy: these are not managed-route additions. Russian TLDs are
 # skipped by code; sensitive non-RU services can be listed explicitly.

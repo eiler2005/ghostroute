@@ -32,11 +32,14 @@ non-managed-направления уходят через `direct-out` и до�
 
 Полная схема: [modules/routing-core/docs/network-flow-and-observer-model.md](../../routing-core/docs/network-flow-and-observer-model.md).
 
-Пример: imo Messenger остаётся managed через `imo.im` в
-`STEALTH_DOMAINS`, а media/CDN fallback закрывается PageBites-сетями в
-`VPN_STATIC_NETS`. Если картинки/медиа не открываются, сначала проверяйте
-конкретные PageBites CIDR в `configs/static-networks.txt`, а не добавляйте
-отдельные `cdn*.imo.im`: parent-domain `imo.im` уже покрывает эти поддомены.
+Пример: imo Messenger остаётся managed через `imo.im`, `imoim.net` и
+`imoapp.com` в `STEALTH_DOMAINS`, а media/CDN fallback закрывается текущими
+PageBites/AS36131 сетями в `VPN_STATIC_NETS`. `imo.im` покрывает его
+поддомены (`auth`, `api`, `cdn`, `tunnel`), а `imoim.net` — официальные web,
+asset и feedback хосты. Если картинки/медиа не открываются, сначала
+проверяйте конкретные PageBites CIDR в `configs/static-networks.txt`, а не
+добавляйте отдельные `cdn*.imo.im`: parent-domain `imo.im` уже покрывает эти
+поддомены.
 
 ## Добавить домен вручную
 
