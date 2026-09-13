@@ -485,7 +485,11 @@ The playbook copies the current checkout's existing performance specs to a
 temporary VPS workspace, starts an ephemeral Playwright sidecar on the VPS host
 network, and points it at the local Console listener. It does not seed test data
 or mutate Console runtime state; temporary npm/test artifacts are created under
-`/tmp` and removed after the run.
+`/tmp` and removed after the run. The Playwright Docker image is also removed
+from the VPS host after a successful run so the live gate does not leave a
+multi-gigabyte inactive image behind; set
+`ghostroute_console_perf_cleanup_image=false` only for short-term image-cache
+debugging.
 
 `verify:timezone` protects UTC-storage/MSK-window math. `verify:aggregates`
 checks that prepared windows exist and reconcile to dashboard attribution
@@ -528,6 +532,11 @@ For the browser/API timing gate on the deployed VPS runtime:
 cd ansible
 ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
 ```
+
+The live performance playbook removes its temporary Playwright Docker image
+after a successful run. Disable that only temporarily with
+`-e ghostroute_console_perf_cleanup_image=false` when debugging image startup or
+pull latency.
 
 The expected full collector set includes `traffic_summary`, `router_rollups`,
 `traffic_evidence` and `traffic_facts`; the prepared `dashboard`, `clients` and
