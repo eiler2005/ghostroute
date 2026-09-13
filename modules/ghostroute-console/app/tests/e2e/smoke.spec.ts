@@ -204,7 +204,9 @@ test("flow workbench exposes inline detail and gated evidence", async ({ page, i
   if (encodedFlow) await expect(page).toHaveURL(new RegExp(`flow=${encodedFlow}`));
   await expect(page.locator(".route-table-card tbody tr.selected")).toHaveCount(1);
   await expect(page.locator(".route-table-card tbody tr.selected a").first()).toHaveAttribute("href", new RegExp(`flow=${encodedFlow}`));
-  await page.locator(".flow-detail-panel .evidence-details summary").first().click({ force: true });
+  const rawEvidence = page.locator(".flow-detail-panel .evidence-details summary").first();
+  await rawEvidence.scrollIntoViewIfNeeded();
+  await rawEvidence.click();
   await expect(page.locator(".flow-detail-panel .codebox").first()).toBeVisible();
 });
 

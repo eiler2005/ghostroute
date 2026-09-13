@@ -1,8 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
 
+const standaloneDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR
+  ? `GHOSTROUTE_CONSOLE_DATA_DIR=${JSON.stringify(resolve(process.cwd(), process.env.GHOSTROUTE_CONSOLE_DATA_DIR))} `
+  : "";
 const serverCommand =
   process.env.GHOSTROUTE_CONSOLE_E2E_SERVER_MODE === "start"
-    ? "npm run start -- --hostname 127.0.0.1 --port 3217"
+    ? `${standaloneDataDir}HOSTNAME=127.0.0.1 PORT=3217 node .next/standalone/server.js`
     : "npm run dev -- --hostname 127.0.0.1 --port 3217";
 
 export default defineConfig({

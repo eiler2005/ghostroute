@@ -72,7 +72,8 @@ checks.
 ```
 
 `run-all.sh` runs fast checks plus Console smoke by default. `--full` runs the
-full Playwright e2e suite after fast checks.
+full Playwright e2e suite after fast checks against the seeded GUI database and
+the standalone production build.
 
 For the complete module-owned Console local gate, use:
 

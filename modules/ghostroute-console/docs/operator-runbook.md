@@ -418,6 +418,11 @@ cd ansible
 ansible-playbook -e @group_vars/all.yml -e @group_vars/vps_stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/performance-live.yml
 ```
 
+The live performance playbook removes its temporary Playwright Docker image from
+the VPS host after a successful run. Keep that default enabled for normal
+operations; use `-e ghostroute_console_perf_cleanup_image=false` only for
+short-term image-cache debugging.
+
 Finish with a real public-browser check, not just local curl:
 
 - WebKit/iPhone or real iPhone Safari opens the no-port public URL and lands on

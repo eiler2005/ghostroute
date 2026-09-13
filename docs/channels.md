@@ -341,3 +341,9 @@ WireGuard = cold manual fallback only
 ```
 
 Each channel is explicit, selected and independently verified.
+
+RU mobile whitelist mode is not an exception to this rule. It takes the mobile
+legs of A, B, C, D and the emergency profile down at the same time, from one
+shared cause, so no channel can serve as a fallback for another. See
+[whitelist-mode.md](whitelist-mode.md) and
+[adr/0011-whitelist-mode-posture.md](adr/0011-whitelist-mode-posture.md).

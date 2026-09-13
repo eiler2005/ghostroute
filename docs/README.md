@@ -55,3 +55,4 @@ today."
 - [traffic-facts-v3-and-pyramid-plan.md](traffic-facts-v3-and-pyramid-plan.md) - traffic-facts v3 machine-contract and Console pyramid refactor plan.
 - [traffic-intelligence-layer-plan.md](traffic-intelligence-layer-plan.md) - traffic intelligence layer design on top of the v3 pipeline.
 - [managed-domain-app-family-draft.md](managed-domain-app-family-draft.md) - draft app-family catalog over the active managed domains.
+- [whitelist-mode.md](whitelist-mode.md) - how RU mobile whitelist mode affects every channel, and the design for a future Channel W survival lane.
