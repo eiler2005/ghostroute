@@ -1,6 +1,6 @@
 # STEALTH_DOMAINS Curation Audit
 
-**Status:** advisory-only, current as of 2026-06-16.
+**Status:** advisory-only, current as of 2026-09-14.
 
 This document reviews `configs/dnsmasq-stealth.conf.add` for performance and
 operational clarity. It does **not** remove or change any domain. Runtime
@@ -52,6 +52,10 @@ automatic removal.
 These families are likely to remain managed unless a later user decision says
 otherwise.
 
+Apple coverage was cross-checked against Apple's
+[enterprise network requirements](https://support.apple.com/101555), including
+the July 2026 addition of `*.apple-dns.net` for iCloud services.
+
 | Domain family | Reason | Action |
 |---|---|---|
 | YouTube / Google media: `youtube.com`, `youtu.be`, `youtube-nocookie.com`, `youtube.googleapis.com`, `youtubei.googleapis.com`, `googlevideo.com`, `ytimg.com`, `ggpht.com` | Core managed video path and common block/quality-sensitive traffic. | `keep` |
@@ -60,6 +64,8 @@ otherwise.
 | TikTok/ByteDance: `tiktok.com`, `tiktokcdn.com`, `tiktokcdn-eu.com`, `tiktokcdn-us.com`, `tiktokv.com`, `ttwstatic.com`, `byteimg.com`, `byteoversea.com`, `ibytedtos.com`, `muscdn.com` | Video/social traffic where direct availability and quality vary. | `keep` |
 | WhatsApp: `whatsapp.com`, `whatsapp.net`, `wa.me`, `wl.co` | Messenger/media path; static Meta CIDR coverage lives separately. | `keep` |
 | AI services in active use: `chatgpt.com`, `claude.ai`, `claude.com`, `openai.com`, `oaistatic.com`, `oaiusercontent.com`, `anthropic.com`, `ai.google.dev`, `aistudio.google.com`, `generativelanguage.googleapis.com`, `notebooklm.google.com`, `jnn-pa.googleapis.com`, `www.googleapis.com`, `google.com` | May be needed for work and account/location consistency. Some are not necessarily blocked, so keep only while user need is confirmed. | `keep`, then periodic review |
+| Apple sync: `apple.com` (including all `*.apple.com` hosts), `icloud.com`, `icloud.com.cn`, `icloud-content.com`, `apple-cloudkit.com`, `apple-livephotoskit.com`, `apple-dns.net`, `apzones.com` | iCloud Drive and Notes are unreliable on the direct/RF path. The parent `apple.com` rule covers Apple Account and update hosts; the iCloud/CloudKit families cover Notes and sync. | `keep` |
+| Apple Store/media: `aaplimg.com`, `cdn-apple.com`, `apps.apple.com`, `itunes.apple.com`, `itunes.com`, `mzstatic.com`, `media.apple.com`, `podcasts.apple.com` | App Store installation and updates are blocked or unreliable on the direct/RF path, so Store control-plane and content must remain managed. | `keep` |
 
 ## Review Before Changing
 
@@ -71,8 +77,6 @@ These entries might be valid, but they need live evidence before any cleanup.
 | `gitlab.com`, `gitlab-static.net` | Similar developer workflow question as GitHub. | `needs-live-evidence` |
 | `atlassian.com`, `bitbucket.org` | Usually work SaaS rather than block-specific traffic. | `needs-live-evidence`; possible `move-to-no-vpn` |
 | `dev.azure.com`, `visualstudio.com` | Developer tooling; may be direct-capable. | `needs-live-evidence`; possible `move-to-no-vpn` |
-| `icloud.com`, `icloud.apple.com`, `icloud.com.cn`, `icloud-content.com`, `apple-cloudkit.com`, `apple-livephotoskit.com`, `apzones.com`, `iwork.apple.com`, `gc.apple.com`, Apple Account hosts (`account.apple.com`, `idmsa.apple.com`, `gsa.apple.com`, `appleid.cdn-apple.com`) | Apple sync may be latency-sensitive and often direct-capable; currently kept managed because iCloud Drive on Mac is poor on direct/RF and works with full VPN. | `needs-live-evidence`; do not remove blindly |
-| `aaplimg.com`, `cdn-apple.com`, `apps.apple.com`, `itunes.apple.com`, `mzstatic.com`, `media.apple.com`, `podcasts.apple.com` | App Store/media/CDN traffic can be high-volume and may not need VPS. | `needs-live-evidence`; likely candidate for narrower handling |
 | `acast.com`, `acast.cloud`, `omny.fm`, `podtrac.com`, `pscrb.fm`, `tritondigital.com` | Podcast/ad/media delivery domains can add bulk traffic without stealth value. | `needs-live-evidence`; possible `remove-later` |
 | `x.com`, `twitter.com`, `twimg.com`, `t.co` | Social path may be desired managed, but not always required for every device. | `needs-live-evidence` |
 | `linkedin.com` | Professional network; often direct-capable. | `needs-live-evidence`; possible `move-to-no-vpn` |
