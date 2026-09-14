@@ -104,11 +104,16 @@ ipset=/fb.com/STEALTH_DOMAINS
 ipset=/messenger.com/STEALTH_DOMAINS
 # LiveTV (sports streaming)
 ipset=/livetv.sx/STEALTH_DOMAINS
-# Apple Podcasts
+# Apple ecosystem. The parent rule covers apple.com and all *.apple.com hosts,
+# including App Store control-plane and OS update hosts. The remaining parent
+# domains cover Store content, iCloud/Notes, Apple DNS and system services from
+# Apple's published enterprise network requirements (support.apple.com/101555).
+ipset=/apple.com/STEALTH_DOMAINS
 ipset=/podcasts.apple.com/STEALTH_DOMAINS
 ipset=/apps.apple.com/STEALTH_DOMAINS
 ipset=/mzstatic.com/STEALTH_DOMAINS
 ipset=/itunes.apple.com/STEALTH_DOMAINS
+ipset=/itunes.com/STEALTH_DOMAINS
 ipset=/aaplimg.com/STEALTH_DOMAINS
 ipset=/media.apple.com/STEALTH_DOMAINS
 ipset=/account.apple.com/STEALTH_DOMAINS
@@ -127,6 +132,10 @@ ipset=/cdn-apple.com/STEALTH_DOMAINS
 ipset=/gc.apple.com/STEALTH_DOMAINS
 ipset=/iwork.apple.com/STEALTH_DOMAINS
 ipset=/doh.dns.apple.com/STEALTH_DOMAINS
+ipset=/apple-dns.net/STEALTH_DOMAINS
+ipset=/apple-mapkit.com/STEALTH_DOMAINS
+ipset=/networking.apple/STEALTH_DOMAINS
+ipset=/safebrowsing.apple/STEALTH_DOMAINS
 ipset=/acast.com/STEALTH_DOMAINS
 ipset=/acast.cloud/STEALTH_DOMAINS
 ipset=/omny.fm/STEALTH_DOMAINS

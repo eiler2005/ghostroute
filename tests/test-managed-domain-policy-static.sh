@@ -124,11 +124,16 @@ assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.net/STEALTH_DOMAIN
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/browserleaks.org/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/console.hetzner.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/meduza.io/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/apple.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/account.apple.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/idmsa.apple.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/icloud.com.cn/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/apzones.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/doh.dns.apple.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/apple-dns.net/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/itunes.com/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/networking.apple/STEALTH_DOMAINS"
+assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/safebrowsing.apple/STEALTH_DOMAINS"
 
 # Static direct-IP catalog: this is still managed traffic. It covers services
 # that can connect by IP before a DNS-populated ipset entry exists.
@@ -184,6 +189,8 @@ cat > "$TMPDIR/manual.conf" <<'EOF_MANUAL'
 ipset=/telegram.org/STEALTH_DOMAINS
 ipset=/t.me/STEALTH_DOMAINS
 ipset=/openai.com/STEALTH_DOMAINS
+ipset=/apple.com/STEALTH_DOMAINS
+ipset=/apple-dns.net/STEALTH_DOMAINS
 ipset=/ignored.example/OTHER_SET
 EOF_MANUAL
 cat > "$TMPDIR/auto.conf" <<'EOF_AUTO'
@@ -209,6 +216,8 @@ DNSMASQ_VPS_DNS_CONF="$TMPDIR/managed-vps-dns.conf" \
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"telegram.org"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"t.me"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"openai.com"'
+assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"apple.com"'
+assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"apple-dns.net"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"auto-managed.example"'
 assert_generated_not_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"ignored.example"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-static.json" '"198.51.100.0/24"'
