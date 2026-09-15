@@ -26,6 +26,9 @@ reality_server_names:
 # loopback app upstream. Used by the Hermes app-web-route playbook.
 caddy_l4_web_sni_host: ""
 caddy_l4_web_upstream: "127.0.0.1:8444"
+# Additional app-owned exact-SNI routes, rendered after the primary web route.
+# Each item: {name: <matcher name>, sni_host: <exact hostname>, upstream: 127.0.0.1:<port>}.
+caddy_l4_extra_web_routes: []
 
 # Channel B direct mode is add-only and disabled until a real vault-only public
 # hostname, path and credentials are supplied. Channel C is router-side only.

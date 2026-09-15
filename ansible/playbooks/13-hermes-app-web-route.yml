@@ -5,9 +5,11 @@
 # gate before/after, live Caddyfile backup, config validation inside the caddy
 # image before recreate, and automatic rollback to the backup on any failure.
 #
-# The web SNI hostname is read from the app-owned stack env
-# (/opt/cheap-intelligence/.env DIGEST_HOSTNAME) so the outer route and the
-# inner app Caddy always agree, and no IP is committed to git.
+# Web SNI hostnames are read from the app-owned stack envs
+# (/opt/cheap-intelligence/.env DIGEST_HOSTNAME and, when present,
+# /opt/career-copilot/.env CC_PUBLIC_HOST) so the outer routes and the inner app
+# Caddies always agree, and no IP is committed to git. Each route is exact-SNI to
+# its own loopback upstream; unmatched SNI keeps falling through to Xray.
 - name: Hermes outer Caddy — add app web SNI route (surgical, caddy-only)
   hosts: vps_egress_hermes
   become: true
@@ -20,6 +22,7 @@
     stealth_stack_dir: /opt/stealth
     stealth_caddy_mode: docker_sidecar
     ci_env_path: /opt/cheap-intelligence/.env
+    cc_env_path: /opt/career-copilot/.env
   pre_tasks:
     - name: GhostRoute deploy gate (before)
       ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
@@ -40,6 +43,46 @@
         that:
           - caddy_l4_web_sni_host is match('^digest\\.[0-9-]+\\.sslip\\.io$')
         fail_msg: "Derived web SNI host is not a digest.<ip-dashed>.sslip.io hostname."
+      no_log: true
+
+    - name: Check for the Career Copilot app stack env
+      ansible.builtin.stat:
+        path: "{{ cc_env_path }}"
+      register: _cc_env_stat
+
+    - name: Read Career Copilot stack env
+      ansible.builtin.slurp:
+        src: "{{ cc_env_path }}"
+      register: _cc_env
+      when: _cc_env_stat.stat.exists
+      no_log: true
+
+    - name: Derive Career Copilot gateway route
+      ansible.builtin.set_fact:
+        _cc_host: "{{ (_cc_env['content'] | b64decode) | regex_search('^CC_PUBLIC_HOST=\\S+', multiline=True) | default('', true) | regex_replace('^CC_PUBLIC_HOST=', '') | trim }}"
+        _cc_port: "{{ (_cc_env['content'] | b64decode) | regex_search('^CC_GATEWAY_PORT=[0-9]+', multiline=True) | default('CC_GATEWAY_PORT=8445', true) | regex_replace('^CC_GATEWAY_PORT=', '') | trim }}"
+      when: _cc_env_stat.stat.exists
+      no_log: true
+
+    - name: Sanity-check Career Copilot route shape
+      ansible.builtin.assert:
+        that:
+          - _cc_host is match('^career\\.[0-9-]+\\.sslip\\.io$')
+          - _cc_host != caddy_l4_web_sni_host
+          - _cc_host != reality_server_names[0]
+          - (_cc_port | int) >= 1024 and (_cc_port | int) <= 65535
+          - (_cc_port | int) not in [xray_reality_listen_port | int, 8444]
+        fail_msg: "Career Copilot route must be career.<ip-dashed>.sslip.io to a free loopback port."
+      when: _cc_env_stat.stat.exists and (_cc_host | default('') | length > 0)
+      no_log: true
+
+    - name: Register Career Copilot as an extra exact-SNI route
+      ansible.builtin.set_fact:
+        caddy_l4_extra_web_routes:
+          - name: career_copilot
+            sni_host: "{{ _cc_host }}"
+            upstream: "127.0.0.1:{{ _cc_port }}"
+      when: _cc_env_stat.stat.exists and (_cc_host | default('') | length > 0)
       no_log: true
 
   tasks:

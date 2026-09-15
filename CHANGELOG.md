@@ -8,6 +8,11 @@ by date under **Unreleased** as they land on `master`.
 ## [Unreleased]
 
 ### Added
+- Hermes outer Caddy supports additional app-owned **exact-SNI web routes**
+  (`caddy_l4_extra_web_routes`). `13-hermes-app-web-route.yml` derives the
+  Career Copilot gateway route from `/opt/career-copilot/.env` (`CC_PUBLIC_HOST`,
+  `CC_GATEWAY_PORT`) with shape, collision and port assertions; the existing
+  digest route and the Reality default route render unchanged.
 - Owned **Hermes** managed-egress backend and a Channel A/B/C egress switcher
   (`managed-egress-mode`) behind the stable `reality-out` contract.
 - Independent **Channel D** managed-egress selector (`reality-out-d`) with
