@@ -28,6 +28,7 @@ command -v rg >/dev/null 2>&1 || { echo "run-fast: ripgrep (rg) is required" >&2
 "${PROJECT_ROOT}/tests/test-docs-port-sanitization.sh"
 "${PROJECT_ROOT}/tests/test-channel-a-deploy-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-bc-static.sh"
+"${PROJECT_ROOT}/tests/test-hermes-app-web-routes-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-tls-renewal-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-d-static.sh"
 "${PROJECT_ROOT}/tests/test-channel-m-static.sh"

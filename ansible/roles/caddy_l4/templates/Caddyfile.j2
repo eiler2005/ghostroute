@@ -17,6 +17,12 @@
         proxy {{ caddy_l4_web_upstream | default('127.0.0.1:8444') }}
       }
 {% endif %}
+{% for route in caddy_l4_extra_web_routes | default([]) %}
+      @{{ route.name }} tls sni {{ route.sni_host }}
+      route @{{ route.name }} {
+        proxy {{ route.upstream }}
+      }
+{% endfor %}
 
       # Default: отправляем в Xray, чей Reality fallback на dest проксирует
       # не-Reality трафик на настоящий cover-SNI. Это даёт единое
