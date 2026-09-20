@@ -231,6 +231,26 @@ if [ "$CHANNEL_B_HOME_ENABLED" = "1" ]; then
     || logger -t stealth-route-init "comment match unavailable; Channel B home ingress counter is unnamed"
 fi
 
+cleanup_channel_c_public_redirects() {
+  # A public-port reassignment can leave an older C1 redirect ahead of the
+  # new rule. Remove only the four possible C1 public-to-ingress pairs, then
+  # let the enabled lanes install their current single mapping below.
+  for public_port in "$CHANNEL_C_HOME_PUBLIC_PORT" "$CHANNEL_C_SHADOWROCKET_PUBLIC_PORT"; do
+    for ingress_port in "$CHANNEL_C_HOME_PORT" "$CHANNEL_C_SHADOWROCKET_PORT"; do
+      case "$public_port:$ingress_port" in
+        0:*|*:0) continue ;;
+      esac
+      while iptables -t nat -D PREROUTING -i "$WAN_IF" -p tcp --dport "$public_port" -j REDIRECT --to-ports "$ingress_port" 2>/dev/null; do
+        :
+      done
+    done
+  done
+}
+
+if [ "$CHANNEL_C_HOME_ENABLED" = "1" ] || [ "$CHANNEL_C_SHADOWROCKET_ENABLED" = "1" ]; then
+  cleanup_channel_c_public_redirects
+fi
+
 if [ "$CHANNEL_C_HOME_ENABLED" = "1" ]; then
   # Channel C1 listens on an internal high port. The browser-like public port
   # can be TCP/443 and is redirected on WAN ingress before local delivery.

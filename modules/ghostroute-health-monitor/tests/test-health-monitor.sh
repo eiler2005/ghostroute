@@ -59,6 +59,44 @@ assert_contains "$HEALTH_MONITOR_LOG_DIR/summary-latest.md" '| `rule_set_sync` |
 assert_contains "$HEALTH_MONITOR_LOG_DIR/alerts/${TODAY}.md" '| `rule_set_sync` | `CRIT` | `UNKNOWN` |'
 assert_jsonl_valid "$HEALTH_MONITOR_LOG_DIR/alerts/${TODAY}.jsonl"
 
+LIVE_CHECK_SSH_DIR="$TMPDIR/live-check-ssh"
+LIVE_CHECK_ROUTER_ENV="$TMPDIR/live-check-router.env"
+LIVE_CHECK_OUT="$TMPDIR/live-check.out"
+mkdir -p "$LIVE_CHECK_SSH_DIR"
+cat > "$LIVE_CHECK_ROUTER_ENV" <<'EOF'
+ROUTER=router.test
+ROUTER_PORT=22
+ROUTER_USER=test
+SSH_IDENTITY_FILE=/dev/null
+ROUTER_ACCESS_MODE=remote
+EOF
+cat > "$LIVE_CHECK_SSH_DIR/ssh" <<'EOF'
+#!/bin/sh
+last_arg=""
+for arg in "$@"; do
+  last_arg="$arg"
+done
+if [ "$last_arg" = "true" ]; then
+  exit 0
+fi
+case "$last_arg" in
+  *"GHOSTROUTE_MANAGED_CHECK_DOMAIN='chatgpt.com'"*)
+    printf 'CHECK|managed_domain_forwarding|OK|Live check fixture|Managed domain reached remote check|domain=chatgpt.com|No action.\n'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$LIVE_CHECK_SSH_DIR/ssh"
+PATH="$LIVE_CHECK_SSH_DIR:$PATH" \
+  GHOSTROUTE_ROUTER_ENV_FILE="$LIVE_CHECK_ROUTER_ENV" \
+  GHOSTROUTE_LIVE_CHECK_VPS_ROUTER=0 \
+  GHOSTROUTE_MANAGED_CHECK_DOMAIN=chatgpt.com \
+  "$PROJECT_ROOT/modules/ghostroute-health-monitor/bin/live-check" --no-log all > "$LIVE_CHECK_OUT"
+assert_contains "$LIVE_CHECK_OUT" "Overall: OK"
+assert_contains "$LIVE_CHECK_OUT" "domain=chatgpt.com"
+
 initial_alerts="$(wc -l < "$HEALTH_MONITOR_LOG_DIR/alerts/${TODAY}.jsonl" | tr -d ' ')"
 "$MONITOR_DIR/aggregate"
 second_alerts="$(wc -l < "$HEALTH_MONITOR_LOG_DIR/alerts/${TODAY}.jsonl" | tr -d ' ')"

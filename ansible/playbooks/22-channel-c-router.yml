@@ -21,16 +21,25 @@
         /opt/bin/opkg list-installed | grep -q '^python3 ' || /opt/bin/opkg install python3
       changed_when: false
 
-    - name: Fail fast if public TCP/443 is already owned by a router service
+    - name: Fail fast if a Channel C public TCP/443 endpoint is owned outside C1 redirects
       ansible.builtin.raw: |
         if netstat -nlp 2>/dev/null | awk '$4 ~ /(^|[.:])443$/ { found = 1 } END { exit(found ? 0 : 1) }'; then
-          echo "TCP/443 is already listening on the router; choose vault_channel_c_home_public_port or disable the conflicting WAN service." >&2
-          exit 1
+          if ! iptables -t nat -S PREROUTING | awk '
+            index($0, "--dport 443 ") && index($0, "-j REDIRECT") &&
+            (index($0, "--to-ports {{ channel_c_home_ingress_port }}") || index($0, "--to-ports {{ channel_c_shadowrocket_ingress_port }}")) {
+              c1_redirect = 1
+            }
+            END { exit !c1_redirect }
+          '; then
+            echo "TCP/443 is already listening on the router without an existing C1 redirect; choose another Channel C public endpoint or disable the conflicting WAN service." >&2
+            exit 1
+          fi
         fi
       changed_when: false
       when:
-        - channel_c_home_public_port | int == 443
+        - (channel_c_home_public_port | int == 443) or (channel_c_shadowrocket_public_port | int == 443)
         - channel_c_home_ingress_port | int != 443
+        - channel_c_shadowrocket_ingress_port | int != 443
 
 - name: Deploy Channel C1 home-first Naive lane on router
   hosts: routers
@@ -71,10 +80,16 @@
       ansible.builtin.raw: "netstat -nlp 2>/dev/null | grep -q '0.0.0.0:{{ channel_c_home_ingress_port }}'"
       changed_when: false
 
-    - name: Channel C1 native public port redirects to internal Naive listener when needed
+    - name: Channel C1 native public port has exactly one redirect to internal Naive listener when needed
       ansible.builtin.raw: |
         iptables -t nat -S PREROUTING |
-          grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_c_home_public_port }} .*REDIRECT --to-ports {{ channel_c_home_ingress_port }}'
+          awk '
+            index($0, "-i {{ wan_if }} ") && index($0, "--dport {{ channel_c_home_public_port }} ") && index($0, "-j REDIRECT") {
+              redirects++
+              if (index($0, "--to-ports {{ channel_c_home_ingress_port }}")) expected++
+            }
+            END { exit !(redirects == 1 && expected == 1) }
+          '
       changed_when: false
       when: channel_c_home_public_port | string != channel_c_home_ingress_port | string
 
@@ -91,10 +106,16 @@
       when: channel_c_shadowrocket_enabled | default(false) | bool
       no_log: true
 
-    - name: C1-Shadowrocket public port redirects to internal HTTP listener when needed
+    - name: C1-Shadowrocket public port has exactly one redirect to internal HTTP listener when needed
       ansible.builtin.raw: |
         iptables -t nat -S PREROUTING |
-          grep -q -- '-i {{ wan_if }} -p tcp .*--dport {{ channel_c_shadowrocket_public_port }} .*REDIRECT --to-ports {{ channel_c_shadowrocket_ingress_port }}'
+          awk '
+            index($0, "-i {{ wan_if }} ") && index($0, "--dport {{ channel_c_shadowrocket_public_port }} ") && index($0, "-j REDIRECT") {
+              redirects++
+              if (index($0, "--to-ports {{ channel_c_shadowrocket_ingress_port }}")) expected++
+            }
+            END { exit !(redirects == 1 && expected == 1) }
+          '
       changed_when: false
       when:
         - channel_c_shadowrocket_enabled | default(false) | bool
