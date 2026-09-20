@@ -33,10 +33,18 @@ remote-router endpoint, который использует `/opt/ghostroute-con
 По умолчанию это config/log check без внешних probe-запросов; результат пишется
 в `reports/live-check/`.
 
+Для Channel C проверка требует, чтобы публичный C1 порт имел ровно один NAT
+REDIRECT на соответствующий внутренний listener. Это защищает от ситуации,
+когда сертификат на публичном порту валиден, но старое правило отправляет HTTPS
+CONNECT в другой C1 handler. После переназначения C1 endpoint пересоздай и
+повторно импортируй приватный `1-SR` QR/profile.
+
 ```bash
 ./modules/ghostroute-health-monitor/bin/live-check
 ./modules/ghostroute-health-monitor/bin/live-check --json
 ./modules/ghostroute-health-monitor/bin/live-check channel-c
+# Проверить конкретный managed-домен из домашнего Wi-Fi пути
+GHOSTROUTE_MANAGED_CHECK_DOMAIN=chatgpt.com ./modules/ghostroute-health-monitor/bin/live-check --no-log
 ```
 
 Если default `live-check` зеленый, но пользовательский клиент все равно

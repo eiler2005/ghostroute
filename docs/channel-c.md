@@ -37,11 +37,16 @@ changes. Channel D Caddy is restarted at the same time when it shares this
 certificate. Neither job alters Channel A, B, M, managed DNS, firewall policy
 or egress selection.
 
+The ASUS ACME default uses its ECC certificate store
+`/jffs/.le/<home_ddns_host>_ecc/`; use Vault overrides only if the router has a
+different ACME layout.
+
 Use `./modules/ghostroute-health-monitor/bin/live-check channel-c` to see the
-current listener certificate state. `channel_c_tls=expires-soon` is an early
-warning; `invalid` is deployment-blocking. The legacy `vault` PEM source is
-still supported for recovery, but deploy and verification reject an expired
-certificate so it cannot silently replace a renewed ACME certificate.
+current listener certificate state and confirm that each C1 public port has one
+unambiguous redirect to its own internal listener. `channel_c_tls=expires-soon`
+is an early warning; `invalid` is deployment-blocking. The legacy `vault` PEM
+source is still supported for recovery, but deploy and verification reject an
+expired certificate so it cannot silently replace a renewed ACME certificate.
 
 Old direct-to-VPS Channel C designs are removed from active code. Historical
 Squid/stunnel/tinyproxy/Caddy forward-proxy notes may remain in `docs/archive/`
@@ -49,11 +54,12 @@ only as removed-design debugging records.
 
 Short status:
 
-- `C1-Shadowrocket / 1-SR` on `:<channel-c-shadowrocket-public-port>` works now on the real iPhone. It is not
-  native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
-- `C1-sing-box / native Naive` on `:443` is the intended stealth-primary design.
-  The router side is ready, but the tested iPhone SFI build uses sing-box
-  `1.11.4` and fails on outbound `"type": "naive"`.
+- `C1-Shadowrocket / 1-SR` uses the configured HTTPS compatibility endpoint.
+  It is not native Naive; it is HTTPS CONNECT compatibility for Shadowrocket.
+- `C1-sing-box / native Naive` uses its separate configured endpoint and is the
+  intended stealth-primary design. The router side is ready, but the tested
+  iPhone SFI build uses sing-box `1.11.4` and fails on outbound
+  `"type": "naive"`.
 - Native SFI profile generation is off by default with
   `channel_c_sfi_native_profiles_enabled: false`. Re-enable only when an iOS
   sing-box/SFI client supports Naive outbound, target sing-box `>= 1.13`.
@@ -65,7 +71,7 @@ C1-sing-box is the intended stealth-primary Channel C design:
 ```text
 iPhone LTE
   -> SFI / sing-box client with outbound type: naive
-  -> Naive over TLS/H2-like :443
+  -> Naive over TLS/H2-like :<channel-c-native-public-port>
   -> home DDNS / public RU IP
   -> WAN REDIRECT to router internal :<home-channel-c-ingress-port>
   -> router sing-box naive inbound `channel-c-naive-in`
@@ -148,6 +154,13 @@ Live finding from 2026-04-28:
 C1-Shadowrocket is persisted through the Channel C router playbook, firewall
 hook, generated profiles and verify checks.
 
+If a C1 public endpoint is reassigned, `22-channel-c-router.yml` removes stale
+C1 redirect pairs before it installs the current mappings. The C1 verify and
+`live-check channel-c` checks require exactly one redirect per configured
+public endpoint; a valid certificate alone is not proof that HTTPS CONNECT
+reached the intended handler. Regenerate and re-import the private `1-SR`
+profile after any such reassignment.
+
 Profile artifacts live in:
 
 ```text
@@ -187,9 +200,10 @@ behave as a compatible Naive client for the current sing-box inbound.
 
 ## Production Interpretation
 
-- C1-sing-box on `:443` remains the intended stealth-primary Channel C design,
-  but it is not considered iPhone-proven until a client accepts outbound
-  `"type": "naive"` and produces `channel-c-naive-in -> reality-out` logs.
+- C1-sing-box on its configured public endpoint remains the intended
+  stealth-primary Channel C design, but it is not considered iPhone-proven
+  until a client accepts outbound `"type": "naive"` and produces
+  `channel-c-naive-in -> reality-out` logs.
 - C1-Shadowrocket on `:<channel-c-shadowrocket-public-port>` is a Shadowrocket compatibility lane, not a Naive lane.
 - C1-Shadowrocket is a persisted compatibility lane with separate profile and
   verification artifacts.

@@ -669,11 +669,17 @@
         - channel_c_home_tls_source | default('vault') == 'asus_acme'
       no_log: true
 
-    - name: Channel C1 public port redirects to internal Naive listener when needed
+    - name: Channel C1 public port has exactly one redirect to internal Naive listener when needed
       ansible.builtin.shell: |
         wan_if="$(nvram get wan0_ifname)"
         iptables -t nat -S PREROUTING |
-          grep -q -- "-i ${wan_if} -p tcp .*--dport {{ channel_c_home_public_port }} .*REDIRECT --to-ports {{ channel_c_home_ingress_port }}"
+          awk -v wan_if="$wan_if" '
+            index($0, "-i " wan_if " ") && index($0, "--dport {{ channel_c_home_public_port }} ") && index($0, "-j REDIRECT") {
+              redirects++
+              if (index($0, "--to-ports {{ channel_c_home_ingress_port }}")) expected++
+            }
+            END { exit !(redirects == 1 && expected == 1) }
+          '
       changed_when: false
       when:
         - channel_c_home_enabled | default(false) | bool
@@ -710,11 +716,17 @@
       changed_when: false
       when: channel_c_shadowrocket_enabled | default(false) | bool
 
-    - name: C1-Shadowrocket public port redirects to internal HTTP listener when needed
+    - name: C1-Shadowrocket public port has exactly one redirect to internal HTTP listener when needed
       ansible.builtin.shell: |
         wan_if="$(nvram get wan0_ifname)"
         iptables -t nat -S PREROUTING |
-          grep -q -- "-i ${wan_if} -p tcp .*--dport {{ channel_c_shadowrocket_public_port }} .*REDIRECT --to-ports {{ channel_c_shadowrocket_ingress_port }}"
+          awk -v wan_if="$wan_if" '
+            index($0, "-i " wan_if " ") && index($0, "--dport {{ channel_c_shadowrocket_public_port }} ") && index($0, "-j REDIRECT") {
+              redirects++
+              if (index($0, "--to-ports {{ channel_c_shadowrocket_ingress_port }}")) expected++
+            }
+            END { exit !(redirects == 1 && expected == 1) }
+          '
       changed_when: false
       when:
         - channel_c_shadowrocket_enabled | default(false) | bool

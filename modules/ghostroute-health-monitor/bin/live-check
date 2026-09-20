@@ -10,6 +10,14 @@ DEPLOY_GATE=0
 LOG_ENABLED=1
 CHANNEL="all"
 LOG_DIR="${GHOSTROUTE_LIVE_CHECK_LOG_DIR:-${PROJECT_ROOT}/reports/live-check}"
+MANAGED_CHECK_DOMAIN="${GHOSTROUTE_MANAGED_CHECK_DOMAIN:-ipify.org}"
+
+case "$MANAGED_CHECK_DOMAIN" in
+  ''|.*|*.|*..*|*[![:alnum:].-]*)
+    echo "GHOSTROUTE_MANAGED_CHECK_DOMAIN must be a plain DNS name." >&2
+    exit 64
+    ;;
+esac
 
 usage() {
   cat <<'USAGE'
@@ -235,7 +243,7 @@ echo TOOL=$tool
   fi
 }
 
-router_ssh "GHOSTROUTE_LIVE_FILTER='$CHANNEL' GHOSTROUTE_LIVE_ACTIVE_PROBE='$ACTIVE_PROBE' GHOSTROUTE_LIVE_DEPLOY_GATE='$DEPLOY_GATE' sh -s" >"$raw_tmp" <<'REMOTE'
+router_ssh "GHOSTROUTE_LIVE_FILTER='$CHANNEL' GHOSTROUTE_LIVE_ACTIVE_PROBE='$ACTIVE_PROBE' GHOSTROUTE_LIVE_DEPLOY_GATE='$DEPLOY_GATE' GHOSTROUTE_MANAGED_CHECK_DOMAIN='$MANAGED_CHECK_DOMAIN' sh -s" >"$raw_tmp" <<'REMOTE'
 set -eu
 
 emit() {
@@ -349,6 +357,17 @@ trap 'rm -f "$tmp"' EXIT
 listener_ok() { printf '%s\n' "$listen_sockets" | grep -E "[:.]$1[[:space:]]" >/dev/null 2>&1; }
 input_ok() { printf '%s\n' "$filter_input" | grep -F -- "--dport $1" | grep -F -- "-j ACCEPT" >/dev/null 2>&1; }
 redirect_ok() { printf '%s\n' "$nat_prerouting" | grep -F -- "--dport $1" | grep -F -- "--to-ports $2" >/dev/null 2>&1; }
+redirect_unique_ok() {
+ public_port="$1"
+ ingress_port="$2"
+ printf '%s\n' "$nat_prerouting" | awk -v public_port="$public_port" -v ingress_port="$ingress_port" '
+  index($0, "--dport " public_port " ") && index($0, "-j REDIRECT") {
+   redirects++
+   if (index($0, "--to-ports " ingress_port)) expected++
+  }
+  END { exit !(redirects == 1 && expected == 1) }
+ '
+}
 lan_redirect_ok() { printf '%s\n' "$nat_prerouting" | grep -F -- "-i br0" | grep -F -- "--to-ports $1" >/dev/null 2>&1; }
 split_ok() {
   inbound="$1"
@@ -432,10 +451,10 @@ if [ "$filter" = all ] || [ "$filter" = channel-c ]; then
   else
     emit channel_c_tls N/A "Channel C TLS" "Channel C is disabled in runtime config" "enabled=0" "No action."
   fi
-  listener_ok "$sr_port" && input_ok "$sr_port" && { [ "$sr_public" = "$sr_port" ] || redirect_ok "$sr_public" "$sr_port"; } && split_ok channel-c-shadowrocket-http-in && emit channel_c_shadowrocket_chain OK "Channel C/C1-Shadowrocket" "C1-Shadowrocket listener, redirect, INPUT and split are present" "public_port=$sr_public internal_port=$sr_port recent_log_lines=$(line_count 'inbound/http[channel-c-shadowrocket-http-in]')" "No action." || emit channel_c_shadowrocket_chain CRIT "Channel C/C1-Shadowrocket" "C1-Shadowrocket runtime chain is incomplete" "public_port=$sr_public internal_port=$sr_port" "Check C1-Shadowrocket listener, redirect, INPUT and split."
+  listener_ok "$sr_port" && input_ok "$sr_port" && { [ "$sr_public" = "$sr_port" ] || redirect_unique_ok "$sr_public" "$sr_port"; } && split_ok channel-c-shadowrocket-http-in && emit channel_c_shadowrocket_chain OK "Channel C/C1-Shadowrocket" "C1-Shadowrocket listener, unique redirect, INPUT and split are present" "public_port=$sr_public internal_port=$sr_port recent_log_lines=$(line_count 'inbound/http[channel-c-shadowrocket-http-in]')" "No action." || emit channel_c_shadowrocket_chain CRIT "Channel C/C1-Shadowrocket" "C1-Shadowrocket runtime chain is incomplete or has a conflicting redirect" "public_port=$sr_public internal_port=$sr_port" "Check C1-Shadowrocket listener, unique redirect, INPUT and split."
   sr_recent="$(line_count 'inbound/http[channel-c-shadowrocket-http-in]')"; sr_last="$(last_line 'inbound/http[channel-c-shadowrocket-http-in]')"
   [ "$sr_recent" -gt 0 ] && emit channel_c_shadowrocket_recent OK "Channel C/C1-Shadowrocket" "Recent C1-Shadowrocket evidence is visible" "recent_log_lines=$sr_recent last_seen=\"${sr_last:-n/a}\"" "No action." || emit channel_c_shadowrocket_recent IDLE "Channel C/C1-Shadowrocket" "No recent C1-Shadowrocket client event in log tail" "recent_log_lines=0" "If a C1 client is trying now, check Shadowrocket profile and public port."
-  listener_ok "$native_port" && input_ok "$native_port" && { [ "$native_public" = "$native_port" ] || redirect_ok "$native_public" "$native_port"; } && split_ok channel-c-naive-in && emit channel_c_native_chain OK "Channel C/native Naive" "Native Naive listener, redirect, INPUT and split are present" "public_port=$native_public internal_port=$native_port" "No action." || emit channel_c_native_chain WARN "Channel C/native Naive" "Native Naive runtime chain is incomplete" "public_port=$native_public internal_port=$native_port" "Native Naive is experimental; check only if testing an SFI client."
+  listener_ok "$native_port" && input_ok "$native_port" && { [ "$native_public" = "$native_port" ] || redirect_unique_ok "$native_public" "$native_port"; } && split_ok channel-c-naive-in && emit channel_c_native_chain OK "Channel C/native Naive" "Native Naive listener, unique redirect, INPUT and split are present" "public_port=$native_public internal_port=$native_port" "No action." || emit channel_c_native_chain WARN "Channel C/native Naive" "Native Naive runtime chain is incomplete or has a conflicting redirect" "public_port=$native_public internal_port=$native_port" "Native Naive is experimental; check only if testing an SFI client."
   native_recent="$(line_count 'inbound/naive[channel-c-naive-in]')"; native_last="$(last_line 'inbound/naive[channel-c-naive-in]')"
   [ "$native_recent" -gt 0 ] && emit channel_c_native_recent OK "Channel C/native Naive" "Recent native Naive evidence is visible" "recent_log_lines=$native_recent last_seen=\"${native_last:-n/a}\"" "No action." || emit channel_c_native_recent IDLE "Channel C/native Naive" "No recent native Naive client event; expected for tested iPhone SFI builds" "recent_log_lines=0" "No action unless actively testing native Naive support."
 fi
