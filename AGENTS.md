@@ -110,6 +110,21 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 - Before any broad mutating playbook, confirm deploy-critical Vault values are
   present and prefer read-only verification first.
 
+## Client Profile Compatibility
+
+- Treat a change to a client-visible ingress host, public port, transport,
+  credential, subscription payload, or generated QR/profile format as a
+  compatibility-breaking migration. A green server-side health check does not
+  make existing client imports compatible.
+- Before proposing, generating, or deploying such a change, explicitly ask the
+  operator for approval. State which channels and selected clients need an
+  update, whether old imports will stop working, and whether a parallel
+  migration is available. General permission to deploy does not authorize a
+  client-profile-breaking change.
+- Do not regenerate or distribute affected QR/profile artifacts until that
+  approval is received. If the operator approves, update the relevant runbook
+  with the migration and rollback path before recommending the client refresh.
+
 ## Secrets and Privacy
 
 - No sensitive information belongs in git, public docs, commit messages, issue

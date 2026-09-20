@@ -158,8 +158,11 @@ If a C1 public endpoint is reassigned, `22-channel-c-router.yml` removes stale
 C1 redirect pairs before it installs the current mappings. The C1 verify and
 `live-check channel-c` checks require exactly one redirect per configured
 public endpoint; a valid certificate alone is not proof that HTTPS CONNECT
-reached the intended handler. Regenerate and re-import the private `1-SR`
-profile after any such reassignment.
+reached the intended handler. Reassignment is profile-breaking: before making
+it, obtain explicit operator approval, list the affected selected clients, say
+whether the old imports will stop working, and offer a parallel migration when
+available. Do not regenerate or distribute the private `1-SR` profile until
+that approval is received.
 
 Profile artifacts live in:
 
