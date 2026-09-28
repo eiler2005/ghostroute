@@ -163,6 +163,31 @@ proof. Do not begin with `docker compose up`, `docker restart`, a Caddy restart
 or a broad VPS playbook: those actions can hide the failing layer, create a
 restart loop or make a capacity incident worse.
 
+## VPS Reality Stack Missing
+
+Symptom: Caddy still owns public TCP/443, but the local Reality backend is not
+listening and `99-verify.yml` reports the Xray listener or container missing.
+This is distinct from a router-side sing-box failure.
+
+Check the live contract before changing it:
+
+```bash
+cd ansible
+ansible-playbook -e @secrets/stealth.yml playbooks/99-verify.yml
+```
+
+After the deploy gate passes, restore the base Reality stack with
+`10-stealth-vps.yml`. If direct-mode Channel B XHTTP is enabled, restore its
+separate backend with `11-channel-b-vps.yml`, then rerun `99-verify.yml`.
+Neither playbook regenerates client profiles.
+
+The Xray container uses `restart: unless-stopped`, which covers ordinary Docker
+or VPS restarts but not an explicit `docker compose down` or container removal.
+The VPS health monitor records critical Xray-listener and container failures
+hourly; its local evidence is not an operator notification channel. Configure a
+separate approved alert-delivery integration if the operator must be notified
+without reviewing the health reports.
+
 ## Mobile Home QR Broken
 
 Symptom: LAN still works, but mobile clients using the home QR profile fail.

@@ -6,6 +6,7 @@ command -v rg >/dev/null 2>&1 || { echo "run-fast: ripgrep (rg) is required" >&2
 
 "${PROJECT_ROOT}/tests/check-shell-syntax.sh"
 "${PROJECT_ROOT}/tests/test-singbox-init-static.sh"
+"${PROJECT_ROOT}/tests/test-vps-deploy-static.sh"
 "${PROJECT_ROOT}/tests/test-runtime-supervisor-static.sh"
 "${PROJECT_ROOT}/modules/secrets-management/bin/secret-scan"
 "${PROJECT_ROOT}/modules/recovery-verification/tests/test-router-health.sh"
