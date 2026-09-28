@@ -63,6 +63,13 @@ the dependency order, verifies LAN REDIRECT plus managed UDP/443 DROP after
 applying routing, and performs targeted restarts only for missing listeners.
 During boot it also runs a delayed firewall stabilization pass because Merlin
 can rebuild chains after `services-start` has already fired.
+
+If `sing-box` is absent but `/opt/var/run/sing-box.lock` remains after an
+interrupted init script or reboot, confirm first that `pidof sing-box` returns
+no live process. Then remove only that empty lock directory and start the
+service. The repo-managed init script records its lock owner and self-cleans a
+stale lock on its next start; do not remove a lock with a live owner.
+
 Direct service restarts remain a fallback after `ghostroute-runtime-supervisor.sh
 status` identifies the broken component.
 
