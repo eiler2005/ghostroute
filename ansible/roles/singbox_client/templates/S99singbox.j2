@@ -9,14 +9,32 @@ LOCKDIR="/opt/var/run/sing-box.lock"
 
 lock() {
     for _ in 1 2 3 4 5 6 7 8 9 10; do
-        mkdir "$LOCKDIR" 2>/dev/null && return 0
+        if mkdir "$LOCKDIR" 2>/dev/null; then
+            printf '%s\n' "$$" > "$LOCKDIR/pid"
+            return 0
+        fi
         sleep 1
     done
+
+    # A reboot or killed init script can leave this mkdir lock behind. A lock
+    # with no live recorded owner is stale; remove only that exact lock and retry.
+    owner="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+    case "$owner" in
+        ''|*[!0-9]*) ;;
+        *) kill -0 "$owner" 2>/dev/null && return 1 ;;
+    esac
+    rm -f "$LOCKDIR/pid"
+    rmdir "$LOCKDIR" 2>/dev/null || return 1
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCKDIR/pid"
+        return 0
+    fi
     echo "$NAME lock busy"
     return 1
 }
 
 unlock() {
+    rm -f "$LOCKDIR/pid"
     rmdir "$LOCKDIR" 2>/dev/null || true
 }
 
