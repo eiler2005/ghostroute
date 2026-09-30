@@ -68,7 +68,19 @@ openai.com        — API (api.openai.com), platform, auth
 chatgpt.com       — ChatGPT web app
 oaistatic.com     — OpenAI static assets and CDN
 oaiusercontent.com — user-uploaded content (images in chats, file uploads)
+openaimerge.com   — additional ChatGPT app service/CDN family
+oaistatsig.com    — ChatGPT app feature-configuration family
 ```
+
+`openai.com` covers `ios.chat.openai.com`; `chatgpt.com` covers
+`ws.chatgpt.com`. Keep the two separate families above in the catalog as well:
+OpenAI lists them in its current [ChatGPT web and app network guidance](https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps).
+They are separate registrable domain families, not subdomains of the existing
+`openai.com` or `chatgpt.com` entries. This keeps LAN/Wi-Fi and mobile Home
+Reality clients on the same managed egress for the complete app control plane.
+It classifies the network path only; account settings, an already cached
+session and server-side availability policy can still affect the region shown
+by the ChatGPT app.
 
 ---
 

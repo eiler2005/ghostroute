@@ -164,6 +164,12 @@ ipset=/wl.co/STEALTH_DOMAINS
 ipset=/openai.com/STEALTH_DOMAINS
 ipset=/oaistatic.com/STEALTH_DOMAINS
 ipset=/oaiusercontent.com/STEALTH_DOMAINS
+# ChatGPT iOS uses the parent rules above for ios.chat.openai.com and
+# ws.chatgpt.com. These are separate OpenAI domain families in the official
+# ChatGPT app network guidance; keep them managed so these app requests do not
+# fall through to the direct home-WAN path.
+ipset=/openaimerge.com/STEALTH_DOMAINS
+ipset=/oaistatsig.com/STEALTH_DOMAINS
 
 # Imported selected-client managed domains. Source shape was a Shadowrocket
 # PROXY rule list; these entries are router-managed so LAN/Wi-Fi and Channels

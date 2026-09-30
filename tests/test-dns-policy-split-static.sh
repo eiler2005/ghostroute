@@ -118,6 +118,8 @@ assert_contains "docs/runtime-inventory.md" "router_dnscrypt_watchdog"
 assert_contains "docs/runtime-inventory.md" "vm.overcommit_memory=1"
 assert_contains "docs/router-runtime-map.md" "vm.overcommit_memory=1"
 assert_contains "configs/runtime-inventory.yml" "router_dnscrypt_watchdog"
+assert_contains "configs/dnsmasq-stealth.conf.add" "ipset=/openaimerge.com/STEALTH_DOMAINS"
+assert_contains "configs/dnsmasq-stealth.conf.add" "ipset=/oaistatsig.com/STEALTH_DOMAINS"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -127,6 +129,8 @@ ipset=/browserleaks.com/STEALTH_DOMAINS
 ipset=/browserleaks.net/STEALTH_DOMAINS
 ipset=/browserleaks.org/STEALTH_DOMAINS
 ipset=/openai.com/STEALTH_DOMAINS
+ipset=/openaimerge.com/STEALTH_DOMAINS
+ipset=/oaistatsig.com/STEALTH_DOMAINS
 ipset=/4pda.ru/STEALTH_DOMAINS
 ipset=/vtb.ru/STEALTH_DOMAINS
 ipset=/championat.com/STEALTH_DOMAINS
@@ -146,6 +150,10 @@ rg -n -F 'server=/browserleaks.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/
 rg -n -F 'server=/browserleaks.net/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
 rg -n -F 'server=/browserleaks.org/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
 rg -n -F 'server=/openai.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/openaimerge.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F 'server=/oaistatsig.com/127.0.0.1#5354' "$TMPDIR/vps-dns.conf" >/dev/null
+rg -n -F '"openaimerge.com"' "$TMPDIR/rules/stealth-domains.json" >/dev/null
+rg -n -F '"oaistatsig.com"' "$TMPDIR/rules/stealth-domains.json" >/dev/null
 if rg -n -F 'server=/4pda.ru/' "$TMPDIR/vps-dns.conf" >/dev/null ||
    rg -n -F 'server=/vtb.ru/' "$TMPDIR/vps-dns.conf" >/dev/null ||
    rg -n -F 'server=/championat.com/' "$TMPDIR/vps-dns.conf" >/dev/null; then
