@@ -52,12 +52,25 @@ clients see:
 |---|---|---|---|---|
 | `primary_vps` | Owned, production | Native system Caddy (`system_listener_wrapper`) | Caddy layer4 + Xray/3x-ui Reality + optional restricted DNS + UFW + VPS health monitor | [`ansible/playbooks/10-stealth-vps.yml`](../ansible/playbooks/10-stealth-vps.yml) |
 | `backup_reality` | External, incident reserve | Not deployed by this repo | A third-party Reality endpoint configured purely via Vault references (host/port/SNI) | n/a — operator-managed externally |
-| `hermes_vps` | Owned, clone candidate | Docker-sidecar Caddy (`docker_sidecar`) | Caddy layer4 sidecar + Xray/Reality clone + restricted DNS resolver + UFW + VPS health monitor, isolated on its own Docker bridge network | [`ansible/playbooks/12-hermes-egress-vps.yml`](../ansible/playbooks/12-hermes-egress-vps.yml) |
+| `hermes_vps` | Owned, reserve-capable clone | Docker-sidecar Caddy (`docker_sidecar`) | Caddy layer4 sidecar + Xray/Reality clone + restricted DNS resolver + UFW + VPS health monitor, isolated on its own Docker bridge network | [`ansible/playbooks/12-hermes-egress-vps.yml`](../ansible/playbooks/12-hermes-egress-vps.yml) |
 
 `primary_vps` and `hermes_vps` are infrastructure this repo's Ansible owns and
 can redeploy end-to-end. `backup_reality` is intentionally outside that graph:
 it is a Vault-configured fallback target only, so an incident can switch to it
 even if Ansible cannot currently reach the primary host.
+
+### Temporary owned reserve
+
+`hermes_vps` may be selected as a temporary shared A/B/C reserve when the
+current backend needs an operator-controlled comparison or a planned reserve
+window. This changes only the upstream behind `reality-out`; it does not change
+client profiles, ingress ownership, domain catalogs or Channel M.
+
+Before the switch, record the current role and a review date in a gitignored
+operator note. Run the normal deploy gate, then prove the selected backend with
+`managed-egress-check`, `egress-backend-health`, and the affected client app.
+If any post-switch proof fails, return to the recorded role. This is a manual
+operator choice, never automatic failover.
 
 ### How the bank is proven to actually work
 
@@ -224,7 +237,7 @@ upstream; Channel D and Channel M are never switched here):
 |---|---|---|
 | Normal owned VPS | `primary_vps` | `managed-egress-mode set primary_vps --deploy-router` |
 | Incident reserve | `backup_reality` | `managed-egress-mode set backup_reality --deploy-router` |
-| Owned clone backend | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
+| Temporary owned reserve | `hermes_vps` | `managed-egress-mode set hermes_vps --deploy-router` |
 | Canary Hermes on Channel D only | `hermes_vps` (D) | `managed-egress-mode set hermes_vps --channel d --deploy-router` |
 | Return Channel D to shared backend | `follow` (D) | `managed-egress-mode set follow --channel d --deploy-router` |
 | Show active backends (A/B/C + D) | — | `managed-egress-mode status` |
