@@ -9,6 +9,13 @@
 # mobile channels report the same VPS egress for https://api.ipify.org.
 ipset=/ipify.org/STEALTH_DOMAINS
 
+# TradingView: localized sites, chart/data WebSockets, Pine, alerts and assets
+# share tradingview.com; widgets use a separate first-party domain family.
+# User uploads use this exact CDN tenant; do not route the shared b-cdn.net.
+ipset=/tradingview.com/STEALTH_DOMAINS
+ipset=/tradingview-widget.com/STEALTH_DOMAINS
+ipset=/tradingview-user-uploads.b-cdn.net/STEALTH_DOMAINS
+
 ipset=/atlassian.com/STEALTH_DOMAINS
 ipset=/anthropic.com/STEALTH_DOMAINS
 # Factory (Droid): public web, API and agent-service subdomains.

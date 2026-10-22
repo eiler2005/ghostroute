@@ -43,6 +43,31 @@ asset и feedback хосты. Если картинки/медиа не откр
 
 ## Добавить домен вручную
 
+### TradingView
+
+TradingView uses the shared managed split on LAN/Wi-Fi and home-first Channels
+A/B/C. The catalog contains `tradingview.com` (including `ru`, `www`, `data`,
+`pushstream`, `scanner`, `pine-facade`, `pricealerts`, `static`, `s3` and
+`s3-symbol-logo` subdomains), `tradingview-widget.com` for widgets, and the
+exact upload CDN tenant `tradingview-user-uploads.b-cdn.net`.
+
+Sources: the public [chart page](https://ru.tradingview.com/chart/) references
+the service hosts and upload CDN;
+[widget documentation](https://www.tradingview.com/widget-docs/widgets/watchlists/market-quotes/)
+identifies `widgets.tradingview-widget.com`; the
+[alerts troubleshooting guide](https://www.tradingview.com/support/solutions/43000732768-errors-when-creating-loading-alerts/)
+identifies `pricealerts.tradingview.com`. Parent-domain rules cover their
+subdomains; adding separate rules for each API host is unnecessary. Do not add
+shared `b-cdn.net`, cloud-provider ranges, or unrelated advertising domains.
+Broker login/order endpoints on other domains require separate evidence.
+
+After deployment, check that all three catalog entries appear in both the
+managed DNS include and generated `stealth-domains.json`. Resolve representative
+hosts through router dnsmasq and verify their IPv4 addresses enter
+`STEALTH_DOMAINS`. Reopen the chart to refresh cached DNS and WebSocket sessions.
+
+### Ручное правило
+
 Добавьте только `STEALTH_DOMAINS`:
 
 ```text
