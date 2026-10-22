@@ -105,6 +105,10 @@ assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imo.im/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imoim.net/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/imoapp.com/STEALTH_DOMAINS"
 assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/openai.com/STEALTH_DOMAINS"
+for domain in tradingview.com tradingview-widget.com tradingview-user-uploads.b-cdn.net; do
+  assert_contains_fixed "$DNSMASQ_CATALOG" "ipset=/$domain/STEALTH_DOMAINS"
+done
+assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/b-cdn.net/STEALTH_DOMAINS"
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/gmail.com/STEALTH_DOMAINS"
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/googlemail.com/STEALTH_DOMAINS"
 assert_not_contains_fixed "$DNSMASQ_CATALOG" "ipset=/smtp.gmail.com/STEALTH_DOMAINS"
@@ -191,6 +195,9 @@ ipset=/t.me/STEALTH_DOMAINS
 ipset=/openai.com/STEALTH_DOMAINS
 ipset=/apple.com/STEALTH_DOMAINS
 ipset=/apple-dns.net/STEALTH_DOMAINS
+ipset=/tradingview.com/STEALTH_DOMAINS
+ipset=/tradingview-widget.com/STEALTH_DOMAINS
+ipset=/tradingview-user-uploads.b-cdn.net/STEALTH_DOMAINS
 ipset=/ignored.example/OTHER_SET
 EOF_MANUAL
 cat > "$TMPDIR/auto.conf" <<'EOF_AUTO'
@@ -218,6 +225,11 @@ assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"t.me"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"openai.com"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"apple.com"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"apple-dns.net"'
+for domain in tradingview.com tradingview-widget.com tradingview-user-uploads.b-cdn.net; do
+  assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" "\"$domain\""
+  assert_generated_contains_fixed "$TMPDIR/managed-vps-dns.conf" "server=/$domain/"
+done
+assert_generated_not_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"b-cdn.net"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"auto-managed.example"'
 assert_generated_not_contains_fixed "$TMPDIR/rules/stealth-domains.json" '"ignored.example"'
 assert_generated_contains_fixed "$TMPDIR/rules/stealth-static.json" '"198.51.100.0/24"'
