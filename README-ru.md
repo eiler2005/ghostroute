@@ -229,6 +229,19 @@ OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensit
 не меняет client imports. Для совпавшего sensitive-трафика нет автоматического
 fallback на другой IP. [Контракт, ограничения и проверки](modules/routing-core/docs/sensitive-sites-mode.md).
 
+### Память роутера: основной и временный режим
+
+В **основном режиме** программы Entware и `/opt/etc` лежат на writable USB/ext4;
+внутренняя JFFS хранит hooks, конфиги dnsmasq и ключи, а RAM — работающие процессы
+и сетевые правила. **Временный режим восстановления** при read-only USB читает
+программы с флешки, но переносит `/opt/etc`, логи, PID, кэш dnscrypt и временные
+файлы в RAM. После reboot конфиги и кэш восстанавливаются из приватного архива
+в JFFS, а каталоги логов, PID и временных файлов создаются пустыми. Этот режим
+зависит от читаемости USB и не заменяет исправный накопитель. Чувствительный режим
+маршрутизации работает при обеих схемах хранения.
+[Что и где хранится](docs/router-runtime-map.md#storage-ownership-and-operating-modes)
+и [инструкция временного режима](modules/recovery-verification/docs/readonly-entware-boot-recovery.md).
+
 ---
 
 ## Операционные модули

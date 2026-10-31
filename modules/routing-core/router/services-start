@@ -3,6 +3,14 @@
 # GhostRoute boot is single-owner: this hook launches the runtime supervisor.
 # The supervisor registers cron jobs, validates firewall invariants and runs
 # targeted channel recovery.
+# BEGIN GhostRouteReadonlyEntware
+if [ -x /jffs/scripts/readonly-entware-recovery.sh ]; then
+  /jffs/scripts/readonly-entware-recovery.sh boot || {
+    logger -t ghostroute-services-start "read-only Entware recovery failed"
+    exit 1
+  }
+fi
+# END GhostRouteReadonlyEntware
 # BEGIN GhostRouteRuntimeSupervisor
 if [ -x /jffs/scripts/ghostroute-runtime-supervisor.sh ]; then
   ( /jffs/scripts/ghostroute-runtime-supervisor.sh boot ) >/dev/null 2>&1 &

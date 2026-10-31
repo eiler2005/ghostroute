@@ -42,6 +42,12 @@ operator artifacts and must stay out of git.
 
 ## Router Access Profiles
 
+For an explicitly approved emergency bridge on a readable write-protected
+Entware volume, `playbooks/25-readonly-entware-recovery.yml` installs JFFS-backed
+configuration snapshots and boot preparation without restarting services. See
+[the recovery runbook](../modules/recovery-verification/docs/readonly-entware-boot-recovery.md)
+for prerequisites, snapshot refresh and controlled reboot verification.
+
 Router SSH access is intentionally split by where the control machine is:
 
 - When operating from the home LAN/Wi-Fi, direct LAN access is acceptable with a

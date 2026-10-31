@@ -1,0 +1,105 @@
+- name: Install opted-in read-only Entware boot recovery without restarting services
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: GhostRoute deploy gate before boot hook mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Verify readable runtime and space for the private recovery snapshot
+      ansible.builtin.raw: |
+        test -x /opt/bin/sing-box && test -r /opt/etc/sing-box/config.json || exit 1
+        test -r /jffs/scripts/post-mount && test -r /jffs/scripts/services-start || exit 1
+        test "$(head -1 /jffs/scripts/post-mount)" = '#!/bin/sh' || exit 1
+        test "$(head -1 /jffs/scripts/services-start)" = '#!/bin/sh' || exit 1
+        test "$(df -k /jffs | tail -1 | awk '{print $4}')" -ge 8192
+      changed_when: false
+
+    - name: Create private persistent recovery storage
+      ansible.builtin.file:
+        path: /jffs/ghostroute-recovery
+        state: directory
+        mode: "0700"
+
+    - name: Preserve the original hooks before first installation
+      ansible.builtin.copy:
+        remote_src: true
+        src: "/jffs/scripts/{{ item }}"
+        dest: "/jffs/ghostroute-recovery/{{ item }}.before"
+        force: false
+        mode: "0700"
+      loop:
+        - services-start
+        - post-mount
+
+    - name: Install the recovery helper
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../modules/recovery-verification/router/readonly-entware-recovery"
+        dest: /jffs/scripts/readonly-entware-recovery.sh
+        mode: "0755"
+
+    - name: Record the current Entware volume identity once
+      ansible.builtin.raw: |
+        config=/jffs/ghostroute-recovery/readonly-entware.conf
+        [ ! -e "$config" ] || exit 0
+        opt=$(readlink -f /opt)
+        case "$opt" in /tmp/mnt/*/entware) ;; *) exit 1 ;; esac
+        mountpoint=${opt%/entware}
+        device=$(awk -v p="$mountpoint" '$2==p && $3=="ext4" {print $1; exit}' /proc/mounts)
+        [ -n "$device" ] || exit 1
+        uuid=$(blkid "$device" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')
+        case "$uuid" in ''|*[!a-fA-F0-9-]*) exit 1 ;; esac
+        case "$mountpoint" in *[!a-zA-Z0-9_./-]*) exit 1 ;; esac
+        umask 077
+        printf '%s\n' ENABLED=1 "UUID=$uuid" "MOUNTPOINT=$mountpoint" ARCHIVE=/jffs/ghostroute-recovery/entware-etc.tgz >"$config.new"
+        mv "$config.new" "$config"
+      no_log: true
+      changed_when: false
+
+    - name: Save and validate the working configuration before enabling hooks
+      ansible.builtin.raw: |
+        /jffs/scripts/readonly-entware-recovery.sh snapshot &&
+        /jffs/scripts/readonly-entware-recovery.sh check
+      register: readonly_entware_snapshot
+      changed_when: "'snapshot=saved' in readonly_entware_snapshot.stdout"
+
+    - name: Prepare read-only storage before the normal supervisor boot
+      ansible.builtin.blockinfile:
+        path: /jffs/scripts/services-start
+        insertafter: '^#!/bin/sh'
+        marker: '# {mark} GhostRouteReadonlyEntware'
+        block: |
+          if [ -x /jffs/scripts/readonly-entware-recovery.sh ]; then
+            /jffs/scripts/readonly-entware-recovery.sh boot || {
+              logger -t ghostroute-services-start "read-only Entware recovery failed"
+              exit 1
+            }
+          fi
+
+    - name: Prepare RAM directories before the existing Entware post-mount startup
+      ansible.builtin.blockinfile:
+        path: /jffs/scripts/post-mount
+        insertafter: '^#!/bin/sh'
+        marker: '# {mark} GhostRouteReadonlyEntware'
+        block: |
+          if [ -x /jffs/scripts/readonly-entware-recovery.sh ]; then
+            /jffs/scripts/readonly-entware-recovery.sh prepare "${1:-}" || {
+              logger -t ghostroute-post-mount "read-only Entware recovery failed"
+              exit 1
+            }
+          fi
+
+    - name: Validate installed shell syntax and adopt existing RAM mounts twice
+      ansible.builtin.raw: |
+        /bin/sh -n /jffs/scripts/readonly-entware-recovery.sh &&
+        /bin/sh -n /jffs/scripts/services-start &&
+        /bin/sh -n /jffs/scripts/post-mount &&
+        /jffs/scripts/readonly-entware-recovery.sh prepare &&
+        /jffs/scripts/readonly-entware-recovery.sh prepare
+      changed_when: false
+
+    - name: GhostRoute deploy gate after boot hook mutation
+      ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
