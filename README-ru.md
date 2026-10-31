@@ -210,6 +210,13 @@ backend, но может быть запинен на собственный bac
 real provider/ASN/endpoint/host family/account mapping остаются в Vault или
 gitignored operator notes.
 
+**Режим чувствительных сайтов** отдельно направляет Claude/Anthropic,
+OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensitive-out -> hermes_vps`.
+Остальные managed-направления сохраняют текущий backend. Режим включается
+`vault_router_sensitive_sites_enabled`, использует отдельный каталог доменов и
+не меняет client imports. Для совпавшего sensitive-трафика нет автоматического
+fallback на другой IP. [Контракт, ограничения и проверки](modules/routing-core/docs/sensitive-sites-mode.md).
+
 ---
 
 ## Операционные модули

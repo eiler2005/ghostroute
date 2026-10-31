@@ -174,6 +174,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 - `STEALTH_DOMAINS` is the active managed domain catalog; `VPN_STATIC_NETS` is
   the shared static CIDR catalog; `configs/domains-no-vpn.txt` contains
   exceptions.
+- Optional Sensitive sites mode uses `configs/sensitive-domains.txt` and
+  `sensitive-out -> hermes_vps` before general managed rules. It preserves the
+  general managed backend and client ingress, excludes Channel M, and has no
+  automatic fallback for matched destinations. See the Routing Core mode doc;
+  hidden hostnames and client bypasses are outside its domain-routing guarantee.
 - Public docs should describe stable behavior, interfaces, and recovery paths.
   Incident snapshots and one-off execution plans should remain local or be
   summarized into stable docs.

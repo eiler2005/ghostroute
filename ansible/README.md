@@ -157,6 +157,14 @@ managed egress while the owned VPS remains an observed switchback candidate.
 This changes only the router upstream behind `reality-out`; client profiles,
 Channel A/B/C ingress, selected full-VPS sets and catalog policy stay unchanged.
 
+Sensitive sites mode is a separate opt-in destination override. Set
+`vault_router_sensitive_sites_enabled: true` while preserving the general
+managed selector, and apply `20-stealth-router.yml` after local checks and
+operator authorization. It routes `configs/sensitive-domains.txt` to the owned
+`hermes_vps` via `sensitive-out`; other managed destinations retain their current
+backend. It overrides D's pin only for those domains and excludes Channel M.
+See [the contract, domain review and rollback](../modules/routing-core/docs/sensitive-sites-mode.md).
+
 ## Directory Map
 
 ```text

@@ -147,6 +147,10 @@ vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | def
 # manual reserve mode for a Vault-backed router-only VLESS/Reality provider
 # profile for emergency managed egress.
 router_managed_egress_mode: "{{ vault_router_managed_egress_mode | default('primary_vps') }}"
+# Sensitive sites mode is a destination override, independent of the shared
+# managed backend and Channel D's pin. Its only backend is the owned clone.
+router_sensitive_sites_enabled: "{{ vault_router_sensitive_sites_enabled | default(false) }}"
+router_sensitive_sites_domains: "{{ lookup('file', playbook_dir + '/../../configs/sensitive-domains.txt').splitlines() | map('trim') | reject('match', '^#|^$') | list }}"
 # Independent Channel D managed egress selector. 'follow' (default) keeps Channel D
 # on the shared reality-out backend as Channel A/B/C; primary_vps/backup_reality/
 # hermes_vps pin Channel D to its own reality-out-d backend (canary lane). Pins

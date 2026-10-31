@@ -10,6 +10,9 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 
 - Builds and refreshes router-side hooks for NAT, firewall and service startup.
 - Maintains sing-box rule-set synchronization from the repo-managed catalogs.
+- Provides opt-in Sensitive sites mode: a reviewed domain catalog selects
+  `sensitive-out -> hermes_vps` before general managed routes, without automatic
+  fallback to a different egress identity.
 - Installs the runtime supervisor that owns router reboot recovery, watchdog cron
   registration, dependency-ordered listener recovery and delayed firewall
   stabilization.
@@ -100,6 +103,7 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 
 ## Related Docs
 
+- `modules/routing-core/docs/sensitive-sites-mode.md`
 - `docs/architecture.md`
 - `modules/routing-core/docs/current-routing-explained.md`
 - `modules/routing-core/docs/network-flow-and-observer-model.md`

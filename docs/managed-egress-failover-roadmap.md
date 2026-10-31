@@ -26,6 +26,13 @@ The router remains the policy owner. `STEALTH_DOMAINS` and `VPN_STATIC_NETS`
 continue to define what is managed; reserve mode only changes which foreign
 egress is used for managed traffic.
 
+The opt-in [Sensitive sites mode](../modules/routing-core/docs/sensitive-sites-mode.md)
+is a separate destination override: its reviewed domain catalog uses
+`sensitive-out -> hermes_vps` before the general managed routes. Switching
+`reality-out` does not disable that override or move its traffic. Channel M
+remains outside both selectors; matched sensitive traffic has no automatic
+fallback to the shared backend.
+
 ## Public Mnemonic Contract
 
 Tracked docs, commit messages and issue text must name managed egress backends

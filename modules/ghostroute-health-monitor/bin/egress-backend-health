@@ -145,6 +145,8 @@ vault_ref() {
 
 ACTIVE_BACKEND="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
 CHANNEL_D_BACKEND="$(vault_scalar vault_channel_d_managed_egress_mode follow)"
+SENSITIVE_SITES_ENABLED="$(vault_scalar vault_router_sensitive_sites_enabled false)"
+SENSITIVE_DOMAINS_FILE="${GHOSTROUTE_SENSITIVE_DOMAINS_FILE:-${PROJECT_ROOT}/configs/sensitive-domains.txt}"
 
 RUNTIME_ENV="$(router_ssh 'cat /jffs/scripts/ghostroute-runtime.env 2>/dev/null || cat /jffs/scripts/ghostroute-runtime-env 2>/dev/null' || true)"
 runtime_get() { printf '%s\n' "$RUNTIME_ENV" | awk -F= -v k="$1" '$1==k{print $2; exit}'; }
@@ -285,8 +287,12 @@ GR_CHANNEL_D_BACKEND="$CHANNEL_D_BACKEND" \
 GR_CANARY_BACKEND="$CANARY_BACKEND" \
 GR_CANARY_LABEL="$CANARY_LABEL" \
 GR_SPLIT_NOTE="$SPLIT_NOTE" \
+GR_SENSITIVE_SITES_ENABLED="$SENSITIVE_SITES_ENABLED" \
+GR_SENSITIVE_DOMAINS_FILE="$SENSITIVE_DOMAINS_FILE" \
+GR_CANARIES_FILE="$CANARIES_FILE" \
 ruby - "$TMPDIR/backend-results.tsv" "$TMPDIR/canaries.tsv" <<'RUBY'
 require 'json'
+require 'uri'
 
 backend_rows = File.readlines(ARGV[0], chomp: true).map { |line| line.split("\t", 13) }.select { |row| row.length >= 13 }
 canary_rows = File.readlines(ARGV[1], chomp: true).map { |line| line.split("\t", 4) }.select { |row| row.length == 4 }
@@ -324,8 +330,17 @@ backend_bank = backend_rows.map do |role, label, active, channel_d, configured, 
   }
 end
 
+sensitive_enabled = %w[1 true yes].include?(ENV['GR_SENSITIVE_SITES_ENABLED'].to_s.downcase)
+sensitive_domains = sensitive_enabled ? File.readlines(ENV.fetch('GR_SENSITIVE_DOMAINS_FILE'), chomp: true).map(&:strip).reject { |d| d.empty? || d.start_with?('#') } : []
+canary_hosts = File.readlines(ENV.fetch('GR_CANARIES_FILE'), chomp: true).reject { |line| line.empty? || line.start_with?('#') }.to_h do |line|
+  app, url = line.split("\t", 3)
+  [app, URI(url).host.to_s.downcase]
+end
 app_canaries = canary_rows.map do |app, status, code, time_s|
-  { 'app' => app, 'status' => status, 'http_code' => code, 'time_s' => time_s }
+  host = canary_hosts.fetch(app, '')
+  sensitive = sensitive_domains.any? { |d| host == d || host.end_with?(".#{d}") }
+  { 'app' => app, 'status' => status, 'http_code' => code, 'time_s' => time_s,
+    'expected_backend' => sensitive ? 'hermes_vps' : ENV['GR_CANARY_BACKEND'] }
 end
 
 if ENV['GR_JSON'] == '1'
@@ -336,6 +351,7 @@ if ENV['GR_JSON'] == '1'
     'active_backend' => ENV['GR_ACTIVE_BACKEND'],
     'channel_d_backend' => ENV['GR_CHANNEL_D_BACKEND'],
     'canary_backend' => ENV['GR_CANARY_BACKEND'],
+    'sensitive_sites_backend' => sensitive_enabled ? 'hermes_vps' : nil,
     'rollup' => rollup,
     'note' => ENV['GR_SPLIT_NOTE'].to_s.empty? ? nil : ENV['GR_SPLIT_NOTE'],
     'backend_bank' => backend_bank,
@@ -355,14 +371,15 @@ else
   puts
   puts 'Application canaries'
   app_w = [canary_rows.map { |row| row[0].length }.max || 3, 9].max
-  puts "#{'app'.ljust(app_w)}  status    http  time_s"
+  puts "#{'app'.ljust(app_w)}  status    http  time_s  expected_backend"
   puts '-' * (app_w + 25)
   app_canaries.each do |row|
-    puts "#{row['app'].ljust(app_w)}  #{row['status'].ljust(8)}  #{row['http_code'].ljust(4)}  #{row['time_s']}"
+    puts "#{row['app'].ljust(app_w)}  #{row['status'].ljust(8)}  #{row['http_code'].ljust(4)}  #{row['time_s']}  #{row['expected_backend']}"
   end
   puts
   puts "note: #{ENV['GR_SPLIT_NOTE']}" unless ENV['GR_SPLIT_NOTE'].to_s.empty?
-  puts 'inactive backend TCP/TLS probes are advisory; active app canaries are canonical live proof'
+  puts 'inactive backend TCP/TLS probes are advisory; app canaries prove reachability on their configured paths'
+  puts 'expected_backend is policy attribution, not a measured egress IP'
   puts 'roles map to backend selectors only; endpoint evidence is masked'
 end
 RUBY

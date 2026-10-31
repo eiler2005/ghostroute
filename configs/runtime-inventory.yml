@@ -72,6 +72,7 @@ components:
       - provides_channel_m_maxtg_service_egress
       - provides_router_socks
       - provides_router_vps_dns_forwarder
+      - provides_optional_sensitive_sites_egress
     runtime_checks:
       - /opt/bin/sing-box check -C /opt/etc/sing-box
       - ./modules/ghostroute-health-monitor/bin/live-check --json --no-log
@@ -87,6 +88,7 @@ components:
       - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
       - Channel D is experimental and must not be counted as Channel C native proof.
       - Channel M is service-only for maxtg_bridge and must not use managed rule-sets or reality-out.
+      - Sensitive sites mode selects sensitive-out to hermes_vps before general managed rules and excludes Channel M.
 
   - id: router_runtime_supervisor
     component_name: ghostroute-runtime-supervisor.sh

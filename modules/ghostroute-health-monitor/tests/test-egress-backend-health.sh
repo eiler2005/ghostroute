@@ -53,6 +53,7 @@ vault_router_hermes_vps_host: "203.0.113.50"
 vault_router_hermes_vps_port: 443
 vault_router_hermes_vps_server_name: "hermes.example.invalid"
 VAULT
+  printf 'vault_router_sensitive_sites_enabled: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED:-false}"
   exit 0
 fi
 echo "unsupported ansible-vault call" >&2
@@ -112,6 +113,8 @@ case "$last" in
   *core.telegram.org*) printf '200 0.100000' ;;
   *google.com*) printf '204 0.050000' ;;
   *blocked.example.invalid*) printf '403 0.200000' ;;
+  *chatgpt.com*) printf '200 0.100000' ;;
+  *claude.ai*) printf '403 0.100000' ;;
   *) printf '000 0' ;;
 esac
 EOF
@@ -192,5 +195,33 @@ RUBY
 for secretish in primary.example.invalid backup.example.invalid hermes.example.invalid cover.example.invalid 198.51.100 203.0.113; do
   assert_not_contains "$JSON_OUT" "$secretish"
 done
+
+# A split canary must identify its own expected backend instead of attributing
+# all successful app responses to the default managed backend.
+cat >>"$CANARIES_FILE" <<'EOF'
+openai	https://chatgpt.com/cdn-cgi/trace	2
+claude	https://claude.ai/	2,3,403
+EOF
+SPLIT_OUT="$TMPDIR/split.json"
+env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED=true \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$SPLIT_OUT"
+SPLIT_D_OUT="$TMPDIR/split-d.json"
+env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED=true \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json --channel d >"$SPLIT_D_OUT"
+ruby -rjson - "$SPLIT_OUT" "$SPLIT_D_OUT" <<'RUBY'
+ARGV.each do |path|
+  j = JSON.parse(File.read(path))
+  raise 'default managed backend changed' unless j['active_backend'] == 'backup_reality'
+  raise 'sensitive backend' unless j['sensitive_sites_backend'] == 'hermes_vps'
+  %w[openai claude].each do |app|
+    row = j['app_canaries'].find { |r| r['app'] == app }
+    raise "sensitive attribution #{app}" unless row['expected_backend'] == 'hermes_vps' && row['status'] == 'OK'
+  end
+  %w[telegram google].each do |app|
+    row = j['app_canaries'].find { |r| r['app'] == app }
+    raise "shared attribution #{app}" unless row['expected_backend'] == 'backup_reality'
+  end
+end
+RUBY
 
 echo "egress-backend-health fixture tests passed"

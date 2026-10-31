@@ -11,5 +11,8 @@ youtube	https://www.youtube.com/generate_204	2
 google	https://www.google.com/generate_204	2
 claude	https://claude.ai/	2,3,403
 anthropic	https://www.anthropic.com/	2,3
+gemini	https://gemini.google.com/	2,3
+ai-studio	https://aistudio.google.com/	2,3
+notebooklm	https://notebooklm.google.com/	2,3
 openai	https://chatgpt.com/cdn-cgi/trace	2
 egress-ip	https://api.ipify.org/	2

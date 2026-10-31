@@ -632,10 +632,10 @@ else
 fi
 router_ssh "STATE_DIR=\$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); [ -f \"\$STATE_DIR/mobile-reality-counters.tsv\" ] && cat \"\$STATE_DIR/mobile-reality-counters.tsv\" || true" > "$MOBILE_BYTES_HISTORY"
 router_ssh '[ -x /jffs/scripts/mobile-reality-counters-snapshot ] && /jffs/scripts/mobile-reality-counters-snapshot 2>/dev/null || true' > "$MOBILE_BYTES_CURRENT"
-router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
-grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$MOBILE_LOG" || true
-grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_B_RELAY_LOG" || true
-grep -E "inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[reality-out\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_C_LOG" || true
+router_ssh 'TODAY="$(date +%Y-%m-%d)"; LOG="/opt/var/log/sing-box.log"; [ -f "$LOG" ] && grep " $TODAY " "$LOG" | grep -E "inbound/vless\\[reality-in\\]|inbound/socks\\[channel-b-relay-socks\\]|inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[(reality-out|sensitive-out)\\]|direct\\[direct-out\\])" || true' > "$CHANNEL_COMBINED_LOG"
+grep -E "inbound/vless\\[reality-in\\]|outbound/(vless\\[(reality-out|sensitive-out)\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$MOBILE_LOG" || true
+grep -E "inbound/socks\\[channel-b-relay-socks\\]|outbound/(vless\\[(reality-out|sensitive-out)\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_B_RELAY_LOG" || true
+grep -E "inbound/(http\\[channel-c-shadowrocket-http-in\\]|naive\\[channel-c-naive-in\\])|outbound/(vless\\[(reality-out|sensitive-out)\\]|direct\\[direct-out\\])" "$CHANNEL_COMBINED_LOG" > "$CHANNEL_C_LOG" || true
 router_ssh 'TODAY="$(date +%Y/%m/%d)"; LOG="/opt/var/log/xray-channel-b-home.log"; [ -f "$LOG" ] && grep "^$TODAY " "$LOG" || true' > "$CHANNEL_B_HOME_LOG"
 router_ssh 'TODAY="$(date +%Y-%m-%d)"; DIR="/opt/var/log/router_configuration/dns-forensics"; [ -d "$DIR" ] || DIR="/jffs/addons/router_configuration/dns-forensics"; cat "$DIR"/${TODAY}T*.tsv 2>/dev/null || true' > "$DNS_FORENSICS_TODAY"
 
@@ -818,7 +818,7 @@ if [ -s "$MOBILE_LOG" ]; then
         next
       }
 
-      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to / && (id in seen)) {
+      if ($0 ~ /outbound\/vless\[(reality-out|sensitive-out)\]: outbound connection to / && (id in seen)) {
         outbound_by_id[id] = "reality"
         next
       }
@@ -907,7 +907,7 @@ if [ -s "$CHANNEL_B_RELAY_LOG" ]; then
 
       if (id == "" || !(id in seen) || (id in outbound_by_id)) next
 
-      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
+      if ($0 ~ /outbound\/vless\[(reality-out|sensitive-out)\]: outbound connection to /) {
         outbound_by_id[id] = "reality"
       } else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) {
         outbound_by_id[id] = "direct"
@@ -993,7 +993,7 @@ if [ -s "$CHANNEL_C_LOG" ]; then
 
       if (id == "" || !(id in seen) || (id in outbound_by_id)) next
 
-      if ($0 ~ /outbound\/vless\[reality-out\]: outbound connection to /) {
+      if ($0 ~ /outbound\/vless\[(reality-out|sensitive-out)\]: outbound connection to /) {
         outbound_by_id[id] = "reality"
       } else if ($0 ~ /outbound\/direct\[direct-out\]: outbound connection to /) {
         outbound_by_id[id] = "direct"

@@ -55,9 +55,19 @@ visualstudio.com    — legacy VSTS URLs, still used by some Azure DevOps links
 anthropic.com   — API (api.anthropic.com), console, docs
 claude.ai       — Claude web app
 claude.com      — claude.com redirect and assets
+claudeusercontent.com — artifacts, user content and extension bridge
+claudemcpcontent.com — interactive MCP widgets
 ```
 
 All subdomains of each domain are covered automatically.
+
+These families include the additional app/content origins in the current
+[Claude network requirements](https://code.claude.com/docs/en/network-config).
+When Sensitive sites mode is enabled, the separate
+[`configs/sensitive-domains.txt`](../../../configs/sensitive-domains.txt) catalog
+selects the owned egress before the common managed backend. Keep both catalogs
+in sync; this list alone does not enable the mode. See
+[Sensitive sites mode](../../routing-core/docs/sensitive-sites-mode.md).
 
 ---
 
