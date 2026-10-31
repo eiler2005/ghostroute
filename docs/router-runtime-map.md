@@ -65,6 +65,48 @@ flowchart LR
   watchdogs -. recovers .-> mListener
 ```
 
+## Storage ownership and operating modes
+
+The **main operating mode** uses a healthy writable ext4 USB volume for Entware.
+Internal JFFS stores boot hooks and router-owned configuration; RAM holds running
+processes and the live network state. The **temporary read-only recovery mode**
+keeps reading Entware binaries from USB while selected writable paths are bound
+to RAM and restored from a small private JFFS archive after reboot.
+
+| Storage / path | Main mode | Temporary read-only recovery mode | Survives reboot |
+|---|---|---|---|
+| Firmware image: `/bin`, `/sbin`, `/usr` | Merlin system tools and built-in services | Same firmware tools bootstrap recovery | Yes; managed by firmware updates |
+| NVRAM | Firmware settings such as WAN, Wi-Fi, SSH and custom-script enablement | Same firmware settings | Yes |
+| Internal writable flash: `/jffs/scripts`, `/jffs/configs`, `/jffs/keys` | Boot hooks, supervisor/watchdogs, dnsmasq includes and router-owned keys | Same, plus the opt-in recovery helper and private seed under `/jffs/ghostroute-recovery` | Yes |
+| USB ext4: `/opt/bin`, `/opt/sbin`, `/opt/lib` | Entware programs and libraries; package installation and upgrades write to USB | Existing programs and libraries are still read from USB; package writes remain unavailable | Yes, while the USB remains readable |
+| `/opt/etc` | Configurations, service init scripts, TLS material and rule-sets stored on writable USB | RAM bind mount restored from the private JFFS seed | USB files persist; temporary changes require a refreshed seed |
+| `/opt/var/run`, `/opt/var/log`, `/opt/var/cache/dnscrypt-proxy`, `/opt/tmp` | Entware service directories on writable USB in the normal layout | RAM bind mounts; resolver cache is seeded, PID/log/tmp directories start empty | RAM content does not persist |
+| `/tmp`, running processes, live iptables/ipset/conntrack state | Volatile runtime, reconstructed by firmware and GhostRoute startup | Volatile runtime, reconstructed after RAM directory preparation | No |
+| Control-machine private backup under ignored `reports/router-backups/` | Recovery copy outside the router | Recovery copy for replacing the USB and restoring current config | Yes on the control machine; not an offsite copy |
+
+`/opt` is a link to the Entware directory on the USB volume, normally through
+`/tmp/opt`. A USB mountpoint can be under `/tmp/mnt/<volume>` while its files
+still live on USB; the path prefix alone does not identify the storage medium.
+In temporary mode the same `/opt/etc` path instead resolves to a RAM bind mount.
+
+Normal startup mounts writable USB, establishes the Entware link and starts
+`rc.unslung`; the runtime supervisor reconciles DNS, listeners, routing and cron.
+Temporary recovery first identifies the configured USB UUID, mounts readable
+write-protected ext4 with `ro,noload` if firmware could not mount it, restores
+the selected RAM directories, and then hands startup to the same service owners.
+It does not change sensitive-site or general managed-egress policy.
+
+The temporary mode is a bridge until writable storage is restored. It does not
+make the whole installation resident in internal flash or RAM: unreadable USB
+binaries still prevent recovery. Manual config/certificate changes need a seed
+refresh; successful opted-in Ansible router deployments refresh it automatically.
+After USB replacement, verify normal writable mounts, restore current config,
+disable emergency recovery and verify a controlled reboot.
+
+See the [temporary-mode runbook](../modules/recovery-verification/docs/readonly-entware-boot-recovery.md)
+for installation, private snapshots, limits and replacement steps. Sensitive
+sites mode is a separate routing policy and can operate in either storage mode.
+
 ## Router-Owned Runtime Objects
 
 | Area | Runtime objects | Installed or rendered by | Verification signal |

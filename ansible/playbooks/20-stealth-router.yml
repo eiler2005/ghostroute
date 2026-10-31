@@ -63,3 +63,11 @@
 
     - name: GhostRoute deploy gate after router mutation
       ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
+
+    - name: Refresh opted-in read-only Entware recovery snapshot after verified deploy
+      ansible.builtin.raw: |
+        if [ -x /jffs/scripts/readonly-entware-recovery.sh ] && [ -r /jffs/ghostroute-recovery/readonly-entware.conf ]; then
+          /jffs/scripts/readonly-entware-recovery.sh snapshot
+        fi
+      register: readonly_entware_snapshot
+      changed_when: "'snapshot=saved' in readonly_entware_snapshot.stdout"

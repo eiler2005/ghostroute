@@ -252,6 +252,16 @@ catalog and `vault_router_sensitive_sites_enabled` switch do not change client
 imports. Matched sensitive traffic has no automatic fallback to another IP.
 See [the mode contract and limitations](modules/routing-core/docs/sensitive-sites-mode.md).
 
+### Router storage modes
+
+The **main mode** keeps Entware programs and `/opt/etc` on writable USB/ext4,
+router-owned hooks/configuration in JFFS, and volatile runtime in RAM. Optional
+**temporary read-only recovery** restores selected writable paths into RAM from
+a private JFFS seed while binaries remain on readable USB. Sensitive sites mode
+works with either storage layout. See the
+[storage ownership table](docs/router-runtime-map.md#storage-ownership-and-operating-modes)
+and [temporary-mode runbook](modules/recovery-verification/docs/readonly-entware-boot-recovery.md).
+
 ---
 
 ## Operational Modules
