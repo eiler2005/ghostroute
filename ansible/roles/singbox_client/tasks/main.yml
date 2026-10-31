@@ -150,8 +150,19 @@
       - reality_server_public_key | string | length > 0
       - (clients | selectattr('name','equalto','router') | list | length) == 1
     fail_msg: "hermes_vps mode needs a complete owned VPS endpoint and the existing router Reality client identity."
-  when: router_managed_egress_mode == 'hermes_vps' or channel_d_managed_egress_mode | default('follow') == 'hermes_vps'
+  when: router_managed_egress_mode == 'hermes_vps' or channel_d_managed_egress_mode | default('follow') == 'hermes_vps' or router_sensitive_sites_enabled | default(false) | bool
   no_log: true
+
+- name: Validate sensitive sites mode catalog
+  ansible.builtin.assert:
+    that:
+      - router_sensitive_sites_domains | length > 0
+      - (router_sensitive_sites_domains | unique | list | length) == (router_sensitive_sites_domains | length)
+      - (router_sensitive_sites_domains | select('match', '^[a-z0-9][a-z0-9.-]*[.][a-z0-9-]+$') | list | length) == (router_sensitive_sites_domains | length)
+      - "'google.com' not in router_sensitive_sites_domains"
+      - "'googleapis.com' not in router_sensitive_sites_domains"
+    fail_msg: "Sensitive sites mode needs an explicit domain catalog, not whole Google or Google APIs families."
+  when: router_sensitive_sites_enabled | default(false) | bool
 
 - name: Validate Channel C1 home Naive settings
   ansible.builtin.assert:

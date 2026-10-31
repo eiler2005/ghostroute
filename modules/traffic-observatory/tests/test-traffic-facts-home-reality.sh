@@ -253,4 +253,21 @@ assert.equal(multiHome.every((row) => row.destination === "Home Reality ingress"
 assert.equal(multiHome.every((row) => row.evidence_level === "home_reality_profile_counter"), true);
 NODE
 
+# The dedicated sensitive outbound is still VPS traffic in schema v3, with the
+# same byte attribution as the general managed path.
+sed -e 's/reality-out/sensitive-out/g' -e 's/youtubei.googleapis.com/claude.ai/g' \
+  "$TMPDIR/evidence.json" > "$TMPDIR/evidence-sensitive.json"
+GHOSTROUTE_TRAFFIC_FACTS_EVIDENCE_FILE="$TMPDIR/evidence-sensitive.json" \
+  "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-facts" --json today > "$TMPDIR/facts-sensitive.json"
+node - "$TMPDIR/facts-sensitive.json" <<'NODE'
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+assert.equal(payload.schema_version, 3);
+const row = payload.traffic_facts.find((r) => r.client_key === "phone-a" && r.destination === "claude.ai");
+assert.ok(row);
+assert.equal(row.via_vps_bytes, 750);
+assert.equal(row.direct_bytes, 0);
+NODE
+
 echo "traffic-facts Home Reality attribution fixture test passed"

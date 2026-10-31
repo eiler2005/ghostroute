@@ -1,4 +1,5 @@
-{% set modern_sniff = (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool) or (channel_d_naiveproxy_enabled | default(false) | bool) %}
+{% set sensitive_sites_enabled = router_sensitive_sites_enabled | default(false) | bool %}
+{% set modern_sniff = sensitive_sites_enabled or (channel_c_home_enabled | default(false) | bool) or (channel_c_shadowrocket_enabled | default(false) | bool) or (channel_d_naiveproxy_enabled | default(false) | bool) %}
 {% set managed_egress_mode = router_managed_egress_mode | default('primary_vps') %}
 {% set selected_full_vps_lan_enabled = (channel_a_selected_full_vps_enabled | default(false) | bool) and ((channel_a_selected_full_vps_lan_clients | default([])) | length > 0) %}
 {% set selected_full_vps_home_users = channel_a_selected_full_vps_home_reality_users | default([]) %}
@@ -16,6 +17,22 @@
 {% set d_mode = channel_d_managed_egress_mode | default('follow') %}
 {% set d_effective_mode = managed_egress_mode if d_mode == 'follow' else d_mode %}
 {% set d_out = 'reality-out' if d_mode == 'follow' else 'reality-out-d' %}
+{% set sensitive_sites_inbounds = ['redirect-in', 'dnscrypt-socks-in'] %}
+{% if selected_full_vps_lan_enabled %}
+{% set sensitive_sites_inbounds = sensitive_sites_inbounds + [channel_a_selected_full_vps_inbound_tag | default('channel-a-selected-lan-full-vps-in')] %}
+{% endif %}
+{% if home_reality_enabled | default(false) | bool %}
+{% set sensitive_sites_inbounds = sensitive_sites_inbounds + ['reality-in', 'channel-b-relay-socks'] %}
+{% endif %}
+{% if channel_c_home_enabled | default(false) | bool %}
+{% set sensitive_sites_inbounds = sensitive_sites_inbounds + ['channel-c-naive-in'] %}
+{% endif %}
+{% if channel_c_shadowrocket_enabled | default(false) | bool %}
+{% set sensitive_sites_inbounds = sensitive_sites_inbounds + ['channel-c-shadowrocket-http-in'] %}
+{% endif %}
+{% if channel_d_naiveproxy_enabled | default(false) | bool %}
+{% set sensitive_sites_inbounds = sensitive_sites_inbounds + ['channel-d-naiveproxy-socks-in'] %}
+{% endif %}
 {% macro reality_outbound_body(mode) -%}
 {% if mode == 'backup_reality' %}
       "server": "{{ router_backup_reality_server }}",
@@ -288,6 +305,13 @@
       "tag": "reality-out",
 {{ reality_outbound_body(managed_egress_mode) }}
     },
+{% if sensitive_sites_enabled %}
+    {
+      "type": "vless",
+      "tag": "sensitive-out",
+{{ reality_outbound_body('hermes_vps') }}
+    },
+{% endif %}
 {% if d_mode != 'follow' %}
     {
       "type": "vless",
@@ -316,6 +340,10 @@
       }
     ],
     "rules": [
+{% if sensitive_sites_enabled %}
+      { "inbound": {{ sensitive_sites_inbounds | to_json }}, "network": "tcp", "action": "sniff", "sniffer": ["http", "tls"] },
+      { "inbound": {{ sensitive_sites_inbounds | to_json }}, "domain_suffix": {{ router_sensitive_sites_domains | to_json }}, "outbound": "sensitive-out" },
+{% endif %}
       { "inbound": "redirect-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "dnscrypt-socks-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "redirect-in", "outbound": "reality-out" },

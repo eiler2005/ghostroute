@@ -193,9 +193,9 @@ run_active_application_probe() {
   wait "$tunnel_pid" >/dev/null 2>&1 || true
 
   if [ "$ok" -eq "$total" ] && [ "$total" -gt 0 ]; then
-    emit active_managed_app OK "Active managed egress can reach application canaries." "ok=$ok total=$total" "No action."
+    emit active_managed_app OK "Configured managed paths can reach application canaries (sensitive sites may use their own egress)." "ok=$ok total=$total" "No action."
   else
-    emit active_managed_app CRIT "Active managed egress failed application canaries." "ok=$ok total=$total" "Check the active router reality-out backend before switching modes."
+    emit active_managed_app CRIT "A configured managed path failed application canaries." "ok=$ok total=$total" "Check reality-out and sensitive-out policy before switching modes."
   fi
 }
 

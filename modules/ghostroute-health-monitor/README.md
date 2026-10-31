@@ -87,6 +87,14 @@ selected backend works for managed traffic. The command emits human text or
 `backend_bank[]`, `app_canaries[]` and `rollup`, without printing raw endpoints,
 provider values, IP addresses or keys.
 
+With Sensitive sites mode enabled, canaries can use different backends.
+`sensitive_sites_backend` and `app_canaries[].expected_backend` identify the
+configured policy per application; the latter is additive to schema version 1
+and is not a measured egress IP. A successful sensitive app no longer proves
+the general `reality-out` backend. The ordinary egress-IP canary still tests
+the general managed path. See the
+[mode contract](../routing-core/docs/sensitive-sites-mode.md).
+
 `egress-dpi-probe` is the path / censorship-signature classifier for the same
 backend bank. Where `egress-backend-health` proves the *active* backend carries
 app traffic through the tunnel, this probes the *raw* TLS path to each backend's

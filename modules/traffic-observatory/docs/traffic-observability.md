@@ -54,6 +54,14 @@ iPhone по LTE, MacBook по Wi-Fi, ноутбук в другой сети и 
 
 ## Reporting Layers
 
+Sensitive sites mode adds a `sensitive-out` VLESS path. Router route evidence
+and live events preserve this tag while classifying it as `VPS`, so
+`traffic-facts --json` remains schema version 3. Live evidence labels the rule
+`SENSITIVE_SITES`; the general `reality-out` tag remains distinct. Operator
+`traffic-report` counts both as proxied traffic and remains a debug surface,
+not a new machine consumer. See
+[the mode contract](../../routing-core/docs/sensitive-sites-mode.md).
+
 GhostRoute intentionally separates three layers:
 
 | Layer | What it measures | Byte quality |

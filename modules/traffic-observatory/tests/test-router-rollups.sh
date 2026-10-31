@@ -37,6 +37,8 @@ cat > "$TMPDIR/sing-box.log" <<'EOF'
 +0300 2026-05-11 12:40:00 INFO [100 10ms] outbound/vless[reality-out]: outbound connection to api.example.invalid:443
 +0300 2026-05-11 12:40:59 INFO [101 10ms] inbound/http[channel-c-shadowrocket-http-in]: [client] inbound connection to local.example.invalid:443
 +0300 2026-05-11 12:41:00 INFO [101 10ms] outbound/direct[direct-out]: outbound connection to local.example.invalid:443
++0300 2026-05-11 12:42:00 INFO [102 10ms] inbound/vless[reality-in]: [sensitive-client] inbound connection to claude.ai:443
++0300 2026-05-11 12:42:01 INFO [102 10ms] outbound/vless[sensitive-out]: outbound connection to claude.ai:443
 EOF
 
 SINGBOX_LOG_PATH="$TMPDIR/sing-box.log" \
@@ -46,5 +48,12 @@ GHOSTROUTE_TRAFFIC_STATE_DIR="$TMPDIR" \
 test -s "$TMPDIR/sing-box-route-evidence.tsv"
 grep -q 'VPS|reality-out|api.example.invalid:443|api.example.invalid|443|sing-box.log|ok|reality-in|iphone-1' "$TMPDIR/sing-box-route-evidence.tsv"
 grep -q 'Direct|direct-out|local.example.invalid:443|local.example.invalid|443|sing-box.log|ok|channel-c-shadowrocket-http-in|client' "$TMPDIR/sing-box-route-evidence.tsv"
+grep -q 'VPS|sensitive-out|claude.ai:443|claude.ai|443|sing-box.log|ok|reality-in|sensitive-client' "$TMPDIR/sing-box-route-evidence.tsv"
+
+events_json="$(GHOSTROUTE_LIVE_SINGBOX_LOG_FILE="$TMPDIR/sing-box.log" \
+  GHOSTROUTE_LIVE_DNSMASQ_LOG_FILE=/dev/null \
+  GHOSTROUTE_LIVE_DOMAIN_ACTIVITY_LOG_FILE=/dev/null \
+  "${PROJECT_ROOT}/modules/traffic-observatory/bin/live-events-report" --json)"
+node -e 'const j = JSON.parse(process.argv[1]); const rows = j.events || []; if (!rows.some(r => r.sing_box_outbound === "sensitive-out" && r.route === "VPS" && r.matched_rule === "SENSITIVE_SITES")) process.exit(1);' "$events_json"
 
 echo "router rollup fixture test passed"

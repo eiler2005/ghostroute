@@ -79,15 +79,17 @@ current_mode() {
 }
 
 status() {
-  local abc d
+  local abc d sensitive
   abc="$(current_mode vault_router_managed_egress_mode primary_vps)"
   d="$(current_mode vault_channel_d_managed_egress_mode follow)"
+  sensitive="$(current_mode vault_router_sensitive_sites_enabled false)"
   printf 'A/B/C managed egress mode: %s\n' "$abc"
   if [ "$d" = "follow" ]; then
     printf 'Channel D managed egress mode: follow (= A/B/C: %s)\n' "$abc"
   else
     printf 'Channel D managed egress mode: %s (independent, via reality-out-d)\n' "$d"
   fi
+  printf 'Sensitive sites mode: %s (when enabled: sensitive-out -> hermes_vps)\n' "$sensitive"
   printf 'available A/B/C modes: %s\n' "$ABC_MODES"
   printf 'available Channel D modes: %s\n' "$D_MODES"
   printf 'scope: managed destinations via reality-out (A/B/C) / reality-out-d (Channel D pin)\n'

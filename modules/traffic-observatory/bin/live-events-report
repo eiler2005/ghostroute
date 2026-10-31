@@ -190,6 +190,9 @@ File.readlines(singbox_path, chomp: true).each_with_index do |line, idx|
   if line =~ /outbound\/vless\[reality-out\]: outbound connection to ([^[:space:]]+)/
     outbound = 'reality-out'
     route = 'VPS'
+  elsif line =~ /outbound\/vless\[sensitive-out\]: outbound connection to ([^[:space:]]+)/
+    outbound = 'sensitive-out'
+    route = 'VPS'
   elsif line =~ /outbound\/direct\[direct-out\]: outbound connection to ([^[:space:]]+)/
     outbound = 'direct-out'
     route = 'Direct'
@@ -208,8 +211,8 @@ File.readlines(singbox_path, chomp: true).each_with_index do |line, idx|
       route_decision: route,
       route: route,
       sing_box_outbound: outbound,
-      matched_rule: route == 'VPS' ? 'STEALTH_DOMAINS' : 'no managed match',
-      rule_set: route == 'VPS' ? 'STEALTH_DOMAINS' : 'direct/default',
+      matched_rule: outbound == 'sensitive-out' ? 'SENSITIVE_SITES' : (route == 'VPS' ? 'STEALTH_DOMAINS' : 'no managed match'),
+      rule_set: outbound == 'sensitive-out' ? 'SENSITIVE_SITES' : (route == 'VPS' ? 'STEALTH_DOMAINS' : 'direct/default'),
       confidence: flows[id][:confidence] || 'exact'
     )
     events << flows[id].merge(event_type: 'route.decision', summary: "#{flows[id][:destination] || destination} via #{outbound}")

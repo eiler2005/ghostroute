@@ -224,6 +224,24 @@ the backend does not change the route contract, client profiles, or Channel
 D/M behavior. See
 [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md).
 
+### Sensitive sites mode / Режим чувствительных сайтов
+
+An optional destination override precedes the general managed rules:
+`configs/sensitive-domains.txt -> sensitive-out -> hermes_vps`. It serves
+Claude/Anthropic, OpenAI/ChatGPT, Gemini, AI Studio/API and NotebookLM with one
+owned egress while other managed destinations keep the selected `reality-out`
+backend. It applies equally after LAN, Home Reality and B/C/D ingress, including
+selected full-VPS traffic; Channel M is excluded. D's backend pin remains the
+default for its other managed destinations. Public ingress and client imports
+are unchanged. The feature is opt-in via `vault_router_sensitive_sites_enabled`.
+
+The router sniffs HTTP/TLS before general catch-all rules to classify LAN
+REDIRECT connections. Matched sensitive destinations have no automatic fallback
+to another egress. Hidden hostnames, client-side bypasses and shared third-party
+resources limit the guarantee; this is not a universal application kill switch.
+See [Sensitive sites mode](../modules/routing-core/docs/sensitive-sites-mode.md)
+for the catalog, shared Google auth tradeoff, evidence and rollback procedure.
+
 Policy-split managed DNS is generated on the router and normally uses the
 router-local dnscrypt listener. dnscrypt sends upstream DoH through sing-box
 SOCKS and `reality-out`, so the protected path remains Reality-backed without

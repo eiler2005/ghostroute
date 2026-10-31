@@ -133,6 +133,10 @@ awk '
     emit("VPS", "reality-out", $0)
     next
   }
+  /outbound\/vless\[sensitive-out\]: outbound connection to / {
+    emit("VPS", "sensitive-out", $0)
+    next
+  }
   /outbound\/direct\[direct-out\]: outbound connection to / {
     emit("Direct", "direct-out", $0)
     next

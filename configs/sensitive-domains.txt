@@ -1,0 +1,39 @@
+# Sensitive sites mode: apex domains and their subdomains use sensitive-out.
+# Keep these families covered by dnsmasq-stealth.conf.add as well.
+# Provider-owned API, web, authentication, static and user-content families.
+
+# Anthropic / Claude (including Desktop artifacts).
+anthropic.com
+claude.ai
+claude.com
+claudeusercontent.com
+claudemcpcontent.com
+
+# OpenAI / ChatGPT (web, app, API, WebSockets, assets and feature config).
+openai.com
+chatgpt.com
+oaistatic.com
+oaiusercontent.com
+openaimerge.com
+oaistatsig.com
+
+# Gemini, AI Studio / Gemini API, NotebookLM. Do not add google.com or
+# googleapis.com here: Search, YouTube and unrelated Google APIs stay managed.
+gemini.google.com
+aistudio.google.com
+ai.google.dev
+generativelanguage.googleapis.com
+notebooklm.google.com
+notebooklm.google
+
+# Shared sign-in dependencies. They also use sensitive-out outside AI pages;
+# destination routing cannot distinguish the page that initiated a request.
+accounts.google.com
+oauth2.googleapis.com
+cdn.workos.com
+forwarder.workos.com
+frontend-apps-multi-region.workos.com
+setup.workos.com
+images.workoscdn.com
+workos.imgix.net
+challenges.cloudflare.com
