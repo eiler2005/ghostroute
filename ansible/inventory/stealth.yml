@@ -17,7 +17,11 @@ all:
     routers:
       hosts:
         router-home:
-          ansible_host: "{{ router_ssh_host }}"
-          ansible_user: "{{ router_ssh_user }}"
+          ansible_host_key_checking: "{{ vault_router_management_ssh_enabled | default(false) | bool }}"
+          ansible_host: "{{ ghostroute_router_remote_host if vault_router_management_ssh_enabled | default(false) | bool else vault_router_management_lan_host | default(lookup('env', 'ROUTER_LAN'), true) }}"
+          ansible_user: "{{ ghostroute_router_remote_user | default(lookup('env', 'ROUTER_USER'), true) }}"
           ansible_shell_executable: /bin/sh
           ansible_python_interpreter: /opt/bin/python3
+          ansible_port: "{{ ghostroute_router_remote_port if vault_router_management_ssh_enabled | default(false) | bool else vault_router_management_lan_port | default(22) }}"
+          ansible_ssh_private_key_file: "{{ vault_router_management_operator_key_path | default(lookup('env', 'SSH_IDENTITY_FILE'), true) }}"
+          ansible_ssh_common_args: "{{ vault_router_management_ansible_ssh_common_args | default('') }}"

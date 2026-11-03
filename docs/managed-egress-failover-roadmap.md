@@ -66,6 +66,23 @@ can redeploy end-to-end. `backup_reality` is intentionally outside that graph:
 it is a Vault-configured fallback target only, so an incident can switch to it
 even if Ansible cannot currently reach the primary host.
 
+### Quarantined backends
+
+The backend bank's `note` column may start with `quarantined:`. This is an
+operator exclusion: `managed-egress-mode status` lists it separately, and
+`set` rejects that role for A/B/C and independently pinned Channel D before
+reading or editing Vault. `follow` still means the existing shared selector;
+it does not itself select or rehabilitate an excluded role. Existing active
+state is never changed automatically by this marker.
+
+A TCP/TLS connection or a successful web canary does not clear quarantine.
+For media failures, revalidate actual downloads on the affected client before
+removing the marker. Diagnostic probes remain available and show the bank's
+label/note, so a reachable endpoint can remain excluded from operator selection.
+Keep incident timestamps, real provider details and evidence in private notes.
+If a recorded rollback target is quarantined, select another proven backend
+rather than restoring it blindly.
+
 ### Temporary owned reserve
 
 `hermes_vps` may be selected as a temporary shared A/B/C reserve when the
@@ -93,8 +110,9 @@ itself:
   **application canaries** (Telegram, YouTube, Google, Claude/Anthropic,
   OpenAI, `api.ipify.org`) run through the *active* backend over the router's
   own SOCKS path. Inactive-backend TCP/TLS is advisory only; the live app
-  canaries are the canonical proof that a backend actually carries real
-  traffic to real destinations — see the canary bank in
+  canaries prove only the operations they exercise, not every application
+  feature. The Telegram HTTPS canary does not prove native photo downloads;
+  an affected client transfer must also pass. See the canary bank in
   [`managed-app-canaries.tsv`](../modules/ghostroute-health-monitor/config/managed-app-canaries.tsv).
 - [`test-egress-backend-health.sh`](../modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh) —
   an offline, mock-driven fixture test (stubs `ssh`/`ansible-vault`/`curl`)

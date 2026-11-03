@@ -1,0 +1,44 @@
+---
+- name: Validate management migration inputs
+  ansible.builtin.assert:
+    that:
+      - vault_router_management_ssh_enabled | bool
+      - vault_router_management_ssh_allowed_sources | length > 0
+      - vault_router_management_bastion_user is match('^[a-z_][a-z0-9_]{0,30}$')
+      - vault_router_management_known_hosts | length > 0
+      - vault_router_management_bastion_public_key is match('^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[^ ]+) ')
+      - ghostroute_router_remote_host is match('^[a-zA-Z0-9.-]+$')
+      - ghostroute_router_remote_port | int > 0
+      - ghostroute_router_remote_port | int <= 65535
+    fail_msg: Management access needs explicit Vault inputs and preverified host keys.
+  no_log: true
+
+- name: Create private local profile directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ vault_router_management_local_config_path | dirname }}"
+    - "{{ lookup('env', 'HOME') }}/.ssh"
+
+- name: Install pinned management host keys
+  ansible.builtin.copy:
+    content: "{{ vault_router_management_known_hosts }}"
+    dest: "{{ vault_router_management_local_known_hosts_path }}"
+    mode: "0600"
+  no_log: true
+
+- name: Render private management SSH profile
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: "{{ vault_router_management_local_config_path }}"
+    mode: "0600"
+  no_log: true
+
+- name: Stage project access environment without activating it
+  ansible.builtin.template:
+    src: router-management.env.j2
+    dest: "{{ playbook_dir }}/../../secrets/router-management.env.pending"
+    mode: "0600"
+  no_log: true

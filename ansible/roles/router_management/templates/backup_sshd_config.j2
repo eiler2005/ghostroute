@@ -1,0 +1,25 @@
+# Dedicated forwarding-only listener; administrative SSH keeps its source policy.
+Port {{ vault_router_management_backup_ssh_port }}
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PidFile /run/ghostroute-management-backup-ssh.pid
+UsePAM yes
+AuthorizedKeysFile .ssh/authorized_keys
+AllowUsers {{ vault_router_management_bastion_user }}
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AllowAgentForwarding no
+AllowTcpForwarding local
+AllowStreamLocalForwarding no
+PermitOpen {{ ghostroute_router_remote_host | lower }}:{{ ghostroute_router_remote_port }}
+PermitListen none
+PermitTunnel no
+PermitTTY no
+X11Forwarding no
+PermitUserRC no
+MaxSessions 0
+ForceCommand /usr/sbin/nologin

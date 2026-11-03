@@ -8,6 +8,7 @@ ANSIBLE_CONFIG_FILE="${ANSIBLE_DIR}/ansible.cfg"
 VAULT_FILE="${ANSIBLE_DIR}/secrets/stealth.yml"
 ABC_MODES="primary_vps backup_reality hermes_vps"
 D_MODES="follow primary_vps backup_reality hermes_vps"
+BACKENDS_FILE="${GHOSTROUTE_MANAGED_EGRESS_BACKENDS_FILE:-${PROJECT_ROOT}/modules/ghostroute-health-monitor/config/managed-egress-backends.tsv}"
 
 usage() {
   cat <<'USAGE'
@@ -37,6 +38,8 @@ Scope:
   Switches managed destinations only, behind reality-out (A/B/C) or reality-out-d
   (Channel D pin). Channel M is not switched by this helper. Client QR/VLESS
   artifacts are not generated or modified.
+  Backends marked quarantined: in the backend bank cannot be selected. Remove
+  that marker only after operator revalidation of the affected application.
 USAGE
 }
 
@@ -51,6 +54,18 @@ is_valid_mode() {
     *" ${mode} "*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+is_quarantined() {
+  awk -F '\t' -v role="$1" '$1 == role && $7 ~ /^quarantined:/ { found=1 } END { exit !found }' "$BACKENDS_FILE"
+}
+
+selectable_modes() {
+  local modes="$1" mode result=""
+  for mode in $modes; do
+    is_quarantined "$mode" || result="${result}${result:+ }${mode}"
+  done
+  printf '%s' "$result"
 }
 
 vault_view() {
@@ -90,8 +105,9 @@ status() {
     printf 'Channel D managed egress mode: %s (independent, via reality-out-d)\n' "$d"
   fi
   printf 'Sensitive sites mode: %s (when enabled: sensitive-out -> hermes_vps)\n' "$sensitive"
-  printf 'available A/B/C modes: %s\n' "$ABC_MODES"
-  printf 'available Channel D modes: %s\n' "$D_MODES"
+  printf 'available A/B/C modes: %s\n' "$(selectable_modes "$ABC_MODES")"
+  printf 'available Channel D modes: %s\n' "$(selectable_modes "$D_MODES")"
+  awk -F '\t' '$1 !~ /^#/ && $7 ~ /^quarantined:/ { print "quarantined backend: " $1 " (" $7 ")" }' "$BACKENDS_FILE"
   printf 'scope: managed destinations via reality-out (A/B/C) / reality-out-d (Channel D pin)\n'
   printf 'unchanged: Channel M, client QR/VLESS artifacts\n'
 }
@@ -154,6 +170,10 @@ set_mode() {
   esac
 
   is_valid_mode "$mode" "$valid" || die "invalid mode '$mode' for $label (valid: $valid)"
+  [ -r "$BACKENDS_FILE" ] || die "backend bank is not readable"
+  if is_quarantined "$mode"; then
+    die "$mode is quarantined; revalidate the affected application before removing the backend-bank marker"
+  fi
 
   local before
   before="$(current_mode "$key" "$default")"

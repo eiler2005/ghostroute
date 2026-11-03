@@ -22,19 +22,11 @@ REMOTE_STAGE="/tmp/router_configuration.$$"
 SCP_OPTS=()
 
 build_scp_opts() {
-  SCP_OPTS=(
-    -O
-    -i "$SSH_IDENTITY_FILE"
-    -P "$ROUTER_PORT"
-    -o ConnectTimeout="$CONNECT_TIMEOUT"
-    -o BatchMode=yes
-    -o ConnectionAttempts="${SSH_CONNECTION_ATTEMPTS:-1}"
-    -o IdentitiesOnly=yes
-    -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
-    -o PubkeyAcceptedAlgorithms=+ssh-rsa
-    -o StrictHostKeyChecking=accept-new
-    -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
-  )
+  local option
+  SCP_OPTS=(-O)
+  for option in "${SSH_OPTS[@]}"; do
+    case "$option" in -p) SCP_OPTS+=(-P) ;; *) SCP_OPTS+=("$option") ;; esac
+  done
 }
 
 detect_router_ip() {

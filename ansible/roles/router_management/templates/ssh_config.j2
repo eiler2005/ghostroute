@@ -1,0 +1,60 @@
+# Generated private GhostRoute management profile. Do not commit.
+Host ghostroute-hermes-jump
+    HostName {{ (vault_router_hermes_vps_ssh_host | default(vault_router_hermes_vps_host, true)) | to_json }}
+    Port {{ vault_router_hermes_vps_ssh_port | default(22) }}
+    User {{ vault_router_management_bastion_user }}
+    IdentityFile {{ vault_router_hermes_vps_ssh_key | to_json }}
+    IdentitiesOnly yes
+    ForwardAgent no
+    BatchMode yes
+    StrictHostKeyChecking yes
+    UserKnownHostsFile {{ vault_router_management_local_known_hosts_path | to_json }}
+    ConnectTimeout 10
+    ControlMaster no
+    ControlPath none
+
+Host ghostroute-router
+    HostName {{ (ghostroute_router_remote_host | lower) | to_json }}
+    Port {{ ghostroute_router_remote_port }}
+    User {{ ghostroute_router_remote_user }}
+    IdentityFile {{ vault_router_management_operator_key_path | to_json }}
+    ProxyJump ghostroute-hermes-jump
+    IdentitiesOnly yes
+    ForwardAgent no
+    BatchMode yes
+    StrictHostKeyChecking yes
+    UserKnownHostsFile {{ vault_router_management_local_known_hosts_path | to_json }}
+    HostKeyAlgorithms +ssh-rsa
+    PubkeyAcceptedAlgorithms +ssh-rsa
+    ConnectTimeout 10
+{% if vault_router_management_backup_enabled | default(false) | bool %}
+Host ghostroute-primary-jump
+    HostName {{ vps_ssh_host | to_json }}
+    Port {{ vault_router_management_backup_ssh_port }}
+    User {{ vault_router_management_bastion_user }}
+    IdentityFile {{ vault_router_hermes_vps_ssh_key | to_json }}
+    IdentitiesOnly yes
+    ForwardAgent no
+    BatchMode yes
+    StrictHostKeyChecking yes
+    UserKnownHostsFile {{ vault_router_management_local_known_hosts_path | to_json }}
+    ConnectTimeout 10
+    ControlMaster no
+Host ghostroute-router-backup
+    HostName {{ (ghostroute_router_remote_host | lower) | to_json }}
+    Port {{ ghostroute_router_remote_port }}
+    User {{ ghostroute_router_remote_user }}
+    IdentityFile {{ vault_router_management_operator_key_path | to_json }}
+    IdentitiesOnly yes
+    ProxyJump ghostroute-primary-jump
+    ForwardAgent no
+    BatchMode yes
+    StrictHostKeyChecking yes
+    UserKnownHostsFile {{ vault_router_management_local_known_hosts_path | to_json }}
+    HostKeyAlgorithms +ssh-rsa
+    PubkeyAcceptedAlgorithms +ssh-rsa
+    ConnectTimeout 10
+    ControlMaster no
+{% endif %}
+    ControlMaster no
+    ControlPath none

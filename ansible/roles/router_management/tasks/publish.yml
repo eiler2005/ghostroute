@@ -1,0 +1,23 @@
+---
+- name: Publish project bastion environment
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../secrets/router-management.env.pending"
+    dest: "{{ playbook_dir }}/../../secrets/router-management.env"
+    mode: "0600"
+  no_log: true
+
+- name: Install local SSH profile alias link
+  ansible.builtin.file:
+    src: "{{ vault_router_management_local_config_path }}"
+    dest: "{{ lookup('env', 'HOME') }}/.ssh/ghostroute-management.conf"
+    state: link
+
+- name: Include management aliases without putting endpoints in SSH main config
+  ansible.builtin.blockinfile:
+    path: "{{ lookup('env', 'HOME') }}/.ssh/config"
+    create: true
+    mode: "0600"
+    insertbefore: BOF
+    marker: "# {mark} GhostRoute management profile"
+    block: Include ~/.ssh/ghostroute-management.conf
+    backup: true

@@ -76,6 +76,9 @@ ROUTER_LAN=192.168.50.1
 ROUTER_LAN_PORT=22
 SSH_IDENTITY_FILE=${TMP_DIR}/router-key
 SSH_KNOWN_HOSTS_FILE=${TMP_DIR}/known-hosts
+SSH_PROXY_JUMP=
+SSH_CONFIG_FILE=
+SSH_STRICT_HOST_KEY_CHECKING=accept-new
 CONNECT_TIMEOUT=5
 EOF
 
@@ -131,4 +134,22 @@ if [[ "$vpn_result" != *BatchMode=yes* ]] || [[ "$vpn_result" != *ConnectionAtte
   exit 1
 fi
 
+BASTION_ENV_FILE="${TMP_DIR}/router-bastion.env"
+cp "${ENV_FILE}" "${BASTION_ENV_FILE}"
+touch "${TMP_DIR}/ssh-config"
+cat >>"${BASTION_ENV_FILE}" <<EOF
+SSH_PROXY_JUMP=management-jump
+SSH_CONFIG_FILE=${TMP_DIR}/ssh-config
+SSH_STRICT_HOST_KEY_CHECKING=yes
+EOF
+bastion_result="$(run_case utun4 "${BASTION_ENV_FILE}")"
+[[ "$bastion_result" == *ProxyJump=management-jump* && "$bastion_result" == *StrictHostKeyChecking=yes* && "$bastion_result" == *ForwardAgent=no* ]] || {
+  echo 'Remote bastion options are missing' >&2; exit 1;
+}
+lan_bastion_result="$(run_case en0 "${BASTION_ENV_FILE}")"
+[[ "$lan_bastion_result" != *ProxyJump=* ]] || { echo 'LAN unexpectedly uses bastion' >&2; exit 1; }
+bastion_fallback_result="$(run_case utun4 "${BASTION_ENV_FILE}" router.example.invalid 2>/dev/null)"
+[[ "$bastion_fallback_result" == 192.168.50.1\|22\|* && "$bastion_fallback_result" != *ProxyJump=* ]] || {
+  echo 'Direct LAN fallback retained remote bastion' >&2; exit 1;
+}
 echo "router access selection tests passed"

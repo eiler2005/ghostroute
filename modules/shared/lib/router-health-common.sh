@@ -14,6 +14,7 @@ router_health_load_env() {
   PROJECT_ROOT="$(router_health_project_root)"
   [ -f "${PROJECT_ROOT}/secrets/router.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router.env" && set +a
   [ -f "${PROJECT_ROOT}/.env" ] && set -a && . "${PROJECT_ROOT}/.env" && set +a
+  [ -f "${PROJECT_ROOT}/secrets/router-management.env" ] && set -a && . "${PROJECT_ROOT}/secrets/router-management.env" && set +a
   if [ -n "${GHOSTROUTE_ROUTER_ENV_FILE:-}" ] && [ -r "${GHOSTROUTE_ROUTER_ENV_FILE}" ]; then
     set -a
     . "${GHOSTROUTE_ROUTER_ENV_FILE}"
@@ -60,9 +61,14 @@ router_build_ssh_opts() {
     -o IdentitiesOnly=yes
     -o HostKeyAlgorithms="${SSH_HOST_KEY_ALGORITHMS:-+ssh-rsa}"
     -o PubkeyAcceptedAlgorithms=+ssh-rsa
-    -o StrictHostKeyChecking=accept-new
+    -o StrictHostKeyChecking="${SSH_STRICT_HOST_KEY_CHECKING:-accept-new}"
     -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_FILE:-/tmp/ghostroute-router-known-hosts}"
+    -o ForwardAgent=no
   )
+  if [ -n "${SSH_PROXY_JUMP:-}" ] && [ "$ROUTER" = "${ROUTER_REMOTE:-}" ] && [ "$ROUTER_PORT" = "${ROUTER_REMOTE_PORT:-}" ]; then
+    [ -r "${SSH_CONFIG_FILE:-}" ] || { echo 'Router bastion SSH config is missing' >&2; return 1; }
+    SSH_OPTS+=(-F "$SSH_CONFIG_FILE" -o "ProxyJump=$SSH_PROXY_JUMP")
+  fi
 }
 
 router_ssh_preflight() {

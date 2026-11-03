@@ -58,6 +58,11 @@ watchdog'ами и схемами каналов:
 
 ---
 
+Протокол и программа — разные части схемы: удалённый A использует VLESS +
+Reality/Vision на sing-box, B — VLESS + XHTTP/TLS на Xray, рабочий C1-Shadowrocket —
+HTTPS CONNECT/TLS на sing-box. Общий managed-выход с роутера на VPS использует
+VLESS + Reality/Vision. [Таблица протоколов и компонентов](docs/channels.md#protocols-and-implementations).
+
 ## Обзор
 
 GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS Merlin
@@ -132,17 +137,21 @@ Caddy/VPS или Reality/Vision data plane.
 - **Домашняя LAN/Wi-Fi:** можно использовать LAN-адрес роутера, например
   `ROUTER_LAN=<router_lan_ip>` и `ROUTER_LAN_PORT=22`, только когда control
   machine реально находится в домашней сети.
-- **Удаленно / не из домашней сети:** основной путь — выделенный внешний SSH
-  endpoint и отдельный порт роутера. Локально он задается в gitignored
-  `secrets/router.env` и использует ключ из `secrets/router-remote-ssh/`; в
-  Ansible/VPS окружении тот же смысл задают Vault-переменные
-  `ghostroute_router_remote_*`.
+- **Удалённо / не из домашней сети:** при включённом защищённом управлении
+  команда `ssh ghostroute-router` проходит через ограниченную учётную запись
+  `hermes_vps`. Роутер принимает SSH только из LAN и от разрешённых VPS.
+  Дополнительный путь `ssh ghostroute-router-backup` использует `primary_vps`
+  после отдельной установки и проверки. Это резерв управления, он не меняет
+  выход сайтов. Параметры хранятся в Vault и локальном gitignored профиле;
+  приватные ключи остаются на Mac. Подробнее —
+  [доступ через bastion](docs/router-management-access.md).
 
 Общий helper по умолчанию работает в `ROUTER_ACCESS_MODE=auto`: если маршрут от
 control machine к `ROUTER_LAN` идет через обычный LAN-интерфейс, используется
 `ROUTER_LAN:22`; если маршрут идет через VPN-интерфейс вроде `utun`, `tun`,
 `wg` или Tailscale, helper оставляет WAN/remote `ROUTER:ROUTER_WAN_PORT` из
-`secrets/router.env`. `ROUTER_PORT` остается legacy fallback для старых local
+  `secrets/router.env` с bastion-настройками из `secrets/router-management.env`.
+  `ROUTER_PORT` остается legacy fallback для старых local
 env files. Поэтому `./verify.sh`, `live-check`, health reports и read-only
 diagnostics автоматически выбирают правильный SSH-путь. Реальный host, port и
 ключ не фиксируются в tracked docs и не коммитятся.
@@ -218,6 +227,9 @@ backend, но может быть запинен на собственный bac
 `set <mode> --channel d` (canary-линия); Channel M не затрагивается. Полная
 процедура — в
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md).
+Backend с пометкой `quarantined:` исключён из `set` и отдельно показан в
+`status`. Карантин снимается после проверки проблемной операции в приложении:
+успешный TCP или web-запрос не доказывает загрузку фото и видео.
 В публичных docs и commit text managed egress называется только mnemonic-ролью;
 real provider/ASN/endpoint/host family/account mapping остаются в Vault или
 gitignored operator notes.
@@ -230,6 +242,12 @@ OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensit
 fallback на другой IP. [Контракт, ограничения и проверки](modules/routing-core/docs/sensitive-sites-mode.md).
 
 ### Память роутера: основной и временный режим
+
+Безопасный операторский доступ описан в
+[инструкции SSH через bastion](docs/router-management-access.md): реальные
+параметры берутся из Vault, приватные ключи остаются на Mac, а SSH роутера
+ограничивается домашней сетью и разрешёнными VPS. Для нового накопителя есть
+[процедура переноса Entware](modules/recovery-verification/docs/usb-replacement.md).
 
 В **основном режиме** программы Entware и `/opt/etc` лежат на writable USB/ext4;
 внутренняя JFFS хранит hooks, конфиги dnsmasq и ключи, а RAM — работающие процессы

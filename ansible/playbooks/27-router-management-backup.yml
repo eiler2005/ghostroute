@@ -1,0 +1,39 @@
+---
+- name: Stage explicit backup management profile
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  tasks:
+    - name: Require an approved backup and its preverified host keys
+      ansible.builtin.assert:
+        that:
+          - vault_router_management_backup_enabled | default(false) | bool
+          - vault_router_management_backup_ssh_port | int > 1024
+          - vault_router_management_backup_ssh_port | int <= 65535
+          - vault_router_management_known_hosts | length > 0
+        fail_msg: Enable the backup in Vault only after verifying its host key and router source allow list.
+      no_log: true
+    - ansible.builtin.include_role:
+        name: router_management
+        tasks_from: local
+
+- name: Configure the independent backup management bastion
+  hosts: vps_stealth
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    ansible_host_key_checking: true
+    ansible_ssh_common_args: "-o ForwardAgent=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ vault_router_management_local_known_hosts_path | quote }}"
+    router_management_proof_alias: ghostroute-router-backup
+    router_management_dedicated_backup_listener: true
+  tasks:
+    - ansible.builtin.include_role:
+        name: router_management
+        tasks_from: bastion
