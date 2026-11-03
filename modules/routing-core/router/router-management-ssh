@@ -1,0 +1,103 @@
+#!/bin/sh
+# Source-restricted router administration; routing and client ingress are untouched.
+set -eu
+CONFIG=${GHOSTROUTE_MANAGEMENT_SSH_CONFIG:-/jffs/configs/router-management-ssh.conf}
+LOCK=${GHOSTROUTE_MANAGEMENT_SSH_LOCK:-/tmp/ghostroute-management-ssh.lock}
+ENABLED=0
+ALLOWED_SOURCES=
+[ ! -r "$CONFIG" ] || . "$CONFIG"
+PORT=$(nvram get sshd_port 2>/dev/null || true)
+PORT=${PORT:-22}
+
+check() {
+    [ "$ENABLED" = 1 ] || return 0
+    [ -n "$ALLOWED_SOURCES" ] || return 1
+    case "$(nvram get ipv6_service 2>/dev/null || true)" in ''|disabled) ;; *) return 1 ;; esac
+    for source in $ALLOWED_SOURCES; do
+        printf '%s\n' "$source" | awk -F '[./]' '
+          NF != 5 || $5 != 32 { exit 1 }
+          { for(i=1;i<=4;i++) if($i !~ /^[0-9]+$/ || $i+0>255) exit 1 }
+        ' || return 1
+    done
+}
+
+remove_jumps() {
+    target=$1
+    iptables -S INPUT | while IFS= read -r rule; do
+        case " $rule " in
+            *" -j $target "*)
+                set -f
+                set -- $rule
+                shift
+                iptables -D "$@"
+                ;;
+        esac
+    done
+}
+
+apply() {
+    [ "$ENABLED" = 1 ] || return 0
+    check || { echo 'management SSH configuration invalid'; return 1; }
+    current=$(iptables -S INPUT | awk '/-j GR_SSH_ADMIN_[AB]($| )/ {print $NF; exit}')
+    case "$current" in GR_SSH_ADMIN_A) next=GR_SSH_ADMIN_B ;; *) next=GR_SSH_ADMIN_A ;; esac
+    if iptables -S INPUT | grep -q -- "-j $next"; then
+        echo 'management SSH staging chain still referenced'
+        return 1
+    fi
+    iptables -N "$next" 2>/dev/null || true
+    iptables -F "$next"
+    iptables -A "$next" -i lo -j ACCEPT
+    iptables -A "$next" -i br0 -j ACCEPT
+    for source in $ALLOWED_SOURCES; do
+        iptables -A "$next" -s "$source" -j ACCEPT
+    done
+    iptables -A "$next" -j DROP
+    iptables -I INPUT 1 -p tcp --dport "$PORT" -j "$next"
+    for old in GR_SSH_ADMIN_A GR_SSH_ADMIN_B; do
+        [ "$old" != "$next" ] || continue
+        remove_jumps "$old"
+        iptables -F "$old" 2>/dev/null || true
+        iptables -X "$old" 2>/dev/null || true
+    done
+    while iptables -D INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; do :; done
+    echo 'management_ssh=restricted'
+}
+
+disable() {
+    for chain in GR_SSH_ADMIN_A GR_SSH_ADMIN_B; do
+        remove_jumps "$chain"
+        iptables -F "$chain" 2>/dev/null || true
+        iptables -X "$chain" 2>/dev/null || true
+    done
+    if [ "$(nvram get sshd_enable 2>/dev/null || true)" = 1 ]; then
+        while iptables -D INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; do :; done
+        iptables -I INPUT 1 -p tcp --dport "$PORT" -j ACCEPT
+    fi
+    if [ -f "$CONFIG" ]; then
+        sed 's/^ENABLED=1$/ENABLED=0/' "$CONFIG" > "$CONFIG.disabled"
+        chmod 600 "$CONFIG.disabled"
+        mv "$CONFIG.disabled" "$CONFIG"
+    fi
+    echo 'management_ssh=disabled'
+}
+
+case "${1:-status}" in
+    check) check; exit ;;
+    status) printf 'enabled=%s\n' "$ENABLED"; iptables -S INPUT | awk '/-j GR_SSH_ADMIN_[AB]($| )/ {print "guard=present"; exit}'; exit ;;
+    apply|disable) ;;
+    *) echo 'usage: router-management-ssh {check|apply|disable|status}'; exit 64 ;;
+esac
+if ! mkdir "$LOCK" 2>/dev/null; then
+    owner=$(cat "$LOCK/pid" 2>/dev/null || true)
+    case "$owner" in
+        ''|*[!0-9]*) ;;
+        *) kill -0 "$owner" 2>/dev/null && { echo 'management SSH lock busy'; exit 1; } ;;
+    esac
+    rm -f "$LOCK/pid"
+    rmdir "$LOCK" 2>/dev/null || exit 1
+    mkdir "$LOCK" || exit 1
+fi
+printf '%s\n' "$$" > "$LOCK/pid"
+trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true' EXIT
+trap 'exit 1' HUP INT TERM
+"$1"

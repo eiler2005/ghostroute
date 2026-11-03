@@ -23,12 +23,24 @@
     mode: "0755"
   loop:
     - { src: firewall-start, dest: "{{ firewall_start_hook }}" }
+    - { src: router-management-ssh, dest: "/jffs/scripts/router-management-ssh" }
     - { src: nat-start, dest: "{{ nat_start_hook }}" }
     - { src: cron-save-ipset, dest: "{{ cron_save_ipset_script }}" }
     - { src: services-start, dest: "{{ services_start_hook }}" }
     - { src: ghostroute-runtime-supervisor, dest: "{{ ghostroute_runtime_supervisor_path }}" }
     - { src: channel-c-tls-sync.sh, dest: "{{ channel_c_tls_sync_script_path | default('/jffs/scripts/channel-c-tls-sync.sh') }}" }
     - { src: channel-c-acme-renew.sh, dest: "{{ channel_c_acme_renew_script_path | default('/jffs/scripts/channel-c-acme-renew.sh') }}" }
+
+- name: Install private router management SSH policy
+  ansible.builtin.template:
+    src: router-management-ssh.conf.j2
+    dest: /jffs/configs/router-management-ssh.conf
+    mode: "0600"
+  no_log: true
+
+- name: Validate router management SSH policy
+  ansible.builtin.raw: /jffs/scripts/router-management-ssh check
+  changed_when: false
 
 - name: Install read-only traffic observatory router samplers
   ansible.builtin.copy:

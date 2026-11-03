@@ -20,6 +20,30 @@ Channel M provides an isolated policy for applications with regional egress requ
 Full Channel M environment ownership, ports and redeploy invariants are in
 [channel-m-environment.md](channel-m-environment.md).
 
+## Protocols and implementations
+
+VLESS is a protocol; Xray and sing-box are implementations. Separate the
+client-to-router ingress from the router-to-VPS egress:
+
+| Channel / use | Client -> home router | Router ingress implementation |
+|---|---|---|
+| A, LAN/Wi-Fi | Ordinary LAN traffic; managed flows enter REDIRECT or the selected TPROXY override | sing-box |
+| A, remote Home Reality | VLESS + Reality + Vision | sing-box |
+| B, selected client | VLESS + XHTTP + TLS | Xray, then a local SOCKS relay into sing-box |
+| C1-Shadowrocket, proven compatibility path | HTTPS CONNECT + TLS | sing-box HTTP inbound with TLS |
+| C1-sing-box, native design | Naive over TLS; requires a compatible client | sing-box Naive inbound |
+
+After the managed/sensitive route decision, the configured owned VPS egress
+uses sing-box's VLESS + Reality + Vision outbound and a VPS Xray Reality
+receiver. This shared second leg does not make Channel C's first leg VLESS.
+Non-managed traffic follows `direct-out` through the home WAN under normal
+split routing. Sensitive sites mode can select its own backend before general
+managed rules; it preserves each channel's ingress protocol.
+
+Changing an SSH management bastion or replacing Entware storage does not
+change these protocols or require new client imports. Management access is
+documented in [router-management-access.md](router-management-access.md).
+
 ## Channel A - Production Router Data Plane
 
 Channel A is the primary production path owned by the router.

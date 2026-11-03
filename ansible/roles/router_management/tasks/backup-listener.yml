@@ -1,0 +1,81 @@
+---
+- name: Validate the dedicated backup listener without widening administrative SSH
+  ansible.builtin.shell: |
+    set -eu
+    port={{ vault_router_management_backup_ssh_port | int }}
+    [ "$port" -gt 1024 ] && [ "$port" -le 65535 ]
+    ! /usr/sbin/sshd -T | grep -qx "port $port"
+    if ! systemctl is-active --quiet ghostroute-management-backup-ssh; then
+      [ -z "$(ss -H -ltn "sport = :$port")" ]
+    fi
+    ufw status | grep -q '^Status: active'
+  changed_when: false
+  no_log: true
+
+- name: Arm rollback for the new forwarding-only listener
+  ansible.builtin.shell: |
+    set -eu
+    cat > /var/lib/ghostroute-management/rollback-backup-listener.sh <<'ROLLBACK'
+    #!/bin/sh
+    systemctl disable --now ghostroute-management-backup-ssh.service
+    ufw --force delete allow proto tcp from 0.0.0.0/0 to any port {{ vault_router_management_backup_ssh_port | int }}
+    ROLLBACK
+    chmod 700 /var/lib/ghostroute-management/rollback-backup-listener.sh
+    systemctl stop ghostroute-management-backup-rollback.timer ghostroute-management-backup-rollback.service 2>/dev/null || true
+    systemd-run --quiet --collect --unit=ghostroute-management-backup-rollback --on-active=10m /bin/sh /var/lib/ghostroute-management/rollback-backup-listener.sh
+  changed_when: true
+  no_log: true
+
+- name: Install the isolated backup SSH configuration with existing host identity
+  ansible.builtin.template:
+    src: backup_sshd_config.j2
+    dest: /etc/ssh/sshd_config_ghostroute_backup
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s
+  no_log: true
+
+- name: Install the forwarding-only backup SSH service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ghostroute-management-backup-ssh.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=GhostRoute forwarding-only backup management SSH
+      After=network.target
+      [Service]
+      ExecStartPre=/usr/sbin/sshd -t -f /etc/ssh/sshd_config_ghostroute_backup
+      ExecStart=/usr/sbin/sshd -D -e -f /etc/ssh/sshd_config_ghostroute_backup
+      Restart=on-failure
+      RestartSec=5
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Start the isolated backup listener
+  ansible.builtin.systemd_service:
+    name: ghostroute-management-backup-ssh
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Allow only the dedicated IPv4 listener through the existing firewall
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - allow
+      - proto
+      - tcp
+      - from
+      - 0.0.0.0/0
+      - to
+      - any
+      - port
+      - "{{ vault_router_management_backup_ssh_port | int }}"
+      - comment
+      - GhostRoute restricted backup SSH
+  register: backup_firewall_rule
+  changed_when: "'Rule added' in backup_firewall_rule.stdout or 'Rules updated' in backup_firewall_rule.stdout"
+  no_log: true

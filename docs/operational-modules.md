@@ -68,5 +68,7 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 | Generate QR profiles | `modules/client-profile-factory/docs/client-profiles.md` |
 | Prepare or audit secrets | `modules/secrets-management/docs/secrets-management.md` |
 | Recover from incidents | `modules/recovery-verification/docs/failure-modes.md`, `troubleshooting.md` and `managed-egress-vps-boot-recovery.md` |
+| Configure primary/backup operator SSH access | `docs/router-management-access.md`; Ansible playbooks `26-router-management-access.yml` and `27-router-management-backup.yml` |
+| Replace Entware USB and retire temporary RAM recovery | `modules/recovery-verification/docs/usb-replacement.md` |
 | Check component versions and port ownership | `docs/runtime-inventory.md` |
 | Review archived architecture improvement priorities | `docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md` and `docs/adr/` |

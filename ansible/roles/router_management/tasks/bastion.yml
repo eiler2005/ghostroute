@@ -1,0 +1,131 @@
+---
+- name: Back up bastion SSH configuration
+  ansible.builtin.shell: |
+    set -eu
+    install -d -m 700 /var/lib/ghostroute-management
+    if [ -f /var/lib/ghostroute-management/sshd-before.tgz ] && [ ! -f /var/lib/ghostroute-management/sshd-initial.tgz ]; then
+      cp /var/lib/ghostroute-management/sshd-before.tgz /var/lib/ghostroute-management/sshd-initial.tgz
+    fi
+    tar -czf /var/lib/ghostroute-management/sshd-before.tgz -C /etc/ssh sshd_config sshd_config.d
+    chmod 600 /var/lib/ghostroute-management/sshd-before.tgz
+    cat > /var/lib/ghostroute-management/rollback-sshd.sh <<'ROLLBACK'
+    #!/bin/sh
+    set -eu
+    rm -f /etc/ssh/sshd_config.d/00-ghostroute-management.conf
+    tar -xzf /var/lib/ghostroute-management/sshd-before.tgz -C /etc/ssh
+    /usr/sbin/sshd -t
+    systemctl reload ssh
+    ROLLBACK
+    chmod 700 /var/lib/ghostroute-management/rollback-sshd.sh
+    systemctl stop ghostroute-management-ssh-rollback.timer ghostroute-management-ssh-rollback.service 2>/dev/null || true
+    systemd-run --quiet --collect --unit=ghostroute-management-ssh-rollback --on-active=10m /bin/sh /var/lib/ghostroute-management/rollback-sshd.sh
+  changed_when: true
+
+- name: Create forwarding-only bastion account
+  ansible.builtin.user:
+    name: "{{ vault_router_management_bastion_user }}"
+    system: true
+    create_home: true
+    shell: /usr/sbin/nologin
+    password_lock: true
+  no_log: true
+
+- name: Create bastion account SSH directory
+  ansible.builtin.file:
+    path: "/home/{{ vault_router_management_bastion_user }}/.ssh"
+    state: directory
+    owner: "{{ vault_router_management_bastion_user }}"
+    group: "{{ vault_router_management_bastion_user }}"
+    mode: "0700"
+  no_log: true
+
+- name: Install restricted public key only
+  ansible.builtin.copy:
+    content: 'restrict,port-forwarding,permitopen="{{ ghostroute_router_remote_host | lower }}:{{ ghostroute_router_remote_port }}",command="/usr/sbin/nologin" {{ vault_router_management_bastion_public_key }}'
+    dest: "/home/{{ vault_router_management_bastion_user }}/.ssh/authorized_keys"
+    owner: "{{ vault_router_management_bastion_user }}"
+    group: "{{ vault_router_management_bastion_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Read existing bastion user allow list without replacing administrators
+  ansible.builtin.shell: /usr/sbin/sshd -T | awk '$1=="allowusers" {for(i=2;i<=NF;i++)print $i}'
+  register: bastion_allowed_users
+  changed_when: false
+  no_log: true
+
+- name: Require public keys for bastion-host SSH
+  ansible.builtin.copy:
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      AuthenticationMethods publickey
+      PermitRootLogin prohibit-password
+      AllowAgentForwarding no
+      {% if bastion_allowed_users.stdout | trim | length > 0 %}
+      AllowUsers {{ (bastion_allowed_users.stdout_lines + [vault_router_management_bastion_user]) | unique | join(' ') }}
+      {% endif %}
+    dest: /etc/ssh/sshd_config.d/00-ghostroute-management.conf
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Restrict bastion account to the router SSH destination
+  ansible.builtin.blockinfile:
+    path: /etc/ssh/sshd_config
+    marker: "# {mark} GhostRoute forwarding-only management account"
+    insertafter: EOF
+    block: |
+      Match User {{ vault_router_management_bastion_user }}
+          AllowTcpForwarding local
+          AllowStreamLocalForwarding no
+          PermitOpen {{ ghostroute_router_remote_host | lower }}:{{ ghostroute_router_remote_port }}
+          PermitListen none
+          PermitTTY no
+          X11Forwarding no
+          PermitUserRC no
+          ForceCommand /usr/sbin/nologin
+      Match all
+    validate: /usr/sbin/sshd -t -f %s
+  no_log: true
+
+- name: Validate and reload SSH without restarting routing services
+  ansible.builtin.shell: |
+    set -eu
+    /usr/sbin/sshd -t
+    /usr/sbin/sshd -T | grep -qx 'passwordauthentication no'
+    /usr/sbin/sshd -T | grep -qx 'authenticationmethods publickey'
+    /usr/sbin/sshd -T -C user={{ vault_router_management_bastion_user }},host=localhost,addr=127.0.0.1 | grep -qx 'allowtcpforwarding local'
+    /usr/sbin/sshd -T -C user={{ vault_router_management_bastion_user }},host=localhost,addr=127.0.0.1 | grep -qx 'allowagentforwarding no'
+    systemctl reload ssh
+  changed_when: true
+  no_log: true
+
+- name: Prepare the separate backup listener when requested
+  ansible.builtin.include_tasks: backup-listener.yml
+  when: router_management_dedicated_backup_listener | default(false) | bool
+
+- name: Prove a fresh end-to-end session through the forwarding-only account
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -F
+      - "{{ router_management_proof_config | default(vault_router_management_local_config_path) }}"
+      - "{{ router_management_proof_alias | default('ghostroute-router') }}"
+      - "printf management_bastion_ok"
+  delegate_to: localhost
+  become: false
+  register: bastion_proof
+  changed_when: false
+  failed_when: bastion_proof.rc != 0 or 'management_bastion_ok' not in bastion_proof.stdout
+  no_log: true
+
+- name: Retire bastion SSH rollback timer after fresh-session proof
+  ansible.builtin.command: systemctl stop ghostroute-management-ssh-rollback.timer
+  changed_when: true
+
+- name: Retire backup listener rollback after fresh-session proof
+  ansible.builtin.command: systemctl stop ghostroute-management-backup-rollback.timer
+  changed_when: true
+  when: router_management_dedicated_backup_listener | default(false) | bool

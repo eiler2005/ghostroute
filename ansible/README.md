@@ -42,6 +42,25 @@ operator artifacts and must stay out of git.
 
 ## Router Access Profiles
 
+Optional hardened management is installed by
+`playbooks/26-router-management-access.yml` after local fixture/syntax checks and
+operator authorization. It stages private Mac profiles from Vault, provisions a
+forwarding-only account on `hermes_vps`, proves a fresh SSH session, and then
+restricts router SSH to LAN and approved fixed VPS sources with rollback.
+Client channels and managed routing stay unchanged. See
+[the management runbook](../docs/router-management-access.md). The router
+inventory uses Vault-backed bastion settings when this mode is enabled.
+
+`playbooks/27-router-management-backup.yml` optionally installs an independent
+forwarding-only management path through `primary_vps`. It requires explicit
+backup enablement, an unused dedicated high port and verified private host-key
+pins. A separate listener rejects administrative accounts; the existing admin
+port/source policy is preserved. Provider-side ingress must allow only that new
+TCP port on the intended server; cloud firewall objects are recorded privately
+and are not managed by this playbook. The backup operator alias
+is `ssh ghostroute-router-backup`; the default alias and managed traffic exits
+remain unchanged. Test the published direct backup from an external network.
+
 For an explicitly approved emergency bridge on a readable write-protected
 Entware volume, `playbooks/25-readonly-entware-recovery.yml` installs JFFS-backed
 configuration snapshots and boot preparation without restarting services. See

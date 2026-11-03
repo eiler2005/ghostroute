@@ -149,6 +149,8 @@ vps_unbound_reality_target_host: "{{ vault_vps_unbound_reality_target_host | def
 router_managed_egress_mode: "{{ vault_router_managed_egress_mode | default('primary_vps') }}"
 # Sensitive sites mode is a destination override, independent of the shared
 # managed backend and Channel D's pin. Its only backend is the owned clone.
+router_management_ssh_enabled: "{{ vault_router_management_ssh_enabled | default(false) }}"
+router_management_ssh_allowed_sources: "{{ vault_router_management_ssh_allowed_sources | default([]) }}"
 router_sensitive_sites_enabled: "{{ vault_router_sensitive_sites_enabled | default(false) }}"
 router_sensitive_sites_domains: "{{ lookup('file', playbook_dir + '/../../configs/sensitive-domains.txt').splitlines() | map('trim') | reject('match', '^#|^$') | list }}"
 # Independent Channel D managed egress selector. 'follow' (default) keeps Channel D

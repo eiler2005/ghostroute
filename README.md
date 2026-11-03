@@ -153,16 +153,21 @@ Router SSH has two supported operator paths:
 - **Home LAN:** use the router LAN address, for example
   `ROUTER_LAN=<router_lan_ip>` with `ROUTER_LAN_PORT=22`, only when the control
   machine is actually on the home LAN/Wi-Fi.
-- **Remote/off-LAN:** the primary path is the dedicated remote-router SSH
-  endpoint and port stored outside git in `secrets/router.env`, backed by the
-  operator key under `secrets/router-remote-ssh/` or the equivalent
-  `ghostroute_router_remote_*` Vault values.
+- **Remote/off-LAN:** when hardened management is enabled,
+  `ssh ghostroute-router` uses the forwarding-only account on `hermes_vps`.
+  Router SSH accepts only LAN and approved fixed VPS sources. The optional
+  `ssh ghostroute-router-backup` path uses `primary_vps` after separate setup
+  and verification. This management reserve does not change site egress.
+  Deployment values stay in Vault and gitignored local profiles; private keys
+  stay on the workstation. See the
+  [bastion management procedure](docs/router-management-access.md).
 
 The shared router helper defaults to `ROUTER_ACCESS_MODE=auto`: if the control
 machine's route to `ROUTER_LAN` is through a normal LAN interface it uses
 `ROUTER_LAN:22`; if the route goes through a VPN-style interface such as
 `utun`, `tun`, `wg` or Tailscale, it keeps the WAN/remote
-`ROUTER:ROUTER_WAN_PORT` profile from `secrets/router.env`. `ROUTER_PORT`
+`ROUTER:ROUTER_WAN_PORT` profile from `secrets/router.env`, with the bastion
+settings from `secrets/router-management.env`. `ROUTER_PORT`
 remains a legacy fallback for older local env files. This keeps `deploy.sh`,
 `./verify.sh`, `live-check`, router health reports and traffic/catalog
 diagnostics on the intended SSH path; keep the remote host, port and key out of
@@ -241,6 +246,10 @@ default but can be pinned to its own backend behind `reality-out-d` with
 [docs/managed-egress-failover-roadmap.md](docs/managed-egress-failover-roadmap.md)
 for the full procedure and recovery checks.
 
+Backends marked `quarantined:` in the backend bank are excluded from `set` and
+listed separately by `status`. Revalidate the affected application operation
+before removing quarantine; a green TCP or web probe is insufficient for media.
+
 Public documentation and commits refer to managed egresses only by mnemonic
 roles. The real provider, endpoint, ASN, host family, account and role mapping
 belong in Vault or gitignored operator notes.
@@ -253,6 +262,14 @@ imports. Matched sensitive traffic has no automatic fallback to another IP.
 See [the mode contract and limitations](modules/routing-core/docs/sensitive-sites-mode.md).
 
 ### Router storage modes
+
+The [protocol/component matrix](docs/channels.md#protocols-and-implementations)
+separates each channel's client ingress from its shared managed VPS egress.
+
+For optional management hardening, use the
+[restricted SSH bastion procedure](docs/router-management-access.md). It keeps
+operator access separate from client channels, stores real parameters in Vault
+and private local profiles, and restricts router SSH to approved sources.
 
 The **main mode** keeps Entware programs and `/opt/etc` on writable USB/ext4,
 router-owned hooks/configuration in JFFS, and volatile runtime in RAM. Optional

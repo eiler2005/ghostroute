@@ -1,0 +1,71 @@
+---
+- name: Prove the router sees an approved bastion source
+  ansible.builtin.raw: |
+    source=${SSH_CONNECTION%% *}
+    case ' {{ vault_router_management_ssh_allowed_sources | join(" ") }} ' in
+      *" ${source}/32 "*) printf source_is_approved ;;
+      *) exit 1 ;;
+    esac
+  changed_when: false
+  no_log: true
+
+- name: Install management SSH guard
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/routing-core/router/router-management-ssh"
+    dest: /jffs/scripts/router-management-ssh
+    mode: "0755"
+
+- name: Preserve existing firewall hook before management migration
+  ansible.builtin.raw: |
+    mkdir -p /jffs/addons/ghostroute-management
+    chmod 700 /jffs/addons/ghostroute-management
+    cp /jffs/scripts/firewall-start /jffs/addons/ghostroute-management/firewall-start.before
+  changed_when: false
+
+- name: Install private management source policy
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/stealth_routing/templates/router-management-ssh.conf.j2"
+    dest: /jffs/configs/router-management-ssh.conf
+    mode: "0600"
+  no_log: true
+
+- name: Validate source policy before restricting access
+  ansible.builtin.raw: /bin/sh -n /jffs/scripts/router-management-ssh && /jffs/scripts/router-management-ssh check
+  changed_when: false
+
+- name: Arm management-only router rollback
+  ansible.builtin.raw: |
+    set -eu
+    dir=/jffs/addons/ghostroute-management
+    rm -f "$dir/confirmed"
+    nohup sh -c 'sleep 180; [ -f /jffs/addons/ghostroute-management/confirmed ] || /jffs/scripts/router-management-ssh disable' > "$dir/rollback.log" 2>&1 < /dev/null &
+    echo $! > "$dir/rollback.pid"
+  changed_when: true
+
+- name: Install persistent firewall hook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../modules/routing-core/router/firewall-start"
+    dest: /jffs/scripts/firewall-start
+    mode: "0755"
+
+- name: Apply only the management SSH restriction
+  ansible.builtin.raw: /jffs/scripts/router-management-ssh apply
+  changed_when: true
+
+- name: Prove a new SSH connection after the restriction
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -F
+      - "{{ vault_router_management_local_config_path }}"
+      - ghostroute-router
+      - "printf management_guard_ok"
+  delegate_to: localhost
+  register: management_proof
+  changed_when: false
+  failed_when: management_proof.rc != 0 or 'management_guard_ok' not in management_proof.stdout
+  no_log: true
+
+- name: Confirm the guard and retire timed rollback
+  ansible.builtin.raw: touch /jffs/addons/ghostroute-management/confirmed
+  changed_when: true

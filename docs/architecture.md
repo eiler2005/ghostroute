@@ -117,6 +117,29 @@ Layer 3 VPS
   -> sites see VPS IP for managed traffic
 ```
 
+## Управление и хранение состояния
+
+Пользовательские каналы A/B/C и операторский SSH имеют отдельные пути.
+`ssh ghostroute-router` использует ограниченный forwarding-only вход через
+`hermes_vps`; `ssh ghostroute-router-backup` — независимый выделенный SSH listener
+на `primary_vps`. Роутер разрешает SSH из LAN и от явно разрешённых VPS.
+Выбор пути управления сохраняет протоколы клиентских каналов и выход сайтов.
+Реальные адреса, порты, пользователи и host-key pins хранятся в Vault и локальных
+игнорируемых файлах. См. [контракт доступа](router-management-access.md).
+
+В основном режиме Entware, `/opt/etc` и постоянные служебные данные лежат на
+writable USB/ext4. Firmware SSH и JFFS hooks обеспечивают управление и загрузку;
+RAM хранит процессы и сетевое состояние. При временном read-only восстановлении
+выбранные каталоги `/opt` подменяются writable-копиями в RAM из JFFS seed.
+После восстановления writable USB этот bridge отключается; старый seed можно
+сохранить для явного rollback. См.
+[процедуру замены USB](../modules/recovery-verification/docs/usb-replacement.md).
+
+Протоколы и реализации перечислены в
+[матрице каналов](channels.md#protocols-and-implementations): VLESS — протокол,
+Xray и sing-box — программы. В частности, HTTPS CONNECT вход C1-Shadowrocket и
+его последующий VLESS/Reality выход на VPS относятся к разным участкам пути.
+
 ## Layered Architecture
 
 ### Layer 0 — Endpoint / Client-Side Routing

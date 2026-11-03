@@ -1,0 +1,2 @@
+ENABLED={{ router_management_ssh_enabled | default(false) | bool | ternary('1', '0') }}
+ALLOWED_SOURCES={{ (router_management_ssh_allowed_sources | default([]) | join(' ')) | quote }}
