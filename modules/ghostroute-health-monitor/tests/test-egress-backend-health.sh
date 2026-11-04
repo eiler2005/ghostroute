@@ -115,6 +115,11 @@ case "$last" in
   *blocked.example.invalid*) printf '403 0.200000' ;;
   *chatgpt.com*) printf '200 0.100000' ;;
   *claude.ai*) printf '403 0.100000' ;;
+  *cobalt.tools*)
+    printf '200 0.200000'
+    [ "${GHOSTROUTE_TEST_PARTIAL_COBALT:-0}" = 1 ] && exit 28
+    exit 0
+    ;;
   *) printf '000 0' ;;
 esac
 EOF
@@ -222,6 +227,24 @@ ARGV.each do |path|
     raise "shared attribution #{app}" unless row['expected_backend'] == 'backup_reality'
   end
 end
+RUBY
+
+# Receiving HTTP 200 is insufficient when curl fails before the body completes.
+printf 'cobalt\thttps://cobalt.tools/\t2\n' >>"$CANARIES_FILE"
+if env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_PARTIAL_COBALT=1 \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/partial.json"; then
+  echo 'partial HTTP transfer must return failure' >&2
+  exit 1
+fi
+env "${COMMON_ENV[@]}" \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/complete.json"
+ruby -rjson - "$TMPDIR/partial.json" "$TMPDIR/complete.json" <<'RUBY'
+partial, complete = ARGV.map { |path| JSON.parse(File.read(path)) }
+failed = partial['app_canaries'].find { |row| row['app'] == 'cobalt' }
+raise 'partial HTTP 200 must fail' unless failed['http_code'] == '200' && failed['status'] == 'CRIT'
+raise 'partial transfer rollup' unless partial['rollup'] == 'partial'
+passed = complete['app_canaries'].find { |row| row['app'] == 'cobalt' }
+raise 'complete HTTP 200 must pass' unless passed['status'] == 'OK'
 RUBY
 
 echo "egress-backend-health fixture tests passed"

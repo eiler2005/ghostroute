@@ -7,6 +7,7 @@
 # TCP/TLS reachability through the active backend. See
 # docs/managed-egress-failover-roadmap.md.
 telegram	https://core.telegram.org/	2,3
+cobalt	https://cobalt.tools/	2
 youtube	https://www.youtube.com/generate_204	2
 google	https://www.google.com/generate_204	2
 claude	https://claude.ai/	2,3,403
