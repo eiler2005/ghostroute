@@ -273,6 +273,10 @@ for the full procedure and recovery checks.
 Backends marked `quarantined:` in the backend bank are excluded from `set` and
 listed separately by `status`. Revalidate the affected application operation
 before removing quarantine; a green TCP or web probe is insufficient for media.
+After revalidation, rerun both application canaries and the affected client
+transfer. Backend availability is not a permanent guarantee; keep a verified
+rollback role. An active Amn lab must be explicitly refreshed after changing
+the production policy, because it holds an isolated policy copy.
 
 Public documentation and commits refer to managed egresses only by mnemonic
 roles. The real provider, endpoint, ASN, host family, account and role mapping

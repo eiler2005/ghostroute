@@ -3,5 +3,5 @@
 # role<TAB>label<TAB>host_ref<TAB>port_ref<TAB>port_default<TAB>sni_ref<TAB>note
 # A note starting with quarantined: blocks selection by managed-egress-mode.
 primary_vps	primary owned VPS	vps_ssh_host	-	443	reality_server_names[0]	owned production backend behind reality-out
-backup_reality	quarantined Reality backend	vault_router_backup_reality_server	vault_router_backup_reality_server_port	443	vault_router_backup_reality_server_name	quarantined: media-transfer failures; operator revalidation required before reuse
+backup_reality	external Reality backend	vault_router_backup_reality_server	vault_router_backup_reality_server_port	443	vault_router_backup_reality_server_name	operator-revalidated application and media transfers; manual selection only
 hermes_vps	owned clone VPS	vault_router_hermes_vps_host|vault_router_hermes_vps_ssh_host	vault_router_hermes_vps_port	443	vault_router_hermes_vps_server_name|reality_server_names[0]	owned managed and sensitive egress

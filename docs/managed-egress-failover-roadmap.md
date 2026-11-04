@@ -83,6 +83,15 @@ Keep incident timestamps, real provider details and evidence in private notes.
 If a recorded rollback target is quarantined, select another proven backend
 rather than restoring it blindly.
 
+Removing a quarantine marker requires fresh client acceptance of the failed
+operation, in addition to complete HTTP transfers and catalog/DNS checks.
+Preserve the previous role and configuration for rollback; keep deployment
+evidence private. Quarantine fixture tests use a temporary backend bank, so they
+continue enforcing exclusions after a real backend has been revalidated.
+Sensitive destinations retain their separate selector. An active Amn lab uses
+an isolated policy projection: explicitly stop/start it after a shared backend
+or DNS-policy change, then re-prove its managed and sensitive exits.
+
 ### Temporary owned reserve
 
 `hermes_vps` may be selected as a temporary shared A/B/C reserve when the

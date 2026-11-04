@@ -95,6 +95,11 @@ the general `reality-out` backend. The ordinary egress-IP canary still tests
 the general managed path. See the
 [mode contract](../routing-core/docs/sensitive-sites-mode.md).
 
+The Cobalt canary downloads the page through the selected managed path. A fast
+HTTP header alone does not prove a complete response; a body-transfer timeout
+must fail the canary. It does not prove Cobalt API processing or a signed-in
+browser session. Keep actual browser and native Telegram media checks separate.
+
 `egress-dpi-probe` is the path / censorship-signature classifier for the same
 backend bank. Where `egress-backend-health` proves the *active* backend carries
 app traffic through the tunnel, this probes the *raw* TLS path to each backend's

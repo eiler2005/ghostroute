@@ -261,12 +261,17 @@ while IFS=$'\t' read -r app url expect; do
   case "$app" in ''|\#*) continue ;; esac
   [ -n "$url" ] || continue
   [ -n "$expect" ] || expect="2,3"
-  resp="$(curl -sS -o /dev/null --socks5-hostname "127.0.0.1:${LOCAL_PORT}" \
+  if resp="$(curl -sS -o /dev/null --socks5-hostname "127.0.0.1:${LOCAL_PORT}" \
             --connect-timeout 8 --max-time 25 \
-            -w '%{http_code} %{time_total}' "$url" 2>/dev/null || printf '000 0')"
+             -w '%{http_code} %{time_total}' "$url" 2>/dev/null)"; then
+    transfer_ok=1
+  else
+    transfer_ok=0
+  fi
+  resp="${resp:-000 0}"
   code="${resp%% *}"
   tval="${resp##* }"
-  if [ "$code" = "000" ]; then
+  if [ "$transfer_ok" != "1" ] || [ "$code" = "000" ]; then
     status="CRIT"
   else
     matched=0
