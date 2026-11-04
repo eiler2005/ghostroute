@@ -56,6 +56,14 @@ watchdog'ами и схемами каналов:
 | M | Service MAX egress lane | home router -> SSH remote-forward -> maxtg_bridge VPS docker bridge | Только MAX API/CDN, authenticated HTTP CONNECT внутри reverse-туннеля, direct-out через home WAN | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
+Отдельный [тестовый Amn](modules/routing-core/docs/channel-amn-research.md) проверяет
+вход AmneziaWG по пути iPhone → домашний роутер → managed-политика → VPS или
+домашний WAN. Он запускается вручную и пока не входит в production-каналы.
+Для него подготовлены [8 отдельных QR-профилей Channel Amn 01–08](modules/client-profile-factory/docs/client-profiles.md#channel-amn-eight-named-clients);
+первый сохраняет ключи уже проверенного подключения.
+Архитектурные схемы: [на русском](docs/assets/diagrams/channel-amn-architecture.html)
+и [на английском](docs/assets/diagrams/channel-amn-architecture-en.html).
+
 ---
 
 Протокол и программа — разные части схемы: удалённый A использует VLESS +
@@ -143,8 +151,12 @@ Caddy/VPS или Reality/Vision data plane.
   Дополнительный путь `ssh ghostroute-router-backup` использует `primary_vps`
   после отдельной установки и проверки. Это резерв управления, он не меняет
   выход сайтов. Параметры хранятся в Vault и локальном gitignored профиле;
-  приватные ключи остаются на Mac. Подробнее —
+  административный приватный ключ остаётся на Mac. Подробнее —
   [доступ через bastion](docs/router-management-access.md).
+
+Для Console используется отдельный ключ с ограничением команд на самом роутере;
+административный ключ остаётся на Mac. См.
+[разделение ключей и откат](docs/console-router-ssh-access.md).
 
 Общий helper по умолчанию работает в `ROUTER_ACCESS_MODE=auto`: если маршрут от
 control machine к `ROUTER_LAN` идет через обычный LAN-интерфейс, используется

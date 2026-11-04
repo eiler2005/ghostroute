@@ -128,14 +128,20 @@ cat > "$tmp_file" <<EOF
 vps_ssh_host: "${vps_host}"
 vps_ssh_user: "${vps_user}"
 
-# GhostRoute Console read-only collector -> home router emergency SSH.
+# Router endpoint metadata; Console must use a separate restricted key.
 ghostroute_router_remote_host: "<router_wan_ip_or_dns_name>"
 ghostroute_router_remote_port: 22022
 ghostroute_router_remote_user: "admin"
 ghostroute_router_remote_private_key: |
   -----BEGIN OPENSSH PRIVATE KEY-----
-  <router_readonly_or_emergency_private_key>
+  <legacy_operator_private_key_if_still_needed>
   -----END OPENSSH PRIVATE KEY-----
+
+# See docs/console-router-ssh-access.md before enabling Console router access.
+vault_console_router_private_key: ""
+vault_console_router_public_key: ""
+vault_console_router_known_hosts: ""
+vault_console_router_migration_proven: false
 
 # Existing shared Caddy/OpenClaw site values. Replace placeholders before deploy.
 system_caddy_site_host: "openclaw.home.arpa"

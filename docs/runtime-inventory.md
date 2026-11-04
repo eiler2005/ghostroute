@@ -94,6 +94,16 @@ pinned `klzgrad/forwardproxy` naive ref, serves a neutral cover page for
 ordinary unauthenticated HTTPS GET probes, and must reject unauthenticated
 CONNECT as an open-proxy attempt. Current client proof is Karing-only.
 
+Channel Amn is represented by `router_channel_amn_lab`, outside production
+supervisor ownership. It uses a pinned userspace AmneziaWG build and a separate
+`sing-box-amn` frontend. Its AWG2 client proof, eight named identities and manual
+recovery contract are described in the
+[lab runbook](../modules/routing-core/docs/channel-amn-research.md).
+The UDP port comes from the ignored lab `settings.json` field `port`, not a
+production Ansible port variable; its private value and conflict checks remain
+in the controller. Reboot/firewall reconciliation is a promotion gate, not an
+existing capability.
+
 Router SSH has two supported operator paths: direct LAN/Wi-Fi and the approved
 WAN SSH profile stored outside git. A LAN-only firewall DROP in `firewall-start`
 is considered configuration drift because it can shadow Merlin's own SSH ACCEPT

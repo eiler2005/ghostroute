@@ -13,6 +13,8 @@ egress env fragment from Vault.
 - Separates router, home-mobile and emergency profile flows.
 - Separates Channel M service artifacts from user/client QR profiles.
 - Opens local HTML indexes for operator use.
+- Documents the optional Channel Amn exporter for eight independently keyed,
+  named profiles and a local QR index; live peer registration remains explicit.
 - Cleans generated artifacts without touching Vault.
 
 ## How It Works
@@ -48,6 +50,7 @@ explicit Ansible workflow.
 - `ansible/out/clients-home`
 - `ansible/out/clients-emergency`
 - `ansible/out/channel-m-maxtg`
+- `ansible/out/channel-amn/clients` (optional lab; contains credentials)
 
 ## Dependencies On Other Modules
 

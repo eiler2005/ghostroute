@@ -106,9 +106,10 @@ target/key in runtime secrets, not in tracked docs or application config.
 **Manual recovery via control machine** — if the reverse tunnel is stale (router
 reports `channel_m_reverse_tunnel=running` but the VPS watchdog detects no HTTP
 CONNECT response), kill the stale sshd process on the VPS that holds the listen
-port, then trigger channel-m-recover on the router via the control-machine SSH key
-(`ghostroute_router_remote_private_key` in vault) to the router's WAN IP
-(`ghostroute_router_remote_host:ghostroute_router_remote_port`):
+port, then trigger channel-m-recover through the control machine's verified
+operator profile. Its administrative key path is
+`vault_router_management_operator_key_path`; it is distinct from the Console
+read-only credential, which cannot invoke recovery commands:
 
 ```sh
 # Check stale sshd pid on VPS
@@ -116,7 +117,7 @@ sudo ss -ltnp "( sport = :<channel-m-reverse-listen-port> )"
 sudo kill <sshd-pid>
 
 # Force tunnel re-establishment from control machine
-ssh -i <router-remote-key> admin@<router-wan-ip> \
+ssh ghostroute-router \
   '/jffs/scripts/ghostroute-runtime-supervisor.sh channel-m-recover'
 ```
 

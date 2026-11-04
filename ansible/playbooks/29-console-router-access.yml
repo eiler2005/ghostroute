@@ -1,0 +1,114 @@
+---
+- name: Prepare the reviewed Console router report policy locally
+  hosts: localhost
+  gather_facts: false
+  vars:
+    console_ssh_action: status
+  tasks:
+    - name: Validate explicit migration phase
+      ansible.builtin.assert:
+        that: console_ssh_action in ['status', 'stage', 'activate', 'retire', 'confirm', 'rollback']
+    - name: Build the fixed report allowlist from the trusted checkout
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../../modules/ghostroute-console/bin/build-router-readonly-policy"
+          - "{{ playbook_dir }}/../out/console-router-access/policy.json"
+      when: console_ssh_action == 'stage'
+      changed_when: true
+
+- name: Stage or retire router credentials without restarting SSH
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    console_ssh_action: status
+    console_router_access_dir: /jffs/addons/ghostroute-console-readonly
+  tasks:
+    - name: Inspect the restricted gate without exposing key material
+      ansible.builtin.raw: "test -f {{ console_router_access_dir }}/gate.py && printf restricted_gate_installed || printf restricted_gate_not_installed"
+      changed_when: false
+      when: console_ssh_action == 'status'
+
+    - name: Stage the additive router credential migration
+      when: console_ssh_action == 'stage'
+      block:
+        - name: Require distinct reviewed public credentials
+          ansible.builtin.assert:
+            that:
+              - vault_router_management_operator_public_key != vault_console_router_public_key
+              - vault_router_retired_shared_public_key != vault_console_router_public_key
+              - vault_router_retired_shared_public_key != vault_router_management_operator_public_key
+          no_log: true
+        - name: Create private persistent access directory
+          ansible.builtin.file:
+            path: "{{ console_router_access_dir }}"
+            state: directory
+            mode: '0700'
+        - name: Install the report gate and key migration tool
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../modules/ghostroute-console/router/{{ item.source }}"
+            dest: "{{ console_router_access_dir }}/{{ item.target }}"
+            mode: '0700'
+          loop:
+            - {source: console-router-readonly.py, target: gate.py}
+            - {source: console-router-keys.py, target: keys.py}
+        - name: Install the reviewed fixed report allowlist
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../out/console-router-access/policy.json"
+            dest: "{{ console_router_access_dir }}/policy.json"
+            mode: '0600'
+        - name: Install private key identities for migration
+          ansible.builtin.copy:
+            content: "{{ {'operator_public_key': vault_router_management_operator_public_key, 'console_public_key': vault_console_router_public_key, 'retired_public_key': vault_router_retired_shared_public_key} | to_json }}"
+            dest: "{{ console_router_access_dir }}/keys.json"
+            mode: '0600'
+          no_log: true
+        - name: Add new identities while preserving the old access
+          ansible.builtin.raw: "/opt/bin/python3 -I {{ console_router_access_dir }}/keys.py stage --settings {{ console_router_access_dir }}/keys.json"
+          no_log: true
+
+    - name: Require independent operator and collector proof before retirement
+      ansible.builtin.assert:
+        that: vault_console_router_migration_proven | default(false) | bool
+        fail_msg: Complete fresh-session operator and live collector proof before retiring the shared key.
+      when: console_ssh_action == 'retire'
+
+    - name: Apply only the explicit retirement or rollback phase
+      ansible.builtin.raw: "/opt/bin/python3 -I {{ console_router_access_dir }}/keys.py {{ console_ssh_action }} --settings {{ console_router_access_dir }}/keys.json"
+      when: console_ssh_action in ['retire', 'confirm', 'rollback']
+      no_log: true
+
+- name: Activate only the Console router service credential
+  hosts: vps_stealth
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../secrets/stealth.yml
+  vars:
+    console_ssh_action: status
+    console_root: /opt/ghostroute-console
+    console_readonly_user: ghostroute_readonly
+    console_router_remote_key_src: "{{ playbook_dir }}/../../secrets/router-console-ssh/id_ed25519"
+    console_router_remote_key_content: "{{ vault_console_router_private_key | default('', true) }}"
+    console_router_known_hosts_content: "{{ vault_console_router_known_hosts | default('', true) }}"
+    console_router_remote_host: "{{ ghostroute_router_remote_host }}"
+    console_router_remote_port: "{{ ghostroute_router_remote_port }}"
+    console_router_remote_user: "{{ ghostroute_router_remote_user }}"
+  tasks:
+    - name: Align only the reviewed report transport and compatibility helpers
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../{{ item }}"
+        dest: "{{ console_root }}/repo/{{ item }}"
+        mode: '0755'
+      loop:
+        - modules/shared/lib/router-health-common.sh
+        - modules/ghostroute-health-monitor/bin/live-check
+        - modules/traffic-observatory/bin/traffic-report
+      when: console_ssh_action == 'activate'
+    - name: Install dedicated service credential without app or SSH restart
+      ansible.builtin.include_tasks: ../../modules/ghostroute-console/vps/router-credentials.yml
+      when: console_ssh_action == 'activate'

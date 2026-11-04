@@ -118,9 +118,11 @@ sites mode is a separate routing policy and can operate in either storage mode.
 | Channel B home relay | `/opt/bin/xray`, `/opt/etc/xray/channel-b-home-relay.json`, `/opt/etc/init.d/S99xray-channel-b-home` | `21-channel-b-router.yml`, `channel_b_home_relay` | Channel B listener, firewall allow, connlimit and MSS clamp |
 | Channel C native and compatibility lanes | sing-box inbounds and TLS assets under `/opt/etc/sing-box/` | `22-channel-c-router.yml`, `singbox_client` | native Naive and Shadowrocket compatibility listeners plus firewall redirect/allow checks |
 | Channel D NaiveProxy lab | `/opt/bin/caddy-channel-d-naiveproxy`, `/opt/etc/caddy/channel-d-naiveproxy/Caddyfile`, `/opt/etc/init.d/S99caddy-channel-d-naiveproxy`, `/opt/share/channel-d-naiveproxy/` | `24-channel-d-router.yml`, `channel_d_naiveproxy` | Caddy listener, config markers, SOCKS upstream, cover-site proof and firewall checks |
+| Channel Amn compatibility lab | `/opt/etc/ghostroute-amn/` persistent engines/settings/policy; `/tmp/ghostroute-amn/` volatile state; separate AmneziaWG and `sing-box-amn` | `28-channel-amn-lab.yml`, Routing Core controller | Explicit status, diagnostic peer and client tests; manual start/stop and additive `sync-peers`, outside production recovery |
 | Channel M reverse lane | `/jffs/keys/channel-m-reverse-key`, `/jffs/scripts/channel-m-reverse-tunnel.sh`, supervisor-owned cron, supervisor `channel-m-recover`/`channel-m-status` | `23-channel-m-reverse.yml`, runtime supervisor | local router ingress, `ChannelMReverse` cron, on-demand Channel M control and VPS reverse listener validation |
 | Recovery supervisor/watchdogs | `/jffs/scripts/ghostroute-runtime-supervisor.sh`, `/jffs/scripts/singbox-watchdog.sh`, `/jffs/scripts/dnscrypt-watchdog.sh`, Channel M reverse watchdog cron | `stealth_routing`, `singbox_client`, `dnscrypt_proxy`, `23-channel-m-reverse.yml` | `services-start` single-owner bootstrap, delayed LAN REDIRECT / UDP/443 DROP stabilization, minute-level listener probes, Channel M on-demand recovery and targeted restarts or stale tunnel replacement |
 | Health monitor | `/jffs/scripts/health-monitor/run-probes`, `aggregate`, `daily-digest`, `lib.sh` | `health_monitor` | hourly probes, aggregate state and daily digest cron jobs |
+| Console router SSH boundary | `/jffs/addons/ghostroute-console-readonly/` gate/policy, live authorized keys and persistent `sshd_authkeys` | staged `29-console-router-access.yml` | dedicated service key accepts reports and rejects shell/uploads/forwarding; operator key is separate |
 | Cold fallback | preserved `wgc1_*` NVRAM and `/jffs/scripts/emergency-enable-wgc1.sh` | recovery tooling | WireGuard disabled in steady state; emergency script is manual only |
 
 ## Installed Software Versions
@@ -213,6 +215,29 @@ the managed Reality egress, `STEALTH_DOMAINS`, policy DNS or LAN/Wi-Fi routing.
 The active reverse lane needs no public home inbound port: the router opens the
 SSH remote-forward to the VPS, and the VPS listener stays Docker-bridge scoped.
 
+## Channel Amn Manual Lab
+
+Amn adds a separate home-first UDP ingress:
+`iPhone -> AmneziaWG -> sing-box-amn / gVisor TUN -> selected exit`.
+Sensitive matches use `sensitive-out -> hermes_vps` without automatic fallback;
+other managed matches use the active Reality/Vision backend, and ordinary
+destinations use home WAN. It reads the existing policy and DNS services without
+taking their ownership. A missing Amn TUN retains a terminal unreachable guard.
+
+Persistent binaries, settings and policy live on writable Entware USB under
+`/opt/etc/ghostroute-amn/`; PID, lock, logs and the active ownership snapshot live
+in RAM under `/tmp/ghostroute-amn/`. The complete private bundle, eight named
+client slots and a separate diagnostic identity stay on the control Mac under
+ignored `ansible/out/channel-amn/`, with an encrypted local backup.
+
+The current lab has no boot hook or watchdog. After reboot start it explicitly;
+after firewall or shared-policy changes use stop/start. This AWG2 compatibility
+proof does not imply AWG 3.1 support or eight-client concurrent throughput.
+See the [runbook](../modules/routing-core/docs/channel-amn-research.md) and the
+editable diagrams in [English](assets/diagrams/channel-amn-architecture-en.html)
+or [Русский](assets/diagrams/channel-amn-architecture.html). Existing overview
+images above show the production runtime; these separate figures cover Amn.
+
 ## Test Schemes
 
 The test schemes below show how to prove the installed runtime without changing
@@ -250,7 +275,7 @@ flowchart TB
     realityEgress[managed traffic -> reality-out -> VPS egress]
     homeDirect[non-managed traffic -> direct-out -> home WAN]
     mDirect[Channel M -> reverse SSH -> router direct-out]
-    noWireGuard[no steady-state WireGuard interface or old policy route]
+    noWireGuard[no active legacy wgs1 / wgc1 or old policy route]
   end
 
   lanTest --> managedDns
@@ -274,8 +299,9 @@ Test interpretation:
   C native proof.
 - Channel M proof is service-specific: MAX traffic should exit through the home
   WAN via reverse SSH, not through the VPS Reality egress.
-- WireGuard remains a manual cold fallback and should not appear in steady-state
-  proof output.
+- Legacy `wgs1`/`wgc1` remain a manual cold fallback and should not appear in
+  production proof output. The separately enabled Amn interface is a lab object,
+  not activation of either legacy lane.
 
 ## Ports And Exposure
 
@@ -290,6 +316,7 @@ material and must stay out of shareable documentation.
 | `channel_c_native_public_port` | `router_sing_box` | router WAN | selected Channel C clients |
 | `channel_c_shadowrocket_public_port` | `router_sing_box` | router WAN | selected compatibility clients |
 | `channel_d_naiveproxy_public_port` | `router_channel_d_caddy_naiveproxy` | router WAN | selected Channel D clients |
+| Amn private `settings.json` field `port` | `router_channel_amn_lab` | router UDP ingress | authenticated selected lab peers; opened only during explicit start |
 | `channel_m_maxtg_reverse_ingress_port` | `router_sing_box` | router loopback | SSH remote-forward target only |
 | `dnscrypt_port` | `router_dnscrypt_proxy` | router loopback | local managed DNS forwarder |
 | `singbox_dnscrypt_socks_port` | `router_sing_box` | router loopback | dnscrypt egress over Reality |
@@ -316,6 +343,7 @@ Docker-bridge scoped on the VPS side.
 These jobs are recovery and observability guardrails. They must not silently
 turn one channel into another, enable WireGuard, change client credentials or
 add public listeners.
+They do not start or repair Amn; the lab has a separate manual lifecycle.
 
 ## Live Verification Checklist
 
@@ -337,7 +365,9 @@ Expected healthy signals:
 - Channel B/C/D checks pass only when the corresponding channel is enabled.
 - Channel M reverse checks confirm router cron, local ingress and bridge-scoped
   VPS listener behavior.
-- WireGuard steady-state interfaces and old policy routes remain absent.
+- Legacy `wgs1`/`wgc1` interfaces and old policy routes remain absent.
+- Amn status is checked separately with `28-channel-amn-lab.yml`; a green
+  production verification does not prove that the manual lab is running.
 
 If a live check disagrees with this map, treat the live check as drift evidence:
 read the failing assertion, compare with `configs/runtime-inventory.yml`, then

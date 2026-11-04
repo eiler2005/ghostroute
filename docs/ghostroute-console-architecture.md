@@ -648,13 +648,15 @@ whitelisted JSON report commands from the synced repo checkout. The
 `ghostroute_readonly` account is additionally constrained by sshd hardening: no
 password or keyboard-interactive auth, no TTY, no forwarding and no tunnel.
 
-Router access for read-only report collection is a separate runtime secret. The
-preferred source is Ansible Vault (`ghostroute_router_remote_host`,
-`ghostroute_router_remote_port`, `ghostroute_router_remote_user`,
-`ghostroute_router_remote_private_key`). Deploys may fall back to the
-gitignored local operator key under `secrets/router-remote-ssh/`, but the key is
-never tracked and is installed only as `/opt/ghostroute-console/router-ssh/*`
-with root ownership and `ghostroute_readonly` read-only group access.
+Router report collection uses a dedicated service key from
+`vault_console_router_private_key` or ignored local `secrets/router-console-ssh/`,
+with verified `vault_console_router_known_hosts`. Operator-key fallback is
+forbidden. The router enforces fixed report requests, reviewed script hashes,
+bounded parameters and no SSH forwarding for that key. VPS restrictions and a
+read-only GUI alone are insufficient. The operator administrative key stays on
+the control Mac; the service credential alone is installed under
+`/opt/ghostroute-console/router-ssh/`. See the
+[staged migration and rollback](console-router-ssh-access.md).
 
 ## Safety Boundaries
 

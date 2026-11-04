@@ -56,6 +56,8 @@ reports/
 /ansible/out/shadowrocket-proof/*
 !/ansible/out/shadowrocket-proof/.gitkeep
 /ansible/out/channel-c1-live-*/
+/ansible/out/channel-amn/
+/ansible/out/console-router-access/
 /ansible/out/channel-test-qrs/
 /ansible/out/clients-backup-*/
 /ansible/out/clients-home-backup-*/

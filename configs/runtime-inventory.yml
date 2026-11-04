@@ -352,6 +352,40 @@ components:
       - Current client proof is Karing-only; the client fingerprint is not official Chromium NaiveProxy.
       - The binary is built locally and deployed ready-made; the router must not run upstream install scripts.
 
+  - id: router_channel_amn_lab
+    component_name: Channel Amn home-first AmneziaWG compatibility lab
+    supplier: Amnezia / SagerNet / GhostRoute
+    type: router_runtime_service
+    ecosystem: local_arm64_binary
+    origin: Routing Core pinned build and playbooks/28-channel-amn-lab.yml
+    package_names:
+      - /opt/etc/ghostroute-amn/amneziawg-go
+      - /opt/etc/ghostroute-amn/sing-box-amn
+      - /opt/etc/ghostroute-amn/channel-amn.py
+    version_policy:
+      proven_good: AWG2 compatibility wire profile on the pinned v3.1.20260828 userspace engine, with an isolated copy of the router sing-box binary.
+      minimum_required: Writable Entware, userspace TUN and explicit interface-scoped routing with a terminal unreachable guard.
+      candidate: AWG 3.1 client support and automatic boot or firewall reconciliation require separate acceptance gates.
+      known_problematic:
+        - Reboot stops the lab; firewall rebuilds and policy changes require manual stop/start.
+        - Eight configured clients do not prove eight concurrent heavy transfers.
+      rollback_available: Explicit channel_amn_action=stop closes ingress and removes only Amn-owned runtime objects.
+    relationships:
+      - receives_home_first_amn_selected_clients
+      - projects_existing_sensitive_managed_direct_policy
+      - preserves_production_a_b_c_d_m_ownership
+    runtime_checks:
+      - bash tests/test-channel-amn.sh
+      - playbooks/28-channel-amn-lab.yml with channel_amn_action=status
+      - external diagnostic peer proves sensitive VPS and ordinary home-WAN egress
+      - iPhone Shadowrocket client proves actual browsing and media transfer
+    compatibility_notes:
+      - Shadowrocket 2.2.93 acceptance establishes the AWG2 wire profile only.
+      - Eight named user identities and a separate diagnostic peer use one ingress and policy.
+      - Persistent files are under /opt/etc/ghostroute-amn; volatile state is under /tmp/ghostroute-amn.
+      - The private listener port is settings.json field port, outside the production Ansible port-variable registry.
+      - No production boot hook, watchdog or automatic fallback is installed.
+
   - id: vps_caddy_l4
     component_name: Caddy with layer4 module
     supplier: Caddy project / mholt caddy-l4

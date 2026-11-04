@@ -23,11 +23,12 @@ private keys are not copied to the bastion. Bastion-host SSH requires public
 keys, with password and keyboard-interactive authentication disabled.
 
 This provisioning rule does not remove credentials previously installed for
-the Console collector or another service. Audit those credentials separately:
-a source allow list does not make a privileged collector key read-only. Prefer
-distinct operator and service keys with the narrowest service permissions.
-Do not claim workstation-only custody for an existing shared credential until
-that earlier server copy has been removed or replaced.
+the Console collector or another service. Separate them with the
+[Console router credential migration](console-router-ssh-access.md): the Mac
+operator key remains administrative, while the dedicated Console key is forced
+through the router report allowlist. A source allow list does not make a
+privileged collector key read-only. Revoke the legacy shared key and remove its
+server copies only after proving both new identities and all required callers.
 
 ## Sources and private artifacts
 

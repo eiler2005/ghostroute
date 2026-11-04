@@ -23,6 +23,9 @@ Core model:
 - Channel C: selected-client home-first Naive/HTTPS CONNECT compatibility lane;
   C1-Shadowrocket is live-proven, C1-sing-box native Naive depends on client
   support.
+- Channel Amn: opt-in home-first AmneziaWG lab, with isolated userspace and
+  `sing-box-amn` processes. Eight named clients plus one diagnostic peer;
+  manual start after reboot or firewall rebuild, outside production supervisors.
 - Legacy WireGuard (`wgs1` + `wgc1`) is disabled in steady state and preserved
   only as an explicit cold fallback.
 
@@ -143,6 +146,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   egress.
 - Keep real secrets and deployment-specific values in Ansible Vault, the
   appropriate secrets store, or gitignored local files only.
+- Console router access must use its dedicated forced-command service key;
+  never copy an operator private key to the VPS or restore operator-key fallback.
+  Changes to report scripts consumed by the Console router gate require local
+  tests and an explicitly authorized allowlist refresh from the trusted control
+  checkout. Follow `docs/console-router-ssh-access.md` for staged key changes.
 - Generated artifacts under `ansible/out/`, local `reports/`, private docs, and
   domain journals are local/operator data and must stay out of public tracked
   docs unless explicitly sanitized.
@@ -169,6 +177,9 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 - Channel B and Channel C are selected-client lanes, not automatic failover for
   Channel A. They must not take over Channel A REDIRECT, router DNS, TUN, or
   recovery ownership.
+- Channel Amn projects the selected-client managed/sensitive split into its own
+  gVisor TUN. Keep its credentials, interfaces, chains and process ownership
+  separate from A/B/C/D/M. Its current AWG2 client proof is not AWG 3.1 proof.
 - Mobile/home-first managed traffic must apply the same post-router
   `STEALTH_DOMAINS` / `VPN_STATIC_NETS` split as LAN/Wi-Fi.
 - `STEALTH_DOMAINS` is the active managed domain catalog; `VPN_STATIC_NETS` is

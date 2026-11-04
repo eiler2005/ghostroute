@@ -1,5 +1,10 @@
 # GhostRoute Console
 
+Router collection uses a dedicated service SSH key with a router-enforced fixed
+report allowlist. The operator administrative key stays on the control Mac.
+Alarm acknowledgement metadata stays on the VPS. See
+[credential separation and rollback](../../docs/console-router-ssh-access.md).
+
 ### Read-only operational workbench for GhostRoute routes, clients and health
 
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)]()

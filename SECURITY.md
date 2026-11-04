@@ -89,6 +89,11 @@ The operator explicitly accepts:
 ## Secrets Policy
 
 - Keep real values in Ansible Vault or gitignored local files only.
+- Keep operator and Console router credentials distinct. The operator key stays
+  on the control Mac; the VPS service key is constrained by the router's fixed
+  report gate, with forwarding disabled. Retire an earlier shared key only
+  after proving replacement access and collector freshness. See
+  [the migration runbook](docs/console-router-ssh-access.md).
 - Public managed-egress references must use mnemonic backend roles only:
   `primary_vps`, `backup_reality`, `hermes_vps` and future role-style names.
   Do not publish the real provider, ASN, host family, account, endpoint, SNI or
@@ -102,6 +107,18 @@ The operator explicitly accepts:
 - Treat Channel C artifacts as planned compatibility credentials until promoted.
 - Treat Channel D artifacts and local Caddy binaries as experimental local
   credentials/artifacts; keep them gitignored.
+- Treat Channel Amn settings, QR imports and build output as private lab
+  material under ignored `ansible/out/channel-amn/`. Each of its eight client
+  slots has separate credentials; preserve slot 01 during additive export and
+  keep the full bundle in an encrypted local backup.
+
+Channel Amn is a manual home-first compatibility lab, not a replacement for the
+production supervisors. It blocks raw peer forwarding outside its policy TUN,
+keeps router/LAN management closed to the peer and retains a terminal unreachable
+guard when the TUN disappears. Reboot or firewall rebuild requires manual
+recovery. Its AWG2 client proof, eight configured slots and bounded resource gate
+do not establish AWG 3.1 compatibility, concurrent capacity or immunity to UDP
+blocking. See the [lab runbook](modules/routing-core/docs/channel-amn-research.md).
 
 ## Recovery Boundaries
 

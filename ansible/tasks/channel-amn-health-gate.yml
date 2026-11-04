@@ -1,0 +1,19 @@
+---
+# An isolated ingress does not deploy Console or its collector transport.
+# Keep every routing/VPS deploy-critical check and every other WARN blocking.
+- name: Validate production routing before or after Amn mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/bin/live-check"
+      - --json
+      - --deploy-gate
+  delegate_to: localhost
+  become: false
+  register: channel_amn_health_gate
+  changed_when: false
+  failed_when: >-
+    channel_amn_health_gate.rc not in [0, 1] or
+    ((channel_amn_health_gate.stdout | from_json).checks
+      | selectattr('status', 'in', ['WARN', 'CRIT'])
+      | rejectattr('id', 'in', ['console_vps_router_profile', 'console_vps_router_tcp'])
+      | list | length > 0)

@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Build the router's fixed report allowlist from the trusted control checkout."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[3]
+PORT = r'[0-9]{0,5}'
+HEALTH_PARAMETERS = {name: PORT for name in (
+    'GHOSTROUTE_REDIRECT_PORT', 'GHOSTROUTE_HOME_REALITY_PORT',
+    'GHOSTROUTE_DNSCRYPT_SOCKS_PORT', 'GHOSTROUTE_DNSCRYPT_PORT',
+    'GHOSTROUTE_VPS_DNS_FORWARD_PORT', 'GHOSTROUTE_HOME_REALITY_MSS',
+    'GHOSTROUTE_HOME_REALITY_CONNLIMIT')}
+SOURCES = {
+    'modules/shared/lib/router-health-common.sh': (1, HEALTH_PARAMETERS),
+    'modules/traffic-observatory/bin/traffic-summary': (5, {}),
+    'modules/traffic-observatory/bin/traffic-evidence': (1, {}),
+    'modules/traffic-observatory/bin/traffic-report': (2, {'GHOSTROUTE_QUICK_FILTER': r'(all|channel-[abc])'}),
+    'modules/ghostroute-health-monitor/bin/live-check': (1, {
+        'GHOSTROUTE_LIVE_FILTER': r'(all|channel-[abcd])',
+        'GHOSTROUTE_LIVE_ACTIVE_PROBE': '[01]', 'GHOSTROUTE_LIVE_DEPLOY_GATE': '[01]',
+        'GHOSTROUTE_MANAGED_CHECK_DOMAIN': r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}'}),
+    'modules/ghostroute-health-monitor/bin/leak-check': (3, {}),
+    'modules/dns-catalog-intelligence/bin/dns-forensics-report': (1, {
+        'WINDOW_PREFIX': r'[0-9T_.:+-]{0,40}'}),
+}
+
+
+def build(root=ROOT):
+    scripts = {}
+    for relative, (expected, parameters) in SOURCES.items():
+        source = (root/relative).read_text()
+        bodies = re.findall(r"<<'REMOTE'[^\n]*\n(.*?)^REMOTE\r?$", source, re.M | re.S)
+        if len(bodies) != expected:
+            raise ValueError(f'Review required: unexpected report script count in {relative}')
+        for body in bodies:
+            digest = hashlib.sha256(body.encode()).hexdigest()
+            scripts[digest] = {'source': relative, 'body': body, 'parameters': parameters}
+    source = (root/'modules/dns-catalog-intelligence/bin/domain-report').read_text()
+    json_section = source.split('\ncase "$MODE" in', 1)[0]
+    commands = re.findall(r"router_ssh\s*\\?\s*'([^']*)'", json_section)
+    if len(commands) != 3:
+        raise ValueError('Review required: unexpected domain JSON read commands')
+    commands += [
+        'true', "date '+%Y-%m-%dT%H:%M:%S%z'",
+        '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true',
+        'ipset list STEALTH_DOMAINS 2>/dev/null',
+    ]
+    traffic = (root/'modules/traffic-observatory/bin/traffic-report').read_text()
+    literals = re.findall(r"router_ssh '([^']*)'", traffic)
+    if len(literals) != 8:
+        raise ValueError('Review required: unexpected legacy health-summary reads')
+    commands += [value for value in literals if value != 'sh -s']
+    prefix = 'STATE_DIR=$( [ -x /opt/bin/opkg ] && printf /opt/var/log/router_configuration || printf /jffs/addons/router_configuration/traffic ); '
+    for name in ('lan-device-counters.tsv', 'lan-flow-facts.tsv', 'lan-flow-facts.status', 'mobile-reality-counters.tsv'):
+        commands.append(prefix+f'[ -f "$STATE_DIR/{name}" ] && cat "$STATE_DIR/{name}" || true')
+    return {'schema_version': 1, 'scripts': scripts, 'commands': {value: value for value in commands}}
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    os.umask(0o077)
+    policy = build()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(policy, indent=2)+'\n')
+    print(f"Built fixed report policy: {len(policy['scripts'])} scripts, {len(policy['commands'])} literal commands")

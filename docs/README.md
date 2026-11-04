@@ -19,10 +19,13 @@ local runbooks or historical planning notes.
 - [architecture.md](architecture.md) - high-level GhostRoute architecture.
 - [router-runtime-map.md](router-runtime-map.md) - sanitized map of what is installed on the ASUS Merlin router, with diagrams and runtime guardrails.
 - [praefectus-ai/docs/vps-runtime-map.md](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map for Channel M, Console and routing/app surfaces.
-- [channels.md](channels.md) - compact handoff view of Channel A, B and C.
+- [channels.md](channels.md) - production channel handoff and optional Amn lab status.
+- [Channel Amn runbook](../modules/routing-core/docs/channel-amn-research.md) - isolated home-first AmneziaWG lab, eight client profiles and manual recovery.
+- Channel Amn diagrams: [English](assets/diagrams/channel-amn-architecture-en.html) / [Русский](assets/diagrams/channel-amn-architecture.html).
 - [dns-policy.md](dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
 - [channel-c.md](channel-c.md) - detailed Channel C C1 native Naive and Shadowrocket compatibility status.
 - [SECURITY.md](../SECURITY.md) - threat model, protected assets, non-goals and security workflow.
+- [console-router-ssh-access.md](console-router-ssh-access.md) - separate operator/service credentials, fixed router report permissions and staged retirement.
 - [ansible/README.md](../ansible/README.md) - deployment, Vault, profile generation and verification control plane.
 - [getting-started.md](getting-started.md) - first deploy and local setup workflow.
 - [troubleshooting.md](troubleshooting.md) - cross-module incident diagnostics.

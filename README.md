@@ -82,6 +82,14 @@ What this project demonstrates, with proof in-repo:
 | M | Service MAX egress lane | home router -> SSH remote-forward -> maxtg_bridge VPS docker bridge | MAX API/CDN only, authenticated HTTP CONNECT inside the reverse tunnel, direct-out via home WAN | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
+The optional [Amn compatibility lab](modules/routing-core/docs/channel-amn-research.md)
+adds a manually selected AmneziaWG ingress on the home router. It is outside the
+production matrix and has no boot autostart or automatic failover.
+Its [eight named QR profiles](modules/client-profile-factory/docs/client-profiles.md#channel-amn-eight-named-clients)
+use **Channel Amn 01–08**; existing bootstrap credentials are preserved.
+Architecture diagrams: [English](docs/assets/diagrams/channel-amn-architecture-en.html)
+and [Русский](docs/assets/diagrams/channel-amn-architecture.html).
+
 ## Why This Exists
 
 The project solves a narrow but real edge problem: keep ordinary home devices
@@ -167,8 +175,12 @@ Router SSH has two supported operator paths:
   `ssh ghostroute-router-backup` path uses `primary_vps` after separate setup
   and verification. This management reserve does not change site egress.
   Deployment values stay in Vault and gitignored local profiles; private keys
-  stay on the workstation. See the
+  operator keys stay on the workstation. See the
   [bastion management procedure](docs/router-management-access.md).
+
+Console uses a separate router service key constrained by a router-side report
+allowlist; the administrative key stays on the Mac. See the
+[credential separation and rollback procedure](docs/console-router-ssh-access.md).
 
 The shared router helper defaults to `ROUTER_ACCESS_MODE=auto`: if the control
 machine's route to `ROUTER_LAN` is through a normal LAN interface it uses

@@ -451,13 +451,13 @@ References for this runbook:
 
 ## Runtime Secrets
 
-Router access for this collector is runtime-secret only. Clean deploys should
-store `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
-`ghostroute_router_remote_user` and `ghostroute_router_remote_private_key` in
-`ansible/secrets/stealth.yml` as Ansible Vault values. Operator workstations may
-use the gitignored fallback key under `secrets/router-remote-ssh/`, but the key
-is never tracked and is copied only to `/opt/ghostroute-console/router-ssh/` on
-the VPS.
+Router access for this collector uses a dedicated restricted service credential,
+never the operator private key. Keep the endpoint metadata and
+`vault_console_router_private_key` / `vault_console_router_known_hosts` in the
+encrypted local Vault. A local fallback may use only the dedicated ignored
+`secrets/router-console-ssh/` key. The router forced command accepts reviewed
+report requests; arbitrary commands, file uploads and forwarding are rejected.
+See [staged migration and rollback](../../../docs/console-router-ssh-access.md).
 
 VPS egress identity is configured explicitly with `GHOSTROUTE_VPS_EGRESS_IP`,
 `GHOSTROUTE_VPS_EGRESS_ASN` and `GHOSTROUTE_VPS_EGRESS_COUNTRY`. Console does
@@ -478,8 +478,8 @@ not infer egress IP/ASN/country from the public Console URL.
 - `/catalog?page=&pageSize=` pages the read-only catalog snapshot up to 1,000
   rows per page.
 - `/health` alarm ack/snooze/reopen is stored as a narrow operator state overlay
-  on the router at the Console alarm-state JSON path. It does not change
-  routing, services or catalog runtime.
+  on the VPS under `operator-state/`, selected by `GHOSTROUTE_ALARM_STATE_FILE`.
+  The service key needs no router write permission for these actions.
 - `/clients` keeps row selection in `?client=<device-or-client-id>` without
   filtering the table, and each row uses plain document links so the detail
   panel follows the selected device even when browser-side navigation is
@@ -510,7 +510,7 @@ not infer egress IP/ASN/country from the public Console URL.
   actions without storing delivery secrets.
 - `/api/actions/ops` records controlled ops actions such as collect/report
   refresh and collector restart requests.
-- `/api/alarms/:id/(ack|snooze|open)` updates only the router-backed alarm state
+- `/api/alarms/:id/(ack|snooze|open)` updates only the VPS-backed alarm state
   overlay and keeps derived `alarm_events` as factual snapshot evidence. It
   never mutates DNS, sing-box, dnsmasq or router firewall.
 - `/settings` is a readonly runtime inventory: collectors, retention, read

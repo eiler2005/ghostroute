@@ -131,7 +131,40 @@ Layer 3 VPS
   -> sites see VPS IP for managed traffic
 ```
 
+## Channel Amn — отдельный home-first тестовый вход
+
+![Channel Amn: домашний вход и выбор sensitive, managed или direct выхода](assets/diagrams/channel-amn-traffic-ru.png)
+
+Channel Amn добавляет путь `iPhone → AmneziaWG → домашний роутер`. На роутере
+userspace-движок передаёт пакеты отдельному `sing-box-amn` с gVisor TUN и
+проекцией действующей managed/sensitive-политики. Чувствительные сайты используют
+`sensitive-out → hermes_vps`, остальные managed — выбранный Reality/Vision VPS,
+non-managed — домашний WAN. Основной sing-box, каналы A/B/C/D/M и legacy cold
+fallback сохраняют своих владельцев.
+
+На writable Entware хранятся файлы `/opt/etc/ghostroute-amn/`; в
+`/tmp/ghostroute-amn/` — PID, lock, журналы и снимок активных настроек. Этот lab
+запускается вручную и пока не включён в boot/firewall supervisor.
+
+Пользовательские идентичности называются **Channel Amn 01–08**; диагностический
+peer отделён. Первый слот сохраняет ключи проверенного подключения. Дополнение
+peer-набора через `sync-peers` меняет только записи движка Amn, без рестартов и
+смены существующих импортов. QR и ключи находятся на control Mac в игнорируемом
+`ansible/out/channel-amn/`. См. [runbook Amn](../modules/routing-core/docs/channel-amn-research.md)
+и [экспорт восьми профилей](../modules/client-profile-factory/docs/client-profiles.md#channel-amn-eight-named-clients).
+Отдельные схемы [процессов и хранения](assets/diagrams/channel-amn-runtime-ru.png)
+и [управления профилями](assets/diagrams/channel-amn-profiles-ru.png) доступны также
+в редактируемом HTML: [русский](assets/diagrams/channel-amn-architecture.html)
+и [English](assets/diagrams/channel-amn-architecture-en.html).
+
 ## Управление и хранение состояния
+
+Оператор и Console используют разные ключи доступа к роутеру. Административный
+ключ хранится на Mac; ключ Console на VPS ограничен принудительной командой
+чтения отчётов на самом роутере, без shell, загрузки файлов и SSH-forwarding.
+Ограничитель и проверенный список запросов хранятся в JFFS, публичные ключи —
+в текущей и постоянной конфигурации Merlin. Состояние подтверждений тревог
+Console хранится на VPS. См. [миграцию ключей и откат](console-router-ssh-access.md).
 
 Пользовательские каналы A/B/C и операторский SSH имеют отдельные пути.
 `ssh ghostroute-router` использует ограниченный forwarding-only вход через

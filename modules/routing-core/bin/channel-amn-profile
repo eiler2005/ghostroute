@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Generate new, local-only Amn compatibility-lab credentials; never overwrite peers."""
+import argparse
+import base64
+import copy
+import html
+import ipaddress
+import json
+import os
+from pathlib import Path
+import secrets
+import shutil
+import subprocess
+import tempfile
+import zipfile
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
+
+FIELDS = {'Jc': 'jc', 'Jmin': 'jmin', 'Jmax': 'jmax', 'S1': 's1', 'S2': 's2', 'S3': 's3', 'S4': 's4', 'H1': 'h1', 'H2': 'h2', 'H3': 'h3', 'H4': 'h4'}
+
+
+def keypair():
+    key = X25519PrivateKey.generate()
+    return (base64.b64encode(key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())).decode(),
+            base64.b64encode(key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode())
+
+
+def public_key(private):
+    raw = base64.b64decode(private, validate=True)
+    key = X25519PrivateKey.from_private_bytes(raw)
+    return base64.b64encode(key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
+
+
+def config_text(client, name):
+    content = ['# Name = ' + name, '# Home-first AWG2 compatibility lab; not verified AWG 3.1', '[Interface]',
+               'PrivateKey = ' + client['private_key'], 'Address = ' + client['address'] + '/32',
+               'DNS = ' + client['dns'], 'MTU = ' + str(client['mtu'])]
+    content += [f'{key} = {client["obfuscation"][value]}' for key, value in FIELDS.items()]
+    content += ['', '[Peer]', 'PublicKey = ' + client['public_key'], 'PresharedKey = ' + client['preshared_key'],
+                'Endpoint = ' + client['endpoint'] + ':' + str(client['port']),
+                'AllowedIPs = 0.0.0.0/0, ::/0', 'PersistentKeepalive = 25', '']
+    return '\n'.join(content)
+
+
+def encode_qr(payload, path):
+    binary = shutil.which('qrencode')
+    if not binary:
+        raise ValueError('qrencode is required to export the QR batch')
+    subprocess.run([binary, '-o', str(path), '-s', '8', '-l', 'M'], input=payload.encode(),
+                   capture_output=True, check=True, timeout=15)
+
+
+def export_eight(out):
+    """Extend the bootstrap identity without rotating or deleting existing peers."""
+    original = json.loads((out / 'settings.json').read_text())
+    proposed = copy.deepcopy(original)
+    net = ipaddress.ip_network(original['subnet'])
+    bootstrap = json.loads((out / 'iphone.private.json').read_text())
+    server_public = public_key(original['private_key'])
+    if bootstrap['public_key'] != server_public:
+        raise ValueError('Bootstrap client and server identities differ')
+    clients_dir = out / 'clients'
+    existing = {p['address']: p for p in original['peers']}
+    clients = []
+    for number in range(1, 9):
+        name = f'Channel Amn {number:02d}'
+        stem = f'Channel-Amn-{number:02d}'
+        address = str(net[2 if number == 1 else number + 2])
+        saved = clients_dir / (stem + '.private.json')
+        if number == 1:
+            client = copy.deepcopy(bootstrap)
+            if saved.exists() and json.loads(saved.read_text()) != dict(client, name=name):
+                raise ValueError('Saved first profile differs from the working bootstrap')
+        elif saved.exists():
+            client = json.loads(saved.read_text())
+        else:
+            if address in existing:
+                raise ValueError('Slot credentials missing; restore the local backup instead of rotating')
+            private, _ = keypair()
+            client = dict(bootstrap)
+            client['private_key'] = private
+            client['preshared_key'] = base64.b64encode(secrets.token_bytes(32)).decode()
+            client['address'] = address
+        for field in ('public_key', 'dns', 'endpoint', 'port', 'mtu', 'obfuscation', 'wire_profile'):
+            if client[field] != bootstrap[field]:
+                raise ValueError('Saved profile parameters have drifted')
+        if client['address'] != address:
+            raise ValueError('Saved profile address does not match its slot')
+        peer = dict(address=address, public_key=public_key(client['private_key']), preshared_key=client['preshared_key'])
+        if address in existing:
+            if existing[address] != peer:
+                raise ValueError('Saved profile does not match the registered peer')
+        else:
+            proposed['peers'].append(peer)
+        client['name'] = name
+        clients.append((stem, client))
+    expected_addresses = {c['address'] for _, c in clients} | {str(net[3])}
+    if {p['address'] for p in proposed['peers']} != expected_addresses:
+        raise ValueError('Unexpected peers require explicit review')
+    for field in ('public_key', 'preshared_key', 'address'):
+        if len({p[field] for p in proposed['peers']}) != 9:
+            raise ValueError('Peer keys or addresses are not unique')
+
+    # Render the entire batch before publishing settings or replacing artifacts.
+    out.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix='.amn-export-', dir=out) as temporary:
+        stage = Path(temporary)
+        cards = []
+        manifest = []
+        for stem, client in clients:
+            text = config_text(client, client['name'])
+            (stage / (stem + '.private.json')).write_text(json.dumps(client, indent=2) + '\n')
+            (stage / (stem + '.conf')).write_text(text)
+            encode_qr(text, stage / (stem + '.png'))
+            label = html.escape(client['name'])
+            cards.append(f'<section><h2>{label}</h2><img src="{stem}.png" alt="{label} import QR"><p><a href="{stem}.conf" download>Download profile</a></p></section>')
+            manifest.append({'name': client['name'], 'config': stem + '.conf', 'qr': stem + '.png'})
+        page = '''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>Channel Amn — 8 profiles</title>
+<style>body{font:16px system-ui;margin:24px;background:#f5f6f8;color:#20252c}main{max-width:1200px;margin:auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}section{background:white;padding:20px;border-radius:12px;text-align:center;break-inside:avoid}img{display:block;width:100%;max-width:420px;height:auto;margin:auto}h1{margin-bottom:8px}p{line-height:1.5}a{color:#1557a0}@media print{body{background:white;margin:8mm}.grid{grid-template-columns:1fr 1fr}section{border:1px solid #ddd}section img{max-width:280px}}</style>
+<main><h1>Channel Amn</h1><p>8 отдельных профилей · iPhone → домашний роутер → managed/sensitive VPS или домашний WAN.</p>
+<p>Один профиль на устройство. Channel Amn 01 сохраняет ключи уже проверенного iPhone. Не импортируйте его повторно на то же устройство. Имена для импорта указаны над QR и в именах файлов; если сканер показывает общий ярлык WireGuard, переименуйте новую запись в соответствующее Channel Amn 01–08.</p>
+<p>Тестовый AWG2-профиль; после перезагрузки роутера Amn запускается вручную. QR и файлы содержат ключи доступа. Храните эту страницу локально.</p><div class="grid">'''
+        (stage / 'index.html').write_text(page + ''.join(cards) + '</div></main></html>')
+        (stage / 'manifest.private.json').write_text(json.dumps(manifest, indent=2) + '\n')
+        clients_dir.mkdir(mode=0o700, exist_ok=True)
+        for path in stage.iterdir():
+            os.replace(path, clients_dir / path.name)
+    settings_new = out / '.settings.new'
+    settings_new.write_text(json.dumps(proposed, indent=2) + '\n')
+    os.replace(settings_new, out / 'settings.json')
+    archive = out / 'Channel-Amn-8-profiles.private.zip'
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
+        for entry in manifest:
+            for key in ('config', 'qr'):
+                bundle.write(clients_dir / entry[key], 'Channel-Amn/' + entry[key])
+        bundle.write(clients_dir / 'index.html', 'Channel-Amn/index.html')
+    return manifest
+
+
+def create(options, out):
+    if (out / 'settings.json').exists():
+        raise ValueError('Credentials already exist; refusing to rotate existing imports')
+    net = ipaddress.ip_network(options['subnet'])
+    server_private, server_public = keypair()
+    headers = secrets.SystemRandom().sample(range(10000000, 2000000000), 4)
+    obfuscation = dict(jc=4, jmin=64, jmax=256, s1=32, s2=64, s3=16, s4=16,
+                       **dict(zip(('h1', 'h2', 'h3', 'h4'), headers)))
+    settings = dict(options, server_address=str(net[1]) + '/24', policy_address=str(net[253]) + '/30',
+                    obfuscation=obfuscation, peers=[], mtu=1280,
+                    wire_profile='awg2-compatibility-lab')
+    settings['private_key'] = server_private
+    for index, name in enumerate(('iphone', 'probe'), 2):
+        private, public = keypair()
+        psk = base64.b64encode(secrets.token_bytes(32)).decode()
+        address = str(net[index])
+        settings['peers'].append(dict(address=address, public_key=public, preshared_key=psk))
+        client = dict(public_key=server_public, preshared_key=psk,
+                      address=address, dns=str(net[53]), endpoint=options['endpoint'],
+                      port=options['port'], mtu=1280, obfuscation=obfuscation,
+                      wire_profile='awg2-compatibility-lab')
+        client['private_key'] = private
+        (out / (name + '.private.json')).write_text(json.dumps(client, indent=2) + '\n')
+        (out / ('Amn-' + name + '.conf')).write_text(config_text(client, 'Amn-' + name))
+    (out / 'settings.json').write_text(json.dumps(settings, indent=2) + '\n')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--export-eight', action='store_true', help='Extend and export eight named clients from an existing bundle')
+    parser.add_argument('options', type=Path, help='Private JSON: endpoint, port, subnet, table, priority')
+    parser.add_argument('output', type=Path, nargs='?')
+    args = parser.parse_args()
+    os.umask(0o077)
+    if args.export_eight:
+        if args.output is not None:
+            parser.error('--export-eight takes one existing bundle directory')
+        export_eight(args.options)
+        print('Exported Channel Amn 01–08; existing identities preserved')
+    else:
+        if args.output is None:
+            parser.error('Initial generation requires options and output paths')
+        args.output.mkdir(parents=True, exist_ok=True, mode=0o700)
+        create(json.loads(args.options.read_text()), args.output)
+        print('Generated independent iPhone and diagnostic peers in the local output directory')
+
+
+if __name__ == '__main__':
+    main()

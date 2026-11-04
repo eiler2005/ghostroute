@@ -33,6 +33,13 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 
 ## Operating Rules
 
+Routing Core also owns the opt-in [Channel Amn lab](../modules/routing-core/docs/channel-amn-research.md):
+`bin/build-channel-amn`, `bin/channel-amn-profile`, the isolated router controller
+and `28-channel-amn-lab.yml`. It shares policy inputs with production but has
+separate processes and no boot/watchdog ownership. Client Profile Factory
+documents its eight named private imports; `tests/test-channel-amn.sh` covers
+the lab contract.
+
 - Module-owned commands live in `modules/<module>/bin`, router runtime scripts
   in `modules/<module>/router`, VPS runtime scripts in `modules/<module>/vps`,
   shared helpers in `modules/shared/lib`, and module-owned deep dives in
@@ -66,9 +73,11 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 | Investigate slow clients | `modules/performance-diagnostics/docs/routing-performance-troubleshooting.md` |
 | Rotate Reality SNI | `modules/reality-sni-rotation/docs/sni-rotation-candidates.md` |
 | Generate QR profiles | `modules/client-profile-factory/docs/client-profiles.md` |
+| Operate Channel Amn or export its eight profiles | `modules/routing-core/docs/channel-amn-research.md`; diagrams under `docs/assets/diagrams/` in RU and EN |
 | Prepare or audit secrets | `modules/secrets-management/docs/secrets-management.md` |
 | Recover from incidents | `modules/recovery-verification/docs/failure-modes.md`, `troubleshooting.md` and `managed-egress-vps-boot-recovery.md` |
 | Configure primary/backup operator SSH access | `docs/router-management-access.md`; Ansible playbooks `26-router-management-access.yml` and `27-router-management-backup.yml` |
+| Separate Console and operator router credentials | `docs/console-router-ssh-access.md`; staged playbook `29-console-router-access.yml` |
 | Replace Entware USB and retire temporary RAM recovery | `modules/recovery-verification/docs/usb-replacement.md` |
 | Check component versions and port ownership | `docs/runtime-inventory.md` |
 | Review archived architecture improvement priorities | `docs/archive/roadmaps/architecture-improvement-roadmap-2026-04-26.md` and `docs/adr/` |

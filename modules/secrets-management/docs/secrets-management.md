@@ -23,7 +23,9 @@ Treat these as secrets or sensitive operational data:
 
 ```text
 secrets/router.env                  # local router deploy env; gitignored
-secrets/router-remote-ssh/          # local fallback remote-router key; gitignored
+secrets/router-operator-ssh/        # administrative router key on Mac; gitignored
+secrets/router-console-ssh/         # dedicated restricted service key; gitignored
+secrets/router-remote-ssh/          # legacy keys; never a Console fallback
 secrets/no-vpn-ip-ports.local.txt   # personal bypass IP:port rules; gitignored
 secrets/static-networks.local.txt   # local /32 managed-route tests; gitignored
 secrets/device-metadata.local.tsv   # local device aliases; gitignored
@@ -34,6 +36,8 @@ ansible/secrets/stealth.yml         # encrypted ansible-vault; gitignored
 ansible/secrets/stealth.yml.example # placeholder template; safe for git
 ansible/secrets/stealth.yml.backup-* # local Vault backups; gitignored
 ansible/out/clients/                # generated QR/.conf files; gitignored
+ansible/out/channel-amn/            # lab settings, keys, eight client imports
+ansible/out/console-router-access/  # generated fixed report policy; gitignored
 docs/private/                       # local-only operational notes; gitignored
 reports/                            # local generated reports; gitignored
 ```
@@ -89,6 +93,20 @@ clients[].short_id
 Reality keys
 ```
 
+## Router Credentials And Backups
+
+Operator and Console router keys have separate roles. The administrative key
+stays on the Mac; only the restricted Console identity is deployed to its VPS.
+The router enforces its report allowlist, and verified host pins belong beside
+the private service configuration. Keep `vault_console_router_private_key` and
+`vault_console_router_known_hosts` in encrypted Vault. Retire an old shared key
+only after proving the new operator paths and actual collector, then remove its
+VPS copies. See the [migration and rollback runbook](../../../docs/console-router-ssh-access.md).
+
+Store configuration/key backups encrypted under ignored
+`reports/router-backups/`; verify a restore in memory and keep the Vault password
+outside that archive. A local encrypted copy is not an offsite backup.
+
 ## Client Profiles And QR Codes
 
 QR codes are access credentials. Do not commit them, paste them into docs or send them through untrusted channels.
@@ -110,6 +128,13 @@ ansible/out/clients-home/<client>.conf
 ansible/out/clients-home/<client>.png
 ansible/out/clients-home/qr-index.html
 ```
+
+For Channel Amn, `Channel Amn 01–08` are independently keyed client slots on one
+ingress. Slot 01 preserves the tested original identity. Its local QR index and
+client ZIP stay in `ansible/out/channel-amn/`; the full recovery bundle also
+contains server and diagnostic credentials, so back up the complete directory
+privately. The client-only ZIP is not a complete server backup. See the
+[Amn runbook](../../routing-core/docs/channel-amn-research.md).
 
 ## Pre-Push Checklist
 
