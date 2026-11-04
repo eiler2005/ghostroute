@@ -165,6 +165,8 @@ ipset=/pscrb.fm/STEALTH_DOMAINS
 ipset=/smithery.ai/STEALTH_DOMAINS
 # cobalt.tools (site + API; parent domain covers api.cobalt.tools and future subdomains)
 ipset=/cobalt.tools/STEALTH_DOMAINS
+# Exact Vercel tenant: page and same-origin Next.js assets
+ipset=/cheap-intelligence.vercel.app/STEALTH_DOMAINS
 # Wispr Flow (site, docs, auth, API, cloud sync)
 ipset=/wisprflow.ai/STEALTH_DOMAINS
 ipset=/api.wisprflow.com/STEALTH_DOMAINS

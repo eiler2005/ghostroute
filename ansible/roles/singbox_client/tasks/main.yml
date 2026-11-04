@@ -164,6 +164,20 @@
     fail_msg: "Sensitive sites mode needs an explicit domain catalog, not whole Google or Google APIs families."
   when: router_sensitive_sites_enabled | default(false) | bool
 
+- name: Validate optional Telegram sensitive routing inputs
+  ansible.builtin.assert:
+    that:
+      - router_sensitive_telegram_domains | length > 0
+      - (router_sensitive_telegram_domains | unique | list | length) == (router_sensitive_telegram_domains | length)
+      - (router_sensitive_telegram_domains | select('match', '^[a-z0-9][a-z0-9.-]*[.][a-z0-9-]+$') | list | length) == (router_sensitive_telegram_domains | length)
+      - router_sensitive_telegram_ipv4_cidrs | length > 0
+      - (router_sensitive_telegram_ipv4_cidrs | unique | list | length) == (router_sensitive_telegram_ipv4_cidrs | length)
+      - "'0.0.0.0/0' not in router_sensitive_telegram_ipv4_cidrs"
+    fail_msg: "Telegram sensitive routing needs its reviewed domain list and the shared Telegram IPv4 catalog section."
+  when:
+    - router_sensitive_sites_enabled | default(false) | bool
+    - router_sensitive_telegram_enabled | default(false) | bool
+
 - name: Validate Channel C1 home Naive settings
   ansible.builtin.assert:
     that:

@@ -99,6 +99,10 @@ The Cobalt canary downloads the page through the selected managed path. A fast
 HTTP header alone does not prove a complete response; a body-transfer timeout
 must fail the canary. It does not prove Cobalt API processing or a signed-in
 browser session. Keep actual browser and native Telegram media checks separate.
+When the optional Telegram sensitive extension is enabled, its HTTPS canary
+reports `expected_backend: hermes_vps` and the JSON flag
+`telegram_sensitive_sites_enabled` is true. This attribution still requires
+separate native-client evidence; it is not a measured exit address.
 
 `egress-dpi-probe` is the path / censorship-signature classifier for the same
 backend bank. Where `egress-backend-health` proves the *active* backend carries

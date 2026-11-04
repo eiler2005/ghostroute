@@ -94,10 +94,11 @@ current_mode() {
 }
 
 status() {
-  local abc d sensitive
+  local abc d sensitive telegram
   abc="$(current_mode vault_router_managed_egress_mode primary_vps)"
   d="$(current_mode vault_channel_d_managed_egress_mode follow)"
   sensitive="$(current_mode vault_router_sensitive_sites_enabled false)"
+  telegram="$(current_mode vault_router_sensitive_telegram_enabled false)"
   printf 'A/B/C managed egress mode: %s\n' "$abc"
   if [ "$d" = "follow" ]; then
     printf 'Channel D managed egress mode: follow (= A/B/C: %s)\n' "$abc"
@@ -105,6 +106,7 @@ status() {
     printf 'Channel D managed egress mode: %s (independent, via reality-out-d)\n' "$d"
   fi
   printf 'Sensitive sites mode: %s (when enabled: sensitive-out -> hermes_vps)\n' "$sensitive"
+  printf 'Telegram sensitive extension: %s (experimental; requires Sensitive sites mode)\n' "$telegram"
   printf 'available A/B/C modes: %s\n' "$(selectable_modes "$ABC_MODES")"
   printf 'available Channel D modes: %s\n' "$(selectable_modes "$D_MODES")"
   awk -F '\t' '$1 !~ /^#/ && $7 ~ /^quarantined:/ { print "quarantined backend: " $1 " (" $7 ")" }' "$BACKENDS_FILE"

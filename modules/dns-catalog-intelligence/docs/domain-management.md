@@ -66,6 +66,19 @@ managed DNS include and generated `stealth-domains.json`. Resolve representative
 hosts through router dnsmasq and verify their IPv4 addresses enter
 `STEALTH_DOMAINS`. Reopen the chart to refresh cached DNS and WebSocket sessions.
 
+### Приложения на общем хостинге
+
+`cheap-intelligence.vercel.app` включён в managed-каталог отдельным tenant-хостом.
+Правило покрывает страницу, API и Next.js JS/CSS на том же origin. Общий
+`vercel.app` и сети платформы целиком добавлять не нужно.
+
+Проверяйте загрузку обязательных JS/CSS полностью: HTTP 200 главной страницы
+не доказывает работоспособность приложения. После изменения каталога проверьте
+managed DNS include, `stealth-domains.json`, заполнение `STEALTH_DOMAINS` и
+повторное открытие страницы с домашнего Wi-Fi и через выбранный канал.
+Активный Amn lab перечитывает локальные rule-set при отдельном stop/start;
+его отдельная конфигурация не получает обновления production автоматически.
+
 ### Ручное правило
 
 Добавьте только `STEALTH_DOMAINS`:

@@ -190,6 +190,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   general managed backend and client ingress, excludes Channel M, and has no
   automatic fallback for matched destinations. See the Routing Core mode doc;
   hidden hostnames and client bypasses are outside its domain-routing guarantee.
+- The experimental `vault_router_sensitive_telegram_enabled` extension requires
+  Sensitive sites mode and sends reviewed Telegram domains plus its native IPv4
+  ranges to the same `sensitive-out`. Derive CIDRs from the Telegram section of
+  the shared static catalog, preserve Channel M exclusion and explicitly refresh
+  an active Amn projection. Review windows are operator notes, not expiry timers.
 - Public docs should describe stable behavior, interfaces, and recovery paths.
   Incident snapshots and one-off execution plans should remain local or be
   summarized into stable docs.

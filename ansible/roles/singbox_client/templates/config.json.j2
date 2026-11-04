@@ -343,6 +343,10 @@
 {% if sensitive_sites_enabled %}
       { "inbound": {{ sensitive_sites_inbounds | to_json }}, "network": "tcp", "action": "sniff", "sniffer": ["http", "tls"] },
       { "inbound": {{ sensitive_sites_inbounds | to_json }}, "domain_suffix": {{ router_sensitive_sites_domains | to_json }}, "outbound": "sensitive-out" },
+{% if router_sensitive_telegram_enabled | default(false) | bool %}
+      { "inbound": {{ sensitive_sites_inbounds | to_json }}, "domain_suffix": {{ router_sensitive_telegram_domains | to_json }}, "outbound": "sensitive-out" },
+      { "inbound": {{ sensitive_sites_inbounds | to_json }}, "ip_cidr": {{ router_sensitive_telegram_ipv4_cidrs | to_json }}, "outbound": "sensitive-out" },
+{% endif %}
 {% endif %}
       { "inbound": "redirect-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },
       { "inbound": "dnscrypt-socks-in", "domain": ["www.google.com"], "port": 80, "outbound": "direct-out" },

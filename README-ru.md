@@ -244,6 +244,12 @@ OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensit
 `vault_router_sensitive_sites_enabled`, использует отдельный каталог доменов и
 не меняет client imports. Для совпавшего sensitive-трафика нет автоматического
 fallback на другой IP. [Контракт, ограничения и проверки](modules/routing-core/docs/sensitive-sites-mode.md).
+Экспериментальный `vault_router_sensitive_telegram_enabled` добавляет в тот же
+режим домены Telegram и его reviewed IPv4-сети для native-приложений. Нужен
+включённый основной sensitive mode; остальные managed-сервисы и Channel M
+сохраняют свои маршруты. Срок наблюдения, проверки и ручной откат описаны
+в [runbook режима](modules/routing-core/docs/sensitive-sites-mode.md).
+Перед признанием постоянной политикой требуется наблюдение на реальных клиентах.
 
 ### Память роутера: основной и временный режим
 

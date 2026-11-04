@@ -269,6 +269,15 @@ selected full-VPS traffic; Channel M is excluded. D's backend pin remains the
 default for its other managed destinations. Public ingress and client imports
 are unchanged. The feature is opt-in via `vault_router_sensitive_sites_enabled`.
 
+The experimental `vault_router_sensitive_telegram_enabled` extension reuses this
+egress for Telegram's reviewed domains and native IPv4 connections. Its domains
+come from `configs/sensitive-telegram-domains.txt`; its CIDRs are derived from
+the Telegram section of the shared static catalog. It requires the base mode,
+keeps the same inbound scope and M exclusion, and reaches Amn through an explicit
+policy refresh. Disable only this switch to end an operator-reviewed trial;
+there is no automatic expiry or change to the AI policy.
+Promotion requires sustained real-client evidence, beyond technical smoke tests.
+
 The router sniffs HTTP/TLS before general catch-all rules to classify LAN
 REDIRECT connections. Matched sensitive destinations have no automatic fallback
 to another egress. Hidden hostnames, client-side bypasses and shared third-party
