@@ -22,7 +22,7 @@ Channel M исключён из sensitive rule и сохраняет свой ho
 
 ## Каталог
 
-Единственный список — [`configs/sensitive-domains.txt`](../../../configs/sensitive-domains.txt).
+Базовый список — [`configs/sensitive-domains.txt`](../../../configs/sensitive-domains.txt).
 Запись покрывает сам домен и его поддомены. Каталог содержит:
 
 | Группа | Назначение |
@@ -51,6 +51,43 @@ domain discovery расширяет только managed-каталог и не 
 направления в sensitive mode без operator review.
 
 ## Приоритет и границы гарантии
+
+### Экспериментальное расширение Telegram
+
+Статус: экспериментальный режим наблюдения. Технические проверки маршрута
+не заменяют многодневную проверку сообщений, фото, фонового переподключения
+и смены сетей на реальном клиенте. Подтверждение стабильности оператором
+требуется перед признанием режима постоянным решением.
+
+При включённом основном режиме `vault_router_sensitive_telegram_enabled: true`
+дополнительно направляет Telegram через `sensitive-out -> hermes_vps`.
+Домены берутся из
+[`configs/sensitive-telegram-domains.txt`](../../../configs/sensitive-telegram-domains.txt),
+а IPv4 CIDR — из существующей секции `# Telegram IPv4 prefixes` до `# --- IPv6`
+в [`configs/static-networks.txt`](../../../configs/static-networks.txt).
+Границы этой секции являются входным контрактом генерации; отдельной копии сетей нет.
+
+Одного доменного правила для Telegram недостаточно: приложение подключается
+напрямую к IP. Узкие CIDR-правила стоят до общего managed catch-all, применяются
+к LAN REDIRECT, Home Reality, B/C/D и selected full-VPS. Amn получает ту же
+политику через повторную проекцию и отдельный stop/start. Channel M исключён.
+Для совпавшего Telegram-трафика автоматического fallback нет; остальные
+managed-сервисы сохраняют общий backend. IPv6 этим расширением не включается.
+Встроенный MTProto/SOCKS-прокси приложения на другом endpoint и клиентский DIRECT
+не гарантируются этим списком сетей и доменов.
+
+Расширение по умолчанию выключено. Для ограниченного по времени эксперимента
+оператор записывает срок повторной проверки и критерии результата в приватной
+заметке. Срок заметки не является таймером: автоматического выключения нет.
+Откат — вернуть только `vault_router_sensitive_telegram_enabled: false`,
+повторно применить конфигурацию и обновить активный Amn. AI-каталог, общая
+managed-роль и импортированные профили при этом сохраняются.
+
+Проверка включает не только HTTPS canary, но и native MTProto, реальные
+сообщения/фото и повторные подключения на проблемном клиенте в течение окна
+наблюдения. Успех краткого теста не доказывает устранение плавающего сбоя.
+
+### Доменные правила
 
 Для применимых inbounds выполняется HTTP/TLS sniff перед любым общим catch-all;
 затем domain suffix rule выбирает `sensitive-out`. Это важно для LAN REDIRECT:
@@ -113,6 +150,8 @@ ansible-playbook --syntax-check playbooks/20-stealth-router.yml
 `app_canaries[].expected_backend`. Это attribution по конфигурации, а не
 измерение внешнего IP. Успешный Claude/OpenAI canary нельзя приписывать общему
 backend. Не публикуйте endpoint, UUID, ключи или actual-egress evidence.
+Поле `telegram_sensitive_sites_enabled` отражает отдельное расширение; Telegram
+canary при его включении атрибутируется `hermes_vps` и не доказывает общий backend.
 
 ## Ревью и расширение
 

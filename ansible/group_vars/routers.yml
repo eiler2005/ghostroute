@@ -153,6 +153,12 @@ router_management_ssh_enabled: "{{ vault_router_management_ssh_enabled | default
 router_management_ssh_allowed_sources: "{{ vault_router_management_ssh_allowed_sources | default([]) }}"
 router_sensitive_sites_enabled: "{{ vault_router_sensitive_sites_enabled | default(false) }}"
 router_sensitive_sites_domains: "{{ lookup('file', playbook_dir + '/../../configs/sensitive-domains.txt').splitlines() | map('trim') | reject('match', '^#|^$') | list }}"
+router_sensitive_telegram_enabled: "{{ vault_router_sensitive_telegram_enabled | default(false) }}"
+router_sensitive_telegram_domains: "{{ lookup('file', playbook_dir + '/../../configs/sensitive-telegram-domains.txt').splitlines() | map('trim') | reject('match', '^#|^$') | list }}"
+# Reuse the reviewed Telegram section; do not maintain a second CIDR catalog.
+router_sensitive_telegram_ipv4_cidrs: >-
+  {{ (lookup('file', playbook_dir + '/../../configs/static-networks.txt').split('# Telegram IPv4 prefixes', 1)[1].split('# --- IPv6', 1)[0])
+     | regex_findall('(?m)^[ \t]*([0-9]+(?:[.][0-9]+){3}/[0-9]+)[ \t\r]*(?:#.*)?$') }}
 # Independent Channel D managed egress selector. 'follow' (default) keeps Channel D
 # on the shared reality-out backend as Channel A/B/C; primary_vps/backup_reality/
 # hermes_vps pin Channel D to its own reality-out-d backend (canary lane). Pins

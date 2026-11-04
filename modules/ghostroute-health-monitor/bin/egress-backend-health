@@ -147,6 +147,8 @@ ACTIVE_BACKEND="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
 CHANNEL_D_BACKEND="$(vault_scalar vault_channel_d_managed_egress_mode follow)"
 SENSITIVE_SITES_ENABLED="$(vault_scalar vault_router_sensitive_sites_enabled false)"
 SENSITIVE_DOMAINS_FILE="${GHOSTROUTE_SENSITIVE_DOMAINS_FILE:-${PROJECT_ROOT}/configs/sensitive-domains.txt}"
+SENSITIVE_TELEGRAM_ENABLED="$(vault_scalar vault_router_sensitive_telegram_enabled false)"
+SENSITIVE_TELEGRAM_DOMAINS_FILE="${GHOSTROUTE_SENSITIVE_TELEGRAM_DOMAINS_FILE:-${PROJECT_ROOT}/configs/sensitive-telegram-domains.txt}"
 
 RUNTIME_ENV="$(router_ssh 'cat /jffs/scripts/ghostroute-runtime.env 2>/dev/null || cat /jffs/scripts/ghostroute-runtime-env 2>/dev/null' || true)"
 runtime_get() { printf '%s\n' "$RUNTIME_ENV" | awk -F= -v k="$1" '$1==k{print $2; exit}'; }
@@ -294,6 +296,8 @@ GR_CANARY_LABEL="$CANARY_LABEL" \
 GR_SPLIT_NOTE="$SPLIT_NOTE" \
 GR_SENSITIVE_SITES_ENABLED="$SENSITIVE_SITES_ENABLED" \
 GR_SENSITIVE_DOMAINS_FILE="$SENSITIVE_DOMAINS_FILE" \
+GR_SENSITIVE_TELEGRAM_ENABLED="$SENSITIVE_TELEGRAM_ENABLED" \
+GR_SENSITIVE_TELEGRAM_DOMAINS_FILE="$SENSITIVE_TELEGRAM_DOMAINS_FILE" \
 GR_CANARIES_FILE="$CANARIES_FILE" \
 ruby - "$TMPDIR/backend-results.tsv" "$TMPDIR/canaries.tsv" <<'RUBY'
 require 'json'
@@ -337,6 +341,10 @@ end
 
 sensitive_enabled = %w[1 true yes].include?(ENV['GR_SENSITIVE_SITES_ENABLED'].to_s.downcase)
 sensitive_domains = sensitive_enabled ? File.readlines(ENV.fetch('GR_SENSITIVE_DOMAINS_FILE'), chomp: true).map(&:strip).reject { |d| d.empty? || d.start_with?('#') } : []
+telegram_sensitive_enabled = sensitive_enabled && %w[1 true yes].include?(ENV['GR_SENSITIVE_TELEGRAM_ENABLED'].to_s.downcase)
+if telegram_sensitive_enabled
+  sensitive_domains += File.readlines(ENV.fetch('GR_SENSITIVE_TELEGRAM_DOMAINS_FILE'), chomp: true).map(&:strip).reject { |d| d.empty? || d.start_with?('#') }
+end
 canary_hosts = File.readlines(ENV.fetch('GR_CANARIES_FILE'), chomp: true).reject { |line| line.empty? || line.start_with?('#') }.to_h do |line|
   app, url = line.split("\t", 3)
   [app, URI(url).host.to_s.downcase]
@@ -357,6 +365,7 @@ if ENV['GR_JSON'] == '1'
     'channel_d_backend' => ENV['GR_CHANNEL_D_BACKEND'],
     'canary_backend' => ENV['GR_CANARY_BACKEND'],
     'sensitive_sites_backend' => sensitive_enabled ? 'hermes_vps' : nil,
+    'telegram_sensitive_sites_enabled' => telegram_sensitive_enabled,
     'rollup' => rollup,
     'note' => ENV['GR_SPLIT_NOTE'].to_s.empty? ? nil : ENV['GR_SPLIT_NOTE'],
     'backend_bank' => backend_bank,

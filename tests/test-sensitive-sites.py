@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Render real routing config and exercise the sensitive sites contract offline."""
 import copy
+import ipaddress
 import json
 import re
+import runpy
 from pathlib import Path
 
 import jinja2
@@ -98,6 +100,13 @@ def route(config, inbound, host, port=443):
                 continue
         if "auth_user" in rule or rule.get("ip_is_private"):
             continue
+        if "ip_cidr" in rule:
+            try:
+                address = ipaddress.ip_address(host)
+            except ValueError:
+                continue
+            if not any(address in ipaddress.ip_network(cidr) for cidr in rule["ip_cidr"]):
+                continue
         if "domain" in rule and host not in rule["domain"]:
             continue
         if "domain_suffix" in rule and not any(suffix(host, d) for d in rule["domain_suffix"]):
@@ -165,6 +174,40 @@ def main():
     direct = [x.strip() for x in (ROOT / "configs/domains-no-vpn.txt").read_text().splitlines()
               if x.strip() and not x.lstrip().startswith("#")]
     assert not any(suffix(d, x) or suffix(x, d) for d in DOMAINS for x in direct), "direct exceptions conflict with sensitive sites"
+    telegram_domains = [x.strip() for x in (ROOT / "configs/sensitive-telegram-domains.txt").read_text().splitlines()
+                        if x.strip() and not x.lstrip().startswith("#")]
+    static_section = (ROOT / "configs/static-networks.txt").read_text().split("# Telegram IPv4 prefixes", 1)[1].split("# --- IPv6", 1)[0]
+    telegram_cidrs = re.findall(r"(?m)^[ \t]*([0-9]+(?:[.][0-9]+){3}/[0-9]+)[ \t\r]*(?:#.*)?$", static_section)
+    assert telegram_cidrs and len(telegram_cidrs) == len(set(telegram_cidrs))
+    assert all(ipaddress.ip_network(x).version == 4 and ipaddress.ip_network(x).prefixlen > 0 for x in telegram_cidrs)
+    assert all(any(suffix(d, parent) for parent in catalog) for d in telegram_domains)
+    assert not any(suffix(d, x) or suffix(x, d) for d in telegram_domains for x in direct)
+    telegram_options = dict(router_sensitive_telegram_enabled=True,
+                            router_sensitive_telegram_domains=telegram_domains,
+                            router_sensitive_telegram_ipv4_cidrs=telegram_cidrs)
+    telegram = render(**telegram_options)
+    assert telegram["inbounds"] == c["inbounds"]
+    assert telegram["outbounds"] == c["outbounds"]
+    public_samples = [str(ipaddress.ip_network(cidr).network_address + 1) for cidr in telegram_cidrs]
+    for inbound in scoped:
+        for host in telegram_domains + public_samples:
+            for port in (80, 443, 5222):
+                assert route(telegram, inbound, host, port) == "sensitive-out", (inbound, host, port)
+            assert route(c, inbound, host) == "reality-out", "extension must be opt-in"
+        assert route(telegram, inbound, "198.51.100.7") == "reality-out"
+        assert route(telegram, inbound, "youtube.com") == "reality-out"
+        assert route(telegram, inbound, "telegram.org.attacker.invalid") == "reality-out"
+    for inbound in [x for x in inbounds if x.startswith("channel-m-")]:
+        for host in telegram_domains + public_samples:
+            assert route(telegram, inbound, host) == "direct-out"
+    disabled_telegram = render(router_sensitive_sites_enabled=False, **telegram_options)
+    assert not any(o["tag"] == "sensitive-out" for o in disabled_telegram["outbounds"])
+    assert route(disabled_telegram, "channel-b-relay-socks", public_samples[0]) == "reality-out"
+    project = runpy.run_path(str(ROOT / "modules/routing-core/router/channel-amn-policy.py"))["project"]
+    amn = project(telegram, {"policy_address": "192.0.2.1/30", "mtu": 1280})
+    for host in telegram_domains + public_samples:
+        assert route(amn, "channel-amn-tun", host) == "sensitive-out"
+    assert route(amn, "channel-amn-tun", "youtube.com") == "reality-out"
     print("sensitive sites: rendered routing, lane isolation, fallback, catalog and disabled-mode checks passed")
 
 

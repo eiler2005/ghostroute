@@ -54,6 +54,7 @@ vault_router_hermes_vps_port: 443
 vault_router_hermes_vps_server_name: "hermes.example.invalid"
 VAULT
   printf 'vault_router_sensitive_sites_enabled: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED:-false}"
+  printf 'vault_router_sensitive_telegram_enabled: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_TELEGRAM_ENABLED:-false}"
   exit 0
 fi
 echo "unsupported ansible-vault call" >&2
@@ -227,6 +228,21 @@ ARGV.each do |path|
     raise "shared attribution #{app}" unless row['expected_backend'] == 'backup_reality'
   end
 end
+RUBY
+
+# Telegram extension attributes its HTTPS canary to the sensitive backend;
+# its native raw-IP/data-plane proof remains a separate live check.
+env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED=true GHOSTROUTE_TEST_SENSITIVE_TELEGRAM_ENABLED=true \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/telegram-sensitive.json"
+env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_SENSITIVE_TELEGRAM_ENABLED=true \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/telegram-disabled.json"
+ruby -rjson - "$TMPDIR/telegram-sensitive.json" "$TMPDIR/telegram-disabled.json" <<'RUBY'
+enabled, disabled = ARGV.map { |path| JSON.parse(File.read(path)) }
+telegram = enabled['app_canaries'].find { |row| row['app'] == 'telegram' }
+raise 'Telegram extension attribution' unless enabled['telegram_sensitive_sites_enabled'] && telegram['expected_backend'] == 'hermes_vps'
+raise 'Other managed canary moved' unless enabled['app_canaries'].find { |row| row['app'] == 'google' }['expected_backend'] == 'backup_reality'
+raise 'Extension requires base mode' if disabled['telegram_sensitive_sites_enabled']
+raise 'Disabled Telegram attribution' unless disabled['app_canaries'].find { |row| row['app'] == 'telegram' }['expected_backend'] == 'backup_reality'
 RUBY
 
 # Receiving HTTP 200 is insufficient when curl fails before the body completes.

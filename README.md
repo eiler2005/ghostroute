@@ -288,6 +288,12 @@ other managed destinations retain their current backend. The separate domain
 catalog and `vault_router_sensitive_sites_enabled` switch do not change client
 imports. Matched sensitive traffic has no automatic fallback to another IP.
 See [the mode contract and limitations](modules/routing-core/docs/sensitive-sites-mode.md).
+An experimental `vault_router_sensitive_telegram_enabled` extension sends Telegram
+domains and its reviewed native IPv4 ranges through the same sensitive backend.
+It requires the base mode, preserves other managed destinations and excludes M;
+the [mode runbook](modules/routing-core/docs/sensitive-sites-mode.md) covers review
+windows, verification and manual rollback.
+It requires observation on real clients before promotion to a permanent policy.
 
 ### Router storage modes
 
