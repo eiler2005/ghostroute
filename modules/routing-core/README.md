@@ -20,6 +20,9 @@ egress to the VPS and direct-out fallback for non-managed traffic.
   listener loss.
 - Preserves legacy WireGuard only as a cold fallback path, not as steady-state
   routing.
+- Provides the optional Channel Amn home-first lab: isolated AmneziaWG and
+  `sing-box-amn` processes, with the existing sensitive/managed/direct policy.
+  It starts manually and is not owned by production boot/watchdog recovery.
 
 ## How It Works
 
@@ -57,6 +60,10 @@ inspect its state, but must not silently change routing.
 - `./modules/routing-core/bin/managed-egress-mode`
 - `./modules/routing-core/router/update-singbox-rule-sets.sh`
 - Runtime-only router hooks under `/jffs/scripts/*`
+- `bash modules/routing-core/bin/build-channel-amn` (local pinned lab build)
+- `./modules/routing-core/bin/channel-amn-profile --export-eight ansible/out/channel-amn`
+- `ansible-playbook playbooks/28-channel-amn-lab.yml` from `ansible/` (status;
+  explicit `channel_amn_action=start|stop|sync-peers` mutates only the lab)
 
 `managed-egress-mode status|set` is the local operator switch for the shared
 Channel A/B/C managed upstream behind `reality-out`. It edits only the Vault
@@ -77,6 +84,10 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 - `/jffs/scripts/singbox-watchdog.sh`
 - `/opt/etc/sing-box/rule-sets`
 - `/opt/tmp/singbox-watchdog.state`
+- Optional Amn: `/opt/etc/ghostroute-amn/` on writable Entware USB;
+  `/tmp/ghostroute-amn/` holds volatile PID/lock/log/ownership state.
+- Amn keys, build output and eight named imports: ignored local
+  `ansible/out/channel-amn/`; keep an encrypted private backup.
 
 ## Dependencies On Other Modules
 
@@ -94,16 +105,22 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 - sing-box process death after local rule-set hot reload; the watchdog should
   restart the service when critical listeners disappear.
 - WireGuard cold fallback accidentally re-enabled.
+- Amn is stopped by reboot and needs stop/start after firewall or policy
+  changes. A missing Amn TUN must retain its terminal unreachable guard.
 
 ## Tests
 
 - `./modules/recovery-verification/tests/test-router-health.sh`
 - `./verify.sh`
 - Ansible `playbooks/99-verify.yml`
+- `bash tests/test-channel-amn.sh`
 
 ## Related Docs
 
 - `modules/routing-core/docs/sensitive-sites-mode.md`
+- [Channel Amn runbook](docs/channel-amn-research.md)
+- Amn diagrams: [English](../../docs/assets/diagrams/channel-amn-architecture-en.html)
+  / [Русский](../../docs/assets/diagrams/channel-amn-architecture.html)
 - `docs/architecture.md`
 - `modules/routing-core/docs/current-routing-explained.md`
 - `modules/routing-core/docs/network-flow-and-observer-model.md`

@@ -8,6 +8,17 @@ DNS policy is documented separately in [dns-policy.md](dns-policy.md).
 The primary DNS goal is no DNS leak to the mobile operator; BrowserLeaks
 resolver geography is a secondary fingerprint-consistency signal.
 
+Amn is an opt-in home-first AmneziaWG compatibility lab outside this production
+matrix. Its path is client -> home router -> managed policy -> VPS or home WAN.
+It has a separate manual start/stop playbook and no boot autostart. See the
+[compatibility research and isolation design](../modules/routing-core/docs/channel-amn-research.md).
+Its eight named client slots are **Channel Amn 01–08**, with a separate diagnostic
+peer. Slot 01 preserves the tested bootstrap import; the other slots are added
+without restarting the running channels.
+The Amn diagram set ([English](assets/diagrams/channel-amn-architecture-en.html),
+[Русский](assets/diagrams/channel-amn-architecture.html)) shows its traffic path,
+runtime ownership and profile registration flow.
+
 The shared routing principles for all channels are documented in
 [routing-policy-principles.md](routing-policy-principles.md). In short:
 the endpoint selects the first-hop channel, then the router owns the route

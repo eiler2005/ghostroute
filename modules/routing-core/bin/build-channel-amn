@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUT="$ROOT/ansible/out/channel-amn"
+REV=b5928efb6ca19f0153958460c3d141f04abc5c2e
+TAG=v3.1.20260828
+mkdir -p "$OUT"
+if [ ! -d "$OUT/upstream/.git" ]; then
+  /usr/bin/git clone --depth 1 --branch "$TAG" https://github.com/amnezia-vpn/amneziawg-go.git "$OUT/upstream"
+fi
+[ "$(/usr/bin/git -C "$OUT/upstream" rev-parse HEAD)" = "$REV" ] || { echo 'Unexpected upstream revision' >&2; exit 1; }
+[ -z "$(/usr/bin/git -C "$OUT/upstream" status --porcelain --untracked-files=no)" ] || { echo 'Upstream source modified' >&2; exit 1; }
+(
+  cd "$OUT/upstream"
+  go mod verify
+  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -o "$OUT/amneziawg-go-linux-arm64" .
+  go build -buildvcs=false -trimpath -o "$OUT/amn-probe" "$ROOT/modules/routing-core/amn-probe/main.go"
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -o "$OUT/amn-probe-linux-amd64" "$ROOT/modules/routing-core/amn-probe/main.go"
+)
+shasum -a 256 "$OUT/amneziawg-go-linux-arm64" > "$OUT/build.sha256"
+printf 'Built pinned AmneziaWG engine %s for router ARM64\n' "$TAG"

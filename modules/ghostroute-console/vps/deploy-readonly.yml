@@ -9,8 +9,9 @@
     console_uid: "10000"
     console_gid: "10000"
     console_readonly_user: ghostroute_readonly
-    console_router_remote_key_src: "{{ playbook_dir }}/../../../secrets/router-remote-ssh/ghostroute-router-remote-22022_rsa"
-    console_router_remote_key_content: "{{ ghostroute_router_remote_private_key | default('', true) }}"
+    console_router_remote_key_src: "{{ playbook_dir }}/../../../secrets/router-console-ssh/id_ed25519"
+    console_router_remote_key_content: "{{ vault_console_router_private_key | default('', true) }}"
+    console_router_known_hosts_content: "{{ vault_console_router_known_hosts | default('', true) }}"
     console_router_remote_host: "{{ ghostroute_router_remote_host | default('', true) }}"
     console_router_remote_port: "{{ ghostroute_router_remote_port | default('22022', true) }}"
     console_router_remote_user: "{{ ghostroute_router_remote_user | default('admin', true) }}"
@@ -69,65 +70,8 @@
         shell: /bin/sh
         create_home: true
 
-    - name: Create router credential directory for Console readonly user
-      ansible.builtin.file:
-        path: "{{ console_root }}/router-ssh"
-        state: directory
-        mode: "0550"
-        owner: root
-        group: "{{ console_readonly_user }}"
-
-    - name: Check local router remote key for read-only reports
-      ansible.builtin.stat:
-        path: "{{ console_router_remote_key_src }}"
-      delegate_to: localhost
-      become: false
-      register: console_router_remote_key
-
-    - name: Install router remote key for read-only reports
-      ansible.builtin.copy:
-        src: "{{ console_router_remote_key_src }}"
-        dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
-        owner: "{{ console_readonly_user }}"
-        group: "{{ console_readonly_user }}"
-        mode: "0400"
-      no_log: true
-      when:
-        - console_router_remote_key.stat.exists
-        - console_router_remote_host | length > 0
-        - console_router_remote_key_content | length == 0
-
-    - name: Install Vault router remote key for read-only reports
-      ansible.builtin.copy:
-        content: "{{ console_router_remote_key_content }}"
-        dest: "{{ console_root }}/router-ssh/router_remote_22022_rsa"
-        owner: "{{ console_readonly_user }}"
-        group: "{{ console_readonly_user }}"
-        mode: "0400"
-      no_log: true
-      when:
-        - console_router_remote_key_content | length > 0
-        - console_router_remote_host | length > 0
-
-    - name: Configure router remote env for read-only reports
-      ansible.builtin.copy:
-        dest: "{{ console_root }}/router.env"
-        owner: root
-        group: "{{ console_readonly_user }}"
-        mode: "0440"
-        content: |
-          ROUTER={{ console_router_remote_host }}
-          ROUTER_PORT={{ console_router_remote_port }}
-          ROUTER_USER={{ console_router_remote_user }}
-          CONNECT_TIMEOUT=8
-          SSH_IDENTITY_FILE={{ console_root }}/router-ssh/router_remote_22022_rsa
-          SSH_HOST_KEY_ALGORITHMS=+ssh-rsa
-          SSH_KNOWN_HOSTS_FILE=/tmp/ghostroute-router-known-hosts
-          GHOSTROUTE_ROUTER_ENV_FILE={{ console_root }}/router.env
-      no_log: true
-      when:
-        - (console_router_remote_key.stat.exists or console_router_remote_key_content | length > 0)
-        - console_router_remote_host | length > 0
+    - name: Install dedicated restricted router credential
+      ansible.builtin.include_tasks: router-credentials.yml
 
     - name: Allow Console readonly user through SSH AllowUsers hardening
       ansible.builtin.shell: |

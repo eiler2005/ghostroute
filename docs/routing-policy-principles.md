@@ -71,6 +71,10 @@ Layer 1 is channel ingress.
 - Experimental Channel D NaiveProxy lands in
   `channel-d-naiveproxy-socks-in` after router-local Caddy
   `forward_proxy@naive`.
+- Optional Channel Amn terminates AmneziaWG on the home router and sends only
+  Amn-interface packets to a separate `sing-box-amn` gVisor TUN. It projects
+  the same selected-client policy; it does not add an inbound to production
+  sing-box or inherit Channel A selected full-VPS overrides.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
 - Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
@@ -286,6 +290,15 @@ Channel C is selected-client home-first.
   tested SFI/sing-box `1.11.4` because that client does not support outbound
   `type: naive`.
 - Both C1 variants must enter the same router managed split after ingress.
+
+The optional [Channel Amn lab](../modules/routing-core/docs/channel-amn-research.md)
+uses a separate manual lifecycle. Sensitive matches go first to
+`sensitive-out -> hermes_vps` without automatic backend fallback; other managed
+matches use the selected Reality exit, and ordinary destinations use home WAN.
+Its DNS path uses existing router DNS ownership. Reboot ends the lab; firewall
+rebuilds and policy changes require explicit stop/start. The current AWG2
+Shadowrocket proof does not establish AWG 3.1 compatibility or production
+recovery. Existing A/B/C/D/M imports remain valid.
 
 Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 

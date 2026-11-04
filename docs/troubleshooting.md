@@ -166,6 +166,18 @@ ssh admin@<router_lan_ip> '
 The VPS/app variant should run the same router command through a restricted SSH
 profile and should rate-limit retries. It must not call generic `recover`.
 
+## Console Router Report Request Rejected
+
+If only Console collection fails with `rejected: Console router report access
+only` while operator SSH and client traffic work, inspect the
+[dedicated report gate](console-router-ssh-access.md). Compare the trusted
+control checkout's report scripts with the deployed VPS versions, run the narrow
+fixtures, then explicitly refresh the router allowlist and align the reviewed
+helpers. Check the pinned host identity and dedicated service key separately.
+Do not restore an administrative key to the VPS or change routing/DNS to bypass
+a report rejection. Entware/Python loss also makes the gate fail closed while
+firmware-backed operator SSH remains available.
+
 ## YouTube Или Другой Dual-Stack Сайт Не Открывается
 
 Проверьте AAAA leakage:

@@ -1,0 +1,164 @@
+---
+- name: Isolated home-first Amn compatibility lab
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    channel_amn_action: status
+    channel_amn_local_dir: "{{ playbook_dir }}/../out/channel-amn"
+    channel_amn_remote_dir: /opt/etc/ghostroute-amn
+  tasks:
+    - name: Validate explicit lab action
+      ansible.builtin.assert:
+        that:
+          - channel_amn_action in ['start', 'stop', 'status', 'sync-peers']
+
+    - name: Inspect Amn only
+      ansible.builtin.raw: >-
+        if [ -f /opt/etc/ghostroute-amn/channel-amn.py ]; then
+          /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py status;
+        else printf '{"installed":false}\n'; fi
+      changed_when: false
+      when: channel_amn_action == 'status'
+
+    - name: Stop only the existing Amn lab
+      ansible.builtin.raw: >-
+        /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py stop
+      when: channel_amn_action == 'stop'
+
+    - name: Extend only the running Amn peer set
+      when: channel_amn_action == 'sync-peers'
+      block:
+        - name: Save existing Amn settings before additive update
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ channel_amn_remote_dir }}/settings.json"
+            dest: "{{ channel_amn_remote_dir }}/settings.before-sync.json"
+            mode: '0600'
+          no_log: true
+
+        - name: Install backward-compatible peer-sync controller
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../modules/routing-core/router/channel-amn.py"
+            dest: "{{ channel_amn_remote_dir }}/channel-amn.py"
+            mode: '0700'
+
+        - name: Stage reviewed Amn peer settings
+          ansible.builtin.copy:
+            src: "{{ channel_amn_local_dir }}/settings.json"
+            dest: "{{ channel_amn_remote_dir }}/settings.json"
+            mode: '0600'
+          no_log: true
+
+        - name: Add peers without restarting either Amn process
+          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py sync-peers
+          no_log: true
+      rescue:
+        - name: Restore saved settings after failed additive update
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ channel_amn_remote_dir }}/settings.before-sync.json"
+            dest: "{{ channel_amn_remote_dir }}/settings.json"
+            mode: '0600'
+          no_log: true
+        - name: Report peer-sync failure
+          ansible.builtin.fail:
+            msg: Amn peer sync failed; existing peers were preserved. Inspect private logs before retrying.
+
+    - name: Prepare and start isolated lab
+      when: channel_amn_action == 'start'
+      block:
+        - name: Health gate before router mutation
+          ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
+
+        - name: Require locally prepared lab artifacts
+          ansible.builtin.stat:
+            path: "{{ channel_amn_local_dir }}/{{ item }}"
+          loop: [amneziawg-go-linux-arm64, settings.json]
+          delegate_to: localhost
+          register: channel_amn_artifacts
+          no_log: true
+
+        - name: Fail before any runtime change when artifacts are absent
+          ansible.builtin.assert:
+            that: item.stat.exists and item.stat.isreg
+          loop: "{{ channel_amn_artifacts.results }}"
+          no_log: true
+
+        - name: Capture live policy without changing its owner
+          ansible.builtin.fetch:
+            src: /opt/etc/sing-box/config.json
+            dest: "{{ channel_amn_local_dir }}/source.private.json"
+            flat: true
+          no_log: true
+
+        - name: Project selected-client policy for Amn
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_playbook_python }}"
+              - "{{ playbook_dir }}/../../modules/routing-core/router/channel-amn-policy.py"
+              - "{{ channel_amn_local_dir }}/source.private.json"
+              - "{{ channel_amn_local_dir }}/settings.json"
+              - "{{ channel_amn_local_dir }}/policy.json"
+          delegate_to: localhost
+          no_log: true
+
+        - name: Require stopped lab before replacing its files
+          ansible.builtin.raw: test ! -f /tmp/ghostroute-amn/owned.json
+          changed_when: false
+
+        - name: Create private lab directory on writable Entware
+          ansible.builtin.file:
+            path: "{{ channel_amn_remote_dir }}"
+            state: directory
+            mode: '0700'
+
+        - name: Install only isolated lab artifacts
+          ansible.builtin.copy:
+            src: "{{ channel_amn_local_dir }}/{{ item.src }}"
+            dest: "{{ channel_amn_remote_dir }}/{{ item.dest }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - {src: amneziawg-go-linux-arm64, dest: amneziawg-go, mode: '0700'}
+            - {src: settings.json, dest: settings.json, mode: '0600'}
+            - {src: policy.json, dest: policy.json, mode: '0600'}
+            - {src: policy.source.sha256, dest: policy.source.sha256, mode: '0600'}
+          no_log: true
+
+        - name: Install explicit lab controller outside boot init directories
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../modules/routing-core/router/channel-amn.py"
+            dest: "{{ channel_amn_remote_dir }}/channel-amn.py"
+            mode: '0700'
+
+        - name: Isolate the proven sing-box binary from production process-name ownership
+          ansible.builtin.copy:
+            remote_src: true
+            src: /opt/bin/sing-box
+            dest: "{{ channel_amn_remote_dir }}/sing-box-amn"
+            mode: '0700'
+
+        - name: Validate router-side syntax and resource ownership
+          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py preflight
+          changed_when: false
+          no_log: true
+
+        - name: Start only Amn processes and scoped rules
+          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py start
+          no_log: true
+
+        - name: Health gate after adding isolated ingress
+          ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
+      rescue:
+        - name: Contain and stop only Amn after a failed start
+          ansible.builtin.raw: >-
+            if [ -f /opt/etc/ghostroute-amn/channel-amn.py ]; then
+              /opt/bin/python3 /opt/etc/ghostroute-amn/channel-amn.py stop;
+            fi
+          no_log: true
+        - name: Report lab failure
+          ansible.builtin.fail:
+            msg: Amn lab failed and was stopped; inspect the local private deploy log.

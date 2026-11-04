@@ -11,6 +11,8 @@ public docs from accidental credential or production endpoint exposure.
 - Repo-specific secret scanner.
 - Dry-run cleanup helper for stale local Vault backup files.
 - Rules for local/private files and generated artifacts.
+- Separate operator/Console router credentials and encrypted local recovery
+  backups, with router-side report restrictions owned by Console.
 - Public documentation placeholders for sensitive values.
 
 ## How It Works
@@ -45,6 +47,8 @@ Secrets must never be moved into tracked docs or module READMEs.
 - `docs/private/`
 - `reports/`
 - `ansible/out/clients*`
+- `ansible/out/channel-amn/` (server/client lab credentials and imports)
+- `ansible/out/console-router-access/` (generated report policy)
 
 ## Dependencies On Other Modules
 
@@ -70,3 +74,4 @@ Secrets must never be moved into tracked docs or module READMEs.
 
 - `modules/secrets-management/docs/secrets-management.md`
 - `modules/secrets-management/docs/vault-offsite-backup.md`
+- [Operator/Console router access](../../docs/console-router-ssh-access.md)

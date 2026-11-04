@@ -14,6 +14,20 @@ Use [docs/runtime-inventory.md](../../../docs/runtime-inventory.md) before runti
 upgrades or port changes. It records the sanitized component inventory,
 proven-good version policy, listener ownership and required upgrade gates.
 
+## Manual Amn lab or Console report access unavailable
+
+Amn is outside the production boot/watchdog owners. Reboot stops it; after a
+firewall or shared-policy change use its explicit stop/start lifecycle. Diagnose
+and recover only the lab through the
+[Amn runbook](../../routing-core/docs/channel-amn-research.md), keeping its
+existing identities and A/B/C/D/M ownership intact.
+
+If operator SSH works but Console reports fail, inspect its dedicated key, host
+pins and the fixed router report policy. A changed report body requires reviewed
+allowlist refresh; unavailable Entware Python causes service access to fail
+closed. Keep administrative recovery on the Mac through the primary/backup
+management profiles. See [credential migration and rollback](../../../docs/console-router-ssh-access.md).
+
 ## sing-box Down
 
 Symptom: managed LAN destinations stall while unmanaged traffic still works.

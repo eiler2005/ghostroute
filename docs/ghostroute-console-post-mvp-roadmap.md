@@ -23,7 +23,7 @@ summarized in [ghostroute-console-architecture.md](ghostroute-console-architectu
 Route explanation, channel badges, SQLite v4 evidence rows, real log-tail event
 ingestion, SSE live stream, catalog review/dry-run, notification settings,
 budget history, ops actions, audit tables, readonly Settings inventory and
-router-backed alarm ack/snooze state are present. Remaining work is hardening,
+VPS-backed alarm ack/snooze state are present. Remaining work is hardening,
 real notification delivery/provider integrations and any router/runtime mutation
 beyond prepared/audited local actions.
 
@@ -57,8 +57,8 @@ instead of guessing site-visible IP/ASN/country.
 4. **Notifications**
    - Telegram/e-mail alerts для stale snapshots, leaks, quota warnings,
      unusual routing и collector errors.
-   - UI для ack/snooze реализован через router-backed alarm-state overlay без
-     автоматических runtime-действий.
+    - UI для ack/snooze использует VPS-backed alarm-state overlay без
+      записи на роутер и автоматических runtime-действий.
 
 5. **Budget Provider Integration**
    - Сначала реальные VPS/LTE квоты из config/env.

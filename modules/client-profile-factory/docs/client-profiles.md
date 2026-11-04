@@ -34,6 +34,41 @@ Do not use generic checker results alone to judge the LTE-facing path. A checker
 reports the final website-facing exit IP, not the first hop that the mobile
 network observes.
 
+## Channel Amn: eight named clients
+
+![Channel Amn: eight named imports, preserved bootstrap keys and explicit peer registration](../../../docs/assets/diagrams/channel-amn-profiles-en.png)
+
+Full diagram set: [English](../../../docs/assets/diagrams/channel-amn-architecture-en.html)
+and [Русский](../../../docs/assets/diagrams/channel-amn-architecture.html).
+
+The optional **Channel Amn** lab uses WireGuard-style AmneziaWG `.conf` profiles,
+not VLESS URLs. Its dedicated exporter is:
+
+```bash
+./modules/routing-core/bin/channel-amn-profile --export-eight ansible/out/channel-amn
+```
+
+Open `ansible/out/channel-amn/clients/index.html` for eight labelled QR cards:
+**Channel Amn 01–08**. Matching `.conf` files and a private ZIP archive are in the
+same ignored bundle. Import each as a separate server/profile, keeping the
+existing A/B/C/D/M client imports and Shadowrocket Config intact. If QR scanning
+assigns a generic label, use the name printed on that card; file import uses the
+matching descriptive filename.
+
+Slot 01 keeps the working bootstrap identity. Rename its current client entry
+instead of reimporting it on the same device; slots 02–08 are independent new
+identities. Use one slot per device. The diagnostic peer is not exported in the
+user-facing set. Re-exporting preserves keys and refuses silent replacement of
+missing credentials for an allocated slot.
+
+Generation changes local artifacts only. Apply newly generated peers with the
+explicit `28-channel-amn-lab.yml -e channel_amn_action=sync-peers` workflow after
+local tests; it does not restart Amn or any production channel. Follow the
+[Channel Amn runbook](../../routing-core/docs/channel-amn-research.md) for protocol
+compatibility, routing, DNS/IPv6 limits, live verification and rollback. The lab
+has no boot autostart and its router-side policy remains managed/sensitive split.
+Client DIRECT rules can still bypass that policy.
+
 ## Endpoint / Client-Side Routing Layer
 
 Generated profiles are only one part of the endpoint behavior. Some endpoint

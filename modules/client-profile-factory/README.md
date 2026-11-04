@@ -11,6 +11,8 @@ Ansible Vault for router identity, home-mobile clients and emergency profiles. C
 - Separates router, home-mobile and emergency profile flows.
 - Separates Channel M service artifacts from user/client QR profiles.
 - Opens local HTML indexes for operator use.
+- Documents the optional Channel Amn exporter for eight independently keyed,
+  named profiles and a local QR index; live peer registration remains explicit.
 - Cleans generated artifacts without touching Vault.
 
 ## How It Works
@@ -46,6 +48,7 @@ explicit Ansible workflow.
 - `ansible/out/clients-home`
 - `ansible/out/clients-emergency`
 - Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- `ansible/out/channel-amn/clients` (optional lab; contains credentials)
 
 ## Dependencies On Other Modules
 

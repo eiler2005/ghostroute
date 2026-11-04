@@ -67,17 +67,38 @@ configuration snapshots and boot preparation without restarting services. See
 [the recovery runbook](../modules/recovery-verification/docs/readonly-entware-boot-recovery.md)
 for prerequisites, snapshot refresh and controlled reboot verification.
 
+`playbooks/28-channel-amn-lab.yml` is an optional, separately authorized
+home-first AmneziaWG compatibility experiment. Its default action is read-only
+status; `-e channel_amn_action=start` installs isolated Amn files/processes and
+scoped rules, while `stop` removes only that lab runtime. It does not run the
+production routing roles or install a boot hook. Private credentials and pinned
+build output stay under ignored `out/channel-amn/`. Follow the
+[lab runbook](../modules/routing-core/docs/channel-amn-research.md), run the narrow
+fixture/syntax checks, and keep existing A/B/C/D/M imports unchanged.
+The additive `-e channel_amn_action=sync-peers` action registers the named
+Channel Amn client batch without restarting either Amn process. It verifies the
+live identity and refuses removal/rekeying or transport changes; generated slots
+01–08 remain private local artifacts, separate from the diagnostic peer.
+
+Console service authentication is also separate from operator administration.
+`29-console-router-access.yml` stages fixed router report restrictions and new
+public keys, activates the dedicated VPS service credential, then supports
+explicit old-key retirement with timed rollback after proof. It defaults to
+read-only status. Follow the [migration runbook](../docs/console-router-ssh-access.md);
+the Console deployment never falls back to an operator private key.
+
 Router SSH access is intentionally split by where the control machine is:
 
 - When operating from the home LAN/Wi-Fi, direct LAN access is acceptable with a
   local setting such as `ROUTER_LAN=<router_lan_ip>` and `ROUTER_LAN_PORT=22`.
 - When operating remotely, including through Channel A/VPN, the primary router
   path is the dedicated remote-router SSH endpoint and port. Store that profile
-  in gitignored `secrets/router.env` and use the gitignored operator key under
-  `secrets/router-remote-ssh/`, or store the equivalent
-  `ghostroute_router_remote_host`, `ghostroute_router_remote_port`,
-  `ghostroute_router_remote_user` and `ghostroute_router_remote_private_key` in
-  Vault.
+  in gitignored `secrets/router.env`. The administrative key stays under private
+  `secrets/router-operator-ssh/`; its path is
+  `vault_router_management_operator_key_path`. Endpoint metadata uses
+  `ghostroute_router_remote_host`, `ghostroute_router_remote_port` and
+  `ghostroute_router_remote_user` in Vault. Legacy `router-remote-ssh/` material
+  is not a Console fallback and must not restore a retired shared identity.
 
 Remote `secrets/router.env` should contain only local secret values and must not
 be committed:
@@ -115,6 +136,7 @@ described in the root README and `docs/architecture.md`.
 | Router / Channel M | Isolated regional service policy | Isolated regional service policy |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
 | Device-client lanes | Selected-client B/C/D artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C/D ownership isolated from the Channel A router data-plane baseline. |
+| Router / Channel Amn lab | Optional isolated AmneziaWG engine, `sing-box-amn`, scoped rules, persistent USB settings and volatile RAM state. | Tests home-first transport diversity with the selected-client split; manual lifecycle and additive peer registration, no production boot ownership. |
 
 Playbook ownership is intentionally narrow:
 
@@ -130,6 +152,8 @@ Playbook ownership is intentionally narrow:
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
 | `23-channel-m-reverse.yml` | Router + VPS | Router-originated SSH remote-forward, VPS docker bridge listener firewall persistence, and reverse listener checks. | Isolated regional service policy |
 | `24-channel-d-router.yml` | Router | Experimental Channel D Caddy `forward_proxy@naive` + sing-box SOCKS relay. | Enable/rollback a router-native NaiveProxy lab without touching Channel A/B/C or VPS Caddy. |
+| `28-channel-amn-lab.yml` | Router + local control machine | Isolated Amn install/start/stop/status and additive `sync-peers`; policy projection and credentials stay private. | Operate the home-first compatibility lab without changing A/B/C/D/M or existing client imports. |
+| `29-console-router-access.yml` | Router + Console VPS | Staged operator/service key separation, fixed report gate, service activation and guarded legacy-key retirement. | Keep administrative credentials off the VPS while preserving monitoring and both management paths. |
 | `30-generate-client-profiles.yml` | Localhost | Gitignored QR/VLESS and Channel M service artifacts under `out/`. | Generate importable profiles and private service env fragments without writing credentials to git. |
 | `99-verify.yml` | VPS + router | Read-only invariant checks. | Confirm the live setup still matches the intended architecture. |
 
