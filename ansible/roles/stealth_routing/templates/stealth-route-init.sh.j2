@@ -231,6 +231,30 @@ if [ "$CHANNEL_B_HOME_ENABLED" = "1" ]; then
     || logger -t stealth-route-init "comment match unavailable; Channel B home ingress counter is unnamed"
 fi
 
+sync_channel_c_lan_redirects() {
+  # Reuse the existing C profiles at home, without capturing connections to
+  # other servers or the router's LAN management address. Rebuild only our
+  # chain so a WAN address change or disabled C lane leaves no stale mapping.
+  while iptables -t nat -D PREROUTING -i br0 -j GR_C_LAN 2>/dev/null; do :; done
+  iptables -t nat -N GR_C_LAN 2>/dev/null || true
+  iptables -t nat -F GR_C_LAN
+  channel_c_wan_ip="$(nvram get wan0_ipaddr)"
+  case "$channel_c_wan_ip" in
+    ""|0.0.0.0) return 0 ;;
+  esac
+  if [ "$CHANNEL_C_HOME_ENABLED" = "1" ] && [ "$CHANNEL_C_HOME_PUBLIC_PORT" != "$CHANNEL_C_HOME_PORT" ]; then
+    iptables -t nat -A GR_C_LAN -d "$channel_c_wan_ip" -p tcp --dport "$CHANNEL_C_HOME_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_C_HOME_PORT"
+  fi
+  if [ "$CHANNEL_C_SHADOWROCKET_ENABLED" = "1" ] && [ "$CHANNEL_C_SHADOWROCKET_PUBLIC_PORT" != "$CHANNEL_C_SHADOWROCKET_PORT" ]; then
+    iptables -t nat -A GR_C_LAN -d "$channel_c_wan_ip" -p tcp --dport "$CHANNEL_C_SHADOWROCKET_PUBLIC_PORT" -j REDIRECT --to-ports "$CHANNEL_C_SHADOWROCKET_PORT"
+  fi
+  if [ "$CHANNEL_C_HOME_ENABLED" = "1" ] || [ "$CHANNEL_C_SHADOWROCKET_ENABLED" = "1" ]; then
+    iptables -t nat -I PREROUTING 1 -i br0 -j GR_C_LAN
+  fi
+}
+
+sync_channel_c_lan_redirects
+
 cleanup_channel_c_public_redirects() {
   # A public-port reassignment can leave an older C1 redirect ahead of the
   # new rule. Remove only the four possible C1 public-to-ingress pairs, then

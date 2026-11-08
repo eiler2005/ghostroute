@@ -154,6 +154,28 @@ Live finding from 2026-04-28:
 C1-Shadowrocket is persisted through the Channel C router playbook, firewall
 hook, generated profiles and verify checks.
 
+### Reusing Channel C on home Wi-Fi
+
+The same C profile can stay selected when a client returns to the main home
+LAN/Wi-Fi bridge. `stealth-route-init.sh` maintains the NAT chain `GR_C_LAN`:
+only TCP connections from `br0` to the router's current WAN IPv4 address and
+an enabled C public port are redirected to that C variant's internal listener.
+The hostname, TLS verification, authentication and post-router routing policy
+remain the same. No new profile or certificate import is required.
+
+The chain runs before ordinary LAN managed NAT rules. It does not redirect
+other internet servers, the router's LAN management address, guest bridges,
+UDP traffic or other channels. WAN ingress keeps its separate existing rules.
+The routing init rebuilds this owned chain on routing/firewall recovery, replacing
+stale WAN addresses and removing mappings for disabled C variants.
+
+If cellular access works but home Wi-Fi access fails, check this LAN path
+before replacing a valid certificate. Verify the public C endpoint from both
+an external network and the main home LAN, including an authenticated HTTPS
+CONNECT transfer. Guest networks and client-side VPN/bypass rules require
+separate diagnosis. Selected full-VPS LAN clients retain their existing TPROXY
+ownership and need a separate check; this is the ordinary split-routing LAN path.
+
 If a C1 public endpoint is reassigned, `22-channel-c-router.yml` removes stale
 C1 redirect pairs before it installs the current mappings. The C1 verify and
 `live-check channel-c` checks require exactly one redirect per configured

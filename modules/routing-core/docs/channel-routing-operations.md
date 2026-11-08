@@ -86,6 +86,22 @@ SOCKS logs, verify this certificate state first. A stale PEM from the legacy
 Vault source is deployment-blocking and must not be copied back over the ACME
 material.
 
+### Channel C From Home Wi-Fi
+
+When Channel C works over cellular but fails on the main home Wi-Fi, inspect
+`iptables -t nat -S GR_C_LAN`. Enabled C public-to-internal mappings must match
+only the current router WAN IPv4 address; the `br0` jump must precede ordinary
+LAN managed NAT rules. The WAN-only redirect is not sufficient for this path.
+Confirm TLS and an authenticated transfer through the same existing public
+endpoint from both networks. Do not replace certificates or client profiles
+solely because a home-LAN connection fails.
+
+`stealth-route-init.sh` rebuilds the owned LAN chain during normal routing
+recovery. To roll back only this addition, remove the `br0 -> GR_C_LAN` NAT
+jump and restore the previous routing-init script from the local deployment
+backup. Do not flush global NAT or restart DNS. Local regression coverage:
+`python3 tests/test-channel-c-lan.py`.
+
 ### Channel A REDIRECT
 
 ```sh
