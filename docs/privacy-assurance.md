@@ -22,6 +22,14 @@ can see the router's VPS connection and any direct home-WAN destinations. A
 destination can still correlate an account, browser fingerprint or request
 timing across exits; an exit-IP check does not establish anonymity.
 
+The current managed VPS is both the router's transport destination and the
+Internet exit for the general managed lane. If that VPS address becomes
+unreachable from home, the lane can fail even though the home ingress remains
+available. An extra exit hop would separate those roles, but it adds another
+provider, tunnel and failure mode. Require evidence of this specific failure
+before changing the production path. The Sensitive sites exit has a separate
+role and must not be treated as automatic failover for the general lane.
+
 ## Evidence levels
 
 1. **Static and runtime state:** test the rule-set, first `FORWARD` guard,
@@ -42,6 +50,9 @@ For each real-client result record the channel, client app/version, network
 whether DNS and IPv6 behaved as intended, and whether the app completed a real
 request. Mark untested cells as **untested** rather than green. A report that
 clients "seem fine" is an operator observation, not a measured leak test.
+Selected-client proxy apps also need inspection on the endpoint: a local
+SOCKS/HTTP listener, app-level DNS or a direct bypass can make a request use a
+different path than the router policy, even when server-side checks are green.
 
 ## What the LAN guard covers
 

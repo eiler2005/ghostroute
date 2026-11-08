@@ -8,6 +8,12 @@ quickly whether the system needs intervention.
 
 The SLOs below are aspirational targets, not contractual commitments. Each
 target is paired with the specific local check that measures it.
+The listed `live-check`, `verify.sh` and `99-verify.yml` commands are
+point-in-time gates. One passing run does not measure a rolling 24-hour success
+percentage; report the 99% availability targets as **unmeasured** until a
+persistent sample series and denominator exist. Real-client acceptance remains
+separate from listener and router-side probe status; see
+[privacy assurance](privacy-assurance.md#evidence-levels).
 
 ## Availability
 
