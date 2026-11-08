@@ -51,6 +51,7 @@ Layer 2 home router
     -> ghostroute-runtime-supervisor.sh boot
     -> prepare runtime, register watchdog crons
     -> start/check sing-box before firewall ownership
+    -> install the managed LAN FORWARD guard before REDIRECT refresh
     -> apply and verify LAN REDIRECT + managed UDP/443 DROP
     -> start/check dnscrypt, Channel B, Channel D, Channel M reverse
     -> delayed firewall stabilization after Merlin chain rebuilds
@@ -241,8 +242,40 @@ The home router terminates home-based channels and applies routing and DNS
 policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, optional
 Channel A selected full-VPS TPROXY for home Wi-Fi/LAN devices, home Reality
 ingress with optional selected `auth_user` full-VPS rules, Channel B home
-ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS. Router policy may either split managed/non-managed destinations or, for selected
-Channel A full-VPS sets, send internet-bound traffic through `reality-out`. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS.
+Router policy may either split managed/non-managed destinations or, for selected
+Channel A full-VPS sets, send internet-bound traffic through `reality-out`.
+
+```mermaid
+flowchart LR
+    lan[LAN / Wi-Fi IPv4] --> classify[DNS classification + managed ipsets]
+    classify --> nat{Managed TCP REDIRECT present?}
+    nat -- yes --> redirect[Channel A sing-box REDIRECT]
+    nat -- no --> guard[First FORWARD rule: managed egress guard]
+    guard -- managed TCP / UDP 443 --> drop[DROP: no direct home-WAN fallthrough]
+    guard -- other traffic --> wan[Home WAN direct]
+    redirect --> policy{Router route policy}
+    mobile[Home Reality / B / C / D ingress] --> policy
+    amn[Amn isolated lab ingress] --> amnpolicy[Amn policy projection]
+    policy -- sensitive sites --> sensitive[sensitive-out → hermes_vps]
+    policy -- other managed --> managed[reality-out → active managed VPS]
+    policy -- non-managed --> wan
+    amnpolicy -- sensitive sites --> sensitive
+    amnpolicy -- other managed --> managed
+    amnpolicy -- non-managed --> wan
+    service[Channel M service ingress] --> wan
+```
+
+The guard is installed early by `firewall-start` and is the first `FORWARD`
+jump. It drops direct LAN/Wi-Fi IPv4 forwarding for destinations already in the
+managed ipsets if TCP REDIRECT is absent; managed UDP/443 remains blocked during
+rule refresh. Other UDP protocols are outside this guard. It does not classify
+unknown destinations or cover traffic before the firewall hook runs. See
+[routing policy principles](routing-policy-principles.md#invariants)
+for the DNS, hidden-hostname and IPv6 boundaries. Mobile ingress, Amn and
+Channel M keep their separate route owners.
+
+Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 
 ### Layer 3 — VPS
 
@@ -301,9 +334,9 @@ iptables are still present. The boot owner is
 once, and it registers cron jobs plus targeted recovery for sing-box, dnscrypt,
 Channel B, Channel D and Channel M reverse. It also treats firewall state as a
 runtime invariant: after sing-box owns its listeners, the supervisor applies
-`firewall-start` / `stealth-route-init.sh`, verifies LAN REDIRECT plus managed
-UDP/443 DROP rules, retries if they are incomplete, and performs a delayed
-post-boot stabilization pass because Merlin can rebuild chains after
+`firewall-start` / `stealth-route-init.sh`, verifies the managed LAN guard, LAN
+REDIRECT and managed UDP/443 DROP rules, retries if they are incomplete, and
+performs a delayed post-boot stabilization pass because Merlin can rebuild chains after
 `services-start` has already fired. The production DNS guardrail is
 `/jffs/scripts/dnscrypt-watchdog.sh`: cron checks the listener every minute and
 restarts only dnscrypt-proxy, leaving Channel A/B/C/D/M ownership untouched.

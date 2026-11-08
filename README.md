@@ -126,8 +126,10 @@ The layered model separates the main traffic responsibilities:
   Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
   Reality profiles that should send all internet-bound traffic through
   `reality-out`. A FORWARD guard drops direct LAN traffic to already classified
-  managed IPv4 destinations if TCP REDIRECT is missing. Router reboot recovery
-  is centralized in
+  managed IPv4 destinations if TCP REDIRECT is missing, and blocks managed
+  UDP/443 during rule refresh. The
+  [router flow diagram](docs/architecture.md#layer-2--home-router) shows the guard
+  and channel boundaries. Router reboot recovery is centralized in
   `ghostroute-runtime-supervisor.sh`: `services-start` delegates to it, and it
   re-registers watchdog crons, restores listeners and performs delayed firewall
   stabilization after Merlin rebuilds chains. Channel M bypasses the managed

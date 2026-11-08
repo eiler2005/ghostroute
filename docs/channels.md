@@ -96,6 +96,11 @@ Main role:
 - Selected full-VPS routing is driven by two explicit sets:
   reserved home Wi-Fi/LAN source IPs and Home Reality `auth_user` profile names.
 - Channel A owns router REDIRECT/DNS/catalog behavior.
+- Its first `FORWARD` guard blocks direct LAN/Wi-Fi IPv4 egress for already
+  classified managed destinations when TCP REDIRECT is missing; managed
+  UDP/443 is blocked during refresh. The
+  [architecture diagram](architecture.md#layer-2--home-router) shows the failure
+  path and the separate channel owners.
 - The `active managed egress` behind `reality-out` is operator-selectable between
   the primary owned VPS, a Vault-backed backup Reality provider and an owned
   Hermes clone VPS. See

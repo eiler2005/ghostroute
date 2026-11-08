@@ -102,7 +102,10 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
   selected full-VPS override для выбранных устройств/профилей. Channel M не
   участвует в split и route rule ведет его inbound напрямую в `direct-out`.
   Защитная цепочка блокирует прямой LAN-выход к уже классифицированным managed
-  IPv4, если TCP REDIRECT отсутствует; границы описаны в
+  IPv4, если TCP REDIRECT отсутствует, и блокирует managed UDP/443 при
+  обновлении правил.
+  [Схема пути на роутере](docs/architecture.md#layer-2--home-router) показывает
+  границы каналов; ограничения приведены в
   [правилах маршрутизации](docs/routing-policy-principles.md).
   Reboot recovery централизован в `ghostroute-runtime-supervisor.sh`:
   `services-start` делегирует ему boot, supervisor регистрирует watchdog crons,

@@ -35,8 +35,10 @@ install the REDIRECT and counter behavior used by the rest of GhostRoute.
 `services-start` is single-owner: it launches
 `/jffs/scripts/ghostroute-runtime-supervisor.sh boot`, and the supervisor
 registers crons, starts/checks components in dependency order, validates LAN
-  REDIRECT, the managed egress guard and UDP/443 DROP rules, then runs a delayed post-boot firewall
-stabilization pass after Merlin chain rebuilds.
+REDIRECT, the managed egress guard and UDP/443 DROP rules, then runs a delayed
+post-boot firewall stabilization pass after Merlin chain rebuilds. The
+[router flow diagram](../../docs/architecture.md#layer-2--home-router) shows
+where the guard acts and which ingress paths have separate owners.
 
 ## Architecture
 
