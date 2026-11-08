@@ -7,6 +7,7 @@ set -e
 
 IPSET={{ stealth_ipset_name }}
 STATIC_IPSET={{ stealth_static_source_ipset | default('VPN_STATIC_NETS') }}
+GUARD_CHAIN=GR_A_EGRESS_GUARD
 MARK={{ stealth_fwmark }}
 TABLE={{ stealth_route_table }}
 IFACE={{ singbox_tun_name }}
@@ -51,6 +52,31 @@ VPS_IP={{ vps_ssh_host }}
 WAN_IF={{ wan_if }}
 WAN_GW={{ wan_gw }}
 
+ensure_egress_guard() {
+  iptables -N "$GUARD_CHAIN" 2>/dev/null || true
+  for guard_set in "$IPSET" "$STATIC_IPSET"; do
+    iptables -C "$GUARD_CHAIN" -p tcp -m set --match-set "$guard_set" dst -j DROP 2>/dev/null ||
+      iptables -A "$GUARD_CHAIN" -p tcp -m set --match-set "$guard_set" dst -j DROP
+    iptables -C "$GUARD_CHAIN" -p udp --dport 443 -m set --match-set "$guard_set" dst -j DROP 2>/dev/null ||
+      iptables -A "$GUARD_CHAIN" -p udp --dport 443 -m set --match-set "$guard_set" dst -j DROP
+  done
+
+  # Insert before any broad FORWARD accept. Remove older copies only after the
+  # new jump is active, so a concurrent recovery never opens a direct path.
+  guard_jump="-A FORWARD -i br0 -j $GUARD_CHAIN"
+  guard_first="$(iptables -S FORWARD | awk '$1 == "-A" && $2 == "FORWARD" { print; exit }')"
+  [ "$guard_first" = "$guard_jump" ] || iptables -I FORWARD 1 -i br0 -j "$GUARD_CHAIN"
+  guard_old_lines="$(iptables -S FORWARD | awk -v jump="$guard_jump" '$1 == "-A" && $2 == "FORWARD" { n++; if ($0 == jump && n > 1) print n }' | sort -rn)"
+  for guard_line in $guard_old_lines; do
+    iptables -D FORWARD "$guard_line"
+  done
+}
+
+ipset create "$IPSET" hash:ip family inet -exist
+ipset create "$STATIC_IPSET" hash:net family inet -exist
+ensure_egress_guard
+[ "${1:-}" = guard-only ] && exit 0
+
 {{ singbox_init_path }} start >/dev/null 2>&1 || true
 
 # 0. Conservative TCP tuning for high-BDP mobile paths. These values keep the
@@ -79,8 +105,6 @@ done
 # STEALTH_DOMAINS is populated by dnsmasq ipset= rules and persisted as single
 # resolved IPv4 addresses. Keep it hash:ip; hash:net makes ipset create fail
 # against the restored set and prevents REDIRECT rules from being installed.
-ipset create "$IPSET" hash:ip family inet -exist
-ipset create "$STATIC_IPSET" hash:net family inet -exist
 ipset create "$FULL_VPS_IPSET" hash:ip family inet -exist
 ipset flush "$FULL_VPS_IPSET" 2>/dev/null || true
 if [ "$CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED" = "1" ]; then
@@ -150,19 +174,22 @@ if [ "$CHANNEL_A_SELECTED_FULL_VPS_LAN_ENABLED" = "1" ]; then
   # flows into the normal split path.
   iptables -t nat -I PREROUTING 1 -i br0 -m set --match-set "$FULL_VPS_IPSET" src -j RETURN
 fi
-iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
-iptables -t nat -D PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null || true
-iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
-iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
+iptables -t nat -C PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null ||
+  iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
+iptables -t nat -C PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT" 2>/dev/null ||
+  iptables -t nat -A PREROUTING -i br0 -p tcp -m set --match-set "$STATIC_IPSET" dst -j REDIRECT --to-ports "$REDIRECT_PORT"
 
 # Keep plain LAN DNS under router policy control. dnsmasq then sends only
 # managed/foreign domains to the dnscrypt-over-Reality path and leaves
 # RU/default names on the home/RF resolver path.
-iptables -t nat -D PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
-iptables -t nat -D PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
 if [ "$ROUTER_DNS_CAPTURE_LAN_PLAIN_53" = "1" ]; then
-  iptables -t nat -A PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53
-  iptables -t nat -A PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -C PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null ||
+    iptables -t nat -A PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -C PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null ||
+    iptables -t nat -A PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53
+else
+  iptables -t nat -D PREROUTING -i br0 -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
+  iptables -t nat -D PREROUTING -i br0 -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || true
 fi
 
 # 4. filter: force QUIC/HTTP3 fallback to TCP for Channel A.
@@ -172,8 +199,11 @@ iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP 2>/dev/null || true
 iptables -D FORWARD -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP 2>/dev/null || true
+# Keep the historical direct UDP/443 rules for existing health consumers. The
+# first FORWARD jump protects this protocol while these rules are refreshed.
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$STATIC_IPSET" dst -j DROP
 iptables -I FORWARD 1 -i br0 -p udp --dport 443 -m set --match-set "$IPSET" dst -j DROP
+ensure_egress_guard
 
 # 5. input: allow remote mobile clients to reach the router-side Reality
 # ingress. The inbound itself authenticates with Reality private key, short_id,

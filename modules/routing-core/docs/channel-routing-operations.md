@@ -107,6 +107,8 @@ backup. Do not flush global NAT or restart DNS. Local regression coverage:
 ```sh
 netstat -nlp 2>/dev/null | grep ':<lan-redirect-port> '
 iptables -t nat -S PREROUTING | grep <lan-redirect-port>
+iptables -S FORWARD | head -n 4
+iptables -S GR_A_EGRESS_GUARD
 iptables -S FORWARD | grep 'dport 443'
 ```
 
@@ -116,9 +118,22 @@ Expected:
 0.0.0.0:<lan-redirect-port> ... LISTEN ... sing-box
 -A PREROUTING -i br0 -p tcp -m set --match-set STEALTH_DOMAINS dst -j REDIRECT --to-ports <lan-redirect-port>
 -A PREROUTING -i br0 -p tcp -m set --match-set VPN_STATIC_NETS dst -j REDIRECT --to-ports <lan-redirect-port>
+-A FORWARD -i br0 -j GR_A_EGRESS_GUARD  # first FORWARD rule
+-A GR_A_EGRESS_GUARD -p tcp -m set --match-set STEALTH_DOMAINS dst -j DROP
+-A GR_A_EGRESS_GUARD -p tcp -m set --match-set VPN_STATIC_NETS dst -j DROP
+-A GR_A_EGRESS_GUARD -p udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j DROP
+-A GR_A_EGRESS_GUARD -p udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP
 -A FORWARD -i br0 -p udp --dport 443 -m set --match-set STEALTH_DOMAINS dst -j DROP
 -A FORWARD -i br0 -p udp --dport 443 -m set --match-set VPN_STATIC_NETS dst -j DROP
 ```
+
+`firewall-start` prepares a replacement `VPN_STATIC_NETS` set and swaps it
+into place after every entry loads. If loading fails, the previous live set
+remains active and the hook exits unsuccessfully. The guard runs before service
+recovery and after a Merlin firewall rebuild. It cannot cover packets sent
+before Merlin invokes the hook. `ghostroute-runtime-supervisor.sh recover`
+checks the first FORWARD jump, its four set rules, REDIRECT and the existing
+UDP/443 rules; a missing rule is a recovery failure.
 
 Must not exist in current policy:
 

@@ -20,6 +20,31 @@ Channel M исключён из sensitive rule и сохраняет свой ho
 Не меняются публичные ingress, credentials или QR/imported profiles клиентов.
 Режим по умолчанию выключен; при выключении сохраняется прежняя политика.
 
+Для LAN/Wi-Fi защитная цепочка `GR_A_EGRESS_GUARD` блокирует прямой TCP к
+адресам из `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, если REDIRECT не сработал.
+Она также блокирует UDP/443 для этих адресов. Это общий managed guard:
+отдельного IP-набора Sensitive sites нет, а выбор `sensitive-out` остаётся в
+sing-box после распознавания имени или узкого Telegram CIDR.
+
+```mermaid
+flowchart LR
+  lan[LAN / Wi-Fi] --> sets{Managed IPv4 set?}
+  sets -->|TCP intercepted| redirect[REDIRECT to sing-box]
+  sets -->|TCP bypass or UDP/443| guard[FORWARD guard: DROP]
+  sets -->|No match| home[Home WAN]
+  mobile[Home-first A / B / C / D] --> policy[sing-box policy]
+  redirect --> policy
+  policy -->|Sensitive match| sensitive[sensitive-out: hermes_vps]
+  policy -->|Other managed| managed[reality-out: active backend]
+  policy -->|Ordinary direct| home
+```
+
+Проверка после применения: первый `FORWARD` rule указывает на guard; в нём есть
+TCP и UDP/443 DROP для обоих managed-наборов; обычный managed и sensitive
+canary показывают ожидаемые разные выходы. Отказ sensitive backend оставляет
+совпавшее соединение ошибкой. Восстановление правил после reboot начинается с
+`firewall-start`; до вызова этого hook прошивкой guard ещё не действует.
+
 ## Каталог
 
 Базовый список — [`configs/sensitive-domains.txt`](../../../configs/sensitive-domains.txt).

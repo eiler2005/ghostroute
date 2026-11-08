@@ -245,6 +245,8 @@ The routing principles above are implemented in these places:
 - Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
 - `ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2`
   - LAN/Wi-Fi TCP REDIRECT for `STEALTH_DOMAINS` / `VPN_STATIC_NETS`
+  - first FORWARD jump to `GR_A_EGRESS_GUARD`: managed LAN TCP that bypasses
+    REDIRECT is dropped instead of leaving through home WAN
   - UDP/443 DROP for managed destinations
   - INPUT, MSS and connlimit rules for mobile ingress ports
   - Channel M source allowlist and deny-by-default INPUT rules for its separate
@@ -336,6 +338,9 @@ Expected behavior:
 - The home ISP can see that the router connects outward, including to the VPS;
   it should not receive the endpoint's original direct browsing flow.
 - Managed destinations must not silently fall through to home WAN direct.
+- The LAN guard covers IPv4 destinations already in the managed ipsets. Unknown
+  domains, app-specific DNS, hidden hostnames and packets sent before Merlin's
+  `firewall-start` hook runs are outside that guarantee.
 - Non-managed destinations must not be forced to VPS just because they arrived
   through a mobile channel.
 - Tests and traffic reports should treat `api.ipify.org` as a managed canary,

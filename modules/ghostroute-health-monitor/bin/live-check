@@ -408,6 +408,14 @@ udp_drop_ok() {
   printf '%s\n' "$filter_forward" | grep -q -- '--dport 443 .*match-set STEALTH_DOMAINS dst .*DROP' &&
     printf '%s\n' "$filter_forward" | grep -q -- '--dport 443 .*match-set VPN_STATIC_NETS dst .*DROP'
 }
+managed_guard_ok() {
+  first_forward="$(printf '%s\n' "$filter_forward" | awk '$1 == "-A" && $2 == "FORWARD" { print; exit }')"
+  [ "$first_forward" = '-A FORWARD -i br0 -j GR_A_EGRESS_GUARD' ] || return 1
+  for guard_set in STEALTH_DOMAINS VPN_STATIC_NETS; do
+    iptables -C GR_A_EGRESS_GUARD -p tcp -m set --match-set "$guard_set" dst -j DROP 2>/dev/null || return 1
+    iptables -C GR_A_EGRESS_GUARD -p udp --dport 443 -m set --match-set "$guard_set" dst -j DROP 2>/dev/null || return 1
+  done
+}
 line_count() { grep -F "$1" "$tmp" 2>/dev/null | wc -l | tr -d ' '; }
 last_line() {
   grep -F "$1" "$tmp" 2>/dev/null | grep -F 'inbound connection to ' | tail -1 |
@@ -421,6 +429,9 @@ if [ "$filter" = all ] || [ "$filter" = channel-a ]; then
   listener_ok "$redirect_port" && emit channel_a_lan_listener OK "Channel A/LAN" "redirect-in listener is present" "port=$redirect_port" "No action." || emit channel_a_lan_listener CRIT "Channel A/LAN" "redirect-in listener is missing" "port=$redirect_port" "Check sing-box process before changing firewall."
   lan_redirect_ok "$redirect_port" && emit channel_a_lan_redirect OK "Channel A/LAN" "br0 managed TCP REDIRECT is present" "port=$redirect_port" "No action." || emit channel_a_lan_redirect CRIT "Channel A/LAN" "br0 managed TCP REDIRECT is missing" "port=$redirect_port" "Run verify and inspect firewall-start/nat-start; do not redeploy blindly."
   udp_drop_ok && emit channel_a_udp443_drop OK "Channel A/LAN" "managed UDP/443 DROP rules are present" "sets=STEALTH_DOMAINS,VPN_STATIC_NETS" "No action." || emit channel_a_udp443_drop WARN "Channel A/LAN" "managed UDP/443 DROP rules are incomplete" "sets=STEALTH_DOMAINS,VPN_STATIC_NETS" "Review firewall invariants before changing routing."
+  if grep -Fq 'GUARD_CHAIN=GR_A_EGRESS_GUARD' /jffs/scripts/stealth-route-init.sh 2>/dev/null; then
+    managed_guard_ok && emit channel_a_managed_guard OK "Channel A/LAN" "managed direct-egress guard is first in FORWARD" "sets=STEALTH_DOMAINS,VPN_STATIC_NETS" "No action." || emit channel_a_managed_guard CRIT "Channel A/LAN" "managed direct-egress guard is missing or displaced" "sets=STEALTH_DOMAINS,VPN_STATIC_NETS" "Inspect firewall-start and runtime supervisor before changing routing."
+  fi
   listener_ok "$home_reality_port" && input_ok "$home_reality_port" && split_ok reality-in && emit home_reality_chain OK "Channel A/Home Reality" "Home Reality listener, INPUT and split rules are present" "port=$home_reality_port recent_log_lines=$(line_count 'inbound/vless[reality-in]')" "No action." || emit home_reality_chain CRIT "Channel A/Home Reality" "Home Reality runtime chain is incomplete" "port=$home_reality_port listener_input_split=check" "Check sing-box listener, INPUT rules and reality-in split."
   recent="$(line_count 'inbound/vless[reality-in]')"; last="$(last_line 'inbound/vless[reality-in]')"
   [ "$recent" -gt 0 ] && emit home_reality_recent OK "Channel A/Home Reality" "Recent Home Reality evidence is visible" "recent_log_lines=$recent last_seen=\"${last:-n/a}\"" "No action." || emit home_reality_recent IDLE "Channel A/Home Reality" "No recent Home Reality client event in log tail" "recent_log_lines=0" "If a client is trying now, inspect the client profile and ingress reachability."

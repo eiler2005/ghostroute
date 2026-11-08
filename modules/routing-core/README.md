@@ -9,6 +9,8 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 ## Features
 
 - Builds and refreshes router-side hooks for NAT, firewall and service startup.
+- Guards managed LAN TCP against direct forwarding when REDIRECT is missing;
+  the same first FORWARD jump blocks managed UDP/443 while rules are refreshed.
 - Maintains sing-box rule-set synchronization from the repo-managed catalogs.
 - Provides opt-in Sensitive sites mode: a reviewed domain catalog selects
   `sensitive-out -> hermes_vps` before general managed routes, without automatic
@@ -33,7 +35,7 @@ install the REDIRECT and counter behavior used by the rest of GhostRoute.
 `services-start` is single-owner: it launches
 `/jffs/scripts/ghostroute-runtime-supervisor.sh boot`, and the supervisor
 registers crons, starts/checks components in dependency order, validates LAN
-REDIRECT plus managed UDP/443 DROP rules and runs a delayed post-boot firewall
+  REDIRECT, the managed egress guard and UDP/443 DROP rules, then runs a delayed post-boot firewall
 stabilization pass after Merlin chain rebuilds.
 
 ## Architecture
@@ -100,8 +102,9 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 - Missing Merlin hook files.
 - Rule-set drift between router runtime and repo catalogs.
 - sing-box REDIRECT not receiving managed traffic.
-- Merlin firewall rebuild after reboot removes LAN REDIRECT or managed UDP/443
-  DROP before the supervisor stabilization pass finishes.
+- Merlin firewall rebuild after reboot removes LAN REDIRECT or the guard before
+  `firewall-start` reinstalls them; the hook cannot protect packets sent before
+  Merlin invokes it.
 - sing-box process death after local rule-set hot reload; the watchdog should
   restart the service when critical listeners disappear.
 - WireGuard cold fallback accidentally re-enabled.

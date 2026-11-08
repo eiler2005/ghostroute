@@ -467,6 +467,16 @@
         ! iptables -S FORWARD | grep -q -- '-i br0 -p udp .*--dport 443 .*match-set {{ stealth_static_source_ipset }} dst .*REJECT'
       changed_when: false
 
+    - name: Managed LAN direct-egress guard precedes FORWARD accepts
+      ansible.builtin.shell: |
+        first_rule="$(iptables -S FORWARD | awk '$1 == "-A" && $2 == "FORWARD" { print; exit }')"
+        [ "$first_rule" = '-A FORWARD -i br0 -j GR_A_EGRESS_GUARD' ] &&
+        for managed_set in {{ stealth_ipset_name }} {{ stealth_static_source_ipset }}; do
+          iptables -C GR_A_EGRESS_GUARD -p tcp -m set --match-set "$managed_set" dst -j DROP || exit 1
+          iptables -C GR_A_EGRESS_GUARD -p udp --dport 443 -m set --match-set "$managed_set" dst -j DROP || exit 1
+        done
+      changed_when: false
+
     - name: stale singbox0 TUN interface is absent
       ansible.builtin.shell: "! ip -br a show {{ singbox_tun_name }} >/dev/null 2>&1"
       changed_when: false

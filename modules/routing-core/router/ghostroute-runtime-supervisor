@@ -147,6 +147,12 @@ routing_rules_present() {
 
   nat_rules="$(iptables -t nat -S PREROUTING 2>/dev/null || true)"
   forward_rules="$(iptables -S FORWARD 2>/dev/null || true)"
+  first_forward_rule="$(printf '%s\n' "$forward_rules" | awk '$1 == "-A" && $2 == "FORWARD" { print; exit }')"
+  [ "$first_forward_rule" = '-A FORWARD -i br0 -j GR_A_EGRESS_GUARD' ] || return 1
+  for guard_set in "$ipset_name" "$static_ipset"; do
+    iptables -C GR_A_EGRESS_GUARD -p tcp -m set --match-set "$guard_set" dst -j DROP 2>/dev/null || return 1
+    iptables -C GR_A_EGRESS_GUARD -p udp --dport 443 -m set --match-set "$guard_set" dst -j DROP 2>/dev/null || return 1
+  done
 
   printf '%s\n' "$nat_rules" |
     grep -E -- "-i br0 .*--match-set ${ipset_name} dst .*REDIRECT .*--to-ports ${redirect_port}" >/dev/null 2>&1 || return 1
