@@ -129,7 +129,9 @@ Expected:
 
 `firewall-start` prepares a replacement `VPN_STATIC_NETS` set and swaps it
 into place after every entry loads. If loading fails, the previous live set
-remains active and the hook exits unsuccessfully. The guard runs before service
+remains active and the hook exits unsuccessfully. Catalog comments and trailing
+whitespace are removed before passing CIDRs to `ipset`; the guard fixture
+includes CIDRs with trailing spaces. The guard runs before service
 recovery and after a Merlin firewall rebuild. It cannot cover packets sent
 before Merlin invokes the hook. `ghostroute-runtime-supervisor.sh recover`
 checks the first FORWARD jump, its four set rules, REDIRECT and the existing

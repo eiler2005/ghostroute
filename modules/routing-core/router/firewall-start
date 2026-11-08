@@ -40,7 +40,7 @@ if [ ! -f "$STATIC_NETWORKS_FILE" ]; then
 fi
 ipset create "$STATIC_NEXT" hash:net family inet hashsize 256 maxelem 65536 -exist || exit 1
 ipset flush "$STATIC_NEXT" || exit 1
-if ! sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$STATIC_NETWORKS_FILE" | while IFS= read -r network; do
+if ! sed -e 's/#.*$//' -e 's/[[:space:]]*$//' -e '/^[[:space:]]*$/d' "$STATIC_NETWORKS_FILE" | while IFS= read -r network; do
   ipset add "$STATIC_NEXT" "$network" || exit 1
 done; then
   logger -t firewall-start "static managed catalog could not be restored; keeping previous set"

@@ -58,6 +58,8 @@ if op == 'create':
 elif op == 'flush':
     s[name] = []
 elif op == 'add':
+    if args[1] != args[1].strip():
+        sys.exit(1)
     if os.environ.get('FAIL_STATIC_ADD') == '1' and args[1] == '203.0.113.20/32':
         sys.exit(1)
     s[name].append(args[1])
@@ -138,7 +140,7 @@ class ManagedEgressGuardTests(unittest.TestCase):
         script.write_text("STATIC_NEXT=GR_A_STATIC_NEXT\n" + hook[start:end] + "\n")
         subprocess.run(["sh", "-n", str(script)], check=True)
         catalog = self.path / "catalog"
-        catalog.write_text("203.0.113.10/32\n203.0.113.20/32\n")
+        catalog.write_text("203.0.113.10/32   \n203.0.113.20/32\t\n")
         self.env["STATIC_NETWORKS_FILE"] = str(catalog)
         Path(self.env["SET_STATE"]).write_text(json.dumps({"VPN_STATIC_NETS": ["198.51.100.1/32"]}))
         failed = subprocess.run(["sh", str(script)], env=self.env | {"FAIL_STATIC_ADD": "1"}, capture_output=True)
