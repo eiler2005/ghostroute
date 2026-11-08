@@ -93,6 +93,14 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   runbook, or operator note.
 - If you notice unrelated dead code, stale docs, or risky architecture drift,
   mention it instead of silently editing outside the request.
+- Before moving an application to another egress, follow the module-owned
+  [egress qualification rule](modules/ghostroute-health-monitor/docs/egress-qualification.md).
+  Compare candidates from the router using isolated authenticated application
+  probes; for Telegram use `telegram-egress-check`, then real-client messages
+  and media acceptance. TCP/raw TLS alone is insufficient. A failing candidate
+  must not receive production traffic as a test. Preserve the working route,
+  distinguish path-interference hypotheses from proven causes, and keep raw
+  deployment evidence in ignored local reports.
 
 ## Safety Rules
 

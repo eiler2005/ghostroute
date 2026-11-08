@@ -67,6 +67,7 @@ the lab contract.
 |---|---|
 | Understand current traffic flow | `modules/routing-core/docs/network-flow-and-observer-model.md` |
 | Check whether the setup is healthy | `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md` |
+| Qualify an application egress before switching; compare Telegram backends | `modules/ghostroute-health-monitor/docs/egress-qualification.md`; `modules/ghostroute-health-monitor/bin/telegram-egress-check` |
 | Read traffic usage and QR-client activity | `modules/traffic-observatory/docs/traffic-observability.md` |
 | Review local traffic labels and advisory actions | `docs/traffic-intelligence-layer-plan.md` and Console `/intelligence` |
 | Add or review managed domains | `modules/dns-catalog-intelligence/docs/domain-management.md` |

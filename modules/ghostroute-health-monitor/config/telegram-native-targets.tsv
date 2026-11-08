@@ -1,0 +1,10 @@
+# Public Telegram bootstrap endpoints, not private deployment endpoints.
+# Reviewed against Telegram Desktop mtproto_dc_options.cpp, 2026-11-08.
+# https://github.com/telegramdesktop/tdesktop/blob/dev/Telegram/SourceFiles/mtproto/mtproto_dc_options.cpp
+# The canonical DC1..DC5 samples are a baseline, not a complete media/CDN map.
+# label IPv4 port
+dc1 149.154.175.50 443
+dc2 149.154.167.51 443
+dc3 149.154.175.100 443
+dc4 149.154.167.91 443
+dc5 149.154.171.5 443

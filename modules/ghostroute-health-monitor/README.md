@@ -55,6 +55,7 @@ operator action.
 - `./modules/ghostroute-health-monitor/bin/managed-egress-check`
 - `./modules/ghostroute-health-monitor/bin/egress-backend-health`
 - `./modules/ghostroute-health-monitor/bin/egress-dpi-probe`
+- `./modules/ghostroute-health-monitor/bin/telegram-egress-check`
 - Runtime-only router command: `/jffs/scripts/health-monitor/run-once`
 
 `status` is the compact daily view: overall drift count, STEALTH capacity,
@@ -142,6 +143,15 @@ WARN/N/A results to CRIT. A full deploy gate normally takes 40-90 seconds and is
 intended to protect the current working Wi-Fi managed domains, VPS edge and
 Channel A/B/C runtime chain before files or services are changed.
 
+Before moving Telegram to a different backend, use `telegram-egress-check`
+to compare every configured role from the router in isolated loopback proxy
+processes. It checks repeated native MTProto nonce responses, full Telegram web
+transfers and exit identity, with role-only output and no production routing
+changes. Raw TLS remains advisory; a green automated result makes a backend
+eligible for a real-client trial, not proof of signed-in media or long-term
+stability. Follow the [egress qualification rule](docs/egress-qualification.md)
+for the test matrix, private observed targets, selection and rollback.
+
 `deploy-risk` is a fast path classifier for local and CI workflows. It inspects
 changed paths and reports whether the full live deploy gate is required:
 router/VPS runtime, DNS/catalog routing, Channel A/B/C, deploy, recovery and
@@ -175,6 +185,7 @@ mutating deploy entrypoints still run their own pre/post deploy gate.
 - `./modules/ghostroute-health-monitor/tests/test-health-monitor.sh`
 - `./modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh`
 - `./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh`
+- `python3 modules/ghostroute-health-monitor/tests/test-telegram-egress-check.py`
 - `./tests/run-all.sh`
 
 ## Related Docs

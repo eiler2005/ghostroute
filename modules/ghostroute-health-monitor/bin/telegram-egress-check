@@ -1,0 +1,39 @@
+#!/bin/bash
+# Isolated application-level qualification of every configured backend.
+set -euo pipefail
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+MODULE="$PROJECT_ROOT/modules/ghostroute-health-monitor"
+ROUNDS=3
+TIMEOUT=8
+JSON=0
+TARGETS="$MODULE/config/telegram-native-targets.tsv"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --rounds) ROUNDS="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --targets) TARGETS="$2"; shift 2 ;;
+    --help|-h)
+      echo 'Usage: telegram-egress-check [--json] [--rounds 1..5] [--timeout 2..10] [--targets private.tsv]'
+      echo 'Runs from the router; diagnostic loopback listeners only. No route switch or service restart.'
+      exit 0 ;;
+    *) echo 'telegram-egress-check: unknown argument' >&2; exit 2 ;;
+  esac
+done
+case "$ROUNDS" in 1|2|3|4|5) ;; *) exit 2 ;; esac
+case "$TIMEOUT" in 2|3|4|5|6|7|8|9|10) ;; *) exit 2 ;; esac
+. "$PROJECT_ROOT/modules/shared/lib/router-health-common.sh"
+router_health_load_env
+umask 077
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+VAULT="${GHOSTROUTE_STEALTH_VAULT_FILE:-$PROJECT_ROOT/ansible/secrets/stealth.yml}"
+(cd "$PROJECT_ROOT/ansible"; ANSIBLE_CONFIG="$PROJECT_ROOT/ansible/ansible.cfg" ansible-vault view "$VAULT") >"$TMPDIR/vault.yml"
+python3 "$MODULE/lib/telegram-egress-check.py" prepare "$TMPDIR/vault.yml" \
+  "$MODULE/router/telegram-egress-probe.py" "$TARGETS" "$ROUNDS" "$TIMEOUT" >"$TMPDIR/probe.py"
+router_ssh '/opt/bin/python3 -I -' <"$TMPDIR/probe.py" >"$TMPDIR/result.json"
+if [ "$JSON" = 1 ]; then
+  python3 "$MODULE/lib/telegram-egress-check.py" report "$TMPDIR/result.json" --json
+else
+  python3 "$MODULE/lib/telegram-egress-check.py" report "$TMPDIR/result.json"
+fi
