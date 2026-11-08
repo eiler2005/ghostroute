@@ -807,7 +807,7 @@ client app
 | `stealth-route-init.sh` | apply REDIRECT, QUIC DROP and mobile Reality INPUT rules |
 | `services-start` | single-owner boot hook; starts only `ghostroute-runtime-supervisor.sh boot` |
 | `ghostroute-runtime-supervisor.sh` | dependency-ordered startup, watchdog cron registration, targeted listener recovery, Channel M on-demand control and delayed firewall stabilization |
-| `cron-save-ipset` | persist `STEALTH_DOMAINS.ipset` |
+| `cron-save-ipset` | atomically persist `STEALTH_DOMAINS.ipset`; keep the last valid snapshot on save failure |
 | `cron-traffic-snapshot` | collect WAN/LAN/Tailscale/device counters |
 | `rotate-singbox-log` | cap `/opt/var/log/sing-box.log` growth and retain short compressed archives |
 | `nat-start` | intentionally no Channel A work |
@@ -817,6 +817,10 @@ must stay `hash:ip`. `VPN_STATIC_NETS` is the static CIDR set and remains
 `hash:net`. Replaying only saved `add STEALTH_DOMAINS ...` lines avoids Merlin
 `ipset restore` aborting on the saved `create` line after a reboot or firewall
 rebuild.
+The dynamic set has no entry timeout. A later catalog or DNS change therefore
+does not automatically remove an old address; see the
+[privacy assurance contract](privacy-assurance.md#what-the-lan-guard-covers)
+before changing its lifecycle.
 
 ## Verification
 

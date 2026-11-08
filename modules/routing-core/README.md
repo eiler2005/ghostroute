@@ -11,6 +11,8 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 - Builds and refreshes router-side hooks for NAT, firewall and service startup.
 - Guards managed LAN TCP against direct forwarding when REDIRECT is missing;
   the same first FORWARD jump blocks managed UDP/443 while rules are refreshed.
+- Persists the dynamic `STEALTH_DOMAINS` snapshot atomically, retaining the last
+  valid file when `ipset save` fails or emits fewer entries than the live set.
 - Maintains sing-box rule-set synchronization from the repo-managed catalogs.
 - Provides opt-in Sensitive sites mode: a reviewed domain catalog selects
   `sensitive-out -> hermes_vps` before general managed routes, without automatic
@@ -39,6 +41,8 @@ REDIRECT, the managed egress guard and UDP/443 DROP rules, then runs a delayed
 post-boot firewall stabilization pass after Merlin chain rebuilds. The
 [router flow diagram](../../docs/architecture.md#layer-2--home-router) shows
 where the guard acts and which ingress paths have separate owners.
+The [privacy and recovery checks](../../docs/privacy-assurance.md) describe
+the live proof levels and classification limits.
 
 ## Architecture
 

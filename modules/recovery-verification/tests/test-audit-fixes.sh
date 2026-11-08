@@ -21,6 +21,8 @@ mkdir -p "${fixture}/modules/client-profile-factory/bin"
 mkdir -p "${fixture}/modules/secrets-management/bin"
 mkdir -p "${fixture}/ansible/roles/example/defaults"
 mkdir -p "${fixture}/ansible/roles/example/meta"
+mkdir -p "${fixture}/ansible/roles/example/tasks"
+mkdir -p "${fixture}/ansible/roles/router_management/tasks"
 mkdir -p "${fixture}/scripts" "${fixture}/docs/adr" "${fixture}/tests"
 
 cat >"${fixture}/scripts/README.md" <<'EOF'
@@ -39,6 +41,12 @@ cat >"${fixture}/ansible/roles/example/defaults/main.yml" <<'EOF'
 ---
 EOF
 cat >"${fixture}/ansible/roles/example/meta/main.yml" <<'EOF'
+---
+EOF
+cat >"${fixture}/ansible/roles/example/tasks/main.yml" <<'EOF'
+---
+EOF
+cat >"${fixture}/ansible/roles/router_management/tasks/router.yml" <<'EOF'
 ---
 EOF
 cat >"${fixture}/ansible/roles/stealth_routing/templates/stealth-route-init.sh.j2" <<'EOF'
@@ -82,6 +90,10 @@ fi
 if ! rg -q 'routing template installs UDP/443 DROP for VPN_STATIC_NETS' /tmp/ghostroute-audit-fixes-bad.txt; then
   cat /tmp/ghostroute-audit-fixes-bad.txt >&2
   echo "audit-fixes failure did not mention missing static UDP/443 DROP invariant" >&2
+  exit 1
+fi
+if rg -q 'router_management/(defaults|meta)/main.yml missing' /tmp/ghostroute-audit-fixes-bad.txt; then
+  echo "task-only router management collection was treated as a role" >&2
   exit 1
 fi
 

@@ -164,6 +164,8 @@ check_ansible_role_contracts() {
   local role
   for role in "${PROJECT_ROOT}"/ansible/roles/*; do
     [ -d "$role" ] || continue
+    # Task-only collections are included explicitly and have no role metadata.
+    [ -f "$role/tasks/main.yml" ] || continue
     if [ -f "$role/defaults/main.yml" ]; then
       pass "${role#${PROJECT_ROOT}/}/defaults/main.yml exists"
     else

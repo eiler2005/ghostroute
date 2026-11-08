@@ -49,13 +49,14 @@ specific scenarios it does and does not address.
 | Scenario | Primary mitigation | Secondary / verification |
 |---|---|---|
 | ISP DPI / SNI fingerprinting | VLESS+Reality+Vision egress; cover SNI rotation guide; managed UDP/443 dropped to force TCP fallback | `traffic-report check`; `live-check --active-probe`; SNI rotation runbook |
+| Managed LAN direct fallthrough | First `FORWARD` guard drops direct IPv4 TCP and UDP/443 to already classified managed destinations; dynamic ipset snapshots are saved atomically | [Privacy assurance checks](docs/privacy-assurance.md); guard fixtures; real-client exit proof |
 | Mobile DNS observation | Home-first ingress + managed split → managed DNS over dnscrypt + Reality; `domains-no-vpn.txt` exceptions for apps that must stay direct | `dns-policy.md`; BrowserLeaks consistency review |
 | Regulatory blocking | Reality cover SNI choice + L4 sharing on `:443`; Channel A/B/C protocol diversity | Reality SNI rotation guide; manual SNI cover override |
-| Endpoint policy mistake | Layer 0 + Layer 2 redundancy: even without endpoint rules, router-side managed split applies | Per-device profile generation with explicit MANAGED/PROXY routing; OneXray/Shadowrocket settings checklist |
+| Endpoint policy mistake | Layer 0 + Layer 2 redundancy for destinations the router can classify; selected full-VPS profiles cover a wider device scope | Per-device profile review and [real-client checks](docs/privacy-assurance.md) |
 | Operator deploy mistake | Read-only safe checks before any mutating playbook; `secret-scan` pre-commit; safety tags before risky migrations | `verify.sh`, `secret-scan`, AGENTS.md safety rules, deploy gate |
 | VPS provider takeover | Secrets in Vault; nothing operationally critical lives on the VPS that cannot be recreated; `GHOSTROUTE_DB_BACKUP_MODE` for Console state | Deploy gate detects edge mismatch; `traffic-report` shows VPS-vs-direct ratios |
 | Vault loss | Encrypted offsite Vault backup runbook with periodic restore drill | [`modules/secrets-management/docs/vault-offsite-backup.md`](modules/secrets-management/docs/vault-offsite-backup.md) |
-| Console exposure | Console listener on `127.0.0.1:3000`; non-443 HTTPS listener with Basic Auth + nginx + buffering proxy | `modules/ghostroute-console/vps/expose-caddy-readonly.yml`; do not co-host with Reality `:443` |
+| Console exposure | Loopback app listener; dedicated authenticated HTTPS proxy, with the optional shared HTTPS alias subject to the same HTML/API authentication boundary | Console delivery runbook and public-path auth checks; immutable assets and browser metadata are public |
 | Channel B/C isolation breach | Strict playbook ownership: `20-*` for A, `21-*` for B, `22-*` for C; `99-verify.yml` checks invariants; AGENTS.md hard rule | `verify.sh` channel invariant checks; `traffic-report check` |
 
 ### Out-of-scope risks
@@ -64,11 +65,13 @@ This project does **not** attempt to address:
 
 - Endpoint compromise (malware, supply-chain, OS-level keylogging).
 - Browser fingerprinting / behavioral correlation regardless of network path.
+- Classification of unknown or hidden destinations before they enter the managed
+  ipsets; app-owned encrypted DNS and non-443 UDP need separate client evidence.
 - Quantum-resistant cryptography or future cryptanalytic breaks of Reality.
 - Active state-level traffic correlation with side-channels (timing, volume).
 - Multi-operator authorization and role separation.
-- High-availability VPS failover (the design is single-VPS by intent;
-  semi-auto failover is on the backlog as `○ deferred`).
+- Automatic high-availability VPS failover. Alternate egress roles are selected
+  manually; semi-automatic failover remains deferred.
 - Defending against a hostile control machine (the operator's laptop is
   trusted root).
 - DDoS / volumetric attack mitigation on the home WAN or VPS.
@@ -77,7 +80,7 @@ This project does **not** attempt to address:
 
 The operator explicitly accepts:
 
-- Single-VPS, single-operator design — there is no automated failover.
+- Single-operator design with no automated egress failover.
 - Local-only health alerts — there is no external paging (per
   [ADR-0003](docs/adr/0003-local-only-health-alerts.md)). One missed
   notification window is tolerable for this use case.
@@ -139,6 +142,9 @@ cd ..
 Before any broad mutating playbook, confirm that deploy-critical Vault values
 are present and that read-only verification is green enough for the intended
 change.
+The [privacy assurance contract](docs/privacy-assurance.md) separates router
+configuration checks from real-client exit and DNS evidence, and describes the
+narrow firewall recovery drill.
 
 ### Recovery scenarios and target times
 

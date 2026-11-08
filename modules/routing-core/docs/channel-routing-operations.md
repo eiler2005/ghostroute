@@ -135,6 +135,13 @@ before Merlin invokes the hook. `ghostroute-runtime-supervisor.sh recover`
 checks the first FORWARD jump, its four set rules, REDIRECT and the existing
 UDP/443 rules; a missing rule is a recovery failure.
 
+`cron-save-ipset` writes the dynamic set through a private temporary file. If
+`ipset save` fails, emits no `STEALTH_DOMAINS` create header or contains fewer
+entries than the live set, it keeps the previous snapshot and exits
+unsuccessfully. The atomic snapshot fixture is
+`bash tests/test-ipset-snapshot-atomic.sh`. For live exit-identity and recovery
+acceptance, follow [privacy assurance](../../../docs/privacy-assurance.md).
+
 Must not exist in current policy:
 
 ```text

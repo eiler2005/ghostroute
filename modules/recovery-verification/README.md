@@ -10,6 +10,8 @@ controlled manual fallback procedures for Reality, VPS, DNS and routing drift.
 - Platform health gate through root `./verify.sh`.
 - Module-native verification implementation in `bin/verify.sh`.
 - Static architecture/security audit through `bin/audit-fixes`.
+  Its role metadata check applies to executable roles with `tasks/main.yml`;
+  task-only collections such as router management are checked by their own tests.
 - Manual cold fallback tooling for catastrophic Reality outage.
 - Fixture tests for router health parsing and rendering.
 

@@ -20,6 +20,8 @@ EN. Расширенные технические разделы (Quick Start, A
 Карта того, что установлено на ASUS Merlin router, с runtime-файлами,
 watchdog'ами и схемами каналов:
 [`docs/router-runtime-map.md`](docs/router-runtime-map.md).
+[Проверки приватности и восстановления](docs/privacy-assurance.md) разделяют
+состояние роутера, активные пробы и подтверждение с реального клиента.
 Смежная карта VPS-стороны для Channel M, GhostRoute Console и routing/app
 поверхностей:
 [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).

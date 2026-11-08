@@ -23,6 +23,7 @@ local runbooks or historical planning notes.
 - [Channel Amn runbook](../modules/routing-core/docs/channel-amn-research.md) - isolated home-first AmneziaWG lab, eight client profiles and manual recovery.
 - Channel Amn diagrams: [English](assets/diagrams/channel-amn-architecture-en.html) / [Русский](assets/diagrams/channel-amn-architecture.html).
 - [dns-policy.md](dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
+- [privacy-assurance.md](privacy-assurance.md) - exit-identity acceptance, LAN guard limits and controlled recovery checks.
 - [channel-c.md](channel-c.md) - detailed Channel C C1 native Naive and Shadowrocket compatibility status.
 - [SECURITY.md](../SECURITY.md) - threat model, protected assets, non-goals and security workflow.
 - [console-router-ssh-access.md](console-router-ssh-access.md) - separate operator/service credentials, fixed router report permissions and staged retirement.

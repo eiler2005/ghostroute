@@ -47,6 +47,9 @@ Top-level sections:
 13. **Channel D Console integration debt** (`○`) — Channel D runtime, docs and
     CLI/Ansible verification exist, but GhostRoute Console has not yet been
     updated to expose Channel D as a first-class lane.
+14. **Managed privacy proof and catalog lifecycle** (`◐`) — the LAN guard and
+    atomic ipset snapshot are implemented; real-client leak evidence, dynamic
+    address lifecycle and full firewall-rebuild proof remain separate work.
 
 Detailed prose for each section is in Russian below. For new findings, see the
 2026-05-10 audit linked above.
@@ -65,8 +68,11 @@ Detailed prose for each section is in Russian below. For new findings, see the
   - `br0` — обычные LAN / Wi-Fi клиенты
   - TCP egress: nat `REDIRECT :<lan-redirect-port>` → sing-box → VLESS+Reality
   - UDP/443: DROP для managed destinations, чтобы клиенты fallback'ились с QUIC на TCP
+  - первый `FORWARD` guard не даёт уже классифицированному managed IPv4 TCP/UDP443
+    уйти напрямую при отсутствии REDIRECT; `cron-save-ipset` сохраняет снимок
+    динамического набора атомарно
   - router `OUTPUT` по умолчанию не перехватывается, чтобы не создать loop для sing-box outbound
-- mobile QR clients (`iphone-*`, `macbook`) обслуживаются через home Reality ingress:
+- selected mobile profiles обслуживаются через home Reality ingress:
   - first hop: client → домашний белый IP `:<home-reality-port>`
   - router ingress: `sing-box` home Reality inbound
   - egress: managed split policy; `STEALTH_DOMAINS` / `VPN_STATIC_NETS` → VPS/Xray, остальные назначения → home WAN direct
@@ -105,6 +111,32 @@ Detailed prose for each section is in Russian below. For new findings, see the
 - если runtime стабилен, не менять живую конфигурацию без явной причины
 - любые изменения сначала делать как review / plan / safe refactor
 - не трогать `secrets/` и не выносить приватные aliases / IP / bypass overrides в публичный git
+
+## Managed privacy: что ещё даёт пользу
+
+Текущий guard закрывает прямой LAN-выход только для уже классифицированных IPv4
+TCP и UDP/443. Подробные уровни доказательства и процедура восстановления — в
+[privacy-assurance.md](privacy-assurance.md). Приоритет дальнейшей работы:
+
+1. **Высокий:** сохранить измеренные real-client результаты по A/B/C/D/Amn и
+   сервису M в приватном отчёте: direct, general managed, sensitive, DNS/IPv6 и
+   настоящая передача данных. Устное «вроде работает» — полезное наблюдение,
+   но не доказательство отсутствия утечек.
+2. **Высокий для строгой модели угроз:** отдельно доказать поведение во время
+   полного Merlin firewall rebuild, включая интервал до `firewall-start`.
+   Имеющийся guard начинает действовать после hook; полную перестройку проводить
+   только с резервным доступом и контролем реальных клиентов.
+3. **Средний:** исследовать происхождение и срок жизни IP в динамическом
+   `STEALTH_DOMAINS` и его сохранённом снимке. Автоматический TTL/flush без
+   такой проверки может создать прямой выход для ещё используемого managed IP.
+4. **По фактическому спросу:** проверить на выбранных клиентах app-owned
+   DoH/DoT, ECH/скрытые hostnames, WebRTC и UDP кроме 443. Для особо
+   чувствительного устройства допустим явный full-VPS режим; переводить весь
+   LAN на него без необходимости не следует.
+
+Не путать это с обещанием анонимности: сайт может связать сессии по аккаунту и
+браузеру независимо от exit IP. Сначала измерять наблюдаемую утечку, затем
+менять узкое правило или профиль.
 
 ## Как использовать этот документ с LLM
 

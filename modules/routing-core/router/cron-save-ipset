@@ -1,9 +1,18 @@
 #!/bin/sh
 
+umask 077
 STATE_DIR="/jffs/addons/router_configuration"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/tmp"
 mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/STEALTH_DOMAINS.ipset"
+NEXT_STATE_FILE="${STATE_FILE}.tmp.$$"
+trap 'rm -f "$NEXT_STATE_FILE"' EXIT
 
-ipset list STEALTH_DOMAINS >/dev/null 2>&1 || exit 0
-ipset save STEALTH_DOMAINS > "$STATE_FILE"
+ENTRY_COUNT="$(ipset list STEALTH_DOMAINS 2>/dev/null | awk '/^Number of entries:/ { print $4; exit }')"
+[ -n "$ENTRY_COUNT" ] || exit 0
+case "$ENTRY_COUNT" in *[!0-9]*) exit 1 ;; esac
+ipset save STEALTH_DOMAINS > "$NEXT_STATE_FILE" || exit 1
+grep -q '^create STEALTH_DOMAINS ' "$NEXT_STATE_FILE" || exit 1
+SAVED_COUNT="$(awk '$1 == "add" && $2 == "STEALTH_DOMAINS" { count++ } END { print count+0 }' "$NEXT_STATE_FILE")"
+[ "$SAVED_COUNT" -ge "$ENTRY_COUNT" ] || exit 1
+mv -f "$NEXT_STATE_FILE" "$STATE_FILE" || exit 1

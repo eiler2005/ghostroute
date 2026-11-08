@@ -31,6 +31,9 @@ CI**, without touching a live router or VPS.
   [`modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh`](../modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh).
   Traffic accounting is verified against recorded fixtures, e.g.
   [`tests/test-traffic-evidence-v3.sh`](../tests/test-traffic-evidence-v3.sh).
+  [`tests/test-ipset-snapshot-atomic.sh`](../tests/test-ipset-snapshot-atomic.sh)
+  injects failed and malformed `ipset save` output and checks that the previous
+  boot snapshot survives.
 - **Console smoke + unit** — Node unit tests and a headless smoke run for the
   read-only Console.
 - **Playwright e2e** — browser coverage of Console pages against a seeded local
@@ -58,6 +61,8 @@ CI: `./verify.sh`, `ansible-playbook playbooks/99-verify.yml`,
 `./modules/ghostroute-health-monitor/bin/live-check`, and
 `./modules/ghostroute-health-monitor/bin/egress-backend-health`. These connect to
 real targets and are run by the operator, deliberately outside CI.
+The [privacy assurance contract](privacy-assurance.md) distinguishes these
+router-side checks from real-client exit, DNS and app-transfer evidence.
 
 ## CI
 
