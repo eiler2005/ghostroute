@@ -9,6 +9,7 @@ import time
 
 from .policy import GuardError, authority, matches
 from .relay import relay
+from .chrome_control import ChromeControl
 from .transport import make_adapter, qualify, read_headers
 
 REASONS = {
@@ -62,6 +63,7 @@ class Guard:
         self.started_at = time.time()
         self.chrome_profiles = OrderedDict()
         self.chrome_blocked = 0
+        self.chrome = ChromeControl()
         self._record('system', 'started')
 
     def _record(self, kind, reason, host=None, route=None):

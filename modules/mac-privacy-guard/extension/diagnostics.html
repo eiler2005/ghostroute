@@ -1,0 +1,8 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="panel.css"><script src="panel.js" defer></script></head><body>
+<header><img src="icon-48.png" width="36" height="36" alt=""><div><h1>HTTP-диагностика</h1><p>Одна вкладка · до 60 секунд · только в памяти</p></div><span id="state" role="status">Остановлено</span></header>
+<section class="card"><label><input id="allow" type="checkbox"> Разрешить управление этой вкладкой из приложения Guard</label><p>Данные запросов появятся в приложении. Содержимое ответа передаётся только по отдельной команде «Показать текст». Оно может содержать личные данные.</p>
+<div class="actions"><button id="start" class="primary" disabled>Начать на 60 секунд</button><button id="stop">Остановить и стереть</button><button id="clear">Очистить</button></div></section>
+<p id="message" role="status">Включите управление. Начните диагностику в этой панели или в приложении, затем выполните действие на сайте.</p>
+<div class="table"><table><thead><tr><th>Домен</th><th>Метод</th><th>HTTP</th><th>Время</th><th>Ответ</th></tr></thead><tbody id="events"></tbody></table></div>
+<section class="card"><h2>Текст выбранного ответа</h2><p>До 1024 символов. HTML показан как текст. Заголовки, cookies и тела запросов не выводятся. Переключение панели, истечение времени и остановка стирают данные Guard. Сам Chrome хранит собственную историю DevTools.</p><pre id="preview">Ответ не запрошен</pre></section>
+</body></html>

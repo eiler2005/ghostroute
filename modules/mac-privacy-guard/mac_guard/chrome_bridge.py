@@ -17,8 +17,13 @@ def forward(state, data):
             connection.connect(str(state / 'chrome-events.sock'))
             connection.sendall(raw)
             with connection.makefile('rb') as source:
-                reply = json.loads(source.readline(256))
-                return {'ok': reply.get('ok') is True}
+                reply = json.loads(source.readline(2048))
+                result = {'ok': reply.get('ok') is True}
+                command = reply.get('command')
+                if result['ok'] and isinstance(command, dict) and set(command) == {'id', 'action', 'session', 'event'}:
+                    if command['action'] in {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection'}:
+                        result['command'] = command
+                return result
     except (OSError, ValueError, AttributeError):
         return {'ok': False}
 

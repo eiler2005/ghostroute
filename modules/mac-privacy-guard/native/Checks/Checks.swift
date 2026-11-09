@@ -95,6 +95,23 @@ struct NativeChecks {
         await journal.perform(.open("https://sensitive.example.org"))
         try require(journal.filter==nil && journal.search.isEmpty && journal.source=="guard","Browser launch left a misleading filter active")
         print("PASS: startup journal/retry, hidden filters, block navigation and protected-browser launch scope")
+        journal.showHelp()
+        try require(journal.destination == .help,"Native help did not open")
+        journal.showBlockedEvents()
+        try require(journal.destination == .activity,"Blocked metric did not open journal")
+        FixtureProtocol.handler = { request in
+            precondition(request.url?.path == "/api/chrome/command")
+            precondition(request.httpMethod == "POST")
+            return (200,statusData())
+        }
+        _ = try await api.perform(.chromeCommand(String(repeating:"b",count:32), .pauseProtection, nil))
+        FixtureProtocol.handler = { request in
+            precondition(request.url?.path == "/api/chrome")
+            return (200,Data("{\"agents\":[{\"id\":\"fixture\",\"ready\":true,\"reporting\":false,\"protection\":true,\"pending\":false,\"remaining\":0,\"pause_remaining\":0}],\"events\":[],\"preview\":null,\"notice\":\"Fixture agent\"}".utf8))
+        }
+        let chrome = try await api.chrome()
+        try require(chrome.agents.first?.protection == true && chrome.agents.first?.reporting == false,"Chrome protection and reporting were conflated")
+        print("PASS: native help/navigation and independent Chrome command/status contract")
     }
 }
 

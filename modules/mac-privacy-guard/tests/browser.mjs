@@ -21,7 +21,10 @@ try {
     fixture.once('exit',()=>reject(new Error('Fixture exited before startup')));
   });
   const control=async action=>(await fetch(`http://127.0.0.1:${settings.control}/${action}`)).json();
-  closeOwned=()=>control('close-browser');
+  closeOwned=async()=>{
+    await control('close-browser');
+    await waitFor(async()=>(await control('status')).browser_running===false,'Owned Chrome did not close');
+  };
   const endpoint=new URL(settings.dashboard);
   const api=async(action,payload)=>{
     const response=await fetch(endpoint.origin+'/api/'+action,{method:payload===undefined?'GET':'POST',headers:{Authorization:'Bearer '+endpoint.hash.slice(1),'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
@@ -97,8 +100,79 @@ try {
   await waitFor(async()=>(await api('activity')).events.some(event=>event.source==='chrome' && event.method==='POST'),'Subresource block not delivered');
   const proof=await api('activity');
   assert(!JSON.stringify(proof).includes('must-not-log'));
+  await waitFor(async()=>(await api('chrome')).agents.length===1,'Chrome agent was not registered');
+  const agentId=(await api('chrome')).agents[0].id;
+  const command=async(action,event)=>{
+    await api('chrome/command',{profile:agentId,action,...(event?{event}:{})});
+    await waitFor(async()=>!(await api('chrome')).agents[0]?.pending,'Chrome did not acknowledge '+action);
+  };
+  // Contract fixture for DevTools callbacks, with the real extension runtime,
+  // native host, authenticated app commands and response-preview round trip.
+  // This does not claim visual acceptance of Chrome's own DevTools container.
+  await ordinary.addInitScript(()=>{
+    if(location.pathname!=='/devtools.html')return;
+    chrome.devtools={network:{onRequestFinished:{addListener:callback=>{window.fixtureRequest=callback;}},onNavigated:{addListener:callback=>{window.fixtureNavigate=callback;}}},panels:{create:(_title,_icon,_page,callback)=>callback({onShown:{addListener:callback=>{window.fixtureShow=callback;}},onHidden:{addListener:callback=>{window.fixtureHide=callback;}}})}};
+  });
+  const tools=await ordinary.newPage();
+  await tools.goto(`chrome-extension://${settings.extension_id}/devtools.html`);
+  await tools.evaluate(()=>{fixtureShow({mountGuard:controller=>{window.fixtureController=controller;}});fixtureController.allow(true);});
+  await waitFor(async()=>(await api('chrome')).agents[0]?.ready,'Prepared DevTools panel was not registered');
+  await command('start');
+  await waitFor(async()=>(await api('chrome')).agents[0]?.remaining>0,'App did not start prepared-tab diagnostics');
+  await tools.evaluate(()=>fixtureRequest({request:{url:'https://notfixture.example.org/private?private-query=must-not-log',method:'GET',headers:[{name:'Cookie',value:'must-not-log'}]},response:{status:200,content:{mimeType:'text/html',size:80}},time:12,getContent:callback=>callback('<h1>Protected fixture response</h1>','')}));
+  await waitFor(async()=>(await api('chrome')).events.length===1,'HTTP metadata did not reach app');
+  const captured=await api('chrome');assert(!JSON.stringify(captured).includes('must-not-log'));
+  assert.equal(captured.preview,null,'Preview appeared without app request');
+  await command('preview',captured.events[0].event);
+  await waitFor(async()=>(await api('chrome')).preview?.text.includes('Protected fixture response'),'App preview request did not return text');
+  assert(!JSON.stringify(await api('activity')).includes('Protected fixture response'),'Response body entered event journal');
+  await api('chrome/preview/clear',{});assert.equal((await api('chrome')).preview,null);
+  await command('clear');assert.equal((await api('chrome')).events.length,0);
+  await tools.evaluate(()=>fixtureRequest({request:{url:'https://notfixture.example.org/',method:'GET'},response:{status:204,content:{mimeType:'text/plain',size:0}},time:1,getContent:callback=>callback('','')}));
+  await waitFor(async()=>(await api('chrome')).events.length===1,'Cleared capture did not continue');
+  await command('stop');assert.equal((await api('chrome')).events.length,0);
+  await tools.evaluate(()=>fixtureHide());
+  await waitFor(async()=>(await api('chrome')).agents[0]?.ready===false,'Hidden panel did not revoke app control');
+  await tools.close();
+  for(const file of ['popup.html','help.html']){
+    const ui=await ordinary.newPage();await ui.setViewportSize({width:file==='popup.html'?380:850,height:900});
+    await ui.goto(`chrome-extension://${settings.extension_id}/${file}`);
+    await ui.waitForFunction(()=>document.querySelector('#state').textContent.includes('подключён') || document.querySelector('#state').textContent.includes('на связи'));
+    assert(await ui.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Extension UI overflows viewport');
+    if(report)await ui.screenshot({path:path.join(report,file+'.png'),fullPage:true});await ui.close();
+  }
+  const panel=await ordinary.newPage();await panel.setViewportSize({width:850,height:900});
+  await panel.goto(`chrome-extension://${settings.extension_id}/diagnostics.html`);
+  await panel.addScriptTag({url:`chrome-extension://${settings.extension_id}/diagnostics.js`});
+  await panel.evaluate(()=>{window.controllerFixture=new GuardDiagnostics(()=>{});controllerFixture.visible=true;mountGuard(controllerFixture);});
+  await panel.locator('#allow').check();await panel.locator('#start').click();
+  await panel.evaluate(()=>controllerFixture.record({request:{url:'https://fixture.example.org/private?hidden=query',method:'GET'},response:{status:200,content:{mimeType:'text/html',size:80}},time:8,getContent:callback=>callback('<script>globalThis.previewExecuted=true</script>','')}));
+  await panel.locator('tbody button').click();
+  assert((await panel.locator('#preview').textContent()).includes('<script>'));
+  assert(await panel.evaluate(()=>globalThis.previewExecuted===undefined),'HTML response executed in diagnostics UI');
+  if(report)await panel.screenshot({path:path.join(report,'diagnostics-panel.png'),fullPage:true});
+  await panel.locator('#stop').click();assert.equal(await panel.locator('tbody tr').count(),0);await panel.close();
+  await command('pause_protection');
+  assert.equal((await api('chrome')).agents[0].protection,false);
+  assert((await worker.evaluate(()=>chrome.declarativeNetRequest.getEnabledRulesets())).includes('sensitive'),'Pause disabled the permanent ruleset');
+  await ordinaryPage.goto(`http://fixture.example.org:${settings.plain_origin}/paused`);
+  assert.equal(await ordinaryPage.locator('h1').textContent(),'Protected fixture','App pause was not applied to Chrome');
+  await command('resume_protection');await blockPage();
+  await command('reporting_off');
+  const beforeReportingOff=(await api('status')).chrome_blocked;
+  await blockPage();await new Promise(resolve=>setTimeout(resolve,300));
+  assert.equal((await api('status')).chrome_blocked,beforeReportingOff,'Reporting off still forwarded a block');
+  await command('reporting_on');await blockPage();
+  await waitFor(async()=>(await api('status')).chrome_blocked>beforeReportingOff,'Reporting on did not resume events');
+  await command('pause_protection');
+  await worker.evaluate(()=>{globalThis.guardOriginalNow=Date.now;const future=Date.now()+61000;Date.now=()=>future;});
+  await waitFor(async()=>(await api('chrome')).agents[0].protection,'Pause did not expire');
+  await worker.evaluate(()=>{Date.now=globalThis.guardOriginalNow;delete globalThis.guardOriginalNow;});
+  await blockPage();
   if(report)writeFileSync(path.join(report,'fixture-proof.json'),JSON.stringify({guard:await api('status'),events:proof.events},null,2));
+  await command('pause_protection');
   await control('chrome-offline');
+  await waitFor(async()=>(await worker.evaluate(()=>chrome.declarativeNetRequest.getSessionRules())).length===0,'Lost native app did not restore Chrome block');
   const beforeOfflineOrigin=(await control('status')).origin;await blockPage();
   assert.equal((await control('status')).origin,beforeOfflineOrigin,'Loss of journal disabled Chrome block');
   await control('gate-down');await mustFail('https://fixture.example.org/gate-down');
@@ -107,7 +181,7 @@ try {
   const netlog=JSON.parse(readFileSync(path.join(root,'netlog.json')));
   const names=Object.fromEntries(Object.entries(netlog.constants.logEventTypes).map(([name,id])=>[id,name]));
   assert.equal(netlog.events.filter(event=>/DNS_TRANSACTION|DNS_TASK/.test(names[event.type] || '')).length,0,'Protected browser performed DNS');
-  console.log('PASS: real Chrome HTTPS, close/cancel and no direct/DNS/WebRTC bypass; counters and journal; actual Chrome main-frame/subresource block → native host → Guard; block persists when journal is unavailable.');
+  console.log('PASS: real Chrome fixed proxy and block→native host→Guard; app pause/resume/reporting commands, pause timeout and loss-of-app restoration; no direct/DNS/WebRTC bypass.');
 } finally {
   if(browser)await browser.close();if(ordinary)await ordinary.close();
   if(closeOwned)await closeOwned().catch(()=>{});

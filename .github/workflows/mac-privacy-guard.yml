@@ -15,6 +15,11 @@ jobs:
         with:
           python-version: '3.13'
       - run: modules/mac-privacy-guard/tests/run.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node modules/mac-privacy-guard/tests/diagnostics.mjs
+      - run: python3 modules/secrets-management/tests/test-secret-scan.py
   mac-browser:
     runs-on: macos-15
     steps:

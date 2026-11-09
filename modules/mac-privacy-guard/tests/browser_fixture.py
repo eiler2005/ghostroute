@@ -97,14 +97,15 @@ class Control(BaseHTTPRequestHandler):
         if self.path == '/restore': adapter.available = True; qualification.set(); guard.lock()
         if self.path == '/delay': qualification.clear()
         if self.path == '/release': qualification.set()
-        if self.path == '/close-browser': owned_browser.close()
+        if self.path == '/close-browser': threading.Thread(target=owned_browser.close, daemon=True).start()
         if self.path == '/chrome-offline': chrome_events.shutdown(); chrome_events.server_close()
         if self.path == '/upstream-down': adapter.available = False; guard.lock(); guard.activate('fixture')
         if self.path == '/gate-down':
             guard.lock()
             gate.shutdown()
             gate.server_close()
-        body = json.dumps(dict(counts, guard=guard.status(), activity=guard.activity())).encode()
+        browser_process = owned_browser.process
+        body = json.dumps(dict(counts, browser_running=bool(browser_process and browser_process.poll() is None), guard=guard.status(), activity=guard.activity())).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()

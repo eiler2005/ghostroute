@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if activateExistingInstance() { NSApp.terminate(nil); return }
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
         let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu()
         appMenu.addItem(withTitle: "О GhostRoute Guard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
@@ -21,19 +24,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
         }
         edit.submenu = editMenu; menu.addItem(edit)
+        let helpItem = NSMenuItem(), helpMenu = NSMenu(title: "Справка")
+        let helpAction = helpMenu.addItem(withTitle: "Справка GhostRoute Guard", action: #selector(showHelp), keyEquivalent: "?")
+        helpAction.target = self
+        helpItem.submenu = helpMenu; menu.addItem(helpItem); NSApp.helpMenu = helpMenu
         NSApp.mainMenu = menu
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 840),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = "GhostRoute Guard"
         window.toolbarStyle = .unified
-        window.minSize = NSSize(width: 950, height: 640)
+        window.minSize = NSSize(width: 820, height: 620)
         window.contentView = NSHostingView(rootView: GuardRootView(store: store))
         window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         store.retryHandler = { [weak self] in self?.startBackend() }
         startBackend()
     }
+
+    @objc private func showHelp() { store.showHelp(); window?.makeKeyAndOrderFront(nil) }
 
     private func activateExistingInstance() -> Bool {
         let current = ProcessInfo.processInfo.processIdentifier
@@ -58,6 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        window?.deminiaturize(nil)
+        window?.makeKeyAndOrderFront(nil)
+        sender.activate(ignoringOtherApps: true)
+        return true
+    }
     func applicationWillTerminate(_ notification: Notification) { backend.stop() }
     func application(_ sender: NSApplication, open urls: [URL]) {
         // Custom URL launch only focuses the app. It cannot open access or URLs.
@@ -72,6 +87,6 @@ struct GuardApplication {
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(.regular)
-        app.run()
+        withExtendedLifetime(delegate) { app.run() }
     }
 }

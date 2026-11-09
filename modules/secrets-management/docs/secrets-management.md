@@ -149,6 +149,11 @@ git diff --check
 
 `secret-scan` is lightweight and repo-specific. It does not replace judgment, but it catches the common mistakes: real VLESS URIs, UUIDs in docs, private-key markers, embedded public IP hostnames and secret-looking assignments. It also rejects known production listener/IP literals that have been removed from public documentation and history.
 
+Raster image formats and macOS ICNS icons are excluded from text scanning;
+decoding compressed image bytes as text produces meaningless literal matches.
+Review their source/provenance separately. The binary/text boundary regression
+check is `python3 modules/secrets-management/tests/test-secret-scan.py`.
+
 `cleanup-vault-backups` is local hygiene only. It defaults to dry-run and should
 be used to review stale `ansible/secrets/stealth.yml.backup-*` files after a
 fresh encrypted offsite backup exists.

@@ -55,10 +55,13 @@ public struct GuardActivity: Decodable {
 }
 
 public enum GuardAction {
+    case chromeCommand(String, ChromeCommand, String?), chromePreviewClear
     case activate(String), lock, open(String), profile(Data), clearActivity, extensionFolder
 
     var path: String {
         switch self {
+        case .chromeCommand: return "chrome/command"
+        case .chromePreviewClear: return "chrome/preview/clear"
         case .activate: return "activate"
         case .lock: return "lock"
         case .open: return "open"
@@ -71,6 +74,9 @@ public enum GuardAction {
     func payload() throws -> Data {
         var value: [String: Any] = [:]
         switch self {
+        case .chromeCommand(let profile, let command, let event):
+            value["profile"] = profile; value["action"] = command.rawValue
+            if let event { value["event"] = event }
         case .activate(let route): value["route"] = route
         case .open(let url): value["url"] = url
         case .profile(let data):

@@ -4,6 +4,7 @@
 *.sh text eol=lf
 *.bash text eol=lf
 *.mjs text eol=lf
+*.icns binary
 *.ts text eol=lf
 *.tsx text eol=lf
 .github/workflows/*.yml text eol=lf

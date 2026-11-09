@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 
 @MainActor
 public final class GuardStore: ObservableObject {
+    @Published public var destination: GuardPage? = .overview
+    @Published public private(set) var chrome = ChromeSnapshot.empty
+    @Published var selectedChrome = ""
     @Published public private(set) var status: GuardStatus?
     @Published public private(set) var events: [GuardEvent] = []
     @Published public private(set) var online = false
@@ -79,7 +82,8 @@ public final class GuardStore: ObservableObject {
     public var hasFilters: Bool { filter != nil || source != "all" || !search.isEmpty }
     public var hiddenEventCount: Int { events.count - visibleEvents.count }
     public func resetFilters() { filter = nil; source = "all"; search = "" }
-    public func showBlockedEvents() { resetFilters(); filter = .blocked }
+    public func showBlockedEvents() { resetFilters(); filter = .blocked; destination = .activity }
+    public func showHelp() { destination = .help }
 
     func openBlockedSite(_ host: String) async {
         site = "https://" + host
@@ -102,16 +106,20 @@ public final class GuardStore: ObservableObject {
         do {
             async let status = client.status()
             async let activity = client.activity()
+            async let chromeSnapshot = try? client.chrome()
             let (newStatus, newActivity) = try await (status, activity)
             guard expected == revision else { return }
             apply(newStatus)
             engineEvents = Array(newActivity.events.prefix(300))
             combineEvents()
+            chrome = await chromeSnapshot ?? .empty
+            if !chrome.agents.contains(where: { $0.id == selectedChrome }) { selectedChrome = chrome.agents.first?.id ?? "" }
             if !events.contains(where: { $0.id == selectedEvent }) { selectedEvent = nil }
         } catch {
             guard expected == revision else { return }
             if online { recordLocal("Связь с локальным шлюзом потеряна. Доступ к его состоянию не подтверждён.") }
             online = false
+            chrome = .empty
             self.error = "Связь с локальным шлюзом потеряна. Повторите запуск; профиль сохраняется."
             connectionIssue = true
         }

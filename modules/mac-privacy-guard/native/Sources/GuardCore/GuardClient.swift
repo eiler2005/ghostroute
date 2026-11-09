@@ -5,7 +5,12 @@ private struct Failure: Decodable { let error: String }
 public protocol GuardControlling {
     func status() async throws -> GuardStatus
     func activity() async throws -> GuardActivity
+    func chrome() async throws -> ChromeSnapshot
     func perform(_ action: GuardAction) async throws -> GuardStatus
+}
+
+public extension GuardControlling {
+    func chrome() async throws -> ChromeSnapshot { .empty }
 }
 
 public struct ControlEndpoint {
@@ -50,6 +55,7 @@ public final class GuardClient: GuardControlling {
 
     public func status() async throws -> GuardStatus { try await request("status") }
     public func activity() async throws -> GuardActivity { try await request("activity") }
+    public func chrome() async throws -> ChromeSnapshot { try await request("chrome") }
     public func perform(_ action: GuardAction) async throws -> GuardStatus {
         try await request(action.path, body: action.payload())
     }

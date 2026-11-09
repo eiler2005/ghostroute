@@ -79,10 +79,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.valid_host():
             return self.send(403, b'{}')
-        if self.path in ('/api/status', '/api/activity'):
+        if self.path in ('/api/status', '/api/activity', '/api/chrome'):
             if not self.authorized():
                 return self.send(403, b'{}')
-            data = self.server.snapshot() if self.path == '/api/status' else self.server.guard.activity()
+            data = self.server.snapshot() if self.path == '/api/status' else self.server.guard.chrome.snapshot() if self.path == '/api/chrome' else self.server.guard.activity()
             return self.send(200, json.dumps(data).encode())
         return self.send(404, b'{}')
 
@@ -108,6 +108,11 @@ class Handler(BaseHTTPRequestHandler):
                 guard.lock()
             elif self.path == '/api/activity/clear' and not payload:
                 guard.clear_activity()
+            elif self.path == '/api/chrome/command' and set(payload) in ({'profile', 'action'}, {'profile', 'action', 'event'}):
+                guard.chrome.command(payload['profile'], payload['action'], payload.get('event'))
+            elif self.path == '/api/chrome/preview/clear' and not payload:
+                with guard.chrome.mutex:
+                    guard.chrome.preview = None
             elif self.path == '/api/extension-folder' and not payload:
                 folder = self.server.state / 'Chrome Blocker'
                 if sys.platform != 'darwin' or not folder.is_dir():

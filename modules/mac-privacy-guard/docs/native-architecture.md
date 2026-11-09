@@ -7,9 +7,10 @@ independent fail-closed gateway and dedicated Chrome profile. Ordinary Chrome ha
 an explicitly installed deny policy and reports its own block metadata. No
 component silently changes router channels or the system-wide proxy.
 
-The first delivery implements native access controls, an in-memory journal,
-Chrome rule-match delivery and their failure checks. Selected-tab HTTP diagnostics
-and system-wide filtering are later deliveries, not present capabilities.
+Native access controls, a memory journal, Chrome rule-match delivery, explicit
+per-tab HTTP diagnostics and app-to-Chrome controls are implemented. The Chrome
+agent supplies this control plane without a system extension. System-wide
+filtering remains outside this module's installed scope.
 
 ## Components and ownership
 
@@ -21,7 +22,8 @@ and system-wide filtering are later deliveries, not present capabilities.
 | Python Guard | Qualification, generation/cancellation, catalogs, connections and counters | Sole authority for opening access; startup/restart is locked |
 | Protected browser owner | Separate Chrome profile and mandatory fixed proxy | Launch flags and route restrictions remain enforced independently of view state |
 | Chrome policy agent | Explicit DNR deny policy in each enabled ordinary profile | Sensitive sites remain denied even while protected-browser access is open |
-| Chrome native bridge | Narrow metadata messages into private Unix socket | No dashboard token, route action, shell command or arbitrary file operation |
+| Chrome native bridge | Validated events and fixed diagnostic/pause commands over private Unix socket | No dashboard token, route action, shell command, arbitrary URL or file operation |
+| Chrome diagnostics | Prepared DevTools tab, 60-second capture, up to 100 entries and solicited text preview | Separate volatile store, 1024-character preview for 15 seconds; never the activity journal |
 | Journal | Last 300 events plus bounded active-connection references | Memory only; no raw URL, cookies, headers, body or exception dump |
 
 Startup failures use a narrow error-code bootstrap contract. The shell presents
@@ -58,6 +60,11 @@ flowchart TB
     policy --> deny[Stop sensitive request]
     policy --> bridge[Origin-restricted Native Messaging host]
     bridge -->|Validated metadata only| journal
+    engine -->|Fixed commands with short expiry| bridge
+    bridge -->|Explicit pause and diagnostics control| policy
+    devtools[Prepared DevTools panel] --> bridge
+    bridge --> preview[Separate volatile HTTP data]
+    preview --> client
     journal --> client
     future[Future Network Extension adapter] -. requires signing and separate acceptance .-> engine
 ```
@@ -85,10 +92,12 @@ Only the engine grants access; a green UI cannot create a direct fallback.
 
 ## Ordinary Chrome as a separate traffic-control boundary
 
-The current Chrome integration has two capabilities: enforce the installed
-sensitive deny catalog, and report health/block metadata. Native Messaging
-responses acknowledge delivery; they are not policy or routing commands. The
-message schema has no arbitrary URL, HTTP body, tab identity or control token.
+The Chrome integration enforces the installed sensitive deny catalog, reports
+health/blocks, and accepts a fixed app command set. It does not acquire proxy
+ownership or route authority. Native Messaging replies carry expiring commands
+for one ephemeral agent; acknowledgements and actual state are shown separately.
+The schemas have no arbitrary URL, request headers/body, tab ID or control token.
+Solicited text previews use a separate bounded schema and volatile store.
 The manifest permits only the ID derived from this unpacked extension's absolute
 path; moving that path requires re-registration. Chrome may require accepting
 new permissions/reloading the extension after upgrade.
@@ -98,13 +107,22 @@ profile is protected. A fresh heartbeat confirms one reporting ruleset only.
 When Guard is absent, DNR continues enforcement and event delivery fails; no
 sensitive disk spool or automatic replay is created. A bounded in-flight queue
 drops excess signals without weakening deny rules. Native startup/health status
-must never be inferred to qualify a third-party VPN.
+must never be inferred to qualify a third-party VPN. An explicitly confirmed
+60-second pause uses a higher-priority session allow rule while the static
+ruleset stays enabled. Expiry, detected app loss and worker startup remove it;
+browser restart clears session rules. Timer scheduling is a browser boundary,
+not instantaneous OS enforcement. The app cannot re-enable an extension that
+the operator disabled through Chrome itself.
 
 Future ordinary-profile proxy/PAC control would require a separate capability,
 an explicit owner of proxy settings, proof of no DIRECT/UDP bypass, per-profile
 qualification and restore on removal. It must not be introduced through the
-metadata bridge. A future selected-tab diagnostic agent is likewise separate
-from the deny policy and uses explicit activation, limited scope and an expiry.
+agent. The implemented DevTools diagnostic component is separate from the deny
+policy: opening its panel and granting control prepares one inspected tab;
+app commands start/stop/clear capture and request one text response. Hiding the
+panel revokes the grant. Navigation clears previous responses. No debugger
+permission, TLS interception certificate or arbitrary script command is used.
+See [Chrome agent contract](chrome-agent.md).
 
 ## Optional protection without a Chrome extension
 

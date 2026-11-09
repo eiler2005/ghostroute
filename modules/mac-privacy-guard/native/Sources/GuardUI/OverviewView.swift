@@ -3,43 +3,66 @@ import GuardCore
 
 struct OverviewView: View {
     @ObservedObject var store: GuardStore
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 AccessView(store: store)
-                GroupBox {
-                    HStack(spacing: 12) {
-                        Image(systemName: "globe").font(.title2).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Защищённый браузер").font(.headline)
-                            Text("Сайт нужно открыть этой кнопкой").font(.caption).foregroundStyle(.secondary)
-                        }
-                        TextField("example.org или HTTPS-адрес", text: $store.site)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { if store.canBrowse && !store.site.isEmpty { Task { await store.perform(.open(store.site)) } } }
-                        Button("Открыть в Guard") { Task { await store.perform(.open(store.site)) } }
-                            .disabled(!store.canBrowse || store.site.trimmingCharacters(in: .whitespaces).isEmpty)
-                            .help("Открывает отдельный Chrome «GhostRoute Guard», а не обычный профиль")
-                    }.padding(8)
-                }
-                HStack(spacing: 12) {
-                    MetricView(title: "Разрешено", value: "\(store.status?.allowed ?? 0)", detail: "Соединений через Guard", icon: "checkmark.circle", color: .green)
+                BrowserLaunchView(store: store)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                    MetricView(title: "Разрешено", value: "\(store.status?.allowed ?? 0)", detail: "Через шлюз Guard", icon: "checkmark.circle", color: .green)
                     Button { store.showBlockedEvents() } label: {
-                        MetricView(title: "Заблокировано", value: "\(store.status?.blocked ?? 0)", detail: "Нажмите, чтобы показать", icon: "hand.raised", color: .orange)
-                    }.buttonStyle(.plain).help("Показать все блокировки, сбросив остальные фильтры")
-                    MetricView(title: "Активно сейчас", value: "\(store.status?.connections ?? 0)", detail: "Соединений через Guard", icon: "arrow.left.arrow.right", color: .blue)
+                        MetricView(title: "Заблокировано", value: "\(store.status?.blocked ?? 0)", detail: "Показать блокировки →", icon: "hand.raised", color: .orange)
+                    }.buttonStyle(.plain).help("Открыть журнал блокировок всех источников")
+                    MetricView(title: "Активно", value: "\(store.status?.connections ?? 0)", detail: "Открытых туннелей", icon: "arrow.left.arrow.right", color: .blue)
                     MetricView(title: "Передано", value: byteText((store.status?.bytesSent ?? 0) + (store.status?.bytesReceived ?? 0)), detail: "Внутри HTTPS-туннелей", icon: "chart.bar", color: .purple)
                 }
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack { Text("Журнал событий").font(.headline); Spacer(); Text("Только в памяти").font(.caption).foregroundStyle(.secondary) }
-                    ActivityControls(store: store)
-                    EventTable(store: store).frame(height: 260)
-                    if let event = store.detail { EventDetail(event: event, store: store) }
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Последние события", systemImage: "clock").font(.headline)
+                        Spacer()
+                        Button("Весь журнал") { store.resetFilters(); store.destination = .activity }
+                    }
+                    EventTable(store: store).frame(height: 180).clipShape(RoundedRectangle(cornerRadius: 8))
+                    if store.hasFilters {
+                        HStack {
+                            Text("В журнале включены фильтры").font(.caption).foregroundStyle(.secondary)
+                            Button("Показать все") { store.resetFilters() }.controlSize(.small)
+                        }
+                    }
                 }
-                Text("Статистика за текущий запуск. Guard управляет своим браузером; обычный Chrome блокирует чувствительные сайты через включённое расширение.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }.padding(22)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "info.circle").foregroundStyle(.secondary)
+                    Text("Защищённый Chrome и обычный Chrome работают отдельно. Счётчики относятся к текущему запуску Guard; журнал хранится в памяти.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button("Как это работает") { store.showHelp() }.controlSize(.small)
+                }
+            }.padding(22).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
+        }
+    }
+}
+
+struct BrowserLaunchView: View {
+    @ObservedObject var store: GuardStore
+    private var empty: Bool { store.site.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private func open() { if store.canBrowse && !empty { Task { await store.perform(.open(store.site)) } } }
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Открыть защищённый сайт", systemImage: "globe").font(.headline)
+                    Spacer()
+                    Text("Отдельный профиль Chrome").font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 10) {
+                    TextField("example.org или HTTPS-адрес", text: $store.site).textFieldStyle(.roundedBorder).onSubmit(open)
+                    Button(action: open) { Label("Открыть в Guard", systemImage: "arrow.up.forward.app") }
+                        .disabled(!store.canBrowse || empty)
+                        .help("Открывает отдельный Chrome «GhostRoute Guard», а не обычный профиль")
+                }.controlSize(.large)
+                Text(store.canBrowse ? "Адрес откроется через проверенный маршрут. Обычный Chrome сохраняет свои блокировки." : "Сначала выберите маршрут и откройте доступ. Прямого обхода при ошибке нет.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }.padding(10)
         }
     }
 }
@@ -48,48 +71,44 @@ struct AccessView: View {
     @ObservedObject var store: GuardStore
     private var active: Bool { store.online && store.status?.state == .active }
     private var qualifying: Bool { store.online && store.status?.state == .qualifying }
-
+    private var accent: Color { active ? .green : qualifying ? .orange : .secondary }
     var body: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 14) {
                     Image(systemName: active ? "checkmark.shield.fill" : "lock.shield")
-                        .font(.system(size: 40)).foregroundStyle(active ? Color.green : Color.secondary)
-                        .frame(width: 60)
+                        .font(.system(size: 32, weight: .medium)).foregroundStyle(accent)
+                        .frame(width: 48, height: 48).background(accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 5) {
                         Text(!store.online ? "Шлюз недоступен" : active ? "Доступ открыт для Guard" : qualifying ? "Проверяем маршрут" : "Доступ Guard закрыт")
-                            .font(.title2.weight(.semibold))
-                        Text(store.online ? (store.status?.message ?? "") : "Проверьте связь с локальным шлюзом.")
+                            .font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                        Text(store.online ? (store.status?.message ?? "") : "Проверьте сообщение об ошибке и повторите запуск.")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Button { Task { await store.perform(.activate(store.selectedRoute)) } } label: {
-                            Label(qualifying ? "Проверяем…" : active ? "Доступ открыт" : "Открыть доступ", systemImage: "checkmark.shield")
-                        }
-                        .buttonStyle(.borderedProminent).tint(.green)
-                        .disabled(!store.canActivate)
-                        Button { Task { await store.perform(.lock) } } label: {
-                            Label("Закрыть доступ", systemImage: "lock")
-                        }
-                        .disabled(!store.canLock)
-                    }.controlSize(.large)
+                    Spacer(minLength: 0)
+                    if qualifying { ProgressView().controlSize(.small).padding(.top, 10) }
                 }
                 Divider()
-                Text("Обычный Chrome остаётся заблокированным. Для доступа введите адрес ниже или выберите заблокированный сайт в журнале и откройте его в Guard.")
-                    .font(.callout).foregroundStyle(.secondary)
-                HStack {
-                    Picker("Маршрут", selection: $store.selectedRoute) {
-                        if (store.status?.routes ?? []).isEmpty { Text(store.online ? "Добавьте профиль" : "Шлюз недоступен").tag("") }
-                        ForEach(store.status?.routes ?? []) { route in
-                            Text(route.title + ((store.status?.routes.count ?? 0) > 1 ? " · \(route.id)" : "")).tag(route.id)
-                        }
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("МАРШРУТ").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        Picker("Маршрут", selection: $store.selectedRoute) {
+                            if (store.status?.routes ?? []).isEmpty { Text(store.online ? "Добавьте профиль" : "Шлюз недоступен").tag("") }
+                            ForEach(store.status?.routes ?? []) { route in
+                                Text(route.title + ((store.status?.routes.count ?? 0) > 1 ? " · \(route.id)" : "")).tag(route.id)
+                            }
+                        }.labelsHidden().frame(maxWidth: 320).disabled(!store.online || store.busy || store.status?.state != .locked)
                     }
-                    .frame(maxWidth: 400)
-                    .disabled(!store.online || store.busy || store.status?.state != .locked)
-                    Spacer()
-                    if qualifying { ProgressView().controlSize(.small) }
-                    Text(active ? "Проверено \(store.status?.verifiedAge ?? 0) с назад" : qualifying ? "Проверка выхода…" : "Ожидает проверки")
+                    Spacer(minLength: 0)
+                    if !active {
+                        Button { Task { await store.perform(.activate(store.selectedRoute)) } } label: {
+                            Label(qualifying ? "Проверяем…" : "Открыть доступ", systemImage: "checkmark.shield")
+                        }.buttonStyle(.borderedProminent).disabled(!store.canActivate)
+                    }
+                    Button { Task { await store.perform(.lock) } } label: { Label("Закрыть доступ", systemImage: "lock") }.disabled(!store.canLock)
+                }.controlSize(.large)
+                if active {
+                    Label("Выход проверен \(store.status?.verifiedAge ?? 0) с назад · проверка повторяется автоматически", systemImage: "checkmark.circle")
                         .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
             }.padding(12)
@@ -101,12 +120,12 @@ struct MetricView: View {
     let title, value, detail, icon: String
     let color: Color
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 7) {
-                Label(title, systemImage: icon).font(.caption).foregroundStyle(color)
-                Text(value).font(.title2.weight(.medium)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
-        }
+        VStack(alignment: .leading, spacing: 9) {
+            Label(title, systemImage: icon).font(.caption.weight(.medium)).foregroundStyle(color)
+            Text(value).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+        }.frame(maxWidth: .infinity, minHeight: 90, alignment: .leading).padding(14)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.04)))
     }
 }

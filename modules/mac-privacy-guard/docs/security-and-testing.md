@@ -51,7 +51,9 @@ tunnels without counting those closures as new refusals or network failures.
 Clearing events does not reset session counters. Chrome reports only this
 extension's DNR matches. The native bridge is restricted to the unpacked
 extension's path-derived ID and a private Unix socket; its schema accepts only
-heartbeat/block metadata and cannot activate a route or invoke the control API.
+validated heartbeat/block metadata, scoped HTTP data and solicited preview; it
+cannot activate a route or invoke the control API. Commands back to Chrome are
+fixed, expire after 5 seconds and never contain arbitrary JS/CDP/URL actions.
 No general host access, webRequest, cookies, debugger or content-script permission
 is requested. Block rules explicitly include main-frame requests; omitting
 resourceTypes would exclude that type under Chrome's defaults.
@@ -71,6 +73,7 @@ From the repository root:
 ```bash
 ./modules/mac-privacy-guard/tests/run.sh
 swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks
+node modules/mac-privacy-guard/tests/diagnostics.mjs
 GUARD_REPORT_DIR=reports/mac-guard-design/browser \
   node modules/mac-privacy-guard/tests/browser.mjs
 ```
@@ -91,6 +94,19 @@ subresource refusal, domain boundaries, native message delivery and continuing
 block enforcement when the event receiver is unavailable. Fixture evidence
 contains fake destinations only. Native controls are checked by the Swift store
 suite; the built macOS window additionally requires visual/operator acceptance.
+
+The ordinary-profile pause uses a session allow rule with the static deny ruleset
+still enabled. It deliberately permits the Mac's ordinary network path for 60
+seconds after native confirmation. Browser fixtures prove actual pause/resume,
+reporting toggles, expiry and restoration on detected app loss. Browser scheduling
+remains a boundary; no instantaneous OS kill-switch claim is made.
+
+DevTools callback fixtures exercise the real extension runtime/native bridge/app
+command path, including response preview, state acknowledgement and erasure. They
+do not substitute for visual acceptance of Chrome's own DevTools container.
+Separate JS fixtures reject unsolicited bodies, stale/hidden sessions, oversized
+previews and late content after Stop. The diagnostic store is separate from the
+activity journal and never qualifies a route. See [agent contract](chrome-agent.md).
 
 | Layer | Required evidence |
 |---|---|

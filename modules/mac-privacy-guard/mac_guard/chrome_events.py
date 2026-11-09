@@ -1,4 +1,4 @@
-"""Private, write-only event ingress from the local Chrome native host."""
+"""Private Chrome event and diagnostics ingress; no routing authority."""
 import json
 import os
 import re
@@ -6,6 +6,7 @@ import socketserver
 import stat
 
 from .policy import GuardError, hostname
+from .chrome_control import validate_control_message
 
 RESOURCE_TYPES = {'main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font',
                   'object', 'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket',
@@ -29,6 +30,8 @@ def validate_message(data):
         if type(data['rule_id']) is not int or not 1 <= data['rule_id'] <= 30000:
             raise GuardError('Некорректное правило')
         data = dict(data, host=hostname(data['host']))
+    elif data.get('op') in {'agent', 'http', 'preview', 'result', 'reset'}:
+        return validate_control_message(data)
     else:
         raise GuardError('Разрешены только события расширения')
     return data
@@ -62,8 +65,12 @@ class Handler(socketserver.StreamRequestHandler):
             raw = self.rfile.readline(8193)
             if len(raw) > 8192 or not raw.endswith(b'\n'):
                 raise GuardError('Событие слишком большое')
-            self.server.guard.chrome_event(validate_message(json.loads(raw)))
-            response = b'{"ok":true}\n'
+            data = validate_message(json.loads(raw))
+            if data['op'] in {'heartbeat', 'blocked'}:
+                self.server.guard.chrome_event(data)
+            else:
+                self.server.guard.chrome.receive(data)
+            response = (json.dumps(self.server.guard.chrome.reply(data['profile'])) + '\n').encode()
         except (ValueError, TypeError, KeyError, GuardError, OSError):
             response = b'{"ok":false}\n'
         try:

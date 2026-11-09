@@ -305,7 +305,9 @@ GhostRoute устроен как небольшая операционная п�
 
 - **GhostRoute Guard для Mac** — нативное SwiftUI-приложение с управлением
   доступом, защищённым профилем Chrome через проверенный proxy-шлюз и журналом
-  решений шлюза и событий блокировщика обычного Chrome в памяти.
+  решений шлюза и событий блокировщика обычного Chrome в памяти. Из приложения
+  доступны управление Chrome-агентом, явная HTTP-диагностика одной вкладки и
+  временный просмотр ответа; справка встроена в приложение и расширение.
   См. [модуль и установку](modules/mac-privacy-guard/README.md).
 - **Routing Core** — production data plane: классификация через dnsmasq/ipset,
   sing-box REDIRECT, selected full-VPS TPROXY и home Reality ingress, managed

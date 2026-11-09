@@ -27,15 +27,21 @@ def extension(destination, domains):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.2.0', 'description': 'Blocks sensitive destinations and reports local block metadata to GhostRoute Guard.',
+                'version': '0.3.0', 'description': 'Sensitive-site protection, local app controls and explicit per-tab HTTP diagnostics.',
                 'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging'],
                 'background': {'service_worker': 'background.js'},
+                'devtools_page': 'devtools.html',
+                'icons': {str(size): f'icon-{size}.png' for size in (16, 32, 48, 128)},
                 'declarative_net_request': {'rule_resources': [{'id': 'sensitive', 'enabled': True, 'path': 'rules.json'}]},
                 'action': {'default_popup': 'popup.html'}}
     for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules))]:
         write_private(destination / filename, content.encode())
-    for filename in ('background.js', 'popup.html', 'popup.js', 'popup.css'):
+    for filename in ('background.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
+                     'devtools.html', 'devtools.js', 'diagnostics.js', 'diagnostics.html', 'panel.js', 'panel.css'):
         write_private(destination / filename, (ROOT / 'extension' / filename).read_bytes())
+    for size in (16, 32, 48, 128):
+        filename = f'icon-{size}.png'
+        write_private(destination / filename, (ROOT / 'assets' / filename).read_bytes())
 
 
 def extension_id(destination):
@@ -74,10 +80,12 @@ def install(destination, python):
         for name in ('mac_guard',):
             shutil.copytree(ROOT / name, resources / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (resources / 'python-path').write_text(str(python.resolve()) + '\n')
+        shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.2.1',
-                'CFBundleVersion': '3', 'LSMinimumSystemVersion': '13.0',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.3.0',
+                'CFBundleIconFile': 'AppIcon',
+                'CFBundleVersion': '4', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}

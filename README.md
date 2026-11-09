@@ -332,7 +332,9 @@ core, not just a set of firewall scripts:
 
 - **GhostRoute Guard for Mac** — native SwiftUI access controls, a protected
   Chrome profile with a qualified proxy-only gate, and an in-memory journal
-  receiving gateway decisions and ordinary Chrome blocker events. See the
+  receiving gateway decisions and ordinary Chrome blocker events. The app also
+  controls the Chrome agent and explicit per-tab HTTP diagnostics, with built-in
+  help and bounded temporary response previews. See the
   [module and installation guide](modules/mac-privacy-guard/README.md).
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
   sing-box REDIRECT, selected full-VPS TPROXY, home Reality ingress, managed
