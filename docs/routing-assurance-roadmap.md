@@ -77,6 +77,7 @@ an audit severity count alone is not proof of production exploitability.
 | RA-09 | Условно · продвижение lab | Native C, Amn и D за пределами уже испытанных клиентов | Совместимый клиент, реальная нагрузка и восстановление доказаны перед изменением статуса канала |
 | RA-10 | P1 перед следующим runtime-изменением | CI не даёт полного проверяемого результата | Поддерживаемый browser runner; fixture-тесты проходят без реального SSH; все обязательные jobs выполнены |
 | RA-11 | P1 · разбор применимости | Сигналы npm audit для Console/control plane | Advisories сопоставлены с lockfile, runtime/dev scope и доступными путями; применимые исправления проверены без обхода browser-gate |
+| RA-12 | P1 · приёмка Mac Guard по области действия | Случайный sensitive direct на Mac вне защищённого браузера | Blocker включён и проверен в нужных обычных профилях; отдельно квалифицированы используемый VPN, sleep/network-change/reboot; подтверждена encrypted backup-копия нового приватного профиля |
 
 ### RA-01 — независимая копия и восстановление
 
@@ -178,6 +179,23 @@ dev-only зависимости, проверить достижимость з�
 Playwright и публичной доставки требуют локальной seeded GUI-проверки desktop/
 mobile и защищённого WebKit/iPhone контракта после deploy по AGENTS.md. Этот пункт
 не разрешает менять channel ownership, DNS или firewall ради исправления UI.
+
+### RA-12 — клиентская защита Mac
+
+[Mac Privacy Guard](../modules/mac-privacy-guard/README.md) реализован отдельным
+модулем: native shell, fixed-proxy Chrome, allowlist для домашнего HTTPS CONNECT,
+adapter с привязкой к VPN-интерфейсу, exit qualification и MV3 blocker.
+Локальные TLS/state/API fixtures и реальные Chrome проверки отказов отделены от
+квалификации конкретного установленного VPN и его lifecycle.
+
+Оставшаяся приёмка: включение blocker в фактически используемых обычных профилях
+Chrome (включая Incognito при необходимости), измеренные sleep/network-change/
+reboot сценарии и квалификация каждого выбранного стороннего VPN. Домашний
+allowlist сверять с deployed sensitive policy после её изменения; один canary
+не доказывает маршрутизацию всех доменов. Новый приватный профиль необходимо
+явно включить в зашифрованную recovery-копию. Точный installed/activated/verified
+статус остаётся в приватном отчёте. Не называть модуль системным firewall для
+всех приложений и не снимать существующие сетевые ограничения ради его приёмки.
 
 ## Что не требуется внедрять сейчас
 

@@ -56,6 +56,7 @@ diagnostic logs.
 | Local encrypted archives | Ignored `reports/router-backups/` with a private latest pointer | A verified recovery copy outside the router, still on the control machine |
 | Independent encrypted copy | Private object storage or a separate encrypted medium | Recovery after loss of the control machine; requires full downloaded restore proof |
 | Diagnostic tools | Ignored `reports/client-probes/` | Isolated client/proxy checks; not a running replica of the router or VPS |
+| Optional Mac Guard profile | Private user Application Support `GhostRoute Guard/profile.json` | Authenticated Mac proxy routes and approved exits; include explicitly in an encrypted control-material backup after creation/change |
 
 The complete bundle uses `router-usb-jffs-nvram.tar.gz.gpg` for router files,
 `mac-recovery-material.tar.gz.gpg` for private control material and local probe
@@ -65,6 +66,13 @@ archives. Review the private manifest for the exact included paths; do not assum
 that arbitrary home directories, every SSH private key, browser credentials or
 all VPS application databases are present. Independently owned VPS apps need
 their own backup contract.
+
+Existing archives do not automatically include a later-installed Mac Guard
+profile. Refresh the encrypted control-material inventory explicitly; verify the
+restored member before claiming coverage. Guard browser cookies/history are
+excluded by default. Rebuild its app/extension from the recorded source commit;
+do not restore stale loopback ports, process IDs or locks. See the
+[Mac recovery procedure](../../mac-privacy-guard/docs/operations.md#обновление-копия-и-rollback).
 
 This is a file recovery bundle, not a firmware image, ASUS CFG import or a live
 standby. Probe tools use isolated local listeners and do not replace actual

@@ -22,6 +22,13 @@ Live snapshots do not belong here. Put live command output, real endpoints,
 actual listener values, public IPs and generated client material in gitignored
 `reports/`, router health output or `secrets/`.
 
+The optional [Mac Privacy Guard](../modules/mac-privacy-guard/README.md) is a
+control-machine application, outside the router/VPS listener registry. Its
+loopback gate/dashboard ports are allocated locally and its private profile,
+browser data and app bundle are described in the
+[module inventory](../modules/mac-privacy-guard/docs/operations.md#локальные-компоненты).
+It adds no channel listener or router supervisor ownership.
+
 ## Version Policy Classes
 
 - `proven_good`: the currently trusted runtime baseline.

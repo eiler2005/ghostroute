@@ -43,6 +43,9 @@ assert_executable "modules/routing-core/bin/channel-amn-profile"
 assert_executable "modules/secrets-management/bin/secret-scan"
 assert_executable "modules/secrets-management/bin/init-stealth-vault.sh"
 assert_executable "modules/secrets-management/bin/cleanup-vault-backups"
+assert_executable "modules/mac-privacy-guard/bin/guard"
+assert_executable "modules/mac-privacy-guard/bin/install-mac"
+assert_executable "modules/mac-privacy-guard/tests/run.sh"
 
 if find "${PROJECT_ROOT}/scripts" -type f ! -name README.md | grep . >/dev/null; then
   echo "scripts/ must only contain common utilities, not module aliases:" >&2

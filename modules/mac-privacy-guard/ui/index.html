@@ -1,0 +1,10 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GhostRoute Guard</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main><header><span class="brand">GHOSTROUTE / MAC</span><span class="pill">Локальное приложение</span></header>
+<h1>Чувствительные сайты.<br><span>Только проверенный путь.</span></h1>
+<p class="intro">Отдельный браузер с обязательным шлюзом. Выберите маршрут, дождитесь проверки и откройте сайт.</p>
+<section class="status" aria-live="polite"><div><span id="state" class="state">ЗАКРЫТО</span><p id="message">Подключаемся к локальному приложению…</p></div><button id="lock" class="danger">Закрыть доступ</button></section>
+<section><h2>1 · Маршрут</h2><div id="routes" class="routes"></div><p id="empty" hidden>Импортируйте приватный профиль, подготовленный по инструкции модуля.</p><label class="import">Импорт профиля <input id="profile" type="file" accept="application/json,.json"></label><p class="muted">Пароли и адреса сохраняются только локально. Проверенный выход задаётся заранее; приложение не доверяет случайному текущему IP.</p></section>
+<section><h2>2 · Защищённый браузер</h2><form id="open"><label for="url">HTTPS-адрес</label><div class="address"><input id="url" type="text" autocomplete="off" spellcheck="false" placeholder="https://example.org" required><button id="browse" disabled>Открыть</button></div></form><p id="error" class="error" role="alert"></p><p id="counts" class="muted"></p></section>
+<aside><strong>Граница защиты</strong><p>Защита действует в браузере, открытом этим приложением. Обычный Chrome требует отдельного расширения-блокировщика. Другие приложения Mac не охвачены.</p><p>Домашний маршрут пропускает только явно разрешённые домены. VPN-маршрут привязан к выбранному интерфейсу. При отказе автоматического перехода на другой маршрут нет.</p></aside>
+<footer>Без телеметрии · Шлюз не ведёт журнал посещений · Chrome сохраняет свою песочницу</footer>
+</main></body></html>

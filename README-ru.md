@@ -298,6 +298,10 @@ fallback на другой IP. [Контракт, ограничения и пр
 GhostRoute устроен как небольшая операционная платформа вокруг routing core, а
 не просто набор firewall-скриптов:
 
+- **GhostRoute Guard для Mac** — отдельный защищённый профиль Chrome с
+  обязательным аутентифицированным proxy-шлюзом, проверкой выбранного маршрута
+  и генератором блокировщика чувствительных сайтов для обычного Chrome.
+  См. [модуль и установку](modules/mac-privacy-guard/README.md).
 - **Routing Core** — production data plane: классификация через dnsmasq/ipset,
   sing-box REDIRECT, selected full-VPS TPROXY и home Reality ingress, managed
   Reality egress на VPS, direct-out fallback для non-selected non-managed

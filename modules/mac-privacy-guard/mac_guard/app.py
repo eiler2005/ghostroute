@@ -1,0 +1,180 @@
+"""Loopback dashboard. All mutations require an unguessable per-run token."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hmac
+import json
+import os
+from pathlib import Path
+import secrets
+import signal
+import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .browser import Browser
+from .policy import GuardError, load_private, private_dir, validate_config, write_private
+from .service import Gate, Guard
+
+ASSETS = Path(__file__).resolve().parent.parent / 'ui'
+
+
+class Dashboard(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, guard, browser, state):
+        self.guard, self.browser, self.state = guard, browser, state
+        self.session_credential = secrets.token_urlsafe(32)
+        self.actions = threading.Lock()
+        super().__init__(('127.0.0.1', 0), Handler)
+        self.origin = f'http://127.0.0.1:{self.server_port}'
+
+    def handle_error(self, request, client_address):
+        pass
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(10)
+
+    def send(self, code, data, content_type='application/json'):
+        self.send_response(code)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def valid_host(self):
+        return self.headers.get('Host') == self.server.origin.removeprefix('http://')
+
+    def authorized(self):
+        credential = self.headers.get('Authorization', '')
+        return (self.valid_host() and hmac.compare_digest(credential, 'Bearer ' + self.server.session_credential)
+                and self.headers.get('Origin', self.server.origin) == self.server.origin)
+
+    def do_GET(self):
+        if not self.valid_host():
+            return self.send(403, b'{}')
+        if self.path == '/api/status':
+            if not self.authorized():
+                return self.send(403, b'{}')
+            return self.send(200, json.dumps(self.server.guard.status()).encode())
+        assets = {'/': ('index.html', 'text/html; charset=utf-8'),
+                  '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+                  '/style.css': ('style.css', 'text/css; charset=utf-8')}
+        if self.path not in assets:
+            return self.send(404, b'{}')
+        filename, content_type = assets[self.path]
+        self.send(200, (ASSETS / filename).read_bytes(), content_type)
+
+    def do_POST(self):
+        if not self.authorized() or self.headers.get('Content-Type') != 'application/json':
+            return self.send(403, b'{}')
+        if not self.server.actions.acquire(blocking=False):
+            return self.send(409, b'{"error":"Action in progress"}')
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 131072 or self.headers.get('Transfer-Encoding'):
+                raise GuardError('Некорректный запрос')
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise GuardError('Некорректный запрос')
+            guard = self.server.guard
+            if self.path == '/api/activate' and set(payload) == {'route'}:
+                # Qualification runs independently, so Lock can always cancel it.
+                reservation = guard.begin_activation(payload['route'])
+                threading.Thread(target=guard.finish_activation, args=reservation, daemon=True).start()
+            elif self.path == '/api/lock' and not payload:
+                guard.lock()
+            elif self.path == '/api/open' and set(payload) == {'url'}:
+                if guard.status()['state'] != 'active':
+                    raise GuardError('Сначала подтвердите маршрут')
+                self.server.browser.open(payload['url'])
+            elif self.path == '/api/profile' and set(payload) == {'profile'}:
+                config = validate_config(payload['profile'])
+                guard.lock('Профиль обновлён; требуется проверка маршрута')
+                write_private(self.server.state / 'profile.json', json.dumps(config).encode())
+                guard.config = config
+            else:
+                return self.send(404, b'{}')
+            self.send(200, json.dumps(guard.status()).encode())
+        except (GuardError, ValueError, TypeError, KeyError, OSError):
+            self.send(400, json.dumps({'error': 'Действие не выполнено. Проверьте профиль, маршрут и HTTPS-адрес.'}).encode())
+        finally:
+            self.server.actions.release()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--state', type=Path, default=Path.home() / 'Library/Application Support/GhostRoute Guard')
+    parser.add_argument('--parent-pid', type=int)
+    args = parser.parse_args()
+    private_dir(args.state)
+    # One gate owns the persistent browser profile and its fixed loopback port.
+    lock_file = open(args.state / 'app.lock', 'a')
+    os.chmod(args.state / 'app.lock', 0o600)
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise SystemExit('GhostRoute Guard is already running')
+    profile = args.state / 'profile.json'
+    config, issue = None, None
+    if profile.exists():
+        try:
+            config = load_private(profile)
+        except (GuardError, OSError):
+            issue = 'Приватный профиль не прошёл проверку; доступ закрыт'
+    guard = Guard(config)
+    if issue:
+        guard.message = issue
+    port_path = args.state / 'gate-port'
+    try:
+        port = int(port_path.read_text()) if port_path.exists() else 0
+        if port and not 1024 <= port <= 65535:
+            raise ValueError()
+        gate = Gate(guard, port)
+    except (ValueError, OSError):
+        raise SystemExit('Guard port is unavailable; close the old protected browser before repair') from None
+    write_private(port_path, str(gate.server_address[1]).encode())
+    browser = Browser(args.state, gate.server_address[1])
+    dashboard = Dashboard(guard, browser, args.state)
+    stop = threading.Event()
+
+    def monitor():
+        while not stop.wait(1):
+            if args.parent_pid is not None and os.getppid() != args.parent_pid:
+                stop.set()
+                return
+
+    def health():
+        while not stop.wait(15):
+            guard.recheck()
+
+    for target in (gate.serve_forever, dashboard.serve_forever, monitor, health):
+        threading.Thread(target=target, daemon=True).start()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda *_: stop.set())
+    print(json.dumps({'url': dashboard.origin + '/#' + dashboard.session_credential}), flush=True)
+    try:
+        stop.wait()
+    finally:
+        guard.lock()
+        browser.close()
+        gate.shutdown()
+        dashboard.shutdown()
+        gate.server_close()
+        dashboard.server_close()
+        lock_file.close()
+
+
+if __name__ == '__main__':
+    main()

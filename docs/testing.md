@@ -1,5 +1,12 @@
 # Testing Strategy
 
+The optional Mac application has independent checks:
+`./modules/mac-privacy-guard/tests/run.sh` and
+`node modules/mac-privacy-guard/tests/browser.mjs`. Its
+[security/test contract](../modules/mac-privacy-guard/docs/security-and-testing.md)
+separates unit/fixture evidence, real Chrome failure tests, extension activation
+and live VPN acceptance. These checks require no router mutation or Console deploy.
+
 GhostRoute is infrastructure: most behavior lives in shell, Ansible templates,
 router runtime hooks and a Node/SQLite Console. The test strategy is built so the
 **contract** of each layer can be verified **offline, deterministically, and in
