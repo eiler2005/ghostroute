@@ -10,6 +10,7 @@ from pathlib import Path
 import secrets
 import signal
 import socket
+import socketserver
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -22,6 +23,13 @@ ASSETS = Path(__file__).resolve().parent.parent / 'ui'
 
 class Dashboard(ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer otherwise calls getfqdn() for this literal loopback bind.
+        # A dashboard must not wait for or disclose anything to system DNS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
 
     def __init__(self, guard, browser, state):
         self.guard, self.browser, self.state = guard, browser, state

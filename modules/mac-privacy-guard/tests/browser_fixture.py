@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import signal
 import socket
+import socketserver
 import ssl
 import sys
 import threading
@@ -16,6 +17,11 @@ from mac_guard.service import Gate, Guard
 root = Path(sys.argv[1])
 counts = {'origin': 0, 'direct': 0, 'udp': 0}
 
+class LocalHTTP(ThreadingHTTPServer):
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = 'localhost', self.server_address[1]
+
 class Origin(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
@@ -26,7 +32,7 @@ class Origin(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-origin = ThreadingHTTPServer(('127.0.0.1', 0), Origin)
+origin = LocalHTTP(('127.0.0.1', 0), Origin)
 tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 tls.load_cert_chain(root / 'cert.pem', root / 'key.pem')
 origin.socket = tls.wrap_socket(origin.socket, server_side=True)
@@ -38,8 +44,8 @@ class Tripwire(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-tripwire = ThreadingHTTPServer(('127.0.0.1', 0), Tripwire)
-class IPv6HTTP(ThreadingHTTPServer): address_family = socket.AF_INET6
+tripwire = LocalHTTP(('127.0.0.1', 0), Tripwire)
+class IPv6HTTP(LocalHTTP): address_family = socket.AF_INET6
 tripwire6 = IPv6HTTP(('::1', 0), Tripwire)
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udp.bind(('127.0.0.1', 0))
@@ -75,7 +81,7 @@ class Control(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-control = ThreadingHTTPServer(('127.0.0.1', 0), Control)
+control = LocalHTTP(('127.0.0.1', 0), Control)
 for server in (origin, tripwire, tripwire6, gate, dashboard, control):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1],

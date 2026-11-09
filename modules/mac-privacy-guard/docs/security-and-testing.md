@@ -19,7 +19,8 @@ does not pretend to provide that boundary. An outer `sandbox-exec` wrapper was
 rejected because it conflicts with Chrome's own nested sandbox. Disabling Chrome's
 sandbox to make the wrapper run would weaken the design and is not used.
 
-The native shell loads only its loopback dashboard. API mutations require a
+The native shell loads only its loopback dashboard. The dashboard binds to a
+literal loopback address without a reverse-DNS lookup. API mutations require a
 per-run bearer token, matching Host/Origin and JSON; no remote CORS, command
 execution, arbitrary file path endpoint or upstream secret fields in status.
 Tokens stay in the bootstrap pipe and URL fragment/session storage, not query logs.

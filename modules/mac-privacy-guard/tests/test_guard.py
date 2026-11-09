@@ -196,7 +196,8 @@ class DashboardTests(unittest.TestCase):
     def test_auth_origin_and_redaction(self):
         with tempfile.TemporaryDirectory() as temporary:
             guard = Guard(profile())
-            server = Dashboard(guard, Mock(), Path(temporary))
+            with patch('socket.getfqdn', side_effect=AssertionError('Loopback bind used DNS')):
+                server = Dashboard(guard, Mock(), Path(temporary))
             threading.Thread(target=server.serve_forever, daemon=True).start()
             def request(method, path, body=None, **headers):
                 connection = http.client.HTTPConnection(*server.server_address, timeout=2)
