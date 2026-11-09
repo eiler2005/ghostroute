@@ -330,9 +330,9 @@ and [temporary-mode runbook](modules/recovery-verification/docs/readonly-entware
 GhostRoute is organized as a small operational platform around the routing
 core, not just a set of firewall scripts:
 
-- **GhostRoute Guard for Mac** — a separate protected Chrome profile with an
-  authenticated, proxy-only gate, explicit route qualification and a generated
-  sensitive-site blocker for ordinary Chrome profiles. See the
+- **GhostRoute Guard for Mac** — native SwiftUI access controls, a protected
+  Chrome profile with a qualified proxy-only gate, and an in-memory journal
+  receiving gateway decisions and ordinary Chrome blocker events. See the
   [module and installation guide](modules/mac-privacy-guard/README.md).
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
   sing-box REDIRECT, selected full-VPS TPROXY, home Reality ingress, managed

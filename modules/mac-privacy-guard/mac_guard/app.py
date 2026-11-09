@@ -1,4 +1,4 @@
-"""Loopback dashboard. All mutations require an unguessable per-run token."""
+"""Loopback control API. All reads and mutations require a per-run token."""
 from __future__ import annotations
 
 import argparse
@@ -11,15 +11,15 @@ import secrets
 import signal
 import socket
 import socketserver
+import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .browser import Browser
+from .chrome_events import ChromeEvents
 from .policy import GuardError, load_private, private_dir, validate_config, write_private
 from .service import Gate, Guard
-
-ASSETS = Path(__file__).resolve().parent.parent / 'ui'
-
 
 class Dashboard(ThreadingHTTPServer):
     daemon_threads = True
@@ -72,17 +72,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.valid_host():
             return self.send(403, b'{}')
-        if self.path == '/api/status':
+        if self.path in ('/api/status', '/api/activity'):
             if not self.authorized():
                 return self.send(403, b'{}')
-            return self.send(200, json.dumps(self.server.guard.status()).encode())
-        assets = {'/': ('index.html', 'text/html; charset=utf-8'),
-                  '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-                  '/style.css': ('style.css', 'text/css; charset=utf-8')}
-        if self.path not in assets:
-            return self.send(404, b'{}')
-        filename, content_type = assets[self.path]
-        self.send(200, (ASSETS / filename).read_bytes(), content_type)
+            data = self.server.guard.status() if self.path == '/api/status' else self.server.guard.activity()
+            return self.send(200, json.dumps(data).encode())
+        return self.send(404, b'{}')
 
     def do_POST(self):
         if not self.authorized() or self.headers.get('Content-Type') != 'application/json':
@@ -103,19 +98,27 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=guard.finish_activation, args=reservation, daemon=True).start()
             elif self.path == '/api/lock' and not payload:
                 guard.lock()
+            elif self.path == '/api/activity/clear' and not payload:
+                guard.clear_activity()
+            elif self.path == '/api/extension-folder' and not payload:
+                folder = self.server.state / 'Chrome Blocker'
+                if sys.platform != 'darwin' or not folder.is_dir():
+                    raise GuardError('Папка расширения недоступна')
+                subprocess.run(['open', str(folder)], check=True, timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif self.path == '/api/open' and set(payload) == {'url'}:
                 if guard.status()['state'] != 'active':
                     raise GuardError('Сначала подтвердите маршрут')
                 self.server.browser.open(payload['url'])
             elif self.path == '/api/profile' and set(payload) == {'profile'}:
                 config = validate_config(payload['profile'])
-                guard.lock('Профиль обновлён; требуется проверка маршрута')
+                guard.lock('Профиль обновлён; требуется проверка маршрута', 'profile_updated')
                 write_private(self.server.state / 'profile.json', json.dumps(config).encode())
                 guard.config = config
             else:
                 return self.send(404, b'{}')
             self.send(200, json.dumps(guard.status()).encode())
-        except (GuardError, ValueError, TypeError, KeyError, OSError):
+        except (GuardError, ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError):
             self.send(400, json.dumps({'error': 'Действие не выполнено. Проверьте профиль, маршрут и HTTPS-адрес.'}).encode())
         finally:
             self.server.actions.release()
@@ -155,6 +158,7 @@ def main():
     write_private(port_path, str(gate.server_address[1]).encode())
     browser = Browser(args.state, gate.server_address[1])
     dashboard = Dashboard(guard, browser, args.state)
+    chrome_events = ChromeEvents(guard, args.state)
     stop = threading.Event()
 
     def monitor():
@@ -167,7 +171,7 @@ def main():
         while not stop.wait(15):
             guard.recheck()
 
-    for target in (gate.serve_forever, dashboard.serve_forever, monitor, health):
+    for target in (gate.serve_forever, dashboard.serve_forever, chrome_events.serve_forever, monitor, health):
         threading.Thread(target=target, daemon=True).start()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
@@ -179,8 +183,10 @@ def main():
         browser.close()
         gate.shutdown()
         dashboard.shutdown()
+        chrome_events.shutdown()
         gate.server_close()
         dashboard.server_close()
+        chrome_events.server_close()
         lock_file.close()
 
 

@@ -4,18 +4,35 @@
 
 | Компонент | Где находится | Назначение |
 |---|---|---|
-| Исходники | `modules/mac-privacy-guard/` | Python gate/controller, Swift shell, UI, installer, тесты |
+| Исходники | `modules/mac-privacy-guard/` | Python gate/controller, SwiftUI package, Chrome integration, installer, тесты |
 | Приложение | `~/Applications/GhostRoute Guard.app` | Собранный ad-hoc signed bundle; не App Store/notarized distribution |
 | Состояние | `~/Library/Application Support/GhostRoute Guard/` | Приватный каталог 700 |
 | Профиль | `profile.json` внутри состояния | Маршруты, доверенные сертификаты/выходы, credentials; 600 |
 | `Browser/` | Внутри состояния | Отдельные Chrome cookies, история и настройки |
 | `gate-port`, `browser-pid`, `app.lock` | Внутри состояния | Локальное владение listener/browser; не deployment inventory |
 | `Chrome Blocker/` | Внутри состояния | Unpacked MV3 extension; включается отдельно в Chrome |
+| `Chrome Native Host/` | Внутри состояния | Приватный stdio → Unix socket bridge; принимает только события, не управляет доступом |
+| `chrome-events.sock` | Внутри состояния | Локальный сокет 600; создаётся приложением, удаляется при штатном выходе |
+| Native host manifest | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/org.ghostroute.guard.events.json` | Разрешает связь только ID данного unpacked extension |
 | Тестовые отчёты | Игнорируемый `reports/mac-guard-design/` | Локальные доказательства, скриншоты и приватная подготовка |
 
 Bundle содержит копию исходников, но использует зафиксированный путь к Python,
 который его собирал. После удаления/замены этого interpreter пересобрать bundle.
 Это не копия роутера/VPS и не отдельная инфраструктура egress.
+
+Swift Package состоит из `GuardCore` (модели и клиент локального API), `GuardUI`
+(MainActor store и нативные представления), `GuardApp` (процесс и окно AppKit).
+HTML/WKWebView не используется. Локальный HTTP endpoint служит только API с
+токеном; его корень возвращает 404, панели в браузере нет.
+
+Проверки нативного клиента и состояния, доступные с Command Line Tools без Xcode:
+
+```bash
+swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks
+```
+
+Для проверки без создания локального `.build` используйте
+`--scratch-path reports/mac-guard-ui/swift-build` перед именем `GuardNativeChecks`.
 
 ## Приватный профиль
 
@@ -101,6 +118,25 @@ leaf DER, включая self-signed. Автоматического TOFU или
 
 ## Отказы и восстановление
 
+В главном окне маршрут выбирается отдельно от кнопки «Открыть доступ». Во время
+проверки «Закрыть доступ» остаётся доступной и отменяет результат проверки.
+Сменить маршрут можно после закрытия доступа. «Открыть сайт» запускает только
+отдельный браузер Guard; обычный профиль Chrome продолжает блокировать каталог.
+
+Журнал хранит последние 300 событий в памяти, включая закрытые соединения,
+отказы, сетевые ошибки и управление доступом. Фильтры, поиск и детали объясняют
+причину и источник. «Очистить» удаляет события, но сохраняет счётчики текущего
+запуска. Отправленные/полученные байты учитывают данные внутри туннелей, включая
+внутренний TLS; это не размер HTTP-страниц и не общий расход сети Mac.
+
+Блокировщик передаёт через Native Messaging только собственные срабатывания
+правил. Сообщения не содержат URL-путь, query, tab ID, initiator, заголовки или
+тело. Его локальный канал не имеет API открытия доступа. «На связи» означает
+heartbeat включённого ruleset менее 45 секунд назад хотя бы в одном экземпляре.
+Без Guard блокировка работает, но события теряются; дискового буфера нет.
+ID unpacked extension привязан к абсолютному пути. При переносе папки заново
+выполнить installer для регистрации нового `allowed_origins`.
+
 | Симптом | Безопасное действие |
 |---|---|
 | Проверка выхода не прошла | Проверить доступность и trust выбранного маршрута; не добавлять текущий IP вслепую |
@@ -132,6 +168,10 @@ backend также замечает исчезновение parent process и �
    существующее приложение и не трогает приватный профиль.
 3. При обновлении sensitive-каталога пересобрать extension через
    `bin/install-mac --extension-only`, затем нажать Reload в `chrome://extensions`.
+   Installer обновляет и Native Messaging host. Chrome может запросить принятие
+   добавленных разрешений. «Показать папку расширения» в настройках открывает
+   ровно установленную папку в Finder. Для изолированной сборки укажите
+   `--native-hosts <private_build_dir>` вместе с временными `--app`/`--extension`.
    Guard allowlist обновляется отдельно после сверки deployed router policy.
 4. Для rollback закрыть новый экземпляр, вернуть прежний bundle и соответствующий
    приватный профиль; проверить маршрут до открытия сайтов.
@@ -139,10 +179,12 @@ backend также замечает исчезновение parent process и �
 `Browser/` содержит сессии/историю и по умолчанию не должен попадать в обычный
 диагностический архив. Для восстановления маршрутов достаточно исходников,
 Python/Chrome и приватного профиля; browser sessions можно создать заново.
-`gate-port`, lock и PID не переносить на другой Mac. Blocker пересобрать и включить
+`gate-port`, lock, Unix socket и PID не переносить на другой Mac. Blocker пересобрать и включить
 в новом профиле вручную. Зашифрованная копия на том же Mac не является offsite.
 См. [общий backup contract](../../secrets-management/docs/vault-offsite-backup.md).
 
 Удаление: закрыть Guard и защищённый Chrome, удалить `.app`, затем при необходимости
 приватный каталог. Blocker удалить/выключить отдельно в Chrome. Это снимает
 соответствующую клиентскую защиту; на роутере откатывать нечего.
+Удалить также только manifest `org.ghostroute.guard.events.json` из пользовательского
+Chrome NativeMessagingHosts; соседние manifests других приложений сохранять.

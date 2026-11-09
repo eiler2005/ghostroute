@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/guard-tools" --ignore-scripts --no-audit --no-fund playwright@1.59.1
+      - run: node "$RUNNER_TEMP/guard-tools/node_modules/playwright/cli.js" install chromium
+      - run: swift run --package-path modules/mac-privacy-guard/native --scratch-path "$RUNNER_TEMP/guard-swift" GuardNativeChecks
       - run: modules/mac-privacy-guard/tests/run.sh
       - name: Real Chrome negative-path checks
         run: node modules/mac-privacy-guard/tests/browser.mjs
@@ -34,4 +36,10 @@ jobs:
           GUARD_REPORT_DIR: ${{ runner.temp }}/guard-browser-report
       - name: Build local app bundle
         working-directory: modules/mac-privacy-guard
-        run: python3 -B -m mac_guard.install --catalog ../../configs/sensitive-domains.txt --app "$RUNNER_TEMP/Guard.app" --extension "$RUNNER_TEMP/Guard-blocker"
+        run: python3 -B -m mac_guard.install --catalog ../../configs/sensitive-domains.txt --app "$RUNNER_TEMP/Guard.app" --extension "$RUNNER_TEMP/Guard-blocker" --native-hosts "$RUNNER_TEMP/Guard-native-hosts"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guard-fixture-evidence
+          path: ${{ runner.temp }}/guard-browser-report
+          if-no-files-found: ignore

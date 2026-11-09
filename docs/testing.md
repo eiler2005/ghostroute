@@ -6,7 +6,8 @@ reference retired raster disclosures. Runtime identifiers are a separate
 compatibility contract and are not renamed by publication maintenance.
 
 The optional Mac application has independent checks:
-`./modules/mac-privacy-guard/tests/run.sh` and
+`./modules/mac-privacy-guard/tests/run.sh`,
+`swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks` and
 `node modules/mac-privacy-guard/tests/browser.mjs`. Its
 [security/test contract](../modules/mac-privacy-guard/docs/security-and-testing.md)
 separates unit/fixture evidence, real Chrome failure tests, extension activation

@@ -19,11 +19,14 @@ does not pretend to provide that boundary. An outer `sandbox-exec` wrapper was
 rejected because it conflicts with Chrome's own nested sandbox. Disabling Chrome's
 sandbox to make the wrapper run would weaken the design and is not used.
 
-The native shell loads only its loopback dashboard. The dashboard binds to a
-literal loopback address without a reverse-DNS lookup. API mutations require a
+The SwiftUI app uses a typed client over its child process's loopback API. There
+is no HTML, JavaScript or WKWebView in the application window. The API binds to a
+literal loopback address without a reverse-DNS lookup. API reads and mutations require a
 per-run bearer token, matching Host/Origin and JSON; no remote CORS, command
 execution, arbitrary file path endpoint or upstream secret fields in status.
-Tokens stay in the bootstrap pipe and URL fragment/session storage, not query logs.
+The bootstrap token stays in the private pipe and native process memory, not query logs.
+The native client removes the bootstrap fragment before making requests and
+keeps the credential only in memory. The API serves no browser dashboard.
 Local processes with the same user's privileges can read the profile/token and
 are not isolated by this API boundary. The CONNECT listener is loopback only.
 
@@ -41,10 +44,23 @@ It bounds queued data, handles SSL readiness states and drains buffered output
 before closing on peer EOF. A large TLS response fixture covers premature-close
 regressions; two independent threads must not operate on the same SSL object.
 
+The bounded in-memory journal records validated destination hosts, fixed reason
+codes, timestamps and tunnel byte totals. It excludes URL paths/queries, request
+headers, payloads and raw upstream exception text. Lock intentionally closes
+tunnels without counting those closures as new refusals or network failures.
+Clearing events does not reset session counters. Chrome reports only this
+extension's DNR matches. The native bridge is restricted to the unpacked
+extension's path-derived ID and a private Unix socket; its schema accepts only
+heartbeat/block metadata and cannot activate a route or invoke the control API.
+No general host access, webRequest, cookies, debugger or content-script permission
+is requested. Block rules explicitly include main-frame requests; omitting
+resourceTypes would exclude that type under Chrome's defaults.
+
 From the repository root:
 
 ```bash
 ./modules/mac-privacy-guard/tests/run.sh
+swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks
 GUARD_REPORT_DIR=reports/mac-guard-design/browser \
   node modules/mac-privacy-guard/tests/browser.mjs
 ```
@@ -57,16 +73,25 @@ loopback origins and profiles are temporary. The test-only certificate bypass is
 never part of application launch arguments. `chromiumSandbox: true` overrides
 Playwright's usual disabled-sandbox default.
 
+Install the test Chromium for the selected Playwright version before the browser
+check (`node <playwright_dir>/cli.js install chromium`). Extension testing runs
+in a temporary profile with its own NativeMessagingHosts registration, not the
+operator's profile or native-host registry. It proves actual main-frame and POST
+subresource refusal, domain boundaries, native message delivery and continuing
+block enforcement when the event receiver is unavailable. Fixture evidence
+contains fake destinations only. Native controls are checked by the Swift store
+suite; the built macOS window additionally requires visual/operator acceptance.
+
 | Layer | Required evidence |
 |---|---|
 | Policy | IDNA and suffix boundaries; private/ambiguous IP, non-HTTPS, CRLF, credentials-in-URL rejected; no DIRECT config; private file ownership/modes |
 | Upstream TLS | Wrong pin and untrusted CA receive no credentials; complete inner HTTPS over outer TLS; approved exit succeeds, other/ambiguous exits fail |
 | Gate | Locked startup; allowlisted tunnel; unknown destination refusal; no direct retry; Lock drains existing sessions; cancelled qualification/late connect cannot reopen access |
 | VPN adapter | Every IPv4/IPv6 socket is bound before connect; missing/recycled index and setsockopt failure produce no unbound retry |
-| Dashboard | Token required, cross-origin mutation rejected, Host enforced, traversal denied, public status redacts endpoint/credentials |
+| Control API | Token required, cross-origin mutation rejected, Host enforced, traversal denied, status redacts endpoint/credentials; no HTML assets |
 | Real Chrome | HTTPS through fixture works; locked/upstream-down/gate-down fail; implicit IPv4/IPv6 loopback bypass absent; no WebRTC UDP or ICE candidates in fixture; netlog contains no DNS transaction |
-| UI | Desktop/mobile layout, applied CSS, locked state and disabled launch button |
-| Extension | Generated MV3 permission/rule shape; actual profile activation and browser refusal are a separate acceptance step |
+| Native app | Swift package build; typed client, strict bootstrap, bearer/Origin, locked startup, stale activation cannot overwrite Lock, lost API disables controls; visual acceptance of the built SwiftUI window |
+| Extension | Actual temporary Chrome main-frame/subresource blocks, no substring false positive, native bridge to Guard, URL redaction, independent enforcement without receiver; operator-profile activation remains separate |
 
 Dedicated CI uses fixed Ubuntu/macOS runners, no secrets and no SSH to deployment.
 It tests this module independently of the repository-wide existing CI debts.
@@ -99,3 +124,7 @@ Remaining activation/provider/lifecycle acceptance belongs to
   JSON DNS requests sent through the bound VPN socket.
 - Apple SDK `netinet/in.h` / `netinet6/in6.h`: Darwin socket interface binding
   constants. Behavior still needs live acceptance for the selected VPN driver.
+- [Chrome Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging):
+  fixed host origins, stdio framing and user-data-directory registration.
+- [Chrome DNR](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest):
+  main-frame resource scope and unpacked-only rule-match feedback.

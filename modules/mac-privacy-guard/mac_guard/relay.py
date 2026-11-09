@@ -4,7 +4,7 @@ import ssl
 import time
 
 
-def relay(left, right, idle_timeout=300):
+def relay(left, right, idle_timeout=300, on_transfer=None):
     peers = {left: right, right: left}
     queued = {left: bytearray(), right: bytearray()}
     sending = {left: None, right: None}
@@ -56,6 +56,8 @@ def relay(left, right, idle_timeout=300):
                     if count <= 0:
                         return
                     del queued[connection][:count]
+                    if on_transfer:
+                        on_transfer('sent' if connection is right else 'received', count)
                     sending[connection] = None
                     write_wait[connection] = 'write'
                     deadline = time.monotonic() + idle_timeout

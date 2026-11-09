@@ -18,7 +18,9 @@ from unittest.mock import Mock, patch
 from mac_guard import policy, transport
 from mac_guard.app import Dashboard
 from mac_guard.browser import arguments
-from mac_guard.install import extension
+from mac_guard.install import extension, extension_id, native_host
+from mac_guard.chrome_events import ChromeEvents, validate_message
+from mac_guard.chrome_bridge import forward, serve
 from mac_guard.service import Gate, Guard, close
 from mac_guard.relay import relay
 
@@ -88,9 +90,13 @@ class PolicyTests(unittest.TestCase):
             extension(Path(temporary), ['sensitive.example.org'])
             rules = json.loads((Path(temporary) / 'rules.json').read_text())
             self.assertEqual(rules[0]['action'], {'type': 'block'})
-            self.assertEqual(rules[0]['condition'], {'requestDomains': ['sensitive.example.org']})
+            self.assertEqual(rules[0]['condition']['requestDomains'], ['sensitive.example.org'])
+            self.assertIn('main_frame', rules[0]['condition']['resourceTypes'])
+            self.assertIn('xmlhttprequest', rules[0]['condition']['resourceTypes'])
             manifest = json.loads((Path(temporary) / 'manifest.json').read_text())
-            self.assertEqual(manifest['permissions'], ['declarativeNetRequest'])
+            self.assertEqual(set(manifest['permissions']), {'declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging'})
+            self.assertNotIn('host_permissions', manifest)
+            self.assertNotIn('content_scripts', manifest)
 
 
 class StateTests(unittest.TestCase):
@@ -186,6 +192,67 @@ class StateTests(unittest.TestCase):
         self.guard.recheck()
         self.assertEqual(self.guard.status()['state'], 'locked')
 
+    def test_journal_live_bytes_lock_and_clear(self):
+        self.guard.activate('home')
+        client, headers = self.request()
+        self.assertIn(b'200', headers)
+        data = b'not-a-url-or-credential' * 4096
+        client.sendall(data)
+        received = bytearray()
+        while len(received) < len(data):
+            received.extend(client.recv(len(data) - len(received)))
+        deadline = time.monotonic() + 2
+        while self.guard.status()['bytes_received'] < len(data) and time.monotonic() < deadline:
+            time.sleep(.01)
+        before = self.guard.status()
+        self.assertEqual(before['connections'], 1)
+        self.assertEqual(before['bytes_sent'], len(data))
+        self.assertEqual(before['bytes_received'], len(data))
+        event = next(e for e in self.guard.activity()['events'] if e['kind'] == 'allowed')
+        self.assertEqual(event['state'], 'open')
+        self.assertNotIn('not-a-url', json.dumps(self.guard.activity()))
+        self.guard.lock()
+        client.close()
+        time.sleep(.03)
+        self.assertEqual(self.guard.status()['errors'], 0, 'Intentional Lock counted as a network error')
+        event = next(e for e in self.guard.activity()['events'] if e['kind'] == 'allowed')
+        self.assertEqual(event['state'], 'closed')
+        self.assertEqual(event['close_reason'], 'manual_lock')
+        self.assertIsInstance(event['duration_ms'], int)
+        self.guard.clear_activity()
+        self.assertEqual(self.guard.activity()['events'], [])
+        self.assertEqual(self.guard.status()['bytes_sent'], before['bytes_sent'])
+        self.assertEqual(self.guard.status()['allowed'], 1)
+
+    def test_denials_errors_and_malformed_requests_are_distinct_and_redacted(self):
+        client, _ = self.request()
+        client.close()
+        self.guard.activate('home')
+        client, _ = self.request('other.example.org')
+        client.close()
+        self.adapter.connect.side_effect = OSError('password=fixture-secret upstream=proxy.example.org')  # FAKE exception proves redaction.
+        client, _ = self.request()
+        client.close()
+        client = socket.create_connection(self.gate.server_address, 2)
+        client.sendall(b'GET http://example.org/private?secret=hidden HTTP/1.1\r\nAuthorization: bearer hidden\r\n\r\n')  # FAKE request payload.
+        self.assertIn(b'403', client.recv(512))
+        client.close()
+        activity = self.guard.activity()
+        reasons = {e['reason'] for e in activity['events']}
+        self.assertTrue({'access_closed', 'not_allowed', 'upstream_failed', 'unsupported_protocol'} <= reasons)
+        self.assertEqual(self.guard.status()['blocked'], 3)
+        self.assertEqual(self.guard.status()['errors'], 1)
+        for value in ('fixture-secret', 'hidden', 'private?', 'proxy.example.org', 'Authorization'):
+            self.assertNotIn(value, json.dumps(activity))
+
+    def test_journal_is_bounded_and_snapshots_cannot_mutate_events(self):
+        for _ in range(350):self.guard.reject('access_closed', 'example.org')
+        snapshot = self.guard.activity()
+        self.assertEqual(len(snapshot['events']), 300)
+        self.assertEqual(self.guard.status()['blocked'], 350)
+        snapshot['events'][0]['host'] = 'tampered.example.org'
+        self.assertEqual(self.guard.activity()['events'][0]['host'], 'example.org')
+
 
 class DashboardTests(unittest.TestCase):
     def test_backend_exits_when_native_parent_is_gone(self):
@@ -209,6 +276,7 @@ class DashboardTests(unittest.TestCase):
                 return result
             try:
                 self.assertEqual(request('GET', '/api/status')[0], 403)
+                self.assertEqual(request('GET', '/api/activity')[0], 403)
                 headers = {'Authorization': 'Bearer ' + server.session_credential, 'Content-Type': 'application/json'}
                 code, body = request('GET', '/api/status', **headers)
                 self.assertEqual(code, 200)
@@ -216,12 +284,69 @@ class DashboardTests(unittest.TestCase):
                     self.assertNotIn(value, body.decode())
                 self.assertEqual(request('POST', '/api/lock', '{}', Origin='https://evil.example.org', **headers)[0], 403)
                 self.assertEqual(request('POST', '/api/lock', '{}', **headers)[0], 200)
+                self.assertEqual(request('POST', '/api/activity/clear', '{}', Origin='https://evil.example.org', **headers)[0], 403)
+                self.assertEqual(request('POST', '/api/activity/clear', '{}', **headers)[0], 200)
+                self.assertEqual(json.loads(request('GET', '/api/activity', **headers)[1])['events'], [])
                 self.assertEqual(request('POST', '/api/open', '{"url":"https://example.org"}', **headers)[0], 400)
                 self.assertEqual(request('GET', '/', Host='evil.example.org')[0], 403)
                 self.assertEqual(request('GET', '/../../etc/passwd')[0], 404)
             finally:
                 server.shutdown()
                 server.server_close()
+
+
+class ChromeEventTests(unittest.TestCase):
+    def test_native_ingress_is_metadata_only_and_cannot_unlock(self):
+        with tempfile.TemporaryDirectory(prefix='guard-ipc-', dir='/tmp') as temporary:
+            state = Path(temporary)
+            guard = Guard(profile())
+            server = ChromeEvents(guard, state)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            heartbeat = {'op':'heartbeat', 'profile':'a'*32, 'version':'0.2.0', 'rules_enabled':True}
+            blocked = {'op':'blocked', 'profile':'a'*32, 'host':'sensitive.example.org', 'method':'POST', 'resource_type':'xmlhttprequest', 'rule_id':1}
+            try:
+                self.assertEqual((state/'chrome-events.sock').stat().st_mode & 0o777, 0o600)
+                self.assertTrue(forward(state, heartbeat)['ok'])
+                self.assertTrue(guard.status()['chrome_connected'])
+                self.assertTrue(forward(state, blocked)['ok'])
+                for change in ({'url':'https://sensitive.example.org/?secret=x'}, {'cookies':'secret'}, {'method':[]}, {'op':'activate'}, {'host':'example.org/path'}):  # FAKE metadata.
+                    self.assertFalse(forward(state, dict(blocked, **change))['ok'])
+                event = guard.activity()['events'][0]
+                self.assertEqual(event['source'], 'chrome')
+                self.assertEqual(event['method'], 'POST')
+                self.assertEqual(guard.status()['blocked'], 1)
+                self.assertEqual(guard.status()['state'], 'locked')
+                self.assertNotIn('secret', json.dumps(guard.activity()))
+                heartbeat['rules_enabled'] = False
+                self.assertTrue(forward(state, heartbeat)['ok'])
+                self.assertFalse(guard.status()['chrome_connected'])
+            finally:
+                server.shutdown();server.server_close()
+            self.assertFalse(forward(state, heartbeat)['ok'])
+
+    def test_native_frames_are_bounded_and_origin_is_fixed(self):
+        import struct
+        message = json.dumps({'op':'heartbeat'}).encode()
+        output = io.BytesIO()
+        with patch('mac_guard.chrome_bridge.forward', return_value={'ok':True}) as send:
+            serve(io.BytesIO(struct.pack('=I',len(message))+message), output, Path('/fixture'))
+            self.assertEqual(send.call_count, 1)
+        length = struct.unpack('=I',output.getvalue()[:4])[0]
+        self.assertEqual(json.loads(output.getvalue()[4:4+length]), {'ok':True})
+        with patch('mac_guard.chrome_bridge.forward') as send:
+            serve(io.BytesIO(struct.pack('=I',8193)),io.BytesIO(),Path('/fixture'))
+            send.assert_not_called()
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            destination = state/'Chrome Blocker'
+            native_host(state,destination,state/'manifests',Path(sys.executable))
+            manifest = json.loads((state/'manifests/org.ghostroute.guard.events.json').read_text())
+            self.assertEqual(manifest['allowed_origins'], ['chrome-extension://'+extension_id(destination)+'/'])
+            host = Path(manifest['path'])
+            result = subprocess.run([str(host),'chrome-extension://'+'a'*32+'/'],capture_output=True,timeout=5)
+            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(result.stdout,b'')
+            self.assertEqual(host.stat().st_mode & 0o777,0o700)
 
 
 class VPNTests(unittest.TestCase):

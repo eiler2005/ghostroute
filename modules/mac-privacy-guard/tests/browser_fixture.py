@@ -12,10 +12,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mac_guard.app import Dashboard
 from mac_guard.browser import arguments
+from mac_guard.chrome_events import ChromeEvents
+from mac_guard.install import extension, extension_id, native_host
+from mac_guard.policy import browser_url
 from mac_guard.service import Gate, Guard
 
 root = Path(sys.argv[1])
-counts = {'origin': 0, 'direct': 0, 'udp': 0}
+counts = {'origin': 0, 'direct': 0, 'udp': 0, 'browser_opened': 0}
 
 class LocalHTTP(ThreadingHTTPServer):
     def server_bind(self):
@@ -36,6 +39,7 @@ origin = LocalHTTP(('127.0.0.1', 0), Origin)
 tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 tls.load_cert_chain(root / 'cert.pem', root / 'key.pem')
 origin.socket = tls.wrap_socket(origin.socket, server_side=True)
+plain_origin = LocalHTTP(('127.0.0.1', 0), Origin)
 
 class Tripwire(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
@@ -62,30 +66,49 @@ class Adapter:
         return socket.create_connection(origin.server_address, 2)
 adapter = Adapter()
 config = {'sensitive_domains': ['fixture.example.org'], 'routes': [{'id': 'fixture', 'kind': 'https_proxy', 'allowed_domains': ['fixture.example.org']}]}
-guard = Guard(config, factory=lambda _: adapter, checker=lambda *_: None)
+qualification = threading.Event()
+qualification.set()
+def checker(*_):
+    if not qualification.wait(5):raise OSError('Fixture qualification timed out')
+guard = Guard(config, factory=lambda _: adapter, checker=checker)
 gate = Gate(guard)
-dashboard = Dashboard(guard, None, root)
+class FixtureBrowser:
+    def open(self, url):
+        browser_url(url)
+        counts['browser_opened'] += 1
+dashboard = Dashboard(guard, FixtureBrowser(), root)
+chrome_events = ChromeEvents(guard, root)
+extension_path = root / 'extension'
+extension(extension_path, ['fixture.example.org'])
+native_host(root, extension_path, root / 'native-manifests', Path(sys.executable))
 
 class Control(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
         if self.path == '/activate': guard.activate('fixture')
         if self.path == '/lock': guard.lock()
+        if self.path == '/restore': adapter.available = True; qualification.set(); guard.lock()
+        if self.path == '/delay': qualification.clear()
+        if self.path == '/release': qualification.set()
+        if self.path == '/chrome-offline': chrome_events.shutdown(); chrome_events.server_close()
         if self.path == '/upstream-down': adapter.available = False; guard.lock(); guard.activate('fixture')
         if self.path == '/gate-down':
             guard.lock()
             gate.shutdown()
             gate.server_close()
-        body = json.dumps(counts).encode()
+        body = json.dumps(dict(counts, guard=guard.status(), activity=guard.activity())).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 control = LocalHTTP(('127.0.0.1', 0), Control)
-for server in (origin, tripwire, tripwire6, gate, dashboard, control):
+for server in (origin, plain_origin, tripwire, tripwire6, gate, dashboard, chrome_events, control):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1],
                   'tripwire': tripwire.server_port, 'tripwire6': tripwire6.server_port,
                   'udp': udp.getsockname()[1], 'dashboard': dashboard.origin + '/#' + dashboard.session_credential,
+                  'plain_origin':plain_origin.server_port, 'extension':str(extension_path),
+                  'extension_id':extension_id(extension_path),
+                  'native_manifest':str(root / 'native-manifests/org.ghostroute.guard.events.json'),
                   'arguments': arguments(root / 'browser', gate.server_address[1])[2:]}), flush=True)
 signal.pause()
