@@ -8,6 +8,11 @@ app request followed the intended route.
 
 ## Expected observations
 
+This table assumes that the request reached the intended ingress, its transport
+peer is authenticated, and the destination matched the stated policy. Channel B
+existing-import authentication is an open boundary documented in
+[the assurance register](routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b).
+
 | Traffic | Access network sees | Destination sees |
 |---|---|---|
 | Managed LAN/Wi-Fi | Home ISP sees router-to-VPS traffic | Active managed VPS exit |
@@ -21,6 +26,13 @@ uses the endpoint's own network and never reaches the router policy. The home IS
 can see the router's VPS connection and any direct home-WAN destinations. A
 destination can still correlate an account, browser fingerprint or request
 timing across exits; an exit-IP check does not establish anonymity.
+
+Domestic/foreign country labels are not the routing selector: the reviewed
+managed/sensitive catalogs and explicit overrides are. An unclassified foreign
+destination can therefore use home WAN. A site sees the public exit IP plus
+application data, not merely a generic router identity; accounts, cookies and
+permitted browser location can still identify the user. IP geolocation is also
+a service-side interpretation rather than a guaranteed country setting.
 
 The current managed VPS is both the router's transport destination and the
 Internet exit for the general managed lane. If that VPS address becomes
@@ -50,6 +62,10 @@ For each real-client result record the channel, client app/version, network
 whether DNS and IPv6 behaved as intended, and whether the app completed a real
 request. Mark untested cells as **untested** rather than green. A report that
 clients "seem fine" is an operator observation, not a measured leak test.
+A synthetic Mac client may prove reachability and an exit for its own request;
+it does not prove the phone app's import, certificate validation, DNS or bypass
+settings. For B, also test that the actual app rejects an untrusted server in an
+isolated fixture before closing server-authentication acceptance.
 Selected-client proxy apps also need inspection on the endpoint: a local
 SOCKS/HTTP listener, app-level DNS or a direct bypass can make a request use a
 different path than the router policy, even when server-side checks are green.
@@ -75,6 +91,12 @@ DNS changes. Automatic expiry or flush is deferred because
 removing an address before a client re-resolves it could send a still-managed
 connection directly over the home WAN. Review domain/IP provenance and test a
 staged policy before changing this behavior.
+
+## Work register
+
+[Routing assurance roadmap](routing-assurance-roadmap.md) owns priorities and
+completion criteria. Keep real client matrices and archive verification evidence
+in ignored local reports. This page defines the method, not a live green status.
 
 ## Controlled recovery check
 

@@ -1,8 +1,14 @@
-# GhostRoute Channels A / B / C / D / M
+# GhostRoute Channels A / B / C / D / M and Amn
 
-This document is the short handoff view of the current channel model. All
-managed channels are home-first: the endpoint's first visible remote endpoint is
-the home public IP/DDNS, not the VPS.
+This document is the short handoff view of the current channel model. The
+default managed client channels are home-first: their first remote endpoint is
+the home public IP/DDNS. Explicit emergency/direct-VPS imports are separate
+operator choices. The endpoint can also bypass home through its own DIRECT rules.
+
+![Home ingress and explicit exit roles](assets/diagrams/ghostroute-routing-en.png)
+
+[Editable platform diagrams](assets/diagrams/ghostroute-platform-en.html) ·
+[Engineering assurance plan](routing-assurance-roadmap.md).
 
 DNS policy is documented separately in [dns-policy.md](dns-policy.md).
 The primary DNS goal is no DNS leak to the mobile operator; BrowserLeaks
@@ -43,6 +49,9 @@ client-to-router ingress from the router-to-VPS egress:
 | B, selected client | VLESS + XHTTP + TLS | Xray, then a local SOCKS relay into sing-box |
 | C1-Shadowrocket, proven compatibility path | HTTPS CONNECT + TLS | sing-box HTTP inbound with TLS |
 | C1-sing-box, native design | Naive over TLS; requires a compatible client | sing-box Naive inbound |
+| D, optional lab | NaiveProxy-style client over HTTPS | Caddy forward_proxy@naive, then sing-box SOCKS |
+| Amn, optional manual lab | AmneziaWG | Isolated userspace engine, then separate sing-box-amn TUN |
+| M, service exception | Service uses a router-initiated reverse SSH path | Router loopback HTTP CONNECT inbound, then home-WAN direct-out |
 
 After the managed/sensitive route decision, the configured owned VPS egress
 uses sing-box's VLESS + Reality + Vision outbound and a VPS Xray Reality
@@ -173,6 +182,12 @@ Generated artifacts:
 ```text
 ansible/out/clients-channel-b/
 ```
+
+The current home-first URI generator includes `allowInsecure=1`. Production use
+for selected clients is a routing status, not a claim that TLS peer authentication
+is complete. See [the profile authentication boundary](../modules/client-profile-factory/docs/client-profiles.md#server-authentication-and-existing-imports)
+and [RA-02](routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b).
+Changing this requires a compatible client migration, not a silent profile refresh.
 
 ### Channel C/D TLS prerequisite
 

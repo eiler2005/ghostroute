@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GhostRoute — architecture and recovery</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#fff;color:#0b172a;font-family:Arial,Helvetica,sans-serif}
+main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1.2}p{line-height:1.65;max-width:1050px}a{color:#1d4ed8}section{margin:40px 0 56px}.diagram-container{overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;max-width:100%}svg{display:block;width:1280px;min-width:1280px;height:auto}svg text{font-family:Arial,Helvetica,sans-serif;fill:#0b172a}.paper{fill:#fff}.zone{fill:#f8fbff;stroke:#dbe5f1;stroke-width:1}.eyebrow{font-size:13px;font-weight:600;letter-spacing:1.6px;fill:#475569}.heading{font-size:36px;font-weight:700}.subtitle{font-size:18px;fill:#475569}.node>rect{fill:#fff;stroke:#94a3b8;stroke-width:1.5}.node.focal>rect{fill:#eff6ff;stroke:#1d4ed8;stroke-width:2}.node.optional>rect{stroke-dasharray:6 4}.node-name{font-size:23px;font-weight:600}.body{font-size:18px;fill:#334155}.mono{font-family:Menlo,Consolas,monospace;font-size:15px;fill:#334155}.tag{font-size:12px;letter-spacing:1.3px;font-weight:600;fill:#475569}.edge{fill:none;stroke:#475569;stroke-width:2}.edge.optional{stroke-dasharray:6 5}.edge.focal{stroke:#1d4ed8}.legend{font-size:16px;fill:#475569}.fine{font-size:15px;fill:#475569}.rule{stroke:#cbd5e1;stroke-width:1}.caption{font-size:16px;color:#475569}
+@media(max-width:600px){main{padding:16px}h1{font-size:27px}}
+@media print{main{max-width:none;padding:0}.diagram-container{overflow:visible;border:0}svg{min-width:0;width:100%;height:auto}section{break-inside:avoid}h1{font-size:24px}}
+</style>
+</head>
+<body>
+<main>
+<nav>
+<a href="ghostroute-platform-ru.html">Русский</a> · <a href="../../channels.md">Channels</a> · <a href="../../routing-assurance-roadmap.md">Engineering plan</a>
+</nav>
+<h1>GhostRoute — architecture and recovery</h1>
+<p>Implemented components and their boundaries. The engineering register owns priorities and evidence completion criteria.</p>
+<section id="routing">
+<h2>Routing</h2>
+<div class="diagram-container">
+<svg id="ghostroute-routing-en" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-routing-en-title ghostroute-routing-en-desc">
+<title id="ghostroute-routing-en-title">Home ingress, three explicit exit roles</title>
+<desc id="ghostroute-routing-en-desc">LAN and home-first clients use router policy with sensitive, managed and direct exits; Amn remains isolated.</desc>
+<defs>
+<marker id="ghostroute-routing-en-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / ROUTING</text>
+<text x="48" y="92" class="heading">Home ingress, three explicit exit roles</text>
+<text x="48" y="128" class="subtitle">The home router applies reviewed catalogs and explicitly selected modes.</text>
+<path class="edge " data-from="lan" data-to="policy" d="M 336,244 H 392 Q 400,244 400,252 V 296 Q 400,304 408,304 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge " data-from="remote" data-to="policy" d="M 336,400 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge optional" data-from="amn" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge optional focal" data-from="policy" data-to="sensitive" d="M 800,304 H 864 Q 872,304 872,296 V 252 Q 872,244 880,244 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge focal" data-from="policy" data-to="managed" d="M 800,400 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge " data-from="policy" data-to="direct" d="M 800,496 H 864 Q 872,496 872,504 V 548 Q 872,556 880,556 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<g class="node " data-node="lan">
+<rect x="48" y="188" width="288" height="112" rx="8"/>
+<text x="72" y="224" class="node-name">Home LAN / Wi-Fi</text>
+<text x="72" y="256" class="mono">A: managed TCP → REDIRECT</text>
+<text x="72" y="284" class="body">App-free router data plane</text>
+</g>
+<g class="node " data-node="remote">
+<rect x="48" y="328" width="288" height="148" rx="8"/>
+<text x="72" y="364" class="node-name">Remote clients</text>
+<text x="72" y="396" class="mono">A: Reality · B: XHTTP/TLS</text>
+<text x="72" y="424" class="mono">C: CONNECT / Naive*</text>
+<text x="72" y="452" class="mono">D: Caddy / NaiveProxy lab</text>
+</g>
+<g class="node optional" data-node="amn">
+<rect x="48" y="500" width="288" height="112" rx="8"/>
+<text x="72" y="536" class="node-name">Amn: manual lab</text>
+<text x="72" y="568" class="body">AmneziaWG → home ingress</text>
+<text x="72" y="596" class="body">Separate runtime processes</text>
+</g>
+<g class="node focal" data-node="policy">
+<rect x="440" y="240" width="360" height="300" rx="8"/>
+<text x="464" y="268" class="tag">POLICY OWNER</text>
+<text x="464" y="302" class="node-name">Home router</text>
+<text x="464" y="340" class="mono">A/B/C/D: sing-box</text>
+<text x="464" y="368" class="mono">Amn: sing-box-amn</text>
+<text x="464" y="396" class="body">One shared catalog intent</text>
+<text x="464" y="424" class="body">Sensitive precedes managed</text>
+<text x="464" y="452" class="body">A: selected full-VPS override</text>
+<text x="464" y="480" class="body">M: separate service path</text>
+</g>
+<g class="node focal optional" data-node="sensitive">
+<rect x="944" y="188" width="288" height="112" rx="8"/>
+<text x="968" y="224" class="node-name">Sensitive sites</text>
+<text x="968" y="256" class="mono">sensitive-out → hermes_vps</text>
+<text x="968" y="284" class="body">When explicitly enabled</text>
+</g>
+<g class="node " data-node="managed">
+<rect x="944" y="344" width="288" height="112" rx="8"/>
+<text x="968" y="380" class="node-name">Managed destinations</text>
+<text x="968" y="412" class="mono">reality-out → active VPS</text>
+<text x="968" y="440" class="body">D may pin its own backend</text>
+</g>
+<g class="node " data-node="direct">
+<rect x="944" y="500" width="288" height="112" rx="8"/>
+<text x="968" y="536" class="node-name">Direct destinations</text>
+<text x="968" y="568" class="mono">direct-out → home WAN</text>
+<text x="968" y="596" class="body">Site sees the home WAN IP</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">Solid: default path. Dashed: opt-in mode or lab. Native C requires a compatible client (*).</text>
+<text x="48" y="704" class="fine">Endpoint DIRECT bypasses home policy. M keeps an isolated regional policy; no automatic failover.</text>
+</svg>
+</div>
+<p class="caption">This is the default split, not every packet-level exception. LAN REDIRECT covers classified managed IPv4 TCP; managed UDP/443 is dropped. Sensitive applies only to matching requests. Endpoint DIRECT, hidden names and app-owned DNS need separate proof. Native C depends on client support; D and Amn remain labs. M uses the separate service path below.</p>
+</section>
+<section id="lifecycle">
+<h2>Lifecycle ownership</h2>
+<div class="diagram-container">
+<svg id="ghostroute-lifecycle-en" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-lifecycle-en-title ghostroute-lifecycle-en-desc">
+<title id="ghostroute-lifecycle-en-title">Startup and recovery ownership</title>
+<desc id="ghostroute-lifecycle-en-desc">Merlin and the supervisor own production lifecycle; Amn is manual and Console uses a constrained report credential.</desc>
+<defs>
+<marker id="ghostroute-lifecycle-en-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / LIFECYCLE</text>
+<text x="48" y="92" class="heading">Startup and recovery ownership</text>
+<text x="48" y="128" class="subtitle">Arrows show lifecycle control; application packets do not flow through the supervisor.</text>
+<path class="edge optional" data-from="hooks" data-to="supervisor" d="M 336,244 H 440" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<path class="edge optional" data-from="control" data-to="supervisor" d="M 944,244 H 800" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="main" d="M 496,296 V 328 Q 496,336 488,336 H 228 Q 220,336 220,344 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="companions" d="M 624,296 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="dns" d="M 752,296 V 328 Q 752,336 760,336 H 1052 Q 1060,336 1060,344 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<g class="node " data-node="hooks">
+<rect x="48" y="188" width="288" height="108" rx="8"/>
+<text x="72" y="224" class="node-name">Merlin hooks</text>
+<text x="72" y="256" class="mono">services-start</text>
+<text x="72" y="284" class="mono">firewall-start / nat-start</text>
+</g>
+<g class="node focal" data-node="supervisor">
+<rect x="440" y="188" width="360" height="108" rx="8"/>
+<text x="464" y="224" class="node-name">Runtime supervisor</text>
+<text x="464" y="256" class="body">Boot and targeted recovery</text>
+<text x="464" y="284" class="body">Readiness checks and watchdogs</text>
+</g>
+<g class="node " data-node="control">
+<rect x="944" y="188" width="288" height="108" rx="8"/>
+<text x="968" y="224" class="node-name">Control machine</text>
+<text x="968" y="256" class="mono">Ansible + Vault</text>
+<text x="968" y="284" class="body">Authorized deployment</text>
+</g>
+<g class="node " data-node="main">
+<rect x="48" y="384" width="344" height="136" rx="8"/>
+<text x="72" y="420" class="node-name">Main sing-box</text>
+<text x="72" y="452" class="body">A: LAN / Home Reality; C</text>
+<text x="72" y="480" class="body">B/D relay → route policy</text>
+<text x="72" y="508" class="body">Sensitive / managed / direct</text>
+</g>
+<g class="node " data-node="companions">
+<rect x="464" y="384" width="352" height="136" rx="8"/>
+<text x="488" y="420" class="node-name">Channel companions</text>
+<text x="488" y="452" class="body">B: Xray · D: Caddy</text>
+<text x="488" y="480" class="body">M: service policy</text>
+<text x="488" y="508" class="body">C/D: TLS sync / renewal</text>
+</g>
+<g class="node " data-node="dns">
+<rect x="888" y="384" width="344" height="136" rx="8"/>
+<text x="912" y="420" class="node-name">DNS and packet rules</text>
+<text x="912" y="452" class="mono">dnsmasq / ipset / iptables</text>
+<text x="912" y="480" class="mono">dnscrypt-proxy</text>
+<text x="912" y="508" class="body">Merlin owns dnsmasq</text>
+</g>
+<g class="node optional" data-node="amn">
+<rect x="48" y="556" width="584" height="80" rx="8"/>
+<text x="72" y="592" class="node-name">Amn: separate manual lifecycle</text>
+<text x="72" y="624" class="mono">engine + sing-box-amn · explicit start / policy refresh</text>
+</g>
+<g class="node " data-node="console">
+<rect x="680" y="556" width="552" height="80" rx="8"/>
+<text x="704" y="592" class="node-name">Console: constrained report access</text>
+<text x="704" y="624" class="body">Dedicated service key → fixed report gate</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">The supervisor reconciles production services and rules; Amn needs explicit recovery after reboot/firewall rebuild.</text>
+<text x="48" y="704" class="fine">M: selected application → isolated service policy → approved regional egress.</text>
+</svg>
+</div>
+<p class="caption">This figure separates lifecycle ownership from the data plane. The guard becomes active after the firewall hook; a successful hook drill does not prove the entire reboot interval. The operator key stays on the control machine; the Console service key is constrained to a fixed report gate. Amn is outside the production supervisor.</p>
+</section>
+<section id="recovery">
+<h2>Recovery assets</h2>
+<div class="diagram-container">
+<svg id="ghostroute-recovery-en" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-recovery-en-title ghostroute-recovery-en-desc">
+<title id="ghostroute-recovery-en-title">Source, private state and recovery copies</title>
+<desc id="ghostroute-recovery-en-desc">Source, router state and private control material form an encrypted recovery bundle with independent download verification.</desc>
+<defs>
+<marker id="ghostroute-recovery-en-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / RECOVERY</text>
+<text x="48" y="92" class="heading">Source, private state and recovery copies</text>
+<text x="48" y="128" class="subtitle">Archives retain recovery material; local probes prove only their own requests.</text>
+<path class="edge " data-from="git" data-to="bundle" d="M 336,244 H 384 Q 392,244 392,252 V 304 Q 392,312 400,312 H 440" marker-end="url(#ghostroute-recovery-en-arrow)"/>
+<path class="edge " data-from="router" data-to="bundle" d="M 336,400 H 440" marker-end="url(#ghostroute-recovery-en-arrow)"/>
+<path class="edge " data-from="mac" data-to="bundle" d="M 336,556 H 384 Q 392,556 392,548 V 496 Q 392,488 400,488 H 440" marker-end="url(#ghostroute-recovery-en-arrow)"/>
+<path class="edge " data-from="bundle" data-to="offsite" d="M 800,344 H 864 Q 872,344 872,336 V 288 Q 872,280 880,280 H 944" marker-end="url(#ghostroute-recovery-en-arrow)"/>
+<path class="edge " data-from="offsite" data-to="verify" d="M 1088,344 V 432" marker-end="url(#ghostroute-recovery-en-arrow)"/>
+<g class="node " data-node="git">
+<rect x="48" y="188" width="288" height="112" rx="8"/>
+<text x="72" y="224" class="node-name">Public Git</text>
+<text x="72" y="256" class="body">Code, templates and docs</text>
+<text x="72" y="284" class="body">Recorded source commit ID</text>
+</g>
+<g class="node " data-node="router">
+<rect x="48" y="344" width="288" height="112" rx="8"/>
+<text x="72" y="380" class="node-name">Router state</text>
+<text x="72" y="412" class="mono">USB/Entware · JFFS · NVRAM</text>
+<text x="72" y="440" class="body">Consistent DB snapshots</text>
+</g>
+<g class="node " data-node="mac">
+<rect x="48" y="500" width="288" height="112" rx="8"/>
+<text x="72" y="536" class="node-name">Private control state</text>
+<text x="72" y="568" class="mono">Vault / profiles / notes</text>
+<text x="72" y="596" class="body">Local diagnostic tools</text>
+</g>
+<g class="node focal" data-node="bundle">
+<rect x="440" y="240" width="360" height="304" rx="8"/>
+<text x="464" y="268" class="tag">ENCRYPT BEFORE UPLOAD</text>
+<text x="464" y="302" class="node-name">Recovery bundle</text>
+<text x="464" y="340" class="body">Router files and control state</text>
+<text x="464" y="368" class="mono">3 × .tar.gz.gpg</text>
+<text x="464" y="396" class="body">Encrypted restore instructions</text>
+<text x="464" y="424" class="mono">CLOUD-SHA256SUMS</text>
+<text x="464" y="452" class="body">Local archive verification</text>
+<text x="464" y="480" class="body">Password held separately</text>
+</g>
+<g class="node " data-node="offsite">
+<rect x="944" y="216" width="288" height="128" rx="8"/>
+<text x="968" y="252" class="node-name">Independent copy</text>
+<text x="968" y="284" class="body">Private object storage</text>
+<text x="968" y="312" class="body">or a separate medium</text>
+</g>
+<g class="node focal" data-node="verify">
+<rect x="944" y="432" width="288" height="176" rx="8"/>
+<text x="968" y="468" class="node-name">Restore proof</text>
+<text x="968" y="500" class="body">Download the complete set</text>
+<text x="968" y="528" class="body">SHA-256 of every archive</text>
+<text x="968" y="556" class="body">Authenticate, decrypt and read</text>
+<text x="968" y="584" class="body">Keep a private result record</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">Upload and full restore proof are separate stages. Password recovery must survive loss of the original machine.</text>
+<text x="48" y="704" class="fine">The archive is not firmware or a running standby. VPS applications have their own backup contracts.</text>
+</svg>
+</div>
+<p class="caption">This is the recovery process, not a claim that every external copy has passed it. Exact locations, manifests and results remain private. Complete archive reads and rebuilding a spare router are separate evidence levels. Independent password recovery is required for loss of the control machine.</p>
+</section>
+<p class="caption">Local Arial/Helvetica and Menlo/Consolas font fallbacks. No external fonts or runtime scripts. Public role names only.</p>
+</main>
+</body>
+</html>

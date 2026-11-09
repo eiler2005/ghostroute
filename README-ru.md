@@ -12,6 +12,8 @@
 
 **[English version ->](README.md)**
 
+![GhostRoute: домашний вход и управляемая маршрутизация](docs/assets/diagrams/ghostroute-cover.png)
+
 Политика документации: English README — developer-facing ground truth; русская
 версия — operator-facing summary. Если EN и RU расходятся, источник истины —
 EN. Расширенные технические разделы (Quick Start, ADR index, Demo, полная
@@ -30,17 +32,19 @@ watchdog'ами и схемами каналов:
 
 Что демонстрирует проект (с пруфами в репо):
 
-- **Архитектура** — module-native платформа: 13 независимо-владеемых модулей,
+- **Архитектура** — module-native платформа с независимыми владельцами модулей,
   у каждого свой runtime, доки и тесты. См.
   [`docs/operational-modules.md`](docs/operational-modules.md) и
-  [`docs/adr/`](docs/adr/) (10 ADR).
+  [`docs/adr/`](docs/adr/).
 - **Тестирование** — слоистая пирамида (static -> mock/fixture -> smoke ->
   Playwright e2e), CI на каждый push/PR
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); подробности —
   [`docs/testing.md`](docs/testing.md).
 - **Безопасность** — секреты вне git (Vault), `secret-scan` gate в CI,
   **role-only** тулинг: печатает только мнемо-роли, резолвит endpoint-ы из Vault
-  локально, маскирует IP/host/user. См. [`SECURITY.md`](SECURITY.md).
+  локально и маскирует IP/host/user в операторских сводках. Сырые отчёты
+  остаются приватными; доступ оператора и Console разделён ключами и
+  ограничителем команд. См. [`SECURITY.md`](SECURITY.md).
 - **Product thinking** — явная модель каналов, измеримые SLO
   ([`docs/operational-slos.md`](docs/operational-slos.md)), продуманный
   egress-failover; постановка задачи — [`docs/prd.md`](docs/prd.md).
@@ -84,7 +88,16 @@ GhostRoute — layered routing setup для endpoint-клиентов, дома�
 весь internet-bound трафик идет через `reality-out`, а local/private остается
 локальным.
 
-![Архитектура GhostRoute](docs/assets/diagrams/ghostroute-routing-ru.png)
+Sensitive sites mode направляет выбранные назначения через отдельный
+`sensitive-out` перед общими managed-правилами. LAN guard защищает уже
+классифицированные managed IPv4 TCP и UDP/443 при восстановлении REDIRECT;
+атомарное сохранение ipset оставляет последний корректный снимок. Служебный
+Channel M сохраняет отдельный выход через домашний WAN.
+
+![GhostRoute: домашние входы и три варианта выхода](docs/assets/diagrams/ghostroute-routing-ru.png)
+
+[Редактируемые схемы маршрутов, запуска и восстановления](docs/assets/diagrams/ghostroute-platform-ru.html)
+· [English diagrams](docs/assets/diagrams/ghostroute-platform-en.html).
 
 Модель слоев разделяет основные traffic-задачи:
 
@@ -834,6 +847,8 @@ runtime layout, secret handling, public command structure и monitoring contract
 ---
 
 ## Документация
+
+[Инженерный план маршрутизации и восстановления](docs/routing-assurance-roadmap.md).
 
 - [README.md](README.md) - English overview
 - [ansible/README.md](ansible/README.md) - control plane для deploy, Vault, QR/profile generation и live verification

@@ -311,6 +311,16 @@ the gate itself.
 - Keep `xui_admin_web_port` and `xui_admin_web_path` aligned with live 3x-ui
   settings. A credentials reset should preserve live port/path values.
 
+Router sing-box restarts and rule-set refreshes that can interrupt the SSH
+transport are launched asynchronously. The playbook waits for management
+reconnection, polls task completion and runs its readiness/deploy gate. A lost
+connection alone must not be interpreted as a successful restart. This orchestration
+is implemented independently of client ingress/profile generation.
+
+For client migration gates, independent archive restore proof and broader
+maintenance drills, see the [routing assurance plan](../docs/routing-assurance-roadmap.md)
+and [backup runbook](../modules/secrets-management/docs/vault-offsite-backup.md).
+
 ## Common Workflows
 
 Bootstrap or refresh VPS:

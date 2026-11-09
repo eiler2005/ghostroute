@@ -1,14 +1,14 @@
 # Routing Policy Principles
 
 This document is the compact source for GhostRoute routing principles. It
-explains what must stay true across Channel A, Channel B and Channel C, plus
+explains what must stay true across A/B/C/D and the isolated Amn projection, plus
 why Channel M is intentionally outside that managed split. The
 runtime implementation still lives in Ansible templates, router scripts and
 domain catalogs listed below.
 
 ## Core Contract
 
-All managed channels are home-first. The default router policy is managed split;
+The default managed client channels are home-first. The router policy is managed split;
 selected home Wi-Fi/LAN devices and selected Channel A Home Reality profiles can
 opt into Channel A selected full-VPS mode.
 
@@ -16,7 +16,8 @@ opt into Channel A selected full-VPS mode.
 endpoint / LAN device
   -> home router
   -> router-side ingress
-  -> default shared managed split
+  -> optional sensitive match -> sensitive-out -> hermes_vps
+  -> default shared managed split for remaining traffic
        managed destinations     -> reality-out -> active managed egress -> internet
        non-managed destinations -> direct-out via home WAN -> internet
 
@@ -26,6 +27,13 @@ selected Channel A full-VPS set
   -> local/private destinations stay direct
   -> other internet destinations -> reality-out -> active managed egress -> internet
 ```
+
+Sensitive sites rules run before general managed and selected full-VPS rules
+when enabled. A selected full-VPS profile therefore retains sensitive overrides,
+private/local access and reviewed control-plane exceptions. Channel D may pin
+its general managed backend separately; Amn projects the selected-client policy
+into its own process. See the [routing overview](assets/diagrams/ghostroute-routing-en.png)
+and [assurance register](routing-assurance-roadmap.md).
 
 The endpoint client may choose the first-hop channel, but it must not become the
 main policy engine. The router owns the managed-vs-direct decision after traffic
@@ -77,7 +85,8 @@ Layer 1 is channel ingress.
   sing-box or inherit Channel A selected full-VPS overrides.
 - These inbounds are isolated from each other by port, credentials and deploy
   playbooks.
-- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. Its
+  authenticated reverse listener is scoped to the service side.
 
 Layer 2 is the shared router managed split plus the selected full-VPS override.
 

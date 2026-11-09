@@ -43,6 +43,8 @@ specific scenarios it does and does not address.
    public internet without Basic Auth, or with weak / leaked credentials.
 9. **Channel B/C isolation breach.** A change to a B or C playbook silently
    mutating Channel A REDIRECT, DNS, TUN, or recovery ownership.
+10. **Home ingress impersonation.** An active network intermediary substitutes
+    a TLS server for a selected client that does not authenticate its peer.
 
 ### Mitigations
 
@@ -54,10 +56,28 @@ specific scenarios it does and does not address.
 | Regulatory blocking | Reality cover SNI choice + L4 sharing on `:443`; Channel A/B/C protocol diversity | Reality SNI rotation guide; manual SNI cover override |
 | Endpoint policy mistake | Layer 0 + Layer 2 redundancy for destinations the router can classify; selected full-VPS profiles cover a wider device scope | Per-device profile review and [real-client checks](docs/privacy-assurance.md) |
 | Operator deploy mistake | Read-only safe checks before any mutating playbook; `secret-scan` pre-commit; safety tags before risky migrations | `verify.sh`, `secret-scan`, AGENTS.md safety rules, deploy gate |
-| VPS provider takeover | Secrets in Vault; nothing operationally critical lives on the VPS that cannot be recreated; `GHOSTROUTE_DB_BACKUP_MODE` for Console state | Deploy gate detects edge mismatch; `traffic-report` shows VPS-vs-direct ratios |
-| Vault loss | Encrypted offsite Vault backup runbook with periodic restore drill | [`modules/secrets-management/docs/vault-offsite-backup.md`](modules/secrets-management/docs/vault-offsite-backup.md) |
+| VPS provider takeover | Role-scoped credentials, operator router key kept off the VPS, application HTTPS and a trusted rebuild/revocation path | A compromised VPS can observe egress metadata and access its own runtime secrets; health checks do not prove a host is trustworthy |
+| Vault loss | Independent encrypted backup plus separately recoverable decryption credentials and periodic restore drill | [`modules/secrets-management/docs/vault-offsite-backup.md`](modules/secrets-management/docs/vault-offsite-backup.md) |
 | Console exposure | Loopback app listener; dedicated authenticated HTTPS proxy, with the optional shared HTTPS alias subject to the same HTML/API authentication boundary | Console delivery runbook and public-path auth checks; immutable assets and browser metadata are public |
 | Channel B/C isolation breach | Strict playbook ownership: `20-*` for A, `21-*` for B, `22-*` for C; `99-verify.yml` checks invariants; AGENTS.md hard rule | `verify.sh` channel invariant checks; `traffic-report check` |
+
+### Known assurance boundaries
+
+The home-first Channel B URI generator currently emits `allowInsecure=1`.
+On clients honoring this option, the tunnel lacks normal TLS server-certificate
+authentication. An active intermediary can impersonate the ingress; passive
+observation alone does not decrypt it. Application HTTPS has its own independent
+certificate checks. A pinned Mac diagnostic is not proof that imported phone
+profiles validate the server. Track the client-compatible migration and negative
+certificate test in [RA-02](docs/routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b);
+do not remove the option or regenerate imports without the profile migration
+approval required by AGENTS.md.
+
+Local archive checks, cloud upload and full downloaded restore proof are distinct
+evidence levels. Keep exact status in private reports and use the
+[engineering register](docs/routing-assurance-roadmap.md) for remaining work.
+No current diagram or health result implies universal leak protection, anonymity
+or a tested full-device restore.
 
 ### Out-of-scope risks
 
@@ -107,7 +127,8 @@ The operator explicitly accepts:
   private keys, admin paths or production listener values.
 - Run `./modules/secrets-management/bin/secret-scan` before pushing.
 - Treat Channel B artifacts as production credentials for selected clients.
-- Treat Channel C artifacts as planned compatibility credentials until promoted.
+- Treat enabled C1-Shadowrocket artifacts as live compatibility credentials;
+  native C artifacts still require compatible-client acceptance.
 - Treat Channel D artifacts and local Caddy binaries as experimental local
   credentials/artifacts; keep them gitignored.
 - Treat Channel Amn settings, QR imports and build output as private lab
@@ -148,10 +169,13 @@ narrow firewall recovery drill.
 
 ### Recovery scenarios and target times
 
+These are planning targets, not measured guarantees for every deployment. A lost
+Vault password cannot be recovered from the encrypted Vault archive alone.
+
 | Scenario | Recovery path | Target time | Reference |
 |---|---|---|---|
 | Reality outage / VPS unreachable | Cold fallback via `emergency-enable-wgc1.sh` (manual only) | 5–15 min after operator decision | [`docs/architecture.md`](docs/architecture.md) §Cold fallback; [ADR-0004](docs/adr/0004-deprecated-wireguard-cold-fallback.md) |
-| Vault loss | Restore from encrypted offsite backup; reissue Reality keys if backup compromised | 30 min restore + 1–2 h regenerate | [`modules/secrets-management/docs/vault-offsite-backup.md`](modules/secrets-management/docs/vault-offsite-backup.md) |
+| Vault loss | Restore from encrypted independent backup with separately recovered password; rotate affected credentials if compromised | 30 min restore + 1–2 h regenerate | [`modules/secrets-management/docs/vault-offsite-backup.md`](modules/secrets-management/docs/vault-offsite-backup.md) |
 | Console DB corruption | Quarantine `data/ghostroute.db*`; restart with empty DB; collector re-populates within minutes; use external host-level backups for durable restore | <30 min to baseline data; full 7-day backfill on next normal cycle | `vps/deploy-readonly.yml`; `GHOSTROUTE_DB_BACKUP_MODE=local_daily` only when same-disk copies are explicitly accepted |
 | Channel B/C ingress regression | Revert with `git revert`; rerun `21-*` or `22-*` playbook; verify with `99-verify.yml` | <15 min for revert; A/B/C invariants checked by verify | `AGENTS.md` §Architecture Invariants |
 | Routing drift (`VPN_DOMAINS` / `RC_VPN_ROUTE` reappear) | Investigate root cause; re-run `20-stealth-router.yml`; never silently mask with cold fallback | Same change-window as the regression | `verify.sh`; `tests/run-fast.sh` |

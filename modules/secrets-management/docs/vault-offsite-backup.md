@@ -4,6 +4,11 @@ This runbook protects against the highest-impact local failure mode: losing or
 corrupting `ansible/secrets/stealth.yml` while the live router/VPS still depend
 on the values inside it.
 
+The full recovery model is shown in the
+[recovery-assets diagram](../../../docs/assets/diagrams/ghostroute-recovery-en.png).
+Exact inventory and acceptance live in ignored local notes; remaining work is
+tracked in [RA-01 and RA-08](../../../docs/routing-assurance-roadmap.md).
+
 ## Policy
 
 - Keep at least one current encrypted offsite copy outside the repo working tree.
@@ -12,6 +17,8 @@ on the values inside it.
 - A second folder or a local Time Machine snapshot on the same Mac is still a
   local copy; it does not protect against loss of that machine.
 - Do not store the Vault password next to the backup file.
+- Keep a separate, tested way to recover the password after loss of the control
+  machine. An encrypted archive cannot recover its own missing decryption key.
 - Do not commit backup files, decrypted Vault files, generated client profiles
   or recovery notes with real endpoints.
 - After meaningful credential rotation, refresh the offsite copy the same day.
@@ -38,6 +45,60 @@ separate temporary location, verify the hashes and decrypt/read the archives
 there before counting the copy as recoverable. Keep the decryption password
 outside the bucket. Do not upload plaintext layout inventories, profiles or
 diagnostic logs.
+
+## Full Recovery Bundle And Local Infrastructure
+
+| Material | Location / ownership | What it restores |
+|---|---|---|
+| Public source and templates | Git repository and recorded commit | Reviewed implementation and deployment logic; no real credentials |
+| Private control-machine workspace | Vault, secrets, generated profiles and local operator notes | Deployment identities, imports and operator configuration |
+| Router persistent state | USB/Entware, JFFS, NVRAM export and consistent database snapshots | Files and settings needed for controlled router recovery |
+| Local encrypted archives | Ignored `reports/router-backups/` with a private latest pointer | A verified recovery copy outside the router, still on the control machine |
+| Independent encrypted copy | Private object storage or a separate encrypted medium | Recovery after loss of the control machine; requires full downloaded restore proof |
+| Diagnostic tools | Ignored `reports/client-probes/` | Isolated client/proxy checks; not a running replica of the router or VPS |
+
+The complete bundle uses `router-usb-jffs-nvram.tar.gz.gpg` for router files,
+`mac-recovery-material.tar.gz.gpg` for private control material and local probe
+tools, and `cloud-restore-metadata.tar.gz.gpg` for private restore instructions,
+inventory and verification records. `CLOUD-SHA256SUMS` covers the three encrypted
+archives. Review the private manifest for the exact included paths; do not assume
+that arbitrary home directories, every SSH private key, browser credentials or
+all VPS application databases are present. Independently owned VPS apps need
+their own backup contract.
+
+This is a file recovery bundle, not a firmware image, ASUS CFG import or a live
+standby. Probe tools use isolated local listeners and do not replace actual
+phone-client acceptance. Keep raw traffic logs out of the cloud bundle.
+
+## Verify An Object-Storage Copy
+
+1. Download all three encrypted archives and `CLOUD-SHA256SUMS` into a separate
+   private temporary directory. Restore their original basenames if the web
+   downloader prepended an object prefix.
+2. Compare the downloaded manifest with a trusted retained manifest/hash, then
+   run `shasum -a 256 -c CLOUD-SHA256SUMS` inside that directory. Every archive
+   must pass. A matching manifest alone does not verify the archive bytes.
+3. Authenticate and read each downloaded archive completely. For the GPG tar
+   bundle, run in Bash with the normal secure GPG password prompt:
+
+   ```bash
+   set -euo pipefail
+   for archive in router-usb-jffs-nvram.tar.gz.gpg mac-recovery-material.tar.gz.gpg cloud-restore-metadata.tar.gz.gpg; do
+     gpg --decrypt "$archive" | tar -tzf - >/dev/null
+   done
+   ```
+
+4. Inspect the restore instructions and required members in a private temporary
+   workspace; verify that the recovered Vault can be opened. Do not print secret
+   contents, overwrite the working checkout or deploy from this drill.
+5. Record object identity/version, byte sizes, SHA-256 results, authenticated
+   read results and password recovery method privately. Remove only the temporary
+   plaintext created for the drill after retaining the encrypted copies.
+
+An object listing and matching size prove upload visibility; provider SHA-1 is
+useful transfer evidence. Neither replaces the full downloaded SHA-256 and
+decryption checks above. File verification does not prove a spare router has
+been rebuilt successfully: record that separate hardware drill only when done.
 
 ## Restore Drill Without Router Access
 

@@ -4,7 +4,8 @@
 > mirrors the structure for non-RU readers.
 >
 > See also: [`docs/repo-review-2026-05-10.md`](repo-review-2026-05-10.md) for
-> the latest audit and prioritized fixlist.
+> the historical audit and prioritized fixlist. Current routing, privacy and
+> recovery work is owned by [Routing Assurance Roadmap](routing-assurance-roadmap.md).
 
 ## English summary
 
@@ -25,8 +26,8 @@ Top-level sections:
    line and structured drift alarms.
 4. **Better observability and report shape** (`✓` partial) — Console v2 covers
    most of this; remaining items are export polish.
-5. **Explicit IPv6 policy** (`○`) — currently disabled; needs a documented
-   long-term position.
+5. **Explicit IPv6 policy** (`✓` current scope) — disabled/AAAA-filtered;
+   any future dual-stack support is a separate, conditional project.
 6. **Fallback sources, retention and rotation** (`○`) — log/report rotation,
    backup egress sources.
 7. **Catalog capacity monitoring and growth trends** (`✓` partial) — health
@@ -112,31 +113,14 @@ Detailed prose for each section is in Russian below. For new findings, see the
 - любые изменения сначала делать как review / plan / safe refactor
 - не трогать `secrets/` и не выносить приватные aliases / IP / bypass overrides в публичный git
 
-## Managed privacy: что ещё даёт пользу
+## Managed privacy: основной реестр
 
-Текущий guard закрывает прямой LAN-выход только для уже классифицированных IPv4
-TCP и UDP/443. Подробные уровни доказательства и процедура восстановления — в
-[privacy-assurance.md](privacy-assurance.md). Приоритет дальнейшей работы:
-
-1. **Высокий:** сохранить измеренные real-client результаты по A/B/C/D/Amn и
-   сервису M в приватном отчёте: direct, general managed, sensitive, DNS/IPv6 и
-   настоящая передача данных. Устное «вроде работает» — полезное наблюдение,
-   но не доказательство отсутствия утечек.
-2. **Высокий для строгой модели угроз:** отдельно доказать поведение во время
-   полного Merlin firewall rebuild, включая интервал до `firewall-start`.
-   Имеющийся guard начинает действовать после hook; полную перестройку проводить
-   только с резервным доступом и контролем реальных клиентов.
-3. **Средний:** исследовать происхождение и срок жизни IP в динамическом
-   `STEALTH_DOMAINS` и его сохранённом снимке. Автоматический TTL/flush без
-   такой проверки может создать прямой выход для ещё используемого managed IP.
-4. **По фактическому спросу:** проверить на выбранных клиентах app-owned
-   DoH/DoT, ECH/скрытые hostnames, WebRTC и UDP кроме 443. Для особо
-   чувствительного устройства допустим явный full-VPS режим; переводить весь
-   LAN на него без необходимости не следует.
-
-Не путать это с обещанием анонимности: сайт может связать сессии по аккаунту и
-браузеру независимо от exit IP. Сначала измерять наблюдаемую утечку, затем
-менять узкое правило или профиль.
+Текущие долги и решения вынесены в
+[Routing Assurance Roadmap](routing-assurance-roadmap.md): независимый restore
+proof, TLS-проверка B, реальные клиенты, полный firewall/reboot drill, VPS image,
+срок жизни каталога и условные улучшения. Там же находятся приоритеты, критерии
+закрытия и список изменений без доказанной пользы. Не вести здесь второй список
+статусов. Методика проверок остаётся в [privacy-assurance.md](privacy-assurance.md).
 
 ## Как использовать этот документ с LLM
 
@@ -344,21 +328,17 @@ before implementation:
   ingress attribution, Channel C ingress evidence, а не исторические имена
   конкретных демонов
 
-### 5. Явная политика по IPv6 `○ deferred`
+### 5. Явная политика по IPv6 `✓ current scope`
 
-Проблема:
+Текущая политика закреплена в [DNS policy](dns-policy.md): IPv6 выключен,
+AAAA фильтруются; поддержка dual-stack не заявлена. На внешнем клиенте проверяется
+также собственный IPv6-путь приложения/профиля — настройка домашнего роутера сама
+по себе не исключает обход туннеля на телефоне.
 
-- IPv6 поддержка в routing-layer пока не оформлена как полноценная и завершённая история
-
-Что улучшить:
-
-- явно зафиксировать текущую supported policy
-- описать, что считается поддерживаемым сценарием, а что нет
-- если когда-нибудь делать IPv6 routing, то отдельным проектом с отдельной верификацией
-
-Желаемый результат:
-
-- нет ложных ожиданий и случайных regressions из-за полу-поддержанного dual-stack поведения
+Приёмка реальных устройств относится к RA-03 в
+[реестре](routing-assurance-roadmap.md). Если появится обоснованная потребность
+в IPv6 routing, это отдельный проект с маршрутизацией, DNS, firewall и проверкой
+отказов для обеих адресных семей; включать его ради полноты схемы не требуется.
 
 ### 6. Fallback-источники и retention/rotation `○ deferred`
 
@@ -495,7 +475,8 @@ Channel C target:
 
 - Channel B остается стабильным selected-client production lane без риска для
   Channel A и домашнего роутера
-- Channel C можно безопасно довести от live proof до persisted deployment
+- Persisted C1-Shadowrocket поддерживается как рабочая compatibility-линия;
+  native C продвигается только после доказательства совместимого клиента
 - документация явно отделяет Channel A router data plane, Channel B
   selected-client production и Channel C native/compatibility split
 
@@ -510,7 +491,7 @@ Channel D Caddy forward_proxy@naive / forwardproxy experiment:
 - Эксперимент не подвешен на существующий VPS Caddy `:443`: VPS Caddy держит
   shared Reality edge и optional Channel B direct-XHTTP route, поэтому Channel D
   живет на домашнем роутере с отдельным портом/credentials/playbook/rollback.
-- Риски, которые нужно закрыть до implementation:
+- Условия, которые нужно сохранять при расширении runtime и приёмке новых клиентов:
   - не открыть public unauthenticated forward proxy;
   - не сломать VPS Caddy/Reality edge;
   - не перепутать C1-SR compatibility с native Naive proof;

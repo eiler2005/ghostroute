@@ -27,9 +27,18 @@ owned VPS, or an explicit reserve backend during incidents. The repo is
 intentionally module-native: routing, health, traffic, catalog, client profiles,
 secrets and recovery all have separate ownership and tests.
 
-![GhostRoute architecture](docs/assets/diagrams/ghostroute-routing-en.png)
+Sensitive sites mode gives reviewed destinations a dedicated `sensitive-out`
+egress before the general managed rules. The LAN managed guard protects already
+classified IPv4 TCP and UDP/443 during REDIRECT recovery; atomic ipset snapshots
+preserve the last valid saved classification. Channel M keeps its dedicated
+home-WAN service path.
 
-![GhostRoute detailed runtime map](docs/assets/diagrams/ghostroute-lifecycle-en.png)
+![GhostRoute: home-first networking](docs/assets/diagrams/ghostroute-cover.png)
+
+![GhostRoute: home ingress and three explicit exit roles](docs/assets/diagrams/ghostroute-routing-en.png)
+
+[Editable routing, lifecycle and recovery diagrams](docs/assets/diagrams/ghostroute-platform-en.html)
+· [Русские схемы](docs/assets/diagrams/ghostroute-platform-ru.html).
 
 For an operator map of what is installed on the ASUS Merlin router, including
 runtime files, services, cron watchdogs and channel diagrams, see
@@ -44,12 +53,12 @@ and the routing/app surfaces, see
 
 What this project demonstrates, with proof in-repo:
 
-- **Architecture** — a module-native platform: 13 independently-owned modules
+- **Architecture** — a module-native platform: independently-owned modules
   (routing, health, traffic accounting + intelligence, DNS catalog, client
   profiles, secrets, recovery) each with their own runtime, docs and tests. See
   the ownership table in
   [`docs/operational-modules.md`](docs/operational-modules.md) and the decisions
-  in [`docs/adr/`](docs/adr/) (10 ADRs).
+  in [`docs/adr/`](docs/adr/).
 - **Testing** — a layered pyramid (static contract checks -> mock/fixture
   integration -> Console smoke -> Playwright e2e), CI-gated on every push/PR via
   [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Health tooling is
@@ -58,8 +67,10 @@ What this project demonstrates, with proof in-repo:
 - **Security & privacy** — secrets stay out of git (Ansible Vault), a
   `secret-scan` gate runs in CI, and operational tooling is **role-only**: it
   prints mnemonic roles (`primary_vps` / `backup_reality` / `hermes_vps`),
-  resolves real endpoints from Vault locally, and sanitizes IPs/hosts/users out
-  of all output. See [`SECURITY.md`](SECURITY.md).
+  resolves real endpoints from Vault locally, and sanitizes operator summaries.
+  Raw deployment and traffic evidence stays private. Operator and Console router
+  access use separate credentials and a fixed service report gate. See
+  [`SECURITY.md`](SECURITY.md).
 - **Product thinking** — an explicit channel model, measurable SLOs
   ([`docs/operational-slos.md`](docs/operational-slos.md)), and a deliberate,
   documented egress-failover design
@@ -1035,6 +1046,7 @@ directories. See [SECURITY.md](SECURITY.md) and
 - [modules/secrets-management/docs/vault-offsite-backup.md](modules/secrets-management/docs/vault-offsite-backup.md) - encrypted offsite Vault backup and restore drill
 - [modules/client-profile-factory/docs/client-profiles.md](modules/client-profile-factory/docs/client-profiles.md) - VLESS/Reality QR workflow
 - [docs/troubleshooting.md](docs/troubleshooting.md) - incident diagnostics (RU primary; English equivalents in module runbooks such as `modules/ghostroute-health-monitor/docs/stealth-monitor-runbook.md`)
+- [docs/routing-assurance-roadmap.md](docs/routing-assurance-roadmap.md) - engineering plan for routing assurance and recovery
 - [docs/future-improvements-backlog.md](docs/future-improvements-backlog.md) - long-running improvement backlog (RU primary; EN summary at the top)
 - [docs/repo-review-2026-06-16.md](docs/repo-review-2026-06-16.md) - latest public-repo polish snapshot
 - [docs/repo-review-2026-05-10.md](docs/repo-review-2026-05-10.md) - previous repository quality audit and prioritized fixlist

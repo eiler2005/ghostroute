@@ -4,9 +4,20 @@
 
 GhostRoute больше не использует active Legacy WireGuard. Текущая модель:
 
-Короткий принципиальный контракт по A/B/C вынесен в
+Короткий принципиальный контракт по A/B/C/D и отдельной проекции Amn вынесен в
 [docs/routing-policy-principles.md](../../../docs/routing-policy-principles.md). Этот
 файл ниже описывает текущую реализацию того же контракта.
+
+[Схема маршрутов](../../../docs/assets/diagrams/ghostroute-routing-ru.png) ·
+[Запуск и восстановление](../../../docs/assets/diagrams/ghostroute-platform-ru.html) ·
+[Инженерный план](../../../docs/routing-assurance-roadmap.md).
+
+Ниже показан базовый split. Если включён Sensitive sites mode, совпадения
+сначала идут в `sensitive-out -> hermes_vps`, включая selected full-VPS.
+General managed backend остаётся отдельным выбором; D может закреплять свою
+роль, Amn применяет проекцию в отдельном процессе. M сохраняет служебный
+home-WAN путь вне этой политики. Скрытые hostnames и клиентские DIRECT bypass
+не покрываются гарантией доменной классификации.
 
 ```text
 LAN/Wi-Fi TCP             -> STEALTH_DOMAINS/VPN_STATIC_NETS
@@ -68,7 +79,7 @@ observer model: [modules/routing-core/docs/network-flow-and-observer-model.md](n
 
 ## Доменный каталог
 
-Источник правды один:
+Основной ручной доменный каталог:
 
 ```text
 configs/dnsmasq-stealth.conf.add
@@ -99,7 +110,8 @@ LAN/Wi-Fi и mobile Channels A/B/C должны показывать один и
 - direct/skip policy `configs/domains-no-vpn.txt` и автоматический skip
   российских TLD.
 
-Все managed-источники зеркалятся в sing-box rule-sets для mobile Channels A/B/C.
+Все managed-источники зеркалятся в sing-box rule-sets для mobile Channels A/B/C/D.
+Активная проекция Amn обновляется отдельно через её controller.
 Skip/direct источники не должны auto-добавляться в managed route.
 
 `VPN_DOMAINS` больше не должен существовать в steady state.
@@ -148,7 +160,7 @@ configs/dnsmasq-stealth.conf.add
 Supported-схема теперь policy-based, а не "весь DNS через VPS":
 
 ```text
-managed/foreign domain
+managed domain from catalog
   -> dnsmasq server=/domain/127.0.0.1#<dnscrypt-port>
   -> dnscrypt-proxy
   -> sing-box SOCKS dnscrypt-socks-in
@@ -176,7 +188,9 @@ plain DNS `:53`, once it reaches sing-box ingress, is rewritten to the same
 router-local dnsmasq path. From that point the split is identical for Wi-Fi and
 mobile channels.
 
-IPv6 выключен, поэтому dnsmasq фильтрует AAAA:
+В текущем supported router mode IPv6 выключен, а dnsmasq фильтрует AAAA.
+Внешний клиентский IPv6/DNS bypass проверяется отдельно на устройстве:
+
 
 ```text
 filter-AAAA
@@ -220,7 +234,7 @@ Expected:
 
 - `wgs1_enable=0`
 - `wgc1_enable=0`
-- `wg show` has no active WireGuard interfaces
+- `wg show` has no active legacy `wgs1`/`wgc1`; the isolated opt-in Amn lab is separate
 - `VPN_DOMAINS` does not exist
 - `STEALTH_DOMAINS` and `VPN_STATIC_NETS` exist
 - TCP REDIRECT and UDP/443 DROP rules are present

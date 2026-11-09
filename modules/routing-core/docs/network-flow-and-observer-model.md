@@ -7,9 +7,10 @@ GhostRoute: какие клиенты куда подключаются, как�
 
 ## Executive Summary
 
-В steady state активны Wi-Fi/LAN transparent routing, Channel A remote Home
-Reality, Channel B selected-client production и Channel C1 selected-client
-compatibility/native paths:
+Реализованы Wi-Fi/LAN transparent routing, Channel A remote Home Reality,
+Channel B selected-client production и Channel C1-Shadowrocket compatibility.
+Native C имеет серверную часть и требует совместимого клиента. Опциональные
+D и Amn сохраняют отдельный lab-статус и свою приёмку:
 
 1. Домашние Wi-Fi/LAN устройства используют transparent routing на роутере.
    Только managed-направления из `STEALTH_DOMAINS` и `VPN_STATIC_NETS` уходят
@@ -37,6 +38,20 @@ compatibility/native paths:
 попал ли конечный домен/IP в managed catalog или включен ли выбранный
 full-VPS режим для устройства/профиля.
 
+## Общие дополнения к сценариям
+
+Сценарии ниже описывают базовый split. При включённом Sensitive sites mode
+совпадения сначала направляются через `sensitive-out -> hermes_vps`, включая
+выбранные full-VPS профили. D может отдельно закреплять свой общий managed
+backend; Amn использует отдельную проекцию той же политики. Channel M всегда
+остаётся вне этого split и sensitive-override.
+
+![Домашние входы и варианты выхода](../../../docs/assets/diagrams/ghostroute-routing-ru.png)
+
+[Точный контракт sensitive](sensitive-sites-mode.md) ·
+[Границы доказательств](../../../docs/privacy-assurance.md) ·
+[Инженерный план](../../../docs/routing-assurance-roadmap.md).
+
 ## Components
 
 | Layer | Component | Role |
@@ -47,7 +62,7 @@ full-VPS режим для устройства/профиля.
 | Router DNS | `dnsmasq` | Наполняет `STEALTH_DOMAINS`, фильтрует AAAA while IPv6 is off |
 | Router DNS upstream | `dnscrypt-proxy` on `127.0.0.1:<dnscrypt-port>` | Upstream DNS through local sing-box SOCKS/Reality |
 | Router packet policy | `iptables` + `ipset` | REDIRECT TCP to `:<lan-redirect-port>`, DROP managed UDP/443, allow/redirect home mobile ingress ports |
-| Router proxy | `sing-box` single process | `redirect-in`, `reality-in`, `channel-b-relay-socks`, `channel-c-naive-in`, `channel-c-shadowrocket-http-in`, `vps-dns-in`, `reality-out`, `direct-out` |
+| Router production proxy | Main `sing-box` process; Amn uses a separate process | `redirect-in`, `reality-in`, `channel-b-relay-socks`, `channel-c-naive-in`, `channel-c-shadowrocket-http-in`, `vps-dns-in`, `reality-out`, `direct-out` |
 | VPS ingress | VPS host + Caddy L4 TCP/443 | Принимает router-side Reality connection |
 | VPS proxy | Existing `3x-ui`/Xray Docker container | Финальный Reality ingress перед выходом в интернет |
 | VPS restricted DNS | Unbound on restricted private listeners, when enabled | Optional legacy/private resolver leg; generated managed DNS now uses dnscrypt-over-Reality |
@@ -326,7 +341,28 @@ Router process
 Router `OUTPUT` is intentionally not globally captured. Transparent capture of
 router-originated traffic can loop sing-box outbound connections.
 
+## Scenario I: Channel Amn isolated lab
+
+```text
+AmneziaWG client -> home router userspace engine
+  -> isolated sing-box-amn gVisor TUN
+  -> sensitive match, when enabled -> sensitive-out -> hermes_vps
+  -> other managed -> configured managed egress
+  -> non-managed -> home WAN
+```
+
+Amn projects policy explicitly and has manual recovery after reboot/firewall
+rebuild. It does not share the main sing-box process or inherit A selected
+full-VPS source/profile overrides. Its credentials, rules and device acceptance
+remain separate. See [Amn runbook](channel-amn-research.md).
+
 ## Who Sees What
+
+This table describes requests actually carried by the stated channel. Endpoint
+DIRECT, app-owned DNS and unclassified destinations need separate checks.
+It also assumes authenticated transport peers: current home-first B imports
+have an open TLS-authentication item in
+[RA-02](../../../docs/routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b).
 
 | Observer | Managed mobile traffic | Non-managed mobile traffic | Home LAN managed traffic | Home LAN non-managed traffic |
 |---|---|---|---|---|
@@ -358,7 +394,8 @@ what the LTE carrier saw as the first hop.
 
 ## Current Steady-State Invariants
 
-- One router-side `sing-box` process handles both LAN and mobile ingress.
+- The main router-side `sing-box` handles LAN and A/B/C/D policy; optional
+  Amn runs a separate `sing-box-amn` process.
 - LAN managed TCP enters `redirect-in` on `:<lan-redirect-port>`.
 - Mobile Channel A clients enter `reality-in` on TCP/<home-reality-port>.
 - Channel B clients enter the local relay and then `channel-b-relay-socks`.
@@ -368,8 +405,10 @@ what the LTE carrier saw as the first hop.
   TCP/<home-channel-c-public-port>.
 - Channel D clients enter router Caddy on TCP/<channel-d-public-port> and then
   `channel-d-naiveproxy-socks-in`.
-- Managed destinations route to `reality-out`.
-- Non-managed destinations from mobile route to `direct-out`.
+- Sensitive matches, when enabled, precede general rules and use `sensitive-out`.
+- Other managed destinations route to `reality-out`, or D's configured pin.
+- Non-managed destinations from split-mode mobile profiles use `direct-out`;
+  selected full-VPS and reviewed exceptions follow their explicit rules.
 - Managed foreign DNS reaches dnscrypt-proxy through the generated dnsmasq
   include, then crosses Reality via local sing-box SOCKS.
 - RU/direct/default DNS stays on the home/RF/default resolver path.

@@ -489,6 +489,24 @@ The Console's `sslip.io` hostname is handled separately as router-side
 control-plane/direct traffic; do not use a client-side `sslip.io DIRECT` rule to
 prove Channel A/B/C egress.
 
+### Server authentication and existing imports
+
+The home-first Channel B URI templates currently include `allowInsecure=1`;
+this is not added to the optional direct-VPS branch. Clients honoring the flag
+skip normal TLS certificate authentication. An active intermediary capable of
+redirecting the connection can impersonate the ingress and obtain tunnel
+metadata/credentials. Application HTTPS retains its own TLS validation.
+See [Xray TLS documentation](https://xtls.github.io/en/config/transports/tls.html).
+
+A diagnostic client using a fingerprint obtained over trusted management SSH
+validates only that diagnostic session. It does not update existing QR imports.
+The remediation must be tested on the actual selected apps: valid certificate
+and hostname verification, or a supported pinned fingerprint; include a negative
+untrusted-certificate test. Record the approved per-client migration and rollback
+before regenerating artifacts. General deploy permission does not authorize
+changed client imports. Track this work as
+[RA-02](../../../docs/routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b).
+
 ## Channel C1 Home-First Naive
 
 Channel C is C1 home-first with two explicit selected-client variants:

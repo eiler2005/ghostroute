@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GhostRoute — архитектура и восстановление</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#fff;color:#0b172a;font-family:Arial,Helvetica,sans-serif}
+main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1.2}p{line-height:1.65;max-width:1050px}a{color:#1d4ed8}section{margin:40px 0 56px}.diagram-container{overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;max-width:100%}svg{display:block;width:1280px;min-width:1280px;height:auto}svg text{font-family:Arial,Helvetica,sans-serif;fill:#0b172a}.paper{fill:#fff}.zone{fill:#f8fbff;stroke:#dbe5f1;stroke-width:1}.eyebrow{font-size:13px;font-weight:600;letter-spacing:1.6px;fill:#475569}.heading{font-size:36px;font-weight:700}.subtitle{font-size:18px;fill:#475569}.node>rect{fill:#fff;stroke:#94a3b8;stroke-width:1.5}.node.focal>rect{fill:#eff6ff;stroke:#1d4ed8;stroke-width:2}.node.optional>rect{stroke-dasharray:6 4}.node-name{font-size:23px;font-weight:600}.body{font-size:18px;fill:#334155}.mono{font-family:Menlo,Consolas,monospace;font-size:15px;fill:#334155}.tag{font-size:12px;letter-spacing:1.3px;font-weight:600;fill:#475569}.edge{fill:none;stroke:#475569;stroke-width:2}.edge.optional{stroke-dasharray:6 5}.edge.focal{stroke:#1d4ed8}.legend{font-size:16px;fill:#475569}.fine{font-size:15px;fill:#475569}.rule{stroke:#cbd5e1;stroke-width:1}.caption{font-size:16px;color:#475569}
+@media(max-width:600px){main{padding:16px}h1{font-size:27px}}
+@media print{main{max-width:none;padding:0}.diagram-container{overflow:visible;border:0}svg{min-width:0;width:100%;height:auto}section{break-inside:avoid}h1{font-size:24px}}
+</style>
+</head>
+<body>
+<main>
+<nav>
+<a href="ghostroute-platform-en.html">English</a> · <a href="../../channels.md">Channels</a> · <a href="../../routing-assurance-roadmap.md">Engineering plan</a>
+</nav>
+<h1>GhostRoute — архитектура и восстановление</h1>
+<p>Реализованные компоненты и их границы. Отдельный инженерный реестр содержит приоритеты и критерии закрытия проверок.</p>
+<section id="routing">
+<h2>Маршруты</h2>
+<div class="diagram-container">
+<svg id="ghostroute-routing-ru" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-routing-ru-title ghostroute-routing-ru-desc">
+<title id="ghostroute-routing-ru-title">Домашние входы и три варианта выхода</title>
+<desc id="ghostroute-routing-ru-desc">LAN и home-first клиенты используют домашнюю политику с отдельными sensitive, managed и direct выходами; Amn изолирован.</desc>
+<defs>
+<marker id="ghostroute-routing-ru-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / ROUTING</text>
+<text x="48" y="92" class="heading">Домашние входы и три варианта выхода</text>
+<text x="48" y="128" class="subtitle">Роутер применяет каталоги и выбранные режимы после домашнего входа.</text>
+<path class="edge " data-from="lan" data-to="policy" d="M 336,244 H 392 Q 400,244 400,252 V 296 Q 400,304 408,304 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge " data-from="remote" data-to="policy" d="M 336,400 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge optional" data-from="amn" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge optional focal" data-from="policy" data-to="sensitive" d="M 800,304 H 864 Q 872,304 872,296 V 252 Q 872,244 880,244 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge focal" data-from="policy" data-to="managed" d="M 800,400 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge " data-from="policy" data-to="direct" d="M 800,496 H 864 Q 872,496 872,504 V 548 Q 872,556 880,556 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<g class="node " data-node="lan">
+<rect x="48" y="188" width="288" height="112" rx="8"/>
+<text x="72" y="224" class="node-name">Домашние LAN / Wi-Fi</text>
+<text x="72" y="256" class="mono">A: managed TCP → REDIRECT</text>
+<text x="72" y="284" class="body">Без клиентского приложения</text>
+</g>
+<g class="node " data-node="remote">
+<rect x="48" y="328" width="288" height="148" rx="8"/>
+<text x="72" y="364" class="node-name">Удалённые клиенты</text>
+<text x="72" y="396" class="mono">A: Reality · B: XHTTP/TLS</text>
+<text x="72" y="424" class="mono">C: CONNECT / Naive*</text>
+<text x="72" y="452" class="mono">D: Caddy / NaiveProxy lab</text>
+</g>
+<g class="node optional" data-node="amn">
+<rect x="48" y="500" width="288" height="112" rx="8"/>
+<text x="72" y="536" class="node-name">Amn: ручной lab</text>
+<text x="72" y="568" class="body">AmneziaWG → home ingress</text>
+<text x="72" y="596" class="body">Изолированные процессы</text>
+</g>
+<g class="node focal" data-node="policy">
+<rect x="440" y="240" width="360" height="300" rx="8"/>
+<text x="464" y="268" class="tag">ВЛАДЕЛЕЦ ПОЛИТИКИ</text>
+<text x="464" y="302" class="node-name">Домашний роутер</text>
+<text x="464" y="340" class="mono">A/B/C/D: sing-box</text>
+<text x="464" y="368" class="mono">Amn: sing-box-amn</text>
+<text x="464" y="396" class="body">Единый смысл каталогов</text>
+<text x="464" y="424" class="body">Sensitive перед managed</text>
+<text x="464" y="452" class="body">A: выбранный full-VPS</text>
+<text x="464" y="480" class="body">M: отдельный service path</text>
+</g>
+<g class="node focal optional" data-node="sensitive">
+<rect x="944" y="188" width="288" height="112" rx="8"/>
+<text x="968" y="224" class="node-name">Sensitive sites</text>
+<text x="968" y="256" class="mono">sensitive-out → hermes_vps</text>
+<text x="968" y="284" class="body">При включённом режиме</text>
+</g>
+<g class="node " data-node="managed">
+<rect x="944" y="344" width="288" height="112" rx="8"/>
+<text x="968" y="380" class="node-name">Managed-сайты</text>
+<text x="968" y="412" class="mono">reality-out → active VPS</text>
+<text x="968" y="440" class="body">У D возможен отдельный pin</text>
+</g>
+<g class="node " data-node="direct">
+<rect x="944" y="500" width="288" height="112" rx="8"/>
+<text x="968" y="536" class="node-name">Direct-направления</text>
+<text x="968" y="568" class="mono">direct-out → home WAN</text>
+<text x="968" y="596" class="body">Сайт видит домашний IP</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">Сплошная: основной путь. Пунктир: opt-in или lab. Native C требует совместимого клиента (*).</text>
+<text x="48" y="704" class="fine">Клиентский DIRECT обходит домашнюю политику. M сохраняет отдельный региональный выход.</text>
+</svg>
+</div>
+<p class="caption">Схема показывает базовый split, а не каждый пакетный exception. LAN REDIRECT охватывает классифицированный managed IPv4 TCP; managed UDP/443 блокируется. Sensitive действует только после совпадения правила. Клиентский DIRECT, скрытые имена и неподконтрольный DNS требуют отдельной проверки. Native C зависит от клиента; D и Amn остаются lab. M показан ниже отдельным служебным путём.</p>
+</section>
+<section id="lifecycle">
+<h2>Запуск и восстановление</h2>
+<div class="diagram-container">
+<svg id="ghostroute-lifecycle-ru" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-lifecycle-ru-title ghostroute-lifecycle-ru-desc">
+<title id="ghostroute-lifecycle-ru-title">Владельцы запуска и восстановления</title>
+<desc id="ghostroute-lifecycle-ru-desc">Merlin и supervisor управляют production runtime; Amn имеет отдельный ручной lifecycle, а Console ограничен чтением.</desc>
+<defs>
+<marker id="ghostroute-lifecycle-ru-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / LIFECYCLE</text>
+<text x="48" y="92" class="heading">Владельцы запуска и восстановления</text>
+<text x="48" y="128" class="subtitle">Стрелки показывают управление жизненным циклом, а не путь пользовательских пакетов.</text>
+<path class="edge optional" data-from="hooks" data-to="supervisor" d="M 336,244 H 440" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<path class="edge optional" data-from="control" data-to="supervisor" d="M 944,244 H 800" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="main" d="M 496,296 V 328 Q 496,336 488,336 H 228 Q 220,336 220,344 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="companions" d="M 624,296 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<path class="edge optional" data-from="supervisor" data-to="dns" d="M 752,296 V 328 Q 752,336 760,336 H 1052 Q 1060,336 1060,344 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<g class="node " data-node="hooks">
+<rect x="48" y="188" width="288" height="108" rx="8"/>
+<text x="72" y="224" class="node-name">Merlin hooks</text>
+<text x="72" y="256" class="mono">services-start</text>
+<text x="72" y="284" class="mono">firewall-start / nat-start</text>
+</g>
+<g class="node focal" data-node="supervisor">
+<rect x="440" y="188" width="360" height="108" rx="8"/>
+<text x="464" y="224" class="node-name">Runtime supervisor</text>
+<text x="464" y="256" class="body">Запуск и адресное восстановление</text>
+<text x="464" y="284" class="body">Проверка готовности и watchdogs</text>
+</g>
+<g class="node " data-node="control">
+<rect x="944" y="188" width="288" height="108" rx="8"/>
+<text x="968" y="224" class="node-name">Control machine</text>
+<text x="968" y="256" class="mono">Ansible + Vault</text>
+<text x="968" y="284" class="body">Согласованный deploy</text>
+</g>
+<g class="node " data-node="main">
+<rect x="48" y="384" width="344" height="136" rx="8"/>
+<text x="72" y="420" class="node-name">Основной sing-box</text>
+<text x="72" y="452" class="body">A: LAN / Home Reality; C</text>
+<text x="72" y="480" class="body">B/D relay → route policy</text>
+<text x="72" y="508" class="body">Sensitive / managed / direct</text>
+</g>
+<g class="node " data-node="companions">
+<rect x="464" y="384" width="352" height="136" rx="8"/>
+<text x="488" y="420" class="node-name">Службы каналов</text>
+<text x="488" y="452" class="body">B: Xray · D: Caddy</text>
+<text x="488" y="480" class="body">M: service policy</text>
+<text x="488" y="508" class="body">C/D: TLS sync / renewal</text>
+</g>
+<g class="node " data-node="dns">
+<rect x="888" y="384" width="344" height="136" rx="8"/>
+<text x="912" y="420" class="node-name">DNS и правила</text>
+<text x="912" y="452" class="mono">dnsmasq / ipset / iptables</text>
+<text x="912" y="480" class="mono">dnscrypt-proxy</text>
+<text x="912" y="508" class="body">dnsmasq принадлежит Merlin</text>
+</g>
+<g class="node optional" data-node="amn">
+<rect x="48" y="556" width="584" height="80" rx="8"/>
+<text x="72" y="592" class="node-name">Amn: отдельное ручное управление</text>
+<text x="72" y="624" class="mono">engine + sing-box-amn · explicit start / policy refresh</text>
+</g>
+<g class="node " data-node="console">
+<rect x="680" y="556" width="552" height="80" rx="8"/>
+<text x="704" y="592" class="node-name">Console: ограниченное чтение</text>
+<text x="704" y="624" class="body">Отдельный ключ → fixed report gate</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">Supervisor восстанавливает production-службы и правила; Amn запускается отдельно после reboot/firewall rebuild.</text>
+<text x="48" y="704" class="fine">M: выбранное приложение → отдельная служебная политика → согласованный регион выхода.</text>
+</svg>
+</div>
+<p class="caption">Схема отделяет boot/recovery ownership от data plane. Правила guard начинают действовать после firewall hook; успешный hook drill не доказывает весь интервал reboot. Операторский ключ находится на control machine, а service key Console ограничен фиксированным набором отчётов. Amn не входит в production supervisor.</p>
+</section>
+<section id="recovery">
+<h2>Recovery-копии</h2>
+<div class="diagram-container">
+<svg id="ghostroute-recovery-ru" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-recovery-ru-title ghostroute-recovery-ru-desc">
+<title id="ghostroute-recovery-ru-title">Код, приватное состояние и recovery-копии</title>
+<desc id="ghostroute-recovery-ru-desc">Код, router state и приватное control material формируют зашифрованный recovery-набор с отдельной проверкой внешней копии.</desc>
+<defs>
+<marker id="ghostroute-recovery-ru-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+</marker>
+</defs>
+<rect class="paper" width="1280" height="720"/>
+<text x="48" y="44" class="eyebrow">GHOSTROUTE / RECOVERY</text>
+<text x="48" y="92" class="heading">Код, приватное состояние и recovery-копии</text>
+<text x="48" y="128" class="subtitle">Копия хранит материал восстановления; локальные пробники проверяют только свои запросы.</text>
+<path class="edge " data-from="git" data-to="bundle" d="M 336,244 H 384 Q 392,244 392,252 V 304 Q 392,312 400,312 H 440" marker-end="url(#ghostroute-recovery-ru-arrow)"/>
+<path class="edge " data-from="router" data-to="bundle" d="M 336,400 H 440" marker-end="url(#ghostroute-recovery-ru-arrow)"/>
+<path class="edge " data-from="mac" data-to="bundle" d="M 336,556 H 384 Q 392,556 392,548 V 496 Q 392,488 400,488 H 440" marker-end="url(#ghostroute-recovery-ru-arrow)"/>
+<path class="edge " data-from="bundle" data-to="offsite" d="M 800,344 H 864 Q 872,344 872,336 V 288 Q 872,280 880,280 H 944" marker-end="url(#ghostroute-recovery-ru-arrow)"/>
+<path class="edge " data-from="offsite" data-to="verify" d="M 1088,344 V 432" marker-end="url(#ghostroute-recovery-ru-arrow)"/>
+<g class="node " data-node="git">
+<rect x="48" y="188" width="288" height="112" rx="8"/>
+<text x="72" y="224" class="node-name">Публичный Git</text>
+<text x="72" y="256" class="body">Код, шаблоны, документация</text>
+<text x="72" y="284" class="body">Сохранённый commit ID</text>
+</g>
+<g class="node " data-node="router">
+<rect x="48" y="344" width="288" height="112" rx="8"/>
+<text x="72" y="380" class="node-name">Состояние роутера</text>
+<text x="72" y="412" class="mono">USB/Entware · JFFS · NVRAM</text>
+<text x="72" y="440" class="body">Согласованные DB snapshots</text>
+</g>
+<g class="node " data-node="mac">
+<rect x="48" y="500" width="288" height="112" rx="8"/>
+<text x="72" y="536" class="node-name">Control Mac</text>
+<text x="72" y="568" class="mono">Vault / profiles / notes</text>
+<text x="72" y="596" class="body">Локальные пробники</text>
+</g>
+<g class="node focal" data-node="bundle">
+<rect x="440" y="240" width="360" height="304" rx="8"/>
+<text x="464" y="268" class="tag">ШИФРОВАНИЕ ДО ЗАГРУЗКИ</text>
+<text x="464" y="302" class="node-name">Recovery bundle</text>
+<text x="464" y="340" class="body">Файлы роутера и control state</text>
+<text x="464" y="368" class="mono">3 × .tar.gz.gpg</text>
+<text x="464" y="396" class="body">Инструкция внутри шифрования</text>
+<text x="464" y="424" class="mono">CLOUD-SHA256SUMS</text>
+<text x="464" y="452" class="body">Проверка локальной копии</text>
+<text x="464" y="480" class="body">Пароль хранится отдельно</text>
+</g>
+<g class="node " data-node="offsite">
+<rect x="944" y="216" width="288" height="128" rx="8"/>
+<text x="968" y="252" class="node-name">Независимая копия</text>
+<text x="968" y="284" class="body">Приватное object storage</text>
+<text x="968" y="312" class="body">или отдельный носитель</text>
+</g>
+<g class="node focal" data-node="verify">
+<rect x="944" y="432" width="288" height="176" rx="8"/>
+<text x="968" y="468" class="node-name">Restore proof</text>
+<text x="968" y="500" class="body">Скачать весь набор</text>
+<text x="968" y="528" class="body">SHA-256 каждого архива</text>
+<text x="968" y="556" class="body">Расшифровать и прочитать</text>
+<text x="968" y="584" class="body">Сохранить приватный отчёт</text>
+</g>
+<line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
+<text x="48" y="678" class="legend">Загрузка и полный restore proof — разные этапы. Доступ к паролю должен переживать потерю исходного Mac.</text>
+<text x="48" y="704" class="fine">Архив не является образом firmware или работающим standby. VPS-приложения имеют собственные backup-контракты.</text>
+</svg>
+</div>
+<p class="caption">Это схема recovery-процесса, а не утверждение, что каждый экземпляр внешней копии уже прошёл проверку. Точные locations, manifest и результаты хранятся локально. Файловое чтение и реальное восстановление на запасном роутере — отдельные доказательства. Самостоятельное восстановление пароля обязательно для сценария потери Mac.</p>
+</section>
+<p class="caption">Local Arial/Helvetica and Menlo/Consolas font fallbacks. No external fonts or runtime scripts. Public role names only.</p>
+</main>
+</body>
+</html>

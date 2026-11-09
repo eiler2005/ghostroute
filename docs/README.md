@@ -20,6 +20,7 @@ local runbooks or historical planning notes.
 - [router-runtime-map.md](router-runtime-map.md) - sanitized map of what is installed on the ASUS Merlin router, with diagrams and runtime guardrails.
 - [praefectus-ai/docs/vps-runtime-map.md](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map for Channel M, Console and routing/app surfaces.
 - [channels.md](channels.md) - production channel handoff and optional Amn lab status.
+- Platform diagrams: [English](assets/diagrams/ghostroute-platform-en.html) / [Русский](assets/diagrams/ghostroute-platform-ru.html) — routing, lifecycle ownership and recovery assets.
 - [Channel Amn runbook](../modules/routing-core/docs/channel-amn-research.md) - isolated home-first AmneziaWG lab, eight client profiles and manual recovery.
 - Channel Amn diagrams: [English](assets/diagrams/channel-amn-architecture-en.html) / [Русский](assets/diagrams/channel-amn-architecture.html).
 - [dns-policy.md](dns-policy.md) - DNS leak and fingerprint policy for Channel A/B/C proofs.
@@ -53,7 +54,8 @@ These documents describe roadmap, draft, and not-yet-implemented work. They are
 top. Use them for direction and design intent, not for "what the system does
 today."
 
-- [future-improvements-backlog.md](future-improvements-backlog.md) - non-runtime roadmap and improvement ideas (`[RU primary]`).
+- [routing-assurance-roadmap.md](routing-assurance-roadmap.md) - current routing/privacy/recovery priorities, evidence gates and explicit decisions to defer changes (`[RU primary]`, English summary).
+- [future-improvements-backlog.md](future-improvements-backlog.md) - broader improvement ideas (`[RU primary]`); routing assurance items are owned by the register above.
 - [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md) - future semi-auto backup VPS egress; manual reserve mode is implemented, semi-automatic failover is a future phase.
 - [ghostroute-console-post-mvp-roadmap.md](ghostroute-console-post-mvp-roadmap.md) - Console post-MVP priorities and broader backlog split.
 - [traffic-facts-v3-and-pyramid-plan.md](traffic-facts-v3-and-pyramid-plan.md) - traffic-facts v3 machine-contract and Console pyramid refactor plan.

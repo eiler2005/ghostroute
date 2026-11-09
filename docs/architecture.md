@@ -1,5 +1,11 @@
 # Архитектура GhostRoute
 
+![GhostRoute: домашние входы и выбор выхода](assets/diagrams/ghostroute-routing-ru.png)
+
+[Редактируемые схемы маршрутов, запуска и recovery-копий](assets/diagrams/ghostroute-platform-ru.html)
+· [English](assets/diagrams/ghostroute-platform-en.html) ·
+[Инженерный план](routing-assurance-roadmap.md).
+
 ## Коротко
 
 Текущая architecture model — layered routing setup: endpoint/client routing,
@@ -57,7 +63,7 @@ Layer 2 home router
     -> delayed firewall stabilization after Merlin chain rebuilds
 
   LAN/Wi-Fi clients
-    -> dnsmasq fills STEALTH_DOMAINS / VPN_STATIC_NETS
+    -> dnsmasq fills STEALTH_DOMAINS; static catalog loads VPN_STATIC_NETS
     -> br0 TCP nat REDIRECT :<lan-redirect-port>
     -> ASUS sing-box redirect inbound
     -> Channel A reality-out managed egress
@@ -145,6 +151,13 @@ peer-набора через `sync-peers` меняет только записи
 и [English](assets/diagrams/channel-amn-architecture-en.html).
 
 ## Управление и хранение состояния
+
+Публичный Git хранит код, шаблоны и схемы; Vault, рабочие профили и recovery-архивы
+остаются на control machine в приватных путях. Файловая копия роутера и локальные
+пробники не являются вторым работающим экземпляром production-инфраструктуры.
+Независимая зашифрованная копия проверяется обратным скачиванием, хешем и
+расшифровкой по [backup runbook](../modules/secrets-management/docs/vault-offsite-backup.md).
+Точные места хранения и результаты приёмки остаются в локальной инвентаризации.
 
 Оператор и Console используют разные ключи доступа к роутеру. Административный
 ключ хранится на Mac; ключ Console на VPS ограничен принудительной командой
@@ -491,6 +504,11 @@ remote clients: endpoint -> home public IP/DDNS на home Reality port
 REDIRECT/DNS/catalog behavior и не должен зависеть от B/C.
 
 ### Channel B
+
+Текущая home-first генерация URI включает `allowInsecure=1`. Это известная
+граница аутентификации сервера, отдельная от работающего routing path. Проверка
+сертификата на реальных клиентах и совместимый переход описаны в
+[реестре RA-02](routing-assurance-roadmap.md#ra-02--аутентификация-сервера-channel-b).
 
 В текущей схеме Channel B работает как отдельная production selected-client
 home-first lane:

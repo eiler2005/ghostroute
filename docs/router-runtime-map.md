@@ -17,53 +17,53 @@ Channel M, GhostRoute Console and routing/app surfaces lives in
 
 ## At A Glance
 
-![GhostRoute detailed runtime map](assets/diagrams/ghostroute-lifecycle-en.png)
+![GhostRoute lifecycle and ownership](assets/diagrams/ghostroute-lifecycle-en.png)
+
+[Editable lifecycle, routing and recovery diagrams](assets/diagrams/ghostroute-platform-en.html)
+· [Русские схемы](assets/diagrams/ghostroute-platform-ru.html).
+
+The lifecycle figure shows control relationships. Packets do not pass through
+Merlin hooks or the supervisor. Firmware owns dnsmasq; GhostRoute supplies its
+policy includes and managed-egress helpers. Packet paths are:
 
 ```mermaid
 flowchart LR
-  subgraph endpoint[Endpoint and LAN clients]
-    lan[Home LAN / Wi-Fi]
-    mobileA[Home Reality profile]
-    mobileB[Channel B profile]
-    mobileC[Channel C profile]
-    mobileD[Channel D Karing / NaiveProxy profile]
-  <service-specific configuration retained in private operator notes>
-  end
-
-  subgraph router[ASUS Merlin router]
-    merlin[Merlin hooks<br/>nat-start / firewall-start / services-start]
-    supervisor[ghostroute-runtime-supervisor<br/>boot / recover / channel-m-recover]
-    dnsmasq[dnsmasq + ipset<br/>managed domain and static-net catalog]
-    singbox[sing-box<br/>REDIRECT, Reality, SOCKS, HTTP inbounds]
-    xray[Xray Channel B home relay]
-    caddyD[Caddy Channel D<br/>forward_proxy@naive]
-    dnscrypt[dnscrypt-proxy<br/>managed DNS over sing-box SOCKS]
-    watchdogs[watchdogs and cron<br/>sing-box, dnscrypt, Channel M, health]
-  end
-
-  subgraph vps[VPS-owned remote surfaces]
-    reality[VPS Reality / Caddy layer4]
-    mListener[Channel M reverse listener<br/>VPS Docker bridge only]
-  end
-
-  lan --> merlin --> supervisor
-  supervisor --> dnsmasq --> singbox
-  mobileA --> singbox
-  mobileB --> xray --> singbox
-  mobileC --> singbox
-  mobileD --> caddyD --> singbox
-  maxBridge --> mListener --> singbox
-  singbox -->|managed destinations| reality
-  singbox -->|direct / home-WAN destinations| wan[Home WAN direct-out]
-  dnsmasq --> dnscrypt --> singbox
-  supervisor -. delayed firewall stabilization .-> merlin
-  supervisor -. starts and checks .-> singbox
-  supervisor -. starts and checks .-> dnscrypt
-  supervisor -. starts and checks .-> caddyD
-  watchdogs -. recovers .-> singbox
-  watchdogs -. recovers .-> dnscrypt
-  watchdogs -. recovers .-> mListener
+  lan[LAN / Wi-Fi classified TCP] --> redirect[iptables REDIRECT]
+  redirect --> policy[Main sing-box policy]
+  mobile[Home Reality / B Xray relay / C] --> policy
+  caddyD[Channel D Caddy lab] --> policy
+  policy -->|sensitive match first| sensitive[sensitive-out / hermes_vps]
+  policy -->|general managed| managed[Configured managed backend]
+  policy -->|non-managed| wan[Home WAN direct-out]
+  isolated[Amn lab: separate sing-box-amn]
+  isolated --> sensitive
+  isolated --> managed
+  isolated --> wan
 ```
+
+The diagram shows the default split. Selected Channel A full-VPS changes the
+general Internet route; sensitive overrides and private/control exceptions still
+apply. Channel D can pin its general managed backend. Managed LAN UDP/443 is
+dropped for TCP fallback; an already classified managed IPv4 TCP/UDP443 guard
+covers the documented REDIRECT failure case. See [privacy assurance](privacy-assurance.md)
+for the exact scope and [the engineering register](routing-assurance-roadmap.md)
+for remaining acceptance work.
+
+Channel M has a separate service data path. The router establishes the outbound
+SSH remote-forward; the application then sends requests in the reverse direction:
+
+```mermaid
+flowchart LR
+  service[Service on VPS] --> listener[VPS-local reverse listener]
+  listener -->|existing SSH tunnel| inbound[Router loopback M inbound]
+  inbound --> wan[Home WAN direct-out]
+```
+
+Managed DNS is another distinct path: dnsmasq sends managed queries to
+dnscrypt-proxy, which uses a sing-box SOCKS inbound and the managed egress.
+Default/direct DNS follows the default resolver policy. Neither DNS nor M is
+an ingress relay for Channel B. Amn remains outside production supervisors and
+requires explicit manual recovery after reboot or firewall rebuild.
 
 ## Storage ownership and operating modes
 

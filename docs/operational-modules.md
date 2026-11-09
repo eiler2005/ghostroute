@@ -61,6 +61,10 @@ the lab contract.
   incident snapshots and one-off execution plans should stay local or be
   summarized into stable docs.
 
+Current routing security, recovery evidence and conditional improvements are
+tracked in [Routing Assurance Roadmap](routing-assurance-roadmap.md). Keep public
+capability descriptions here and deployment-specific acceptance in private reports.
+
 ## Quick Navigation
 
 | Need | Start here |
