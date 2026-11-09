@@ -6,9 +6,11 @@ on the values inside it.
 
 ## Policy
 
-- Keep exactly one current encrypted offsite copy outside the repo working tree.
+- Keep at least one current encrypted offsite copy outside the repo working tree.
 - Store it on an encrypted USB drive, a trusted password manager attachment, or
   another encrypted personal backup location.
+- A second folder or a local Time Machine snapshot on the same Mac is still a
+  local copy; it does not protect against loss of that machine.
 - Do not store the Vault password next to the backup file.
 - Do not commit backup files, decrypted Vault files, generated client profiles
   or recovery notes with real endpoints.
@@ -28,6 +30,14 @@ shasum -a 256 <encrypted-backup-dir>/ghostroute/stealth.yml
 
 The two hashes must match. Record the date and hash in a private notes location,
 not in tracked docs.
+
+For a complete router backup in object storage, encrypt archives and private
+restore notes on the control machine before upload. Use a private bucket and
+upload a SHA-256 manifest for the encrypted files. Download the files to a
+separate temporary location, verify the hashes and decrypt/read the archives
+there before counting the copy as recoverable. Keep the decryption password
+outside the bucket. Do not upload plaintext layout inventories, profiles or
+diagnostic logs.
 
 ## Restore Drill Without Router Access
 
@@ -66,8 +76,8 @@ cd ..
 After returning to the home network:
 
 - confirm Channel A router invariants with `./verify.sh --verbose`;
-- confirm Channel B selected-client import and real egress on one known client;
-- keep Channel C outside production checks until its separate proof is complete;
+- confirm each enabled selected-client channel from an actual client, including
+  direct and managed egress; check sensitive routing where enabled;
 - refresh the offsite backup if any recovery or rotation changed Vault values;
 - remove stale local `ansible/secrets/stealth.yml.backup-*` files after keeping
   the desired recent copies.
