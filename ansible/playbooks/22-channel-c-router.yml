@@ -63,10 +63,7 @@
       changed_when: false
 
     - name: Restart sing-box after Channel C1 deploy
-      ansible.builtin.raw: |
-        {{ singbox_init_path }} restart
-        sleep 3
-      changed_when: false
+      ansible.builtin.include_tasks: ../tasks/router-singbox-restart.yml
 
     - name: Re-apply stealth routing after Channel C1 restart
       ansible.builtin.raw: "{{ stealth_route_init_script }}"

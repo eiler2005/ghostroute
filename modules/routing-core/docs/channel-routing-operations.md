@@ -144,6 +144,11 @@ unsuccessfully. The atomic snapshot fixture is
 `bash tests/test-ipset-snapshot-atomic.sh`. For live exit-identity and recovery
 acceptance, follow [privacy assurance](../../../docs/privacy-assurance.md).
 
+The Ansible router playbooks dispatch their final sing-box restart in the
+background, then reconnect over management SSH and verify the job result and
+process status before restoring routing rules. A failed restart is a failed
+deploy; it is not masked by a subsequent active probe.
+
 Must not exist in current policy:
 
 ```text

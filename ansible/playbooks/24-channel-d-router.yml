@@ -94,10 +94,7 @@
       changed_when: false
 
     - name: Restart sing-box after Channel D deploy
-      ansible.builtin.raw: |
-        {{ singbox_init_path }} restart
-        sleep 3
-      changed_when: false
+      ansible.builtin.include_tasks: ../tasks/router-singbox-restart.yml
 
     - name: Restart Channel D Caddy when enabled
       ansible.builtin.raw: |

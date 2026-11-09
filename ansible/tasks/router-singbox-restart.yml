@@ -1,0 +1,37 @@
+- name: Restart sing-box without holding the management SSH session
+  ansible.builtin.shell: "{{ singbox_init_path }} restart"
+  async: 120
+  poll: 0
+  register: ghostroute_singbox_restart
+
+- name: Allow the router restart to cross its network interruption
+  ansible.builtin.pause:
+    seconds: 35
+
+- name: Reset the management SSH connection after sing-box restart
+  ansible.builtin.meta: reset_connection
+
+- name: Wait for router management SSH after sing-box restart
+  ansible.builtin.wait_for_connection:
+    connect_timeout: 5
+    sleep: 3
+    timeout: 120
+
+- name: Check the sing-box restart result
+  ansible.builtin.async_status:
+    jid: "{{ ghostroute_singbox_restart.ansible_job_id }}"
+  register: ghostroute_singbox_restart_result
+  until: ghostroute_singbox_restart_result.finished
+  retries: 20
+  delay: 3
+  changed_when: false
+
+- name: Require sing-box running after restart
+  ansible.builtin.raw: "{{ singbox_init_path }} status | grep -qx running"
+  changed_when: false
+
+- name: Remove the completed sing-box restart job result
+  ansible.builtin.async_status:
+    jid: "{{ ghostroute_singbox_restart.ansible_job_id }}"
+    mode: cleanup
+  changed_when: false

@@ -261,6 +261,16 @@ Wi-Fi managed-domain path, VPS edge or Channel A/B/C runtime chain is already
 unhealthy. Router and VPS playbooks also capture a last-known-good bundle before
 mutation so post-deploy recovery has a concrete restore point.
 
+Router playbooks `20`, `21`, `22` and `24` start sing-box idempotently while
+installing the shared role. Their final restart runs as an asynchronous job so
+the management SSH session is not held across the routing interruption. Ansible
+then resets SSH, waits for reconnection, checks the job result and requires a
+running sing-box process before continuing to routing recovery and the post-
+deploy gate. An unreachable router or failed restart still fails the playbook.
+Playbook `20` uses the same reconnect pattern for rule-set refresh because it
+may restart sing-box or dnsmasq when catalogs change. After its final service
+recovery, it waits for the local dnsmasq listener before the active deploy gate.
+
 For non-mutating local/CI decisions, use
 `modules/ghostroute-health-monitor/bin/deploy-risk`. It classifies changed paths
 and recommends whether the full live deploy gate is necessary. This does not

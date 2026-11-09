@@ -38,18 +38,51 @@
         - health_monitor
   post_tasks:
     - name: Refresh sing-box rule-sets after catalog deploy
-      ansible.builtin.raw: >
+      ansible.builtin.shell: >
         MANAGED_DNS_FORWARD_HOST='{{ router_managed_dns_forward_host | default("127.0.0.1") }}'
         MANAGED_DNS_FORWARD_PORT='{{ router_managed_dns_forward_port | default(dnscrypt_port) }}'
         /jffs/scripts/update-singbox-rule-sets.sh --restart-if-changed
+      async: 180
+      poll: 0
+      register: ghostroute_ruleset_refresh
+      changed_when: false
+      when: stealth_channel_a_lan_enabled | bool
+
+    - name: Allow rule-set service restarts to cross network interruption
+      ansible.builtin.pause:
+        seconds: 35
+      when: stealth_channel_a_lan_enabled | bool
+
+    - name: Reset management SSH after rule-set refresh
+      ansible.builtin.meta: reset_connection
+      when: stealth_channel_a_lan_enabled | bool
+
+    - name: Wait for management SSH after rule-set refresh
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 5
+        sleep: 3
+        timeout: 120
+      when: stealth_channel_a_lan_enabled | bool
+
+    - name: Check rule-set refresh result
+      ansible.builtin.async_status:
+        jid: "{{ ghostroute_ruleset_refresh.ansible_job_id }}"
+      register: ghostroute_ruleset_refresh_result
+      until: ghostroute_ruleset_refresh_result.finished
+      retries: 30
+      delay: 3
+      changed_when: false
+      when: stealth_channel_a_lan_enabled | bool
+
+    - name: Remove completed rule-set refresh job result
+      ansible.builtin.async_status:
+        jid: "{{ ghostroute_ruleset_refresh.ansible_job_id }}"
+        mode: cleanup
       changed_when: false
       when: stealth_channel_a_lan_enabled | bool
 
     - name: Restart sing-box after all router service restarts
-      ansible.builtin.raw: |
-        {{ singbox_init_path }} restart
-        sleep 3
-      changed_when: false
+      ansible.builtin.include_tasks: ../tasks/router-singbox-restart.yml
       when: stealth_channel_a_lan_enabled | bool
 
     - name: Re-apply stealth routing after final sing-box restart
@@ -60,6 +93,14 @@
     - name: Reconcile GhostRoute runtime supervisor after router deploy
       ansible.builtin.raw: "{{ ghostroute_runtime_supervisor_path }} recover"
       changed_when: false
+
+    - name: Wait for dnsmasq TCP listener after router service restarts
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 53
+        sleep: 2
+        timeout: 90
+      when: stealth_channel_a_lan_enabled | bool
 
     - name: GhostRoute deploy gate after router mutation
       ansible.builtin.include_tasks: ../tasks/deploy-gate.yml

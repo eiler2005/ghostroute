@@ -428,7 +428,6 @@
     dest: "{{ singbox_config_path }}"
     mode: "0600"
   register: singbox_config_render
-  notify: restart singbox
 
 - name: Validate changed sing-box config before restart
   block:
@@ -471,9 +470,8 @@
     dest: "{{ singbox_log_rotate_path }}"
     mode: "0755"
 
-- name: Enable + start singbox
+- name: Start singbox when not already running
   ansible.builtin.raw: |
     {{ singbox_init_path }} enable >/dev/null 2>&1 || true
-    {{ singbox_init_path }} restart
-  register: sb_start
+    {{ singbox_init_path }} start
   changed_when: false

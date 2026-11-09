@@ -180,7 +180,7 @@ assert_contains_fixed "$STEALTH_TASKS" "configs/domains-no-vpn.txt"
 # LAN/Wi-Fi must populate both ipsets from those sources.
 assert_contains_fixed "$FIREWALL_START" "ipset create STEALTH_DOMAINS hash:ip"
 assert_contains_fixed "$FIREWALL_START" "ipset create VPN_STATIC_NETS hash:net"
-assert_contains_fixed "$FIREWALL_START" 'sed -e '\''s/#.*$//'\'' -e '\''/^[[:space:]]*$/d'\'' "$STATIC_NETWORKS_FILE"'
+assert_contains_fixed "$FIREWALL_START" 'sed -e '\''s/#.*$//'\'' -e '\''s/[[:space:]]*$//'\'' -e '\''/^[[:space:]]*$/d'\'' "$STATIC_NETWORKS_FILE"'
 assert_contains_fixed "$FIREWALL_START" 'ipset add "$STATIC_NEXT" "$network"'
 assert_contains_fixed "$FIREWALL_START" 'ipset swap "$STATIC_NEXT" VPN_STATIC_NETS'
 
