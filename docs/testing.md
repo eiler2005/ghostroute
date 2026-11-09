@@ -1,5 +1,10 @@
 # Testing Strategy
 
+`python3 tests/test-public-service-docs.py` checks that public documentation and
+diagram sources keep service-egress descriptions application-neutral and do not
+reference retired raster disclosures. Runtime identifiers are a separate
+compatibility contract and are not renamed by publication maintenance.
+
 The optional Mac application has independent checks:
 `./modules/mac-privacy-guard/tests/run.sh` and
 `node modules/mac-privacy-guard/tests/browser.mjs`. Its

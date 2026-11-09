@@ -11,10 +11,13 @@
 Текущая architecture model — layered routing setup: endpoint/client routing,
 managed channels, home router и VPS egress. Channel A остается основным
 Reality-first router data plane без активного legacy WireGuard. Channel B
-реализован как production home-first lane для selected device-client profiles. Channel C — home-first selected-client lane with C1-sing-box Naive as the
+реализован как production home-first lane для selected device-client profiles.
+Channel C — home-first selected-client lane with C1-sing-box Naive as the
 stealth-primary design and C1-Shadowrocket HTTPS CONNECT as a proven
-compatibility path. C1-Shadowrocket is live-proven and persisted. C1-sing-box is
-router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
+compatibility path. C1-Shadowrocket is live-proven and persisted. C1-sing-box
+is router-side server-ready but client-blocked on the tested iPhone SFI
+`1.11.4`. Channel M supports applications with regional egress requirements
+through an isolated service policy.
 
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
@@ -32,10 +35,11 @@ router-side server-ready but client-blocked on the tested iPhone SFI `1.11.4`. C
   что и для других home-first каналов. C1-Shadowrocket uses HTTPS CONNECT for
   Shadowrocket compatibility and is not Naive. C1-sing-box uses sing-box Naive
   on the router, but requires an iOS client with outbound `"type": "naive"`.
-- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. It is not a client failover channel and
-  does not use the managed split. Recovery has two modes: normal boot/recover is
-  owned by the router runtime supervisor together with A/B/C/D, while the
-  VPS/app side may request only Channel M on-demand recovery through the scoped
+- Channel M supports applications with regional egress requirements through an
+  isolated service policy. It is not a client failover channel and does not
+  use the managed split. Recovery has two modes: normal boot/recover is owned
+  by the router runtime supervisor together with A/B/C/D, while the VPS/app
+  side may request only Channel M on-demand recovery through the scoped
   supervisor command `channel-m-recover`.
 
 ```text
@@ -226,8 +230,9 @@ Channel A/B/C are home-first for managed traffic: the first network sees
 endpoint -> home endpoint, not endpoint -> VPS. The VPS provider sees the home
 router as the source for managed traffic.
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. It is
-authenticated and separate from A/B/C client routing.
+Channel M supports applications with regional egress requirements through an
+isolated service policy. It is authenticated and separate from A/B/C client
+routing.
 
 ### Channel C/D TLS Prerequisite
 
@@ -276,7 +281,7 @@ flowchart LR
     amnpolicy -- sensitive sites --> sensitive
     amnpolicy -- other managed --> managed
     amnpolicy -- non-managed --> wan
-    service[Channel M service ingress] --> wan
+    service[Channel M service policy] --> regional[Approved regional egress]
 ```
 
 The guard is installed early by `firewall-start` and is the first `FORWARD`
@@ -288,7 +293,8 @@ unknown destinations or cover traffic before the firewall hook runs. See
 for the DNS, hidden-hostname and IPv6 boundaries. Mobile ingress, Amn and
 Channel M keep their separate route owners.
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ### Layer 3 — VPS
 

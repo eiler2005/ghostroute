@@ -194,7 +194,8 @@ router-native NaiveProxy lab lane; it must not be treated as Channel C proof.
 
 ## Channel M — Regional Service Policy
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ## Channel Amn Manual Lab
 
@@ -278,7 +279,8 @@ Test interpretation:
 - Channel B/C/D tests prove selected home-first client entry and then the same
   managed split. Channel D proof is D-specific and must not be used as Channel
   C native proof.
-- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- Channel M proof verifies real application requests against the approved
+  regional policy; a healthy listener alone is insufficient.
 - Legacy `wgs1`/`wgc1` remain a manual cold fallback and should not appear in
   production proof output. The separately enabled Amn interface is a lab object,
   not activation of either legacy lane.
@@ -297,7 +299,7 @@ material and must stay out of shareable documentation.
 | `channel_c_shadowrocket_public_port` | `router_sing_box` | router WAN | selected compatibility clients |
 | `channel_d_naiveproxy_public_port` | `router_channel_d_caddy_naiveproxy` | router WAN | selected Channel D clients |
 | Amn private `settings.json` field `port` | `router_channel_amn_lab` | router UDP ingress | authenticated selected lab peers; opened only during explicit start |
-| Isolated regional service policy | `router_sing_box` | router loopback | SSH remote-forward target only |
+| Channel M private service settings | service-owned | private policy | authenticated selected services |
 | `dnscrypt_port` | `router_dnscrypt_proxy` | router loopback | local managed DNS forwarder |
 | `singbox_dnscrypt_socks_port` | `router_sing_box` | router loopback | dnscrypt egress over Reality |
 

@@ -32,9 +32,10 @@ decision. The default decision is managed-vs-direct split; Channel A also has an
 explicit selected full-VPS override for home Wi-Fi/LAN devices and Home Reality
 profiles.
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
-Full Channel M environment ownership, ports and redeploy invariants are in
+The public Channel M policy and isolation contract is in
 [channel-m-environment.md](channel-m-environment.md).
 
 ## Protocols and implementations
@@ -330,7 +331,8 @@ Current production interpretation:
 
 ## Channel M — Regional Service Policy
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ## No Automatic Failover
 

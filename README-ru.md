@@ -59,7 +59,7 @@ watchdog'ами и схемами каналов:
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
-| M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | Нет |
+| M | Региональная служебная политика | Выбранные приложения | Выход в заданном регионе, изолированный от клиентской маршрутизации | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
 Отдельный [тестовый Amn](modules/routing-core/docs/channel-amn-research.md) проверяет
@@ -79,20 +79,21 @@ VLESS + Reality/Vision. [Таблица протоколов и компонен
 
 ## Обзор
 
-GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS Merlin
-роутера и удаленного VPS egress. Отдельная служебная политика поддерживает приложения, которым нужен выход в заданной стране или регионе. Домашние устройства могут оставаться без
-клиентских VPN-приложений, а managed endpoint-клиенты могут применять
-собственную first-hop routing policy еще до входа на домашний роутер. Базовый
-режим — managed-domain split, но выбранные домашние Wi-Fi/LAN устройства и
-выбранные Channel A Home Reality профили могут быть переведены в full-VPS mode:
-весь internet-bound трафик идет через `reality-out`, а local/private остается
-локальным.
+GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS
+Merlin роутера и удаленного VPS egress. Отдельная служебная политика
+поддерживает приложения, которым нужен выход в заданной стране или регионе.
+Домашние устройства могут оставаться без клиентских VPN-приложений, а managed
+endpoint-клиенты могут применять собственную first-hop routing policy еще до
+входа на домашний роутер. Базовый режим — managed-domain split, но выбранные
+домашние Wi-Fi/LAN устройства и выбранные Channel A Home Reality профили могут
+быть переведены в full-VPS mode: весь internet-bound трафик идет через
+`reality-out`, а local/private остается локальным.
 
 Sensitive sites mode направляет выбранные назначения через отдельный
 `sensitive-out` перед общими managed-правилами. LAN guard защищает уже
 классифицированные managed IPv4 TCP и UDP/443 при восстановлении REDIRECT;
 атомарное сохранение ipset оставляет последний корректный снимок. Служебный
-Channel M сохраняет отдельный выход через домашний WAN.
+Channel M сохраняет отдельную региональную служебную политику.
 
 ![GhostRoute: домашние входы и три варианта выхода](docs/assets/diagrams/ghostroute-routing-ru.png)
 
@@ -106,16 +107,17 @@ Channel M сохраняет отдельный выход через домаш
   Например, Shadowrocket на iPhone/iPad/MacBook может использовать domain, IP,
   GEOIP и rule-list policy; это routing layer, а не просто VPN toggle.
 - Layer 1 — managed channels. Channel A, Channel B, Channel C и experimental
-  Channel D работают home-first:
-  первая сеть видит endpoint -> home endpoint, а не endpoint -> VPS. Channel C
-  теперь разделен на C1-Shadowrocket HTTPS CONNECT compatibility и C1-sing-box
-  native Naive target. Channel D — выключенный по умолчанию router-native
-  Caddy `forward_proxy@naive` lab на `:<channel-d-public-port>`, который заводит трафик в
-  `channel-d-naiveproxy-socks-in` и тот же managed split. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
+  Channel D работают home-first: первая сеть видит endpoint -> home endpoint,
+  а не endpoint -> VPS. Channel C теперь разделен на C1-Shadowrocket HTTPS
+  CONNECT compatibility и C1-sing-box native Naive target. Channel D —
+  выключенный по умолчанию router-native Caddy `forward_proxy@naive` lab на
+  `:<channel-d-public-port>`, который заводит трафик в
+  `channel-d-naiveproxy-socks-in` и тот же managed split. Channel M поддерживает приложения с
+  региональными требованиями к выходу через изолированную служебную политику.
 - Layer 2 — home router. Он завершает home-based channels и применяет managed
   split через `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, плюс optional Channel A
   selected full-VPS override для выбранных устройств/профилей. Channel M не
-  участвует в split и route rule ведет его inbound напрямую в `direct-out`.
+  использует общую split-политику и сохраняет отдельные региональные правила.
   Защитная цепочка блокирует прямой LAN-выход к уже классифицированным managed
   IPv4, если TCP REDIRECT отсутствует, и блокирует managed UDP/443 при
   обновлении правил.
@@ -137,11 +139,13 @@ profiles, а не к общей архитектуре.
 
 Только Channel A входит в automatic router data plane. Channel B — production
 lane для selected device-client profiles с отдельным ingress/relay и без
-захвата Channel A REDIRECT. Channel C означает только C1 home-first на роутере:
-C1-Shadowrocket compatibility live-proven и C1-sing-box native Naive
-server-ready/client-blocked, а не VPS-only backend. Автоматический failover через B/C не включается. Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
+захвата Channel A REDIRECT. Channel C означает только C1 home-first на
+роутере: C1-Shadowrocket compatibility live-proven и C1-sing-box native Naive
+server-ready/client-blocked, а не VPS-only backend. Автоматический failover
+через B/C не включается. Channel M поддерживает приложения с региональными
+требованиями к выходу через изолированную служебную политику.
 
-Runtime ownership, порты и invariants для redeploy описаны в
+Публичный контракт региональной служебной политики описан в
 [docs/channel-m-environment.md](docs/channel-m-environment.md).
 
 Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эксплуатации.
@@ -217,7 +221,8 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   Server-side build pinned на `klzgrad/forwardproxy`, но live fingerprint
   остается Karing-like; cover site отвечает на обычный unauthenticated HTTPS
   GET. Channel D выключен по умолчанию и не является Channel C proof.
-- Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
+- Channel M поддерживает приложения с региональными требованиями к выходу
+  через изолированную служебную политику.
 - Router-side VLESS+Reality ingress на TCP/<home-reality-port> для удаленных
   клиентов: первая сеть видит home endpoint, а не VPS endpoint.
 - Стабильный router-side `sing-box` TCP REDIRECT вместо нестабильного Merlin TUN routing.
@@ -559,9 +564,10 @@ failover. Artifacts в
 artifacts: C1-Shadowrocket live-proven, C1-sing-box native target.
 `ansible/out/clients-channel-d/` считаются experimental Channel D credentials.
 
-### Channel M — Regional Service Policy
+### 6. Channel M — региональная служебная политика
 
-Channel M задаёт изолированную политику для приложений с региональными требованиями к выходу. Привязка приложений и параметры развёртывания хранятся в приватной операторской конфигурации.
+Channel M поддерживает приложения с региональными требованиями к выходу через
+изолированную служебную политику.
 
 ## Технический стек
 
@@ -797,7 +803,7 @@ VPS observer хранит свой local-only статус на VPS в
 - `dnscrypt-proxy` на `127.0.0.1:<dnscrypt-port>` — load-bearing локальная
   зависимость managed DNS. Если listener исчезает, LAN/Wi-Fi managed domains и
   home-first A/B/C/D могут выглядеть сломанными одновременно, даже когда
-  listeners/iptables зелёные. Channel M остается service-only direct-out и не
+  listeners/iptables зелёные. Channel M сохраняет отдельную служебную политику и не
   использует managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` проверяет
   listener каждую минуту и перезапускает только dnscrypt-proxy. Init path и
   GhostRoute runtime supervisor также выставляют `vm.overcommit_memory=1` перед

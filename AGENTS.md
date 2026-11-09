@@ -152,6 +152,11 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   role-style names. Do not name the real provider, ASN, account, host family,
   SNI, endpoint, or any detail that lets a public reader identify the actual
   egress.
+- Public service-egress descriptions must stay application-, country- and
+  deployment-neutral: describe selected applications with regional requirements
+  and isolated policy ownership. Keep application mappings, host aliases and
+  detailed service topology in private operator material. Preserve existing
+  runtime identifiers and client compatibility when editing publication text.
 - Keep real secrets and deployment-specific values in Ansible Vault, the
   appropriate secrets store, or gitignored local files only.
 - Console router access must use its dedicated forced-command service key;

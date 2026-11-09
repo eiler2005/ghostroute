@@ -17,21 +17,22 @@ Russian README is an operator-facing summary.
 
 ## TL;DR
 
-GhostRoute is a single-operator routing platform for an ASUS Merlin edge router.
-It keeps home LAN devices app-free, gives selected remote clients a home-first
-entrypoint, and keeps routing policy on the router. It also supports isolated policies for applications that require egress in a designated region. By default only managed
-destinations use the active Reality egress; selected home Wi-Fi/LAN devices and
-selected Channel A Home Reality profiles can opt into full-VPS mode where all
-internet-bound traffic uses `reality-out`. The active egress is normally the
-owned VPS, or an explicit reserve backend during incidents. The repo is
-intentionally module-native: routing, health, traffic, catalog, client profiles,
-secrets and recovery all have separate ownership and tests.
+GhostRoute is a single-operator routing platform for an ASUS Merlin edge
+router. It keeps home LAN devices app-free, gives selected remote clients a
+home-first entrypoint, and keeps routing policy on the router. It also
+supports isolated policies for applications that require egress in a
+designated region. By default only managed destinations use the active Reality
+egress; selected home Wi-Fi/LAN devices and selected Channel A Home Reality
+profiles can opt into full-VPS mode where all internet-bound traffic uses
+`reality-out`. The active egress is normally the owned VPS, or an explicit
+reserve backend during incidents. The repo is intentionally module-native:
+routing, health, traffic, catalog, client profiles, secrets and recovery all
+have separate ownership and tests.
 
 Sensitive sites mode gives reviewed destinations a dedicated `sensitive-out`
 egress before the general managed rules. The LAN managed guard protects already
 classified IPv4 TCP and UDP/443 during REDIRECT recovery; atomic ipset snapshots
-preserve the last valid saved classification. Channel M keeps its dedicated
-home-WAN service path.
+preserve the last valid saved classification. Channel M keeps its separate regional service policy.
 
 ![GhostRoute: home-first networking](docs/assets/diagrams/ghostroute-cover.png)
 
@@ -90,7 +91,7 @@ What this project demonstrates, with proof in-repo:
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive on `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane relayed into the same managed split; disabled by default | No |
-| M | Isolated regional service policy | Isolated regional service policy | Isolated regional service policy | No |
+| M | Regional service policy | Selected applications | Approved regional egress, isolated from client routing | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 The optional [Amn compatibility lab](modules/routing-core/docs/channel-amn-research.md)
@@ -126,14 +127,15 @@ The layered model separates the main traffic responsibilities:
   example, Shadowrocket on an iPhone/iPad/MacBook can use domain, IP, GEOIP and
   rule-list policy; it is a routing layer, not just a VPN toggle.
 - Layer 1 is the managed channel layer. Channel A, Channel B, Channel C and
-  experimental Channel D are
-  home-first: the first network sees endpoint -> home endpoint, not endpoint ->
-  VPS. See [docs/channels.md](docs/channels.md) for the compact A/B/C/D handoff
-  model. Channel C has C1-Shadowrocket HTTPS CONNECT compatibility for
-  Shadowrocket and a C1-sing-box native Naive design that is waiting on an iOS
-  client with Naive outbound support. Channel D is a disabled-by-default
-  router-native Caddy `forward_proxy@naive` lab on `:<channel-d-public-port>`, relayed into the
-  same managed split through `channel-d-naiveproxy-socks-in`. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+  experimental Channel D are home-first: the first network sees endpoint ->
+  home endpoint, not endpoint -> VPS. See [docs/channels.md](docs/channels.md)
+  for the compact A/B/C/D handoff model. Channel C has C1-Shadowrocket HTTPS
+  CONNECT compatibility for Shadowrocket and a C1-sing-box native Naive design
+  that is waiting on an iOS client with Naive outbound support. Channel D is a
+  disabled-by-default router-native Caddy `forward_proxy@naive` lab on
+  `:<channel-d-public-port>`, relayed into the same managed split through
+  `channel-d-naiveproxy-socks-in`. Channel M supports applications with
+  regional egress requirements through an isolated service policy.
 - Layer 2 is the home router. It terminates home-based channels and applies the
   managed split with `STEALTH_DOMAINS` / `VPN_STATIC_NETS`, plus an optional
   Channel A selected full-VPS override for home Wi-Fi/LAN devices and Home
@@ -145,8 +147,8 @@ The layered model separates the main traffic responsibilities:
   and channel boundaries. Router reboot recovery is centralized in
   `ghostroute-runtime-supervisor.sh`: `services-start` delegates to it, and it
   re-registers watchdog crons, restores listeners and performs delayed firewall
-  stabilization after Merlin rebuilds chains. Channel M bypasses the managed
-  split and routes its inbound tag directly to `direct-out`.
+  stabilization after Merlin rebuilds chains. Channel M keeps its regional
+  service policy independent of the managed split.
 - Layer 3 is the VPS. It acts as remote egress for selected managed traffic.
 
 Production endpoint policy is intentionally country-neutral in this repository:
@@ -159,9 +161,11 @@ not the general architecture.
 Only Channel A is part of the automatic router data plane. Channel B is
 production for selected device-client profiles, has its own ingress/relay
 surface and must stay isolated from Channel A REDIRECT ownership. Channel C is
-home-first, separate from Channel A/B routing and has no automatic failover. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+home-first, separate from Channel A/B routing and has no automatic failover.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
-Channel M runtime ownership, ports and redeploy invariants are documented in
+The public Channel M policy and isolation contract is documented in
 [docs/channel-m-environment.md](docs/channel-m-environment.md).
 
 Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
@@ -241,7 +245,8 @@ diagnostic.
   client proof is Karing-only, with a Karing fingerprint limit and a neutral
   cover site for ordinary unauthenticated HTTPS GET probes. It is disabled by
   default and is not Channel C proof.
-- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- Channel M supports applications with regional egress requirements through an
+  isolated service policy.
 - Router-side VLESS+Reality ingress on TCP/<home-reality-port> for remote clients,
   so the first network sees the home endpoint instead of the VPS endpoint.
 - Stable router-side `sing-box` TCP REDIRECT instead of unstable Merlin TUN routing.
@@ -614,9 +619,10 @@ native Naive; see [docs/channels.md](docs/channels.md) and
 `ansible/out/clients-channel-d/` artifacts as experimental Channel D credentials;
 see [docs/channel-d.md](docs/channel-d.md).
 
-### Channel M — Regional Service Policy
+### 6. Channel M — Regional Service Policy
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ## Technical Stack
 
@@ -888,7 +894,7 @@ Expected invariants:
 - `dnscrypt-proxy` is a load-bearing router-local dependency for managed DNS.
   If `127.0.0.1:<dnscrypt-port>` disappears, LAN/Wi-Fi managed domains and
   home-first mobile Channels A/B/C/D can fail together even when listeners and
-  iptables still look healthy. Channel M is service-only direct-out and does
+  iptables still look healthy. Channel M keeps a separate service policy and does
   not use the managed DNS split. `/jffs/scripts/dnscrypt-watchdog.sh` monitors
   that listener every minute and restarts only dnscrypt-proxy. The dnscrypt
   init path and GhostRoute runtime supervisor also set `vm.overcommit_memory=1`

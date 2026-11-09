@@ -339,7 +339,7 @@ ansible/out/clients/router.conf
 ansible/out/clients-home/*.conf
 ansible/out/clients-home/*.png
 ansible/out/clients-home/qr-index.html
-  out/<service-egress>/           # private service artifacts, gitignored
+ansible/out/<service-egress>/*  # private service artifacts, gitignored
 ```
 
 They contain client UUIDs, Reality parameters, proxy credentials or server
@@ -369,7 +369,10 @@ ansible-playbook playbooks/30-generate-client-profiles.yml
 ./modules/client-profile-factory/bin/client-profiles channel-m-list
 ```
 
-`home-open` opens the local home Reality `qr-index.html` when available. `emergency-open` opens the disabled/off direct-VPS fallback profiles. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+`home-open` opens the local home Reality `qr-index.html` when available.
+`emergency-open` opens the disabled/off direct-VPS fallback profiles.
+`channel-m-list` lists private service artifacts; `channel-m-open` opens their
+local operator checklist when present.
 
 ## Mobile App DNS Settings Critical
 
@@ -606,7 +609,8 @@ with the existing hostname certificate and no proven SNI override.
 
 ## Channel M — Regional Service Policy
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ## Clean Local Artifacts
 

@@ -131,9 +131,9 @@ described in the root README and `docs/architecture.md`.
 
 | Zone | What Ansible manages | Why it exists |
 |---|---|---|
-| Control machine | Isolated regional service policy | Keeps real credentials and generated client/service artifacts local while making deployment repeatable. |
+| Control machine | Vault, inventory and gitignored client/service artifacts. | Keeps real credentials and generated client/service artifacts local while making deployment repeatable. |
 | Router / Channel A | `sing-box`, `dnscrypt-proxy`, dnsmasq catalogs, `STEALTH_DOMAINS`, `VPN_STATIC_NETS`, optional selected full-VPS TPROXY/dnsmasq policy, `firewall-start`, `stealth-route-init.sh`, cron persistence, router health monitor scripts and the active managed egress backend behind `reality-out`. | Provides the active production path: non-selected home LAN/Wi-Fi traffic uses managed split, while selected home Wi-Fi/LAN devices or Home Reality profiles can send all internet-bound traffic through VLESS+Reality+Vision to the active managed egress. |
-| Router / Channel M | Isolated regional service policy | Isolated regional service policy |
+| Channel M | Isolated regional service policy. | Supports applications with approved country or regional egress requirements independently of client routing. |
 | VPS / Reality edge | Caddy layer4 on public `:443`, the existing 3x-ui/Xray Docker Reality backend, optional restricted DNS resolver support, UFW exposure policy, stack directories and the VPS health observer. | Presents the public Reality edge without exposing internal services directly. Public DNS `:53` stays closed. |
 | Device-client lanes | Selected-client B/C/D artifacts and explicit channel add-on playbooks when enabled. | Keeps B/C/D ownership isolated from the Channel A router data-plane baseline. |
 | Router / Channel Amn lab | Optional isolated AmneziaWG engine, `sing-box-amn`, scoped rules, persistent USB settings and volatile RAM state. | Tests home-first transport diversity with the selected-client split; manual lifecycle and additive peer registration, no production boot ownership. |
@@ -147,10 +147,10 @@ Playbook ownership is intentionally narrow:
 | `10-caddy-l4.yml` | VPS | Host Caddy layer4 wrapper only. | Refresh public TLS demux or the Console `:443` alias without touching Xray, DNS or firewall roles. |
 | `11-channel-b-vps.yml` | VPS | Optional direct-mode Channel B XHTTP backend and route validation. | Rotate or refresh direct-XHTTP testing without touching Reality/Channel A. |
 | `12-hermes-egress-vps.yml` | Hermes VPS | Docker-sidecar Caddy L4, Xray Reality clone, restricted DNS support, UFW and VPS health monitor. | Deploy the owned Hermes managed-egress candidate without mutating the primary VPS or regenerating client QR artifacts. |
-| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, optional Channel M service ingress, cron persistence and health monitor. | Isolated regional service policy |
+| `20-stealth-router.yml` | Router | Channel A router services, hooks, catalogs, optional selected full-VPS TPROXY/dnsmasq policy, optional Channel M service ingress, cron persistence and health monitor. | Deploy the router baseline with isolated ownership for optional service policies. |
 | `21-channel-b-router.yml` | Router | Channel B home-first XHTTP ingress + local relay add-on. | Enable/refresh Channel B without widening to full router stack changes. |
 | `22-channel-c-router.yml` | Router | Channel C1 home-first Naive ingress add-on. | Enable/refresh native Channel C without touching VPS Caddy backends or Channel A ownership. |
-| `23-channel-m-reverse.yml` | Router + VPS | Router-originated SSH remote-forward, VPS docker bridge listener firewall persistence, and reverse listener checks. | Isolated regional service policy |
+| `23-channel-m-reverse.yml` | Service infrastructure | Channel M service-path deployment and scoped verification. | Maintain the approved regional service policy without changing client-channel ownership. |
 | `24-channel-d-router.yml` | Router | Experimental Channel D Caddy `forward_proxy@naive` + sing-box SOCKS relay. | Enable/rollback a router-native NaiveProxy lab without touching Channel A/B/C or VPS Caddy. |
 | `28-channel-amn-lab.yml` | Router + local control machine | Isolated Amn install/start/stop/status and additive `sync-peers`; policy projection and credentials stay private. | Operate the home-first compatibility lab without changing A/B/C/D/M or existing client imports. |
 | `29-console-router-access.yml` | Router + Console VPS | Staged operator/service key separation, fixed report gate, service activation and guarded legacy-key retirement. | Keep administrative credentials off the VPS while preserving monitoring and both management paths. |
@@ -192,8 +192,9 @@ project-proven SNI override path.
 None of these channels may mutate Channel A REDIRECT ownership or introduce
 automatic failover.
 
-Channel M is separate from Channel A/B/C. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. It does not use `reality-out`, `STEALTH_DOMAINS`,
-`VPN_STATIC_NETS` or policy DNS.
+Channel M is separate from Channel A/B/C. Channel M supports applications with
+regional egress requirements through an isolated service policy. It does not
+use `reality-out`, `STEALTH_DOMAINS`, `VPN_STATIC_NETS` or policy DNS.
 
 Managed egress reserve mode is separate from Channel B/C. The router keeps the
 same managed split and the same `reality-out` route target, while
@@ -248,9 +249,9 @@ out of that file and use masked tokens instead.
 | `20-stealth-router.yml` | Router | Mutating | Deploys the router stealth layer and health monitor through Ansible roles. |
 | `21-channel-b-router.yml` | Router | Mutating | Deploys the Channel B home-first router add-on (XHTTP ingress + local relay). |
 | `22-channel-c-router.yml` | Router | Mutating | Deploys the Channel C1 home-first Naive ingress. |
-| `23-channel-m-reverse.yml` | Router + VPS | Mutating | Deploys reverse Channel M SSH remote-forward and VPS docker bridge firewall persistence. |
+| `23-channel-m-reverse.yml` | Service infrastructure | Mutating | Deploys the isolated Channel M regional service policy. |
 | `24-channel-d-router.yml` | Router | Mutating | Deploys or removes the experimental Channel D router-native NaiveProxy lab. |
-| `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Isolated regional service policy |
+| `30-generate-client-profiles.yml` | Localhost | Local artifact generation | Generates QR/VLESS profiles and private service artifacts into `out/`. |
 | `99-verify.yml` | VPS + router | Read-only | Checks live invariants after deploy or incident recovery. |
 
 Mutating playbooks run the shared GhostRoute deploy gate before and after the

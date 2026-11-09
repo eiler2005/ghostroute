@@ -3,7 +3,9 @@
 ## Purpose
 
 Client Profile Factory generates and cleans local QR/VLESS profiles from
-Ansible Vault for router identity, home-mobile clients and emergency profiles. Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+Ansible Vault for router identity, home-mobile clients and emergency profiles.
+Channel M supports applications with regional egress requirements through an
+isolated service policy.
 
 ## Features
 
@@ -47,7 +49,8 @@ explicit Ansible workflow.
 - `ansible/out/clients`
 - `ansible/out/clients-home`
 - `ansible/out/clients-emergency`
-- Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration.
+- Channel M supports applications with regional egress requirements through an
+  isolated service policy.
 - `ansible/out/channel-amn/clients` (optional lab; contains credentials)
 
 ## Dependencies On Other Modules

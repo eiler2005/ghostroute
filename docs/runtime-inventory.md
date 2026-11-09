@@ -79,12 +79,13 @@ exception: plain HTTP `www.google.com:80` may bypass managed Reality so
 `generate_204` health checks can complete. HTTPS Google traffic and normal
 managed destinations remain governed by the managed split.
 
-Channel M provides an isolated policy for applications with regional egress requirements. Its application mapping and deployment details belong in private operator configuration. Because it carries
-the messenger service lane, the supervisor owns `ChannelMReverse` cron
-registration and reruns the tunnel recovery after reboot or stale remote-forward
-conditions. It also exposes scoped `channel-m-status` and `channel-m-recover`
-commands so a VPS/app watchdog can request only Channel M repair without
-triggering general A/B/C/D router recovery.
+Channel M supports applications with regional egress requirements through an
+isolated service policy. Because it carries the messenger service lane, the
+supervisor owns `ChannelMReverse` cron registration and reruns the tunnel
+recovery after reboot or stale remote-forward conditions. It also exposes
+scoped `channel-m-status` and `channel-m-recover` commands so a VPS/app
+watchdog can request only Channel M repair without triggering general A/B/C/D
+router recovery.
 
 The human-readable Channel M environment inventory is
 [channel-m-environment.md](channel-m-environment.md).

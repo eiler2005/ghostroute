@@ -82,14 +82,12 @@ Prompt brief used for the cover:
 > "GhostRoute". No protocols, IP addresses, ports, flags, keys, security seals,
 > or claims of absolute protection.
 
-The older `ghostroute-routing-en.png`,
-`ghostroute-lifecycle-en.png` and `ghostroute-routing-ru.png` remain
-historical illustrations for earlier review references. They are not current
-topology specifications; use the platform figures above for current docs.
+Legacy raster snapshots have been retired; the editable platform sources and
+matching exports above are the maintained public illustrations.
 
 ## Project visual convention
 
-The style reference is the historical `ghostroute-routing-en.png`:
+The project visual convention follows `ghostroute-routing-en.png`:
 white paper, navy titles, pale blue layer zones, outlined rounded rectangles,
 sans-serif names, monospaced technical labels and orthogonal connectors.
 Raster references do not identify exact original font families; the editable
