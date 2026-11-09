@@ -36,6 +36,11 @@ silently migrate A/B/C/D/M/Amn clients or weaken B's separate certificate debt.
 
 ## Local tests
 
+The duplex relay has one I/O owner per tunnel, including TLS reads and writes.
+It bounds queued data, handles SSL readiness states and drains buffered output
+before closing on peer EOF. A large TLS response fixture covers premature-close
+regressions; two independent threads must not operate on the same SSL object.
+
 From the repository root:
 
 ```bash

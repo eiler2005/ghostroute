@@ -20,6 +20,7 @@ from mac_guard.app import Dashboard
 from mac_guard.browser import arguments
 from mac_guard.install import extension
 from mac_guard.service import Gate, Guard, close
+from mac_guard.relay import relay
 
 
 def profile():
@@ -301,13 +302,10 @@ class TransportTests(unittest.TestCase):
                     cls.requests.append(header)
                     secure.sendall(b'HTTP/1.1 200 OK\r\n\r\n')
                     upstream = socket.create_connection(cls.origin.server_address)
-                    def pump(source, target):
-                        try:
-                            while data := source.recv(16384): target.sendall(data)
-                        except OSError: pass
-                        finally: close(source); close(target)
-                    threading.Thread(target=pump, args=(secure, upstream), daemon=True).start()
-                    pump(upstream, secure)
+                    try:
+                        relay(secure, upstream, idle_timeout=5)
+                    finally:
+                        close(upstream)
         cls.proxy = TLSFixture(('127.0.0.1', 0), Proxy)
         for server in (cls.origin, cls.proxy):
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -350,6 +348,23 @@ class TransportTests(unittest.TestCase):
                 for body in (b'ip=8.8.8.8\n', b'ip=1.1.1.1\nip=8.8.8.8\n', b'no ip\n'):
                     type(self).response = body
                     with self.assertRaises(policy.GuardError): transport.qualify(adapter, route)
+        finally:
+            type(self).response = b'1.1.1.1'
+
+    def test_tls_relay_drains_large_response_before_close(self):
+        adapter = transport.HTTPSProxy(self.route())
+        payload = b'fixture response ' * 65536
+        try:
+            type(self).response = payload
+            raw = adapter.connect('localhost', 443)
+            try:
+                stream = transport.TLSStream(raw, 'localhost', self.client_context)
+                stream.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+                response = http.client.HTTPResponse(stream)
+                response.begin()
+                self.assertEqual(response.read(), payload)
+            finally:
+                raw.close()
         finally:
             type(self).response = b'1.1.1.1'
 

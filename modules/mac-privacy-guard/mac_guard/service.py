@@ -7,6 +7,7 @@ import threading
 import time
 
 from .policy import GuardError, authority, matches
+from .relay import relay
 from .transport import make_adapter, qualify, read_headers
 
 
@@ -119,26 +120,7 @@ class Guard:
                 self.connections.add(upstream)
                 self.allowed += 1
             client.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
-            client.settimeout(300)
-            upstream.settimeout(300)
-
-            def pump(source, destination):
-                try:
-                    while True:
-                        data = source.recv(65536)
-                        if not data:
-                            break
-                        destination.sendall(data)
-                except OSError:
-                    pass
-                finally:
-                    close(source)
-                    close(destination)
-
-            worker = threading.Thread(target=pump, args=(client, upstream), daemon=True)
-            worker.start()
-            pump(upstream, client)
-            worker.join(timeout=1)
+            relay(client, upstream)
         except Exception:
             with self.mutex:
                 self.blocked += 1
