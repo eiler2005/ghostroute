@@ -19,6 +19,9 @@ from mac_guard.policy import browser_url, private_dir
 from mac_guard.service import Gate, Guard
 
 root = Path(sys.argv[1])
+# A child exit must not end the fixture's lifetime. Handle SIGCHLD explicitly
+# so a single signal.pause() would reproduce the regression on every platform.
+signal.signal(signal.SIGCHLD, lambda *_: None)
 counts = {'origin': 0, 'direct': 0, 'udp': 0, 'browser_opened': 0}
 
 class LocalHTTP(ThreadingHTTPServer):
@@ -120,4 +123,4 @@ print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1]
                   'extension_id':extension_id(extension_path),
                   'native_manifest':str(root / 'native-manifests/org.ghostroute.guard.events.json'),
                   'arguments': arguments(root / 'browser', gate.server_address[1])[2:]}), flush=True)
-signal.pause()
+threading.Event().wait()

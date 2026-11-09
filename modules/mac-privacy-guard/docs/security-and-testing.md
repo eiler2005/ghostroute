@@ -108,6 +108,11 @@ Separate JS fixtures reject unsolicited bodies, stale/hidden sessions, oversized
 previews and late content after Stop. The diagnostic store is separate from the
 activity journal and never qualifies a route. See [agent contract](chrome-agent.md).
 
+The browser fixture waits for its full lifetime with an Event, not a single
+signal.pause(). An explicit SIGCHLD handler exercises child-process exit without
+ending the fixture. Close-browser control acknowledges asynchronously; a separate
+poll proves the owned process has exited before the test continues.
+
 | Layer | Required evidence |
 |---|---|
 | Policy | IDNA and suffix boundaries; private/ambiguous IP, non-HTTPS, CRLF, credentials-in-URL rejected; no DIRECT config; private file ownership/modes |
