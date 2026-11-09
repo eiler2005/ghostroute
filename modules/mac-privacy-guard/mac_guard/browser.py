@@ -11,8 +11,18 @@ from .policy import GuardError, browser_url, private_dir, write_private
 CHROME = Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 
 
+def launch_environment():
+    environment = os.environ.copy()
+    # AppKit/LaunchServices identity belongs to the app that owns it, not to a
+    # different app launched as its child. Chrome must discover its own bundle.
+    for key in ('__CFBundleIdentifier', '__CFBundleMainIdentifier', '__CFBundleMainExecutablePath'):
+        environment.pop(key, None)
+    return environment
+
+
 def arguments(profile: Path, port: int) -> list[str]:
     return [str(CHROME), f'--user-data-dir={profile}',
+            '--profile-directory=Default',
             f'--proxy-server=http://127.0.0.1:{port}', '--proxy-bypass-list=<-loopback>',
             '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
             '--disable-quic', '--webrtc-ip-handling-policy=disable_non_proxied_udp',
@@ -36,7 +46,8 @@ class Browser:
         if self.process and self.process.poll() is None:
             # Chrome forwards this launch only to our separate user-data-dir.
             subprocess.run(arguments(self.profile, self.port) + [url],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+                           env=launch_environment(), check=True)
             return
         if self.owner.exists():
             try:
@@ -59,10 +70,23 @@ class Browser:
         data.setdefault('webrtc', {})['ip_handling_policy'] = 'disable_non_proxied_udp'
         data.setdefault('dns_over_https', {})['mode'] = 'off'
         data.setdefault('net', {})['network_prediction_options'] = 2
+        data.setdefault('profile', {})['name'] = 'GhostRoute Guard'
         write_private(preferences, json.dumps(data).encode())
-        self.process = subprocess.Popen(arguments(self.profile, self.port) + [url],
-                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.process = subprocess.Popen(arguments(self.profile, self.port) + ['--new-window', url],
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        env=launch_environment())
+        try:
+            self.process.wait(timeout=.2)
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            self.process = None
+            raise GuardError('Защищённый Chrome завершился при запуске. Закройте его прежние окна и попробуйте снова')
         write_private(self.owner, str(self.process.pid).encode())
+
+    @property
+    def running_pid(self):
+        return self.process.pid if self.process and self.process.poll() is None else None
 
     def close(self):
         if self.process and self.process.poll() is None:

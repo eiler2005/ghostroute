@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch
 
 from mac_guard import policy, transport
 from mac_guard.app import Dashboard
-from mac_guard.browser import arguments
+from mac_guard.browser import Browser, arguments, launch_environment
 from mac_guard.install import extension, extension_id, native_host
 from mac_guard.chrome_events import ChromeEvents, validate_message
 from mac_guard.chrome_bridge import forward, serve
@@ -34,6 +34,28 @@ def profile():
 
 
 class PolicyTests(unittest.TestCase):
+    def test_browser_launcher_drops_parent_bundle_identity_and_reports_early_exit(self):
+        with patch.dict('os.environ', {'__CFBundleIdentifier':'org.ghostroute.guard'}):
+            self.assertNotIn('__CFBundleIdentifier', launch_environment())
+            with tempfile.TemporaryDirectory() as temporary:
+                state=Path(temporary)
+                chrome=state/'chrome';chrome.touch()
+                process=Mock(pid=2345)
+                process.poll.return_value=None
+                process.wait.side_effect=subprocess.TimeoutExpired('fixture', .2)
+                with patch('mac_guard.browser.CHROME', chrome), patch('mac_guard.browser.subprocess.Popen', return_value=process) as launch:
+                    browser=Browser(state,23456);browser.open('https://example.org/')
+                    self.assertNotIn('__CFBundleIdentifier', launch.call_args.kwargs['env'])
+                    self.assertIn('--new-window', launch.call_args.args[0])
+                    self.assertEqual(browser.running_pid,2345)
+                    self.assertEqual(json.loads((state/'Browser/Default/Preferences').read_text())['profile']['name'],'GhostRoute Guard')
+                (state/'browser-pid').unlink()
+                process.wait.side_effect=None;process.wait.return_value=1
+                with patch('mac_guard.browser.CHROME', chrome), patch('mac_guard.browser.subprocess.Popen', return_value=process):
+                    browser=Browser(state,23456)
+                    with self.assertRaises(policy.GuardError):browser.open('https://example.org/')
+                    self.assertIsNone(browser.running_pid)
+
     def test_domain_boundaries(self):
         self.assertTrue(policy.matches('a.sensitive.example.org', ['sensitive.example.org']))
         self.assertFalse(policy.matches('notsensitive.example.org', ['sensitive.example.org']))
@@ -253,8 +275,33 @@ class StateTests(unittest.TestCase):
         snapshot['events'][0]['host'] = 'tampered.example.org'
         self.assertEqual(self.guard.activity()['events'][0]['host'], 'example.org')
 
+    def test_fixed_port_rebinds_after_connections_but_not_over_live_listener(self):
+        port = self.gate.server_address[1]
+        with self.assertRaises(OSError):Gate(Guard(profile()), port)
+        self.guard.activate('home')
+        client, _ = self.request()
+        self.guard.lock();client.close()
+        self.gate.shutdown();self.gate.server_close()
+        self.gate = Gate(Guard(profile()), port)
+        threading.Thread(target=self.gate.serve_forever, daemon=True).start()
+        client, headers = self.request()
+        self.assertIn(b'403', headers)
+        client.close()
+
 
 class DashboardTests(unittest.TestCase):
+    def test_second_engine_returns_typed_startup_failure_without_owner_token(self):
+        with tempfile.TemporaryDirectory(prefix='guard-start-', dir='/tmp') as temporary:
+            first = subprocess.Popen([sys.executable,'-B','-m','mac_guard.app','--state',temporary],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            try:
+                bootstrap = json.loads(first.stdout.readline())
+                second = subprocess.run([sys.executable,'-B','-m','mac_guard.app','--state',temporary],capture_output=True,timeout=5)
+                self.assertNotEqual(second.returncode, 0)
+                self.assertEqual(json.loads(second.stdout), {'error':'already_running'})
+                self.assertNotIn(bootstrap['url'].split('#')[1].encode(), second.stdout + second.stderr)
+            finally:
+                first.terminate();first.communicate(timeout=8)
+
     def test_backend_exits_when_native_parent_is_gone(self):
         with tempfile.TemporaryDirectory() as temporary:
             result = subprocess.run([sys.executable, '-B', '-m', 'mac_guard.app', '--state', temporary, '--parent-pid', '0'],
@@ -288,6 +335,14 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(request('POST', '/api/activity/clear', '{}', **headers)[0], 200)
                 self.assertEqual(json.loads(request('GET', '/api/activity', **headers)[1])['events'], [])
                 self.assertEqual(request('POST', '/api/open', '{"url":"https://example.org"}', **headers)[0], 400)
+                self.assertTrue(any(e['reason']=='access_closed' for e in guard.activity()['events']))
+                guard.factory = lambda _: Mock()
+                guard.checker = lambda *_: None
+                guard.activate('home')
+                self.assertEqual(request('POST', '/api/open', '{"url":"https://other.example.org"}', **headers)[0], 400)
+                self.assertEqual(request('POST', '/api/open', '{"url":"https://sensitive.example.org/path?private=value"}', **headers)[0], 200)
+                self.assertTrue(any(e['reason']=='browser_opened' and e['host']=='sensitive.example.org' for e in guard.activity()['events']))
+                self.assertNotIn('private=value', json.dumps(guard.activity()))
                 self.assertEqual(request('GET', '/', Host='evil.example.org')[0], 403)
                 self.assertEqual(request('GET', '/../../etc/passwd')[0], 404)
             finally:

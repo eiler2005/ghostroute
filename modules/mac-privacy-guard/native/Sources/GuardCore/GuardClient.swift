@@ -13,6 +13,8 @@ public struct ControlEndpoint {
     let sessionCredential: String
 
     public init(bootstrap: Data) throws {
+        if let object = try? JSONSerialization.jsonObject(with: bootstrap) as? [String: String],
+           let code = object["error"] { throw StartupFailure(rawValue: code) ?? .unexpected }
         guard let object = try JSONSerialization.jsonObject(with: bootstrap) as? [String: String],
               let text = object["url"], var parts = URLComponents(string: text),
               parts.scheme == "http", parts.host == "127.0.0.1",

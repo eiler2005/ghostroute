@@ -56,6 +56,16 @@ No general host access, webRequest, cookies, debugger or content-script permissi
 is requested. Block rules explicitly include main-frame requests; omitting
 resourceTypes would exclude that type under Chrome's defaults.
 
+Browser-open preflight refuses locked or uncatalogued destinations before spawning
+Chrome. Tests cover safe launch-result journaling, early process exit, inherited
+AppKit identity removal and the owned browser PID. A real browser fixture launches
+Chrome through the actual browser owner with an injected parent bundle identity
+and requires an origin request; a successful API response alone is insufficient.
+Startup fixtures prove a second engine cannot acquire the existing lock and that
+the fixed gate port can be rebound after shutdown but not over a live listener.
+Swift checks also cover typed startup errors, local failure events/retry, recovery
+after API loss and reset of filters that hide blocked events.
+
 From the repository root:
 
 ```bash
@@ -90,7 +100,7 @@ suite; the built macOS window additionally requires visual/operator acceptance.
 | VPN adapter | Every IPv4/IPv6 socket is bound before connect; missing/recycled index and setsockopt failure produce no unbound retry |
 | Control API | Token required, cross-origin mutation rejected, Host enforced, traversal denied, status redacts endpoint/credentials; no HTML assets |
 | Real Chrome | HTTPS through fixture works; locked/upstream-down/gate-down fail; implicit IPv4/IPv6 loopback bypass absent; no WebRTC UDP or ICE candidates in fixture; netlog contains no DNS transaction |
-| Native app | Swift package build; typed client, strict bootstrap, bearer/Origin, locked startup, stale activation cannot overwrite Lock, lost API disables controls; visual acceptance of the built SwiftUI window |
+| Native app | Swift package build; typed client, strict bootstrap/startup errors, bearer/Origin, locked startup, stale activation cannot overwrite Lock, lost API disables controls, retry/local error journal and filter reset; visual acceptance of the built SwiftUI window |
 | Extension | Actual temporary Chrome main-frame/subresource blocks, no substring false positive, native bridge to Guard, URL redaction, independent enforcement without receiver; operator-profile activation remains separate |
 
 Dedicated CI uses fixed Ubuntu/macOS runners, no secrets and no SSH to deployment.

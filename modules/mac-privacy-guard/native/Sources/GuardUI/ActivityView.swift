@@ -16,7 +16,7 @@ struct ActivityView: View {
             }
             ActivityControls(store: store)
             EventTable(store: store)
-            if let event = store.detail { EventDetail(event: event) }
+            if let event = store.detail { EventDetail(event: event, store: store) }
         }.padding(22)
     }
 }
@@ -36,12 +36,21 @@ struct ActivityControls: View {
                     Text("Все источники").tag("all")
                     Text("Шлюз Guard").tag("guard")
                     Text("Обычный Chrome").tag("chrome")
+                    Text("Приложение").tag("app")
                 }.frame(width: 240)
                 TextField("Поиск домена или причины", text: $store.search)
                     .textFieldStyle(.roundedBorder)
                 Button("Очистить журнал") { Task { await store.perform(.clearActivity) } }
                     .disabled(!store.online || store.busy || store.events.isEmpty)
                     .help("События удаляются; счётчики текущего запуска сохраняются")
+            }
+            HStack {
+                Text("Показано \(store.visibleEvents.count) из \(store.events.count) событий")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if store.hasFilters {
+                    Button("Показать все события") { store.resetFilters() }.controlSize(.small)
+                }
             }
         }
     }
@@ -52,7 +61,7 @@ struct EventTable: View {
     var body: some View {
         Table(store.visibleEvents, selection: $store.selectedEvent) {
             TableColumn("Время") { event in
-                Text(event.date, style: .time).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                Text(event.date, format: .dateTime.hour().minute().second()).font(.caption).monospacedDigit().foregroundStyle(.secondary)
             }.width(72)
             TableColumn("Назначение / событие") { event in
                 VStack(alignment: .leading, spacing: 3) {
@@ -80,7 +89,13 @@ struct EventTable: View {
                 VStack(spacing: 8) {
                     Image(systemName: "list.bullet.rectangle").font(.title).foregroundStyle(.tertiary)
                     Text(store.events.isEmpty ? "Здесь появятся новые события" : "Подходящих событий нет").font(.callout).foregroundStyle(.secondary)
-                    if store.events.isEmpty { Text("Откройте сайт в защищённом браузере или проверьте блокировщик Chrome.").font(.caption).foregroundStyle(.secondary) }
+                    if store.events.isEmpty {
+                        Text("Откройте сайт в защищённом браузере или проверьте блокировщик Chrome.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Фильтры скрывают \(store.hiddenEventCount) событий, включая блокировки и ошибки.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("Показать все события") { store.resetFilters() }
+                    }
                 }.padding()
             }
         }
@@ -89,13 +104,14 @@ struct EventTable: View {
 
 struct EventDetail: View {
     let event: GuardEvent
+    @ObservedObject var store: GuardStore
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
                 HStack { Text(event.host ?? "Событие приложения").font(.headline).textSelection(.enabled); Spacer(); DecisionLabel(kind: event.kind) }
                 Text(event.message).font(.callout).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 28) {
-                    DetailValue(title: "Источник", value: event.isChrome ? "Блокировщик Chrome" : "Шлюз Guard")
+                    DetailValue(title: "Источник", value: event.isChrome ? "Блокировщик Chrome" : event.source == "app" ? "Приложение" : "Шлюз Guard")
                     if event.isChrome {
                         DetailValue(title: "Метод / тип", value: "\(event.method ?? "—") · \(resourceTitle(event.resourceType))")
                         DetailValue(title: "Правило", value: "\(event.ruleId ?? 0)")
@@ -105,6 +121,13 @@ struct EventDetail: View {
                         DetailValue(title: "Длительность", value: event.durationMs.map { String(format: "%.1f с", Double($0)/1000) } ?? "Продолжается")
                     }
                     Spacer()
+                }
+                if event.isChrome, let host = event.host {
+                    HStack {
+                        Button("Открыть в защищённом Chrome") { Task { await store.openBlockedSite(host) } }
+                            .disabled(!store.canBrowse)
+                        if !store.canBrowse { Text("Сначала откройте доступ для Guard в разделе «Обзор».").font(.caption).foregroundStyle(.secondary) }
+                    }
                 }
             }.padding(8)
         }

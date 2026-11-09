@@ -76,8 +76,8 @@ def install(destination, python):
         (resources / 'python-path').write_text(str(python.resolve()) + '\n')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.2.0',
-                'CFBundleVersion': '2', 'LSMinimumSystemVersion': '13.0',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.2.1',
+                'CFBundleVersion': '3', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}

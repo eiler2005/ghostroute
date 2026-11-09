@@ -31,6 +31,8 @@ REASONS = {
     'unsupported_protocol': 'Запрос отклонён: разрешены только HTTPS-туннели',
     'capacity': 'Достигнут лимит одновременных подключений',
     'chrome_blocked': 'Блокировщик Chrome остановил запрос к чувствительному домену',
+    'browser_opened': 'Сайт передан в отдельный защищённый Chrome',
+    'browser_failed': 'Защищённый Chrome не удалось открыть',
 }
 
 
@@ -84,6 +86,20 @@ class Guard:
     def clear_activity(self):
         with self.mutex:
             self.events.clear()
+
+    def browser_requested(self, host):
+        with self.mutex:
+            if self.mode != 'active':
+                self.reject('access_closed', host)
+                raise GuardError('Откройте доступ для защищённого браузера')
+            if self.route['allowed_domains'] and not matches(host, self.route['allowed_domains']):
+                self.reject('not_allowed', host)
+                raise GuardError('Сайт отсутствует в разрешённом каталоге маршрута')
+
+    def browser_result(self, host, success):
+        with self.mutex:
+            self._record('system' if success else 'error',
+                         'browser_opened' if success else 'browser_failed', host, self.route)
 
     def chrome_event(self, data):
         # The private ingress has already validated the narrow event schema.
@@ -247,7 +263,9 @@ class Guard:
 
 class Gate(socketserver.ThreadingTCPServer):
     daemon_threads = True
-    allow_reuse_address = False
+    # Rebind the same fixed proxy port after close/TIME_WAIT. SO_REUSEPORT is
+    # deliberately absent: two live listeners must still be mutually exclusive.
+    allow_reuse_address = True
 
     def __init__(self, guard, port=0):
         self.guard = guard

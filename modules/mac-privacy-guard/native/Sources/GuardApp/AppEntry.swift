@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let backend = BackendProcess()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if activateExistingInstance() { NSApp.terminate(nil); return }
         let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu()
         appMenu.addItem(withTitle: "О GhostRoute Guard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
@@ -30,11 +31,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: GuardRootView(store: store))
         window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        store.retryHandler = { [weak self] in self?.startBackend() }
+        startBackend()
+    }
+
+    private func activateExistingInstance() -> Bool {
+        let current = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: "org.ghostroute.guard")
+            .filter { $0.processIdentifier != current && !$0.isTerminated }
+            .sorted { ($0.launchDate ?? Date.distantFuture) < ($1.launchDate ?? Date.distantFuture) }
+        guard let existing = others.first else { return false }
+        return existing.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+    }
+
+    private func startBackend() {
         backend.start { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let endpoint): self.store.connect(GuardClient(endpoint: endpoint))
-            case .failure: self.store.startupFailed()
+            case .failure(let error):
+                if let failure = error as? StartupFailure, failure == .alreadyRunning,
+                   self.activateExistingInstance() { NSApp.terminate(nil); return }
+                self.store.startupFailed(message: (error as? StartupFailure)?.localizedDescription ?? StartupFailure.unexpected.localizedDescription)
             }
         }
     }

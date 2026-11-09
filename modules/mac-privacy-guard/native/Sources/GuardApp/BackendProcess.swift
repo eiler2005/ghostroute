@@ -11,6 +11,10 @@ final class BackendProcess {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                if let previous = self.process, previous.isRunning {
+                    previous.terminate()
+                    previous.waitUntilExit()
+                }
                 let python = try String(contentsOf: resources.appendingPathComponent("python-path"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
                 let child = Process(), output = Pipe()
                 child.executableURL = URL(fileURLWithPath: python)
@@ -19,6 +23,9 @@ final class BackendProcess {
                 var environment = ProcessInfo.processInfo.environment
                 environment.removeValue(forKey: "PYTHONPATH")
                 environment.removeValue(forKey: "PYTHONHOME")
+                for key in ["__CFBundleIdentifier", "__CFBundleMainIdentifier", "__CFBundleMainExecutablePath"] {
+                    environment.removeValue(forKey: key)
+                }
                 environment["PYTHONNOUSERSITE"] = "1"
                 child.environment = environment
                 child.standardOutput = output
@@ -37,6 +44,7 @@ final class BackendProcess {
                 let endpoint = try ControlEndpoint(bootstrap: bytes)
                 DispatchQueue.main.async { completion(.success(endpoint)) }
             } catch {
+                if let failed = self.process, failed.isRunning { failed.terminate() }
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
         }

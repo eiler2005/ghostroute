@@ -13,18 +13,21 @@ struct OverviewView: View {
                         Image(systemName: "globe").font(.title2).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Защищённый браузер").font(.headline)
-                            Text("Отдельное окно Chrome через Guard").font(.caption).foregroundStyle(.secondary)
+                            Text("Сайт нужно открыть этой кнопкой").font(.caption).foregroundStyle(.secondary)
                         }
                         TextField("example.org или HTTPS-адрес", text: $store.site)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { if store.canBrowse && !store.site.isEmpty { Task { await store.perform(.open(store.site)) } } }
-                        Button("Открыть сайт") { Task { await store.perform(.open(store.site)) } }
+                        Button("Открыть в Guard") { Task { await store.perform(.open(store.site)) } }
                             .disabled(!store.canBrowse || store.site.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .help("Открывает отдельный Chrome «GhostRoute Guard», а не обычный профиль")
                     }.padding(8)
                 }
                 HStack(spacing: 12) {
                     MetricView(title: "Разрешено", value: "\(store.status?.allowed ?? 0)", detail: "Соединений через Guard", icon: "checkmark.circle", color: .green)
-                    MetricView(title: "Заблокировано", value: "\(store.status?.blocked ?? 0)", detail: "Guard и расширение Chrome", icon: "hand.raised", color: .orange)
+                    Button { store.showBlockedEvents() } label: {
+                        MetricView(title: "Заблокировано", value: "\(store.status?.blocked ?? 0)", detail: "Нажмите, чтобы показать", icon: "hand.raised", color: .orange)
+                    }.buttonStyle(.plain).help("Показать все блокировки, сбросив остальные фильтры")
                     MetricView(title: "Активно сейчас", value: "\(store.status?.connections ?? 0)", detail: "Соединений через Guard", icon: "arrow.left.arrow.right", color: .blue)
                     MetricView(title: "Передано", value: byteText((store.status?.bytesSent ?? 0) + (store.status?.bytesReceived ?? 0)), detail: "Внутри HTTPS-туннелей", icon: "chart.bar", color: .purple)
                 }
@@ -32,7 +35,7 @@ struct OverviewView: View {
                     HStack { Text("Журнал событий").font(.headline); Spacer(); Text("Только в памяти").font(.caption).foregroundStyle(.secondary) }
                     ActivityControls(store: store)
                     EventTable(store: store).frame(height: 260)
-                    if let event = store.detail { EventDetail(event: event) }
+                    if let event = store.detail { EventDetail(event: event, store: store) }
                 }
                 Text("Статистика за текущий запуск. Guard управляет своим браузером; обычный Chrome блокирует чувствительные сайты через включённое расширение.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -54,7 +57,7 @@ struct AccessView: View {
                         .font(.system(size: 40)).foregroundStyle(active ? Color.green : Color.secondary)
                         .frame(width: 60)
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(!store.online ? "Состояние не подтверждено" : active ? "Доступ открыт" : qualifying ? "Проверяем маршрут" : "Доступ закрыт")
+                        Text(!store.online ? "Шлюз недоступен" : active ? "Доступ открыт для Guard" : qualifying ? "Проверяем маршрут" : "Доступ Guard закрыт")
                             .font(.title2.weight(.semibold))
                         Text(store.online ? (store.status?.message ?? "") : "Проверьте связь с локальным шлюзом.")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -73,9 +76,11 @@ struct AccessView: View {
                     }.controlSize(.large)
                 }
                 Divider()
+                Text("Обычный Chrome остаётся заблокированным. Для доступа введите адрес ниже или выберите заблокированный сайт в журнале и откройте его в Guard.")
+                    .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Picker("Маршрут", selection: $store.selectedRoute) {
-                        if (store.status?.routes ?? []).isEmpty { Text("Добавьте профиль").tag("") }
+                        if (store.status?.routes ?? []).isEmpty { Text(store.online ? "Добавьте профиль" : "Шлюз недоступен").tag("") }
                         ForEach(store.status?.routes ?? []) { route in
                             Text(route.title + ((store.status?.routes.count ?? 0) > 1 ? " · \(route.id)" : "")).tag(route.id)
                         }

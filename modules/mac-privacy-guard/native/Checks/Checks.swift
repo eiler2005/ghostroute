@@ -40,6 +40,12 @@ struct NativeChecks {
         }
         let decoded=try await api.status()
         try require(decoded.state == .locked && decoded.routes.first?.kind == .httpsProxy,"Status contract did not decode")
+        do {
+            _ = try ControlEndpoint(bootstrap: Data("{\"error\":\"already_running\"}".utf8))
+            throw CheckFailure.failed("Expected structured startup failure")
+        } catch let failure as StartupFailure {
+            try require(failure == .alreadyRunning,"Wrong startup diagnostic")
+        }
         FixtureProtocol.handler = { request in
             precondition(request.url?.path=="/api/open")
             return (400,Data("{\"error\":\"Fixture denial\"}".utf8))
@@ -56,7 +62,9 @@ struct NativeChecks {
         try require(store.canBrowse && store.canLock,"Active controls unavailable")
         fixture.offline=true;await store.refresh()
         try require(!store.canBrowse && !store.canActivate,"Offline UI retained active controls")
+        try require(store.error != nil,"API loss did not expose recovery guidance")
         fixture.offline=false;fixture.mode="locked";await store.refresh()
+        try require(store.error == nil,"Recovered connection retained a stale error banner")
         fixture.delayActivation=true
         let activation=Task { await store.perform(.activate("home")) }
         while fixture.activation == nil { await Task.yield() }
@@ -69,14 +77,37 @@ struct NativeChecks {
         await store.perform(.profile(Data("[]".utf8)))
         try require(store.error != nil && store.status?.state == .locked && !store.canBrowse,"Invalid profile opened access")
         print("PASS: native startup, route selection, offline controls, cancelled activation, clear and profile refusal")
+
+        let journal=GuardStore(),journalClient=FixtureClient()
+        journalClient.includeEvents=true
+        journal.startupFailed(message:"Fixture startup failure")
+        try require(journal.events.first?.source=="app","Startup failure missing from native journal")
+        var retried=false
+        journal.retryHandler={retried=true}
+        journal.retryStartup()
+        try require(retried && journal.starting,"Retry did not invoke lifecycle owner")
+        journal.connect(journalClient,poll:false);await journal.refresh()
+        journal.filter = .allowed
+        try require(journal.visibleEvents.isEmpty && journal.hiddenEventCount==2,"Hidden-event state not represented")
+        journal.showBlockedEvents()
+        try require(journal.visibleEvents.count==1 && journal.visibleEvents.first?.isChrome==true,"Blocked counter did not reset filters")
+        journal.search="no-match";journal.source="app";journal.filter = .error
+        await journal.perform(.open("https://sensitive.example.org"))
+        try require(journal.filter==nil && journal.search.isEmpty && journal.source=="guard","Browser launch left a misleading filter active")
+        print("PASS: startup journal/retry, hidden filters, block navigation and protected-browser launch scope")
     }
 }
 
 private final class FixtureClient: GuardControlling {
-    var mode="locked",offline=false,delayActivation=false
+    var mode="locked",offline=false,delayActivation=false,includeEvents=false
     var activation:CheckedContinuation<GuardStatus,Error>?
     func status() async throws -> GuardStatus {if offline {throw URLError(.notConnectedToInternet)};return try makeStatus(mode)}
-    func activity() async throws -> GuardActivity {try JSONDecoder().decode(GuardActivity.self,from:Data("{\"events\":[],\"capacity\":300,\"startedAt\":0}".utf8))}
+    func activity() async throws -> GuardActivity {
+        let event = """
+        {"id":1,"time":0,"kind":"blocked","source":"chrome","reason":"chrome_blocked","message":"Fixture block","host":"sensitive.example.org","route":null,"routeKind":null,"bytesSent":0,"bytesReceived":0,"state":null,"durationMs":null,"closeReason":null,"method":"GET","resourceType":"main_frame","ruleId":1}
+        """
+        return try JSONDecoder().decode(GuardActivity.self,from:Data("{\"events\":[\(includeEvents ? event : "")],\"capacity\":300,\"startedAt\":0}".utf8))
+    }
     func perform(_ action:GuardAction) async throws -> GuardStatus {
         switch action {
         case .activate:

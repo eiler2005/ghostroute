@@ -15,10 +15,11 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
 from .browser import Browser
 from .chrome_events import ChromeEvents
-from .policy import GuardError, load_private, private_dir, validate_config, write_private
+from .policy import GuardError, browser_url, load_private, private_dir, validate_config, write_private
 from .service import Gate, Guard
 
 class Dashboard(ThreadingHTTPServer):
@@ -40,6 +41,12 @@ class Dashboard(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         pass
+
+    def snapshot(self):
+        data = self.guard.status()
+        pid = getattr(self.browser, 'running_pid', None)
+        data['browser_pid'] = pid if type(pid) is int and pid > 1 else None
+        return data
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -75,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ('/api/status', '/api/activity'):
             if not self.authorized():
                 return self.send(403, b'{}')
-            data = self.server.guard.status() if self.path == '/api/status' else self.server.guard.activity()
+            data = self.server.snapshot() if self.path == '/api/status' else self.server.guard.activity()
             return self.send(200, json.dumps(data).encode())
         return self.send(404, b'{}')
 
@@ -84,6 +91,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, b'{}')
         if not self.server.actions.acquire(blocking=False):
             return self.send(409, b'{"error":"Action in progress"}')
+        browser_recorded = False
         try:
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 131072 or self.headers.get('Transfer-Encoding'):
@@ -107,9 +115,16 @@ class Handler(BaseHTTPRequestHandler):
                 subprocess.run(['open', str(folder)], check=True, timeout=5,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             elif self.path == '/api/open' and set(payload) == {'url'}:
-                if guard.status()['state'] != 'active':
-                    raise GuardError('Сначала подтвердите маршрут')
-                self.server.browser.open(payload['url'])
+                url = browser_url(payload['url'])
+                host = urlsplit(url).hostname
+                browser_recorded = True
+                guard.browser_requested(host)
+                try:
+                    self.server.browser.open(url)
+                except Exception:
+                    guard.browser_result(host, False)
+                    raise
+                guard.browser_result(host, True)
             elif self.path == '/api/profile' and set(payload) == {'profile'}:
                 config = validate_config(payload['profile'])
                 guard.lock('Профиль обновлён; требуется проверка маршрута', 'profile_updated')
@@ -117,8 +132,12 @@ class Handler(BaseHTTPRequestHandler):
                 guard.config = config
             else:
                 return self.send(404, b'{}')
-            self.send(200, json.dumps(guard.status()).encode())
-        except (GuardError, ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError):
+            self.send(200, json.dumps(self.server.snapshot()).encode())
+        except GuardError as error:
+            if self.path == '/api/open' and not browser_recorded:
+                self.server.guard.reject('invalid_request')
+            self.send(400, json.dumps({'error': str(error)}).encode())
+        except (ValueError, TypeError, KeyError, OSError, subprocess.SubprocessError):
             self.send(400, json.dumps({'error': 'Действие не выполнено. Проверьте профиль, маршрут и HTTPS-адрес.'}).encode())
         finally:
             self.server.actions.release()
@@ -136,7 +155,8 @@ def main():
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        raise SystemExit('GhostRoute Guard is already running')
+        print(json.dumps({'error': 'already_running'}), flush=True)
+        raise SystemExit(1)
     profile = args.state / 'profile.json'
     config, issue = None, None
     if profile.exists():
@@ -154,11 +174,16 @@ def main():
             raise ValueError()
         gate = Gate(guard, port)
     except (ValueError, OSError):
-        raise SystemExit('Guard port is unavailable; close the old protected browser before repair') from None
+        print(json.dumps({'error': 'port_unavailable'}), flush=True)
+        raise SystemExit(1) from None
     write_private(port_path, str(gate.server_address[1]).encode())
     browser = Browser(args.state, gate.server_address[1])
     dashboard = Dashboard(guard, browser, args.state)
-    chrome_events = ChromeEvents(guard, args.state)
+    try:
+        chrome_events = ChromeEvents(guard, args.state)
+    except (GuardError, OSError):
+        print(json.dumps({'error': 'chrome_events_unavailable'}), flush=True)
+        raise SystemExit(1) from None
     stop = threading.Event()
 
     def monitor():

@@ -21,6 +21,7 @@ public struct GuardStatus: Decodable, Equatable {
     public let chromeConnected: Bool
     public let bytesSent, bytesReceived: Int64
     public let verifiedAge: Int?
+    public let browserPid: Int?
 }
 
 public struct GuardEvent: Decodable, Identifiable, Equatable {
@@ -37,6 +38,14 @@ public struct GuardEvent: Decodable, Identifiable, Equatable {
     public let ruleId: Int?
     public var date: Date { Date(timeIntervalSince1970: time) }
     public var isChrome: Bool { source == "chrome" }
+
+    public static func local(id: Int, message: String) -> GuardEvent {
+        GuardEvent(id: id, time: Date().timeIntervalSince1970, kind: .error,
+                   source: "app", reason: "native_error", message: message,
+                   host: nil, route: nil, routeKind: nil, bytesSent: 0, bytesReceived: 0,
+                   state: nil, durationMs: nil, closeReason: nil, method: nil,
+                   resourceType: nil, ruleId: nil)
+    }
 }
 
 public struct GuardActivity: Decodable {
@@ -84,6 +93,22 @@ public enum ControlError: LocalizedError {
         case .invalidResponse: return "Ответ локального шлюза не удалось проверить."
         case .invalidProfile: return "Нужен JSON-профиль размером не больше 128 КБ."
         case .rejected(let message): return message
+        }
+    }
+}
+
+public enum StartupFailure: String, LocalizedError {
+    case alreadyRunning = "already_running"
+    case portUnavailable = "port_unavailable"
+    case chromeEventsUnavailable = "chrome_events_unavailable"
+    case unexpected = "unexpected"
+
+    public var errorDescription: String? {
+        switch self {
+        case .alreadyRunning: return "Другой экземпляр Guard уже управляет шлюзом. Переключитесь к его окну или закройте его и повторите запуск."
+        case .portUnavailable: return "Порт локального шлюза недоступен. Закройте прежнее окно защищённого Chrome и повторите запуск."
+        case .chromeEventsUnavailable: return "Не удалось открыть локальный канал событий Chrome. Повторите запуск; профиль сохраняется."
+        case .unexpected: return "Локальный шлюз не запустился. Повторите запуск. При повторении ошибки проверьте установку Python."
         }
     }
 }

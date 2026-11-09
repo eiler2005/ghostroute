@@ -14,13 +14,14 @@ const report=process.env.GUARD_REPORT_DIR;
 if(report)mkdirSync(report,{recursive:true});
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=fixture.example.org','-addext','subjectAltName=DNS:fixture.example.org','-keyout',path.join(root,'key.pem'),'-out',path.join(root,'cert.pem')],{stdio:'ignore'});
 const fixture=spawn('python3',['-B',path.join(path.dirname(fileURLToPath(import.meta.url)),'browser_fixture.py'),root],{stdio:['ignore','pipe','inherit']});
-let browser,ordinary;
+let browser,ordinary,closeOwned;
 try {
   const settings=await new Promise((resolve,reject)=>{
     let buffer='';fixture.stdout.on('data',data=>{buffer+=data;if(buffer.includes('\n'))resolve(JSON.parse(buffer.split('\n')[0]));});
     fixture.once('exit',()=>reject(new Error('Fixture exited before startup')));
   });
   const control=async action=>(await fetch(`http://127.0.0.1:${settings.control}/${action}`)).json();
+  closeOwned=()=>control('close-browser');
   const endpoint=new URL(settings.dashboard);
   const api=async(action,payload)=>{
     const response=await fetch(endpoint.origin+'/api/'+action,{method:payload===undefined?'GET':'POST',headers:{Authorization:'Bearer '+endpoint.hash.slice(1),'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
@@ -50,16 +51,22 @@ try {
   assert.equal((await control('status')).direct,0);
   const status=await api('status');assert(status.bytes_sent>0 && status.bytes_received>0);
   assert((await api('activity')).events.some(event=>event.reason==='not_allowed'));
-  await api('open',{url:'https://fixture.example.org/'});
+  const beforeApplicationLaunch=(await control('status')).origin;
+  const launched=await api('open',{url:'https://fixture.example.org/'});
+  assert(Number.isInteger(launched.browser_pid) && launched.browser_pid>1,'Application did not report its owned Chrome PID');
   assert.equal((await control('status')).browser_opened,1);
+  await waitFor(async()=>(await control('status')).origin>beforeApplicationLaunch,'Actual application launcher did not load its site');
+  assert((await api('activity')).events.some(event=>event.reason==='browser_opened'));
+  await closeOwned();
   await api('lock',{});await mustFail('https://fixture.example.org/lock-from-app');
   await control('delay');await api('activate',{route:'fixture'});
   assert.equal((await api('status')).state,'qualifying');
   await api('lock',{});await control('release');
   assert.equal((await api('status')).state,'locked');
+  const allowedBeforeClear=(await api('status')).allowed;
   await api('activity/clear',{});
   assert.equal((await api('activity')).events.length,0);
-  assert.equal((await api('status')).allowed,status.allowed);
+  assert.equal((await api('status')).allowed,allowedBeforeClear);
   await control('upstream-down');await mustFail('https://fixture.example.org/upstream-down');
   assert((await api('activity')).events.some(event=>event.kind==='error'));
   await control('restore');
@@ -103,5 +110,6 @@ try {
   console.log('PASS: real Chrome HTTPS, close/cancel and no direct/DNS/WebRTC bypass; counters and journal; actual Chrome main-frame/subresource block → native host → Guard; block persists when journal is unavailable.');
 } finally {
   if(browser)await browser.close();if(ordinary)await ordinary.close();
+  if(closeOwned)await closeOwned().catch(()=>{});
   fixture.kill('SIGTERM');rmSync(root,{recursive:true,force:true});
 }

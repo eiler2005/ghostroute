@@ -8,13 +8,14 @@ import ssl
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mac_guard.app import Dashboard
-from mac_guard.browser import arguments
+from mac_guard.browser import Browser, arguments
 from mac_guard.chrome_events import ChromeEvents
 from mac_guard.install import extension, extension_id, native_host
-from mac_guard.policy import browser_url
+from mac_guard.policy import browser_url, private_dir
 from mac_guard.service import Gate, Guard
 
 root = Path(sys.argv[1])
@@ -72,11 +73,17 @@ def checker(*_):
     if not qualification.wait(5):raise OSError('Fixture qualification timed out')
 guard = Guard(config, factory=lambda _: adapter, checker=checker)
 gate = Gate(guard)
-class FixtureBrowser:
+class FixtureBrowser(Browser):
     def open(self, url):
         browser_url(url)
+        # Exercise the actual application launcher. These two flags are confined
+        # to this isolated fixture and never appear in production arguments.
+        with patch.dict('os.environ', {'__CFBundleIdentifier':'org.ghostroute.guard'}), patch('mac_guard.browser.arguments', side_effect=lambda profile, port: arguments(profile, port) + ['--headless=new', '--ignore-certificate-errors']):
+            super().open(url)
         counts['browser_opened'] += 1
-dashboard = Dashboard(guard, FixtureBrowser(), root)
+private_dir(root / 'owned-browser-state')
+owned_browser = FixtureBrowser(root / 'owned-browser-state', gate.server_address[1])
+dashboard = Dashboard(guard, owned_browser, root)
 chrome_events = ChromeEvents(guard, root)
 extension_path = root / 'extension'
 extension(extension_path, ['fixture.example.org'])
@@ -90,6 +97,7 @@ class Control(BaseHTTPRequestHandler):
         if self.path == '/restore': adapter.available = True; qualification.set(); guard.lock()
         if self.path == '/delay': qualification.clear()
         if self.path == '/release': qualification.set()
+        if self.path == '/close-browser': owned_browser.close()
         if self.path == '/chrome-offline': chrome_events.shutdown(); chrome_events.server_close()
         if self.path == '/upstream-down': adapter.available = False; guard.lock(); guard.activate('fixture')
         if self.path == '/gate-down':

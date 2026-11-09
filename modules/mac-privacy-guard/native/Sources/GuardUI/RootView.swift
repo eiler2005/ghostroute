@@ -44,10 +44,15 @@ public struct GuardRootView: View {
                     }
                 }
                 if let error = store.error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.callout).foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                        .background(.regularMaterial)
+                    HStack {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.callout).foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if !store.online && !store.starting && store.retryHandler != nil {
+                            Button("Повторить запуск") { store.retryStartup() }
+                                .help("Перезапускает собственный шлюз с закрытым доступом; профиль сохраняется")
+                        }
+                    }.padding(12).background(.regularMaterial)
                 } else if let notice = store.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(12)
@@ -92,5 +97,5 @@ struct DecisionLabel: View {
 }
 
 func byteText(_ value: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+    value == 0 ? "0 Б" : ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
 }

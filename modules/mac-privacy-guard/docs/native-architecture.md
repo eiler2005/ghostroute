@@ -24,6 +24,27 @@ and system-wide filtering are later deliveries, not present capabilities.
 | Chrome native bridge | Narrow metadata messages into private Unix socket | No dashboard token, route action, shell command or arbitrary file operation |
 | Journal | Last 300 events plus bounded active-connection references | Memory only; no raw URL, cookies, headers, body or exception dump |
 
+Startup failures use a narrow error-code bootstrap contract. The shell presents
+actionable messages, retains up to 32 local failure events within the shared
+300-event display limit, and offers an owned-backend retry. API loss disables
+access controls; successful reconnection clears the connection warning. A second
+native launch activates the existing instance. The gate reuses a released address
+after TIME_WAIT but never enables SO_REUSEPORT or shares a live listener.
+
+Python and protected Chrome launches strip inherited AppKit bundle-identity
+environment values so each executable discovers its own bundle. Chrome receives
+the fixed proxy on every launch, an explicit Default profile, and a new window on
+first launch. An early child exit is a failure, not a successful open. The engine
+returns only its owned browser PID; the shell verifies the running application's
+Chrome bundle ID before activating it. Failed focus leaves manual-switch guidance.
+
+An open action checks route/catalog eligibility before invoking Chrome and records
+only the destination host and a fixed result reason. Successful process launch is
+not page-load evidence. UI labels distinguish Guard access from ordinary Chrome's
+independent deny policy. Filters expose visible/total counts and a reset action;
+the blocked metric selects all block sources, and an event action opens only the
+recorded host as HTTPS through the same qualified browser path.
+
 ```mermaid
 flowchart TB
     ui[Native SwiftUI app] --> store[MainActor GuardStore]
