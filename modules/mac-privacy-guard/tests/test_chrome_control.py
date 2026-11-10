@@ -37,6 +37,19 @@ class ChromeControlTests(unittest.TestCase):
         self.now = 7
         self.assertEqual(self.control.snapshot()['agents'], [])
 
+    def test_ordinary_access_is_independent_and_defaults_back_to_block(self):
+        self.agent(ready=False,session=None,remaining=0)
+        self.assertEqual(self.control.reply(PROFILE)['access'],'block')
+        self.control.command(PROFILE,'allow_sites')
+        self.assertEqual(self.control.reply(PROFILE)['access'],'allow')
+        self.assertTrue(self.control.snapshot()['agents'][0]['desired_allowed'])
+        self.agent(ready=False,session=None,remaining=0,protection=False)
+        self.control.command(PROFILE,'block_sites')
+        self.assertEqual(self.control.reply(PROFILE)['access'],'block')
+        self.control.command(PROFILE,'allow_sites')
+        self.now=7
+        self.assertEqual(self.control.reply(PROFILE)['access'],'block','Stale agent retained allowed policy')
+
     def test_preview_is_solicited_bounded_and_not_in_event_journal(self):
         self.agent();self.http()
         preview=dict(op='preview', profile=PROFILE, session=SESSION, event=EVENT, command='d'*32, text='fixture content')

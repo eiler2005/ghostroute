@@ -4,6 +4,8 @@ public struct ChromeAgent: Decodable, Identifiable {
     public let id: String
     public let ready, reporting, protection, pending: Bool
     public let remaining, pauseRemaining: Int
+    public let desiredAllowed: Bool?
+    public var accessChanging: Bool { (desiredAllowed ?? false) == protection }
 }
 public struct ChromeHTTPEvent: Decodable, Identifiable {
     public var id: String { profile + event }
@@ -22,6 +24,7 @@ public struct ChromeSnapshot: Decodable {
     public static let empty = ChromeSnapshot(agents: [], events: [], preview: nil, notice: "Ожидаем связь с расширением Chrome")
 }
 public enum ChromeCommand: String {
+    case allowSites = "allow_sites", blockSites = "block_sites"
     case start, stop, clear, preview
     case reportingOn = "reporting_on", reportingOff = "reporting_off"
     case pauseProtection = "pause_protection", resumeProtection = "resume_protection"

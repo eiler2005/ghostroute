@@ -19,9 +19,11 @@ def forward(state, data):
             with connection.makefile('rb') as source:
                 reply = json.loads(source.readline(2048))
                 result = {'ok': reply.get('ok') is True}
+                if result['ok'] and reply.get('access') in {'allow', 'block'}:
+                    result['access'] = reply['access']
                 command = reply.get('command')
                 if result['ok'] and isinstance(command, dict) and set(command) == {'id', 'action', 'session', 'event'}:
-                    if command['action'] in {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection'}:
+                    if command['action'] in {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection', 'allow_sites', 'block_sites'}:
                         result['command'] = command
                 return result
     except (OSError, ValueError, AttributeError):

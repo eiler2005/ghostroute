@@ -3,7 +3,6 @@ import GuardCore
 
 struct ChromeView: View {
     @ObservedObject var store: GuardStore
-    @State private var pauseConfirmation = false
     @State private var selected: String?
     private var agent: ChromeAgent? { store.chrome.agents.first { $0.id == store.selectedChrome } }
     private var entries: [ChromeHTTPEvent] { store.chrome.events.filter { $0.profile == store.selectedChrome } }
@@ -21,25 +20,10 @@ struct ChromeView: View {
                     Spacer()
                     Button("Справка") { store.showHelp() }
                 }
-                Picker("Сеанс расширения", selection: $store.selectedChrome) {
-                    if store.chrome.agents.isEmpty { Text("Нет подключённого агента").tag("") }
-                    ForEach(store.chrome.agents) { item in Text("Chrome · \(item.id.prefix(6))").tag(item.id) }
-                }.frame(maxWidth: 420)
+                ChromeAccessView(store: store)
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
-                        Label(agent == nil ? "Нет свежего сигнала расширения" : agent?.protection == true ? "Блокировка Chrome включена" : "Блокировка Chrome приостановлена", systemImage: agent?.protection == true ? "checkmark.shield.fill" : "exclamationmark.shield")
-                            .font(.headline).foregroundStyle(agent == nil ? Color.secondary : agent?.protection == true ? .green : .orange)
-                        Text("Это обычный Chrome. Пауза разрешает ему использовать обычную сеть Mac; зелёный статус Guard не меняет его маршрут.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         HStack {
-                            if agent?.protection == false {
-                                Button("Возобновить блокировку") { send(.resumeProtection) }
-                                    .buttonStyle(.borderedProminent)
-                                Text("Пауза: до \(agent?.pauseRemaining ?? 0) с").font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                Button("Пауза блокировки на 60 секунд…") { pauseConfirmation = true }
-                            }
-                            Spacer()
                             Toggle("Передавать события блокировок", isOn: Binding(get: { agent?.reporting ?? true }, set: { send($0 ? .reportingOn : .reportingOff) }))
                                 .toggleStyle(.switch).controlSize(.small)
                         }.disabled(agent == nil || agent?.pending == true || store.busy || !store.online)
@@ -93,9 +77,48 @@ struct ChromeView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(22).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
         }
-        .confirmationDialog("Приостановить блокировку Chrome?", isPresented: $pauseConfirmation, titleVisibility: .visible) {
-            Button("Приостановить на 60 секунд", role: .destructive) { send(.pauseProtection) }
-            Button("Отмена", role: .cancel) {}
-        } message: { Text("Чувствительные сайты смогут открываться обычным путём Mac. Guard не направит этот Chrome через свой шлюз. Блокировка вернётся по таймеру или при потере связи с приложением.") }
+    }
+}
+
+struct ChromeAccessView: View {
+    @ObservedObject var store: GuardStore
+    private var agent: ChromeAgent? { store.online ? store.chrome.agents.first { $0.id == store.selectedChrome } : nil }
+    private var allowed: Bool { agent?.protection == false }
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 14) {
+                    Image(systemName: allowed ? "globe" : "hand.raised.fill")
+                        .font(.system(size: 30)).foregroundStyle(allowed ? Color.green : .orange)
+                        .frame(width: 48, height: 48).background((allowed ? Color.green : .orange).opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(agent == nil ? "Нет связи с расширением Chrome" : allowed ? "Доступ в Chrome открыт" : "Сайты в Chrome заблокированы")
+                            .font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                        Text("Обычный Chrome · чувствительный каталог").font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    if agent?.pending == true || agent?.accessChanging == true { ProgressView().controlSize(.small) }
+                }
+                if store.chrome.agents.count > 1 {
+                    Picker("Сеанс Chrome", selection: $store.selectedChrome) {
+                        ForEach(store.chrome.agents) { item in Text("Chrome · \(item.id.prefix(6))").tag(item.id) }
+                    }.frame(maxWidth: 400)
+                }
+                HStack(spacing: 12) {
+                    Button { Task { await store.setChromeAccess(true) } } label: {
+                        Label("Открыть доступ в Chrome", systemImage: "lock.open")
+                    }.buttonStyle(.borderedProminent)
+                        .disabled(agent == nil || store.busy || (allowed && agent?.desiredAllowed == true))
+                    Button { Task { await store.setChromeAccess(false) } } label: {
+                        Label("Закрыть доступ в Chrome", systemImage: "lock")
+                    }.disabled(!store.canBlockChrome)
+                    Spacer(minLength: 0)
+                }.controlSize(.large)
+                Text(agent == nil ? "Запустите Chrome с включённым расширением Guard. Папку расширения можно открыть в настройках приложения." : agent?.pending == true || agent?.accessChanging == true ? "Chrome применяет настройку…" : allowed ? "Блокировка снята, пока приложение на связи. Сайты работают в этом же профиле Chrome; уже заблокированную страницу нужно обновить." : "Нажмите «Открыть доступ в Chrome», чтобы снять блокировку. Отдельный браузер запускать не нужно.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text("Используется текущая сеть и proxy обычного Chrome. Эта кнопка не проверяет и не меняет его IP-адрес или страну выхода.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }.padding(12)
+        }
     }
 }

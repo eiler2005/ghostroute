@@ -185,7 +185,8 @@ mobile и защищённого WebKit/iPhone контракта после dep
 [Mac Privacy Guard](../modules/mac-privacy-guard/README.md) реализован отдельным
 модулем: native shell, fixed-proxy Chrome, allowlist для домашнего HTTPS CONNECT,
 adapter с привязкой к VPN-интерфейсу, exit qualification и MV3 blocker.
-Нативный Chrome-раздел управляет агентом, временной паузой блокировки и явно
+Главный экран управляет открытием/закрытием доступа обычного Chrome; отдельный
+защищённый браузер доступен как опция. Chrome-раздел управляет агентом и явно
 подготовленной HTTP-диагностикой; response preview существует отдельно от журнала.
 Локальные TLS/state/API fixtures и реальные Chrome проверки отказов отделены от
 квалификации конкретного установленного VPN и его lifecycle.
@@ -198,8 +199,8 @@ allowlist сверять с deployed sensitive policy после её измен
 явно включить в зашифрованную recovery-копию. Точный installed/activated/verified
 статус остаётся в приватном отчёте. Не называть модуль системным firewall для
 всех приложений и не снимать существующие сетевые ограничения ради его приёмки.
-Проверять настоящую панель DevTools дополнительно к callback fixtures; пауза
-обычного Chrome — явное разрешение обычной сети Mac, не proxy mode Guard.
+Проверять настоящую панель DevTools дополнительно к callback fixtures; открытие
+доступа обычного Chrome сохраняет его текущую сеть/proxy без проверки IP/страны.
 
 ## Что не требуется внедрять сейчас
 

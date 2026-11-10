@@ -3,8 +3,8 @@
 ## Scope
 
 GhostRoute Guard is a local SwiftUI application for one operator. It controls an
-independent fail-closed gateway and dedicated Chrome profile. Ordinary Chrome has
-an explicitly installed deny policy and reports its own block metadata. No
+ordinary Chrome's sensitive-site deny policy through an explicitly installed
+extension. A fail-closed gateway and dedicated Chrome profile are optional. No
 component silently changes router channels or the system-wide proxy.
 
 Native access controls, a memory journal, Chrome rule-match delivery, explicit
@@ -22,7 +22,7 @@ filtering remains outside this module's installed scope.
 | Python Guard | Qualification, generation/cancellation, catalogs, connections and counters | Sole authority for opening access; startup/restart is locked |
 | Protected browser owner | Separate Chrome profile and mandatory fixed proxy | Launch flags and route restrictions remain enforced independently of view state |
 | Chrome policy agent | Explicit DNR deny policy in each enabled ordinary profile | Sensitive sites remain denied even while protected-browser access is open |
-| Chrome native bridge | Validated events and fixed diagnostic/pause commands over private Unix socket | No dashboard token, route action, shell command, arbitrary URL or file operation |
+| Chrome native bridge | Validated events and fixed access/diagnostic commands over private Unix socket | No dashboard token, route action, shell command, arbitrary URL or file operation |
 | Chrome diagnostics | Prepared DevTools tab, 60-second capture, up to 100 entries and solicited text preview | Separate volatile store, 1024-character preview for 15 seconds; never the activity journal |
 | Journal | Last 300 events plus bounded active-connection references | Memory only; no raw URL, cookies, headers, body or exception dump |
 
@@ -61,7 +61,7 @@ flowchart TB
     policy --> bridge[Origin-restricted Native Messaging host]
     bridge -->|Validated metadata only| journal
     engine -->|Fixed commands with short expiry| bridge
-    bridge -->|Explicit pause and diagnostics control| policy
+    bridge -->|Explicit allow/block and diagnostics control| policy
     devtools[Prepared DevTools panel] --> bridge
     bridge --> preview[Separate volatile HTTP data]
     preview --> client
@@ -70,6 +70,14 @@ flowchart TB
 ```
 
 ## State and UI contract
+
+The main overview controls ordinary Chrome: Open/Close access applies to the
+selected extension agent and displays its actual DNR state separately from the
+requested state. It requires neither a route profile nor DevTools. The existing
+blocked page must be refreshed; no tab is automatically moved or reloaded.
+Ordinary Chrome retains its current network/proxy, without exit qualification.
+The dedicated browser's controls and tunnel metrics live in a collapsed optional
+section. Its independent gateway state machine is shown below.
 
 ```mermaid
 stateDiagram-v2
@@ -107,9 +115,11 @@ profile is protected. A fresh heartbeat confirms one reporting ruleset only.
 When Guard is absent, DNR continues enforcement and event delivery fails; no
 sensitive disk spool or automatic replay is created. A bounded in-flight queue
 drops excess signals without weakening deny rules. Native startup/health status
-must never be inferred to qualify a third-party VPN. An explicitly confirmed
-60-second pause uses a higher-priority session allow rule while the static
-ruleset stays enabled. Expiry, detected app loss and worker startup remove it;
+must never be inferred to qualify a third-party VPN. Explicit Open access uses
+a higher-priority session allow rule while the static ruleset stays enabled.
+Native replies renew a 15-second lease while the app wants access open; there is
+no one-minute user limit. Agent silence beyond 6 seconds removes its desired
+access from the engine. Lease expiry, detected app loss and worker startup remove it;
 browser restart clears session rules. Timer scheduling is a browser boundary,
 not instantaneous OS enforcement. The app cannot re-enable an extension that
 the operator disabled through Chrome itself.

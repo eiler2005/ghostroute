@@ -8,7 +8,7 @@ import time
 from .policy import GuardError, hostname
 
 IDENTIFIER = re.compile(r'[a-f0-9]{32}')
-ACTIONS = {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection'}
+ACTIONS = {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection', 'allow_sites', 'block_sites'}
 
 
 def identifier(value):
@@ -68,6 +68,7 @@ class ChromeControl:
         self.agents = OrderedDict()
         self.events = deque(maxlen=100)
         self.pending = {}
+        self.access = {}
         self.suspended = {}
         self.preview = None
         self.notice = 'Откройте DevTools → Guard и разрешите управление этой вкладкой'
@@ -80,11 +81,12 @@ class ChromeControl:
     def _expire(self):
         now = self.clock()
         for profile, agent in list(self.agents.items()):
-            if now - agent['seen'] > (6 if agent['ready'] else 45):
+            if now - agent['seen'] > 6:
                 self._clear(profile)
                 self.pending.pop(profile, None)
                 del self.agents[profile]
                 self.suspended.pop(profile, None)
+                self.access.pop(profile, None)
             elif agent['remaining'] and now >= agent['deadline']:
                 agent['remaining'] = 0
                 self._clear(profile)
@@ -113,6 +115,7 @@ class ChromeControl:
                     retired, _ = self.agents.popitem(last=False)
                     self._clear(retired); self.pending.pop(retired, None)
                     self.suspended.pop(retired, None)
+                    self.access.pop(retired, None)
                 return
             agent = self.agents.get(profile)
             if op == 'result':
@@ -144,8 +147,10 @@ class ChromeControl:
             if not identifier(profile) or action not in ACTIONS or (event is not None and not identifier(event)) or (action == 'preview') != (event is not None):
                 raise GuardError('Некорректная команда Chrome')
             agent = self.agents.get(profile)
-            if not agent or (action not in {'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection'} and not agent['ready']):
+            if not agent or (action not in {'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection', 'allow_sites', 'block_sites'} and not agent['ready']):
                 raise GuardError('Сначала разрешите управление во вкладке DevTools → Guard')
+            if action in {'allow_sites', 'block_sites', 'pause_protection', 'resume_protection'}:
+                self.access[profile] = action == 'allow_sites'
             if action == 'preview' and (not agent['remaining'] or not any(e['profile'] == profile and e['event'] == event for e in self.events)):
                 raise GuardError('Ответ больше недоступен')
             if action in {'stop', 'clear'}:
@@ -165,12 +170,14 @@ class ChromeControl:
         with self.mutex:
             self._expire()
             command = self.pending.get(profile)
-            return {'ok': True, **({'command': {key: command[key] for key in ('id', 'action', 'session', 'event')}} if command else {})}
+            return {'ok': True, 'access': 'allow' if self.access.get(profile, False) else 'block',
+                    **({'command': {key: command[key] for key in ('id', 'action', 'session', 'event')}} if command else {})}
 
     def snapshot(self):
         with self.mutex:
             self._expire()
             return {'agents': [dict(id=key, ready=value['ready'], reporting=value['reporting'], protection=value['protection'],
+                                    desired_allowed=self.access.get(key, False),
                                     pause_remaining=value['pause_remaining'],
                                     remaining=max(0, round(value['deadline'] - self.clock())) if value['remaining'] else 0,
                                     pending=key in self.pending) for key, value in self.agents.items()],

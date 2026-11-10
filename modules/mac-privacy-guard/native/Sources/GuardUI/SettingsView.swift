@@ -5,7 +5,7 @@ struct SettingsView: View {
     @ObservedObject var store: GuardStore
     var body: some View {
         Form {
-            SwiftUI.Section("Маршруты и профиль") {
+            SwiftUI.Section("Профиль дополнительного браузера") {
                 LabeledContent("Чувствительных доменов", value: "\(store.status?.sensitiveDomains ?? 0)")
                 LabeledContent("Настроено маршрутов", value: "\(store.status?.routes.count ?? 0)")
                 Button("Импортировать JSON-профиль…") { store.importProfile() }.disabled(store.busy)
@@ -28,7 +28,7 @@ struct SettingsView: View {
             }
             SwiftUI.Section("Область защиты") {
                 Label("Защищённый браузер", systemImage: "checkmark.shield")
-                Text("«Открыть доступ» разрешает соединения только через проверенный шлюз Guard. Обычный Chrome продолжает блокировать чувствительные сайты.")
+                Text("Главные кнопки открывают и закрывают доступ в обычном Chrome. Он использует текущую сеть и proxy. Дополнительный защищённый браузер имеет отдельный проверяемый шлюз и необязателен.")
                 Label("Локальный журнал", systemImage: "list.bullet.rectangle")
                 Text("Последние 300 событий находятся только в памяти. В журнал не попадают полные URL, параметры, содержимое страниц, пароли и cookies. Отдельный HTTP-просмотр в разделе Google Chrome включается явно и хранится временно. Передача учитывается только внутри туннелей Guard.")
                 Label("Системный фильтр", systemImage: "network.badge.shield.half.filled")

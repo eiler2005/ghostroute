@@ -78,6 +78,10 @@ public final class GuardStore: ObservableObject {
     }
     public var canBrowse: Bool { online && !busy && status?.state == .active }
     public var canLock: Bool { online && (status?.state != .locked || busy) }
+    public var canBlockChrome: Bool { online && !busy && chrome.agents.contains { $0.id == selectedChrome && (!$0.protection || $0.desiredAllowed == true) } }
+    public func setChromeAccess(_ allowed: Bool) async {
+        await perform(.chromeCommand(selectedChrome, allowed ? .allowSites : .blockSites, nil))
+    }
 
     public var hasFilters: Bool { filter != nil || source != "all" || !search.isEmpty }
     public var hiddenEventCount: Int { events.count - visibleEvents.count }

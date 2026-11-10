@@ -95,10 +95,12 @@ block enforcement when the event receiver is unavailable. Fixture evidence
 contains fake destinations only. Native controls are checked by the Swift store
 suite; the built macOS window additionally requires visual/operator acceptance.
 
-The ordinary-profile pause uses a session allow rule with the static deny ruleset
-still enabled. It deliberately permits the Mac's ordinary network path for 60
-seconds after native confirmation. Browser fixtures prove actual pause/resume,
-reporting toggles, expiry and restoration on detected app loss. Browser scheduling
+Ordinary-profile Open access uses a session allow rule with the static deny
+ruleset still enabled. It permits the browser's current network/proxy without
+checking the exit IP/country. Native replies renew a 15-second lease; there is no
+one-minute user limit. Browser fixtures prove allow/block in the same tab while
+the optional gateway stays locked, renewal beyond one minute, reporting toggles
+and restoration on detected app loss. Browser scheduling
 remains a boundary; no instantaneous OS kill-switch claim is made.
 
 DevTools callback fixtures exercise the real extension runtime/native bridge/app

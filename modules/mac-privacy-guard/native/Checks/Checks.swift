@@ -112,13 +112,28 @@ struct NativeChecks {
         let chrome = try await api.chrome()
         try require(chrome.agents.first?.protection == true && chrome.agents.first?.reporting == false,"Chrome protection and reporting were conflated")
         print("PASS: native help/navigation and independent Chrome command/status contract")
+        let ordinary=GuardStore(),ordinaryClient=FixtureClient()
+        ordinaryClient.includeChrome=true
+        ordinary.connect(ordinaryClient,poll:false);await ordinary.refresh()
+        try require(!ordinary.canBlockChrome && !ordinary.canBrowse,"Ordinary startup was not blocked")
+        await ordinary.setChromeAccess(true)
+        try require(ordinary.canBlockChrome && !ordinary.canBrowse && ordinary.status?.state == .locked,"Chrome access required or opened optional browser")
+        await ordinary.setChromeAccess(false)
+        try require(!ordinary.canBlockChrome && ordinary.status?.state == .locked,"Close Chrome failed or changed optional gateway")
+        print("PASS: main Chrome access opens/closes independently of optional protected browser")
     }
 }
 
 private final class FixtureClient: GuardControlling {
     var mode="locked",offline=false,delayActivation=false,includeEvents=false
+    var includeChrome=false,chromeAllowed=false
     var activation:CheckedContinuation<GuardStatus,Error>?
     func status() async throws -> GuardStatus {if offline {throw URLError(.notConnectedToInternet)};return try makeStatus(mode)}
+    func chrome() async throws -> ChromeSnapshot {
+        if !includeChrome { return .empty }
+        let decoder=JSONDecoder();decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(ChromeSnapshot.self,from:Data("{\"agents\":[{\"id\":\"fixture\",\"ready\":false,\"reporting\":true,\"protection\":\(!chromeAllowed),\"desired_allowed\":\(chromeAllowed),\"pending\":false,\"remaining\":0,\"pause_remaining\":0}],\"events\":[],\"preview\":null,\"notice\":\"Fixture agent\"}".utf8))
+    }
     func activity() async throws -> GuardActivity {
         let event = """
         {"id":1,"time":0,"kind":"blocked","source":"chrome","reason":"chrome_blocked","message":"Fixture block","host":"sensitive.example.org","route":null,"routeKind":null,"bytesSent":0,"bytesReceived":0,"state":null,"durationMs":null,"closeReason":null,"method":"GET","resourceType":"main_frame","ruleId":1}
@@ -132,6 +147,9 @@ private final class FixtureClient: GuardControlling {
             mode="active"
         case .lock:mode="locked"
         case .profile:throw ControlError.invalidProfile
+        case .chromeCommand(_,let command,_):
+            if command == .allowSites { chromeAllowed=true }
+            if command == .blockSites { chromeAllowed=false }
         default:break
         }
         return try makeStatus(mode)

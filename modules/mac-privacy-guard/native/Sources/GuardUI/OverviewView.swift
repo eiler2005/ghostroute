@@ -3,9 +3,19 @@ import GuardCore
 
 struct OverviewView: View {
     @ObservedObject var store: GuardStore
+    @State private var protectedBrowser = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                ChromeAccessView(store: store)
+                HStack {
+                    Label("Блокировок за запуск: \(store.status?.chromeBlocked ?? 0)", systemImage: "hand.raised").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Настройки и диагностика Chrome") { store.destination = .chrome }
+                }
+                DisclosureGroup("Дополнительно: отдельный защищённый браузер", isExpanded: $protectedBrowser) {
+                    VStack(alignment: .leading, spacing: 16) {
+                Text("Опциональный браузер со своим проверенным маршрутом. Его шлюз управляется отдельно от блокировки обычного Chrome.").font(.caption).foregroundStyle(.secondary)
                 AccessView(store: store)
                 BrowserLaunchView(store: store)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
@@ -15,6 +25,8 @@ struct OverviewView: View {
                     }.buttonStyle(.plain).help("Открыть журнал блокировок всех источников")
                     MetricView(title: "Активно", value: "\(store.status?.connections ?? 0)", detail: "Открытых туннелей", icon: "arrow.left.arrow.right", color: .blue)
                     MetricView(title: "Передано", value: byteText((store.status?.bytesSent ?? 0) + (store.status?.bytesReceived ?? 0)), detail: "Внутри HTTPS-туннелей", icon: "chart.bar", color: .purple)
+                }
+                    }.padding(.top, 12)
                 }
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -32,7 +44,7 @@ struct OverviewView: View {
                 }
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "info.circle").foregroundStyle(.secondary)
-                    Text("Защищённый Chrome и обычный Chrome работают отдельно. Счётчики относятся к текущему запуску Guard; журнал хранится в памяти.")
+                    Text("Открытие и закрытие доступа на главной панели управляет блокировкой обычного Chrome. Журнал хранится только в памяти.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Button("Как это работает") { store.showHelp() }.controlSize(.small)
@@ -80,7 +92,7 @@ struct AccessView: View {
                         .font(.system(size: 32, weight: .medium)).foregroundStyle(accent)
                         .frame(width: 48, height: 48).background(accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(!store.online ? "Шлюз недоступен" : active ? "Доступ открыт для Guard" : qualifying ? "Проверяем маршрут" : "Доступ Guard закрыт")
+                        Text(!store.online ? "Шлюз недоступен" : active ? "Маршрут дополнительного браузера проверен" : qualifying ? "Проверяем маршрут" : "Шлюз дополнительного браузера закрыт")
                             .font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                         Text(store.online ? (store.status?.message ?? "") : "Проверьте сообщение об ошибке и повторите запуск.")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -102,10 +114,10 @@ struct AccessView: View {
                     Spacer(minLength: 0)
                     if !active {
                         Button { Task { await store.perform(.activate(store.selectedRoute)) } } label: {
-                            Label(qualifying ? "Проверяем…" : "Открыть доступ", systemImage: "checkmark.shield")
+                            Label(qualifying ? "Проверяем…" : "Проверить маршрут", systemImage: "checkmark.shield")
                         }.buttonStyle(.borderedProminent).disabled(!store.canActivate)
                     }
-                    Button { Task { await store.perform(.lock) } } label: { Label("Закрыть доступ", systemImage: "lock") }.disabled(!store.canLock)
+                    Button { Task { await store.perform(.lock) } } label: { Label("Закрыть шлюз", systemImage: "lock") }.disabled(!store.canLock)
                 }.controlSize(.large)
                 if active {
                     Label("Выход проверен \(store.status?.verifiedAge ?? 0) с назад · проверка повторяется автоматически", systemImage: "checkmark.circle")

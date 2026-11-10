@@ -69,20 +69,20 @@ public struct GuardRootView: View {
                 ToolbarItem(placement: .automatic) {
                     HStack(spacing: 6) {
                         Circle().fill(store.online ? Color.green : Color.orange).frame(width: 6, height: 6)
-                        Text(store.online ? "Шлюз на связи" : "Нет связи")
+                        Text(store.online ? "Служба на связи" : "Нет связи")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    .help("Состояние локального шлюза, а не всей сети Mac")
+                    .help("Связь с локальной службой; не проверка сетевого маршрута Chrome")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.showHelp() } label: { Label("Справка", systemImage: "questionmark.circle") }
                         .help("Начало работы, диагностика и границы защиты")
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button { Task { await store.perform(.lock) } } label: {
-                        Label("Закрыть доступ", systemImage: "lock.fill")
+                    Button { Task { await store.setChromeAccess(false) } } label: {
+                        Label("Закрыть доступ в Chrome", systemImage: "lock.fill")
                     }
-                    .disabled(!store.canLock)
+                    .disabled(!store.canBlockChrome)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 }
             }

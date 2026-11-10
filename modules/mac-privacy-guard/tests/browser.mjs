@@ -152,6 +152,20 @@ try {
   assert(await panel.evaluate(()=>globalThis.previewExecuted===undefined),'HTML response executed in diagnostics UI');
   if(report)await panel.screenshot({path:path.join(report,'diagnostics-panel.png'),fullPage:true});
   await panel.locator('#stop').click();assert.equal(await panel.locator('tbody tr').count(),0);await panel.close();
+  await ordinaryPage.bringToFront();await blockPage();
+  await command('allow_sites');
+  await waitFor(async()=>(await api('chrome')).agents[0]?.protection===false,'Ordinary Chrome access did not open');
+  await ordinaryPage.reload({waitUntil:'domcontentloaded'});
+  assert.equal(await ordinaryPage.locator('h1').textContent(),'Protected fixture','App access did not allow the same ordinary Chrome tab');
+  assert.equal((await api('status')).state,'locked','Ordinary access opened the optional protected gateway');
+  // Advance more than the old 60-second pause: live app replies renew access.
+  await worker.evaluate(()=>{globalThis.guardOriginalNow=Date.now;const future=Date.now()+70000;Date.now=()=>future;});
+  await new Promise(resolve=>setTimeout(resolve,2500));
+  await waitFor(async()=>(await api('chrome')).agents[0]?.protection===false,'App access acted like a one-minute pause');
+  await worker.evaluate(()=>{Date.now=globalThis.guardOriginalNow;delete globalThis.guardOriginalNow;});
+  await command('block_sites');
+  await waitFor(async()=>(await api('chrome')).agents[0]?.protection===true,'Ordinary Chrome access did not close');
+  await blockPage();
   await command('pause_protection');
   assert.equal((await api('chrome')).agents[0].protection,false);
   assert((await worker.evaluate(()=>chrome.declarativeNetRequest.getEnabledRulesets())).includes('sensitive'),'Pause disabled the permanent ruleset');
@@ -170,7 +184,8 @@ try {
   await worker.evaluate(()=>{Date.now=globalThis.guardOriginalNow;delete globalThis.guardOriginalNow;});
   await blockPage();
   if(report)writeFileSync(path.join(report,'fixture-proof.json'),JSON.stringify({guard:await api('status'),events:proof.events},null,2));
-  await command('pause_protection');
+  await command('allow_sites');
+  await waitFor(async()=>(await api('chrome')).agents[0]?.protection===false,'Access was not allowed before disconnect');
   await control('chrome-offline');
   await waitFor(async()=>(await worker.evaluate(()=>chrome.declarativeNetRequest.getSessionRules())).length===0,'Lost native app did not restore Chrome block');
   const beforeOfflineOrigin=(await control('status')).origin;await blockPage();
@@ -181,7 +196,7 @@ try {
   const netlog=JSON.parse(readFileSync(path.join(root,'netlog.json')));
   const names=Object.fromEntries(Object.entries(netlog.constants.logEventTypes).map(([name,id])=>[id,name]));
   assert.equal(netlog.events.filter(event=>/DNS_TRANSACTION|DNS_TASK/.test(names[event.type] || '')).length,0,'Protected browser performed DNS');
-  console.log('PASS: real Chrome fixed proxy and block→native host→Guard; app pause/resume/reporting commands, pause timeout and loss-of-app restoration; no direct/DNS/WebRTC bypass.');
+  console.log('PASS: ordinary Chrome allow/block in the same tab independent of optional gateway; live access renewal, reporting/diagnostics, disconnect restoration and protected-browser no-direct/DNS/WebRTC bypass.');
 } finally {
   if(browser)await browser.close();if(ordinary)await ordinary.close();
   if(closeOwned)await closeOwned().catch(()=>{});
