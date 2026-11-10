@@ -76,6 +76,11 @@ selected extension agent and displays its actual DNR state separately from the
 requested state. It requires neither a route profile nor DevTools. The existing
 blocked page must be refreshed; no tab is automatically moved or reloaded.
 Ordinary Chrome retains its current network/proxy, without exit qualification.
+The popup provides the same access buttons for its own ephemeral agent. It sends
+only a boolean request through the existing native bridge, and the engine queues
+the same allow/block commands. Only the extension's own popup URL is accepted by
+the worker; no dashboard token or route controls are exposed. Engine absence
+disables Open. Popup and native UI both show actual rule state.
 The dedicated browser's controls and tunnel metrics live in a collapsed optional
 section. Its independent gateway state machine is shown below.
 

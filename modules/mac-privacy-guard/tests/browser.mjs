@@ -186,6 +186,29 @@ try {
   const popup=await ordinary.newPage();await popup.goto(`chrome-extension://${settings.extension_id}/popup.html`);
   await waitFor(async()=>Number(await popup.locator('#allowed').textContent())>0,'Popup allowed metric stayed empty');
   assert.equal(Number(await popup.locator('#count').textContent()),Number(await popup.locator('#allowed').textContent())+Number(await popup.locator('#blocked').textContent()));
+  await command('block_sites');
+  await waitFor(()=>popup.locator('#allow').isEnabled(),'Popup did not follow app Close');
+  const popupTimings=[];
+  for(let cycle=0;cycle<4;cycle++){
+    for(const allowed of [true,false]){
+      const started=performance.now();
+      await popup.locator(allowed?'#allow':'#deny').click();
+      await waitFor(async()=>{const agent=(await api('chrome')).agents[0];return agent?.desired_allowed===allowed && agent?.protection===!allowed && !agent?.pending;},'Popup did not update the shared native authority');
+      await waitFor(()=>popup.locator(allowed?'#deny':'#allow').isEnabled(),'Popup did not show actual Chrome acknowledgement');
+      const elapsed=Math.round(performance.now()-started);popupTimings.push({allowed,ms:elapsed});
+      assert(elapsed<2000,`Popup switch exceeded two-second budget: ${elapsed}ms`);
+      assert.equal((await api('status')).state,'locked','Popup changed optional gateway');
+    }
+  }
+  await blockPage();
+  await command('allow_sites');
+  await waitFor(()=>popup.locator('#deny').isEnabled(),'Popup did not follow app Open');
+  assert.equal(await popup.locator('#action-state').textContent(),'','Popup retained a stale Close confirmation after desktop Open');
+  const deniedSender=await ordinary.newPage();await deniedSender.goto(`chrome-extension://${settings.extension_id}/help.html`);
+  assert.equal((await deniedSender.evaluate(()=>chrome.runtime.sendMessage({op:'set_access',allowed:false}))).ok,false,'Non-popup extension page controlled access');
+  assert.equal((await api('chrome')).agents[0].desired_allowed,true,'Rejected sender changed native access');
+  await deniedSender.close();
+  if(report)await popup.screenshot({path:path.join(report,'popup-controls.png'),fullPage:true});
   await popup.close();
   const switchTimings=[];
   for(let cycle=0;cycle<8;cycle++){
@@ -197,7 +220,7 @@ try {
       assert(elapsed<2000,`${action} exceeded two-second switch budget: ${elapsed}ms`);
     }
   }
-  const timings={ordinary_rule_apply_ms:applyMs,allowed_fixture_dom_ms:pageMs,switches:switchTimings};
+  const timings={ordinary_rule_apply_ms:applyMs,allowed_fixture_dom_ms:pageMs,switches:switchTimings,popup_switches:popupTimings};
   if(report)writeFileSync(path.join(report,'latency.json'),JSON.stringify(timings,null,2));
   console.log('Fixture latency (not live website acceptance): '+JSON.stringify(timings));
   assert.equal((await api('status')).state,'locked','Ordinary access opened the optional protected gateway');
@@ -231,6 +254,9 @@ try {
   await waitFor(async()=>(await api('chrome')).agents[0]?.protection===false,'Access was not allowed before disconnect');
   await control('chrome-offline');
   await waitFor(async()=>(await worker.evaluate(()=>chrome.declarativeNetRequest.getSessionRules())).length===0,'Lost native app did not restore Chrome block');
+  const offlinePopup=await ordinary.newPage();await offlinePopup.goto(`chrome-extension://${settings.extension_id}/popup.html`);
+  assert(await offlinePopup.locator('#allow').isDisabled(),'Popup offered Open without native authority');
+  await offlinePopup.close();
   const beforeOfflineOrigin=(await control('status')).origin;await blockPage();
   assert.equal((await control('status')).origin,beforeOfflineOrigin,'Loss of journal disabled Chrome block');
   await control('gate-down');await mustFail('https://fixture.example.org/gate-down');

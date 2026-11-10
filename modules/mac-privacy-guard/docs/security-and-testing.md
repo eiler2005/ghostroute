@@ -68,6 +68,13 @@ latency does not diagnose an operator's live website or qualify its VPN.
 The accounting baseline waits for the preceding blocked event to reach the
 engine before comparing counters after allow: DNR notification/native delivery
 is asynchronous relative to page navigation failure.
+Popup access requests contain only a boolean and the worker's own ephemeral
+profile; the engine requires that live agent and uses the same command path as
+the desktop API. Worker sender checks restrict requests to its own popup URL.
+Browser tests click the real popup buttons in both directions, enforce the same
+two-second budget and verify shared engine state, reverse desktop synchronization,
+rejection of another extension page and no Open without the engine. The native
+bridge still cannot qualify or open a gateway route.
 
 Browser-open preflight refuses locked or uncatalogued destinations before spawning
 Chrome. Tests cover safe launch-result journaling, early process exit, inherited

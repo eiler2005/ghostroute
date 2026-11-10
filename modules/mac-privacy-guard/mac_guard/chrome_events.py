@@ -30,7 +30,7 @@ def validate_message(data):
         if type(data['rule_id']) is not int or not (data['rule_id'] == 900001 if data['op'] == 'allowed' else 1 <= data['rule_id'] <= 30000):
             raise GuardError('Некорректное правило')
         data = dict(data, host=hostname(data['host']))
-    elif data.get('op') in {'agent', 'http', 'preview', 'result', 'reset'}:
+    elif data.get('op') in {'agent', 'http', 'preview', 'result', 'reset', 'access'}:
         return validate_control_message(data)
     else:
         raise GuardError('Разрешены только события расширения')

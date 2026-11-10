@@ -65,6 +65,19 @@ class ChromeControlTests(unittest.TestCase):
         self.assertIsNone(self.control.snapshot()['preview'])
         with self.assertRaises(GuardError): validate_message(dict(preview,text='x'*1025))
 
+    def test_popup_access_uses_shared_authority_and_requires_live_agent(self):
+        message=dict(op='access',profile=PROFILE,allowed=True)
+        with self.assertRaises(GuardError):self.control.receive(validate_message(message))
+        self.agent(ready=False,session=None,remaining=0)
+        self.control.receive(validate_message(message))
+        self.assertEqual(self.control.reply(PROFILE)['access'],'allow')
+        self.assertEqual(self.control.reply(PROFILE)['command']['action'],'allow_sites')
+        self.control.receive(validate_message(dict(message,allowed=False)))
+        self.assertEqual(self.control.reply(PROFILE)['access'],'block')
+        for change in ({'allowed':1},{'url':'https://example.org/'},{'route':'anything'}):
+            with self.assertRaises(GuardError):validate_message(dict(message,**change))
+        with self.assertRaises(GuardError):self.control.receive(validate_message(dict(message,profile='d'*32)))
+
     def test_stop_revoke_navigation_and_deadline_erase_data(self):
         self.agent();self.http()
         self.control.receive(validate_message(dict(op='reset',profile=PROFILE,session=SESSION)))

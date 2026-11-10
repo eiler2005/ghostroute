@@ -1,8 +1,10 @@
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><link rel="stylesheet" href="panel.css"><link rel="stylesheet" href="popup.css"><script src="popup.js" defer></script></head><body>
 <header><img src="icon-48.png" width="40" height="40" alt=""><div><h1>GhostRoute Guard</h1><p>Обычный профиль Chrome</p></div></header>
 <section class="card"><div class="eyebrow">ДОСТУП В ЭТОМ CHROME</div><h2 id="protection">Проверяем состояние…</h2><p id="scope">Управляйте блокировкой чувствительных сайтов из приложения Guard.</p><div class="metrics"><div><strong id="count">0</strong><small>запросов каталога</small></div><div><strong id="allowed">0</strong><small>разрешено правилом</small></div><div><strong id="blocked">0</strong><small>заблокировано</small></div></div><p id="state" role="status">Подключаем журнал…</p><p id="reporting">События только локально</p><p class="note">За текущий сеанс расширения. Число на иконке — сумма разрешений и блокировок, не TCP-соединения. Разрешение не подтверждает ответ сайта.</p></section>
+<div class="access-controls"><button id="allow" type="button" disabled>Открыть доступ</button><button id="deny" type="button" disabled>Закрыть доступ</button></div>
+<p id="action-state" class="note" role="status" aria-live="polite"></p>
 <a class="open" href="ghostrouteguard://open">Открыть приложение Guard ↗</a>
-<p>В приложении: <b>«Открыть доступ в Chrome»</b> или <b>«Закрыть доступ в Chrome»</b>. Отдельный браузер — дополнительная опция.</p>
+<p>Кнопки здесь и в приложении меняют один режим доступа этого профиля. Приложение должно работать; его окно можно не открывать. Отдельный браузер — дополнительная опция.</p>
 <div class="footer"><a href="help.html" target="_blank" rel="noopener">Справка и диагностика</a><span id="version"></span></div>
 <p id="missed" class="note"></p><p class="note">Доступ поддерживается, пока приложение на связи. При его закрытии или потере связи блокировка возвращается. Сеть и VPN Chrome не переключаются.</p>
 </body></html>

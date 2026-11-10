@@ -110,7 +110,12 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener(info=>{
   if(reporting)send({op:permitted?'allowed':'blocked',host,method,resource_type:info.request.type,rule_id:info.rule.ruleId});
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
-  if(sender.id!==chrome.runtime.id || message?.op!=='status')return;
+  if(sender.id!==chrome.runtime.id)return;
+  if(message?.op==='set_access'){
+    if(sender.url!==chrome.runtime.getURL('popup.html') || typeof message.allowed!=='boolean' || !connected){reply({ok:false});return;}
+    send({op:'access',allowed:message.allowed});reply({ok:true});return;
+  }
+  if(message?.op!=='status')return;
   heartbeat().then(()=>reply({connected,blocked,allowed,missed,reporting,protection,appAllowed,pauseRemaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...diagnostic})).catch(()=>reply({connected:false,blocked,allowed,missed,protection:false,reporting}));return true;
 });
 chrome.runtime.onStartup.addListener(()=>restoreProtection().then(heartbeat).catch(()=>{}));

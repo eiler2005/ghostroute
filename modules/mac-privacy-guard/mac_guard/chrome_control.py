@@ -19,6 +19,7 @@ def validate_control_message(data):
     common = {'op', 'profile'}
     op = data['op']
     fields = {
+        'access': {'allowed'},
         'agent': {'ready', 'session', 'remaining', 'reporting', 'protection', 'pause_remaining'},
         'http': {'session', 'event', 'host', 'method', 'status', 'mime', 'duration_ms'},
         'preview': {'session', 'event', 'command', 'text'},
@@ -27,7 +28,10 @@ def validate_control_message(data):
     }
     if op not in fields or set(data) != common | fields[op]:
         raise GuardError('Некорректное сообщение агента Chrome')
-    if op == 'agent':
+    if op == 'access':
+        if type(data['allowed']) is not bool:
+            raise GuardError('Некорректный режим доступа Chrome')
+    elif op == 'agent':
         if any(type(data[key]) is not bool for key in ('ready', 'reporting', 'protection')):
             raise GuardError('Некорректное состояние агента')
         if type(data['remaining']) is not int or not 0 <= data['remaining'] <= 60:
@@ -101,6 +105,9 @@ class ChromeControl:
         with self.mutex:
             self._expire()
             profile, op = data['profile'], data['op']
+            if op == 'access':
+                self.command(profile, 'allow_sites' if data['allowed'] else 'block_sites')
+                return
             if op == 'agent':
                 previous = self.agents.get(profile)
                 if self.suspended.get(profile) == data['session']:
