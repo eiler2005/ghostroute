@@ -330,8 +330,9 @@ and [temporary-mode runbook](modules/recovery-verification/docs/readonly-entware
 GhostRoute is organized as a small operational platform around the routing
 core, not just a set of firewall scripts:
 
-- **GhostRoute Guard for Mac** — native SwiftUI controls to allow/block sensitive
-  sites in ordinary Chrome, an optional protected Chrome profile with a qualified
+- **GhostRoute Guard for Mac** — native SwiftUI and popup controls with automatic
+  qualified proxy routing for ordinary Chrome's sensitive catalog, preserved external
+  PAC rules for other destinations, an optional protected Chrome profile with a qualified
   proxy-only gate, and an in-memory journal
   receiving gateway decisions and ordinary Chrome blocker events. The app also
   controls the Chrome agent and explicit per-tab HTTP diagnostics, with built-in

@@ -8,6 +8,10 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 ChromeAccessView(store: store)
+                if let connections = store.status?.strictConnections {
+                    Text("Chrome через Guard: \(connections) активных туннелей · \(store.status?.strictAllowed ?? 0) установлено · \(byteText(store.status?.strictBytes ?? 0)) передано")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                     Button { store.showChromeEvents() } label: {
                         MetricView(title: "Запросов Chrome", value: "\((store.status?.chromeAllowed ?? 0) + (store.status?.chromeBlocked ?? 0))", detail: "Чувствительный каталог", icon: "arrow.left.arrow.right", color: .blue)

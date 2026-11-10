@@ -83,7 +83,7 @@ struct ChromeView: View {
 struct ChromeAccessView: View {
     @ObservedObject var store: GuardStore
     private var agent: ChromeAgent? { store.online ? store.chrome.agents.first { $0.id == store.selectedChrome } : nil }
-    private var allowed: Bool { agent?.protection == false }
+    private var allowed: Bool { agent?.accessOpen == true }
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 16) {
@@ -92,7 +92,7 @@ struct ChromeAccessView: View {
                         .font(.system(size: 30)).foregroundStyle(allowed ? Color.green : .orange)
                         .frame(width: 48, height: 48).background((allowed ? Color.green : .orange).opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(agent == nil ? "Нет связи с расширением Chrome" : allowed ? "Доступ в Chrome открыт" : "Сайты в Chrome заблокированы")
+                        Text(agent == nil ? "Нет связи с расширением Chrome" : agent?.strict != nil ? (allowed ? "Авто GhostRoute: доступ защищён" : "Авто GhostRoute: доступ закрыт") : allowed ? "Доступ в Chrome открыт" : "Сайты в Chrome заблокированы")
                             .font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                         Text("Обычный Chrome · чувствительный каталог").font(.callout).foregroundStyle(.secondary)
                     }
@@ -106,17 +106,17 @@ struct ChromeAccessView: View {
                 }
                 HStack(spacing: 12) {
                     Button { Task { await store.setChromeAccess(true) } } label: {
-                        Label("Открыть доступ в Chrome", systemImage: "lock.open")
+                        Label(agent?.strict != nil ? "Возобновить авто" : "Открыть доступ в Chrome", systemImage: "lock.open")
                     }.buttonStyle(.borderedProminent)
-                        .disabled(agent == nil || store.busy || (allowed && agent?.desiredAllowed == true))
+                        .disabled(agent == nil || store.busy || (agent?.strict?.enabled ?? (allowed && agent?.desiredAllowed == true)))
                     Button { Task { await store.setChromeAccess(false) } } label: {
                         Label("Закрыть доступ в Chrome", systemImage: "lock")
                     }.disabled(!store.canBlockChrome)
                     Spacer(minLength: 0)
                 }.controlSize(.large)
-                Text(agent == nil ? "Запустите Chrome с включённым расширением Guard. Папку расширения можно открыть в настройках приложения." : agent?.pending == true || agent?.accessChanging == true ? "Chrome применяет настройку…" : allowed ? "Блокировка снята, пока приложение на связи. Сайты работают в этом же профиле Chrome; уже заблокированную страницу нужно обновить." : "Нажмите «Открыть доступ в Chrome», чтобы снять блокировку. Отдельный браузер запускать не нужно.")
+                Text(agent?.strict?.message ?? (agent == nil ? "Запустите Chrome с включённым расширением Guard. Папку расширения можно открыть в настройках приложения." : agent?.pending == true || agent?.accessChanging == true ? "Chrome применяет настройку…" : allowed ? "Блокировка снята, пока приложение на связи. Сайты работают в этом же профиле Chrome; уже заблокированную страницу нужно обновить." : "Нажмите «Открыть доступ в Chrome», чтобы снять блокировку. Отдельный браузер запускать не нужно."))
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Text("Используется текущая сеть и proxy обычного Chrome. Эта кнопка не проверяет и не меняет его IP-адрес или страну выхода.")
+                Text(agent?.strict != nil ? "Чувствительные сайты → обязательный шлюз Guard → проверенный маршрут GhostRoute. При ошибке прямого обхода нет. \(agent?.strict?.baselineMessage ?? "") После открытия доступа обновите ранее заблокированную вкладку." : "Используется текущая сеть и proxy обычного Chrome. Эта кнопка не проверяет и не меняет его IP-адрес или страну выхода.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(12)
         }

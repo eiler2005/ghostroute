@@ -8,10 +8,11 @@ Chrome, application code/private profile, authenticated home proxy and selected
 egress. Account identification, hostile local processes and compromised browser
 code are outside this boundary.
 
-Use a separate browser with a fixed local proxy and a gate with **no unbound
-DIRECT adapter**. The normal-browser blocker is a second, explicit installation.
-It blocks listed domains even when a third-party VPN appears connected; it does
-not try to infer trust from an icon. Sensitive catalog gaps remain catalog gaps.
+Ordinary Chrome uses an explicitly installed blocker plus owned mandatory PAC
+and qualified per-agent gate with **no unbound DIRECT adapter** for the catalog.
+A separate browser retains its independent fixed-proxy path as an option. Neither
+mode infers trust from a VPN icon. Sensitive catalog gaps remain catalog gaps;
+ordinary Chrome is not whole-tab isolation.
 
 A macOS Network Extension/content filter could enforce a wider OS boundary, but
 requires Apple signing/entitlements and explicit OS installation. This module
@@ -113,13 +114,22 @@ block enforcement when the event receiver is unavailable. Fixture evidence
 contains fake destinations only. Native controls are checked by the Swift store
 suite; the built macOS window additionally requires visual/operator acceptance.
 
-Ordinary-profile Open access uses a session allow rule with the static deny
-ruleset still enabled. It permits the browser's current network/proxy without
-checking the exit IP/country. Native replies renew a 15-second lease; there is no
-one-minute user limit. Browser fixtures prove allow/block in the same tab while
-the optional gateway stays locked, renewal beyond one minute, reporting toggles
-and restoration on detected app loss. Browser scheduling
-remains a boundary; no instantaneous OS kill-switch claim is made.
+Production ordinary-profile admission requires the strict coordinator, owned
+mandatory PAC and qualified HTTPS transport. Static deny remains enabled; session
+allow is a secondary lease, not a manual direct bypass. `strict-browser.mjs`
+checks qualification, gate bytes, conflicts, Close/Resume, recovery and dead-gate/
+engine tripwires. Owned PAC/privacy remain on Close/engine loss: restoring
+prediction can issue speculative CONNECT before DNR. `browser.mjs` keeps legacy
+protocol fixtures without a strict provider for compatibility/latency checks.
+The strict suite also proves external inline PAC delegation for non-catalog HTTP
+and HTTPS, including a separate enabled authentication extension, while catalog
+traffic uses only Guard. Pause preserves external traffic. `pac.mjs` covers suffix
+boundaries, snapshot recovery and immutable catalog dispatch. Provider PAC source
+stays opaque in Chrome settings; native schemas accept only the baseline enum,
+never source, credentials or provider endpoints. Provider changes are not live
+synchronized; remote PAC/fixed proxy are rejected. See [strict mode](strict-mode.md).
+The strict suite also demonstrates outside-catalog TURN TCP as an explicit limit;
+no instantaneous OS or whole-tab isolation claim is made.
 
 DevTools callback fixtures exercise the real extension runtime/native bridge/app
 command path, including response preview, state acknowledgement and erasure. They

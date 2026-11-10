@@ -5,11 +5,11 @@ struct SettingsView: View {
     @ObservedObject var store: GuardStore
     var body: some View {
         Form {
-            SwiftUI.Section("Профиль дополнительного браузера") {
+            SwiftUI.Section("Приватный профиль GhostRoute") {
                 LabeledContent("Чувствительных доменов", value: "\(store.status?.sensitiveDomains ?? 0)")
                 LabeledContent("Настроено маршрутов", value: "\(store.status?.routes.count ?? 0)")
                 Button("Импортировать JSON-профиль…") { store.importProfile() }.disabled(store.busy)
-                Text("Импорт закрывает доступ и требует повторной проверки. Адреса и пароли хранятся только на этом Mac.")
+                Text("Строгому авто нужен один подходящий домашний HTTPS-маршрут для всего sensitive-каталога. Импорт закрывает доступ и требует повторной проверки. Адреса и пароли остаются на этом Mac.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             SwiftUI.Section("Связь с обычным Google Chrome") {
@@ -29,7 +29,7 @@ struct SettingsView: View {
             }
             SwiftUI.Section("Область защиты") {
                 Label("Защищённый браузер", systemImage: "checkmark.shield")
-                Text("Главные кнопки открывают и закрывают доступ в обычном Chrome. Он использует текущую сеть и proxy. Дополнительный защищённый браузер имеет отдельный проверяемый шлюз и необязателен.")
+                Text("Авто GhostRoute направляет sensitive-каталог через обязательный проверяемый gate. Нужны Chrome proxy/privacy; недоступное владение настройками вызывает отказ. Остальные назначения используют сохранённый внешний inline PAC либо обычный путь. Смена страны провайдера требует нового снимка. Дополнительный браузер независим и необязателен.")
                 Label("Локальный журнал", systemImage: "list.bullet.rectangle")
                 Text("Последние 300 событий находятся только в памяти. В журнал не попадают полные URL, параметры, содержимое страниц, пароли и cookies. Отдельный HTTP-просмотр в разделе Google Chrome включается явно и хранится временно. Передача учитывается только внутри туннелей Guard.")
                 Label("Системный фильтр", systemImage: "network.badge.shield.half.filled")

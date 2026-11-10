@@ -1,13 +1,26 @@
 'use strict';
 let pending=false,lastProtection=null;
+const strictReason=reason=>({
+  active:'Чувствительные сайты идут через обязательный шлюз Guard и проверенный маршрут GhostRoute.',
+  checking:'Проверяем маршрут. Запросы сайтов пока закрыты.',paused:'Автоматический доступ приостановлен.',
+  waiting:'Настраиваем обязательный proxy Chrome. Сайты пока закрыты.',
+  conflict:'Другой компонент управляет proxy или приватностью Chrome. Guard сохраняет блокировку и не заменяет чужие настройки.',
+  unsupported_proxy:'Текущий proxy требует отдельного согласования. Доступ закрыт.',
+  system_proxy:'В macOS настроен proxy или его состояние неизвестно. Доступ закрыт.',
+  catalog_mismatch:'Каталоги приложения и расширения различаются. Обновите расширение.',
+  route_unavailable:'Нет однозначного домашнего HTTPS-маршрута для чувствительного каталога.',
+  route_failed:'Маршрут не прошёл проверку. Доступ закрыт; проверка повторится автоматически.',
+  permission_required:'Разрешите proxy и privacy обновлённому расширению.',
+  upgrade_required:'Обновите расширение для строгого режима.'
+}[reason] || 'Маршрут не подтверждён. Доступ закрыт.');
 async function update() {
   try {
     const status = await chrome.runtime.sendMessage({op:'status'});
     if(lastProtection!==null && lastProtection!==status.protection && !pending)document.getElementById('action-state').textContent='';
     lastProtection=status.protection;
-    document.getElementById('protection').textContent = status.protection ? 'Доступ закрыт' : 'Доступ открыт';
+    document.getElementById('protection').textContent = status.strict ? (!status.protection && status.strict.ready ? 'Защищено через GhostRoute' : 'Авто GhostRoute · закрыто') : status.protection ? 'Доступ закрыт' : 'Доступ открыт';
     document.getElementById('protection').classList.toggle('paused',!status.protection);
-    document.getElementById('scope').textContent = status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
+    document.getElementById('scope').textContent = status.strict ? strictReason(status.strict.reason)+(status.strict.baseline==='external_pac'?' Остальные адреса — по сохранённым правилам внешнего proxy. Смена страны автоматически не подхватывается.':'') : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
     document.getElementById('state').textContent = status.connected ? 'Локальный журнал подключён' : 'Журнал недоступен · блокировка работает';
     document.getElementById('count').textContent = status.blocked+status.allowed;
     document.getElementById('allowed').textContent = status.allowed;
@@ -15,8 +28,9 @@ async function update() {
     document.getElementById('reporting').textContent = status.reporting ? 'Передача событий включена' : 'Передача событий выключена';
     document.getElementById('version').textContent = 'v'+chrome.runtime.getManifest().version;
     document.getElementById('missed').textContent = status.missed ? 'Часть сигналов не доставлена в Guard. События не сохраняются на диск и не отправляются повторно.' : '';
-    document.getElementById('allow').disabled=pending || !status.connected || !status.protection;
-    document.getElementById('deny').disabled=pending || !status.connected || status.protection;
+    document.getElementById('allow').textContent=status.strict?'Возобновить авто':'Открыть доступ';
+    document.getElementById('allow').disabled=pending || !status.connected || (status.strict ? status.strict.enabled : !status.protection);
+    document.getElementById('deny').disabled=pending || !status.connected || (status.strict ? !status.strict.enabled && status.protection : status.protection);
     return status;
   } catch (_) {document.getElementById('state').textContent = 'Проверьте включение расширения';}
 }
@@ -34,7 +48,7 @@ async function setAccess(allowed){
       if(status?.connected && status.protection===!allowed){notice.textContent=allowed?'Доступ открыт. Обновите ранее заблокированную страницу.':'Блокировка новых запросов включена.';return;}
       await new Promise(resolve=>setTimeout(resolve,75));
     }
-    notice.textContent='Chrome ещё не подтвердил изменение. Проверьте состояние в приложении.';
+    notice.textContent='Изменение ещё не подтверждено. В автоматическом режиме дождитесь проверки маршрута; статус и причина показаны выше.';
   }catch(_){notice.textContent='Нет подтверждения от Guard. Запустите приложение и повторите.';}
   finally{pending=false;await update();}
 }

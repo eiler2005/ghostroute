@@ -33,6 +33,11 @@ REASONS = {
     'capacity': 'Достигнут лимит одновременных подключений',
     'chrome_blocked': 'Блокировщик Chrome остановил запрос к чувствительному домену',
     'chrome_allowed': 'Правило Chrome разрешило запрос; успешный ответ и время загрузки этим событием не проверяются',
+    'strict_checking': 'Авто GhostRoute: проверяем обязательный маршрут Chrome',
+    'strict_active': 'Авто GhostRoute: маршрут проверен, Chrome направлен через обязательный шлюз',
+    'strict_blocked': 'Авто GhostRoute: доступ закрыт; проверка маршрута или контроль proxy не подтверждены',
+    'strict_paused': 'Авто GhostRoute приостановлен пользователем; чувствительные сайты закрыты',
+    'strict_created': 'Создан изолированный шлюз обычного Chrome',
     'browser_opened': 'Сайт передан в отдельный защищённый Chrome',
     'browser_failed': 'Защищённый Chrome не удалось открыть',
 }
@@ -47,10 +52,13 @@ def close(connection):
 
 
 class Guard:
-    def __init__(self, config=None, factory=make_adapter, checker=qualify):
+    def __init__(self, config=None, factory=make_adapter, checker=qualify, *, journal=None, max_verified_age=45):
         self.config = config
         self.factory, self.checker = factory, checker
-        self.mutex = threading.RLock()
+        self.journal = journal
+        self.mutex = journal.mutex if journal else threading.RLock()
+        self.max_verified_age = max_verified_age
+        self.strict = None
         self.generation = 0
         self.mode, self.message = 'locked', 'Выберите и проверьте маршрут'
         self.route = self.adapter = None
@@ -70,6 +78,10 @@ class Guard:
     def _record(self, kind, reason, host=None, route=None):
         # Caller holds mutex. Only parsed destination hosts and fixed messages;
         # never request headers, URL paths, credentials or exception strings.
+        if self.journal:
+            event = self.journal._record(kind, 'strict_created' if reason == 'started' else reason, host, route)
+            event['source'] = 'strict'
+            return event
         self.event_sequence += 1
         event = {'id': self.event_sequence, 'time': time.time(), 'kind': kind,
                  'source': 'guard',
@@ -154,7 +166,8 @@ class Guard:
                     'chrome_allowed': self.chrome_allowed,
                     'chrome_connected': any(time.monotonic() - at < 45 and enabled for at, enabled in self.chrome_profiles.values()),
                     'bytes_sent': self.bytes_sent, 'bytes_received': self.bytes_received,
-                    'verified_age': round(time.monotonic() - self.verified_at) if self.mode == 'active' else None}
+                    'verified_age': round(time.monotonic() - self.verified_at) if self.mode == 'active' else None,
+                    **(self.strict.counters() if self.strict else {})}
 
     def lock(self, message='Доступ закрыт', reason='manual_lock'):
         with self.mutex:
@@ -219,7 +232,7 @@ class Guard:
     def tunnel(self, client, host, port):
         upstream = event = None
         with self.mutex:
-            if self.mode == 'active' and time.monotonic() - self.verified_at > 45:
+            if self.mode == 'active' and time.monotonic() - self.verified_at > self.max_verified_age:
                 self.lock('Проверка устарела; подтвердите маршрут снова', 'expired')
             if self.mode != 'active':
                 self.reject('access_closed', host)

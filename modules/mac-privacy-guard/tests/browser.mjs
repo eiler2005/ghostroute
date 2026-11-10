@@ -67,6 +67,7 @@ try {
   await api('lock',{});await control('release');
   assert.equal((await api('status')).state,'locked');
   const allowedBeforeClear=(await api('status')).allowed;
+  await waitFor(async()=>(await control('status')).gate_busy===0,'Previous gateway requests did not finish before clear');
   await api('activity/clear',{});
   assert.equal((await api('activity')).events.length,0);
   assert.equal((await api('status')).allowed,allowedBeforeClear);

@@ -116,7 +116,7 @@ class PolicyTests(unittest.TestCase):
             self.assertIn('main_frame', rules[0]['condition']['resourceTypes'])
             self.assertIn('xmlhttprequest', rules[0]['condition']['resourceTypes'])
             manifest = json.loads((Path(temporary) / 'manifest.json').read_text())
-            self.assertEqual(set(manifest['permissions']), {'declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging'})
+            self.assertEqual(set(manifest['permissions']), {'declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'})
             self.assertNotIn('host_permissions', manifest)
             self.assertNotIn('content_scripts', manifest)
 

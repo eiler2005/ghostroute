@@ -19,6 +19,8 @@ public struct GuardStatus: Decodable, Equatable {
     public let sensitiveDomains, connections, allowed, blocked, errors: Int
     public let chromeBlocked: Int
     public let chromeAllowed: Int?
+    public let strictAllowed, strictConnections, strictErrors: Int?
+    public let strictBytes: Int64?
     public let chromeConnected: Bool
     public let bytesSent, bytesReceived: Int64
     public let verifiedAge: Int?
@@ -39,6 +41,7 @@ public struct GuardEvent: Decodable, Identifiable, Equatable {
     public let ruleId: Int?
     public var date: Date { Date(timeIntervalSince1970: time) }
     public var isChrome: Bool { source == "chrome" }
+    public var isStrict: Bool { source == "strict" }
 
     public static func local(id: Int, message: String) -> GuardEvent {
         GuardEvent(id: id, time: Date().timeIntervalSince1970, kind: .error,

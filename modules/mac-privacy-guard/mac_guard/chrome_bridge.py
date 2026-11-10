@@ -1,4 +1,4 @@
-"""Standalone Chrome stdio bridge. No routing controls or dashboard credential."""
+"""Bounded Chrome stdio bridge. No upstream secrets or dashboard credential."""
 import argparse
 import json
 import socket
@@ -21,6 +21,15 @@ def forward(state, data):
                 result = {'ok': reply.get('ok') is True}
                 if result['ok'] and reply.get('access') in {'allow', 'block'}:
                     result['access'] = reply['access']
+                strict = reply.get('strict')
+                if (result['ok'] and isinstance(strict, dict)
+                        and set(strict) in ({'enabled', 'ready', 'port', 'catalog_digest', 'system_direct', 'reason'}, {'enabled', 'ready', 'port', 'catalog_digest', 'system_direct', 'reason', 'baseline'})
+                        and strict.get('baseline', 'direct') in ('direct', 'external_pac')
+                        and all(type(strict[k]) is bool for k in ('enabled', 'ready', 'system_direct'))
+                        and type(strict['port']) is int and 0 <= strict['port'] <= 65535
+                        and isinstance(strict['catalog_digest'], str) and len(strict['catalog_digest']) == 64
+                        and strict['reason'] in {'unavailable', 'upgrade_required', 'route_unavailable', 'paused', 'system_proxy', 'catalog_mismatch', 'waiting', 'owned', 'conflict', 'permission_required', 'unsupported_proxy', 'error', 'checking', 'active', 'route_failed'}):
+                    result['strict'] = strict
                 command = reply.get('command')
                 if result['ok'] and isinstance(command, dict) and set(command) == {'id', 'action', 'session', 'event'}:
                     if command['action'] in {'start', 'stop', 'clear', 'preview', 'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection', 'allow_sites', 'block_sites'}:

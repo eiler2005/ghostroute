@@ -21,6 +21,7 @@ from .browser import Browser
 from .chrome_events import ChromeEvents
 from .policy import GuardError, browser_url, load_private, private_dir, validate_config, write_private
 from .service import Gate, Guard
+from .strict import StrictCoordinator
 
 class Dashboard(ThreadingHTTPServer):
     daemon_threads = True
@@ -135,6 +136,11 @@ class Handler(BaseHTTPRequestHandler):
                 guard.lock('Профиль обновлён; требуется проверка маршрута', 'profile_updated')
                 write_private(self.server.state / 'profile.json', json.dumps(config).encode())
                 guard.config = config
+                if guard.strict:
+                    with guard.chrome.mutex:
+                        for profile in guard.chrome.agents:
+                            guard.chrome.access[profile] = False
+                    guard.strict.close_sessions()
             else:
                 return self.send(404, b'{}')
             self.send(200, json.dumps(self.server.snapshot()).encode())
@@ -170,6 +176,8 @@ def main():
         except (GuardError, OSError):
             issue = 'Приватный профиль не прошёл проверку; доступ закрыт'
     guard = Guard(config)
+    guard.strict = StrictCoordinator(guard)
+    guard.chrome.strict = guard.strict
     if issue:
         guard.message = issue
     port_path = args.state / 'gate-port'
@@ -198,8 +206,19 @@ def main():
                 return
 
     def health():
-        while not stop.wait(15):
-            guard.recheck()
+        count = 0
+        optional_check = threading.Event()
+        def recheck_optional():
+            try:
+                guard.recheck()
+            finally:
+                optional_check.clear()
+        while not stop.wait(.5):
+            guard.strict.tick()
+            count += 1
+            if count % 30 == 0 and not optional_check.is_set():
+                optional_check.set()
+                threading.Thread(target=recheck_optional, daemon=True).start()
 
     for target in (gate.serve_forever, dashboard.serve_forever, chrome_events.serve_forever, monitor, health):
         threading.Thread(target=target, daemon=True).start()
@@ -209,6 +228,7 @@ def main():
     try:
         stop.wait()
     finally:
+        guard.strict.close()
         guard.lock()
         browser.close()
         gate.shutdown()

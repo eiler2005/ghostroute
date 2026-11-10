@@ -114,6 +114,9 @@ struct NativeChecks {
         }
         let chrome = try await api.chrome()
         try require(chrome.agents.first?.protection == true && chrome.agents.first?.reporting == false,"Chrome protection and reporting were conflated")
+        let strictDecoder=JSONDecoder();strictDecoder.keyDecodingStrategy = .convertFromSnakeCase
+        let strictAgent=try strictDecoder.decode(ChromeAgent.self,from:Data("{\"id\":\"strict-fixture\",\"ready\":false,\"reporting\":true,\"protection\":false,\"pending\":false,\"remaining\":0,\"pause_remaining\":0,\"desired_allowed\":true,\"strict\":{\"enabled\":true,\"ready\":false,\"reason\":\"conflict\"}}".utf8))
+        try require(!strictAgent.accessOpen && !strictAgent.accessChanging && strictAgent.strict?.message.contains("proxy")==true,"Unverified strict state appeared protected or hid a proxy conflict")
         print("PASS: native help/navigation and independent Chrome command/status contract")
         let ordinary=GuardStore(),ordinaryClient=FixtureClient()
         ordinaryClient.includeChrome=true

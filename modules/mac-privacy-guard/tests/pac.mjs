@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFileSync} from 'node:fs';
+const context=vm.createContext({TextEncoder,TextDecoder,btoa,atob});
+vm.runInContext(readFileSync(new URL('../extension/pac.js',import.meta.url),'utf8'),context);
+const pac=context.GuardPAC;
+const source='var proxy="PROXY external.example.invalid:10080; DIRECT"; function FindProxyForURL(url,host){return host==="bypass.example.org"?"DIRECT":proxy;}';
+const data=pac.build(['sensitive.example.org'],10081,source);
+assert.equal(pac.baseline(data,true),source);
+const resolver=vm.createContext({});vm.runInContext(data,resolver);
+for(const host of ['sensitive.example.org','api.sensitive.example.org','SENSITIVE.EXAMPLE.ORG.']){
+  assert.equal(resolver.FindProxyForURL('https://'+host+'/',host),'PROXY 127.0.0.1:10081');
+}
+assert.equal(resolver.FindProxyForURL('https://ordinary.example.org/','ordinary.example.org'),'PROXY external.example.invalid:10080; DIRECT');
+assert.equal(resolver.FindProxyForURL('https://bypass.example.org/','bypass.example.org'),'DIRECT');
+assert.equal(resolver.FindProxyForURL('https://notsensitive.example.org/','notsensitive.example.org'),'PROXY external.example.invalid:10080; DIRECT');
+const rebuilt=pac.build(['sensitive.example.org'],10082,pac.baseline(data,true));
+const restarted=vm.createContext({});vm.runInContext(rebuilt,restarted);
+assert.equal(restarted.FindProxyForURL('https://sensitive.example.org/','sensitive.example.org'),'PROXY 127.0.0.1:10082');
+assert.equal(restarted.FindProxyForURL('https://ordinary.example.org/','ordinary.example.org'),'PROXY external.example.invalid:10080; DIRECT');
+const largeSource='/*'+'reviewed-fixture '.repeat(8192)+'*/'+source;
+const largePAC=pac.build(['sensitive.example.org'],10082,largeSource);
+assert.equal(pac.baseline(largePAC,true),largeSource);
+const largeResolver=vm.createContext({});vm.runInContext(largePAC,largeResolver);
+assert.equal(largeResolver.FindProxyForURL('https://sensitive.example.org/','sensitive.example.org'),'PROXY 127.0.0.1:10082');
+assert.equal(largeResolver.FindProxyForURL('https://ordinary.example.org/','ordinary.example.org'),'PROXY external.example.invalid:10080; DIRECT');
+const attempt=vm.createContext({});
+vm.runInContext(pac.build(['sensitive.example.org'],10083,'String.prototype.slice=function(){return ""}; Object.defineProperty=function(){}; function FindProxyForURL(){this.FindProxyForURL=function(){return "DIRECT"};return "PROXY external.example.invalid:10080";}'),attempt);
+attempt.FindProxyForURL('https://ordinary.example.org/','ordinary.example.org');
+assert.equal(attempt.FindProxyForURL('https://sensitive.example.org/','sensitive.example.org'),'PROXY 127.0.0.1:10083');
+for(const invalid of ['', 'x'.repeat(1048577)])assert.throws(()=>pac.build(['sensitive.example.org'],10081,invalid));
+assert.throws(()=>pac.baseline(pac.prefix+'// GhostRoute baseline %invalid',true));
+assert.throws(()=>pac.build(['bad"host'],10081,source));
+console.log('PASS: sensitive gate precedes opaque provider PAC, exact provider/bypass delegation, restart/port migration, immutable entry and primitives, bounded snapshots');

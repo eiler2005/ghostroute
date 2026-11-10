@@ -1,5 +1,6 @@
 """Local-only fixture. Never use these adapters or certificates in the app."""
 import json
+import base64
 from pathlib import Path
 import signal
 import socket
@@ -17,12 +18,18 @@ from mac_guard.chrome_events import ChromeEvents
 from mac_guard.install import extension, extension_id, native_host
 from mac_guard.policy import browser_url, private_dir
 from mac_guard.service import Gate, Guard
+from mac_guard.relay import relay
 
 root = Path(sys.argv[1])
 # A child exit must not end the fixture's lifetime. Handle SIGCHLD explicitly
 # so a single signal.pause() would reproduce the regression on every platform.
 signal.signal(signal.SIGCHLD, lambda *_: None)
 counts = {'origin': 0, 'direct': 0, 'udp': 0, 'browser_opened': 0}
+counts['outside_catalog_rtc'] = 0
+counts['sensitive_conflict'] = 0
+counts['conflict_targets'] = []
+counts['external_http'] = counts['external_tls'] = 0
+strict_system = {'direct':True}
 
 class LocalHTTP(ThreadingHTTPServer):
     def server_bind(self):
@@ -46,13 +53,45 @@ origin.socket = tls.wrap_socket(origin.socket, server_side=True)
 plain_origin = LocalHTTP(('127.0.0.1', 0), Origin)
 
 class Tripwire(BaseHTTPRequestHandler):
+    def setup(self):
+        counts['direct'] += 1
+        super().setup()
     def log_message(self, *_): pass
     def do_GET(self):
-        counts['direct'] += 1
         self.send_response(200)
         self.end_headers()
 
 tripwire = LocalHTTP(('127.0.0.1', 0), Tripwire)
+tls_tripwire = LocalHTTP(('127.0.0.1', 0), Tripwire)
+tls_tripwire.socket = tls.wrap_socket(tls_tripwire.socket, server_side=True)
+class RTCBoundary(socketserver.BaseRequestHandler):
+    def handle(self): counts['outside_catalog_rtc'] += 1
+rtc_boundary=socketserver.ThreadingTCPServer(('127.0.0.1',0),RTCBoundary)
+class ConflictProxy(BaseHTTPRequestHandler):
+    def log_message(self, *_):pass
+    def sensitive(self):
+        host=self.path.split(':')[0]
+        return host=='fixture.example.org' or host.endswith('.fixture.example.org')
+    def authenticated(self):
+        if self.headers.get('Proxy-Authorization')=='Basic '+base64.b64encode(b'fixture:fixture').decode():return True
+        self.send_response(407);self.send_header('Proxy-Authenticate','Basic realm="fixture"');self.send_header('Content-Length','0');self.end_headers()
+        return False
+    def do_CONNECT(self):
+        if self.sensitive():
+            counts['sensitive_conflict']+=1
+            counts['conflict_targets'].append(self.path)
+            self.send_response(502);self.end_headers();return
+        if not self.authenticated():return
+        counts['external_tls']+=1
+        with socket.create_connection(origin.server_address,2) as upstream:
+            self.send_response(200);self.end_headers();self.wfile.flush()
+            relay(self.connection,upstream)
+    def do_GET(self):
+        if not self.authenticated():return
+        counts['external_http']+=1
+        body=b'<h1>External proxy fixture</h1>'
+        self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+conflict_proxy=LocalHTTP(('127.0.0.1',0),ConflictProxy)
 class IPv6HTTP(LocalHTTP): address_family = socket.AF_INET6
 tripwire6 = IPv6HTTP(('::1', 0), Tripwire)
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -70,6 +109,7 @@ class Adapter:
         return socket.create_connection(origin.server_address, 2)
 adapter = Adapter()
 config = {'sensitive_domains': ['fixture.example.org'], 'routes': [{'id': 'fixture', 'kind': 'https_proxy', 'allowed_domains': ['fixture.example.org']}]}
+config['routes'][0]['probe_url']='https://fixture.example.org/canary'
 qualification = threading.Event()
 qualification.set()
 def checker(*_):
@@ -95,6 +135,29 @@ native_host(root, extension_path, root / 'native-manifests', Path(sys.executable
 class Control(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
+        if self.path == '/strict-enable' and not guard.strict:
+            from mac_guard.strict import StrictCoordinator
+            def strict_check(*_):
+                if not qualification.wait(5) or not adapter.available:raise OSError('Fixture route unavailable')
+            guard.strict=StrictCoordinator(guard, factory=lambda _:adapter, checker=strict_check, system_check=lambda:strict_system['direct'])
+            guard.chrome.strict=guard.strict
+            guard.strict.tick()
+            def strict_health():
+                while True:
+                    threading.Event().wait(.1)
+                    guard.strict.tick()
+            threading.Thread(target=strict_health, daemon=True).start()
+        if self.path == '/strict-system-proxy-on': strict_system['direct']=False;guard.strict.system_at=0;guard.strict.tick()
+        if self.path == '/strict-system-proxy-off': strict_system['direct']=True;guard.strict.system_at=0;guard.strict.tick()
+        if self.path == '/strict-route-down':
+            adapter.available=False
+            for session in guard.strict.sessions.values(): session.guard.lock(reason='check_failed')
+        if self.path == '/strict-route-up':
+            adapter.available=True
+            for session in guard.strict.sessions.values(): session.attempt=0
+        if self.path == '/strict-gate-down':
+            for session in list(guard.strict.sessions.values()):
+                session.gate.shutdown();session.gate.server_close()
         if self.path == '/activate': guard.activate('fixture')
         if self.path == '/lock': guard.lock()
         if self.path == '/restore': adapter.available = True; qualification.set(); guard.lock()
@@ -108,16 +171,19 @@ class Control(BaseHTTPRequestHandler):
             gate.shutdown()
             gate.server_close()
         browser_process = owned_browser.process
-        body = json.dumps(dict(counts, browser_running=bool(browser_process and browser_process.poll() is None), guard=guard.status(), activity=guard.activity())).encode()
+        body = json.dumps(dict(counts, gate_busy=32-gate.slots._value, browser_running=bool(browser_process and browser_process.poll() is None), guard=guard.status(), activity=guard.activity())).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 control = LocalHTTP(('127.0.0.1', 0), Control)
-for server in (origin, plain_origin, tripwire, tripwire6, gate, dashboard, chrome_events, control):
+for server in (origin, plain_origin, tripwire, tls_tripwire, rtc_boundary, conflict_proxy, tripwire6, gate, dashboard, chrome_events, control):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1],
                   'tripwire': tripwire.server_port, 'tripwire6': tripwire6.server_port,
+                  'tls_tripwire':tls_tripwire.server_port,
+                  'rtc_boundary':rtc_boundary.server_address[1],
+                  'conflict_proxy':conflict_proxy.server_port,
                   'udp': udp.getsockname()[1], 'dashboard': dashboard.origin + '/#' + dashboard.session_credential,
                   'plain_origin':plain_origin.server_port, 'extension':str(extension_path),
                   'extension_id':extension_id(extension_path),

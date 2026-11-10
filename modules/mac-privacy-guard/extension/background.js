@@ -1,4 +1,5 @@
 'use strict';
+importScripts('pac.js','strict.js');
 const profile=crypto.randomUUID().replaceAll('-','');
 let port=null,inFlight=0,connected=false,blocked=0,allowed=0,missed=0,reporting=true,protection=true,pausedUntil=0,owner=null;
 let accessWanted=false,appAllowed=false,leaseUntil=0;
@@ -6,6 +7,8 @@ let diagnostic={ready:false,session:null,remaining:0};
 const seen=new Set();
 const PAUSE_RULE=900001;
 const catalog=fetch(chrome.runtime.getURL('rules.json')).then(response=>response.json());
+const strictController=new GuardStrict(catalog,()=>restoreProtection(),()=>agent());
+let nativeQueue=Promise.resolve();
 let policyQueue=Promise.resolve();
 function policy(action){const result=policyQueue.catch(()=>{}).then(action);policyQueue=result;return result;}
 const id=value=>typeof value==='string' && /^[a-f0-9]{32}$/.test(value);
@@ -20,6 +23,7 @@ async function restoreProtection(){
 async function allowAppAccess(){
   return policy(async()=>{
     if(!connected || !accessWanted || Date.now()>=leaseUntil)return false;
+    if(strictController.required && (!strictController.ready || !strictController.current?.ready))return false;
     const changed=!appAllowed || protection;
     if(changed){
       const rules=await catalog;
@@ -40,18 +44,22 @@ function connect(){
   port=chrome.runtime.connectNative('org.ghostroute.guard.events');
   port.onMessage.addListener(reply=>{
     inFlight=Math.max(0,inFlight-1);connected=reply.ok===true;
-    if(!connected){missed++;accessWanted=false;if(pausedUntil || appAllowed)restoreProtection().catch(()=>{});}
-    else accessLease(reply.access);
-    if(connected && reply.command)void command(reply.command);
+    nativeQueue=nativeQueue.catch(()=>{}).then(async()=>{
+      if(reply.ok!==true){missed++;accessWanted=false;await restoreProtection();await strictController.lost();return;}
+      if(reply.strict)await strictController.sync(reply.strict);
+      else if(strictController.required){accessWanted=false;await restoreProtection();await strictController.lost();return;}
+      accessLease(reply.access);
+      if(reply.command)await command(reply.command);
+    });
   });
-  port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;port=null;inFlight=0;connected=false;accessWanted=false;void restoreProtection().catch(()=>{});});
+  port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;port=null;inFlight=0;connected=false;accessWanted=false;void restoreProtection().then(()=>strictController.lost()).catch(()=>{});});
   return port;
 }
 function send(message){
   if(inFlight>=32){missed++;return;}
   try{connect().postMessage({...message,profile});inFlight++;}catch(_){connected=false;missed++;accessWanted=false;if(pausedUntil || appAllowed)void restoreProtection().catch(()=>{});}
 }
-function agent(){send({op:'agent',...diagnostic,reporting,protection,pause_remaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000))});}
+function agent(){const strict=strictController.report();send({op:'agent',...diagnostic,reporting,protection,pause_remaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...(strict?{strict}:{})});}
 async function heartbeat(){
   if(pausedUntil && Date.now()>=pausedUntil)await restoreProtection();
   if(appAllowed && Date.now()>=leaseUntil)await restoreProtection();
@@ -71,6 +79,7 @@ async function command(value){
     else if(value.action==='allow_sites'){success=await allowAppAccess();}
     else if(value.action==='block_sites'){accessWanted=false;await restoreProtection();success=protection;}
     else if(value.action==='pause_protection'){
+      if(strictController.required)throw new Error('Strict mode has no direct pause');
       // Explicit app confirmation grants a short lease, never a permanent bypass.
       success=await policy(async()=>{
         if(!connected)return false;
@@ -116,7 +125,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     send({op:'access',allowed:message.allowed});reply({ok:true});return;
   }
   if(message?.op!=='status')return;
-  heartbeat().then(()=>reply({connected,blocked,allowed,missed,reporting,protection,appAllowed,pauseRemaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...diagnostic})).catch(()=>reply({connected:false,blocked,allowed,missed,protection:false,reporting}));return true;
+  heartbeat().then(()=>reply({connected,blocked,allowed,missed,reporting,protection,appAllowed,strict:strictController.required?strictController.current:null,pauseRemaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...diagnostic})).catch(()=>reply({connected:false,blocked,allowed,missed,protection:false,reporting}));return true;
 });
 chrome.runtime.onStartup.addListener(()=>restoreProtection().then(heartbeat).catch(()=>{}));
 chrome.runtime.onInstalled.addListener(()=>restoreProtection().then(heartbeat).catch(()=>{}));

@@ -3,8 +3,8 @@
 ## Scope
 
 GhostRoute Guard is a local SwiftUI application for one operator. It controls an
-ordinary Chrome's sensitive-site deny policy through an explicitly installed
-extension. A fail-closed gateway and dedicated Chrome profile are optional. No
+ordinary Chrome's catalog through an explicitly installed extension and mandatory
+qualified proxy. A dedicated browser remains optional. No
 component silently changes router channels or the system-wide proxy.
 
 Native access controls, a memory journal, Chrome rule-match delivery, explicit
@@ -23,6 +23,8 @@ filtering remains outside this module's installed scope.
 | Protected browser owner | Separate Chrome profile and mandatory fixed proxy | Launch flags and route restrictions remain enforced independently of view state |
 | Chrome policy agent | Explicit DNR deny policy in each enabled ordinary profile | Sensitive sites remain denied even while protected-browser access is open |
 | Chrome native bridge | Validated events and fixed access/diagnostic commands over private Unix socket | No dashboard token, route action, shell command, arbitrary URL or file operation |
+| Strict coordinator | Per-agent qualified CONNECT gates, catalog scope and tunnel draining | Separate from the optional browser; never changes router policy |
+| `strict.js` / `pac.js` | Owned mandatory PAC, local external-PAC snapshot composition and privacy settings | Explicit `proxy`/`privacy`; competing settings close admission |
 | Chrome diagnostics | Prepared DevTools tab, 60-second capture, up to 100 entries and solicited text preview | Separate volatile store, 1024-character preview for 15 seconds; never the activity journal |
 | Journal | Last 300 events plus bounded active-connection references | Memory only; no raw URL, cookies, headers, body or exception dump |
 
@@ -58,6 +60,9 @@ flowchart TB
     gate --> journal[Bounded memory journal]
     ordinary[Ordinary Chrome profile] --> policy[DNR deny policy]
     policy --> deny[Stop sensitive request]
+    policy -->|Qualified catalog| strict[Owned PAC and strict gate]
+    strict --> qualified
+    strict --> journal
     policy --> bridge[Origin-restricted Native Messaging host]
     bridge -->|Validated metadata only| journal
     engine -->|Fixed commands with short expiry| bridge
@@ -73,9 +78,13 @@ flowchart TB
 
 The main overview controls ordinary Chrome: Open/Close access applies to the
 selected extension agent and displays its actual DNR state separately from the
-requested state. It requires neither a route profile nor DevTools. The existing
+requested state. Strict mode requires a trusted route profile, but no DevTools. The existing
 blocked page must be refreshed; no tab is automatically moved or reloaded.
-Ordinary Chrome retains its current network/proxy, without exit qualification.
+Ordinary Chrome's catalog uses the mandatory gate and qualified HTTPS route.
+Other destinations use the preserved external inline PAC, or the ordinary path
+when no external PAC was configured. Provider authentication stays with its enabled
+extension; country/server changes are not live-synchronized. The snapshot remains
+only in Chrome settings, never in Native Messaging or the journal. See [strict mode](strict-mode.md).
 The popup provides the same access buttons for its own ephemeral agent. It sends
 only a boolean request through the existing native bridge, and the engine queues
 the same allow/block commands. Only the extension's own popup URL is accepted by
@@ -140,15 +149,66 @@ browser restart clears session rules. Timer scheduling is a browser boundary,
 not instantaneous OS enforcement. The app cannot re-enable an extension that
 the operator disabled through Chrome itself.
 
-Future ordinary-profile proxy/PAC control would require a separate capability,
-an explicit owner of proxy settings, proof of no DIRECT/UDP bypass, per-profile
-qualification and restore on removal. It must not be introduced through the
-agent. The implemented DevTools diagnostic component is separate from the deny
+Ordinary-profile proxy/PAC control is the separate `strict.js` capability with
+per-agent qualification and actual proxy/privacy ownership. Owned PAC/privacy
+remain on pause or engine loss, pointing at a closed local gate: restoring
+prediction can create speculative CONNECT before DNR. Operator disabling/removal
+lets Chrome restore its lower-layer settings. The implemented DevTools diagnostic component is separate from the deny
 policy: opening its panel and granting control prepares one inspected tab;
 app commands start/stop/clear capture and request one text response. Hiding the
 panel revokes the grant. Navigation clears previous responses. No debugger
 permission, TLS interception certificate or arbitrary script command is used.
 See [Chrome agent contract](chrome-agent.md).
+
+## Automatic route-based admission
+
+Enforced admission is implemented; a probe-only observer is not shipped.
+A successful qualification of the
+optional gateway must never automatically open ordinary Chrome: those traffic
+paths can differ. Wi-Fi name, default gateway, VPN icon and country lookup alone
+are insufficient evidence. Approved exits come from the private trusted profile,
+never from automatically trusting the current observed address.
+
+Two designs have different guarantees:
+
+| Design | Required control/evidence | Limit |
+|---|---|---|
+| Enforced sensitive route | Ordinary Chrome sends catalog destinations through an owned mandatory proxy/gateway; qualified transport, catalog coverage and approved exit | Requires explicit Chrome proxy ownership, compatibility and no-DIRECT acceptance; a competing proxy extension cannot silently be overridden |
+| Observe current path | A fresh HTTPS probe from the intended Chrome profile through its existing network, plus reviewed routing policy | Proves that probe at that time; PAC can send another URL differently and the network can change after the probe. Not a per-connection no-leak guarantee |
+
+For enforced routing, qualification must complete before forwarding application
+bytes. Every new sensitive CONNECT uses only the controlled transport; failure
+has no direct retry. The ordinary-profile adapter is a separate capability from
+the event/diagnostic agent. Do not silently repurpose the existing global manual
+allow rule or seize Browsec/Red Shield settings. Non-sensitive routing and router
+channel ownership remain explicit compatibility contracts.
+
+Admission state is **blocked → checking → verified**, returning to blocked
+on failed/expired evidence, route or proxy ownership change, suspend/resume,
+engine/worker restart or loss of control. Use monotonic expiry and generations:
+a late successful check cannot undo a newer Close action. Manual Close suspends
+automatic opening for that agent until Resume or a new engine run. Close drains
+tracked strict tunnels; owned PAC/privacy remain in place.
+
+Native and popup UI must distinguish checking, verified route, stale evidence
+and blocked with a fixed safe reason. Warnings belong in both interfaces and
+the memory journal; a notification permission is a separate opt-in. Previously
+blocked pages require an explicit retry, not background tab reloads. Existing
+streams need separate draining where the gateway owns them; changing DNR alone
+does not terminate established WebSockets.
+
+Acceptance must cover a canary succeeding while another destination bypasses it,
+competing PAC/proxy ownership, route change immediately after success, wrong
+exit/certificate, stale/cached/redirected probes, failed renewal, startup/sleep,
+engine death and Close during qualification. Measure fast local switching
+separately from remote qualification latency. Never claim an unconditional
+two-second remote verification deadline or instant OS-wide enforcement.
+
+Full lifecycle, timing and reviewed-catalog limits, including outside-catalog
+TURN TCP, are documented in [strict mode](strict-mode.md).
+
+References: [Chrome proxy settings](https://developer.chrome.com/docs/extensions/reference/api/proxy)
+and [Chromium per-URL proxy resolution](https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md).
 
 ## Optional protection without a Chrome extension
 

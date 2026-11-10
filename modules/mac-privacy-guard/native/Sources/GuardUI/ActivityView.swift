@@ -12,7 +12,7 @@ struct ActivityView: View {
                     Text("Последние 300 событий · только в памяти").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("Сетевых ошибок: \(store.status?.errors ?? 0)").font(.caption).foregroundStyle(.secondary)
+                Text("Сетевых ошибок: \((store.status?.errors ?? 0) + (store.status?.strictErrors ?? 0))").font(.caption).foregroundStyle(.secondary)
             }
             ActivityControls(store: store)
             EventTable(store: store)
@@ -36,6 +36,7 @@ struct ActivityControls: View {
                     Text("Все источники").tag("all")
                     Text("Шлюз Guard").tag("guard")
                     Text("Обычный Chrome").tag("chrome")
+                    Text("Chrome через Guard").tag("strict")
                     Text("Приложение").tag("app")
                 }.frame(width: 240)
                 TextField("Поиск домена или причины", text: $store.search)
@@ -66,7 +67,7 @@ struct EventTable: View {
             TableColumn("Назначение / событие") { event in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(event.host ?? event.message).lineLimit(1)
-                    Text(event.isChrome ? "Обычный Chrome · \(event.method ?? "") · \(resourceTitle(event.resourceType))" : event.host == nil ? "Guard · управление доступом" : event.message)
+                    Text(event.isChrome ? "Обычный Chrome · \(event.method ?? "") · \(resourceTitle(event.resourceType))" : event.isStrict ? "Chrome через Guard · \(event.message)" : event.host == nil ? "Guard · управление доступом" : event.message)
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .help(event.message)
@@ -111,7 +112,7 @@ struct EventDetail: View {
                 HStack { Text(event.host ?? "Событие приложения").font(.headline).textSelection(.enabled); Spacer(); DecisionLabel(kind: event.kind) }
                 Text(event.message).font(.callout).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 28) {
-                    DetailValue(title: "Источник", value: event.isChrome ? "Правила Chrome" : event.source == "app" ? "Приложение" : "Шлюз Guard")
+                    DetailValue(title: "Источник", value: event.isChrome ? "Правила Chrome" : event.isStrict ? "Chrome через Guard" : event.source == "app" ? "Приложение" : "Шлюз Guard")
                     if event.isChrome {
                         DetailValue(title: "Метод / тип", value: "\(event.method ?? "—") · \(resourceTitle(event.resourceType))")
                         DetailValue(title: "Правило", value: "\(event.ruleId ?? 0)")

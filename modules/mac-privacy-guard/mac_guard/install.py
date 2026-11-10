@@ -27,8 +27,8 @@ def extension(destination, domains):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.3.3', 'description': 'Synchronized app and popup access controls, allow/block request journal and scoped HTTP diagnostics.',
-                'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging'],
+                'version': '0.4.1', 'description': 'Qualified GhostRoute sensitive routing with a preserved external PAC for other destinations.',
+                'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'],
                 'background': {'service_worker': 'background.js'},
                 'devtools_page': 'devtools.html',
                 'icons': {str(size): f'icon-{size}.png' for size in (16, 32, 48, 128)},
@@ -36,7 +36,7 @@ def extension(destination, domains):
                 'action': {'default_popup': 'popup.html'}}
     for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules))]:
         write_private(destination / filename, content.encode())
-    for filename in ('background.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
+    for filename in ('background.js', 'pac.js', 'strict.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
                      'devtools.html', 'devtools.js', 'diagnostics.js', 'diagnostics.html', 'panel.js', 'panel.css'):
         write_private(destination / filename, (ROOT / 'extension' / filename).read_bytes())
     for size in (16, 32, 48, 128):
@@ -83,9 +83,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.3.3',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.1',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '7', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '9', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}

@@ -1,4 +1,4 @@
-"""Volatile, bounded Chrome diagnostics. Never qualifies or changes a route."""
+"""Bounded Chrome control; route qualification belongs to the strict coordinator."""
 from collections import OrderedDict, deque
 import re
 import secrets
@@ -26,12 +26,24 @@ def validate_control_message(data):
         'result': {'command', 'success'},
         'reset': {'session'},
     }
-    if op not in fields or set(data) != common | fields[op]:
+    expected = common | fields.get(op, set())
+    if op == 'agent' and 'strict' in data:
+        expected = expected | {'strict'}
+    if op not in fields or set(data) != expected:
         raise GuardError('Некорректное сообщение агента Chrome')
     if op == 'access':
         if type(data['allowed']) is not bool:
             raise GuardError('Некорректный режим доступа Chrome')
     elif op == 'agent':
+        if 'strict' in data:
+            strict = data['strict']
+            if (not isinstance(strict, dict) or set(strict) not in ({'proxy', 'catalog_digest'}, {'proxy', 'catalog_digest', 'baseline'})
+                    or not isinstance(strict['proxy'], str) or strict['proxy'] not in {'waiting', 'owned', 'conflict', 'permission_required', 'unsupported_proxy', 'error'}
+                    or not isinstance(strict['catalog_digest'], str)
+                    or re.fullmatch('[a-f0-9]{64}', strict['catalog_digest']) is None):
+                raise GuardError('Некорректное состояние обязательного proxy')
+            if 'baseline' in strict and strict['baseline'] not in ('direct', 'external_pac'):
+                raise GuardError('Неподдерживаемый базовый proxy')
         if any(type(data[key]) is not bool for key in ('ready', 'reporting', 'protection')):
             raise GuardError('Некорректное состояние агента')
         if type(data['remaining']) is not int or not 0 <= data['remaining'] <= 60:
@@ -75,6 +87,7 @@ class ChromeControl:
         self.access = {}
         self.suspended = {}
         self.preview = None
+        self.strict = None
         self.notice = 'Откройте DevTools → Guard и разрешите управление этой вкладкой'
 
     def _clear(self, profile):
@@ -157,6 +170,14 @@ class ChromeControl:
             if not agent or (action not in {'reporting_on', 'reporting_off', 'pause_protection', 'resume_protection', 'allow_sites', 'block_sites'} and not agent['ready']):
                 raise GuardError('Сначала разрешите управление во вкладке DevTools → Guard')
             if action in {'allow_sites', 'block_sites', 'pause_protection', 'resume_protection'}:
+                if self.strict:
+                    if action == 'pause_protection':
+                        raise GuardError('Ручной обход отключён в строгом режиме')
+                    self.access[profile] = action == 'allow_sites'
+                    self.pending.pop(profile, None)
+                    if not self.access[profile]:
+                        self.strict.pause(profile)
+                    return
                 self.access[profile] = action == 'allow_sites'
             if action == 'preview' and (not agent['remaining'] or not any(e['profile'] == profile and e['event'] == event for e in self.events)):
                 raise GuardError('Ответ больше недоступен')
@@ -177,14 +198,17 @@ class ChromeControl:
         with self.mutex:
             self._expire()
             command = self.pending.get(profile)
-            return {'ok': True, 'access': 'allow' if self.access.get(profile, False) else 'block',
+            strict = self.strict.state(profile, self.agents.get(profile), self.access.get(profile, True)) if self.strict else None
+            return {'ok': True, 'access': 'allow' if (strict['ready'] if strict else self.access.get(profile, False)) else 'block',
+                    **({'strict': strict} if strict else {}),
                     **({'command': {key: command[key] for key in ('id', 'action', 'session', 'event')}} if command else {})}
 
     def snapshot(self):
         with self.mutex:
             self._expire()
             return {'agents': [dict(id=key, ready=value['ready'], reporting=value['reporting'], protection=value['protection'],
-                                    desired_allowed=self.access.get(key, False),
+                                    desired_allowed=self.access.get(key, bool(self.strict)),
+                                    **({'strict': self.strict.state(key, value, self.access.get(key, True))} if self.strict else {}),
                                     pause_remaining=value['pause_remaining'],
                                     remaining=max(0, round(value['deadline'] - self.clock())) if value['remaining'] else 0,
                                     pending=key in self.pending) for key, value in self.agents.items()],
