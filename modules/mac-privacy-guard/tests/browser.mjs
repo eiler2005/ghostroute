@@ -152,7 +152,10 @@ try {
   assert(await panel.evaluate(()=>globalThis.previewExecuted===undefined),'HTML response executed in diagnostics UI');
   if(report)await panel.screenshot({path:path.join(report,'diagnostics-panel.png'),fullPage:true});
   await panel.locator('#stop').click();assert.equal(await panel.locator('tbody tr').count(),0);await panel.close();
-  await ordinaryPage.bringToFront();await blockPage();
+  await ordinaryPage.bringToFront();
+  const beforeLastBlock=(await api('status')).chrome_blocked;
+  await blockPage();
+  await waitFor(async()=>(await api('status')).chrome_blocked>beforeLastBlock,'Baseline block was not delivered before allow accounting');
   const beforeAllowed=(await api('status')).chrome_allowed;
   const beforeAllowedBlocks=(await api('status')).chrome_blocked;
   const applyStarted=performance.now();
@@ -170,10 +173,9 @@ try {
   const counts=await worker.evaluate(async()=>({allowed,blocked,badge:await chrome.action.getBadgeText({})}));
   assert(counts.allowed>0,'Extension did not count allowed requests');
   assert.equal(counts.badge,String(counts.allowed+counts.blocked),'Badge did not include allowed requests');
-  const countBeforeUnlisted=(await api('status')).chrome_allowed;
   await ordinaryPage.goto(`http://notfixture.example.org:${settings.plain_origin}/`);
   await new Promise(resolve=>setTimeout(resolve,200));
-  assert.equal((await api('status')).chrome_allowed,countBeforeUnlisted,'Unlisted website leaked into sensitive journal');
+  assert(!(await api('activity')).events.some(event=>event.source==='chrome' && event.host==='notfixture.example.org'),'Unlisted website leaked into sensitive journal');
   await command('reporting_off');
   const beforeMuted=(await api('status')).chrome_allowed;
   const localBeforeMuted=await worker.evaluate(()=>allowed);

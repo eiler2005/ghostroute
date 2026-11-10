@@ -65,6 +65,9 @@ not HTTP successes and never inflate gateway connection/byte counters. Browser
 fixtures prove allowed metadata and badge delivery, unlisted-site exclusion,
 independent reporting and separate rule-application/page-load timings. Fixture
 latency does not diagnose an operator's live website or qualify its VPN.
+The accounting baseline waits for the preceding blocked event to reach the
+engine before comparing counters after allow: DNR notification/native delivery
+is asynchronous relative to page navigation failure.
 
 Browser-open preflight refuses locked or uncatalogued destinations before spawning
 Chrome. Tests cover safe launch-result journaling, early process exit, inherited
