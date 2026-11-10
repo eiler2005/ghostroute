@@ -10,7 +10,7 @@ func require(_ value: @autoclosure () -> Bool, _ message: String) throws {
 }
 func statusData(_ state: String = "locked") -> Data {
     Data("""
-    {"state":"\(state)","message":"Fixture state","route":null,"routes":[{"id":"home","kind":"https_proxy","domains":1}],"sensitive_domains":1,"connections":0,"allowed":4,"blocked":0,"errors":0,"chrome_blocked":0,"chrome_connected":false,"bytes_sent":0,"bytes_received":0,"verified_age":null}
+    {"state":"\(state)","message":"Fixture state","route":null,"routes":[{"id":"home","kind":"https_proxy","domains":1}],"sensitive_domains":1,"connections":0,"allowed":4,"blocked":0,"errors":0,"chrome_blocked":0,"chrome_allowed":7,"chrome_connected":false,"bytes_sent":0,"bytes_received":0,"verified_age":null}
     """.utf8)
 }
 func makeStatus(_ state: String) throws -> GuardStatus {
@@ -40,6 +40,7 @@ struct NativeChecks {
         }
         let decoded=try await api.status()
         try require(decoded.state == .locked && decoded.routes.first?.kind == .httpsProxy,"Status contract did not decode")
+        try require(decoded.chromeAllowed == 7 && decoded.allowed == 4,"Chrome rule matches were conflated with gateway connections")
         do {
             _ = try ControlEndpoint(bootstrap: Data("{\"error\":\"already_running\"}".utf8))
             throw CheckFailure.failed("Expected structured startup failure")
@@ -99,6 +100,8 @@ struct NativeChecks {
         try require(journal.destination == .help,"Native help did not open")
         journal.showBlockedEvents()
         try require(journal.destination == .activity,"Blocked metric did not open journal")
+        journal.showChromeEvents(.allowed)
+        try require(journal.destination == .activity && journal.source == "chrome" && journal.filter == .allowed && journal.search.isEmpty,"Chrome allowed metric left stale journal filters")
         FixtureProtocol.handler = { request in
             precondition(request.url?.path == "/api/chrome/command")
             precondition(request.httpMethod == "POST")
@@ -116,10 +119,13 @@ struct NativeChecks {
         ordinaryClient.includeChrome=true
         ordinary.connect(ordinaryClient,poll:false);await ordinary.refresh()
         try require(!ordinary.canBlockChrome && !ordinary.canBrowse,"Ordinary startup was not blocked")
+        ordinaryClient.chromeCommandLag=2
         await ordinary.setChromeAccess(true)
         try require(ordinary.canBlockChrome && !ordinary.canBrowse && ordinary.status?.state == .locked,"Chrome access required or opened optional browser")
+        try require(ordinary.chrome.agents.first?.protection == false,"Open did not follow actual Chrome acknowledgement")
         await ordinary.setChromeAccess(false)
         try require(!ordinary.canBlockChrome && ordinary.status?.state == .locked,"Close Chrome failed or changed optional gateway")
+        try require(ordinary.chrome.agents.first?.protection == true,"Close did not follow actual Chrome acknowledgement")
         print("PASS: main Chrome access opens/closes independently of optional protected browser")
     }
 }
@@ -127,12 +133,14 @@ struct NativeChecks {
 private final class FixtureClient: GuardControlling {
     var mode="locked",offline=false,delayActivation=false,includeEvents=false
     var includeChrome=false,chromeAllowed=false
+    var appliedChromeAllowed=false,chromeCommandLag=0,chromeReadsRemaining=0
     var activation:CheckedContinuation<GuardStatus,Error>?
     func status() async throws -> GuardStatus {if offline {throw URLError(.notConnectedToInternet)};return try makeStatus(mode)}
     func chrome() async throws -> ChromeSnapshot {
         if !includeChrome { return .empty }
+        if chromeReadsRemaining>0 { chromeReadsRemaining-=1 } else { appliedChromeAllowed=chromeAllowed }
         let decoder=JSONDecoder();decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(ChromeSnapshot.self,from:Data("{\"agents\":[{\"id\":\"fixture\",\"ready\":false,\"reporting\":true,\"protection\":\(!chromeAllowed),\"desired_allowed\":\(chromeAllowed),\"pending\":false,\"remaining\":0,\"pause_remaining\":0}],\"events\":[],\"preview\":null,\"notice\":\"Fixture agent\"}".utf8))
+        return try decoder.decode(ChromeSnapshot.self,from:Data("{\"agents\":[{\"id\":\"fixture\",\"ready\":false,\"reporting\":true,\"protection\":\(!appliedChromeAllowed),\"desired_allowed\":\(chromeAllowed),\"pending\":\(appliedChromeAllowed != chromeAllowed),\"remaining\":0,\"pause_remaining\":0}],\"events\":[],\"preview\":null,\"notice\":\"Fixture agent\"}".utf8))
     }
     func activity() async throws -> GuardActivity {
         let event = """
@@ -148,6 +156,7 @@ private final class FixtureClient: GuardControlling {
         case .lock:mode="locked"
         case .profile:throw ControlError.invalidProfile
         case .chromeCommand(_,let command,_):
+            chromeReadsRemaining=chromeCommandLag
             if command == .allowSites { chromeAllowed=true }
             if command == .blockSites { chromeAllowed=false }
         default:break

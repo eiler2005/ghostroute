@@ -1,6 +1,6 @@
 'use strict';
 const profile=crypto.randomUUID().replaceAll('-','');
-let port=null,inFlight=0,connected=false,blocked=0,missed=0,reporting=true,protection=true,pausedUntil=0,owner=null;
+let port=null,inFlight=0,connected=false,blocked=0,allowed=0,missed=0,reporting=true,protection=true,pausedUntil=0,owner=null;
 let accessWanted=false,appAllowed=false,leaseUntil=0;
 let diagnostic={ready:false,session:null,remaining:0};
 const seen=new Set();
@@ -99,17 +99,21 @@ chrome.runtime.onConnect.addListener(candidate=>{
   candidate.onDisconnect.addListener(()=>{if(candidate===owner){owner=null;diagnostic={ready:false,session:null,remaining:0};agent();}});
 });
 chrome.declarativeNetRequest.onRuleMatchedDebug.addListener(info=>{
-  if(info.rule.rulesetId!=='sensitive')return;
+  const permitted=info.rule.rulesetId==='_session' && info.rule.ruleId===PAUSE_RULE;
+  if(!permitted && info.rule.rulesetId!=='sensitive')return;
   let host;try{host=new URL(info.request.url).hostname;}catch(_){return;}
-  blocked++;chrome.action.setBadgeText({text:String(blocked)});chrome.action.setBadgeBackgroundColor({color:'#287964'});
+  if(permitted)allowed++;else blocked++;
+  chrome.action.setBadgeText({text:String(blocked+allowed)});
+  chrome.action.setBadgeBackgroundColor({color:'#287964'});
+  chrome.action.setTitle({title:`Guard · запросов каталога: ${blocked+allowed} · разрешено: ${allowed} · заблокировано: ${blocked}`});
   const method=['GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH','CONNECT','TRACE'].includes(info.request.method)?info.request.method:'OTHER';
-  if(reporting)send({op:'blocked',host,method,resource_type:info.request.type,rule_id:info.rule.ruleId});
+  if(reporting)send({op:permitted?'allowed':'blocked',host,method,resource_type:info.request.type,rule_id:info.rule.ruleId});
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(sender.id!==chrome.runtime.id || message?.op!=='status')return;
-  heartbeat().then(()=>reply({connected,blocked,missed,reporting,protection,appAllowed,pauseRemaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...diagnostic})).catch(()=>reply({connected:false,blocked,missed,protection:false,reporting}));return true;
+  heartbeat().then(()=>reply({connected,blocked,allowed,missed,reporting,protection,appAllowed,pauseRemaining:Math.max(0,Math.ceil((pausedUntil-Date.now())/1000)),...diagnostic})).catch(()=>reply({connected:false,blocked,allowed,missed,protection:false,reporting}));return true;
 });
 chrome.runtime.onStartup.addListener(()=>restoreProtection().then(heartbeat).catch(()=>{}));
 chrome.runtime.onInstalled.addListener(()=>restoreProtection().then(heartbeat).catch(()=>{}));
 void restoreProtection().then(heartbeat).catch(()=>{});
-setInterval(()=>void heartbeat().catch(()=>{}),2000);
+setInterval(()=>void heartbeat().catch(()=>{}),500);

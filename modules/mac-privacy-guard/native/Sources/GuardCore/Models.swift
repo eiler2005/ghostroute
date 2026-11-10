@@ -18,6 +18,7 @@ public struct GuardStatus: Decodable, Equatable {
     public let routes: [GuardRoute]
     public let sensitiveDomains, connections, allowed, blocked, errors: Int
     public let chromeBlocked: Int
+    public let chromeAllowed: Int?
     public let chromeConnected: Bool
     public let bytesSent, bytesReceived: Int64
     public let verifiedAge: Int?

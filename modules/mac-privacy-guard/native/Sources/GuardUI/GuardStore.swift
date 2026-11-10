@@ -80,7 +80,22 @@ public final class GuardStore: ObservableObject {
     public var canLock: Bool { online && (status?.state != .locked || busy) }
     public var canBlockChrome: Bool { online && !busy && chrome.agents.contains { $0.id == selectedChrome && (!$0.protection || $0.desiredAllowed == true) } }
     public func setChromeAccess(_ allowed: Bool) async {
-        await perform(.chromeCommand(selectedChrome, allowed ? .allowSites : .blockSites, nil))
+        let profile = selectedChrome
+        let expected = revision + 1
+        await perform(.chromeCommand(profile, allowed ? .allowSites : .blockSites, nil))
+        // Follow only the small Chrome snapshot while a click is being applied;
+        // the full journal keeps its normal idle refresh cadence.
+        for _ in 0..<15 {
+            guard online, revision == expected, selectedChrome == profile, let client else { return }
+            if let agent = chrome.agents.first(where: { $0.id == profile }),
+               !agent.pending && agent.protection != allowed && agent.desiredAllowed == allowed { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            guard revision == expected else { return }
+            if let snapshot = try? await client.chrome(), revision == expected { chrome = snapshot }
+        }
+    }
+    public func showChromeEvents(_ kind: EventKind? = nil) {
+        resetFilters(); source = "chrome"; filter = kind; destination = .activity
     }
 
     public var hasFilters: Bool { filter != nil || source != "all" || !search.isEmpty }

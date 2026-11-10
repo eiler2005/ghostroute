@@ -24,7 +24,7 @@ struct ChromeView: View {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Toggle("Передавать события блокировок", isOn: Binding(get: { agent?.reporting ?? true }, set: { send($0 ? .reportingOn : .reportingOff) }))
+                            Toggle("Передавать разрешения и блокировки", isOn: Binding(get: { agent?.reporting ?? true }, set: { send($0 ? .reportingOn : .reportingOff) }))
                                 .toggleStyle(.switch).controlSize(.small)
                         }.disabled(agent == nil || agent?.pending == true || store.busy || !store.online)
                     }.padding(10)
@@ -73,7 +73,7 @@ struct ChromeView: View {
                         }.padding(10)
                     }
                 }
-                Text("Диагностика не открывает доступ и не меняет proxy, DNS, VPN или роутер. При остановке и истечении времени её ответы удаляются. Блокировки остаются в общем журнале.")
+                Text("Диагностика не открывает доступ и не меняет proxy, DNS, VPN или роутер. При остановке и истечении времени её ответы удаляются. Решения правил остаются в общем журнале.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(22).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
         }

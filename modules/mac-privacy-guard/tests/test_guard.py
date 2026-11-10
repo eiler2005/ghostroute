@@ -351,6 +351,24 @@ class DashboardTests(unittest.TestCase):
 
 
 class ChromeEventTests(unittest.TestCase):
+    def test_allowed_rule_match_is_metadata_not_gateway_connection(self):
+        guard = Guard(profile())
+        message = {'op':'allowed', 'profile':'a'*32, 'host':'sensitive.example.org',
+                   'method':'GET', 'resource_type':'main_frame', 'rule_id':900001}
+        guard.chrome_event(validate_message(message))
+        event = guard.activity()['events'][0]
+        self.assertEqual((event['kind'], event['reason'], event['source']), ('allowed', 'chrome_allowed', 'chrome'))
+        self.assertEqual(guard.status()['chrome_allowed'], 1)
+        self.assertEqual(guard.status()['allowed'], 0)
+        self.assertEqual(guard.status()['connections'], 0)
+        self.assertEqual(guard.status()['state'], 'locked')
+        self.assertIsNone(event['duration_ms'])
+        for change in ({'rule_id':1}, {'rule_id':True}, {'url':'https://sensitive.example.org/private'}, {'body':'private'}):
+            with self.assertRaises(policy.GuardError): validate_message(dict(message, **change))
+        with self.assertRaises(policy.GuardError): validate_message(dict(message, op='blocked'))
+        guard.clear_activity()
+        self.assertEqual(guard.status()['chrome_allowed'], 1)
+
     def test_native_ingress_is_metadata_only_and_cannot_unlock(self):
         with tempfile.TemporaryDirectory(prefix='guard-ipc-', dir='/tmp') as temporary:
             state = Path(temporary)

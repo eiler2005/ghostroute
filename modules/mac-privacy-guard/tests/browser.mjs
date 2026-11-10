@@ -153,10 +153,51 @@ try {
   if(report)await panel.screenshot({path:path.join(report,'diagnostics-panel.png'),fullPage:true});
   await panel.locator('#stop').click();assert.equal(await panel.locator('tbody tr').count(),0);await panel.close();
   await ordinaryPage.bringToFront();await blockPage();
+  const beforeAllowed=(await api('status')).chrome_allowed;
+  const beforeAllowedBlocks=(await api('status')).chrome_blocked;
+  const applyStarted=performance.now();
   await command('allow_sites');
   await waitFor(async()=>(await api('chrome')).agents[0]?.protection===false,'Ordinary Chrome access did not open');
+  const applyMs=Math.round(performance.now()-applyStarted);
+  const pageStarted=performance.now();
   await ordinaryPage.reload({waitUntil:'domcontentloaded'});
+  const pageMs=Math.round(performance.now()-pageStarted);
   assert.equal(await ordinaryPage.locator('h1').textContent(),'Protected fixture','App access did not allow the same ordinary Chrome tab');
+  await waitFor(async()=>(await api('status')).chrome_allowed>beforeAllowed,'Allowed DNR request did not reach native journal');
+  assert((await api('activity')).events.some(event=>event.source==='chrome' && event.reason==='chrome_allowed' && event.host==='fixture.example.org'),'Allowed request missing from journal');
+  assert.equal((await api('status')).chrome_blocked,beforeAllowedBlocks,'Allow rule was incorrectly reported as blocked');
+  assert.equal((await api('status')).allowed,allowedBeforeClear,'Ordinary requests were counted as gateway tunnels');
+  const counts=await worker.evaluate(async()=>({allowed,blocked,badge:await chrome.action.getBadgeText({})}));
+  assert(counts.allowed>0,'Extension did not count allowed requests');
+  assert.equal(counts.badge,String(counts.allowed+counts.blocked),'Badge did not include allowed requests');
+  const countBeforeUnlisted=(await api('status')).chrome_allowed;
+  await ordinaryPage.goto(`http://notfixture.example.org:${settings.plain_origin}/`);
+  await new Promise(resolve=>setTimeout(resolve,200));
+  assert.equal((await api('status')).chrome_allowed,countBeforeUnlisted,'Unlisted website leaked into sensitive journal');
+  await command('reporting_off');
+  const beforeMuted=(await api('status')).chrome_allowed;
+  const localBeforeMuted=await worker.evaluate(()=>allowed);
+  await ordinaryPage.goto(`http://fixture.example.org:${settings.plain_origin}/muted`);
+  await waitFor(()=>worker.evaluate(before=>allowed>before,localBeforeMuted),'Local allowed counter did not advance with reporting off');
+  assert.equal((await api('status')).chrome_allowed,beforeMuted,'Reporting off still forwarded an allowed match');
+  await command('reporting_on');
+  const popup=await ordinary.newPage();await popup.goto(`chrome-extension://${settings.extension_id}/popup.html`);
+  await waitFor(async()=>Number(await popup.locator('#allowed').textContent())>0,'Popup allowed metric stayed empty');
+  assert.equal(Number(await popup.locator('#count').textContent()),Number(await popup.locator('#allowed').textContent())+Number(await popup.locator('#blocked').textContent()));
+  await popup.close();
+  const switchTimings=[];
+  for(let cycle=0;cycle<8;cycle++){
+    for(const action of ['block_sites','allow_sites']){
+      const started=performance.now();await command(action);
+      await waitFor(async()=>(await api('chrome')).agents[0]?.protection===(action==='block_sites'),'Actual Chrome rule state not acknowledged');
+      const elapsed=Math.round(performance.now()-started);
+      switchTimings.push({action,ms:elapsed});
+      assert(elapsed<2000,`${action} exceeded two-second switch budget: ${elapsed}ms`);
+    }
+  }
+  const timings={ordinary_rule_apply_ms:applyMs,allowed_fixture_dom_ms:pageMs,switches:switchTimings};
+  if(report)writeFileSync(path.join(report,'latency.json'),JSON.stringify(timings,null,2));
+  console.log('Fixture latency (not live website acceptance): '+JSON.stringify(timings));
   assert.equal((await api('status')).state,'locked','Ordinary access opened the optional protected gateway');
   // Advance more than the old 60-second pause: live app replies renew access.
   await worker.evaluate(()=>{globalThis.guardOriginalNow=Date.now;const future=Date.now()+70000;Date.now=()=>future;});
@@ -196,7 +237,7 @@ try {
   const netlog=JSON.parse(readFileSync(path.join(root,'netlog.json')));
   const names=Object.fromEntries(Object.entries(netlog.constants.logEventTypes).map(([name,id])=>[id,name]));
   assert.equal(netlog.events.filter(event=>/DNS_TRANSACTION|DNS_TASK/.test(names[event.type] || '')).length,0,'Protected browser performed DNS');
-  console.log('PASS: ordinary Chrome allow/block in the same tab independent of optional gateway; live access renewal, reporting/diagnostics, disconnect restoration and protected-browser no-direct/DNS/WebRTC bypass.');
+  console.log('PASS: ordinary allow/block, allowed journal and badge counts, unlisted-site privacy, reporting isolation, independent optional gateway, lease/disconnect restoration and protected-browser no-direct/DNS/WebRTC bypass.');
 } finally {
   if(browser)await browser.close();if(ordinary)await ordinary.close();
   if(closeOwned)await closeOwned().catch(()=>{});

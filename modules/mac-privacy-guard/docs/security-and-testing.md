@@ -58,6 +58,14 @@ No general host access, webRequest, cookies, debugger or content-script permissi
 is requested. Block rules explicitly include main-frame requests; omitting
 resourceTypes would exclude that type under Chrome's defaults.
 
+Allow observations use only the existing catalog-scoped session rule; no new
+host, webRequest, tab or debugger permission is requested. The strict ingress
+accepts the fixed allow rule ID only, without URL/body fields. Allow matches are
+not HTTP successes and never inflate gateway connection/byte counters. Browser
+fixtures prove allowed metadata and badge delivery, unlisted-site exclusion,
+independent reporting and separate rule-application/page-load timings. Fixture
+latency does not diagnose an operator's live website or qualify its VPN.
+
 Browser-open preflight refuses locked or uncatalogued destinations before spawning
 Chrome. Tests cover safe launch-result journaling, early process exit, inherited
 AppKit identity removal and the owned browser PID. A real browser fixture launches

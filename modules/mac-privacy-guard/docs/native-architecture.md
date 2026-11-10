@@ -79,6 +79,17 @@ Ordinary Chrome retains its current network/proxy, without exit qualification.
 The dedicated browser's controls and tunnel metrics live in a collapsed optional
 section. Its independent gateway state machine is shown below.
 
+Ordinary Chrome metrics count catalog request-rule decisions, with separate
+allow/block totals. Metric actions select the corresponding Chrome journal filter.
+They never populate gateway tunnel/byte counters. An allow match does not prove
+HTTP completion; Chrome decision rows show no invented transfer or duration.
+The extension's worker lifetime differs from the engine's delivered-event lifetime.
+Chrome polls the existing native channel every 500 ms. A native access click
+follows only the small Chrome snapshot at 100 ms for up to 1.5 seconds, stopping
+on actual state and acknowledgement or a newer action. Idle journal polling
+remains 1.5 seconds. Real-browser tests gate both directions below two seconds
+over 16 switches; OS sleep/process stalls remain outside a hard latency guarantee.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Locked

@@ -8,8 +8,19 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 ChromeAccessView(store: store)
-                HStack {
-                    Label("Блокировок за запуск: \(store.status?.chromeBlocked ?? 0)", systemImage: "hand.raised").font(.callout).foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
+                    Button { store.showChromeEvents() } label: {
+                        MetricView(title: "Запросов Chrome", value: "\((store.status?.chromeAllowed ?? 0) + (store.status?.chromeBlocked ?? 0))", detail: "Чувствительный каталог", icon: "arrow.left.arrow.right", color: .blue)
+                    }.buttonStyle(.plain)
+                    Button { store.showChromeEvents(.allowed) } label: {
+                        MetricView(title: "Разрешено правилом", value: "\(store.status?.chromeAllowed ?? 0)", detail: "Открыть журнал →", icon: "checkmark.circle", color: .green)
+                    }.buttonStyle(.plain)
+                    Button { store.showChromeEvents(.blocked) } label: {
+                        MetricView(title: "Заблокировано", value: "\(store.status?.chromeBlocked ?? 0)", detail: "Открыть журнал →", icon: "hand.raised", color: .orange)
+                    }.buttonStyle(.plain)
+                }
+                HStack(alignment: .top) {
+                    Text("За запуск приложения · запросы каталога, не соединения. «Разрешено» — решение правил Chrome; ответ сайта и время загрузки проверяются отдельно в HTTP-диагностике.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("Настройки и диагностика Chrome") { store.destination = .chrome }
                 }

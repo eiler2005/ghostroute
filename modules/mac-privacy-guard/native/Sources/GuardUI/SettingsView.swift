@@ -13,10 +13,11 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             SwiftUI.Section("Связь с обычным Google Chrome") {
-                LabeledContent("Блокировщик") {
-                    Label(store.online && store.status?.chromeConnected == true ? "На связи" : "Нет свежего сигнала", systemImage: store.status?.chromeConnected == true ? "checkmark.circle" : "minus.circle")
-                        .foregroundStyle(store.online && store.status?.chromeConnected == true ? Color.green : Color.secondary)
+                LabeledContent("Агент Chrome") {
+                    Label(store.online && !store.chrome.agents.isEmpty ? "На связи" : "Нет свежего сигнала", systemImage: !store.chrome.agents.isEmpty ? "checkmark.circle" : "minus.circle")
+                        .foregroundStyle(store.online && !store.chrome.agents.isEmpty ? Color.green : Color.secondary)
                 }
+                LabeledContent("Доставлено разрешений за запуск", value: "\(store.status?.chromeAllowed ?? 0)")
                 LabeledContent("Доставлено блокировок за запуск", value: "\(store.status?.chromeBlocked ?? 0)")
                 Text("Расширение блокирует чувствительные сайты в обычном Chrome и сообщает собственные срабатывания. Включается отдельно в каждом профиле; один сигнал не подтверждает защиту всех профилей.")
                     .font(.callout).foregroundStyle(.secondary)

@@ -79,7 +79,7 @@ struct EventTable: View {
             TableColumn("Решение") { event in DecisionLabel(kind: event.kind) }.width(125)
             TableColumn("Передача") { event in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(event.kind == .allowed ? byteText(event.bytesSent + event.bytesReceived) : "—").monospacedDigit()
+                    Text(event.kind == .allowed && !event.isChrome ? byteText(event.bytesSent + event.bytesReceived) : "—").monospacedDigit()
                     if let state = event.state { Text(state == "open" ? "Открыто" : "Завершено").font(.caption2).foregroundStyle(.secondary) }
                 }.font(.caption)
             }.width(90)
@@ -90,7 +90,7 @@ struct EventTable: View {
                     Image(systemName: "list.bullet.rectangle").font(.title).foregroundStyle(.tertiary)
                     Text(store.events.isEmpty ? "Здесь появятся новые события" : "Подходящих событий нет").font(.callout).foregroundStyle(.secondary)
                     if store.events.isEmpty {
-                        Text("Откройте сайт в защищённом браузере или проверьте блокировщик Chrome.").font(.caption).foregroundStyle(.secondary)
+                        Text("Откройте сайт из чувствительного каталога в Chrome с включённой передачей событий.").font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Фильтры скрывают \(store.hiddenEventCount) событий, включая блокировки и ошибки.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -111,7 +111,7 @@ struct EventDetail: View {
                 HStack { Text(event.host ?? "Событие приложения").font(.headline).textSelection(.enabled); Spacer(); DecisionLabel(kind: event.kind) }
                 Text(event.message).font(.callout).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 28) {
-                    DetailValue(title: "Источник", value: event.isChrome ? "Блокировщик Chrome" : event.source == "app" ? "Приложение" : "Шлюз Guard")
+                    DetailValue(title: "Источник", value: event.isChrome ? "Правила Chrome" : event.source == "app" ? "Приложение" : "Шлюз Guard")
                     if event.isChrome {
                         DetailValue(title: "Метод / тип", value: "\(event.method ?? "—") · \(resourceTitle(event.resourceType))")
                         DetailValue(title: "Правило", value: "\(event.ruleId ?? 0)")

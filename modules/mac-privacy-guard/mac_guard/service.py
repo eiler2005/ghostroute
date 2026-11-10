@@ -32,6 +32,7 @@ REASONS = {
     'unsupported_protocol': 'Запрос отклонён: разрешены только HTTPS-туннели',
     'capacity': 'Достигнут лимит одновременных подключений',
     'chrome_blocked': 'Блокировщик Chrome остановил запрос к чувствительному домену',
+    'chrome_allowed': 'Правило Chrome разрешило запрос; успешный ответ и время загрузки этим событием не проверяются',
     'browser_opened': 'Сайт передан в отдельный защищённый Chrome',
     'browser_failed': 'Защищённый Chrome не удалось открыть',
 }
@@ -62,7 +63,7 @@ class Guard:
         self.active = {}
         self.started_at = time.time()
         self.chrome_profiles = OrderedDict()
-        self.chrome_blocked = 0
+        self.chrome_blocked = self.chrome_allowed = 0
         self.chrome = ChromeControl()
         self._record('system', 'started')
 
@@ -113,8 +114,13 @@ class Guard:
                 while len(self.chrome_profiles) > 8:
                     self.chrome_profiles.popitem(last=False)
             else:
-                self.chrome_blocked += 1
-                event = self._record('blocked', 'chrome_blocked', data['host'])
+                allowed = data['op'] == 'allowed'
+                if allowed:
+                    self.chrome_allowed += 1
+                else:
+                    self.chrome_blocked += 1
+                event = self._record('allowed' if allowed else 'blocked',
+                                     'chrome_allowed' if allowed else 'chrome_blocked', data['host'])
                 event.update(source='chrome', method=data['method'],
                              resource_type=data['resource_type'], rule_id=data['rule_id'])
 
@@ -145,6 +151,7 @@ class Guard:
                     'connections': len(self.active),
                     'allowed': self.allowed, 'blocked': self.blocked + self.chrome_blocked, 'errors': self.errors,
                     'chrome_blocked': self.chrome_blocked,
+                    'chrome_allowed': self.chrome_allowed,
                     'chrome_connected': any(time.monotonic() - at < 45 and enabled for at, enabled in self.chrome_profiles.values()),
                     'bytes_sent': self.bytes_sent, 'bytes_received': self.bytes_received,
                     'verified_age': round(time.monotonic() - self.verified_at) if self.mode == 'active' else None}
