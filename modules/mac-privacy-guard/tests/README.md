@@ -69,6 +69,21 @@ fixture использует Playwright Chromium. Настоящий Chromium sa
 
 ## CI и выпуск
 
+Иллюстрации документации имеют отдельную воспроизводимую проверку:
+
+```bash
+python3 modules/mac-privacy-guard/tools/build-diagrams.py
+node modules/mac-privacy-guard/tools/render-diagrams.cjs
+```
+
+Она использует уже установленный Playwright, проверяет шесть RU/EN фигур и
+экспортирует PNG: доступные названия, размеры подписей, прохождение соединителей,
+сложность, горизонтальную прокрутку только внутри схем на телефоне и печать.
+`GUARD_PLAYWRIGHT` выбирает библиотеку, `GUARD_DIAGRAM_BROWSER=chromium` —
+установленный Chromium; default — локальный Chrome. Исходники, ограничения
+упрощения и prompt GPT Image обложки находятся в
+[каталоге схем](../../../docs/assets/diagrams/README.md#mac-guard-diagrams-and-cover).
+
 [Отдельный workflow модуля](../../../.github/workflows/mac-privacy-guard.yml)
 запускает unit/JS на Ubuntu, Swift/browser/build на macOS и сохраняет fixture
 evidence как артефакт. Его успех не означает успех общего CI репозитория и не

@@ -14,6 +14,11 @@ filtering remains outside this module's installed scope.
 
 ## Components and ownership
 
+![Native application and local Chrome control plane](../../../docs/assets/diagrams/ghostroute-guard-components-en.png)
+
+[Editable English figures](../../../docs/assets/diagrams/ghostroute-guard-en.html) ·
+[Русские схемы](../../../docs/assets/diagrams/ghostroute-guard-ru.html)
+
 | Component | Owns | Boundary |
 |---|---|---|
 | `GuardApp` | AppKit lifecycle, one window, owned Python child, bootstrap pipe | Custom URL focuses only; no untrusted URL/route commands |

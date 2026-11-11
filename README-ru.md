@@ -313,6 +313,7 @@ GhostRoute устроен как небольшая операционная п�
   См. [модуль и установку](modules/mac-privacy-guard/README.md).
   [Руководство пользователя](modules/mac-privacy-guard/docs/user-guide.md) ·
   [Тесты и приёмка](modules/mac-privacy-guard/tests/README.md).
+  [Визуальное руководство: маршруты Chrome, компоненты и состояния](docs/assets/diagrams/ghostroute-guard-ru.html).
 - **Routing Core** — production data plane: классификация через dnsmasq/ipset,
   sing-box REDIRECT, selected full-VPS TPROXY и home Reality ingress, managed
   Reality egress на VPS, direct-out fallback для non-selected non-managed

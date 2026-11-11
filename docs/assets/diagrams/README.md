@@ -7,6 +7,9 @@ conceptual illustration; routing details come from the SVG sources and runbooks.
 
 ## Platform diagrams
 
+The Mac application has its own [visual guide](ghostroute-guard-en.html)
+([на русском](ghostroute-guard-ru.html)); it complements the platform maps below.
+
 [English source](ghostroute-platform-en.html) ·
 [Русский исходник](ghostroute-platform-ru.html)
 
@@ -19,6 +22,48 @@ conceptual illustration; routing details come from the SVG sources and runbooks.
 These describe implemented mechanisms and their supported scope, not a live
 deployment snapshot. Remaining acceptance work is tracked separately in the
 [engineering register](../../routing-assurance-roadmap.md).
+
+## Mac Guard diagrams and cover
+
+[Русские исходники](ghostroute-guard-ru.html) · [English sources](ghostroute-guard-en.html)
+
+| Figure | Русский PNG | English PNG | Meaning |
+|---|---|---|---|
+| Chrome routing | [RU](ghostroute-guard-routing-ru.png) | [EN](ghostroute-guard-routing-en.png) | Catalog-first mandatory Guard path and preserved external PAC/ordinary path for other destinations. |
+| Components | [RU](ghostroute-guard-components-ru.png) | [EN](ghostroute-guard-components-en.png) | SwiftUI, local engine, Native Messaging, extension, private profile and bounded memory journal; control arrows are not packet paths. |
+| Access states | [RU](ghostroute-guard-states-ru.png) | [EN](ghostroute-guard-states-en.png) | Blocked, checking, protected and paused states; failure/expiry closes admission and Resume requires qualification. |
+
+These are `1280 × 720` editable HTML/SVG figures with `2560 × 1440` PNG exports.
+They use the existing project palette and intentional offline Arial/Helvetica
+and Menlo/Consolas typography, not downloaded fonts. Rebuild and check with:
+
+```bash
+python3 modules/mac-privacy-guard/tools/build-diagrams.py
+node modules/mac-privacy-guard/tools/render-diagrams.cjs
+```
+
+The renderer reuses an existing Playwright installation; `GUARD_PLAYWRIGHT`
+can point to an isolated one and `GUARD_DIAGRAM_BROWSER=chromium` selects its
+installed Chromium instead of local Chrome. It does not install dependencies.
+It checks accessible titles, label bounds, connector clearance, label masks,
+complexity, mobile-local scrolling and print layout. The module CI runs this
+check and preserves its geometry report; fixture results contain no live data.
+
+Fidelity: router transport/policy/backend detail is combined into one qualified
+path on the routing figure. Optional-browser and prepared-DevTools details are
+summarized in captions on the component figure; they remain in the module docs.
+Periodic renewal is a note on the state figure, not a separate state. None of
+the figures claims whole-tab/OS isolation or a live provider-country sync.
+
+[`guard-cover.png`](../../../modules/mac-privacy-guard/assets/guard-cover.png)
+is a new conceptual illustration generated with the **built-in GPT Image tool**,
+copied into the module assets without modifying the generated original. It is
+decorative artwork, not a screenshot or routing specification. Existing project
+covers and the application's icon remain separate assets.
+
+Final cover prompt:
+
+> Use case: stylized-concept. Asset type: wide GitHub documentation cover for the existing GhostRoute Guard Mac application. Create a polished editorial technical illustration, landscape roughly 3:1. Bright white paper background, navy ink, pale-blue surfaces, restrained cobalt accents, a small mint shield accent. Main subject: elegant generic aluminum Mac laptop with a minimal native desktop window and a simple shield symbol; a small home router and abstract remote server form around it, joined only by fine visual threads without arrowheads. Ample whitespace, precise soft 3D geometry combined with clean flat vector-like details, subtle tactile shadows, premium macOS application feel. The sole text is exactly 'GhostRoute Guard', large, crisp, dark navy sans serif. No other text, no browser logos, no real UI screenshot, no IP addresses, ports, providers, flags, country names, credentials, maps or identifiable devices. Do not imply absolute security or system-wide protection. This is a conceptual cover illustration, not a technical routing diagram. Balanced composition suitable for a README banner and coordinated with white/navy/cobalt architecture diagrams.
 
 ## Channel Amn diagrams
 

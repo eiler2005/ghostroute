@@ -340,6 +340,7 @@ core, not just a set of firewall scripts:
   [module and installation guide](modules/mac-privacy-guard/README.md).
   [User guide](modules/mac-privacy-guard/docs/user-guide.md) ·
   [Tests and acceptance](modules/mac-privacy-guard/tests/README.md).
+  [Visual guide: Chrome routing, components and access states](docs/assets/diagrams/ghostroute-guard-en.html).
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
   sing-box REDIRECT, selected full-VPS TPROXY, home Reality ingress, managed
   Reality egress to VPS, direct-out fallback for non-selected non-managed

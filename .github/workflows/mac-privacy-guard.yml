@@ -48,9 +48,18 @@ jobs:
       - name: Build local app bundle
         working-directory: modules/mac-privacy-guard
         run: python3 -B -m mac_guard.install --catalog ../../configs/sensitive-domains.txt --app "$RUNNER_TEMP/Guard.app" --extension "$RUNNER_TEMP/Guard-blocker" --native-hosts "$RUNNER_TEMP/Guard-native-hosts"
+      - name: Build and verify public documentation figures
+        run: |
+          python3 modules/mac-privacy-guard/tools/build-diagrams.py
+          node modules/mac-privacy-guard/tools/render-diagrams.cjs
+        env:
+          GUARD_PLAYWRIGHT: ${{ runner.temp }}/guard-tools/node_modules/playwright
+          GUARD_DIAGRAM_BROWSER: chromium
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: guard-fixture-evidence
-          path: ${{ runner.temp }}/guard-browser-report
+          path: |
+            ${{ runner.temp }}/guard-browser-report
+            reports/diagram-checks/mac-guard.json
           if-no-files-found: ignore

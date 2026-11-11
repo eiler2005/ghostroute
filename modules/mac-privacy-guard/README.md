@@ -1,5 +1,7 @@
 # GhostRoute Guard for Mac
 
+![GhostRoute Guard: концептуальная обложка приложения](assets/guard-cover.png)
+
 Локальное приложение для управления чувствительными сайтами в **обычном Chrome**.
 **Авто GhostRoute** направляет чувствительный каталог через обязательный локальный
 шлюз и проверенный домашний HTTPS-маршрут. Доступ открывается после проверки,
@@ -14,6 +16,9 @@
 [Руководство пользователя](docs/user-guide.md) ·
 [Проверки и приёмка](tests/README.md) ·
 [Установка и восстановление](docs/operations.md)
+
+[Визуальное руководство на русском](../../docs/assets/diagrams/ghostroute-guard-ru.html) ·
+[English diagrams](../../docs/assets/diagrams/ghostroute-guard-en.html)
 
 ## Реализовано
 
@@ -118,6 +123,15 @@ Installer также создаёт локальный Native Messaging host. П
 
 ## Архитектура и границы
 
+![Два пути обычного Chrome: каталог через Guard, остальные сайты по своим правилам](../../docs/assets/diagrams/ghostroute-guard-routing-ru.png)
+
+Редактируемые схемы: [маршруты](../../docs/assets/diagrams/ghostroute-guard-ru.html#routing),
+[компоненты](../../docs/assets/diagrams/ghostroute-guard-ru.html#components),
+[состояния защиты](../../docs/assets/diagrams/ghostroute-guard-ru.html#states).
+
+<details>
+<summary>Дополнительный браузер и VPN-адаптер: подробная схема</summary>
+
 ```mermaid
 flowchart TB
     ordinary[Обычный профиль Chrome] --> blocker[Включённый MV3 blocker]
@@ -140,6 +154,8 @@ flowchart TB
     bind --> vpn[VPN и заранее разрешённый выход]
     gate -->|Нет проверки / ошибка / Lock| deny
 ```
+
+</details>
 
 У домашнего proxy нет магической гарантии маршрутизации всех сайтов: разрешённый
 каталог должен покрываться **действующей** server-side sensitive policy, прежде
