@@ -156,6 +156,15 @@ Only warnings about the separate Console collector transport are non-blocking
 for this playbook; other warnings and every critical failure still stop the lab.
 The general platform deploy gate is unchanged.
 
+Post-start acceptance must also verify that the policy TUN is UP, both Amn
+processes run and the LAN managed egress guard remains first in FORWARD. The
+controller currently waits for TUN existence before route-add; a TUN-before-UP
+race can reject startup. Amn's inserted FORWARD rules can also displace the LAN
+guard. Keep failed startup contained, inspect the owned error and use the
+documented `guard-only` recovery after reviewing ordering; do not bypass preflight
+or flush shared chains. Durable readiness/order fixes remain tracked under
+[RA-09](../../../docs/routing-assurance-roadmap.md#ra-04ra-06--плановое-укрепление-эксплуатации).
+
 This first lab has no boot hook/watchdog and deliberately does not modify
 `services-start`, `firewall-start` or existing supervisors. Reboot ends the lab;
 after a router firewall rebuild, stop/start Amn before further testing. A policy

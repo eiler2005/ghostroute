@@ -40,6 +40,12 @@ silently migrate A/B/C/D/M/Amn clients or weaken B's separate certificate debt.
 
 ## Local tests
 
+Use the [test and acceptance guide](../tests/README.md) for the command matrix,
+fixture prerequisites, dedicated CI and the separate live release gate.
+The [user guide](user-guide.md) explains controls and counters without exposing
+deployment state. Tests cover agent isolation and a simulated suspend gap;
+they do not replace actual sleep/wake acceptance on the installed Mac.
+
 The duplex relay has one I/O owner per tunnel, including TLS reads and writes.
 It bounds queued data, handles SSL readiness states and drains buffered output
 before closing on peer EOF. A large TLS response fixture covers premature-close
@@ -93,8 +99,11 @@ From the repository root:
 ./modules/mac-privacy-guard/tests/run.sh
 swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks
 node modules/mac-privacy-guard/tests/diagnostics.mjs
+node modules/mac-privacy-guard/tests/pac.mjs
 GUARD_REPORT_DIR=reports/mac-guard-design/browser \
   node modules/mac-privacy-guard/tests/browser.mjs
+GUARD_REPORT_DIR=reports/mac-guard-design/strict \
+  node modules/mac-privacy-guard/tests/strict-browser.mjs
 ```
 
 The browser script uses an already installed Playwright (defaults to the Console

@@ -154,6 +154,13 @@ WebRTC где применимо и реальную передачу данны
 ещё используемый managed IP напрямую. Сначала собрать данные, затем решать,
 нужна ли очистка вообще. Чистота каталога не важнее сохранения нужного маршрута.
 
+**Amn lifecycle (RA-09).** До продвижения lab устранить гонку «TUN появился,
+но ещё не поднят» перед добавлением маршрута и сохранять первый LAN egress guard
+после установки Amn-only FORWARD правил. Приёмка: задержанное поднятие TUN,
+отказ запуска с полной очисткой owned state и повторный start без смещения LAN
+guard. Эти изменения controller ещё не реализованы; текущая ручная эксплуатация
+требует post-start health, а retry не заменяет устранение гонки.
+
 ### RA-10–RA-11 — проверки и зависимости контрольного контура
 
 **CI.** В проверенном baseline установка Chromium остановилась из-за
@@ -181,6 +188,10 @@ mobile и защищённого WebKit/iPhone контракта после dep
 не разрешает менять channel ownership, DNS или firewall ради исправления UI.
 
 ### RA-12 — клиентская защита Mac
+
+[Руководство пользователя](../modules/mac-privacy-guard/docs/user-guide.md) и
+[матрица тестов](../modules/mac-privacy-guard/tests/README.md) описывают поставленный
+контракт отдельно от deployment-specific приёмки.
 
 [Mac Privacy Guard](../modules/mac-privacy-guard/README.md) реализован отдельным
 модулем: native shell, fixed-proxy Chrome, allowlist для домашнего HTTPS CONNECT,

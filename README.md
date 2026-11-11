@@ -338,6 +338,8 @@ core, not just a set of firewall scripts:
   controls the Chrome agent and explicit per-tab HTTP diagnostics, with built-in
   help and bounded temporary response previews. See the
   [module and installation guide](modules/mac-privacy-guard/README.md).
+  [User guide](modules/mac-privacy-guard/docs/user-guide.md) ·
+  [Tests and acceptance](modules/mac-privacy-guard/tests/README.md).
 - **Routing Core** — the production data plane: dnsmasq/ipset classification,
   sing-box REDIRECT, selected full-VPS TPROXY, home Reality ingress, managed
   Reality egress to VPS, direct-out fallback for non-selected non-managed

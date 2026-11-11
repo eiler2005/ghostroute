@@ -34,13 +34,13 @@ class StrictTests(unittest.TestCase):
         self.strict.close()
         self.release.set()
 
-    def report(self, **fields):
+    def report(self, profile=PROFILE, **fields):
         strict = dict(proxy='owned', catalog_digest=catalog_digest(self.parent.config['sensitive_domains']))
         strict.update(fields)
-        message = dict(op='agent',profile=PROFILE,ready=False,session=None,remaining=0,
+        message = dict(op='agent',profile=profile,ready=False,session=None,remaining=0,
                        reporting=True,protection=True,pause_remaining=0,strict=strict)
         self.parent.chrome.receive(validate_message(message))
-        return self.parent.chrome.reply(PROFILE)
+        return self.parent.chrome.reply(profile)
 
     def wait(self, condition):
         for _ in range(100):
@@ -134,3 +134,39 @@ class StrictTests(unittest.TestCase):
                        {'baseline':'external_pac','pac':'function FindProxyForURL(){}'}):
             with self.assertRaises(GuardError):
                 self.report(**fields)
+
+    def test_close_isolated_to_selected_chrome_agent(self):
+        other = 'e' * 32
+        self.report();self.report(profile=other)
+        self.wait(lambda:all(s.guard.mode=='active' for s in self.strict.sessions.values()))
+        first = self.strict.sessions[PROFILE].guard
+        second = self.strict.sessions[other].guard
+        left,right = socket.socketpair()
+        try:
+            second.connections.add(left)
+            self.parent.chrome.command(PROFILE,'block_sites')
+            self.assertEqual(first.mode,'locked')
+            self.assertEqual(self.report()['access'],'block')
+            self.assertEqual(self.report(profile=other)['access'],'allow')
+            self.assertNotEqual(left.fileno(),-1,'Close drained another profile tunnel')
+            self.assertEqual(self.parent.mode,'locked','Optional browser was activated')
+        finally:
+            second.connections.discard(left);left.close();right.close()
+
+    def test_suspend_gap_drains_tunnels_until_fresh_qualification(self):
+        self.report()
+        self.wait(lambda:self.strict.sessions[PROFILE].guard.mode=='active')
+        session = self.strict.sessions[PROFILE]
+        left,right = socket.socketpair()
+        try:
+            session.guard.connections.add(left)
+            self.release.clear()
+            session.attempt-=6
+            self.strict.last_tick=(time.monotonic()-11,time.time()-11)
+            self.strict.tick()
+            self.assertEqual(left.fileno(),-1,'Suspend retained a previously admitted tunnel')
+            self.assertEqual(self.report()['access'],'block')
+            self.release.set()
+            self.wait(lambda:session.guard.mode=='active')
+            self.assertEqual(self.report()['access'],'allow')
+        finally:right.close()
