@@ -208,6 +208,7 @@ try {
   assert.equal(await popup.locator('#protection').getAttribute('data-state'),'unguarded','Legacy access incorrectly claims a verified route');
   const deniedSender=await ordinary.newPage();await deniedSender.goto(`chrome-extension://${settings.extension_id}/help.html`);
   assert.equal((await deniedSender.evaluate(()=>chrome.runtime.sendMessage({op:'set_access',allowed:false}))).ok,false,'Non-popup extension page controlled access');
+  assert.equal((await deniedSender.evaluate(()=>chrome.runtime.sendMessage({op:'start_guard'}))).ok,false,'Non-popup extension page launched app');
   assert.equal((await api('chrome')).agents[0].desired_allowed,true,'Rejected sender changed native access');
   await deniedSender.close();
   if(report)await popup.screenshot({path:path.join(report,'popup-controls.png'),fullPage:true});
@@ -269,10 +270,18 @@ try {
   await control('chrome-offline');
   await waitFor(async()=>(await worker.evaluate(()=>chrome.declarativeNetRequest.getSessionRules())).length===0,'Lost native app did not restore Chrome block');
   const offlinePopup=await ordinary.newPage();await offlinePopup.goto(`chrome-extension://${settings.extension_id}/popup.html`);
-  assert(await offlinePopup.locator('#allow').isDisabled(),'Popup offered Open without native authority');
-  await offlinePopup.close();
+  await waitFor(()=>offlinePopup.locator('#allow').isEnabled(),'Offline popup cannot start Guard');
+  assert.equal(await offlinePopup.locator('#allow').textContent(),'Запустить Guard');
+  assert.equal(await offlinePopup.locator('#protection').getAttribute('data-state'),'closed');
+  await control('chrome-launch-deny');await offlinePopup.locator('#allow').click();
+  await waitFor(async()=>(await offlinePopup.locator('#action-state').textContent()).includes('Не удалось запустить'),'Failed launch has no recovery message');
   const beforeOfflineOrigin=(await control('status')).origin;await blockPage();
   assert.equal((await control('status')).origin,beforeOfflineOrigin,'Loss of journal disabled Chrome block');
+  await control('chrome-launch-allow');await offlinePopup.locator('#allow').click();
+  await waitFor(async()=>!(await api('chrome')).agents[0]?.protection && (await control('status')).launches===1,'Popup did not launch and reconnect');
+  await ordinaryPage.goto(`http://fixture.example.org:${settings.plain_origin}/relaunched`);
+  assert.equal(await ordinaryPage.locator('h1').textContent(),'Protected fixture');
+  await offlinePopup.close();
   await control('gate-down');await mustFail('https://fixture.example.org/gate-down');
   assert.equal((await control('status')).direct,0);
   await browser.close();browser=null;

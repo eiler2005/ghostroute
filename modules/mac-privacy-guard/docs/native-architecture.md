@@ -40,6 +40,12 @@ access controls; successful reconnection clears the connection warning. A second
 native launch activates the existing instance. The gate reuses a released address
 after TIME_WAIT but never enables SO_REUSEPORT or shares a live listener.
 
+Closing the last window leaves the app and engine running. The retained window
+can be reopened from the Dock or the existing custom URL; explicit Quit stops
+the engine. A popup launch uses the installed Native Messaging host with a
+fixed installer-owned bundle path and `--background`, without changing access
+authority. The initial background launch does not steal focus from Chrome.
+
 The shell holds a `BackendActivity` for the owned engine's lifetime. It uses
 `ProcessInfo.beginActivity(.userInitiatedAllowingIdleSystemSleep)` so App Nap
 does not defer the active gateway when its window is covered or minimized.

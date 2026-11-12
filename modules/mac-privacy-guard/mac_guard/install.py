@@ -69,7 +69,7 @@ def extension(destination, domains, ordinary_routing=None):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.5.0', 'description': 'Ordinary sites follow the Mac network; sensitive sites require verified GhostRoute.',
+                'version': '0.5.2', 'description': 'Ordinary sites follow the Mac network; sensitive sites require verified GhostRoute.',
                 'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'],
                 'background': {'service_worker': 'background.js'},
                 'devtools_page': 'devtools.html',
@@ -92,7 +92,7 @@ def extension_id(destination):
     return ''.join(chr(ord('a') + int(character, 16)) for character in digest)
 
 
-def native_host(state, destination, manifests, python):
+def native_host(state, destination, manifests, python, app=None):
     directory = state / 'Chrome Native Host'
     private_dir(directory)
     script = directory / 'bridge.py'
@@ -100,6 +100,8 @@ def native_host(state, destination, manifests, python):
     origin = 'chrome-extension://' + extension_id(destination) + '/'
     executable = directory / 'ghostroute-events'
     command = [str(python.resolve()), '-I', '-B', str(script), '--state', str(state.resolve()), '--origin', origin]
+    if app is not None:
+        command += ['--app', str(app.resolve())]
     write_private(executable, ('#!/bin/sh\nexec ' + shlex.join(command) + ' "$@"\n').encode())
     executable.chmod(0o700)
     manifest = {'name':'org.ghostroute.guard.events', 'description':'Local GhostRoute block events',
@@ -125,9 +127,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.1',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.2',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '13', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '14', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}
@@ -158,7 +160,7 @@ def main():
     if not domains:
         raise SystemExit('Empty catalog is not allowed')
     extension(args.extension, domains, args.ordinary_routing)
-    native_host(args.extension.parent, args.extension, args.native_hosts, Path(sys.executable))
+    native_host(args.extension.parent, args.extension, args.native_hosts, Path(sys.executable), args.app)
     if not args.extension_only:
         install(args.app, Path(sys.executable))
     print('Local installation completed; extension activation is a separate Chrome step.')

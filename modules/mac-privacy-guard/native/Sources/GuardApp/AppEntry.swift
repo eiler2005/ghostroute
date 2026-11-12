@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu()
         appMenu.addItem(withTitle: "О GhostRoute Guard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Закрыть GhostRoute Guard", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Завершить GhostRoute Guard", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu; menu.addItem(appItem)
         let edit = NSMenuItem(), editMenu = NSMenu(title: "Правка")
         for (title, action, key) in [("Отменить", Selector(("undo:")), "z"), ("Вырезать", #selector(NSText.cut(_:)), "x"), ("Копировать", #selector(NSText.copy(_:)), "c"), ("Вставить", #selector(NSText.paste(_:)), "v"), ("Выбрать всё", #selector(NSText.selectAll(_:)), "a")] {
@@ -33,11 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = "GhostRoute Guard"
+        window.isReleasedWhenClosed = false
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 820, height: 620)
         window.contentView = NSHostingView(rootView: GuardRootView(store: store))
-        window.center(); window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        window.center()
+        if !ProcessInfo.processInfo.arguments.contains("--background") {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         store.retryHandler = { [weak self] in self?.startBackend() }
         startBackend()
     }
@@ -66,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)

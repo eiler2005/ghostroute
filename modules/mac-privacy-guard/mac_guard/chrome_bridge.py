@@ -1,13 +1,36 @@
 """Bounded Chrome stdio bridge. No upstream secrets or dashboard credential."""
 import argparse
 import json
+import plistlib
+import re
 import socket
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
 
-def forward(state, data):
+def launch_app(app):
+    """Launch only the installed bundle selected by the local installer."""
+    if sys.platform != 'darwin' or app is None:
+        return {'ok': False}
+    try:
+        app = app.resolve(strict=True)
+        info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        if app.suffix != '.app' or not isinstance(info, dict) or info.get('CFBundleIdentifier') != 'org.ghostroute.guard':
+            return {'ok': False}
+        subprocess.run(['/usr/bin/open', '-g', '-a', str(app), '--args', '--background'],
+                       check=True, capture_output=True, timeout=3)
+        return {'ok': True}
+    except (OSError, ValueError, plistlib.InvalidFileException, subprocess.SubprocessError):
+        return {'ok': False}
+
+
+def forward(state, data, app=None):
+    if isinstance(data, dict) and data.get('op') == 'launch':
+        if set(data) != {'op', 'profile'} or not isinstance(data['profile'], str) or not re.fullmatch('[a-f0-9]{32}', data['profile']):
+            return {'ok': False}
+        return launch_app(app)
     raw = json.dumps(data, separators=(',', ':')).encode() + b'\n'
     if len(raw) > 8192:
         return {'ok': False}
@@ -39,7 +62,7 @@ def forward(state, data):
         return {'ok': False}
 
 
-def serve(source, output, state):
+def serve(source, output, state, app=None):
     while True:
         header = source.read(4)
         if len(header) != 4:
@@ -51,7 +74,7 @@ def serve(source, output, state):
         if len(payload) != length:
             return
         try:
-            result = forward(state, json.loads(payload))
+            result = forward(state, json.loads(payload), app)
         except (ValueError, TypeError):
             result = {'ok': False}
         body = json.dumps(result).encode()
@@ -63,11 +86,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--origin', required=True)
+    parser.add_argument('--app', type=Path)
     parser.add_argument('caller')
     args = parser.parse_args()
     if args.caller != args.origin:
         raise SystemExit(1)
-    serve(sys.stdin.buffer, sys.stdout.buffer, args.state)
+    serve(sys.stdin.buffer, sys.stdout.buffer, args.state, args.app)
 
 
 if __name__ == '__main__':

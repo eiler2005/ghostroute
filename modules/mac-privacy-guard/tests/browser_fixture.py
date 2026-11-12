@@ -30,6 +30,8 @@ counts['sensitive_conflict'] = 0
 counts['conflict_targets'] = []
 counts['external_http'] = counts['external_tls'] = 0
 strict_system = {'direct':True}
+counts['chrome_online'] = True
+counts['launch_allowed'] = True
 
 class LocalHTTP(ThreadingHTTPServer):
     def server_bind(self):
@@ -138,6 +140,7 @@ native_host(root, extension_path, root / 'native-manifests', Path(sys.executable
 class Control(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
+        global chrome_events
         if self.path == '/strict-enable' and not guard.strict:
             from mac_guard.strict import StrictCoordinator
             def strict_check(*_):
@@ -167,7 +170,18 @@ class Control(BaseHTTPRequestHandler):
         if self.path == '/delay': qualification.clear()
         if self.path == '/release': qualification.set()
         if self.path == '/close-browser': threading.Thread(target=owned_browser.close, daemon=True).start()
-        if self.path == '/chrome-offline': chrome_events.shutdown(); chrome_events.server_close()
+        if self.path == '/chrome-launch-deny': counts['launch_allowed'] = False
+        if self.path == '/chrome-launch-allow': counts['launch_allowed'] = True
+        if self.path == '/chrome-offline' and counts['chrome_online']:
+            chrome_events.shutdown(); chrome_events.server_close()
+            counts['chrome_online'] = False
+            if guard.strict:
+                for session in guard.strict.sessions.values(): session.guard.lock(reason='expired')
+        if self.path == '/chrome-online' and not counts['chrome_online'] and counts['launch_allowed']:
+            chrome_events = ChromeEvents(guard, root)
+            threading.Thread(target=chrome_events.serve_forever, daemon=True).start()
+            counts['chrome_online'] = True
+            counts['launches'] = counts.get('launches', 0) + 1
         if self.path == '/upstream-down': adapter.available = False; guard.lock(); guard.activate('fixture')
         if self.path == '/gate-down':
             guard.lock()
@@ -180,6 +194,22 @@ class Control(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 control = LocalHTTP(('127.0.0.1', 0), Control)
+# Replace only AppKit launch in the disposable host. Native framing, the worker,
+# Unix-socket reconnect and strict qualification remain the production code.
+bridge = root / 'Chrome Native Host/bridge.py'
+launch_fixture = f'''
+def launch_app(app):
+    import http.client
+    connection = http.client.HTTPConnection('127.0.0.1', {control.server_port}, timeout=2)
+    try:
+        connection.request('GET', '/chrome-online')
+        result = json.loads(connection.getresponse().read())
+        return {{'ok': result['chrome_online']}}
+    finally:
+        connection.close()
+
+'''
+bridge.write_text(bridge.read_text().replace("if __name__ == '__main__':", launch_fixture + "if __name__ == '__main__':"))
 for server in (origin, plain_origin, tripwire, tls_tripwire, rtc_boundary, conflict_proxy, tripwire6, gate, dashboard, chrome_events, control):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1],

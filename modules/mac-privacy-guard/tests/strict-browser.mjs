@@ -166,6 +166,19 @@ try{
   await control('strict-route-up');
   await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Route did not recover automatically');
   await page.goto('https://fixture.example.org/recovered');
+  // Explicit popup launch restores IPC, but never substitutes for qualification.
+  await control('delay');await control('chrome-offline');
+  await waitFor(async()=>(await worker.evaluate(()=>chrome.declarativeNetRequest.getSessionRules())).length===0,'Shutdown did not restore deny');
+  await waitFor(()=>popup.locator('#allow').isEnabled(),'Offline strict popup cannot start app');
+  assert.equal(await popup.locator('#allow').textContent(),'Запустить Guard');
+  await popup.locator('#allow').click();
+  await waitFor(async()=>(await control('status')).launches===1 && (await agent()).strict.reason==='checking','Popup launch did not restart qualification');
+  await denied(`https://fixture.example.org:${settings.tls_tripwire}/during-relaunch`);
+  assert.equal((await control('status')).direct,0,'Launch bypassed strict qualification');
+  await control('release');
+  await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Popup relaunch did not recover strict access');
+  await page.goto('https://fixture.example.org/relaunched');
+  assert.equal(await page.locator('h1').textContent(),'Protected fixture');
   if(report){await popup.screenshot({path:path.join(report,'strict-popup.png'),fullPage:true});writeFileSync(path.join(report,'strict-proof.json'),JSON.stringify({guard:await api('status'),activity:await api('activity')},null,2));}
   await control('strict-gate-down');
   await denied(`https://fixture.example.org:${settings.tls_tripwire}/dead-gate`);

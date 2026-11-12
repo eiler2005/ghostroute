@@ -18,9 +18,9 @@ async function update() {
     const status = await chrome.runtime.sendMessage({op:'status'});
     if(lastProtection!==null && lastProtection!==status.protection && !pending)document.getElementById('action-state').textContent='';
     lastProtection=status.protection;
-    document.getElementById('protection').textContent = status.strict ? (!status.protection && status.strict.ready ? 'Защищено через GhostRoute' : 'Авто GhostRoute · закрыто') : status.protection ? 'Доступ закрыт' : 'Доступ открыт';
-    document.getElementById('protection').dataset.state=!status.protection ? (status.strict?.ready ? 'protected' : 'unguarded') : 'closed';
-    document.getElementById('scope').textContent = status.strict ? strictReason(status.strict.reason) : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
+    document.getElementById('protection').textContent = !status.connected ? 'Guard не на связи' : status.strict ? (!status.protection && status.strict.ready ? 'Защищено через GhostRoute' : 'Авто GhostRoute · закрыто') : status.protection ? 'Доступ закрыт' : 'Доступ открыт';
+    document.getElementById('protection').dataset.state=!status.connected ? 'closed' : !status.protection ? (status.strict?.ready ? 'protected' : 'unguarded') : 'closed';
+    document.getElementById('scope').textContent = !status.connected ? 'Приложение завершено или связь потеряна. Нажмите «Запустить Guard»: доступ откроется после подключения и проверки маршрута.' : status.strict ? strictReason(status.strict.reason) : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
     document.getElementById('baseline').textContent=status.strict?.baseline==='external_pac'?'Включена совместимость с внешним proxy. Другие сайты используют сохранённый снимок его правил.':'Обычные сайты — через сеть Mac. Дома действуют правила роутера; блокировка Guard касается чувствительного каталога.';
     document.getElementById('state').textContent = status.connected ? 'Локальный журнал подключён' : 'Журнал недоступен · блокировка работает';
     for(const [id,value,label] of [['count',status.blocked+status.allowed,'Всего запросов'],['allowed',status.allowed,'Разрешено'],['blocked',status.blocked,'Заблокировано']]){
@@ -30,8 +30,8 @@ async function update() {
     document.getElementById('reporting').textContent = status.reporting ? 'Передача событий включена' : 'Передача событий выключена';
     document.getElementById('version').textContent = 'v'+chrome.runtime.getManifest().version;
     document.getElementById('missed').textContent = status.missed ? 'Часть сигналов не доставлена в Guard. События не сохраняются на диск и не отправляются повторно.' : '';
-    document.getElementById('allow').textContent=status.strict?'Возобновить авто':'Открыть доступ';
-    document.getElementById('allow').disabled=pending || !status.connected || (status.strict ? status.strict.enabled : !status.protection);
+    document.getElementById('allow').textContent=!status.connected?'Запустить Guard':status.strict?'Возобновить авто':'Открыть доступ';
+    document.getElementById('allow').disabled=pending || (status.connected && (status.strict ? status.strict.enabled : !status.protection));
     document.getElementById('deny').disabled=pending || !status.connected || (status.strict ? !status.strict.enabled && status.protection : status.protection);
     return status;
   } catch (_) {document.getElementById('state').textContent = 'Проверьте включение расширения';}
@@ -43,6 +43,18 @@ async function setAccess(allowed){
   notice.textContent='Chrome применяет настройку…';
   document.getElementById('allow').disabled=true;document.getElementById('deny').disabled=true;
   try{
+    let status=await update();
+    if(allowed && !status?.connected){
+      notice.textContent='Запускаем Guard. Доступ пока закрыт…';
+      const started=await chrome.runtime.sendMessage({op:'start_guard'});
+      if(started?.ok!==true){notice.textContent='Не удалось запустить Guard. Откройте приложение по ссылке ниже; при необходимости повторите установку.';return;}
+      for(let attempt=0;attempt<100;attempt++){
+        status=await update();
+        if(status?.connected)break;
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      if(!status?.connected){notice.textContent='Guard запущен, но служба не ответила. Откройте приложение и проверьте сообщение об ошибке.';return;}
+    }
     const result=await chrome.runtime.sendMessage({op:'set_access',allowed});
     if(result?.ok!==true)throw new Error();
     for(let attempt=0;attempt<20;attempt++){

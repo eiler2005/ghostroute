@@ -1,6 +1,7 @@
 'use strict';
 importScripts('counts.js','pac.js','strict.js');
 const profile=crypto.randomUUID().replaceAll('-','');
+const nativeHost='org.ghostroute.guard.events';
 let port=null,inFlight=0,connected=false,blocked=0,allowed=0,missed=0,reporting=true,protection=true,pausedUntil=0,owner=null;
 let accessWanted=false,appAllowed=false,leaseUntil=0;
 let diagnostic={ready:false,session:null,remaining:0};
@@ -41,7 +42,7 @@ function accessLease(value){
 }
 function connect(){
   if(port)return port;
-  port=chrome.runtime.connectNative('org.ghostroute.guard.events');
+  port=chrome.runtime.connectNative(nativeHost);
   port.onMessage.addListener(reply=>{
     inFlight=Math.max(0,inFlight-1);connected=reply.ok===true;
     nativeQueue=nativeQueue.catch(()=>{}).then(async()=>{
@@ -120,6 +121,12 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener(info=>{
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(sender.id!==chrome.runtime.id)return;
+  if(message?.op==='start_guard'){
+    if(sender.url!==chrome.runtime.getURL('popup.html')){reply({ok:false});return;}
+    chrome.runtime.sendNativeMessage(nativeHost,{op:'launch',profile}).then(result=>{
+      reply({ok:result?.ok===true});void heartbeat().catch(()=>{});
+    }).catch(()=>reply({ok:false}));return true;
+  }
   if(message?.op==='set_access'){
     if(sender.url!==chrome.runtime.getURL('popup.html') || typeof message.allowed!=='boolean' || !connected){reply({ok:false});return;}
     send({op:'access',allowed:message.allowed});reply({ok:true});return;
