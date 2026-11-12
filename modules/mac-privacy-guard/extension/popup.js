@@ -19,7 +19,7 @@ async function update() {
     if(lastProtection!==null && lastProtection!==status.protection && !pending)document.getElementById('action-state').textContent='';
     lastProtection=status.protection;
     document.getElementById('protection').textContent = status.strict ? (!status.protection && status.strict.ready ? 'Защищено через GhostRoute' : 'Авто GhostRoute · закрыто') : status.protection ? 'Доступ закрыт' : 'Доступ открыт';
-    document.getElementById('protection').classList.toggle('paused',!status.protection);
+    document.getElementById('protection').dataset.state=!status.protection ? (status.strict?.ready ? 'protected' : 'unguarded') : 'closed';
     document.getElementById('scope').textContent = status.strict ? strictReason(status.strict.reason) : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
     document.getElementById('baseline').textContent=status.strict?.baseline==='external_pac'?'Другие сайты используют сохранённые внешние правила с локальными проверенными исключениями. Смена страны автоматически не подхватывается.':'Другие сайты сохраняют обычный сетевой путь.';
     document.getElementById('state').textContent = status.connected ? 'Локальный журнал подключён' : 'Журнал недоступен · блокировка работает';

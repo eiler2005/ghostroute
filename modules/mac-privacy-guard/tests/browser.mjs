@@ -205,6 +205,7 @@ try {
   await command('allow_sites');
   await waitFor(()=>popup.locator('#deny').isEnabled(),'Popup did not follow app Open');
   assert.equal(await popup.locator('#action-state').textContent(),'','Popup retained a stale Close confirmation after desktop Open');
+  assert.equal(await popup.locator('#protection').getAttribute('data-state'),'unguarded','Legacy access incorrectly claims a verified route');
   const deniedSender=await ordinary.newPage();await deniedSender.goto(`chrome-extension://${settings.extension_id}/help.html`);
   assert.equal((await deniedSender.evaluate(()=>chrome.runtime.sendMessage({op:'set_access',allowed:false}))).ok,false,'Non-popup extension page controlled access');
   assert.equal((await api('chrome')).agents[0].desired_allowed,true,'Rejected sender changed native access');

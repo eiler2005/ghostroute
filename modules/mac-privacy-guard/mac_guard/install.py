@@ -49,7 +49,7 @@ def extension(destination, domains):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.4.2', 'description': 'Qualified sensitive routing, reviewed local ordinary-site exceptions and compact counters.',
+                'version': '0.4.3', 'description': 'Qualified sensitive routing, reviewed local ordinary-site exceptions and compact counters.',
                 'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'],
                 'background': {'service_worker': 'background.js'},
                 'devtools_page': 'devtools.html',
@@ -105,9 +105,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.2',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.3',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '10', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '11', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}
