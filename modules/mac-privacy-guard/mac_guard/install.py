@@ -125,9 +125,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.0',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.1',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '12', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '13', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}

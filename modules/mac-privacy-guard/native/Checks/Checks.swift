@@ -21,6 +21,25 @@ func makeStatus(_ state: String) throws -> GuardStatus {
 @main
 struct NativeChecks {
     @MainActor static func main() async throws {
+        var activityStarts = 0, activityEnds = 0
+        var activityOptions: ProcessInfo.ActivityOptions = []
+        let activityMarker = NSObject()
+        let beginActivity: (ProcessInfo.ActivityOptions, String) -> NSObjectProtocol = { options, _ in
+            activityStarts += 1; activityOptions = options; return activityMarker
+        }
+        let endActivity: (NSObjectProtocol) -> Void = { handle in
+            precondition(handle === activityMarker); activityEnds += 1
+        }
+        var activity: BackendActivity? = BackendActivity(begin: beginActivity, end: endActivity)
+        try require(activityOptions == .userInitiatedAllowingIdleSystemSleep, "Background gateway lacks a user-initiated activity")
+        try require(!activityOptions.contains(.idleSystemSleepDisabled) && !activityOptions.contains(.idleDisplaySleepDisabled), "Gateway activity prevents real sleep")
+        activity?.finish(); activity?.finish(); activity = nil
+        try require(activityStarts == 1 && activityEnds == 1, "Activity cleanup is not exactly once")
+        activity = BackendActivity(begin: beginActivity, end: endActivity)
+        activity = nil
+        try require(activityStarts == 2 && activityEnds == 2, "Startup cleanup leaked an activity")
+        print("PASS: background gateway activity, real sleep allowed and balanced cleanup")
+
         let sessionCredential=String(repeating:"a",count:43)
         for value in ["https://example.org/#\(sessionCredential)", "http://localhost:1234/#\(sessionCredential)", "http://user:secret@127.0.0.1:1234/#\(sessionCredential)", "http://127.0.0.1:1234/?token=FAKE_PLACEHOLDER#\(sessionCredential)", "http://127.0.0.1:1234/#short"] {
             var rejected=false

@@ -31,7 +31,10 @@ final class BackendProcess {
                 child.standardOutput = output
                 child.standardError = FileHandle.nullDevice
                 self.process = child
-                try child.run()
+                let activity = BackendActivity()
+                child.terminationHandler = { _ in activity.finish() }
+                do { try child.run() }
+                catch { activity.finish(); throw error }
                 let timeout = DispatchWorkItem { if child.isRunning { child.terminate() } }
                 DispatchQueue.global().asyncAfter(deadline: .now() + 12, execute: timeout)
                 defer { timeout.cancel() }

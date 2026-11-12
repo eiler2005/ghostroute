@@ -40,6 +40,14 @@ access controls; successful reconnection clears the connection warning. A second
 native launch activates the existing instance. The gate reuses a released address
 after TIME_WAIT but never enables SO_REUSEPORT or shares a live listener.
 
+The shell holds a `BackendActivity` for the owned engine's lifetime. It uses
+`ProcessInfo.beginActivity(.userInitiatedAllowingIdleSystemSleep)` so App Nap
+does not defer the active gateway when its window is covered or minimized.
+Failed launch, child exit and normal shutdown release the assertion exactly once.
+It does not prevent display/system sleep, extend route evidence expiry, or allow
+an unqualified path after wake. See Apple's
+[app-level activity guidance](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/PrioritizeWorkAtTheAppLevel.html).
+
 Python and protected Chrome launches strip inherited AppKit bundle-identity
 environment values so each executable discovers its own bundle. Chrome receives
 the fixed proxy on every launch, an explicit Default profile, and a new window on
