@@ -12,6 +12,13 @@ per-tab HTTP diagnostics and app-to-Chrome controls are implemented. The Chrome
 agent supplies this control plane without a system extension. System-wide
 filtering remains outside this module's installed scope.
 
+For independent third-party VPN controls, enable Guard only in a dedicated
+regular Chrome profile. Leave other profiles without an enabled Guard extension;
+their own extensions retain policy ownership. The native app and installed host
+are shared, while agent state and CONNECT gates remain isolated. This regular
+profile is distinct from the optional fixed-proxy browser owned by the launcher.
+Native applications and CLI clients do not enter either gate automatically.
+
 ## Components and ownership
 
 ![Native application and local Chrome control plane](../../../docs/assets/diagrams/ghostroute-guard-components-en.png)

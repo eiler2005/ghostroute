@@ -76,6 +76,7 @@ fixture использует Playwright Chromium. Настоящий Chromium sa
 | TLS и доверенный выход | Полный TLS-in-TLS canary, wrong pin/CA/exit rejection | Доверенный источник реального pin/IP и deployed sensitive policy |
 | Закрытие доступа | Unit generation/cancellation и реальные browser отказы; Close закрывает принадлежащие gate туннели | Существующие чужие/direct соединения не принадлежат gate |
 | Независимость профилей | Два активных агента, Close первого сохраняет второй и не активирует optional browser | Установка и разрешения каждого реального профиля/Incognito |
+| Выделенный профиль Guard и другой VPN | Тот же контракт изоляции агентов; proxy/DNR устанавливаются расширением в его профиле | Guard включён только в выделенном профиле; Close блокирует его каталог, а другой профиль сохраняет работающие VPN-кнопки и загружает обычный сайт; Resume повторно квалифицирует Guard |
 | Сон и устаревание | Имитация паузы времени закрывает существующий туннель до новой qualification | Настоящие sleep/wake, roaming и reboot на выбранной macOS |
 | Фоновая работа | Swift: user-initiated activity допускает сон, cleanup выполняется ровно один раз | Скрыть окно установленного Guard; в Activity Monitor проверить `App Nap: No`, `Preventing Sleep: No`, затем повторить sensitive-запрос и посмотреть состояние маршрута |
 | Закрытие окна и повторный запуск | Python: фиксированный bundle, ограниченные аргументы/время, запуск не выдаёт lease. Browser: активная кнопка без engine, ошибка запуска, reconnect, отказ другим extension pages. Strict browser: запросы закрыты до новой qualification | Закрыть реальное окно и проверить сохранение службы; затем ⌘Q → «Запустить Guard» в popup → защищённый статус. В fixture подменяется только запуск AppKit |
@@ -84,6 +85,11 @@ fixture использует Playwright Chromium. Настоящий Chromium sa
 | Локальная скорость | `browser.mjs`: 16 desktop и 8 popup переключений, менее 2 секунд каждое | Это legacy protocol fixture без qualification; не SLA удалённого strict route и не замер реального сайта |
 | HTTP-диагностика | Настоящий extension/native/control path плюс scoped callback fixtures | Видимость и lifecycle настоящей панели DevTools; callbacks её не заменяют |
 | Граница каталога | UDP и reviewed TURN tripwires; отдельный тест разрешённого TURN TCP вне каталога | Неизвестные зависимости, другие приложения и whole-tab изоляция не покрыты |
+
+Проверка профилей не является приёмкой firewall всего Mac. Нативные приложения
+и CLI не направляются в Guard автоматически. Успешный независимый HTTPS-запрос
+при закрытом gate подтверждает сохранение сети вне Guard, но не проверяет
+маршрут каждого приложения. Системный фильтр отсутствует в поставке.
 
 ## CI и выпуск
 
