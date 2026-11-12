@@ -10,6 +10,7 @@
 |---|---|
 | `./modules/mac-privacy-guard/tests/run.sh` | Python policy/TLS/gate/API/Native Messaging, отмена проверки, закрытие туннелей, изоляция агентов и имитация разрыва времени после сна |
 | `node modules/mac-privacy-guard/tests/pac.mjs` | Приоритет каталога перед внешним PAC, suffix-границы, исходные bypass/fallback правила, восстановление снимка и ограничение размера |
+| `node modules/mac-privacy-guard/tests/ordinary-routing.mjs` | Контроллер Chrome: сетевой путь, удаление старого provider PAC, явная совместимость, ownership-конфликт и отказ неизвестного режима |
 | `node modules/mac-privacy-guard/tests/counts.mjs` | Badge до четырёх символов, десятичная запятая, компактные единицы и точные числа с разделителями |
 | `node modules/mac-privacy-guard/tests/diagnostics.mjs` | Подготовленная вкладка, отзыв доступа, solicited preview, лимиты и удаление данных; инертное отображение HTML |
 | `swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks` | Типизированные контракты, bootstrap/token, отказ API, startup/retry, состояние UI и команды Chrome |
@@ -20,7 +21,10 @@
 `run.sh` запускает только Python; он не заменяет Swift/JS/browser проверки.
 Python также проверяет приватные ordinary exceptions: права, владельца,
 символические ссылки, лимиты и запрет пересечений с sensitive-каталогом.
-`strict-browser.mjs` воспроизводит CONNECT 503: непроверенный сайт остаётся
+`strict-browser.mjs` по умолчанию проверяет обычную сеть Mac, миграцию owned PAC
+со старым provider snapshot и доступность обычных сайтов во время проверки,
+паузы, отказа маршрута и потери engine. Sensitive-каталог не получает DIRECT.
+Отдельный запуск с `GUARD_ORDINARY_ROUTING=external_pac` воспроизводит CONNECT 503: непроверенный сайт остаётся
 на отказавшем proxy, отдельно проверенный ordinary site открывается напрямую,
 а sensitive сохраняет обязательный gate. `browser.mjs` проверяет popup при
 многомиллионных счётчиках в viewport 380×600, точные подсказки и раскрытие деталей.
@@ -39,6 +43,8 @@ Strict fixture проверяет зелёный подтверждённый с
 GUARD_REPORT_DIR=reports/mac-guard-checks/legacy \
   node modules/mac-privacy-guard/tests/browser.mjs
 GUARD_REPORT_DIR=reports/mac-guard-checks/strict \
+  node modules/mac-privacy-guard/tests/strict-browser.mjs
+GUARD_ORDINARY_ROUTING=external_pac GUARD_REPORT_DIR=reports/mac-guard-checks/external-pac \
   node modules/mac-privacy-guard/tests/strict-browser.mjs
 ```
 
@@ -72,6 +78,7 @@ fixture использует Playwright Chromium. Настоящий Chromium sa
 | Независимость профилей | Два активных агента, Close первого сохраняет второй и не активирует optional browser | Установка и разрешения каждого реального профиля/Incognito |
 | Сон и устаревание | Имитация паузы времени закрывает существующий туннель до новой qualification | Настоящие sleep/wake, roaming и reboot на выбранной macOS |
 | Одновременный внешний PAC | HTTP/HTTPS через отдельный fake proxy с авторизацией; sensitive идёт только через Guard; Close сохраняет внешний путь | Версия/страна реального провайдера, новый снимок после изменения правил |
+| Обычная сеть по умолчанию | HTTP/HTTPS вне каталога не касаются fake provider; старый снимок удаляется; ordinary доступен при закрытом sensitive | Реальная сеть Mac и действующие managed/direct правила роутера; системный VPN не отключается |
 | Локальная скорость | `browser.mjs`: 16 desktop и 8 popup переключений, менее 2 секунд каждое | Это legacy protocol fixture без qualification; не SLA удалённого strict route и не замер реального сайта |
 | HTTP-диагностика | Настоящий extension/native/control path плюс scoped callback fixtures | Видимость и lifecycle настоящей панели DevTools; callbacks её не заменяют |
 | Граница каталога | UDP и reviewed TURN tripwires; отдельный тест разрешённого TURN TCP вне каталога | Неизвестные зависимости, другие приложения и whole-tab изоляция не покрыты |

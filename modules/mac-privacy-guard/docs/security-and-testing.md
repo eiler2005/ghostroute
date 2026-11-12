@@ -130,7 +130,10 @@ checks qualification, gate bytes, conflicts, Close/Resume, recovery and dead-gat
 engine tripwires. Owned PAC/privacy remain on Close/engine loss: restoring
 prediction can issue speculative CONNECT before DNR. `browser.mjs` keeps legacy
 protocol fixtures without a strict provider for compatibility/latency checks.
-The strict suite also proves external inline PAC delegation for non-catalog HTTP
+The default strict suite proves ordinary Mac-network browsing during qualification,
+pause, route outage and engine loss, plus migration away from an old owned provider
+snapshot. Sensitive destinations never use the ordinary path. A separate explicit
+`external_pac` run also proves external inline PAC delegation for non-catalog HTTP
 and HTTPS, including a separate enabled authentication extension, while catalog
 traffic uses only Guard. Pause preserves external traffic. `pac.mjs` covers suffix
 boundaries, snapshot recovery and immutable catalog dispatch. Provider PAC source

@@ -5,7 +5,10 @@ class GuardStrict {
     this.required=false;this.ready=false;this.state='waiting';this.digest='';this.current=null;
     this.baseline=null;this.expectedPac=null;this.failedPac=null;
     this.block=block;this.changed=changed;this.queue=Promise.resolve();this.updating=false;
-    this.loaded=Promise.all([catalog,fetch(chrome.runtime.getURL('ordinary-direct-domains.json')).then(response=>{if(!response.ok)throw new Error('Local policy unavailable');return response.json();})]).then(async([rules,direct])=>{
+    const local=path=>fetch(chrome.runtime.getURL(path)).then(response=>{if(!response.ok)throw new Error('Local policy unavailable');return response.json();});
+    this.loaded=Promise.all([catalog,local('ordinary-direct-domains.json'),local('ordinary-routing.json')]).then(async([rules,direct,routing])=>{
+      if(!routing || !['network','external_pac'].includes(routing.mode))throw new Error('Invalid ordinary routing');
+      this.ordinaryRouting=routing.mode;
       this.domains=[...new Set(rules.flatMap(rule=>rule.condition.requestDomains))].sort();
       this.direct=direct;
       this.digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(this.domains.join('\n'))))].map(n=>n.toString(16).padStart(2,'0')).join('');
@@ -25,7 +28,7 @@ class GuardStrict {
   }
   report(){return this.digest?{proxy:this.state,catalog_digest:this.digest,baseline:this.baseline?'external_pac':'direct'}:null;}
   pac(port){
-    return GuardPAC.build(this.domains,port,this.baseline,this.direct);
+    return GuardPAC.build(this.domains,port,this.baseline,this.ordinaryRouting==='external_pac'?this.direct:[]);
   }
   sync(value){
     this.queue=this.queue.catch(()=>{}).then(()=>this.apply(value));return this.queue;
@@ -56,9 +59,16 @@ class GuardStrict {
       const controllable=setting=>['controllable_by_this_extension','controlled_by_this_extension'].includes(setting.levelOfControl);
       if(![proxy,rtc,predict].every(controllable)){this.state='conflict';await this.release();return;}
       const ours=proxy.levelOfControl==='controlled_by_this_extension' && proxy.value.mode==='pac_script' && proxy.value.pacScript?.data?.startsWith(GuardPAC.prefix);
-      if(ours)this.baseline=GuardPAC.baseline(proxy.value.pacScript.data,true);
-      else if(proxy.value.mode==='pac_script' && typeof proxy.value.pacScript?.data==='string')this.baseline=GuardPAC.baseline(proxy.value.pacScript.data,false);
+      const inline=proxy.value.mode==='pac_script' && typeof proxy.value.pacScript?.data==='string';
+      if(this.ordinaryRouting==='network' && (inline || ['direct','system'].includes(proxy.value.mode))){
+        // Explicit network policy replaces even a previously composed Guard PAC.
+        // Do not decode or execute the obsolete provider snapshot during upgrade.
+        this.baseline=null;
+      }
+      else if(ours)this.baseline=GuardPAC.baseline(proxy.value.pacScript.data,true);
+      else if(inline)this.baseline=GuardPAC.baseline(proxy.value.pacScript.data,false);
       else if(!['direct','system'].includes(proxy.value.mode)){this.state='unsupported_proxy';await this.release();return;}
+      else this.baseline=null;
       const data=this.pac(value.port);this.expectedPac=data;
       if(this.failedPac===data){this.ready=false;this.state='error';await this.block();return;}
       if(proxy.value.pacScript?.data!==data || rtc.value!=='disable_non_proxied_udp' || predict.value!==false){

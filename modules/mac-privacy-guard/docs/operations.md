@@ -11,6 +11,7 @@
 | Приложение | `~/Applications/GhostRoute Guard.app` | Собранный ad-hoc signed bundle; не App Store/notarized distribution |
 | Состояние | `~/Library/Application Support/GhostRoute Guard/` | Приватный каталог 700 |
 | Профиль | `profile.json` внутри состояния | Маршруты, доверенные сертификаты/выходы, credentials; 600 |
+| `ordinary-routing-mode` | Внутри состояния | Явный выбор `network` / `external_pac`; 600; отсутствие означает `network` |
 | `Browser/` | Внутри состояния | Отдельные Chrome cookies, история и настройки |
 | `gate-port`, `browser-pid`, `app.lock` | Внутри состояния | Локальное владение listener/browser; не deployment inventory |
 | `Chrome Blocker/` | Внутри состояния | Unpacked MV3 extension; включается отдельно в Chrome |
@@ -48,6 +49,10 @@ swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks
 ## Приватный профиль
 
 ### Проверенные исключения обычных сайтов
+
+Эти исключения нужны только в необязательном режиме `external_pac`. Основной
+режим `network` уже отправляет все обычные сайты через сеть Mac; список исключений
+сохраняется для совместимости и отката, но не участвует в его PAC.
 
 Если обычный сайт работает в Incognito, а основной профиль получает
 `ERR_TUNNEL_CONNECTION_FAILED`, сначала проверить фактический proxy и CONNECT
@@ -126,7 +131,28 @@ leaf DER, включая self-signed. Автоматического TOFU или
 
 ## Одновременно с proxy-расширением Chrome
 
-Guard сохраняет текущий совместимый inline PAC внешнего расширения и проверяет
+По умолчанию используется `network`: обычные сайты идут через сеть Mac,
+а домашний роутер применяет свои managed/direct правила. При миграции из старой
+версии embedded provider PAC удаляется из эффективных правил Guard после
+получения настройки gate от приложения. Это не fallback после ошибки.
+Системный VPN не отключается; другие расширения остаются включёнными.
+
+Выбор сохраняется в приватном `ordinary-routing-mode` и переживает пересборки.
+Installer создаёт `Chrome Blocker/ordinary-routing.json`; менять только этот
+генерируемый JSON недостаточно для следующего обновления. После команды нужен
+Reload расширения и проверка статуса:
+
+```bash
+./modules/mac-privacy-guard/bin/install-mac --extension-only --ordinary-routing network
+```
+
+Для явно выбранной совместимости указать `--ordinary-routing external_pac`.
+Этот режим использует весь доступный снимок прежней политики, а не создаёт
+новый список выбранных сайтов. Если снимок уже удалён режимом `network`, сначала
+получить его по процедуре ниже. Не включать совместимость просто для устранения
+ошибки сайта: это возвращает зависимость обычных сайтов от внешнего proxy.
+
+В `external_pac` Guard сохраняет текущий совместимый inline PAC внешнего расширения и проверяет
 sensitive-каталог раньше его правил. Остальные сайты продолжают использовать
 сохранённые правила и авторизацию провайдера; его расширение остаётся включённым.
 Эффективная PAC принадлежит Guard. Popup и приложение показывают наличие внешнего
@@ -251,7 +277,7 @@ backend также замечает исчезновение parent process и �
 ## Обновление, копия и rollback
 
 1. Закрыть Guard и его браузер. Сохранить приватный `profile.json` и существующий
-   `ordinary-direct-domains.txt` в уже принятом
+   `ordinary-direct-domains.txt` и `ordinary-routing-mode` в уже принятом
    **зашифрованном** recovery bundle. Профиль содержит пароль proxy.
 2. Записать commit исходников. Переименовать прежний `.app` в локальный rollback
    bundle и выполнить `bin/install-mac` заново. Installer не перезаписывает
@@ -268,7 +294,7 @@ backend также замечает исчезновение parent process и �
 
 `Browser/` содержит сессии/историю и по умолчанию не должен попадать в обычный
 диагностический архив. Для восстановления маршрутов достаточно исходников,
-Python/Chrome, приватного профиля и проверенных ordinary exceptions, если они
+Python/Chrome, приватного профиля, выбора `ordinary-routing-mode` и проверенных ordinary exceptions, если они
 использовались; browser sessions можно создать заново.
 `gate-port`, lock, Unix socket и PID не переносить на другой Mac. Blocker пересобрать и включить
 в новом профиле вручную. Зашифрованная копия на том же Mac не является offsite.

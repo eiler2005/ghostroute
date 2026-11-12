@@ -11,6 +11,7 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 const {chromium}=require(process.env.GUARD_PLAYWRIGHT || path.join(repo,'modules/ghostroute-console/app/node_modules/playwright'));
 const root=mkdtempSync('/tmp/guard-strict-browser-');
 const report=process.env.GUARD_REPORT_DIR;
+const external=process.env.GUARD_ORDINARY_ROUTING==='external_pac';
 if(report)mkdirSync(report,{recursive:true});
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=fixture.example.org','-addext','subjectAltName=DNS:fixture.example.org','-keyout',path.join(root,'key.pem'),'-out',path.join(root,'cert.pem')],{stdio:'ignore'});
 const fixture=spawn('python3',['-B',path.join(path.dirname(fileURLToPath(import.meta.url)),'browser_fixture.py'),root],{stdio:['ignore','pipe','inherit']});
@@ -28,6 +29,7 @@ try{
   writeFileSync(path.join(nativeDirectory,nativeName+'.json'),JSON.stringify(manifest),{mode:0o600,flag:'wx'});
   const workerPath=path.join(settings.extension,'background.js');
   writeFileSync(path.join(settings.extension,'ordinary-direct-domains.json'),JSON.stringify(['bypassfixture.example.org']),{mode:0o600});
+  writeFileSync(path.join(settings.extension,'ordinary-routing.json'),JSON.stringify({mode:external?'external_pac':'network'}),{mode:0o600});
   writeFileSync(workerPath,readFileSync(workerPath,'utf8').replace('org.ghostroute.guard.events',nativeName));
   const competitor=path.join(root,'competitor');mkdirSync(competitor);
   writeFileSync(path.join(competitor,'manifest.json'),JSON.stringify({manifest_version:3,name:'Disposable proxy owner fixture',version:'1.0',permissions:['proxy','webRequest','webRequestAuthProvider'],host_permissions:['<all_urls>'],background:{service_worker:'auth.js'}}));
@@ -38,12 +40,14 @@ try{
   const worker=browser.serviceWorkers().find(w=>w.url().includes(settings.extension_id)) || await browser.waitForEvent('serviceworker',w=>w.url().includes(settings.extension_id));
   const agent=async()=>(await api('chrome')).agents[0];
   const page=await browser.newPage();
-  const denied=async(url)=>{let failed=false;try{await page.goto(url,{timeout:3000,waitUntil:'domcontentloaded'});}catch(_){failed=true;}assert(failed,'Sensitive request escaped a closed strict path');};
+  const denied=async(url)=>{const probe=await browser.newPage();let failed=false;try{await probe.goto(url,{timeout:3000,waitUntil:'domcontentloaded'});}catch(_){failed=true;}finally{await probe.close();}assert(failed,'Sensitive request escaped a closed strict path');};
   await waitFor(async()=>(await agent())?.strict?.reason==='checking','Strict lane did not start qualification');
   const beforeQualification=(await control('status')).origin;
   await denied(`https://fixture.example.org:${settings.tls_tripwire}/before-proof`);
   assert.equal((await control('status')).origin,beforeQualification,'Application data reached origin during qualification');
   assert.equal((await control('status')).direct,0);
+  await page.goto(`http://notfixture.example.org:${settings.plain_origin}/before-proof`);
+  assert.equal(await page.locator('h1').textContent(),'Protected fixture','Qualification blocked ordinary browsing');
   await control('release');
   await waitFor(async()=>{const a=await agent();return a?.strict?.ready && !a.protection;},'Strict lane did not automatically open');
   await page.goto('https://fixture.example.org/');
@@ -103,6 +107,7 @@ try{
   assert.equal((await control('status')).sensitive_conflict,0,'Sensitive request reached competing proxy: '+JSON.stringify({targets:(await control('status')).conflict_targets,rtc:settings.tripwire,page:settings.tls_tripwire}));
   const baseline='function FindProxyForURL(url,host){return "PROXY 127.0.0.1:'+settings.conflict_proxy+'";}';
   await competitorPage.evaluate(data=>chrome.proxy.settings.set({value:{mode:'pac_script',pacScript:{data}},scope:'regular'}),baseline);
+  if(external){
   await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection && (await agent()).strict.baseline==='external_pac','External PAC was not composed');
   await page.goto(`http://notfixture.example.org:${settings.plain_origin}/external`);
   assert.equal(await page.locator('h1').textContent(),'External proxy fixture','Non-sensitive traffic did not use authenticated external PAC');
@@ -126,6 +131,26 @@ try{
   const composed=await worker.evaluate(()=>chrome.proxy.settings.get({incognito:false}));
   assert(composed.value.pacScript.data.includes('// GhostRoute baseline '),'Baseline did not persist inside owned PAC');
   assert(!JSON.stringify(await api('chrome')).includes(baseline),'Provider PAC entered native API');
+  }else{
+    await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection && (await agent()).strict.baseline==='direct','Network policy did not replace provider PAC');
+    for(const [host,port] of [['notfixture.example.org',settings.plain_origin],['failfixture.example.org',settings.tls_origin],['bypassfixture.example.org',settings.tls_origin]]){
+      await page.goto(`${port===settings.plain_origin?'http':'https'}://${host}:${port}/network-policy`);
+      assert.equal(await page.locator('h1').textContent(),'Protected fixture','Ordinary site still depends on external proxy');
+    }
+    assert.equal((await control('status')).external_denied ?? 0,0,'Network mode contacted failing external proxy');
+    // Upgrade an owned old-version PAC, including its embedded provider snapshot.
+    await worker.evaluate(source=>chrome.proxy.settings.set({value:{mode:'pac_script',pacScript:{data:GuardPAC.build(strictController.domains,strictController.current.port,source),mandatory:true}},scope:'regular'}),baseline);
+    await waitFor(async()=>{const p=await worker.evaluate(()=>chrome.proxy.settings.get({incognito:false}));return p.value.pacScript?.data && !p.value.pacScript.data.includes('GhostRoute baseline');},'Upgrade retained the old provider snapshot');
+    await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Upgrade failed to requalify');
+    await page.goto('https://fixture.example.org/network-sensitive');
+    assert.equal(await page.locator('h1').textContent(),'Protected fixture');
+    assert.equal((await control('status')).sensitive_conflict,0);
+    await popup.locator('#deny').click();await waitFor(async()=>(await agent()).strict.reason==='paused' && (await agent()).protection,'Network pause failed');
+    await page.goto(`http://notfixture.example.org:${settings.plain_origin}/ordinary-on-pause`);
+    assert.equal(await page.locator('h1').textContent(),'Protected fixture');
+    await denied(`https://fixture.example.org:${settings.tls_tripwire}/network-paused`);
+    await popup.locator('#allow').click();await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Network Resume failed');
+  }
   await competitorPage.close();
   await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Auto did not recover after proxy conflict was removed');
   await control('strict-system-proxy-on');
@@ -136,6 +161,8 @@ try{
   await control('strict-route-down');
   await waitFor(async()=>(await agent()).protection,'Route failure did not close sensitive catalog');
   await denied(`https://fixture.example.org:${settings.tls_tripwire}/route-down`);
+  await page.goto(`http://notfixture.example.org:${settings.plain_origin}/ordinary-during-outage`);
+  assert.equal(await page.locator('h1').textContent(),external?'External proxy fixture':'Protected fixture','Sensitive outage blocked ordinary sites');
   await control('strict-route-up');
   await waitFor(async()=>(await agent()).strict.ready && !(await agent()).protection,'Route did not recover automatically');
   await page.goto('https://fixture.example.org/recovered');
@@ -148,5 +175,7 @@ try{
   assert.equal((await worker.evaluate(()=>chrome.proxy.settings.get({incognito:false}))).levelOfControl,'controlled_by_this_extension','Engine loss removed the fail-closed PAC');
   await denied(`https://fixture.example.org:${settings.tls_tripwire}/engine-down`);
   assert.equal((await control('status')).direct,0);
-  console.log('PASS: qualified sensitive gate plus authenticated external PAC for other sites; no provider source in native API; pause preserves external traffic; RTC scope, conflicts, recovery and no-direct tripwires');
+  await page.goto(`http://notfixture.example.org:${settings.plain_origin}/ordinary-without-engine`);
+  assert.equal(await page.locator('h1').textContent(),external?'External proxy fixture':'Protected fixture','Engine loss blocked ordinary sites');
+  console.log('PASS: '+(external?'explicit authenticated external PAC':'ordinary Mac network and old-PAC migration')+'; ordinary browsing survives qualification/pause/outage/engine loss; sensitive recovery and no-direct tripwires');
 }finally{if(browser)await browser.close();fixture.kill('SIGTERM');rmSync(root,{recursive:true,force:true});}

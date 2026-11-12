@@ -20,6 +20,7 @@ jobs:
           node-version: '22'
       - run: node modules/mac-privacy-guard/tests/diagnostics.mjs
       - run: node modules/mac-privacy-guard/tests/pac.mjs
+      - run: node modules/mac-privacy-guard/tests/ordinary-routing.mjs
       - run: node modules/mac-privacy-guard/tests/counts.mjs
       - run: python3 modules/secrets-management/tests/test-secret-scan.py
   mac-browser:
@@ -46,6 +47,12 @@ jobs:
         env:
           GUARD_PLAYWRIGHT: ${{ runner.temp }}/guard-tools/node_modules/playwright
           GUARD_REPORT_DIR: ${{ runner.temp }}/guard-browser-report/strict
+      - name: Explicit external PAC compatibility checks
+        run: node modules/mac-privacy-guard/tests/strict-browser.mjs
+        env:
+          GUARD_ORDINARY_ROUTING: external_pac
+          GUARD_PLAYWRIGHT: ${{ runner.temp }}/guard-tools/node_modules/playwright
+          GUARD_REPORT_DIR: ${{ runner.temp }}/guard-browser-report/external-pac
       - name: Build local app bundle
         working-directory: modules/mac-privacy-guard
         run: python3 -B -m mac_guard.install --catalog ../../configs/sensitive-domains.txt --app "$RUNNER_TEMP/Guard.app" --extension "$RUNNER_TEMP/Guard-blocker" --native-hosts "$RUNNER_TEMP/Guard-native-hosts"

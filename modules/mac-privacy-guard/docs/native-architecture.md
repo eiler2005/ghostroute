@@ -86,8 +86,10 @@ selected extension agent and displays its actual DNR state separately from the
 requested state. Strict mode requires a trusted route profile, but no DevTools. The existing
 blocked page must be refreshed; no tab is automatically moved or reloaded.
 Ordinary Chrome's catalog uses the mandatory gate and qualified HTTPS route.
-Other destinations use the preserved external inline PAC, or the ordinary path
-when no external PAC was configured. Provider authentication stays with its enabled
+Other destinations use the Mac network by default; the home router retains
+managed/direct ownership. The controller drops old embedded provider snapshots
+when upgrading to this mode. External inline PAC composition requires the explicit
+local installer setting `external_pac`. Provider authentication stays with its enabled
 extension; country/server changes are not live-synchronized. The snapshot remains
 only in Chrome settings, never in Native Messaging or the journal. See [strict mode](strict-mode.md).
 The popup provides the same access buttons for its own ephemeral agent. It sends

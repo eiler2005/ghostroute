@@ -80,8 +80,10 @@ engine; выключенная передача, потери и независ�
 Manifest добавляет `devtools_page`, но не добавляет разрешения `debugger`,
 `webRequest`, `tabs`, cookies, host permissions или content scripts. Отдельная
 capability `strict.js` использует `proxy` и `privacy`; она не читает страницы.
-`pac.js` сохраняет совместимый внешний inline PAC только в настройках Chrome и
-делегирует ему назначения вне каталога. В native-схеме есть только enum
+По умолчанию `strict.js` собирает PAC с обычной сетью Mac вне каталога и удаляет
+старый provider snapshot. Только явный режим `external_pac` сохраняет совместимый
+внешний inline PAC в настройках Chrome и делегирует ему назначения вне каталога.
+Выбор хранится локально у installer; новый IPC или разрешения не нужны. В native-схеме есть только enum
 `baseline: direct|external_pac`, без исходного PAC. Смена страны провайдера требует
 нового снимка; порядок и восстановление описаны в [строгом режиме](strict-mode.md).
 

@@ -38,7 +38,27 @@ def ordinary_direct_domains(path, sensitive):
     return domains
 
 
-def extension(destination, domains):
+def ordinary_routing_mode(state, selected=None):
+    path = state / 'ordinary-routing-mode'
+    if path.is_symlink():
+        raise GuardError('Настройка маршрута не должна быть символической ссылкой')
+    mode = 'network'
+    if path.exists():
+        info = path.stat()
+        if info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 64:
+            raise GuardError('Настройке маршрута нужны права 600, текущий владелец и размер до 64 байт')
+        mode = path.read_text().strip()
+    if selected is not None:
+        mode = selected
+    if mode not in ('network', 'external_pac'):
+        raise GuardError('Неизвестный режим обычных сайтов')
+    if selected is not None:
+        write_private(path, (mode + '\n').encode())
+    return mode
+
+
+def extension(destination, domains, ordinary_routing=None):
+    mode = ordinary_routing_mode(destination.parent, ordinary_routing)
     direct = ordinary_direct_domains(destination.parent / 'ordinary-direct-domains.txt', domains)
     private_dir(destination)
     # requestDomains matches exact hosts and their subdomains, not substrings.
@@ -49,14 +69,14 @@ def extension(destination, domains):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.4.3', 'description': 'Qualified sensitive routing, reviewed local ordinary-site exceptions and compact counters.',
+                'version': '0.5.0', 'description': 'Ordinary sites follow the Mac network; sensitive sites require verified GhostRoute.',
                 'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'],
                 'background': {'service_worker': 'background.js'},
                 'devtools_page': 'devtools.html',
                 'icons': {str(size): f'icon-{size}.png' for size in (16, 32, 48, 128)},
                 'declarative_net_request': {'rule_resources': [{'id': 'sensitive', 'enabled': True, 'path': 'rules.json'}]},
                 'action': {'default_popup': 'popup.html'}}
-    for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules)), ('ordinary-direct-domains.json', json.dumps(direct))]:
+    for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules)), ('ordinary-direct-domains.json', json.dumps(direct)), ('ordinary-routing.json', json.dumps({'mode': mode}))]:
         write_private(destination / filename, content.encode())
     for filename in ('background.js', 'counts.js', 'pac.js', 'strict.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
                      'devtools.html', 'devtools.js', 'diagnostics.js', 'diagnostics.html', 'panel.js', 'panel.css'):
@@ -105,9 +125,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.3',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.0',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '11', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '12', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}
@@ -129,13 +149,15 @@ def main():
     parser.add_argument('--catalog', type=Path, required=True)
     parser.add_argument('--native-hosts', type=Path, default=Path.home() / 'Library/Application Support/Google/Chrome/NativeMessagingHosts')
     parser.add_argument('--extension-only', action='store_true')
+    parser.add_argument('--ordinary-routing', choices=('network', 'external_pac'),
+                        help='Ordinary sites: Mac network (default) or explicitly preserved external inline PAC; choice persists across rebuilds')
     args = parser.parse_args()
     if not args.extension_only and args.app.exists():
         raise GuardError('Приложение уже существует. Закройте его и переименуйте старый bundle перед обновлением')
     domains = domains_from_text(args.catalog.read_text())
     if not domains:
         raise SystemExit('Empty catalog is not allowed')
-    extension(args.extension, domains)
+    extension(args.extension, domains, args.ordinary_routing)
     native_host(args.extension.parent, args.extension, args.native_hosts, Path(sys.executable))
     if not args.extension_only:
         install(args.app, Path(sys.executable))

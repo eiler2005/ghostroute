@@ -57,7 +57,7 @@ def routing(ru):
     nodes = [
       node('chrome',64,228,224,104,'Chrome',['Обычный профиль' if ru else 'Your existing profile']),
       node('policy',352,216,336,128,'Политика каталога' if ru else 'Catalog policy',['PAC + DNR','Чувствительные адреса — первыми' if ru else 'Sensitive destinations first'],focal=True),
-      node('external',864,216,352,128,'Другие назначения' if ru else 'Other destinations',['Снимок внешнего PAC' if ru else 'External PAC snapshot','либо обычная сеть' if ru else 'or the ordinary network']),
+      node('external',864,216,352,128,'Другие назначения' if ru else 'Other destinations',['Сеть Mac → роутер' if ru else 'Mac network → home router','Его managed/direct правила' if ru else 'Existing managed/direct rules']),
       node('closed',64,416,224,128,'Доступ закрыт' if ru else 'Access blocked',['Нет подтверждения' if ru else 'No valid proof','или ручная пауза' if ru else 'or a manual pause']),
       node('gate',352,416,336,128,'Шлюз Guard' if ru else 'Guard gateway',['Изолирован на агент Chrome' if ru else 'Isolated per Chrome agent','Без прямого fallback' if ru else 'No direct fallback'],focal=True),
       node('route',864,416,352,128,'Маршрут GhostRoute' if ru else 'GhostRoute path',['Домашний HTTPS → policy' if ru else 'Home HTTPS → reviewed policy','sensitive-out → hermes_vps']),
@@ -104,10 +104,10 @@ for lang in ('ru','en'):
     ru=lang=='ru'
     title='GhostRoute Guard — визуальное руководство' if ru else 'GhostRoute Guard — visual guide'
     figures=[figure(lang,'routing','Два пути в одном Chrome' if ru else 'Two paths in one Chrome',
-      'Каталог защищён обязательным маршрутом; остальные сайты сохраняют свои правила.' if ru else 'The catalog has a mandatory path; other sites retain their existing rules.',routing(ru),
+      'Чувствительные сайты — через Guard; обычные — по сетевым правилам Mac и роутера.' if ru else 'Sensitive sites require Guard; ordinary sites follow the Mac network and router rules.',routing(ru),
       'Сплошная — путь запроса. Пунктир — закрытие доступа до допуска.' if ru else 'Solid: request path. Dashed: rejection before admission.',
-      'Внешний PAC — снимок, не автоматическая синхронизация страны. Защита относится к каталогу.' if ru else 'External PAC is a snapshot, not live country sync. Protection is destination-catalog scoped.',
-      'Детали роутера объединены в проверенный маршрут. Неизвестные CDN/IP/TURN TCP вне каталога могут использовать внешний или обычный путь.' if ru else 'Router detail is collapsed into the qualified path. Unknown CDN/IP/TURN TCP outside the catalog may use the external or ordinary path.'),
+      'Внешний PAC — отдельная опция. Пауза и отказ Guard закрывают только чувствительный каталог.' if ru else 'External PAC is opt-in. Guard pause or failure closes only the sensitive destination catalog.',
+      'Детали роутера объединены в проверенный маршрут. Неизвестные CDN/IP/TURN TCP вне каталога используют обычный путь.' if ru else 'Router detail is collapsed into the qualified path. Unknown CDN/IP/TURN TCP outside the catalog use the ordinary path.'),
       figure(lang,'components','Приложение управляет, Chrome исполняет' if ru else 'The app controls; Chrome enforces',
       'Контрольный контур локален; поток HTTPS проходит через отдельный gate.' if ru else 'The control plane stays local; HTTPS traffic uses a separate gateway.',components(ru),
       'Пунктир — команды, события и чтение состояния. Это не маршрут пакетов.' if ru else 'Dashed: commands, events and state reads. These are not packet paths.',
