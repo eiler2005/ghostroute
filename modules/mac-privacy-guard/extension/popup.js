@@ -20,11 +20,13 @@ async function update() {
     lastProtection=status.protection;
     document.getElementById('protection').textContent = status.strict ? (!status.protection && status.strict.ready ? 'Защищено через GhostRoute' : 'Авто GhostRoute · закрыто') : status.protection ? 'Доступ закрыт' : 'Доступ открыт';
     document.getElementById('protection').classList.toggle('paused',!status.protection);
-    document.getElementById('scope').textContent = status.strict ? strictReason(status.strict.reason)+(status.strict.baseline==='external_pac'?' Остальные адреса — по сохранённым правилам внешнего proxy. Смена страны автоматически не подхватывается.':'') : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
+    document.getElementById('scope').textContent = status.strict ? strictReason(status.strict.reason) : status.protection ? 'Нажмите «Открыть доступ» здесь или в приложении, чтобы снять блокировку.' : 'Чувствительные сайты разрешены в этом профиле. Используются текущая сеть и VPN обычного Chrome.';
+    document.getElementById('baseline').textContent=status.strict?.baseline==='external_pac'?'Другие сайты используют сохранённые внешние правила с локальными проверенными исключениями. Смена страны автоматически не подхватывается.':'Другие сайты сохраняют обычный сетевой путь.';
     document.getElementById('state').textContent = status.connected ? 'Локальный журнал подключён' : 'Журнал недоступен · блокировка работает';
-    document.getElementById('count').textContent = status.blocked+status.allowed;
-    document.getElementById('allowed').textContent = status.allowed;
-    document.getElementById('blocked').textContent = status.blocked;
+    for(const [id,value,label] of [['count',status.blocked+status.allowed,'Всего запросов'],['allowed',status.allowed,'Разрешено'],['blocked',status.blocked,'Заблокировано']]){
+      const metric=document.getElementById(id);metric.textContent=GuardCounts.compact(value);metric.title=GuardCounts.exact(value);metric.dataset.count=String(value);metric.setAttribute('aria-label',label+': '+GuardCounts.exact(value));
+    }
+    document.getElementById('exact-counts').textContent=`Всего: ${GuardCounts.exact(status.blocked+status.allowed)} · разрешено: ${GuardCounts.exact(status.allowed)} · заблокировано: ${GuardCounts.exact(status.blocked)}`;
     document.getElementById('reporting').textContent = status.reporting ? 'Передача событий включена' : 'Передача событий выключена';
     document.getElementById('version').textContent = 'v'+chrome.runtime.getManifest().version;
     document.getElementById('missed').textContent = status.missed ? 'Часть сигналов не доставлена в Guard. События не сохраняются на диск и не отправляются повторно.' : '';

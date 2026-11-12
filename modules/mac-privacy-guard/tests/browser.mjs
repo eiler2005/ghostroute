@@ -210,6 +210,18 @@ try {
   assert.equal((await api('chrome')).agents[0].desired_allowed,true,'Rejected sender changed native access');
   await deniedSender.close();
   if(report)await popup.screenshot({path:path.join(report,'popup-controls.png'),fullPage:true});
+  // Large totals remain readable inside Chrome's constrained popup surface.
+  const savedCounts=await worker.evaluate(()=>({allowed,blocked}));
+  await worker.evaluate(()=>{allowed=11000000;blocked=9876543;});
+  await popup.setViewportSize({width:380,height:600});await popup.reload();
+  await popup.waitForFunction(()=>document.querySelector('#allowed').dataset.count==='11000000');
+  assert.equal(await popup.locator('#allowed').textContent(),'11M');
+  assert.match(await popup.locator('#allowed').getAttribute('title'),/11\D000\D000/);
+  assert(await popup.evaluate(()=>document.documentElement.scrollWidth<=innerWidth && [...document.querySelectorAll('.metrics strong')].every(node=>node.scrollWidth<=node.clientWidth)),'Large counters overflow popup');
+  await popup.locator('summary').click();
+  assert((await popup.locator('#exact-counts').textContent()).includes('11'));
+  if(report)await popup.screenshot({path:path.join(report,'popup-large-counts.png'),fullPage:true});
+  await worker.evaluate(saved=>{allowed=saved.allowed;blocked=saved.blocked;},savedCounts);
   await popup.close();
   const switchTimings=[];
   for(let cycle=0;cycle<8;cycle++){

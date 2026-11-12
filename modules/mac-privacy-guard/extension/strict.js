@@ -5,8 +5,9 @@ class GuardStrict {
     this.required=false;this.ready=false;this.state='waiting';this.digest='';this.current=null;
     this.baseline=null;this.expectedPac=null;this.failedPac=null;
     this.block=block;this.changed=changed;this.queue=Promise.resolve();this.updating=false;
-    this.loaded=catalog.then(async rules=>{
+    this.loaded=Promise.all([catalog,fetch(chrome.runtime.getURL('ordinary-direct-domains.json')).then(response=>{if(!response.ok)throw new Error('Local policy unavailable');return response.json();})]).then(async([rules,direct])=>{
       this.domains=[...new Set(rules.flatMap(rule=>rule.condition.requestDomains))].sort();
+      this.direct=direct;
       this.digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(this.domains.join('\n'))))].map(n=>n.toString(16).padStart(2,'0')).join('');
     });
     const invalidate=()=>{
@@ -24,7 +25,7 @@ class GuardStrict {
   }
   report(){return this.digest?{proxy:this.state,catalog_digest:this.digest,baseline:this.baseline?'external_pac':'direct'}:null;}
   pac(port){
-    return GuardPAC.build(this.domains,port,this.baseline);
+    return GuardPAC.build(this.domains,port,this.baseline,this.direct);
   }
   sync(value){
     this.queue=this.queue.catch(()=>{}).then(()=>this.apply(value));return this.queue;
@@ -42,9 +43,9 @@ class GuardStrict {
   async apply(value){
     if(!value)return;
     this.required=true;this.current=value;
-    await this.loaded;
     this.updating=true;
     try{
+      await this.loaded;
       if(!chrome.proxy || !chrome.privacy){this.state='permission_required';await this.block();return;}
       if(!value.enabled){this.state='waiting';this.ready=false;await this.block();return;}
       if(!value.system_direct || !Number.isInteger(value.port) || value.port<1024 || value.port>65535 || value.catalog_digest!==this.digest){

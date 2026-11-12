@@ -20,6 +20,7 @@ jobs:
           node-version: '22'
       - run: node modules/mac-privacy-guard/tests/diagnostics.mjs
       - run: node modules/mac-privacy-guard/tests/pac.mjs
+      - run: node modules/mac-privacy-guard/tests/counts.mjs
       - run: python3 modules/secrets-management/tests/test-secret-scan.py
   mac-browser:
     runs-on: macos-15

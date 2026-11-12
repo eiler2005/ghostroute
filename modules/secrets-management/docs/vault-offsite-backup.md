@@ -68,7 +68,9 @@ all VPS application databases are present. Independently owned VPS apps need
 their own backup contract.
 
 Existing archives do not automatically include a later-installed Mac Guard
-profile. Refresh the encrypted control-material inventory explicitly; verify the
+profile or its private `ordinary-direct-domains.txt` policy. Include both when
+present; rebuild the generated extension policy with the installer. Refresh the
+encrypted control-material inventory explicitly; verify the
 restored member before claiming coverage. Guard browser cookies/history are
 excluded by default. Rebuild its app/extension from the recorded source commit;
 do not restore stale loopback ports, process IDs or locks. See the

@@ -31,4 +31,10 @@ assert.equal(attempt.FindProxyForURL('https://sensitive.example.org/','sensitive
 for(const invalid of ['', 'x'.repeat(1048577)])assert.throws(()=>pac.build(['sensitive.example.org'],10081,invalid));
 assert.throws(()=>pac.baseline(pac.prefix+'// GhostRoute baseline %invalid',true));
 assert.throws(()=>pac.build(['bad"host'],10081,source));
+const selective=vm.createContext({});
+vm.runInContext(pac.build(['sensitive.example.org'],10081,source,['ordinary.example.org']),selective);
+for(const host of ['ordinary.example.org','api.ordinary.example.org','ORDINARY.EXAMPLE.ORG.'])assert.equal(selective.FindProxyForURL('https://'+host+'/',host),'DIRECT');
+assert.equal(selective.FindProxyForURL('https://notordinary.example.org/','notordinary.example.org'),'PROXY external.example.invalid:10080; DIRECT');
+assert.equal(selective.FindProxyForURL('https://sensitive.example.org/','sensitive.example.org'),'PROXY 127.0.0.1:10081');
+for(const entries of [['sensitive.example.org'],['api.sensitive.example.org'],['example.org'],['*'],['invalid/host'],Array(33).fill('ordinary.example.org')])assert.throws(()=>pac.build(['sensitive.example.org'],10081,source,entries));
 console.log('PASS: sensitive gate precedes opaque provider PAC, exact provider/bypass delegation, restart/port migration, immutable entry and primitives, bounded snapshots');

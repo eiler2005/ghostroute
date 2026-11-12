@@ -1,5 +1,5 @@
 'use strict';
-importScripts('pac.js','strict.js');
+importScripts('counts.js','pac.js','strict.js');
 const profile=crypto.randomUUID().replaceAll('-','');
 let port=null,inFlight=0,connected=false,blocked=0,allowed=0,missed=0,reporting=true,protection=true,pausedUntil=0,owner=null;
 let accessWanted=false,appAllowed=false,leaseUntil=0;
@@ -112,9 +112,9 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener(info=>{
   if(!permitted && info.rule.rulesetId!=='sensitive')return;
   let host;try{host=new URL(info.request.url).hostname;}catch(_){return;}
   if(permitted)allowed++;else blocked++;
-  chrome.action.setBadgeText({text:String(blocked+allowed)});
+  chrome.action.setBadgeText({text:GuardCounts.badge(blocked+allowed)});
   chrome.action.setBadgeBackgroundColor({color:'#287964'});
-  chrome.action.setTitle({title:`Guard · запросов каталога: ${blocked+allowed} · разрешено: ${allowed} · заблокировано: ${blocked}`});
+  chrome.action.setTitle({title:`Guard · запросов каталога: ${GuardCounts.exact(blocked+allowed)} · разрешено: ${GuardCounts.exact(allowed)} · заблокировано: ${GuardCounts.exact(blocked)}`});
   const method=['GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH','CONNECT','TRACE'].includes(info.request.method)?info.request.method:'OTHER';
   if(reporting)send({op:permitted?'allowed':'blocked',host,method,resource_type:info.request.type,rule_id:info.rule.ruleId});
 });

@@ -27,6 +27,7 @@ try{
   const manifest=JSON.parse(readFileSync(settings.native_manifest));manifest.name=nativeName;
   writeFileSync(path.join(nativeDirectory,nativeName+'.json'),JSON.stringify(manifest),{mode:0o600,flag:'wx'});
   const workerPath=path.join(settings.extension,'background.js');
+  writeFileSync(path.join(settings.extension,'ordinary-direct-domains.json'),JSON.stringify(['bypassfixture.example.org']),{mode:0o600});
   writeFileSync(workerPath,readFileSync(workerPath,'utf8').replace('org.ghostroute.guard.events',nativeName));
   const competitor=path.join(root,'competitor');mkdirSync(competitor);
   writeFileSync(path.join(competitor,'manifest.json'),JSON.stringify({manifest_version:3,name:'Disposable proxy owner fixture',version:'1.0',permissions:['proxy','webRequest','webRequestAuthProvider'],host_permissions:['<all_urls>'],background:{service_worker:'auth.js'}}));
@@ -100,6 +101,13 @@ try{
   await page.goto('https://fixture.example.org/strict-with-external');
   assert.equal(await page.locator('h1').textContent(),'Protected fixture');
   assert.equal((await control('status')).sensitive_conflict,0,'Sensitive catalog was delegated to external PAC');
+  await assert.rejects(()=>page.goto(`https://failfixture.example.org:${settings.tls_origin}/provider-503`,{timeout:6000}),/ERR_TUNNEL_CONNECTION_FAILED/);
+  assert((await control('status')).external_denied>0,'Failed proxy did not reproduce a tunnel 503');
+  const reviewedPage=await browser.newPage();
+  await reviewedPage.goto(`https://bypassfixture.example.org:${settings.tls_origin}/reviewed-ordinary-exception`);
+  assert.equal(await reviewedPage.locator('h1').textContent(),'Protected fixture','Reviewed normal site still used the failing external proxy');
+  await reviewedPage.close();
+  assert(!JSON.stringify(await api('chrome')).includes('bypassfixture.example.org'),'Private ordinary exception entered native API');
   await popup.locator('#deny').click();await waitFor(async()=>(await agent()).strict.reason==='paused' && (await agent()).protection,'Split mode pause failed');
   await page.goto(`http://notfixture.example.org:${settings.plain_origin}/external-while-sensitive-closed`);
   assert.equal(await page.locator('h1').textContent(),'External proxy fixture','Close broke the external baseline');

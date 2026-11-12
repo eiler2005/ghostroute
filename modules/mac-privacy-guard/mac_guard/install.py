@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import plistlib
 import shutil
@@ -12,12 +13,33 @@ import subprocess
 import sys
 import tempfile
 
-from .policy import GuardError, domains_from_text, private_dir, write_private
+from .policy import GuardError, domains_from_text, matches, private_dir, public_host, write_private
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def ordinary_direct_domains(path, sensitive):
+    if path.is_symlink():
+        raise GuardError('Приватные исключения не должны быть символической ссылкой')
+    if not path.exists():
+        return []
+    info = path.stat()
+    if info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 8192:
+        raise GuardError('Приватным исключениям нужны права 600, текущий владелец и размер до 8 KiB')
+    domains = domains_from_text(path.read_text())
+    if len(domains) > 32:
+        raise GuardError('Разрешено до 32 исключений обычного Chrome')
+    for domain in domains:
+        public_host(domain)
+        if ':' in domain or not any('a' <= char <= 'z' for char in domain):
+            raise GuardError('Исключение должно быть публичным доменным именем')
+        if matches(domain, sensitive) or any(matches(protected, [domain]) for protected in sensitive):
+            raise GuardError('Исключение пересекается с чувствительным каталогом')
+    return domains
+
+
 def extension(destination, domains):
+    direct = ordinary_direct_domains(destination.parent / 'ordinary-direct-domains.txt', domains)
     private_dir(destination)
     # requestDomains matches exact hosts and their subdomains, not substrings.
     rules = [{'id': index + 1, 'priority': 1, 'action': {'type': 'block'},
@@ -27,16 +49,16 @@ def extension(destination, domains):
                   'websocket', 'webtransport', 'webbundle', 'other']}}
              for index, domain in enumerate(domains)]
     manifest = {'manifest_version': 3, 'name': 'GhostRoute Sensitive Site Guard',
-                'version': '0.4.1', 'description': 'Qualified GhostRoute sensitive routing with a preserved external PAC for other destinations.',
+                'version': '0.4.2', 'description': 'Qualified sensitive routing, reviewed local ordinary-site exceptions and compact counters.',
                 'permissions': ['declarativeNetRequest', 'declarativeNetRequestFeedback', 'nativeMessaging', 'proxy', 'privacy'],
                 'background': {'service_worker': 'background.js'},
                 'devtools_page': 'devtools.html',
                 'icons': {str(size): f'icon-{size}.png' for size in (16, 32, 48, 128)},
                 'declarative_net_request': {'rule_resources': [{'id': 'sensitive', 'enabled': True, 'path': 'rules.json'}]},
                 'action': {'default_popup': 'popup.html'}}
-    for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules))]:
+    for filename, content in [('manifest.json', json.dumps(manifest, indent=2)), ('rules.json', json.dumps(rules)), ('ordinary-direct-domains.json', json.dumps(direct))]:
         write_private(destination / filename, content.encode())
-    for filename in ('background.js', 'pac.js', 'strict.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
+    for filename in ('background.js', 'counts.js', 'pac.js', 'strict.js', 'popup.html', 'popup.js', 'popup.css', 'help.html', 'help.js',
                      'devtools.html', 'devtools.js', 'diagnostics.js', 'diagnostics.html', 'panel.js', 'panel.css'):
         write_private(destination / filename, (ROOT / 'extension' / filename).read_bytes())
     for size in (16, 32, 48, 128):
@@ -83,9 +105,9 @@ def install(destination, python):
         shutil.copy2(ROOT / 'assets/AppIcon.icns', resources / 'AppIcon.icns')
         info = {'CFBundleExecutable': 'GhostRouteGuard', 'CFBundleIdentifier': 'org.ghostroute.guard',
                 'CFBundleName': 'GhostRoute Guard', 'CFBundleDisplayName': 'GhostRoute Guard',
-                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.1',
+                'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.4.2',
                 'CFBundleIconFile': 'AppIcon',
-                'CFBundleVersion': '9', 'LSMinimumSystemVersion': '13.0',
+                'CFBundleVersion': '10', 'LSMinimumSystemVersion': '13.0',
                 'NSHighResolutionCapable': True,
                 'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                 'CFBundleURLTypes': [{'CFBundleURLName': 'GhostRoute Guard', 'CFBundleURLSchemes': ['ghostrouteguard']}]}

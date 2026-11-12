@@ -10,6 +10,7 @@
 |---|---|
 | `./modules/mac-privacy-guard/tests/run.sh` | Python policy/TLS/gate/API/Native Messaging, отмена проверки, закрытие туннелей, изоляция агентов и имитация разрыва времени после сна |
 | `node modules/mac-privacy-guard/tests/pac.mjs` | Приоритет каталога перед внешним PAC, suffix-границы, исходные bypass/fallback правила, восстановление снимка и ограничение размера |
+| `node modules/mac-privacy-guard/tests/counts.mjs` | Badge до четырёх символов, десятичная запятая, компактные единицы и точные числа с разделителями |
 | `node modules/mac-privacy-guard/tests/diagnostics.mjs` | Подготовленная вкладка, отзыв доступа, solicited preview, лимиты и удаление данных; инертное отображение HTML |
 | `swift run --package-path modules/mac-privacy-guard/native GuardNativeChecks` | Типизированные контракты, bootstrap/token, отказ API, startup/retry, состояние UI и команды Chrome |
 | `node modules/mac-privacy-guard/tests/browser.mjs` | Совместимость протокола без strict provider, доставка allow/block, popup и desktop IPC, budget локального переключения, отдельный fixed-proxy браузер и negative-path проверки |
@@ -17,6 +18,12 @@
 | `swift build --package-path modules/mac-privacy-guard/native --configuration release --product GhostRouteGuard` | Компиляция приложения; отдельно от приёмки установленного окна и маршрута |
 
 `run.sh` запускает только Python; он не заменяет Swift/JS/browser проверки.
+Python также проверяет приватные ordinary exceptions: права, владельца,
+символические ссылки, лимиты и запрет пересечений с sensitive-каталогом.
+`strict-browser.mjs` воспроизводит CONNECT 503: непроверенный сайт остаётся
+на отказавшем proxy, отдельно проверенный ordinary site открывается напрямую,
+а sensitive сохраняет обязательный gate. `browser.mjs` проверяет popup при
+многомиллионных счётчиках в viewport 380×600, точные подсказки и раскрытие деталей.
 Выбирайте проверки по изменённому контракту. При изменении proxy, relay, доступа
 или installer нужны соответствующие реальные browser fixtures до установки.
 При изменении только документации достаточно проверить её ссылки и сверить

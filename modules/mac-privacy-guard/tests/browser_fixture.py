@@ -81,6 +81,9 @@ class ConflictProxy(BaseHTTPRequestHandler):
             counts['sensitive_conflict']+=1
             counts['conflict_targets'].append(self.path)
             self.send_response(502);self.end_headers();return
+        if self.path.split(':')[0] in ('bypassfixture.example.org','failfixture.example.org'):
+            counts['external_denied']=counts.get('external_denied',0)+1
+            self.send_response(503);self.send_header('Content-Length','0');self.end_headers();return
         if not self.authenticated():return
         counts['external_tls']+=1
         with socket.create_connection(origin.server_address,2) as upstream:
@@ -185,7 +188,7 @@ print(json.dumps({'control': control.server_port, 'gate': gate.server_address[1]
                   'rtc_boundary':rtc_boundary.server_address[1],
                   'conflict_proxy':conflict_proxy.server_port,
                   'udp': udp.getsockname()[1], 'dashboard': dashboard.origin + '/#' + dashboard.session_credential,
-                  'plain_origin':plain_origin.server_port, 'extension':str(extension_path),
+                  'plain_origin':plain_origin.server_port, 'tls_origin':origin.server_port, 'extension':str(extension_path),
                   'extension_id':extension_id(extension_path),
                   'native_manifest':str(root / 'native-manifests/org.ghostroute.guard.events.json'),
                   'arguments': arguments(root / 'browser', gate.server_address[1])[2:]}), flush=True)
