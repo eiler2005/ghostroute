@@ -43,6 +43,9 @@ The eight issued anyT imports are production credentials governed by the
 [protected contract](../AGENTS.md#channel-anyt-protected-production-contract).
 Use `status` for inspection; `enable` reinstalls/restarts the service. Shared
 platform health does not replace its own authenticated application check.
+`bash modules/ghostroute-health-monitor/bin/channel-anyt-check` supplies that
+read-only gate, including approval/settings verification. The shared shell and
+Ansible deploy gates and the anyT playbook invoke it automatically.
 
 Routing Core also owns the opt-in [Channel Amn lab](../modules/routing-core/docs/channel-amn-research.md):
 `bin/build-channel-amn`, `bin/channel-amn-profile`, the isolated router controller

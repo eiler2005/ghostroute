@@ -15,3 +15,13 @@
   register: ghostroute_deploy_gate_result
   changed_when: false
   when: not (ghostroute_skip_deploy_gate | default(false) | bool)
+
+- name: Verify protected Channel anyT before or after shared deployment
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/bin/channel-anyt-check"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: not (ghostroute_skip_deploy_gate | default(false) | bool)

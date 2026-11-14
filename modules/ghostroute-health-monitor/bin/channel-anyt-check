@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "$PROJECT_ROOT/modules/shared/lib/router-health-common.sh"
+router_health_load_env
+umask 077
+ANYT_TMP="$(mktemp -d)"
+trap 'rm -rf "$ANYT_TMP"' EXIT
+router_ssh '/opt/bin/python3 -I -' < "$PROJECT_ROOT/modules/ghostroute-health-monitor/router/channel-anyt-gate.py" > "$ANYT_TMP/result.json"
+python3 - "$PROJECT_ROOT" "$ANYT_TMP" <<'PY'
+import json, pathlib, subprocess, sys
+root, temp = map(pathlib.Path, sys.argv[1:])
+result = json.loads((temp / 'result.json').read_text())
+bundle = root / 'ansible/out/channel-anytls'
+if not result['installed']:
+    if bundle.exists():
+        raise SystemExit('anyT gate: local identity exists but server settings are absent')
+    print('anyT gate: not provisioned')
+else:
+    settings = temp / 'settings.json'
+    settings.write_text(json.dumps(result['settings']))
+    subprocess.run([sys.executable, str(root / 'modules/routing-core/bin/channel-anytls-profile'),
+                    '--verify-approved', str(bundle), '--settings', str(settings)], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print('anyT gate: approved artifacts/settings, recovery, firewall and authenticated HTTPS passed')
+PY

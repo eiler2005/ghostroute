@@ -89,6 +89,8 @@ VLESS + Reality: TCP/Vision или gRPC без Vision, в зависимости
 при обслуживании по [контракту совместимости](AGENTS.md#channel-anyt-protected-production-contract).
 Отдельный процесс применяет общий sensitive / managed / direct split; смена
 роутерного выхода не требует новых клиентских QR.
+Общий deploy gate автоматически сверяет утверждённые профили и live settings,
+проверяет HTTPS через anyT; повторный экспорт утверждённого набора блокируется.
 [Схемы маршрутов и запуска](docs/assets/diagrams/ghostroute-platform-ru.html)
 показывают владельцев процессов; порядок проверки и восстановления описан в runbook.
 

@@ -97,6 +97,39 @@ class PolicyTests(unittest.TestCase):
 
 
 class SecondClientTests(unittest.TestCase):
+    def test_approved_bundle_verification_and_export_refusal_are_read_only(self):
+        import hashlib
+        def render_qr(argv, **kwargs): Path(argv[2]).write_bytes(b'fixture-png')
+        with tempfile.TemporaryDirectory() as temp, patch.object(profiles.subprocess, 'run', side_effect=render_qr):
+            out = Path(temp) / 'bundle'
+            profiles.generate(OPTIONS, out)
+            profiles.add_second(out)
+            s = profiles.export_eight(out)
+            files = [p for p in (out/'clients').iterdir() if p.suffix in ('.png', '.uri', '.conf')]
+            files += [out/name for name in ('AnyTLS-Lab.uri','AnyTLS-Lab.png','AnyTLS-Lab-02.uri','AnyTLS-Lab-02.png')]
+            manifest = {'schema_version':1,
+                'settings_sha256':hashlib.sha256(json.dumps(s,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                'artifact_sha256':{str(p.relative_to(out)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
+            approval = out/'production-approval.private.json'
+            approval.write_text(json.dumps(manifest))
+            profiles.verify_approval(out)
+            before = {p:p.read_bytes() for p in out.rglob('*') if p.is_file()}
+            with self.assertRaises(ValueError): profiles.export_eight(out)
+            self.assertEqual(before, {p:p.read_bytes() for p in before})
+            for p in files + [out/'settings.json']:
+                original=p.read_bytes()
+                p.write_bytes(original+b'changed')
+                with self.subTest(file=p.name), self.assertRaises((ValueError, json.JSONDecodeError)):
+                    profiles.verify_approval(out)
+                p.write_bytes(original)
+            captured=out/'captured.json';captured.write_text(json.dumps({**s,'port':s['port']+1}))
+            with self.assertRaises(ValueError): profiles.verify_approval(out,captured)
+            manifest['artifact_sha256'].pop(next(iter(manifest['artifact_sha256'])))
+            approval.write_text(json.dumps(manifest))
+            with self.assertRaises(ValueError): profiles.verify_approval(out)
+            approval.unlink()
+            with self.assertRaises(FileNotFoundError): profiles.verify_approval(out)
+
     def test_eight_exports_preserve_two_existing_identities_and_exclude_probe_from_zip(self):
         def render_qr(argv, **kwargs):
             Path(argv[2]).write_bytes(b'\x89PNG\r\n\x1a\n')

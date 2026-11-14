@@ -55,6 +55,12 @@ Do not use `enable` as a read-only health check. If installation fails after
 mutation starts, rescue disables anyT; it does not automatically restore the
 previous version. Complete the [maintenance/rollback checklist](../modules/routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist)
 before declaring success. The playbook filename is retained.
+The shared `tasks/deploy-gate.yml` now runs `channel-anyt-check`, as does the
+root shell deploy gate: approval hashes/live settings, recovery prerequisites,
+owned firewall state and an authenticated HTTPS probe must pass. The anyT
+playbook verifies the approved bundle before any mutation and runs the anyT
+check before updates and after enable. Other playbooks without the shared task
+need this check explicitly; bypassing it is not covered automatically.
 
 Optional hardened management is installed by
 `playbooks/26-router-management-access.yml` after local fixture/syntax checks and

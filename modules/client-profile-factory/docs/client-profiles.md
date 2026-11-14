@@ -618,8 +618,10 @@ files or restore the verified encrypted bundle. Follow the
 [protected production contract](../../../AGENTS.md#channel-anyt-protected-production-contract).
 
 Initial generation refuses an existing bundle. `--export-eight` preserves saved
-credentials but **rewrites** the eight PNG/URI files, index and shared config; it
-does not read the private approval manifest. It is an explicitly approved initial
+credentials and can rewrite the eight PNG/URI files, index and shared config
+before approval. Once `production-approval.private.json` exists, export refuses
+before writing. `--verify-approved BUNDLE` checks required artifact hashes and
+canonical settings read-only. It is an explicitly approved initial
 allocation tool, not a routine refresh or a substitute for restoring lost files.
 The client-only ZIP and `clients/qr-index.html` contain eight independent QR
 cards, URI imports and `Channel-anyT.conf` for Shadowrocket Config. The original
@@ -632,8 +634,8 @@ The retained `--add-second <bundle>` command supports initial one-client
 bundles. A separately authorized deployment with `channel_anytls_action=enable`
 reinstalls and restarts anyT. Its comparison with existing router settings rejects
 replacement credentials and ingress migrations before stopping the service.
-It does not compare saved QR bytes; use the private approval manifest for that
-check. See the [maintenance checklist](../../routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist).
+The added approval gate compares saved QR/URI/Config bytes and live settings
+with the private manifest. See the [maintenance checklist](../../routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist).
 
 ## Channel M — Regional Service Policy
 

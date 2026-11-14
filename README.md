@@ -111,6 +111,8 @@ automatic boot/firewall/process recovery. Issued imports are preserved during
 maintenance under the [production compatibility contract](AGENTS.md#channel-anyt-protected-production-contract).
 Its separate process applies the shared sensitive / managed / direct split;
 changing a router egress does not require new client QR codes.
+Shared deploy gates verify approved profiles/live settings and an authenticated
+anyT HTTPS request automatically; approved bundles reject routine re-export.
 [Routing and lifecycle diagrams](docs/assets/diagrams/ghostroute-platform-en.html)
 show these separate owners; the runbook defines recovery and verification.
 

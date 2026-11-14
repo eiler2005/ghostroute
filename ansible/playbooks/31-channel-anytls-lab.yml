@@ -44,6 +44,17 @@
     - name: Prepare and start the isolated AnyTLS lab
       when: channel_anytls_action in ['start', 'enable']
       block:
+        - name: Verify approved imports before any mutation
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_playbook_python }}"
+              - "{{ playbook_dir }}/../../modules/routing-core/bin/channel-anytls-profile"
+              - --verify-approved
+              - "{{ channel_anytls_local_dir }}"
+          delegate_to: localhost
+          changed_when: false
+          no_log: true
+
         - name: Production health gate before lab mutation
           ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
 
@@ -84,6 +95,15 @@
           when: channel_anytls_existing.stat.exists
           changed_when: false
           no_log: true
+
+        - name: Verify existing protected production service before update
+          ansible.builtin.command:
+            argv:
+              - bash
+              - "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/bin/channel-anyt-check"
+          delegate_to: localhost
+          changed_when: false
+          when: channel_anytls_existing.stat.exists
 
         - name: Capture current production policy without changing its owner
           ansible.builtin.fetch:
@@ -174,6 +194,15 @@
 
         - name: Production health gate after lab mutation
           ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
+
+        - name: Verify authenticated Channel anyT after update
+          ansible.builtin.command:
+            argv:
+              - bash
+              - "{{ playbook_dir }}/../../modules/ghostroute-health-monitor/bin/channel-anyt-check"
+          delegate_to: localhost
+          changed_when: false
+          when: channel_anytls_action == 'enable'
       rescue:
         - name: Contain the failed AnyTLS lab only
           ansible.builtin.raw: >-

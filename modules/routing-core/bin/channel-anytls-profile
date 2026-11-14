@@ -3,6 +3,7 @@
 import argparse
 import copy
 import html
+import hashlib
 import importlib.util
 import json
 import os
@@ -26,6 +27,7 @@ def uri(s, client='lab-client', label='GhostRoute AnyTLS Lab'):
 
 
 def add_second(output):
+    refuse_approved_export(output)
     original = (output / 'settings.json').read_bytes()
     s = json.loads(original)
     policy.validate_settings(s)
@@ -65,6 +67,7 @@ def compatible_update(previous, proposed):
 
 def export_eight(output):
     """Create eight named imports, retaining every already allocated identity."""
+    refuse_approved_export(output)
     old = json.loads((output / 'settings.json').read_text())
     proposed = copy.deepcopy(old)
     policy.validate_settings(old)
@@ -114,6 +117,32 @@ def export_eight(output):
     return proposed
 
 
+def verify_approval(output, settings_path=None):
+    """Read-only verification of the complete protected set; never re-approve."""
+    approval = json.loads((output / 'production-approval.private.json').read_text())
+    required = {'clients/Channel-anyT.conf', 'AnyTLS-Lab.uri', 'AnyTLS-Lab.png',
+                'AnyTLS-Lab-02.uri', 'AnyTLS-Lab-02.png'}
+    required |= {'clients/Channel-anyT-%02d%s' % (i, ext)
+                 for i in range(1, 9) for ext in ('.uri', '.png')}
+    if approval.get('schema_version') != 1 or set(approval.get('artifact_sha256', {})) != required:
+        raise ValueError('Incomplete production approval manifest')
+    for name in required:
+        path = output / name
+        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != approval['artifact_sha256'][name]:
+            raise ValueError('Approved artifact mismatch; restore the verified backup')
+    s = json.loads((settings_path or output / 'settings.json').read_text())
+    policy.validate_settings(s)
+    digest = hashlib.sha256(json.dumps(s, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if digest != approval.get('settings_sha256'):
+        raise ValueError('Approved settings mismatch; restore the verified backup')
+
+
+def refuse_approved_export(output):
+    if (output / 'production-approval.private.json').exists():
+        verify_approval(output)
+        raise ValueError('Production imports are approved; reuse saved files, do not re-export')
+
+
 def generate(options, output):
     if output.exists():
         raise ValueError('Bundle already exists; reuse it or restore backup, never rotate implicitly')
@@ -149,11 +178,19 @@ def main():
     parser.add_argument('--add-second', type=Path, metavar='BUNDLE')
     parser.add_argument('--export-eight', type=Path, metavar='BUNDLE')
     parser.add_argument('--check-update', type=Path, nargs=2, metavar=('PREVIOUS','PROPOSED'))
+    parser.add_argument('--verify-approved', type=Path, metavar='BUNDLE')
+    parser.add_argument('--settings', type=Path, help='Also verify captured router settings')
     args = parser.parse_args()
-    modes = [bool(args.add_second), bool(args.export_eight), bool(args.check_update)]
+    modes = [bool(args.add_second), bool(args.export_eight), bool(args.check_update), bool(args.verify_approved)]
     if sum(modes) > 1:
         parser.error('select one operation')
-    if args.check_update:
+    if args.settings and not args.verify_approved:
+        parser.error('--settings requires --verify-approved')
+    if args.verify_approved:
+        verify_approval(args.verify_approved)
+        if args.settings:
+            verify_approval(args.verify_approved, args.settings)
+    elif args.check_update:
         compatible_update(*(json.loads(path.read_text()) for path in args.check_update))
     elif args.export_eight:
         if args.options or args.output:
@@ -167,7 +204,8 @@ def main():
         if not args.options or not args.output:
             parser.error('provide options and output, or --add-second BUNDLE')
         generate(json.loads(args.options.read_text()), args.output)
-    print('Channel anyT private identity operation completed; existing profiles preserved')
+    print('Channel anyT approval verified' if args.verify_approved else
+          'Channel anyT private identity operation completed; existing profiles preserved')
 
 
 if __name__ == '__main__':

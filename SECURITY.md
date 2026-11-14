@@ -150,8 +150,11 @@ It does not restart other channel processes. Retained WireGuard/Amn configuratio
 is disabled in steady state and requires explicit activation.
 The [issued-profile contract](AGENTS.md#channel-anyt-protected-production-contract)
 protects all eight imports. The deployment comparison rejects changes to existing
-router identities; artifact hashes in the private approval manifest are a separate
-operator check, not a universal runtime or deployment seal.
+router identities. The control-side anyT gate automatically checks approved
+artifact/settings hashes and authenticates a diagnostic HTTPS request. Approved
+bundles reject routine export before writes. The private manifest must be restored
+from trusted backup; these checks do not protect against an operator replacing
+both artifacts and their approval record, or direct commands bypassing the gate.
 
 Channel Amn is a manual home-first compatibility lab, not a replacement for the
 production supervisors. It blocks raw peer forwarding outside its policy TUN,

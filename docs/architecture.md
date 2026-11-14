@@ -156,8 +156,9 @@ Boot supervisor, firewall hook и минутный cron вызывают reconci
 Все восемь выданных QR и первые два исходных импорта сохраняются по
 [production-контракту](../AGENTS.md#channel-anyt-protected-production-contract).
 Пароли, QR и manifest утверждения хранятся только в приватном bundle и
-зашифрованной копии. Проверка настроек перед deploy и сравнение QR с manifest —
-разные проверки. Подробности DNS, UDP, статусов, тестов и отката — в
+зашифрованной копии. Общий deploy gate автоматически сверяет QR/Config и настройки с manifest,
+проверяет recovery/INPUT и HTTPS-запрос через anyT. Реальная клиентская приёмка
+остаётся отдельной проверкой. Подробности DNS, UDP, статусов, тестов и отката — в
 [runbook anyT](../modules/routing-core/docs/channel-anytls-lab.md).
 
 ## Channel Amn — отдельный home-first тестовый вход

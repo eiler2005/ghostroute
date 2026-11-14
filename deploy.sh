@@ -106,6 +106,7 @@ run_deploy_gate() {
 
   echo "Running GhostRoute deploy gate (${phase}); expected duration about 40-90 seconds..."
   "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/live-check" --active-probe --deploy-gate
+  bash "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/channel-anyt-check"
 }
 
 router_health_load_env || exit 1

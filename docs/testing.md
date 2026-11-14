@@ -87,9 +87,9 @@ never the private production QR bundle.
 | Layer | Coverage / required evidence | Boundary |
 |---|---|---|
 | Policy fixtures | Selected-client sensitive / managed / direct projection; port-53 override; private, IPv6 and payload UDP/443 rejection; unsupported-policy refusal | Does not prove live route reachability or a client's DoH behavior |
-| Profile fixtures | Eight distinct identities; first/second preservation; stable issued URI payloads; client ZIP excludes probe/server credentials; rekey/ingress-change rejection; QR-render failure | Does not compare the live private approval manifest or certify QR scanning on every client |
+| Profile fixtures | Eight distinct identities; stable payloads; probe exclusion; rekey refusal; approval verification, tampering/incomplete approval rejection and no writes on approved export refusal | Live private approval is checked by `channel-anyt-check`; QR scanning still needs real-client acceptance |
 | Lifecycle fixtures | Owned-process isolation, input signatures, cold volatile state, port reuse, missing-firewall repair and scoped restart | Does not measure a complete firmware reboot or all failure windows |
-| Router acceptance | Correct TLS/name/auth behavior; each identity authenticated; DNS and route outcomes; enabled marker, cron, hooks, process/firewall ownership | General platform checks alone do not authenticate anyT |
+| Router acceptance | `channel-anyt-check`: approved settings/artifacts, recovery prerequisites, exact INPUT rules and authenticated HTTPS; fixtures cover failed watch/cron/firewall/HTTPS and probe cleanup | Separate extended checks cover each identity, external ingress, DNS and route outcomes |
 | Real-client acceptance | Messages/media after reboot; separately record configured DNS, idle/roaming, calls, carriers and concurrent load | One successful device/session is not all-client or capacity proof |
 
 For hook changes also run the relevant supervisor/firewall fixtures; for Ansible

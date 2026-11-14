@@ -109,12 +109,12 @@ and preferably a parallel path for existing clients.
 
 Only symbolic client slots and acceptance rules are tracked. The ignored bundle
 contains `production-approval.private.json` with the approved settings/artifact
-fingerprints; retain it with the encrypted backup. It is operator evidence:
-neither the exporter nor the router reads this manifest automatically. The
-deployment gate compares proposed settings with settings fetched from the router;
-it cannot establish issued-artifact identity when the previous settings are absent.
-A local hash comparison detects changed artifacts but does not replace runtime
-or real-client acceptance.
+fingerprints; retain it with the encrypted backup. `--verify-approved BUNDLE`
+verifies the complete required artifact set and canonical settings without writing.
+`--settings captured.json` additionally verifies captured router settings. The
+production playbook runs this before mutation; the shared deployment gate also
+compares live settings with approval. Missing/incomplete approval, missing files
+or mismatches fail the check. This does not replace real-client acceptance.
 
 ```bash
 # New bundle only; never overwrite an existing identity.
@@ -139,10 +139,11 @@ Exports are in ignored `ansible/out/channel-anytls/clients/`:
 `Channel-anyT-8-profiles.private.zip` contains client artifacts only, excluding
 server settings, production policy and the diagnostic password. It is still
 sensitive credential material. The first two slots reuse their original
-passwords. Repeat export reuses saved identities but rewrites PNG/URI, shared
-configuration and index files. It does not enforce the approved artifact hashes;
-do not re-export the production set during routine maintenance. The deployment
-gate refuses removal/rekeying or ingress changes against existing router settings.
+passwords. Once the approval manifest exists, `--export-eight` and `--add-second`
+refuse before writing, including when verification fails. Unapproved bootstrap
+exports preserve allocated identities but can rewrite artifact files. Production
+maintenance uses the saved files. The deployment gate verifies approval as well
+as compatibility with existing router settings.
 Restore the complete private bundle if credentials are missing. One identity is
 intended for one device; eight imports
 do not establish eight simultaneous heavy-stream capacity. Back up the complete
@@ -217,6 +218,26 @@ controller does not switch egresses when a remote service fails.
 
 ## Maintenance acceptance checklist
 
+Run `bash modules/ghostroute-health-monitor/bin/channel-anyt-check` from the control
+checkout. It verifies local approval, live settings, enabled state, owned
+processes, source hash, cron/hook presence, exact scoped INPUT admission rules and
+an authenticated HTTPS request through the existing anyT listener using the probe
+identity. It creates only temporary private loopback probe files/processes and
+cleans them up; it does not restart anyT or change routing/firewall.
+
+`deploy.sh` and the shared Ansible `deploy-gate.yml` invoke it before/after their
+normal deployments. The anyT playbook verifies approval before any mutation and
+checks the existing service before update and the enabled service afterwards.
+Unprovisioned environments pass only when both server settings and the local
+bundle are absent; missing server state with a local identity fails. The existing
+explicit emergency skip applies to the shared gate. Direct playbooks that do not
+include that shared task still require this command explicitly.
+
+This proves loopback admission and one HTTPS destination; external ingress,
+all-client authentication, route parity and mobile acceptance remain distinct.
+Failure blocks deployment completion but does not automatically roll back an
+already applied shared change. The existing anyT rescue behavior remains below.
+
 Apply this to anyT updates and shared routing, catalog, DNS, TLS, firewall,
 storage, supervisor or package maintenance that could affect it.
 
@@ -256,7 +277,7 @@ rekey rejection, QR failure, port reuse, input signatures, cold volatile state a
 scoped reconciliation. Run shared supervisor/firewall fixtures for hook changes.
 The [test/evidence matrix](../../../docs/testing.md#channel-anyt-verification)
 distinguishes fixtures, router checks and client acceptance. Existing general
-platform health gates do not authenticate anyT or validate issued artifacts.
+platform health checks alone do not authenticate anyT; the added anyT gate does.
 
 Verify TLS/name/auth rejection, TCP/UDP DNS, managed/sensitive/direct selection,
 private/IPv6 rejection and each authenticated client. Exercise process death,
