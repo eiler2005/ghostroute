@@ -10,7 +10,7 @@ pin. Остальные managed-направления сохраняют `reali
 
 ```mermaid
 flowchart LR
-  ingress[LAN / Home Reality / B / C / D] --> router[Router policy]
+   ingress[LAN / Home Reality / B / C / D / anyT] --> router[Router policy]
   router -->|Sensitive sites| sensitive[sensitive-out → hermes_vps]
   router -->|Other managed| managed[reality-out → selected backend]
   router -->|Non-managed| direct[direct-out → home WAN]
@@ -32,7 +32,7 @@ flowchart LR
   sets -->|TCP intercepted| redirect[REDIRECT to sing-box]
   sets -->|TCP bypass or UDP/443| guard[FORWARD guard: DROP]
   sets -->|No match| home[Home WAN]
-  mobile[Home-first A / B / C / D] --> policy[sing-box policy]
+  mobile[Home-first A / B / C / D / anyT] --> policy[sing-box policy or isolated anyT projection]
   redirect --> policy
   policy -->|Sensitive match| sensitive[sensitive-out: hermes_vps]
   policy -->|Other managed| managed[reality-out: active backend]
@@ -95,7 +95,9 @@ domain discovery расширяет только managed-каталог и не 
 Одного доменного правила для Telegram недостаточно: приложение подключается
 напрямую к IP. Узкие CIDR-правила стоят до общего managed catch-all, применяются
 к LAN REDIRECT, Home Reality, B/C/D и selected full-VPS. Amn получает ту же
-политику через повторную проекцию и отдельный stop/start. Channel M исключён.
+политику через повторную проекцию и отдельный stop/start. Включённый Channel anyT
+получает те же правила через собственную автоматическую проекцию и reconcile;
+его QR и клиентские credentials сохраняются. Channel M исключён.
 Для совпавшего Telegram-трафика автоматического fallback нет; остальные
 managed-сервисы сохраняют общий backend. IPv6 этим расширением не включается.
 Встроенный MTProto/SOCKS-прокси приложения на другом endpoint и клиентский DIRECT
@@ -106,7 +108,9 @@ managed-сервисы сохраняют общий backend. IPv6 этим ра
 заметке. Срок заметки не является таймером: автоматического выключения нет.
 Откат — вернуть только `vault_router_sensitive_telegram_enabled: false`,
 повторно применить конфигурацию и обновить активный Amn. AI-каталог, общая
-managed-роль и импортированные профили при этом сохраняются.
+managed-роль и импортированные профили при этом сохраняются. Для anyT после
+обновления дождаться reconcile и выполнить `channel-anyt-check`; дополнительно
+проверить native Telegram через сохранённые клиентские идентичности.
 
 Проверка включает не только HTTPS canary, но и native MTProto, реальные
 сообщения/фото и повторные подключения на проблемном клиенте в течение окна
