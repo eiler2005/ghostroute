@@ -34,6 +34,11 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 
 ## Operating Rules
 
+Routing Core also owns the opt-in [AnyTLS lab](../modules/routing-core/docs/channel-anytls-lab.md):
+`bin/channel-anytls-profile`, its isolated controller/policy projection and
+`31-channel-anytls-lab.yml`. It has separate process and INPUT ownership, no boot
+autostart and a distinct private client import. Existing channels are preserved.
+
 Routing Core also owns the opt-in [Channel Amn lab](../modules/routing-core/docs/channel-amn-research.md):
 `bin/build-channel-amn`, `bin/channel-amn-profile`, the isolated router controller
 and `28-channel-amn-lab.yml`. It shares policy inputs with production but has

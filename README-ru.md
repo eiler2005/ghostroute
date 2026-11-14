@@ -81,6 +81,10 @@ VLESS + Reality: TCP/Vision или gRPC без Vision, в зависимости
 
 ## Обзор
 
+Отдельный [AnyTLS lab](modules/routing-core/docs/channel-anytls-lab.md) позволяет
+проверить домашний TCP/TLS-вход с той же selected-client политикой маршрутизации.
+Он включается вручную и сохраняет существующие каналы и пользовательские QR.
+
 GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS
 Merlin роутера и удаленного VPS egress. Отдельная служебная политика
 поддерживает приложения, которым нужен выход в заданной стране или регионе.

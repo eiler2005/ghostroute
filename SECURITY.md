@@ -136,6 +136,9 @@ The operator explicitly accepts:
   material under ignored `ansible/out/channel-amn/`. Each of its eight client
   slots has separate credentials; preserve slot 01 during additive export and
   keep the full bundle in an encrypted local backup.
+- Treat the AnyTLS lab identity, client QR and policy snapshot under ignored
+  `ansible/out/channel-anytls/` as private credentials. Its client validates TLS;
+  the separate probe password must not be distributed as a client import.
 
 Channel Amn is a manual home-first compatibility lab, not a replacement for the
 production supervisors. It blocks raw peer forwarding outside its policy TUN,

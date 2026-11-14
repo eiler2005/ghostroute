@@ -607,6 +607,17 @@ For live artifacts, `channel_d_profile_public_host` must be a TLS hostname, not
 a numeric IP. Karing reports `cert common name invalid` when a raw IP is used
 with the existing hostname certificate and no proven SNI override.
 
+## AnyTLS lab import
+
+Routing Core's [AnyTLS lab](../../routing-core/docs/channel-anytls-lab.md) has a
+separate local generator, `modules/routing-core/bin/channel-anytls-profile`.
+It creates one client URI/QR and a distinct diagnostic credential under ignored
+`ansible/out/channel-anytls/`. TLS verification is enabled. Existing output is
+never overwritten; restore/reuse its identity instead of rotating implicitly.
+Add this as a separate test node and preserve all current channel imports.
+Client Global Routing → Proxy is the test control, not a new production rule set.
+The generic client-profile factory does not generate or deploy this lab.
+
 ## Channel M — Regional Service Policy
 
 Channel M supports applications with regional egress requirements through an

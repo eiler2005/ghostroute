@@ -106,6 +106,10 @@ and [Русский](docs/assets/diagrams/channel-amn-architecture.html).
 
 ## Why This Exists
 
+An optional [AnyTLS compatibility lab](modules/routing-core/docs/channel-anytls-lab.md)
+provides a separate, manually selected home-first TCP/TLS test ingress with the
+same selected-client routing policy. It preserves existing channel imports.
+
 The project solves a narrow but real edge problem: keep ordinary home devices
 configuration-free, let mobile clients enter through the home network first,
 and preserve explicit routing control over which destinations use a remote VPS

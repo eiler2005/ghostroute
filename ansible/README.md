@@ -42,6 +42,12 @@ operator artifacts and must stay out of git.
 
 ## Router Access Profiles
 
+`playbooks/31-channel-anytls-lab.yml` manages an isolated home-first AnyTLS
+experiment. It defaults to status; `channel_anytls_action=start|stop` explicitly
+starts or removes only the lab runtime. Private identity/profile output stays
+under ignored `out/channel-anytls/`. Follow the [lab runbook](../modules/routing-core/docs/channel-anytls-lab.md)
+and its fixture/syntax checks before deployment. Existing imports remain valid.
+
 Optional hardened management is installed by
 `playbooks/26-router-management-access.yml` after local fixture/syntax checks and
 operator authorization. It stages private Mac profiles from Vault, provisions a

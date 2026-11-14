@@ -27,6 +27,8 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 - Provides the optional Channel Amn home-first lab: isolated AmneziaWG and
   `sing-box-amn` processes, with the existing sensitive/managed/direct policy.
   It starts manually and is not owned by production boot/watchdog recovery.
+- Provides an isolated [AnyTLS compatibility lab](docs/channel-anytls-lab.md)
+  with verified TLS, a projected selected-client policy and explicit rollback.
 
 ## How It Works
 
@@ -123,6 +125,7 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 - `./verify.sh`
 - Ansible `playbooks/99-verify.yml`
 - `bash tests/test-channel-amn.sh`
+- `bash tests/test-channel-anytls.sh`
 
 ## Related Docs
 

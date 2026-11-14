@@ -386,6 +386,38 @@ components:
       - The private listener port is settings.json field port, outside the production Ansible port-variable registry.
       - No production boot hook, watchdog or automatic fallback is installed.
 
+  - id: router_anytls_lab
+    component_name: Home-first AnyTLS compatibility lab
+    supplier: SagerNet / GhostRoute
+    type: router_runtime_service
+    ecosystem: entware_opkg
+    origin: Routing Core and playbooks/31-channel-anytls-lab.yml
+    package_names:
+      - /opt/etc/ghostroute-anytls/sing-box-atls
+      - /opt/etc/ghostroute-anytls/channel-anytls.py
+    version_policy:
+      proven_good: Router Entware sing-box baseline passes lab TCP/DNS probes and operator-tested Shadowrocket messages/photos.
+      minimum_required: AnyTLS inbound support, valid TLS identity and isolated process ownership.
+      candidate: Other carriers, calls, roaming and sustained capacity require separate acceptance.
+      known_problematic:
+        - Reboot ends the lab; firewall and catalog changes require explicit stop/start.
+        - Non-DNS UDP and IPv6 destinations are rejected in this first experiment.
+      rollback_available: channel_anytls_action=stop closes only the lab ingress and stops its owned processes.
+    relationships:
+      - receives_home_first_anytls_test_client
+      - projects_existing_sensitive_managed_direct_policy
+      - preserves_production_channel_ownership
+    runtime_checks:
+      - bash tests/test-channel-anytls.sh
+      - playbooks/31-channel-anytls-lab.yml with channel_anytls_action=status
+      - verified TLS and invalid-password rejection
+      - external bootstrap and signed-in client acceptance are separate evidence levels
+    compatibility_notes:
+      - One private client import and a separate diagnostic credential; existing profiles stay valid.
+      - Listener port comes from ignored settings.json, outside the production port-variable registry.
+      - Persistent files are under /opt/etc/ghostroute-anytls; volatile state is under /tmp/ghostroute-anytls.
+      - The containment watcher stops the lab on config hash drift or oversized logs; it does not restart production.
+
   - id: vps_caddy_l4
     component_name: Caddy with layer4 module
     supplier: Caddy project / mholt caddy-l4

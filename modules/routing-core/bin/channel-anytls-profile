@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Create a new private AnyTLS lab bundle without overwriting an identity."""
+import argparse
+import html
+import importlib.util
+import json
+import os
+from pathlib import Path
+import secrets
+import subprocess
+import urllib.parse
+
+spec = importlib.util.spec_from_file_location('anytls_policy', Path(__file__).resolve().parents[1] / 'router/channel-anytls-policy.py')
+policy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(policy)
+
+
+def uri(s):
+    credential = next(u['password'] for u in s['users'] if u['name'] == 'lab-client')
+    query = urllib.parse.urlencode({'sni': s['server_name'], 'insecure': '0'})
+    host = '[' + s['host'] + ']' if ':' in s['host'] else s['host']
+    return f'anytls://{urllib.parse.quote(credential, safe="")}@{host}:{s["port"]}/?{query}#GhostRoute%20AnyTLS%20Lab'
+
+
+def generate(options, output):
+    if output.exists():
+        raise ValueError('Bundle already exists; reuse it or restore backup, never rotate implicitly')
+    s = {key: options[key] for key in ('host', 'port', 'server_name', 'certificate_path', 'key_path')}
+    s['users'] = [{'name': name, 'password': secrets.token_urlsafe(32)} for name in ('lab-client', 'lab-probe')]
+    policy.validate_settings(s)
+    os.umask(0o077)
+    output.mkdir(mode=0o700, parents=True)
+    try:
+        payload = uri(s)
+        (output / 'settings.json').write_text(json.dumps(s, indent=2) + '\n')
+        (output / 'AnyTLS-Lab.uri').write_text(payload + '\n')
+        subprocess.run(['qrencode', '-o', str(output / 'AnyTLS-Lab.png'), '-s', '8', '-l', 'M'],
+                       input=payload.encode(), capture_output=True, check=True, timeout=15)
+        (output / 'index.html').write_text('''<!doctype html><html lang="ru"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
+<title>GhostRoute AnyTLS Lab</title><style>body{font:17px system-ui;background:#f3f6f9;color:#183042;margin:24px}main{max-width:560px;margin:auto;background:white;padding:24px;border-radius:20px}img{width:100%;height:auto}p{line-height:1.5}a{color:#126b68}</style>
+<main><h1>AnyTLS Lab</h1><p>Отдельный тестовый вход через домашний роутер. Добавьте новый узел в Shadowrocket; существующие профили сохраняйте.</p>
+<img src="AnyTLS-Lab.png" alt="Приватный QR тестового узла"><p><a href="'''
+            + html.escape(payload, quote=True) + '''">Импортировать узел</a></p>
+<p>Для проверки выберите Global Routing → Proxy. Проверяйте сообщения и фото в Telegram. Звонки и прочий UDP, кроме DNS, в первом lab отключены.</p>
+<p>TLS проверяется. QR содержит пароль — не публикуйте его. Результат на мобильной сети пока требует проверки.</p></main></html>''')
+    except Exception:
+        # Retain any generated identity for recovery; do not silently generate a replacement.
+        raise RuntimeError('Export failed; retain the private bundle and inspect locally') from None
+    return s
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('options', type=Path)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    generate(json.loads(args.options.read_text()), args.output)
+    print('Private AnyTLS lab bundle created; existing profiles unchanged')
+
+
+if __name__ == '__main__':
+    main()

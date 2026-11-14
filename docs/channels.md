@@ -40,6 +40,11 @@ The public Channel M policy and isolation contract is in
 
 ## Protocols and implementations
 
+The separate [AnyTLS lab](../modules/routing-core/docs/channel-anytls-lab.md)
+provides an opt-in TCP/TLS first hop through an isolated process on the home
+router. It projects the selected-client split and does not replace A/B/C/D/M/Amn.
+It has a distinct test import, explicit lifecycle and no automatic failover.
+
 VLESS is a protocol; Xray and sing-box are implementations. Separate the
 client-to-router ingress from the router-to-VPS egress:
 

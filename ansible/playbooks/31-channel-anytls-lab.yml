@@ -1,0 +1,124 @@
+---
+- name: Isolated home-first AnyTLS lab
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    channel_anytls_action: status
+    channel_anytls_local_dir: "{{ playbook_dir }}/../out/channel-anytls"
+    channel_anytls_remote_dir: /opt/etc/ghostroute-anytls
+  tasks:
+    - name: Validate explicit lab action
+      ansible.builtin.assert:
+        that: channel_anytls_action in ['start', 'stop', 'status']
+
+    - name: Read AnyTLS lab state only
+      ansible.builtin.raw: >-
+        if [ -f /opt/etc/ghostroute-anytls/channel-anytls.py ]; then
+          /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py status;
+        else printf '{"installed":false}\n'; fi
+      changed_when: false
+      when: channel_anytls_action == 'status'
+
+    - name: Stop only AnyTLS lab
+      ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py stop
+      when: channel_anytls_action == 'stop'
+
+    - name: Refuse replacing a running lab before entering startup rollback
+      ansible.builtin.raw: test ! -f /tmp/ghostroute-anytls/owned.json
+      changed_when: false
+      when: channel_anytls_action == 'start'
+
+    - name: Prepare and start the isolated AnyTLS lab
+      when: channel_anytls_action == 'start'
+      block:
+        - name: Production health gate before lab mutation
+          ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
+
+        - name: Require prepared private identity bundle
+          ansible.builtin.stat:
+            path: "{{ channel_anytls_local_dir }}/settings.json"
+          delegate_to: localhost
+          register: channel_anytls_settings
+          no_log: true
+
+        - name: Reject absent client identity before router changes
+          ansible.builtin.assert:
+            that: channel_anytls_settings.stat.exists and channel_anytls_settings.stat.isreg
+          no_log: true
+
+        - name: Capture current production policy without changing its owner
+          ansible.builtin.fetch:
+            src: /opt/etc/sing-box/config.json
+            dest: "{{ channel_anytls_local_dir }}/source.private.json"
+            flat: true
+          no_log: true
+
+        - name: Restrict local captured credentials
+          ansible.builtin.file:
+            path: "{{ channel_anytls_local_dir }}/source.private.json"
+            mode: '0600'
+          delegate_to: localhost
+
+        - name: Project the selected-client policy into an independent process
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_playbook_python }}"
+              - "{{ playbook_dir }}/../../modules/routing-core/router/channel-anytls-policy.py"
+              - "{{ channel_anytls_local_dir }}/source.private.json"
+              - "{{ channel_anytls_local_dir }}/settings.json"
+              - "{{ channel_anytls_local_dir }}/policy.json"
+          delegate_to: localhost
+          no_log: true
+
+        - name: Create private Entware lab directory
+          ansible.builtin.file:
+            path: "{{ channel_anytls_remote_dir }}"
+            state: directory
+            mode: '0700'
+
+        - name: Install isolated lab identity and policy
+          ansible.builtin.copy:
+            src: "{{ channel_anytls_local_dir }}/{{ item }}"
+            dest: "{{ channel_anytls_remote_dir }}/{{ item }}"
+            mode: '0600'
+          loop: [settings.json, policy.json, policy.source.sha256]
+          no_log: true
+
+        - name: Install manual lab lifecycle controller
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../modules/routing-core/router/channel-anytls.py"
+            dest: "{{ channel_anytls_remote_dir }}/channel-anytls.py"
+            mode: '0700'
+
+        - name: Separate process name from production init ownership
+          ansible.builtin.copy:
+            remote_src: true
+            src: /opt/bin/sing-box
+            dest: "{{ channel_anytls_remote_dir }}/sing-box-atls"
+            mode: '0700'
+
+        - name: Validate exact binary syntax and unused resources
+          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py preflight
+          changed_when: false
+          no_log: true
+
+        - name: Start only AnyTLS lab and its scoped INPUT rule
+          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py start
+          no_log: true
+
+        - name: Production health gate after lab mutation
+          ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
+      rescue:
+        - name: Contain the failed AnyTLS lab only
+          ansible.builtin.raw: >-
+            if [ -f /opt/etc/ghostroute-anytls/channel-anytls.py ]; then
+              /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py stop;
+            fi
+          no_log: true
+        - name: Report isolated lab startup failure
+          ansible.builtin.fail:
+            msg: AnyTLS lab failed and was stopped; inspect private deployment evidence.
