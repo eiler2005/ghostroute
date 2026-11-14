@@ -31,7 +31,7 @@ Core model:
 - Channel anyT is a working additional home-first AnyTLS/TLS channel, with
   eight client identities and a separate probe. Its isolated process projects
   the selected-client policy and has scoped boot/firewall/cron recovery. Preserve
-  its original first two credentials and existing A/B/C/D/M ownership. Amn and
+  all eight issued client credentials and existing A/B/C/D/M ownership. Amn and
   legacy WireGuard are retained but disabled unless explicitly re-enabled.
 
 ## Karpathy-Style Agent Workflow
@@ -140,6 +140,31 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
 - Do not regenerate or distribute affected QR/profile artifacts until that
   approval is received. If the operator approves, update the relevant runbook
   with the migration and rollback path before recommending the client refresh.
+
+### Channel anyT protected production contract
+
+- Channel anyT 01–08 are operator-approved production profiles used by real
+  clients. All eight issued QR/URI imports are a protected compatibility
+  baseline; the earlier first/second imports remain valid too.
+- Preserve their credentials, ingress host/port/transport, TLS server name and
+  certificate validation, and issued profile payloads. Routine work must not
+  regenerate, replace, remove or rekey these artifacts. Restore a missing private
+  bundle from verified encrypted backup instead of creating replacement identities.
+- Keep anyT enabled with its boot/firewall/minute recovery. Shared routing, DNS,
+  firewall, TLS, storage, supervisor and package changes must include anyT in
+  pre/post checks: current policy, both owned processes, persistent enable/cron,
+  verified authenticated application probes and preserved client imports.
+- General deploy permission does not authorize disabling this production channel,
+  breaking issued imports or scheduling a service interruption. Obtain explicit
+  approval for those actions, describe affected clients and prefer a parallel
+  migration with a tested rollback. Emergency containment must retain fail-closed
+  behavior, preserve identities and be reported with a recovery path.
+- If relevant checks regress, do not declare the work complete: restore the
+  reviewed working version or report the unresolved outage. Never bypass TLS
+  checks or add a direct sensitive fallback to make an availability check pass.
+- Keep real QR/URI files, credentials and approval fingerprints out of git;
+  tracked docs record symbolic slots and the contract only. The private approval
+  manifest belongs with the ignored client bundle and encrypted backups.
 
 ## Secrets and Privacy
 

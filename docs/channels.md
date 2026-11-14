@@ -40,11 +40,12 @@ The public Channel M policy and isolation contract is in
 
 ## Protocols and implementations
 
-[Channel anyT](../modules/routing-core/docs/channel-anytls-lab.md) is a working
-additional AnyTLS/TLS first hop through an isolated process on the home router.
+[Channel anyT](../modules/routing-core/docs/channel-anytls-lab.md) is a production
+AnyTLS/TLS first hop for issued clients through an isolated process on the home router.
 It has eight independent client imports, selected-client split and automatic
 boot/firewall/process recovery. It does not replace A/B/C/D/M or provide automatic
 backend failover. The retained Amn/WireGuard fallback is disabled in steady state.
+Its eight issued imports are a [protected production contract](../AGENTS.md#channel-anyt-protected-production-contract).
 
 VLESS is a protocol; Xray and sing-box are implementations. Separate the
 client-to-router ingress from the router-to-VPS egress:

@@ -119,6 +119,39 @@ class SecondClientTests(unittest.TestCase):
             self.assertEqual(profiles.export_eight(out),current)
             self.assertEqual(json.loads((out/'settings.json').read_text()),current)
 
+    def test_all_eight_issued_payloads_survive_reexport_and_policy_projection(self):
+        def render_qr(argv, **kwargs):Path(argv[2]).write_bytes(b'\x89PNG'+kwargs['input'])
+        with tempfile.TemporaryDirectory() as temp, patch.object(profiles.subprocess,'run',side_effect=render_qr):
+            out=Path(temp)/'bundle';profiles.generate(OPTIONS,out)
+            approved=profiles.export_eight(out)
+            saved={p.name:p.read_bytes() for p in (out/'clients').iterdir() if p.suffix in ('.png','.uri')}
+            self.assertEqual(len(saved),16)
+            projected=policy.project(fixtures['render'](),approved)
+            self.assertEqual(projected['inbounds'][0]['users'],approved['users'])
+            profiles.export_eight(out)
+            self.assertEqual(saved,{name:(out/'clients'/name).read_bytes() for name in saved})
+
+    def test_production_update_refuses_rekey_or_removal_of_each_issued_slot(self):
+        approved=copy.deepcopy(settings())
+        approved['users'] += [{'name':'lab-client-'+str(i).zfill(2),'password':('fixture-slot-'+str(i)+'-')*4} for i in range(2,9)]
+        profiles.compatible_update(approved,copy.deepcopy(approved))
+        for name in [u['name'] for u in approved['users'] if u['name']!='lab-probe']:
+            for action in ('remove','rekey'):
+                proposed=copy.deepcopy(approved)
+                if action=='remove':proposed['users']=[u for u in proposed['users'] if u['name']!=name]
+                else:next(u for u in proposed['users'] if u['name']==name)['password']='changed-production-secret-'*4
+                with self.subTest(slot=name,action=action),self.assertRaises(ValueError):
+                    profiles.compatible_update(approved,proposed)
+        for field,value in [('host','other.example.invalid'),('port',OPTIONS['port']+1),('server_name','other.example.invalid')]:
+            proposed=copy.deepcopy(approved);proposed[field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):profiles.compatible_update(approved,proposed)
+
+    def test_issued_uri_wire_format_is_a_fixed_compatibility_contract(self):
+        s=settings();s['users'][0]['password']='fixture-approved-password-00000000'
+        self.assertEqual(profiles.uri(s,'lab-client','Channel anyT 01'),
+                         'anytls://fixture-approved-password-00000000@home.example.invalid:12031/'
+                         '?sni=home.example.invalid&insecure=0#Channel%20anyT%2001')
+
     def test_existing_client_rotation_or_transport_change_is_refused(self):
         for field in ('users','port'):
             proposed=copy.deepcopy(settings())

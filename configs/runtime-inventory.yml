@@ -396,7 +396,7 @@ components:
       - /opt/etc/ghostroute-anytls/sing-box-atls
       - /opt/etc/ghostroute-anytls/channel-anytls.py
     version_policy:
-      proven_good: Router Entware sing-box baseline passes lab TCP/DNS probes and operator-tested Shadowrocket messages/photos.
+      proven_good: Router Entware sing-box baseline passes authenticated application/DNS probes, physical reboot and operator-tested Shadowrocket messages/photos.
       minimum_required: AnyTLS inbound support, valid TLS identity and isolated process ownership.
       candidate: Other carriers, calls, roaming and sustained capacity require separate acceptance.
       known_problematic:
@@ -404,7 +404,7 @@ components:
         - IPv6 and payload UDP/443 are rejected; calls require real-client acceptance.
       rollback_available: channel_anytls_action=disable stops only anyT and its automatic recovery, retaining identities.
     relationships:
-      - receives_home_first_anytls_test_client
+      - receives_home_first_anytls_production_clients
       - projects_existing_sensitive_managed_direct_policy
       - preserves_production_channel_ownership
     runtime_checks:
@@ -413,7 +413,8 @@ components:
       - verified TLS and invalid-password rejection
       - external bootstrap and signed-in client acceptance are separate evidence levels
     compatibility_notes:
-      - Eight client identities and a separate diagnostic credential; the original two imports stay valid.
+      - Operator-approved production slots Channel anyT 01–08 are protected real-client imports; all eight and the original two imports must stay valid.
+      - Routine work must preserve issued credentials and URI payloads; breaking migration or service interruption requires explicit approval under AGENTS.md.
       - Listener port comes from ignored settings.json, outside the production port-variable registry.
       - Persistent files are under /opt/etc/ghostroute-anytls; volatile state is under /tmp/ghostroute-anytls.
       - Shared boot/firewall integration and ChannelAnyT cron reconcile only this service.

@@ -93,7 +93,7 @@ What this project demonstrates, with proof in-repo:
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive on `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane relayed into the same managed split; disabled by default | No |
-| anyT | Working additional selected-client channel | Endpoint -> home router AnyTLS/TLS | Eight identities, shared selected-client split, scoped boot/firewall/process recovery | No |
+| anyT | Production for issued client profiles | Endpoint -> home router AnyTLS/TLS | Eight protected client imports, shared selected-client split, scoped boot/firewall/process recovery | No |
 | M | Regional service policy | Selected applications | Approved regional egress, isolated from client routing | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 

@@ -61,7 +61,7 @@ watchdog'ами и схемами каналов:
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
-| anyT | Рабочий дополнительный канал | Endpoint -> домашний AnyTLS/TLS | 8 отдельных QR, общий split, восстановление после загрузки и firewall rebuild | Нет |
+| anyT | Production для выданных клиентских профилей | Endpoint -> домашний AnyTLS/TLS | 8 защищённых от замены QR, общий split, восстановление после загрузки и firewall rebuild | Нет |
 | M | Региональная служебная политика | Выбранные приложения | Выход в заданном регионе, изолированный от клиентской маршрутизации | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 

@@ -1,6 +1,6 @@
 # Channel anyT — home-first AnyTLS
 
-Channel anyT is an additional working selected-client channel on the home
+Channel anyT is a production selected-client channel on the home
 router. It terminates AnyTLS over verified TLS/TCP, then applies the existing
 sensitive / managed / direct policy in a separate sing-box process. It has eight
 independent client identities and a separate diagnostic identity. Existing
@@ -79,11 +79,34 @@ platform's documented assurance limits.
 
 ## Eight private client imports
 
+### Protected issued profiles
+
+**Channel anyT 01–08 are the operator-approved production set for real clients.**
+All eight issued imports, plus the original first/second imports, must remain
+valid during future work. Routine maintenance does not regenerate, overwrite,
+remove or rotate them. Preserve the endpoint, transport, TLS server name and
+validation, credentials and issued URI payload. Restore lost files from the
+verified encrypted backup; creating a new bundle is not recovery.
+
+The [repository production contract](../../../AGENTS.md#channel-anyt-protected-production-contract)
+applies to shared routing, DNS, firewall, TLS, storage, supervisor and package
+changes too. Check anyT before and after relevant changes: enabled marker/cron,
+owned processes, current policy, an authenticated application request and unchanged
+issued imports. Plan explicit operator-approved interruptions and compatible
+rollback. Do not leave anyT disabled after unrelated work or weaken fail-closed
+policy to restore availability. Breaking migrations require separate approval
+and preferably a parallel path for existing clients.
+
+Only symbolic client slots and acceptance rules are tracked. The ignored bundle
+contains `production-approval.private.json` with the approved settings/artifact
+fingerprints; retain it with the encrypted backup. A local hash comparison
+detects changed artifacts but does not replace runtime or real-client acceptance.
+
 ```bash
 # New bundle only; never overwrite an existing identity.
 python3 modules/routing-core/bin/channel-anytls-profile \
   configs/private/anytls-options.json ansible/out/channel-anytls
-# Existing bundle: preserve every already allocated identity.
+# Explicitly approved initial allocation/recovery only, not routine maintenance.
 python3 modules/routing-core/bin/channel-anytls-profile \
   --export-eight ansible/out/channel-anytls
 ```
