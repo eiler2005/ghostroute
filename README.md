@@ -13,6 +13,9 @@
 Documentation policy: English docs are the developer-facing ground truth; the
 Russian README is an operator-facing summary.
 
+[Software versions and upgrade gates](docs/runtime-inventory.md) track reviewed
+dependencies, qualified runtimes and deployment targets separately.
+
 ---
 
 ## TL;DR

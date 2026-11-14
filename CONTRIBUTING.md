@@ -25,9 +25,10 @@ router or VPS access.
 
 Prerequisites:
 
-- Node.js 22 (matches `.nvmrc` and `.github/workflows/ci.yml`). If you use
+- Node.js 26.13.1 LTS (matches `.nvmrc`, Docker and CI). If you use
   `nvm`, run `nvm use`.
-- Python 3.x for Ansible-related tooling.
+- Python 3.15.2 for CI; Ansible control dependencies in `ansible/requirements.txt`
+  support Python 3.13 or newer. Router Python follows the stable Entware feed.
 - POSIX shell (`bash` for control-machine scripts, BusyBox `ash` compatibility
   required for anything running on the router).
 - `ripgrep` (`rg`) for the doc-syntax scan.
@@ -36,6 +37,7 @@ Local-only verification:
 
 ```bash
 ./modules/secrets-management/bin/secret-scan
+python3 modules/ghostroute-health-monitor/bin/software-inventory --check
 ./tests/run-fast.sh
 ./tests/run-smoke.sh   # Console smoke tests via Playwright
 bash -n verify.sh tests/run-all.sh tests/run-fast.sh

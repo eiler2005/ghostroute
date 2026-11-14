@@ -56,7 +56,7 @@ GUARD_ORDINARY_ROUTING=external_pac GUARD_REPORT_DIR=reports/mac-guard-checks/ex
 и его код/зависимости не меняются. Альтернатива — отдельная установка:
 
 ```bash
-npm install --prefix reports/mac-guard-test-tools --ignore-scripts --no-audit --no-fund playwright@1.59.1
+npm install --prefix reports/mac-guard-test-tools --ignore-scripts --no-audit --no-fund playwright@1.65.1
 node reports/mac-guard-test-tools/node_modules/playwright/cli.js install chromium
 GUARD_PLAYWRIGHT="$PWD/reports/mac-guard-test-tools/node_modules/playwright" \
   node modules/mac-privacy-guard/tests/strict-browser.mjs

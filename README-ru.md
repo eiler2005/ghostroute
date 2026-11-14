@@ -22,6 +22,8 @@ EN. Расширенные технические разделы (Quick Start, A
 Карта того, что установлено на ASUS Merlin router, с runtime-файлами,
 watchdog'ами и схемами каналов:
 [`docs/router-runtime-map.md`](docs/router-runtime-map.md).
+[Версии ПО и правила обновления](docs/runtime-inventory.md) отдельно учитывают
+проверенные runtime-версии, зависимости репозитория и цели будущего деплоя.
 [Проверки приватности и восстановления](docs/privacy-assurance.md) разделяют
 состояние роутера, активные пробы и подтверждение с реального клиента.
 [Замена внешнего выхода](modules/routing-core/docs/managed-egress-profile-rotation.md)

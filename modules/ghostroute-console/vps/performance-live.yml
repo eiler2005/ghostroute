@@ -3,8 +3,8 @@
   gather_facts: false
   become: true
   vars:
-    ghostroute_console_perf_image: mcr.microsoft.com/playwright:v1.59.1-noble
-    ghostroute_console_perf_playwright_version: "1.59.1"
+    ghostroute_console_perf_image: mcr.microsoft.com/playwright:v1.65.1-noble
+    ghostroute_console_perf_playwright_version: "1.65.1"
     ghostroute_console_perf_cleanup_image: true
     ghostroute_console_perf_base_url: "http://127.0.0.1:3000"
     ghostroute_console_perf_work_dir: /tmp/ghostroute-console-perf-vps

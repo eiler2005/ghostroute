@@ -4,17 +4,18 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OUT_DIR="${PROJECT_ROOT}/ansible/out/channel-d-naiveproxy"
 OUT="${CHANNEL_D_CADDY_OUT:-${OUT_DIR}/caddy-channel-d-naiveproxy-linux-arm64}"
-CADDY_VERSION="${CHANNEL_D_CADDY_VERSION:-v2.11.1}"
+CADDY_VERSION="${CHANNEL_D_CADDY_VERSION:-v2.11.9}"
+export GOTOOLCHAIN="${CHANNEL_D_GO_TOOLCHAIN:-go1.27.4}"
 FORWARDPROXY_MODULE="${CHANNEL_D_FORWARDPROXY_MODULE:-github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@d62c80d3dd2c706b6b87579844d2397bddd18317}"
 
 mkdir -p "$OUT_DIR"
 
-if ! command -v xcaddy >/dev/null 2>&1; then
+if ! command -v xcaddy >/dev/null 2>&1 || [[ "$(xcaddy version 2>/dev/null)" != v0.4.7* ]]; then
   if ! command -v go >/dev/null 2>&1; then
     echo "go is required to install xcaddy; install Go first or put xcaddy in PATH" >&2
     exit 1
   fi
-  GOBIN="${GOBIN:-${HOME}/go/bin}" go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+  GOBIN="${GOBIN:-${HOME}/go/bin}" go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
   export PATH="${GOBIN:-${HOME}/go/bin}:$PATH"
 fi
 

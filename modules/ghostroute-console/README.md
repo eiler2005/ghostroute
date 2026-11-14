@@ -1,5 +1,18 @@
 # GhostRoute Console
 
+Development and container builds use Node LTS 26.13.1 (root `.nvmrc`). Exact
+dependencies are locked and checked against the
+[software inventory](../../docs/runtime-inventory.md). Next 16 build/dev commands
+explicitly use Webpack; Tailwind 4 uses `@tailwindcss/postcss`.
+
+The seeded GUI gate covers desktop Chromium, Android and iPhone WebKit. Its
+standalone fixture copies static/public assets before launch and asserts applied
+mobile CSS, so an unstyled HTML response cannot count as a passing first paint.
+`npm run test:perf` builds and measures the production standalone server; dev
+compilation and Fast Refresh are not production latency evidence.
+After any public deployment, also run the live performance and public iPhone
+delivery gates; local fixtures do not verify the public buffer proxy.
+
 Router collection uses a dedicated service SSH key with a router-enforced fixed
 report allowlist. The operator administrative key stays on the control Mac.
 Alarm acknowledgement metadata stays on the VPS. See

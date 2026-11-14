@@ -10,6 +10,19 @@ router/VPS runtime paths.
 
 ## Purpose
 
+Use a dedicated control virtualenv (Python 3.13 or newer; CI tests 3.15.2):
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
+```
+
+Exact dependency versions and reviewed build targets are recorded in the
+[software inventory](../docs/runtime-inventory.md). A source pin does not
+upgrade an existing host. Inspect Vault overrides and preserve panel database,
+runtime and client-import backups before deploying a new target.
+
 - Deploy the VPS Reality entrypoint: Caddy layer4, Xray/3x-ui Reality inbound,
   firewall policy, optional restricted DNS support and the VPS health observer.
 - Deploy the router stealth layer: sing-box client, dnscrypt-proxy,

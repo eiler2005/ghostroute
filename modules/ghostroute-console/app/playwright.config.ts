@@ -6,7 +6,7 @@ const standaloneDataDir = process.env.GHOSTROUTE_CONSOLE_DATA_DIR
   : "";
 const serverCommand =
   process.env.GHOSTROUTE_CONSOLE_E2E_SERVER_MODE === "start"
-    ? `${standaloneDataDir}HOSTNAME=127.0.0.1 PORT=3217 node .next/standalone/server.js`
+    ? `node scripts/prepare-e2e-server.mjs && ${standaloneDataDir}HOSTNAME=127.0.0.1 PORT=3217 node .next/standalone/server.js`
     : "npm run dev -- --hostname 127.0.0.1 --port 3217";
 
 export default defineConfig({
@@ -25,5 +25,6 @@ export default defineConfig({
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "iphone", use: { ...devices["iPhone 15"], browserName: "webkit" } },
   ],
 });

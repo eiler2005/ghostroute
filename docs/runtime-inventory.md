@@ -5,6 +5,55 @@ GhostRoute. It is a lightweight OBOM-style registry for operational components,
 version policy, compatibility claims, port/listener ownership and upgrade gates.
 It is not a full release SBOM and does not replace Ansible inventory or Vault.
 
+The companion [software version registry](../configs/software-versions.json)
+records exact repository dependencies, build targets, qualified router packages,
+review dates and upstream sources. Validate it without contacting or changing any
+host:
+
+```sh
+./modules/ghostroute-health-monitor/bin/software-inventory --check
+./modules/ghostroute-health-monitor/bin/software-inventory --json
+```
+
+The fast suite rejects source-pin/lockfile drift. This is a consistency gate,
+not an automatic upstream updater: recheck official release channels at each
+maintenance window and update the review date only after reviewing them.
+
+## Stable software review — 2026-11-14
+
+Repository-tested control targets are Node LTS 26.13.1, Python 3.15.2 and
+Ansible Core 2.22.0. Python dependencies and Galaxy collections are pinned in
+`ansible/requirements.txt` and `ansible/collections/requirements.yml`.
+Console uses Next 16.4.6, React 19.3.1, TypeScript 7.0.2 and Playwright 1.65.1;
+the lockfile and registry carry the complete direct dependency list.
+
+New build/deployment targets are Caddy 2.11.9, xcaddy 0.4.7, caddy-l4 0.1.3,
+Go 1.27.4, Xray 26.11.9 and 3x-ui v3.11.0. These source pins do **not** mean
+the VPS was upgraded. Inspect effective Vault overrides, back up the panel
+database and qualify each candidate before a separate deployment. The panel
+image bundles its own Xray; its version is not the standalone Xray target.
+
+Router packages remain on the authenticated, qualified Entware baseline:
+sing-box 1.14.4, Xray 26.10.29, Python 3.14.7, OpenSSL 3.5.9 and dnscrypt 2.1.20.
+An upstream release newer than a distribution package is not permission to
+replace that package with an unqualified binary. Preserve init scripts,
+package metadata and all issued imports, including anyT 01–08.
+
+The Naive forwardproxy fork has no stable tagged release channel; retain the
+reviewed commit rather than following its tip. The disabled AmneziaWG lab also
+retains its reviewed build and identities. Firmware/kernel components follow
+Merlin releases; VPS OS packages follow their distribution security repositories.
+Neither firmware flashing nor VPS OS upgrades are implied by this registry.
+Swift 6.4.2 is recorded as upstream SDK availability; local validation uses
+Apple Swift 6.3.1. Swift tools-version declares a minimum, not an SDK install.
+
+Console keeps the explicit Webpack build/dev path supported by Next 16;
+Turbopack is not qualified for the shared collector imports. The existing
+middleware convention remains compatible but deprecated. Tailwind 4 uses the
+dedicated PostCSS plugin without replacing the existing custom stylesheet.
+Seeded desktop, Android and iPhone/WebKit checks validate the upgrade. A local
+pass does not replace the public performance and iPhone CSS gate after deploy.
+
 The registry follows the useful parts of SBOM/OBOM practice: component identity,
 supplier/origin, package names, version policy, relationships, machine-readable
 port ownership and validation. It deliberately stores symbolic references such

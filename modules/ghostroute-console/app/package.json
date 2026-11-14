@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port 3000",
-    "dev:gui": "npm run seed:gui && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test GHOSTROUTE_CONSOLE_VPS_QUOTA_GB=${GHOSTROUTE_CONSOLE_VPS_QUOTA_GB:-1024} GHOSTROUTE_CONSOLE_LTE_QUOTA_GB=${GHOSTROUTE_CONSOLE_LTE_QUOTA_GB:-50} GHOSTROUTE_CONSOLE_BILLING_RESET_DAY=${GHOSTROUTE_CONSOLE_BILLING_RESET_DAY:-1} next dev --hostname 127.0.0.1 --port 3000",
-    "build": "next build",
+    "dev": "next dev --webpack --hostname 127.0.0.1 --port 3000",
+    "dev:gui": "npm run seed:gui && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test GHOSTROUTE_CONSOLE_VPS_QUOTA_GB=${GHOSTROUTE_CONSOLE_VPS_QUOTA_GB:-1024} GHOSTROUTE_CONSOLE_LTE_QUOTA_GB=${GHOSTROUTE_CONSOLE_LTE_QUOTA_GB:-50} GHOSTROUTE_CONSOLE_BILLING_RESET_DAY=${GHOSTROUTE_CONSOLE_BILLING_RESET_DAY:-1} next dev --webpack --hostname 127.0.0.1 --port 3000",
+    "build": "next build --webpack",
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "test": "node --test tests/*.test.mjs",
     "seed:gui": "node scripts/seed-gui-test-db.mjs",
     "test:e2e": "playwright test tests/e2e/smoke.spec.ts",
     "test:e2e:gui": "npm run seed:gui && npm run build && GHOSTROUTE_CONSOLE_E2E_SERVER_MODE=start GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test GHOSTROUTE_CONSOLE_VPS_QUOTA_GB=${GHOSTROUTE_CONSOLE_VPS_QUOTA_GB:-1024} GHOSTROUTE_CONSOLE_LTE_QUOTA_GB=${GHOSTROUTE_CONSOLE_LTE_QUOTA_GB:-50} GHOSTROUTE_CONSOLE_BILLING_RESET_DAY=${GHOSTROUTE_CONSOLE_BILLING_RESET_DAY:-1} playwright test tests/e2e/smoke.spec.ts --workers=1",
-    "test:perf": "npm run seed:gui && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test GHOSTROUTE_CONSOLE_VPS_QUOTA_GB=${GHOSTROUTE_CONSOLE_VPS_QUOTA_GB:-1024} GHOSTROUTE_CONSOLE_LTE_QUOTA_GB=${GHOSTROUTE_CONSOLE_LTE_QUOTA_GB:-50} GHOSTROUTE_CONSOLE_BILLING_RESET_DAY=${GHOSTROUTE_CONSOLE_BILLING_RESET_DAY:-1} playwright test tests/e2e/performance.spec.ts --project=desktop",
+    "test:perf": "npm run seed:gui && npm run build && GHOSTROUTE_CONSOLE_E2E_SERVER_MODE=start GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test GHOSTROUTE_CONSOLE_VPS_QUOTA_GB=${GHOSTROUTE_CONSOLE_VPS_QUOTA_GB:-1024} GHOSTROUTE_CONSOLE_LTE_QUOTA_GB=${GHOSTROUTE_CONSOLE_LTE_QUOTA_GB:-50} GHOSTROUTE_CONSOLE_BILLING_RESET_DAY=${GHOSTROUTE_CONSOLE_BILLING_RESET_DAY:-1} playwright test tests/e2e/performance.spec.ts --project=desktop",
     "test:gui:all": "npm run seed:gui && npm test && npm run build && npm run verify:timezone && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run verify:aggregates && GHOSTROUTE_CONSOLE_DATA_DIR=../data/gui-test npm run bench:dashboard && npm run test:e2e:gui && npm run test:perf",
     "verify:aggregates": "node scripts/verify-aggregates.mjs",
     "verify:timezone": "node scripts/verify-timezone.mjs",
@@ -28,23 +28,27 @@
     "verify:post-deploy": "node scripts/verify-post-deploy.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
-    "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0",
-    "next": "^15.5.19",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zod": "^4.4.3"
+    "better-sqlite3": "13.2.0",
+    "clsx": "2.1.1",
+    "lucide-react": "1.73.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.10.10",
-    "@types/react": "^19.0.7",
-    "@types/react-dom": "^19.0.3",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3"
+    "@playwright/test": "1.65.1",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "autoprefixer": "10.6.2",
+    "postcss": "8.5.33",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "@tailwindcss/postcss": "4.3.5"
+  },
+  "engines": {
+    "node": ">=26.13.1 <27"
   }
 }

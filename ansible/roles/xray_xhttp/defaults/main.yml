@@ -3,7 +3,7 @@
 # device mode or home-first router relay mode). It does not participate in
 # Channel A router REDIRECT/DNS/TUN ownership or automatic failover.
 channel_b_xhttp_enabled: false
-channel_b_xhttp_image: ghcr.io/xtls/xray-core:26.3.27
+channel_b_xhttp_image: ghcr.io/xtls/xray-core:26.11.9
 channel_b_xhttp_container_name: xray-xhttp
 channel_b_xhttp_config_dir: "{{ stealth_stack_dir }}/xray-xhttp"
 channel_b_xhttp_config_path: "{{ channel_b_xhttp_config_dir }}/config.json"

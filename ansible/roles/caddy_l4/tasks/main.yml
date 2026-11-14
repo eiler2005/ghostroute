@@ -84,19 +84,18 @@
 
     - name: Ensure xcaddy is installed
       ansible.builtin.shell: |
-        test -x /usr/local/bin/xcaddy || \
-          GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-      args:
-        creates: /usr/local/bin/xcaddy
+        { test -x /usr/local/bin/xcaddy && /usr/local/bin/xcaddy version | grep -q '^v0.4.7'; } || \
+          GOTOOLCHAIN=go1.27.4 GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
       when: _caddy_needs_module_rebuild
 
     - name: Build host Caddy with layer4 plugin
       ansible.builtin.shell: |
         set -e
+        export GOTOOLCHAIN=go1.27.4
         TMPDIR="$(mktemp -d)"
         trap 'rm -rf "$TMPDIR"' EXIT
         cd "$TMPDIR"
-        XCADDY_ARGS="--with github.com/mholt/caddy-l4"
+        XCADDY_ARGS="--with github.com/mholt/caddy-l4@v0.1.3"
         /usr/local/bin/xcaddy build "{{ system_caddy_target_version }}" $XCADDY_ARGS
         install -m 0755 caddy "{{ system_caddy_binary_path }}"
       when: _caddy_needs_module_rebuild

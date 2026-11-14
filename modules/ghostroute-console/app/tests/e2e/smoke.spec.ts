@@ -443,6 +443,20 @@ test("mobile keeps controls and content reachable", async ({ page, isMobile }) =
   await expect(page.getByRole("heading", { name: "Clients" })).toBeVisible();
 });
 
+test("mobile first paint applies shell CSS", async ({ page, isMobile }, testInfo) => {
+  test.skip(!isMobile, "mobile first-paint contract");
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/m(?:\?|$)/);
+  await expect(page.locator(".mobile-shell")).toBeVisible();
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(7, 17, 31)");
+  const styled = await page.locator(".mobile-shell").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return style.boxSizing === "border-box" && parseFloat(style.paddingLeft) > 0;
+  });
+  expect(styled).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("mobile-first-paint.png"), fullPage: true });
+});
+
 test("mobile serves compact heavy console pages", async ({ page, isMobile }) => {
   test.skip(!isMobile, "mobile-only compact SSR smoke");
 

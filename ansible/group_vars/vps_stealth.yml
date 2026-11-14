@@ -2,7 +2,7 @@ stealth_stack_dir: /opt/stealth
 caddy_dockerfile: caddy/Dockerfile
 caddy_caddyfile: caddy/Caddyfile
 caddy_image_tag: caddy-l4:local
-xui_image: "ghcr.io/mhsanaei/3x-ui:latest"
+xui_image: "ghcr.io/mhsanaei/3x-ui:v3.11.0"
 xray_reality_listen_port: "{{ vault_xray_reality_listen_port | default(xray_reality_listen_port_secret | default(8443)) }}"
 vps_unbound_enabled: "{{ vault_vps_unbound_enabled | default(true) }}"
 vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1') }}"
@@ -21,7 +21,7 @@ vps_unbound_config_path: /etc/unbound/unbound.conf.d/ghostroute-policy-split.con
 # In this mode we extend that Caddy with the layer4 plugin and a listener wrapper
 # instead of starting a second public-facing Caddy container.
 stealth_caddy_mode: system_listener_wrapper
-system_caddy_target_version: "v2.11.4"
+system_caddy_target_version: "v2.11.9"
 system_caddy_binary_path: /usr/bin/caddy
 system_caddy_backup_path: /usr/bin/caddy.router-configuration.bak
 system_caddyfile_path: /etc/caddy/Caddyfile
@@ -46,7 +46,7 @@ mobile_checkin_token: "{{ vault_mobile_checkin_token | default('') }}"
 # only in direct mode and must not touch current Reality SNI. Channel C is
 # router-side home-first and has no VPS compatibility backend.
 channel_b_xhttp_enabled: "{{ vault_channel_b_xhttp_enabled | default(false) }}"
-channel_b_xhttp_image: "{{ vault_channel_b_xhttp_image | default('ghcr.io/xtls/xray-core:26.3.27') }}"
+channel_b_xhttp_image: "{{ vault_channel_b_xhttp_image | default('ghcr.io/xtls/xray-core:26.11.9') }}"
 channel_b_xhttp_public_host: "{{ vault_channel_b_xhttp_public_host | default('') }}"
 channel_b_xhttp_local_port: "{{ vault_channel_b_xhttp_local_port | default(18081) }}"
 channel_b_xhttp_path: "{{ vault_channel_b_xhttp_path | default('/assets/update') }}"

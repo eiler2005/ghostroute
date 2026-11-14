@@ -48,7 +48,8 @@ assert_not_contains "ansible/playbooks/20-stealth-router.yml" 'xray_xhttp|channe
 assert_not_contains "ansible/playbooks/20-stealth-router.yml" 'channel_b_home_relay'
 
 assert_contains "ansible/roles/xray_xhttp/defaults/main.yml" 'channel_b_xhttp_enabled: false'
-assert_contains "ansible/roles/xray_xhttp/defaults/main.yml" 'ghcr.io/xtls/xray-core:26\.3\.27'
+# Exact reviewed version is checked by test-software-inventory.py.
+assert_contains "ansible/roles/xray_xhttp/defaults/main.yml" 'ghcr.io/xtls/xray-core:[0-9]+\.[0-9]+\.[0-9]+'
 assert_contains "ansible/roles/channel_b_home_relay/templates/config.json.j2" '"network": "xhttp"'
 assert_contains "ansible/roles/channel_b_home_relay/templates/config.json.j2" '"tag": "channel-b-home-in"'
 assert_contains "ansible/roles/channel_b_home_relay/templates/config.json.j2" '"tag": "channel-b-upstream-socks"'

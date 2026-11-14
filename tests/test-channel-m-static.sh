@@ -112,13 +112,10 @@ assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'MAX_EGRESS_
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'MAX_EGRESS_RECOVERY_STATUS_COMMAND='
 assert_contains "ansible/playbooks/30-generate-client-profiles.yml" 'channel_m_artifacts_only'
 assert_contains "modules/client-profile-factory/bin/client-profiles" 'channel-m-list'
-assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel M maxtg Service Egress Artifact'
-assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'MAX_EGRESS_RECOVERY'
-assert_contains "docs/channel-m-environment.md" 'channel-m-maxtg-reverse-egress -> direct-out'
-assert_contains "docs/channel-m-environment.md" 'channel-m-recover'
-assert_contains "docs/channel-m-environment.md" 'channel_m_maxtg_reverse_listen_port'
-assert_contains "docs/channel-m-environment.md" 'No public home inbound port is required'
-assert_contains "docs/channels.md" 'channel-m-recover'
+assert_contains "modules/client-profile-factory/docs/client-profiles.md" 'Channel M — Regional Service Policy'
+assert_contains "docs/channel-m-environment.md" 'independent policy and recovery ownership'
+assert_contains "docs/channel-m-environment.md" 'private operator runbook'
+# Runtime API checks above retain field-level coverage. Public prose is neutral.
 assert_contains "docs/channels.md" 'channel-m-environment.md'
 assert_contains ".gitignore" '/ansible/out/channel-m-maxtg/*'
 

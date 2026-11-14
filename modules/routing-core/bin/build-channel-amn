@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+export GOTOOLCHAIN="${CHANNEL_AMN_GO_TOOLCHAIN:-go1.27.4}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OUT="$ROOT/ansible/out/channel-amn"

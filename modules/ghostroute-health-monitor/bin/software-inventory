@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Read-only consistency gate for reviewed software versions; no remote upgrades."""
+import argparse
+import datetime
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+STATUSES = {"repository_tested", "ci_configured", "build_target", "deployed_qualified",
+            "compatibility_pin", "platform_managed"}
+
+
+def validate(root, inventory):
+    errors = []
+    if inventory.get("schema_version") != 1:
+        errors.append("unsupported schema")
+    try:
+        datetime.date.fromisoformat(inventory["checked_on"])
+    except (KeyError, ValueError, TypeError):
+        errors.append("invalid review date")
+    seen = set()
+    for component in inventory.get("components", []):
+        name = component.get("id")
+        if not name or name in seen:
+            errors.append(f"duplicate or missing component: {name}")
+        seen.add(name)
+        if component.get("status") not in STATUSES:
+            errors.append(f"{name}: invalid status")
+        if not component.get("version") or not component.get("source", "").startswith("https://"):
+            errors.append(f"{name}: missing version/source")
+        for binding in component.get("bindings", []):
+            path = (root / binding["path"]).resolve()
+            if not path.is_relative_to(root.resolve()):
+                errors.append(f"{name}: path outside repository")
+                continue
+            needle = binding.get("contains")
+            if not needle or not path.is_file() or needle not in path.read_text():
+                errors.append(f"{name}: version drift in {binding['path']}")
+    app = root / "modules/ghostroute-console/app"
+    manifest = json.loads((app / "package.json").read_text())
+    lock = json.loads((app / "package-lock.json").read_text())
+    for section in ("dependencies", "devDependencies"):
+        for name, version in manifest.get(section, {}).items():
+            if lock["packages"][""].get(section, {}).get(name) != version:
+                errors.append(f"{name}: lock root drift")
+            if lock["packages"].get(f"node_modules/{name}", {}).get("version") != version:
+                errors.append(f"{name}: installed lock version drift")
+            recorded = next((c for c in inventory.get("components", []) if c.get("id") == f"npm:{name}"), {})
+            if recorded.get("version") != version:
+                errors.append(f"{name}: inventory drift")
+    return errors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    inventory = json.loads((ROOT / "configs/software-versions.json").read_text())
+    if args.check:
+        errors = validate(ROOT, inventory)
+        print("\n".join(errors) if errors else f"Software inventory OK: {len(inventory['components'])} components")
+        return bool(errors)
+    if args.json:
+        print(json.dumps(inventory, indent=2))
+    else:
+        print(f"Reviewed {inventory['checked_on']}; source targets are not deployment evidence")
+        for c in inventory["components"]:
+            print(f"{c['id']}: {c['version']} [{c['status']}]")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
