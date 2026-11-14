@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -93,7 +94,60 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(json.loads((out / 'settings.json').read_text()), s)
 
 
+class SecondClientTests(unittest.TestCase):
+    def test_second_qr_preserves_first_identity_and_existing_files(self):
+        def render_qr(argv, **kwargs):
+            Path(argv[2]).write_bytes(b'\x89PNG\r\n\x1a\n')
+        with tempfile.TemporaryDirectory() as temp, patch.object(profiles.subprocess, 'run', side_effect=render_qr):
+            out=Path(temp)/'bundle'
+            first=profiles.generate(OPTIONS,out)
+            saved={p.name:p.read_bytes() for p in out.iterdir()}
+            second=profiles.add_second(out)
+            for name in ('AnyTLS-Lab.png','AnyTLS-Lab.uri','index.html'):
+                self.assertEqual((out/name).read_bytes(),saved[name])
+            self.assertEqual(second['users'][:2],first['users'])
+            self.assertEqual(len({u['password'] for u in second['users']}),3)
+            imported=urlsplit((out/'AnyTLS-Lab-02.uri').read_text().strip())
+            self.assertEqual(unquote(imported.username),second['users'][2]['password'])
+            self.assertEqual(unquote(imported.fragment),'GhostRoute AnyTLS Lab 02')
+            self.assertEqual(parse_qs(imported.query)['insecure'],['0'])
+            projected=policy.project(fixtures['render'](),second)
+            self.assertEqual(projected['inbounds'][0]['users'],second['users'])
+            with self.assertRaises(ValueError):
+                profiles.add_second(out)
+            self.assertEqual(json.loads((out/'settings.json').read_text()),second)
+
+    def test_failed_second_qr_does_not_register_or_change_credentials(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out=Path(temp)
+            original=json.dumps(settings()).encode()
+            (out/'settings.json').write_bytes(original)
+            with patch.object(profiles.subprocess,'run',side_effect=RuntimeError('QR failure')):
+                with self.assertRaises(RuntimeError):
+                    profiles.add_second(out)
+            self.assertEqual((out/'settings.json').read_bytes(),original)
+            self.assertFalse((out/'AnyTLS-Lab-02.uri').exists())
+
+
 class LifecycleTests(unittest.TestCase):
+    def test_port_check_rejects_active_listener(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            listener.bind(('0.0.0.0',0));listener.listen()
+            with self.assertRaises(OSError):
+                runtime.check_port(listener.getsockname()[1])
+
+    def test_port_check_allows_restart_after_accepted_connection_closes(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            listener.bind(('0.0.0.0',0));listener.listen()
+            port=listener.getsockname()[1]
+            with socket.create_connection(('127.0.0.1',port),timeout=2) as client:
+                accepted,_=listener.accept()
+                accepted.close()
+                self.assertEqual(client.recv(1),b'')
+        runtime.check_port(port)
+
     def test_stale_source_is_rejected_before_any_router_command(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(runtime, 'RUN', Path(temp)), \
                 patch.object(runtime, 'BASE', Path(temp)), patch.object(runtime, 'SOURCE', Path(temp) / 'source'), \

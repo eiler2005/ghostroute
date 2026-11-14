@@ -19,10 +19,11 @@ PRIVATE = ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
 def validate_settings(s):
     if type(s['port']) is not int or not 1024 < s['port'] <= 65535:
         raise ValueError('Invalid lab listener')
-    if len(s['users']) != 2 or {u['name'] for u in s['users']} != {'lab-client', 'lab-probe'}:
-        raise ValueError('Require distinct client and probe identities')
+    names = {u['name'] for u in s['users']}
+    if names not in ({'lab-client', 'lab-probe'}, {'lab-client', 'lab-client-02', 'lab-probe'}) or len(names) != len(s['users']):
+        raise ValueError('Require one or two test clients and a distinct probe identity')
     passwords = [u['password'] for u in s['users']]
-    if any(not isinstance(p, str) or len(p) < 32 for p in passwords) or len(set(passwords)) != 2:
+    if any(not isinstance(p, str) or len(p) < 32 for p in passwords) or len(set(passwords)) != len(passwords):
         raise ValueError('Require distinct strong passwords')
     if not s['host'] or not s['server_name'] or any(c in s['host'] + s['server_name'] for c in '\r\n/@?# '):
         raise ValueError('Invalid TLS endpoint')

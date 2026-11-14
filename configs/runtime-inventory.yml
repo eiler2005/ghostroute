@@ -413,7 +413,7 @@ components:
       - verified TLS and invalid-password rejection
       - external bootstrap and signed-in client acceptance are separate evidence levels
     compatibility_notes:
-      - One private client import and a separate diagnostic credential; existing profiles stay valid.
+      - Up to two private test-client imports and a separate diagnostic credential; existing profiles stay valid.
       - Listener port comes from ignored settings.json, outside the production port-variable registry.
       - Persistent files are under /opt/etc/ghostroute-anytls; volatile state is under /tmp/ghostroute-anytls.
       - The containment watcher stops the lab on config hash drift or oversized logs; it does not restart production.

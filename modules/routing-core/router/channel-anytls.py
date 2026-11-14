@@ -54,6 +54,14 @@ def terminate(name):
     (RUN / (name + '.pid')).unlink(missing_ok=True)
 
 
+def check_port(port):
+    with socket.socket() as sock:
+        # Match Go's listener reuse semantics: old accepted TCP connections can
+        # remain in TIME_WAIT after a lab stop. An active listener still rejects.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('0.0.0.0', port))
+
+
 def preflight():
     if (RUN / 'owned.json').exists() or owned_pid('policy') or owned_pid('watch'):
         raise ValueError('Stop existing lab before replacing or starting it')
@@ -70,8 +78,7 @@ def preflight():
     firewall = call('iptables-save').stdout
     if CHAIN in firewall or '--dport ' + str(s['port']) + ' ' in firewall:
         raise ValueError('Candidate firewall resource is already occupied')
-    with socket.socket() as sock:
-        sock.bind(('0.0.0.0', s['port']))
+    check_port(s['port'])
     memory = dict((line.split(':')[0], int(line.split()[1])) for line in Path('/proc/meminfo').read_text().splitlines())
     if memory['MemAvailable'] < 150 * 1024:
         raise ValueError('Insufficient memory for isolated lab')

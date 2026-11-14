@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
+import tempfile
 import urllib.parse
 
 spec = importlib.util.spec_from_file_location('anytls_policy', Path(__file__).resolve().parents[1] / 'router/channel-anytls-policy.py')
@@ -15,11 +16,39 @@ policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
 
 
-def uri(s):
-    credential = next(u['password'] for u in s['users'] if u['name'] == 'lab-client')
+def uri(s, client='lab-client', label='GhostRoute AnyTLS Lab'):
+    credential = next(u['password'] for u in s['users'] if u['name'] == client)
     query = urllib.parse.urlencode({'sni': s['server_name'], 'insecure': '0'})
     host = '[' + s['host'] + ']' if ':' in s['host'] else s['host']
-    return f'anytls://{urllib.parse.quote(credential, safe="")}@{host}:{s["port"]}/?{query}#GhostRoute%20AnyTLS%20Lab'
+    return f'anytls://{urllib.parse.quote(credential, safe="")}@{host}:{s["port"]}/?{query}#{urllib.parse.quote(label, safe="")}'
+
+
+def add_second(output):
+    original = (output / 'settings.json').read_bytes()
+    s = json.loads(original)
+    policy.validate_settings(s)
+    if any(u['name'] == 'lab-client-02' for u in s['users']):
+        raise ValueError('Second client already exists; use its saved QR instead of rotating it')
+    names = ['AnyTLS-Lab-02.uri', 'AnyTLS-Lab-02.png', 'settings.before-second.private.json']
+    if any((output / name).exists() for name in names):
+        raise ValueError('Second-client artifacts already exist; inspect the private bundle')
+    s['users'].append({'name': 'lab-client-02', 'password': secrets.token_urlsafe(32)})
+    policy.validate_settings(s)
+    os.umask(0o077)
+    with tempfile.TemporaryDirectory(prefix='.second-', dir=output) as temp:
+        stage = Path(temp)
+        payload = uri(s, 'lab-client-02', 'GhostRoute AnyTLS Lab 02')
+        (stage / names[0]).write_text(payload + '\n')
+        subprocess.run(['qrencode', '-o', str(stage / names[1]), '-s', '8', '-l', 'M'],
+                       input=payload.encode(), capture_output=True, check=True, timeout=15)
+        (stage / 'settings.json').write_text(json.dumps(s, indent=2) + '\n')
+        # Publish credentials only after QR rendering succeeds. Preserve rollback.
+        with (output / names[2]).open('xb') as backup:
+            backup.write(original)
+        for name in names[:2]:
+            os.replace(stage / name, output / name)
+        os.replace(stage / 'settings.json', output / 'settings.json')
+    return s
 
 
 def generate(options, output):
@@ -52,10 +81,18 @@ def generate(options, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('options', type=Path)
-    parser.add_argument('output', type=Path)
+    parser.add_argument('options', type=Path, nargs='?')
+    parser.add_argument('output', type=Path, nargs='?')
+    parser.add_argument('--add-second', type=Path, metavar='BUNDLE')
     args = parser.parse_args()
-    generate(json.loads(args.options.read_text()), args.output)
+    if args.add_second:
+        if args.options or args.output:
+            parser.error('--add-second takes only the existing bundle path')
+        add_second(args.add_second)
+    else:
+        if not args.options or not args.output:
+            parser.error('provide options and output, or --add-second BUNDLE')
+        generate(json.loads(args.options.read_text()), args.output)
     print('Private AnyTLS lab bundle created; existing profiles unchanged')
 
 

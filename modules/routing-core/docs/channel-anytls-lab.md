@@ -1,6 +1,6 @@
 # AnyTLS home-first compatibility lab
 
-An additive, manually operated TCP/TLS ingress for one selected test client.
+An additive, manually operated TCP/TLS ingress for up to two selected test clients.
 It compares an alternative to the existing Reality/Vision first hop without
 changing the managed egress or existing A/B/C/D/M/Amn client imports. A working
 lab does not prove that DPI caused a failure on another transport.
@@ -72,6 +72,22 @@ credentials. Add a new test node; do not replace existing client profiles.
 Include the complete lab bundle in the operator's encrypted configuration backup.
 
 ## Explicit deployment and rollback
+
+To add the second test identity without changing the first URI or QR:
+
+```bash
+python3 modules/routing-core/bin/channel-anytls-profile --add-second ansible/out/channel-anytls
+```
+
+This adds `AnyTLS-Lab-02.uri` and `AnyTLS-Lab-02.png`, retains the old settings
+as `settings.before-second.private.json`, and refuses a repeated allocation.
+Both clients keep the same ingress and routing policy, with separate passwords.
+The running server needs an explicit lab-only stop/start with the updated
+settings; the existing first QR remains valid after that brief interruption.
+Back up the updated bundle. Two identities do not establish concurrent capacity.
+The port preflight uses the listener's address-reuse semantics so accepted
+connections left in TCP TIME_WAIT do not prevent this lab-only restart. An
+active listener on that port still rejects startup; both cases have regressions.
 
 ```bash
 cd ansible
