@@ -31,10 +31,10 @@ It adds no channel listener or router supervisor ownership.
 
 ## Version Policy Classes
 
-The optional [AnyTLS lab](../modules/routing-core/docs/channel-anytls-lab.md)
-is recorded as `router_anytls_lab`. Its listener comes from the private lab
+The additional [Channel anyT](../modules/routing-core/docs/channel-anytls-lab.md)
+is recorded under the retained ID `router_anytls_lab`. Its listener comes from private
 `settings.json`, outside the production Ansible port-variable registry. Its
-isolated process and containment watcher do not join production boot recovery.
+isolated process and containment watcher have scoped boot/firewall/cron recovery.
 
 - `proven_good`: the currently trusted runtime baseline.
 - `minimum_required`: the oldest feature-capable line for a specific feature.

@@ -19,7 +19,8 @@ local runbooks or historical planning notes.
 - [architecture.md](architecture.md) - high-level GhostRoute architecture.
 - [router-runtime-map.md](router-runtime-map.md) - sanitized map of what is installed on the ASUS Merlin router, with diagrams and runtime guardrails.
 - [praefectus-ai/docs/vps-runtime-map.md](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md) - companion VPS-side runtime map for Channel M, Console and routing/app surfaces.
-- [channels.md](channels.md) - production channel handoff and optional Amn lab status.
+- [channels.md](channels.md) - channel handoff, Channel anyT and optional Amn lab status.
+- [Channel anyT runbook and diagrams](../modules/routing-core/docs/channel-anytls-lab.md) - home-first AnyTLS, eight independent imports and automatic scoped recovery.
 - Platform diagrams: [English](assets/diagrams/ghostroute-platform-en.html) / [Русский](assets/diagrams/ghostroute-platform-ru.html) — routing, lifecycle ownership and recovery assets.
 - [Channel Amn runbook](../modules/routing-core/docs/channel-amn-research.md) - isolated home-first AmneziaWG lab, eight client profiles and manual recovery.
 - Channel Amn diagrams: [English](assets/diagrams/channel-amn-architecture-en.html) / [Русский](assets/diagrams/channel-amn-architecture.html).

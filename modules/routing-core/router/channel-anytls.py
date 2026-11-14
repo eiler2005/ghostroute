@@ -1,8 +1,9 @@
 #!/opt/bin/python3
-"""Manual AnyTLS lab: own only its process and GR_ATLS_IN INPUT chain."""
+"""Channel anyT lifecycle: isolated AnyTLS process, policy and INPUT ownership."""
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ BASE = Path('/opt/etc/ghostroute-anytls')
 RUN = Path('/tmp/ghostroute-anytls')
 SOURCE = Path('/opt/etc/sing-box/config.json')
 CHAIN = 'GR_ATLS_IN'
+INPUT_CACHE = {}
 
 
 def call(*args, check=True):
@@ -28,6 +30,43 @@ def call(*args, check=True):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def input_signature():
+    """Content fingerprint: ignore identical rewrites of shared catalog files."""
+    source = json.loads(SOURCE.read_text())
+    settings = json.loads((BASE / 'settings.json').read_text())
+    files = [SOURCE, BASE / 'settings.json', Path(settings['certificate_path']), Path(settings['key_path'])]
+    for item in source['route'].get('rule_set', []):
+        if item.get('type') != 'local' or not item.get('path'):
+            raise ValueError('Channel anyT requires explicit local rule-set ownership')
+        files.append(Path(item['path']))
+    values = []
+    for path in files:
+        stat = path.stat()
+        key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        if path not in INPUT_CACHE or INPUT_CACHE[path][0] != key:
+            INPUT_CACHE[path] = (key, digest(path))
+        values.append((str(path), INPUT_CACHE[path][1]))
+    return hashlib.sha256(json.dumps(values).encode()).hexdigest()
+
+
+def refresh_policy():
+    spec = importlib.util.spec_from_file_location('anyt_policy', BASE / 'channel-anytls-policy.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    raw = SOURCE.read_bytes()
+    config = module.project(json.loads(raw), json.loads((BASE / 'settings.json').read_text()))
+    temporary = BASE / 'policy.next.json'
+    temporary.write_text(json.dumps(config, indent=2) + '\n')
+    try:
+        call(str(BASE / 'sing-box-atls'), 'check', '-c', str(temporary))
+        if SOURCE.read_bytes() != raw:
+            raise ValueError('Production policy changed during projection')
+        os.replace(temporary, BASE / 'policy.json')
+        (BASE / 'policy.source.sha256').write_text(hashlib.sha256(raw).hexdigest() + '\n')
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def owned_pid(name):
@@ -119,6 +158,7 @@ def ready(port):
 
 def start():
     s = preflight()
+    (BASE / 'inputs.sha256').write_text(input_signature() + '\n')
     # ownership journal is written before the first scoped mutation for rollback.
     (RUN / 'owned.json').write_text(json.dumps({'port': s['port']}))
     try:
@@ -150,26 +190,69 @@ def watch():
     try:
         while owned_pid('policy'):
             time.sleep(2)
-            changed = digest(SOURCE) != (BASE / 'policy.source.sha256').read_text().strip()
+            changed = input_signature() != (BASE / 'inputs.sha256').read_text().strip()
             oversized = any(p.stat().st_size > 4 * 1024 * 1024 for p in RUN.glob('*.log'))
             if changed or oversized:
                 (RUN / 'contained.txt').write_text('Source policy changed' if changed else 'Lab log budget exceeded')
                 break
     finally:
-        # No restart or direct fallback. An explicit stop/start is required.
+        # Close stale policy first. The separate recovery owner may reconcile it.
         terminate('policy')
+
+
+def firewall_present(port):
+    return call('iptables', '-C', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', CHAIN, check=False).returncode == 0
+
+
+def repair_firewall(s):
+    """Restore only our port-scoped chain after firmware firewall rebuilds."""
+    existing = call('iptables', '-S', CHAIN, check=False)
+    if existing.returncode:
+        call('iptables', '-N', CHAIN)
+        call('iptables', '-A', CHAIN, '-i', 'lo', '-j', 'ACCEPT')
+        call('iptables', '-A', CHAIN, '-j', 'DROP')
+        call('iptables', '-I', CHAIN, '1', '-j', 'ACCEPT')
+    else:
+        rules = [line for line in existing.stdout.splitlines() if line.startswith('-A ')]
+        expected = ['-A ' + CHAIN + ' -j ACCEPT', '-A ' + CHAIN + ' -i lo -j ACCEPT', '-A ' + CHAIN + ' -j DROP']
+        if rules != expected:
+            raise ValueError('Unexpected Channel anyT chain contents require review')
+    if not firewall_present(s['port']):
+        call('iptables', '-I', 'INPUT', '1', '-p', 'tcp', '--dport', str(s['port']), '-j', CHAIN)
+
+
+def reconcile():
+    if not (BASE / 'enabled').is_file():
+        return {'enabled': False}
+    s = json.loads((BASE / 'settings.json').read_text())
+    try:
+        current = (BASE / 'inputs.sha256').is_file() and input_signature() == (BASE / 'inputs.sha256').read_text().strip()
+    except Exception:
+        stop()
+        raise
+    if current and owned_pid('policy') and owned_pid('watch') and ready(s['port']):
+        repair_firewall(s)
+        return {'enabled': True, 'restarted': False}
+    # Contain first, then project the current policy. Never revive a stale exit.
+    stop()
+    refresh_policy()
+    (RUN / 'contained.txt').unlink(missing_ok=True)
+    start()
+    return {'enabled': True, 'restarted': True}
 
 
 def status():
     current = (BASE / 'policy.source.sha256').exists() and digest(SOURCE) == (BASE / 'policy.source.sha256').read_text().strip()
+    users = json.loads((BASE / 'settings.json').read_text())['users'] if (BASE / 'settings.json').is_file() else []
     return {'policy_running': bool(owned_pid('policy')), 'watch_running': bool(owned_pid('watch')),
-            'source_current': current, 'boot_persistent': False,
+            'source_current': current, 'boot_persistent': (BASE / 'enabled').is_file(),
+            'channel': 'Channel anyT', 'clients_configured': sum(u['name'] != 'lab-probe' for u in users),
             'contained': (RUN / 'contained.txt').exists()}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['start', 'stop', 'status', 'preflight', 'watch'])
+    parser.add_argument('action', choices=['start', 'stop', 'status', 'preflight', 'watch', 'enable', 'disable', 'reconcile'])
     args = parser.parse_args()
     os.umask(0o077)
     RUN.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -177,8 +260,8 @@ def main():
         watch()
         return
     lock = (RUN / 'lock').open('w')
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if args.action == 'status':
             print(json.dumps(status()))
         else:
@@ -187,11 +270,27 @@ def main():
                 start()
             elif args.action == 'stop':
                 stop()
+            elif args.action == 'disable':
+                (BASE / 'enabled').unlink(missing_ok=True)
+                call('cru', 'd', 'ChannelAnyT', check=False)
+                stop()
+            elif args.action in ('enable', 'reconcile'):
+                if args.action == 'enable':
+                    (BASE / 'enabled').write_text('enabled\n')
+                    call('cru', 'd', 'ChannelAnyT', check=False)
+                    call('cru', 'a', 'ChannelAnyT', '* * * * * /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py reconcile')
+                reconcile()
             else:
                 preflight()
             print(json.dumps({'ok': True, 'action': args.action}))
-    except Exception:
-        print('AnyTLS lab operation failed; inspect private runtime evidence', file=sys.stderr)
+    except BlockingIOError:
+        if args.action == 'reconcile':
+            return
+        print('Channel anyT operation is already running', file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        (RUN / 'operation-error.private.json').write_text(json.dumps({'action': args.action, 'error': str(exc)}))
+        print('Channel anyT operation failed; inspect private runtime evidence', file=sys.stderr)
         sys.exit(1)
 
 

@@ -607,19 +607,24 @@ For live artifacts, `channel_d_profile_public_host` must be a TLS hostname, not
 a numeric IP. Karing reports `cert common name invalid` when a raw IP is used
 with the existing hostname certificate and no proven SNI override.
 
-## AnyTLS lab import
+## Channel anyT imports
 
-Routing Core's [AnyTLS lab](../../routing-core/docs/channel-anytls-lab.md) has a
+Routing Core's [Channel anyT](../../routing-core/docs/channel-anytls-lab.md) has a
 separate local generator, `modules/routing-core/bin/channel-anytls-profile`.
-It initially creates one client URI/QR and a distinct diagnostic credential under ignored
+It creates private identities and a distinct diagnostic credential under ignored
 `ansible/out/channel-anytls/`. TLS verification is enabled. Existing output is
 never overwritten; restore/reuse its identity instead of rotating implicitly.
-Add this as a separate test node and preserve all current channel imports.
-Client Global Routing → Proxy is the test control, not a new production rule set.
-The generic client-profile factory does not generate or deploy this lab.
-The lab generator's `--add-second <bundle>` adds a second independent test QR
-while preserving the first identity. Explicit lab-only restart registers the
-additional credential; no existing channel imports are regenerated.
+Export eight named nodes with `--export-eight ansible/out/channel-anytls`.
+The client-only ZIP and `clients/qr-index.html` contain eight independent QR
+cards, URI imports and `Channel-anyT.conf` for Shadowrocket Config. The original
+two identities are retained. Existing channel imports remain valid.
+Import `Channel-anyT.conf` under Config and select the anyT node under Home.
+The policy sends traffic to the router, which owns destination selection;
+Global Routing → Proxy remains a diagnostic control.
+The generic client-profile factory does not generate or deploy this service.
+The retained `--add-second <bundle>` command supports initial one-client
+bundles. Deploy the additive identities with `channel_anytls_action=enable`;
+the gate rejects replacement credentials and ingress migrations.
 
 ## Channel M — Regional Service Policy
 

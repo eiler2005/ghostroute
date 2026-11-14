@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Create a new private AnyTLS lab bundle without overwriting an identity."""
+"""Create private Channel anyT imports while preserving allocated identities."""
 import argparse
+import copy
 import html
 import importlib.util
 import json
@@ -10,6 +11,7 @@ import secrets
 import subprocess
 import tempfile
 import urllib.parse
+import zipfile
 
 spec = importlib.util.spec_from_file_location('anytls_policy', Path(__file__).resolve().parents[1] / 'router/channel-anytls-policy.py')
 policy = importlib.util.module_from_spec(spec)
@@ -51,6 +53,67 @@ def add_second(output):
     return s
 
 
+def compatible_update(previous, proposed):
+    policy.validate_settings(previous)
+    policy.validate_settings(proposed)
+    if {k:v for k,v in previous.items() if k != 'users'} != {k:v for k,v in proposed.items() if k != 'users'}:
+        raise ValueError('Client-visible transport change requires migration approval')
+    users = {u['name']:u for u in proposed['users']}
+    if any(users.get(u['name']) != u for u in previous['users']):
+        raise ValueError('Existing user removal or credential rotation is not an additive update')
+
+
+def export_eight(output):
+    """Create eight named imports, retaining every already allocated identity."""
+    old = json.loads((output / 'settings.json').read_text())
+    proposed = copy.deepcopy(old)
+    policy.validate_settings(old)
+    users = {u['name']:u for u in proposed['users']}
+    for number in range(1, 9):
+        name = 'lab-client' if number == 1 else 'lab-client-' + str(number).zfill(2)
+        if name not in users:
+            user = {'name':name, 'password':secrets.token_urlsafe(32)}
+            proposed['users'].append(user)
+            users[name] = user
+    compatible_update(old, proposed)
+    os.umask(0o077)
+    with tempfile.TemporaryDirectory(prefix='.eight-', dir=output) as temp:
+        stage = Path(temp)
+        clients = stage / 'clients'
+        clients.mkdir(mode=0o700)
+        cards = []
+        for number in range(1, 9):
+            name = 'lab-client' if number == 1 else 'lab-client-' + str(number).zfill(2)
+            stem = 'Channel-anyT-' + str(number).zfill(2)
+            label = 'Channel anyT ' + str(number).zfill(2)
+            payload = uri(proposed, name, label)
+            (clients / (stem + '.uri')).write_text(payload + '\n')
+            subprocess.run(['qrencode','-o',str(clients / (stem + '.png')),'-s','8','-l','M'],
+                           input=payload.encode(), capture_output=True, check=True, timeout=15)
+            cards.append(f'<section><h2>{label}</h2><img src="{stem}.png" alt="{label}"><p><a href="{html.escape(payload, quote=True)}">Импортировать узел</a></p></section>')
+        page = '''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Channel anyT</title>
+<style>body{font:16px system-ui;background:#eef3f7;color:#17323d;margin:24px}main{max-width:1200px;margin:auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}section{background:white;border-radius:18px;padding:20px;text-align:center;break-inside:avoid}img{width:100%;max-width:400px;height:auto}p{line-height:1.5}a{color:#08796a}@media print{body{background:white;margin:8mm}.grid{grid-template-columns:1fr 1fr}}</style>
+<main><h1>Channel anyT — 8 профилей</h1><p>Один профиль на устройство. Первые два сохраняют уже выданные учётные записи. Импортируйте QR в Home, а файл настроек — отдельно в Config.</p>
+<p><a href="Channel-anyT.conf" download>Конфигурация Shadowrocket</a> · После импорта выберите узел Channel anyT и конфигурацию. Роутер применяет sensitive / managed / direct.</p><div class="grid">''' + ''.join(cards) + '</div><p>QR содержат пароли. Не публикуйте эту папку.</p></main></html>'
+        (clients / 'qr-index.html').write_text(page)
+        config = Path(__file__).resolve().parents[2] / 'client-profile-factory/configs/channel-anyt-shadowrocket.conf'
+        (clients / 'Channel-anyT.conf').write_bytes(config.read_bytes())
+        with zipfile.ZipFile(stage / 'Channel-anyT-8-profiles.private.zip','w',zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(clients.iterdir()):
+                archive.write(path, path.name)
+        (stage / 'settings.json').write_text(json.dumps(proposed, indent=2) + '\n')
+        # Credentials are persisted before publication, so interrupted exports can
+        # be repeated without rekeying an identity already present on the server.
+        os.replace(stage / 'settings.json', output / 'settings.json')
+        destination = output / 'clients'
+        destination.mkdir(mode=0o700, exist_ok=True)
+        for path in clients.iterdir():
+            os.replace(path, destination / path.name)
+        os.replace(stage / 'Channel-anyT-8-profiles.private.zip', output / 'Channel-anyT-8-profiles.private.zip')
+        (output / 'index.html').write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=clients/qr-index.html"><title>Channel anyT</title><a href="clients/qr-index.html">Channel anyT — 8 профилей</a>')
+    return proposed
+
+
 def generate(options, output):
     if output.exists():
         raise ValueError('Bundle already exists; reuse it or restore backup, never rotate implicitly')
@@ -71,7 +134,7 @@ def generate(options, output):
 <main><h1>AnyTLS Lab</h1><p>Отдельный тестовый вход через домашний роутер. Добавьте новый узел в Shadowrocket; существующие профили сохраняйте.</p>
 <img src="AnyTLS-Lab.png" alt="Приватный QR тестового узла"><p><a href="'''
             + html.escape(payload, quote=True) + '''">Импортировать узел</a></p>
-<p>Для проверки выберите Global Routing → Proxy. Проверяйте сообщения и фото в Telegram. Звонки и прочий UDP, кроме DNS, в первом lab отключены.</p>
+<p>Для проверки выберите Global Routing → Proxy. Проверяйте сообщения и фото в Telegram. Качество звонков требует отдельной проверки.</p>
 <p>TLS проверяется. QR содержит пароль — не публикуйте его. Результат на мобильной сети пока требует проверки.</p></main></html>''')
     except Exception:
         # Retain any generated identity for recovery; do not silently generate a replacement.
@@ -84,8 +147,19 @@ def main():
     parser.add_argument('options', type=Path, nargs='?')
     parser.add_argument('output', type=Path, nargs='?')
     parser.add_argument('--add-second', type=Path, metavar='BUNDLE')
+    parser.add_argument('--export-eight', type=Path, metavar='BUNDLE')
+    parser.add_argument('--check-update', type=Path, nargs=2, metavar=('PREVIOUS','PROPOSED'))
     args = parser.parse_args()
-    if args.add_second:
+    modes = [bool(args.add_second), bool(args.export_eight), bool(args.check_update)]
+    if sum(modes) > 1:
+        parser.error('select one operation')
+    if args.check_update:
+        compatible_update(*(json.loads(path.read_text()) for path in args.check_update))
+    elif args.export_eight:
+        if args.options or args.output:
+            parser.error('--export-eight takes only the existing bundle path')
+        export_eight(args.export_eight)
+    elif args.add_second:
         if args.options or args.output:
             parser.error('--add-second takes only the existing bundle path')
         add_second(args.add_second)
@@ -93,7 +167,7 @@ def main():
         if not args.options or not args.output:
             parser.error('provide options and output, or --add-second BUNDLE')
         generate(json.loads(args.options.read_text()), args.output)
-    print('Private AnyTLS lab bundle created; existing profiles unchanged')
+    print('Channel anyT private identity operation completed; existing profiles preserved')
 
 
 if __name__ == '__main__':

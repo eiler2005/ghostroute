@@ -93,6 +93,7 @@ What this project demonstrates, with proof in-repo:
 | B | Production for selected device-client profiles | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane, relayed through the same managed split | No |
 | C | C1-Shadowrocket live compatibility plus C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT or Naive ingress | Home-first selected-client lane; C1-SR is iPhone-proven, C1-sing-box is server-ready but blocked by SFI 1.11.4 | No |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive on `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane relayed into the same managed split; disabled by default | No |
+| anyT | Working additional selected-client channel | Endpoint -> home router AnyTLS/TLS | Eight identities, shared selected-client split, scoped boot/firewall/process recovery | No |
 | M | Regional service policy | Selected applications | Approved regional egress, isolated from client routing | No |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
@@ -104,11 +105,13 @@ use **Channel Amn 01–08**; existing bootstrap credentials are preserved.
 Architecture diagrams: [English](docs/assets/diagrams/channel-amn-architecture-en.html)
 and [Русский](docs/assets/diagrams/channel-amn-architecture.html).
 
-## Why This Exists
+[Channel anyT](modules/routing-core/docs/channel-anytls-lab.md) provides a separate
+home-first AnyTLS/TLS ingress with eight private QR profiles and automatic
+boot/firewall/process recovery. It preserves the existing channel imports and
+selected-client routing policy. The linked runbook includes its routing and
+recovery diagrams.
 
-An optional [AnyTLS compatibility lab](modules/routing-core/docs/channel-anytls-lab.md)
-provides a separate, manually selected home-first TCP/TLS test ingress with the
-same selected-client routing policy. It preserves existing channel imports.
+## Why This Exists
 
 The project solves a narrow but real edge problem: keep ordinary home devices
 configuration-free, let mobile clients enter through the home network first,

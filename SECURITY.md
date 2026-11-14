@@ -136,9 +136,16 @@ The operator explicitly accepts:
   material under ignored `ansible/out/channel-amn/`. Each of its eight client
   slots has separate credentials; preserve slot 01 during additive export and
   keep the full bundle in an encrypted local backup.
-- Treat the AnyTLS lab identity, client QR and policy snapshot under ignored
-  `ansible/out/channel-anytls/` as private credentials. Its client validates TLS;
+- Treat Channel anyT identities, client QR and policy snapshots under ignored
+  `ansible/out/channel-anytls/` as private credentials. Its clients validate TLS;
   the separate probe password must not be distributed as a client import.
+
+Channel anyT has eight separate client identities and scoped automatic recovery
+after boot, process loss and firewall rebuild. Stale policy/catalog/TLS inputs
+close its isolated frontend before validated reconciliation; there is no sensitive
+direct fallback. Recovery is polled and can remain closed on unsupported input.
+It does not restart other channel processes. Retained WireGuard/Amn configuration
+is disabled in steady state and requires explicit activation.
 
 Channel Amn is a manual home-first compatibility lab, not a replacement for the
 production supervisors. It blocks raw peer forwarding outside its policy TUN,

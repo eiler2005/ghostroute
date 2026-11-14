@@ -27,8 +27,9 @@ egress to the VPS and direct-out fallback for non-managed traffic.
 - Provides the optional Channel Amn home-first lab: isolated AmneziaWG and
   `sing-box-amn` processes, with the existing sensitive/managed/direct policy.
   It starts manually and is not owned by production boot/watchdog recovery.
-- Provides an isolated [AnyTLS compatibility lab](docs/channel-anytls-lab.md)
-  with verified TLS, a projected selected-client policy and explicit rollback.
+- Provides [Channel anyT](docs/channel-anytls-lab.md): isolated AnyTLS with
+  verified TLS, eight clients, the selected-client policy and scoped automatic
+  boot/firewall/process recovery. Retained WireGuard/Amn is disabled by default.
 
 ## How It Works
 

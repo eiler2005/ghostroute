@@ -16,6 +16,9 @@ CHANNEL_D_INIT=${GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_INIT:-/opt/etc/init.d/S99
 CHANNEL_M_REVERSE_SCRIPT=${GHOSTROUTE_CHANNEL_M_MAXTG_REVERSE_SCRIPT:-/jffs/scripts/channel-m-reverse-tunnel.sh}
 CHANNEL_C_TLS_SYNC=${GHOSTROUTE_CHANNEL_C_TLS_SYNC:-/jffs/scripts/channel-c-tls-sync.sh}
 CHANNEL_C_ACME_RENEW=${GHOSTROUTE_CHANNEL_C_ACME_RENEW:-/jffs/scripts/channel-c-acme-renew.sh}
+CHANNEL_ANYT=${GHOSTROUTE_CHANNEL_ANYT_CONTROLLER:-/opt/etc/ghostroute-anytls/channel-anytls.py}
+CHANNEL_ANYT_ENABLED=${GHOSTROUTE_CHANNEL_ANYT_ENABLED_FILE:-/opt/etc/ghostroute-anytls/enabled}
+CHANNEL_ANYT_PYTHON=${GHOSTROUTE_CHANNEL_ANYT_PYTHON:-/opt/bin/python3}
 
 log() {
   mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
@@ -82,6 +85,11 @@ cron_set() {
 }
 
 register_crons() {
+  if [ -f "$CHANNEL_ANYT_ENABLED" ] && [ -x "$CHANNEL_ANYT" ]; then
+    cron_set ChannelAnyT "* * * * *" "$CHANNEL_ANYT_PYTHON $CHANNEL_ANYT reconcile"
+  else
+    cru d ChannelAnyT 2>/dev/null || true
+  fi
   cru l >/dev/null 2>&1 || return 0
   [ -x /jffs/scripts/cron-save-ipset ] && cron_set SaveIPSet "0 */6 * * *" "/jffs/scripts/cron-save-ipset"
   [ -x /jffs/scripts/cron-traffic-snapshot ] && cron_set TrafficSnapshot "0 */6 * * *" "/jffs/scripts/cron-traffic-snapshot"
@@ -299,10 +307,21 @@ recover_runtime() {
   ensure_channel_b
   ensure_channel_d
   ensure_channel_m_reverse
+  ensure_channel_anyt
+}
+
+ensure_channel_anyt() {
+  [ -f "$CHANNEL_ANYT_ENABLED" ] && [ -x "$CHANNEL_ANYT" ] || return 0
+  "$CHANNEL_ANYT_PYTHON" "$CHANNEL_ANYT" reconcile >/dev/null 2>&1 || log "Channel anyT recovery needs attention"
 }
 
 status_runtime() {
   printf 'supervisor=installed\n'
+  if [ -f "$CHANNEL_ANYT_ENABLED" ] && [ -x "$CHANNEL_ANYT" ]; then
+    "$CHANNEL_ANYT_PYTHON" "$CHANNEL_ANYT" status 2>/dev/null || printf 'channel_anyt=error\n'
+  else
+    printf 'channel_anyt=disabled\n'
+  fi
   printf 'services_start_single_owner='
   grep -q 'GhostRouteRuntimeSupervisor' /jffs/scripts/services-start 2>/dev/null && echo yes || echo no
   printf 'singbox_missing_ports=%s\n' "$(missing_ports $(singbox_ports))"

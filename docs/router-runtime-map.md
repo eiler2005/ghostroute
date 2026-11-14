@@ -39,6 +39,9 @@ flowchart LR
   isolated --> sensitive
   isolated --> managed
   isolated --> wan
+  anyT[Channel anyT: separate sing-box-atls] --> sensitive
+  anyT --> managed
+  anyT --> wan
 ```
 
 The diagram shows the default split. Selected Channel A full-VPS changes the
@@ -64,6 +67,10 @@ dnscrypt-proxy, which uses a sing-box SOCKS inbound and the managed egress.
 Default/direct DNS follows the default resolver policy. Neither DNS nor M is
 an ingress relay for Channel B. Amn remains outside production supervisors and
 requires explicit manual recovery after reboot or firewall rebuild.
+Channel anyT has independent boot, minute-cron and firewall reconciliation;
+its [runbook](../modules/routing-core/docs/channel-anytls-lab.md) includes the
+packet and recovery diagrams. WireGuard and Amn can remain disabled without
+affecting anyT.
 
 ## Storage ownership and operating modes
 
@@ -119,6 +126,7 @@ sites mode is a separate routing policy and can operate in either storage mode.
 | Channel C native and compatibility lanes | sing-box inbounds and TLS assets under `/opt/etc/sing-box/` | `22-channel-c-router.yml`, `singbox_client` | native Naive and Shadowrocket compatibility listeners plus firewall redirect/allow checks |
 | Channel D NaiveProxy lab | `/opt/bin/caddy-channel-d-naiveproxy`, `/opt/etc/caddy/channel-d-naiveproxy/Caddyfile`, `/opt/etc/init.d/S99caddy-channel-d-naiveproxy`, `/opt/share/channel-d-naiveproxy/` | `24-channel-d-router.yml`, `channel_d_naiveproxy` | Caddy listener, config markers, SOCKS upstream, cover-site proof and firewall checks |
 | Channel Amn compatibility lab | `/opt/etc/ghostroute-amn/` persistent engines/settings/policy; `/tmp/ghostroute-amn/` volatile state; separate AmneziaWG and `sing-box-amn` | `28-channel-amn-lab.yml`, Routing Core controller | Explicit status, diagnostic peer and client tests; manual start/stop and additive `sync-peers`, outside production recovery |
+| Channel anyT | `/opt/etc/ghostroute-anytls/` persistent settings/projector/engine; `/tmp/ghostroute-anytls/` volatile ownership; separate `sing-box-atls` | `31-channel-anytls-lab.yml`, Routing Core controller | Eight authenticated identities, verified TLS, current policy, boot/firewall/minute recovery and isolated failure drills |
 | Channel M reverse lane | `/jffs/keys/channel-m-reverse-key`, `/jffs/scripts/channel-m-reverse-tunnel.sh`, supervisor-owned cron, supervisor `channel-m-recover`/`channel-m-status` | `23-channel-m-reverse.yml`, runtime supervisor | local router ingress, `ChannelMReverse` cron, on-demand Channel M control and VPS reverse listener validation |
 | Recovery supervisor/watchdogs | `/jffs/scripts/ghostroute-runtime-supervisor.sh`, `/jffs/scripts/singbox-watchdog.sh`, `/jffs/scripts/dnscrypt-watchdog.sh`, Channel M reverse watchdog cron | `stealth_routing`, `singbox_client`, `dnscrypt_proxy`, `23-channel-m-reverse.yml` | `services-start` single-owner bootstrap, delayed LAN REDIRECT / UDP/443 DROP stabilization, minute-level listener probes, Channel M on-demand recovery and targeted restarts or stale tunnel replacement |
 | Health monitor | `/jffs/scripts/health-monitor/run-probes`, `aggregate`, `daily-digest`, `lib.sh` | `health_monitor` | hourly probes, aggregate state and daily digest cron jobs |
@@ -220,6 +228,19 @@ editable diagrams in [English](assets/diagrams/channel-amn-architecture-en.html)
 or [Русский](assets/diagrams/channel-amn-architecture.html). Existing overview
 images above show the production runtime; these separate figures cover Amn.
 
+## Channel anyT
+
+AnyT terminates AnyTLS over verified TLS/TCP in an isolated process and projects
+the selected-client sensitive / managed / ordinary split. Port 53 uses the
+router resolver; private targets, IPv6 and payload UDP/443 are rejected. Other
+UDP is carried over TCP; call quality needs client acceptance.
+
+The persistent enable marker controls the shared supervisor's boot handoff,
+`ChannelAnyT` minute recovery and scoped firewall repair. Invalid or changed
+inputs close stale anyT traffic before validated regeneration. Healthy firewall
+repair preserves its process identities. It owns neither LAN REDIRECT nor other
+channel recovery. See the [runbook and editable Mermaid diagrams](../modules/routing-core/docs/channel-anytls-lab.md).
+
 ## Test Schemes
 
 The test schemes below show how to prove the installed runtime without changing
@@ -299,6 +320,7 @@ material and must stay out of shareable documentation.
 | `channel_c_shadowrocket_public_port` | `router_sing_box` | router WAN | selected compatibility clients |
 | `channel_d_naiveproxy_public_port` | `router_channel_d_caddy_naiveproxy` | router WAN | selected Channel D clients |
 | Amn private `settings.json` field `port` | `router_channel_amn_lab` | router UDP ingress | authenticated selected lab peers; opened only during explicit start |
+| AnyT private `settings.json` field `port` | `router_anytls_lab` | router TCP ingress | authenticated selected clients; scoped INPUT rule while enabled |
 | Channel M private service settings | service-owned | private policy | authenticated selected services |
 | `dnscrypt_port` | `router_dnscrypt_proxy` | router loopback | local managed DNS forwarder |
 | `singbox_dnscrypt_socks_port` | `router_sing_box` | router loopback | dnscrypt egress over Reality |

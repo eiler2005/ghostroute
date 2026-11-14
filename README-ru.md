@@ -61,6 +61,7 @@ watchdog'ами и схемами каналов:
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
+| anyT | Рабочий дополнительный канал | Endpoint -> домашний AnyTLS/TLS | 8 отдельных QR, общий split, восстановление после загрузки и firewall rebuild | Нет |
 | M | Региональная служебная политика | Выбранные приложения | Выход в заданном регионе, изолированный от клиентской маршрутизации | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
@@ -81,9 +82,9 @@ VLESS + Reality: TCP/Vision или gRPC без Vision, в зависимости
 
 ## Обзор
 
-Отдельный [AnyTLS lab](modules/routing-core/docs/channel-anytls-lab.md) позволяет
-проверить домашний TCP/TLS-вход с той же selected-client политикой маршрутизации.
-Он включается вручную и сохраняет существующие каналы и пользовательские QR.
+[Channel anyT](modules/routing-core/docs/channel-anytls-lab.md) — рабочий
+дополнительный AnyTLS/TLS-вход с 8 отдельными QR и восстановлением после загрузки,
+сбоя процесса и firewall rebuild. Политика маршрутизации и существующие QR сохранены.
 
 GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS
 Merlin роутера и удаленного VPS egress. Отдельная служебная политика

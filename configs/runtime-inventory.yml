@@ -387,7 +387,7 @@ components:
       - No production boot hook, watchdog or automatic fallback is installed.
 
   - id: router_anytls_lab
-    component_name: Home-first AnyTLS compatibility lab
+    component_name: Channel anyT home-first AnyTLS
     supplier: SagerNet / GhostRoute
     type: router_runtime_service
     ecosystem: entware_opkg
@@ -400,9 +400,9 @@ components:
       minimum_required: AnyTLS inbound support, valid TLS identity and isolated process ownership.
       candidate: Other carriers, calls, roaming and sustained capacity require separate acceptance.
       known_problematic:
-        - Reboot ends the lab; firewall and catalog changes require explicit stop/start.
-        - Non-DNS UDP and IPv6 destinations are rejected in this first experiment.
-      rollback_available: channel_anytls_action=stop closes only the lab ingress and stops its owned processes.
+        - Unsupported policy or missing storage keeps anyT closed until repaired.
+        - IPv6 and payload UDP/443 are rejected; calls require real-client acceptance.
+      rollback_available: channel_anytls_action=disable stops only anyT and its automatic recovery, retaining identities.
     relationships:
       - receives_home_first_anytls_test_client
       - projects_existing_sensitive_managed_direct_policy
@@ -413,10 +413,11 @@ components:
       - verified TLS and invalid-password rejection
       - external bootstrap and signed-in client acceptance are separate evidence levels
     compatibility_notes:
-      - Up to two private test-client imports and a separate diagnostic credential; existing profiles stay valid.
+      - Eight client identities and a separate diagnostic credential; the original two imports stay valid.
       - Listener port comes from ignored settings.json, outside the production port-variable registry.
       - Persistent files are under /opt/etc/ghostroute-anytls; volatile state is under /tmp/ghostroute-anytls.
-      - The containment watcher stops the lab on config hash drift or oversized logs; it does not restart production.
+      - Shared boot/firewall integration and ChannelAnyT cron reconcile only this service.
+      - The watcher closes stale policy/catalog/TLS inputs before validated regeneration; it never restarts other channels.
 
   - id: vps_caddy_l4
     component_name: Caddy with layer4 module

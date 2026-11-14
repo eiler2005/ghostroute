@@ -1,5 +1,5 @@
 ---
-- name: Isolated home-first AnyTLS lab
+- name: Channel anyT home-first AnyTLS service
   hosts: routers
   gather_facts: false
   vars_files:
@@ -10,10 +10,11 @@
     channel_anytls_action: status
     channel_anytls_local_dir: "{{ playbook_dir }}/../out/channel-anytls"
     channel_anytls_remote_dir: /opt/etc/ghostroute-anytls
+    channel_anytls_mutation_started: false
   tasks:
     - name: Validate explicit lab action
       ansible.builtin.assert:
-        that: channel_anytls_action in ['start', 'stop', 'status']
+        that: channel_anytls_action in ['start', 'stop', 'status', 'enable', 'disable', 'reconcile']
 
     - name: Read AnyTLS lab state only
       ansible.builtin.raw: >-
@@ -27,13 +28,21 @@
       ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py stop
       when: channel_anytls_action == 'stop'
 
+    - name: Disable only Channel anyT and its automatic recovery
+      ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py disable
+      when: channel_anytls_action == 'disable'
+
+    - name: Reconcile only an already enabled Channel anyT
+      ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py reconcile
+      when: channel_anytls_action == 'reconcile'
+
     - name: Refuse replacing a running lab before entering startup rollback
       ansible.builtin.raw: test ! -f /tmp/ghostroute-anytls/owned.json
       changed_when: false
       when: channel_anytls_action == 'start'
 
     - name: Prepare and start the isolated AnyTLS lab
-      when: channel_anytls_action == 'start'
+      when: channel_anytls_action in ['start', 'enable']
       block:
         - name: Production health gate before lab mutation
           ansible.builtin.include_tasks: ../tasks/channel-amn-health-gate.yml
@@ -48,6 +57,32 @@
         - name: Reject absent client identity before router changes
           ansible.builtin.assert:
             that: channel_anytls_settings.stat.exists and channel_anytls_settings.stat.isreg
+          no_log: true
+
+        - name: Inspect existing Channel anyT identity before additive deployment
+          ansible.builtin.stat:
+            path: "{{ channel_anytls_remote_dir }}/settings.json"
+          register: channel_anytls_existing
+
+        - name: Capture previous identity without exposing credentials
+          ansible.builtin.fetch:
+            src: "{{ channel_anytls_remote_dir }}/settings.json"
+            dest: "{{ channel_anytls_local_dir }}/previous.private.json"
+            flat: true
+          when: channel_anytls_existing.stat.exists
+          no_log: true
+
+        - name: Reject credential or ingress changes before stopping the service
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_playbook_python }}"
+              - "{{ playbook_dir }}/../../modules/routing-core/bin/channel-anytls-profile"
+              - --check-update
+              - "{{ channel_anytls_local_dir }}/previous.private.json"
+              - "{{ channel_anytls_local_dir }}/settings.json"
+          delegate_to: localhost
+          when: channel_anytls_existing.stat.exists
+          changed_when: false
           no_log: true
 
         - name: Capture current production policy without changing its owner
@@ -74,6 +109,21 @@
           delegate_to: localhost
           no_log: true
 
+        - name: Mark the beginning of scoped runtime changes
+          ansible.builtin.set_fact:
+            channel_anytls_mutation_started: true
+
+        - name: Stop only the previous isolated process before installing its update
+          ansible.builtin.raw: >-
+            if [ -f /opt/etc/ghostroute-anytls/channel-anytls.py ]; then
+              if [ -f /opt/etc/ghostroute-anytls/enabled ]; then
+                /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py disable;
+              else
+                /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py stop;
+              fi;
+            fi
+          no_log: true
+
         - name: Create private Entware lab directory
           ansible.builtin.file:
             path: "{{ channel_anytls_remote_dir }}"
@@ -88,11 +138,23 @@
           loop: [settings.json, policy.json, policy.source.sha256]
           no_log: true
 
-        - name: Install manual lab lifecycle controller
+        - name: Install Channel anyT lifecycle and policy projector
           ansible.builtin.copy:
-            src: "{{ playbook_dir }}/../../modules/routing-core/router/channel-anytls.py"
-            dest: "{{ channel_anytls_remote_dir }}/channel-anytls.py"
+            src: "{{ playbook_dir }}/../../modules/routing-core/router/{{ item }}"
+            dest: "{{ channel_anytls_remote_dir }}/{{ item }}"
             mode: '0700'
+          loop: [channel-anytls.py, channel-anytls-policy.py]
+
+        - name: Install shared boot and firewall hooks with Channel anyT integration
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../modules/routing-core/router/{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: '0755'
+            backup: true
+          loop:
+            - {src: ghostroute-runtime-supervisor, dest: /jffs/scripts/ghostroute-runtime-supervisor.sh}
+            - {src: firewall-start, dest: /jffs/scripts/firewall-start}
+          when: channel_anytls_action == 'enable'
 
         - name: Separate process name from production init ownership
           ansible.builtin.copy:
@@ -107,7 +169,7 @@
           no_log: true
 
         - name: Start only AnyTLS lab and its scoped INPUT rule
-          ansible.builtin.raw: /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py start
+          ansible.builtin.raw: "/opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py {{ channel_anytls_action }}"
           no_log: true
 
         - name: Production health gate after lab mutation
@@ -116,9 +178,10 @@
         - name: Contain the failed AnyTLS lab only
           ansible.builtin.raw: >-
             if [ -f /opt/etc/ghostroute-anytls/channel-anytls.py ]; then
-              /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py stop;
+              /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py disable;
             fi
           no_log: true
+          when: channel_anytls_mutation_started | bool
         - name: Report isolated lab startup failure
           ansible.builtin.fail:
-            msg: AnyTLS lab failed and was stopped; inspect private deployment evidence.
+            msg: Channel anyT deployment failed; inspect private evidence and runtime status before retrying.

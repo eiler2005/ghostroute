@@ -59,3 +59,9 @@ ipset destroy "$STATIC_NEXT" || exit 1
   logger -t firewall-start "routing rules could not be restored"
   exit 1
 }
+
+# Channel anyT owns only its separate authenticated TCP INPUT rule/chain.
+# Never block production routing recovery while this optional service reconciles.
+if [ -f /opt/etc/ghostroute-anytls/enabled ] && [ -x /opt/etc/ghostroute-anytls/channel-anytls.py ]; then
+  ( /opt/bin/python3 /opt/etc/ghostroute-anytls/channel-anytls.py reconcile ) >/dev/null 2>&1 &
+fi

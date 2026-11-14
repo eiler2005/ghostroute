@@ -1,4 +1,4 @@
-# GhostRoute Channels A / B / C / D / M and Amn
+# GhostRoute Channels A / B / C / D / M, anyT and Amn
 
 This document is the short handoff view of the current channel model. The
 default managed client channels are home-first: their first remote endpoint is
@@ -40,10 +40,11 @@ The public Channel M policy and isolation contract is in
 
 ## Protocols and implementations
 
-The separate [AnyTLS lab](../modules/routing-core/docs/channel-anytls-lab.md)
-provides an opt-in TCP/TLS first hop through an isolated process on the home
-router. It projects the selected-client split and does not replace A/B/C/D/M/Amn.
-It has a distinct test import, explicit lifecycle and no automatic failover.
+[Channel anyT](../modules/routing-core/docs/channel-anytls-lab.md) is a working
+additional AnyTLS/TLS first hop through an isolated process on the home router.
+It has eight independent client imports, selected-client split and automatic
+boot/firewall/process recovery. It does not replace A/B/C/D/M or provide automatic
+backend failover. The retained Amn/WireGuard fallback is disabled in steady state.
 
 VLESS is a protocol; Xray and sing-box are implementations. Separate the
 client-to-router ingress from the router-to-VPS egress:
@@ -56,6 +57,7 @@ client-to-router ingress from the router-to-VPS egress:
 | C1-Shadowrocket, proven compatibility path | HTTPS CONNECT + TLS | sing-box HTTP inbound with TLS |
 | C1-sing-box, native design | Naive over TLS; requires a compatible client | sing-box Naive inbound |
 | D, optional lab | NaiveProxy-style client over HTTPS | Caddy forward_proxy@naive, then sing-box SOCKS |
+| anyT, additional working channel | AnyTLS over verified TLS/TCP | Isolated sing-box-atls with the selected-client policy projection |
 | Amn, optional manual lab | AmneziaWG | Isolated userspace engine, then separate sing-box-amn TUN |
 | M, service exception | Service uses a router-initiated reverse SSH path | Router loopback HTTP CONNECT inbound, then home-WAN direct-out |
 
@@ -64,7 +66,7 @@ uses sing-box's VLESS + Reality + Vision outbound and a VPS Xray Reality
 receiver. This shared second leg does not make Channel C's first leg VLESS.
 The external `backup_reality` role also supports VLESS over gRPC/HTTP/2 with
 Reality, without Vision. The selected backend determines this second-leg
-transport; it does not change A/B/C/D or Amn ingress or client QR codes. See
+transport; it does not change A/B/C/D, anyT or Amn ingress or client QR codes. See
 [transport comparison and profile rotation](../modules/routing-core/docs/managed-egress-profile-rotation.md).
 Non-managed traffic follows `direct-out` through the home WAN under normal
 split routing. Sensitive sites mode can select its own backend before general

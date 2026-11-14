@@ -20,8 +20,9 @@ def validate_settings(s):
     if type(s['port']) is not int or not 1024 < s['port'] <= 65535:
         raise ValueError('Invalid lab listener')
     names = {u['name'] for u in s['users']}
-    if names not in ({'lab-client', 'lab-probe'}, {'lab-client', 'lab-client-02', 'lab-probe'}) or len(names) != len(s['users']):
-        raise ValueError('Require one or two test clients and a distinct probe identity')
+    allowed = {'lab-client', 'lab-probe'} | {'lab-client-' + str(i).zfill(2) for i in range(2, 9)}
+    if not {'lab-client', 'lab-probe'} <= names <= allowed or len(names) != len(s['users']):
+        raise ValueError('Require up to eight clients and a distinct probe identity')
     passwords = [u['password'] for u in s['users']]
     if any(not isinstance(p, str) or len(p) < 32 for p in passwords) or len(set(passwords)) != len(passwords):
         raise ValueError('Require distinct strong passwords')
@@ -70,7 +71,7 @@ def project(source, settings):
     route = copy.deepcopy(source['route'])
     # All DNS is forced to the router resolver. No other router/LAN/IPv6 access.
     route['rules'] = dns + [{'ip_cidr': PRIVATE, 'action': 'reject'},
-                            {'network': 'udp', 'action': 'reject'}] + rules
+                            {'network': 'udp', 'port': 443, 'action': 'reject'}] + rules
     route['final'] = 'direct-out'
     return {
         'log': {'level': 'warn', 'output': str(RUN / 'policy.log'), 'timestamp': True},

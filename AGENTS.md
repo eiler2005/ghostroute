@@ -28,6 +28,11 @@ Core model:
   manual start after reboot or firewall rebuild, outside production supervisors.
 - Legacy WireGuard (`wgs1` + `wgc1`) is disabled in steady state and preserved
   only as an explicit cold fallback.
+- Channel anyT is a working additional home-first AnyTLS/TLS channel, with
+  eight client identities and a separate probe. Its isolated process projects
+  the selected-client policy and has scoped boot/firewall/cron recovery. Preserve
+  its original first two credentials and existing A/B/C/D/M ownership. Amn and
+  legacy WireGuard are retained but disabled unless explicitly re-enabled.
 
 ## Karpathy-Style Agent Workflow
 
