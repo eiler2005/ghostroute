@@ -151,17 +151,17 @@ does not include endpoints, listener numbers, credentials or traffic evidence.
 | Linux kernel | `4.19.183` | `uname -r` |
 | BusyBox | `1.25.1` | `busybox` banner |
 | Entware `opkg` | `80503d94e356476250adaf1f669ee955ec26de76` (`2025-11-05`) | `opkg --version` |
-| `sing-box` | Entware package `sing-box-go 1.13.3-2`; init script rejects zombie pids before reporting running or blocking startup | `opkg list-installed`; `/opt/etc/init.d/S99sing-box status`; listener checks |
-| `dnscrypt-proxy` | Entware package `dnscrypt-proxy2 2.1.15-1`; init/boot guard sets `vm.overcommit_memory=1` for Go runtime startup | `opkg list-installed`; `cat /proc/sys/vm/overcommit_memory` |
-| Xray | Entware package `xray-core 26.2.6-1` | `opkg list-installed` |
+| `sing-box` | Entware package `sing-box-go 1.14.4-1`; init script rejects zombie pids before reporting running or blocking startup | `opkg list-installed`; `/opt/etc/init.d/S99sing-box status`; listener checks |
+| `dnscrypt-proxy` | Entware package `dnscrypt-proxy2 2.1.20-1`; init/boot guard sets `vm.overcommit_memory=1` for Go runtime startup | `opkg list-installed`; `cat /proc/sys/vm/overcommit_memory` |
+| Xray | Entware package `xray-core 26.10.29-1` | `opkg list-installed` |
 | Channel D Caddy | custom repo-built binary, installed at `/opt/bin/caddy-channel-d-naiveproxy` | local binary managed by `24-channel-d-router.yml`; verify module support via `99-verify.yml` |
 | dnsmasq | `2.93-test2` | `dnsmasq --version` |
 | iptables | `1.4.15` | `iptables --version` |
 | ipset | `7.6`; router prints kernel/userspace protocol warning `6-6` vs `6-7` | `ipset --version` |
 | Dropbear SSH | `2025.89` | `dropbear -V` |
-| OpenSSL | `3.5.5` | `/opt/bin/openssl version` / `openssl-util 3.5.5-1` |
-| Python | `3.13.9` / Entware package `python3 3.13.9-2` | `/opt/bin/python3 --version`, `opkg list-installed` |
-| Bash | `5.3.9` / Entware package `bash 5.3-2` | `/opt/bin/bash --version`, `opkg list-installed` |
+| OpenSSL | `3.5.9` | `/opt/bin/openssl version` / `openssl-util 3.5.9-3` |
+| Python | `3.14.7` / Entware package `python3 3.14.7-2` | `/opt/bin/python3 --version`, `opkg list-installed` |
+| Bash | Entware package `bash 5.3-5` | `/opt/bin/bash --version`, `opkg list-installed` |
 
 Go-based router binaries can be memory-sensitive when invoked only to print
 their embedded version string. Prefer `opkg list-installed` for Entware-managed

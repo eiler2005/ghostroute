@@ -282,6 +282,7 @@ sr_enabled="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_ENABLED)"
 sr_public="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PUBLIC_PORT)"
 sr_port="$(env_value GHOSTROUTE_CHANNEL_C_SHADOWROCKET_PORT)"
 channel_c_tls_source="$(env_value GHOSTROUTE_CHANNEL_C_TLS_SOURCE)"
+channel_tls_server_name="$(env_value GHOSTROUTE_CHANNEL_C_ACME_DOMAIN)"
 channel_c_tls_sync="$(env_value GHOSTROUTE_CHANNEL_C_TLS_SYNC)"
 channel_c_acme_renew="$(env_value GHOSTROUTE_CHANNEL_C_ACME_RENEW)"
 channel_d_enabled="$(env_value GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED)"
@@ -385,11 +386,16 @@ split_ok_d() {
 
 tls_listener_state() {
   port="$1"
+  server_name="${2:-}"
   [ -n "$port" ] && [ "$port" != 0 ] || {
     printf 'invalid\n'
     return
   }
-  certificate="$(timeout 8 openssl s_client -connect "127.0.0.1:$port" </dev/null 2>/dev/null || true)"
+  if [ -n "$server_name" ]; then
+    certificate="$(timeout 8 openssl s_client -connect "127.0.0.1:$port" -servername "$server_name" </dev/null 2>/dev/null || true)"
+  else
+    certificate="$(timeout 8 openssl s_client -connect "127.0.0.1:$port" </dev/null 2>/dev/null || true)"
+  fi
   [ -n "$certificate" ] || {
     printf 'invalid\n'
     return
@@ -450,9 +456,9 @@ fi
 if [ "$filter" = all ] || [ "$filter" = channel-c ]; then
   if [ "$native_enabled" = 1 ] || [ "$sr_enabled" = 1 ]; then
     if [ "$sr_enabled" = 1 ]; then
-      c_tls_state="$(tls_listener_state "$sr_port")"
+      c_tls_state="$(tls_listener_state "$sr_port" "$channel_tls_server_name")"
     else
-      c_tls_state="$(tls_listener_state "$native_port")"
+      c_tls_state="$(tls_listener_state "$native_port" "$channel_tls_server_name")"
     fi
     case "$c_tls_state" in
       current) emit channel_c_tls OK "Channel C TLS" "Channel C listener certificate is current" "source=$channel_c_tls_source" "No action." ;;
@@ -472,7 +478,7 @@ fi
 
 if [ "$filter" = all ] || [ "$filter" = channel-d ]; then
   if [ "$channel_d_enabled" = 1 ]; then
-    d_tls_state="$(tls_listener_state "$channel_d_port")"
+    d_tls_state="$(tls_listener_state "$channel_d_port" "$channel_tls_server_name")"
     case "$d_tls_state" in
       current) emit channel_d_tls OK "Channel D TLS" "Channel D listener certificate is current" "source=$channel_d_tls_source" "No action." ;;
       expires-soon) emit channel_d_tls WARN "Channel D TLS" "Channel D listener certificate expires within 30 days" "source=$channel_d_tls_source" "Run the ACME renewal check and inspect its log." ;;

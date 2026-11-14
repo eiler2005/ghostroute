@@ -46,6 +46,19 @@
       register: channel_b_home_xray_install
       changed_when: "'Installing' in (channel_b_home_xray_install.stdout + channel_b_home_xray_install.stderr)"
 
+    - name: Preserve legacy Xray entrypoint with current Entware package layout
+      ansible.builtin.raw: |
+        set -e
+        if [ {{ channel_b_home_router_xray_bin_path | quote }} = /opt/bin/xray ] &&
+           [ ! -e /opt/bin/xray ] && [ ! -L /opt/bin/xray ] &&
+           [ -x /opt/sbin/xray ]; then
+          ln -s ../sbin/xray /opt/bin/xray
+          echo ghostroute_xray_alias_created
+        fi
+        test -x {{ channel_b_home_router_xray_bin_path | quote }}
+      register: channel_b_home_xray_entrypoint
+      changed_when: "'ghostroute_xray_alias_created' in channel_b_home_xray_entrypoint.stdout"
+
     - name: Ensure OpenSSL is available on router for Channel B TLS certs
       ansible.builtin.raw: |
         if ! command -v openssl >/dev/null 2>&1 && [ ! -x /opt/bin/openssl ]; then

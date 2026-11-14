@@ -48,6 +48,29 @@ line. Upstream generic or musl builds are candidates only. They are not adopted
 until `sing-box check`, listener checks, `live-check`, `leak-check`, and a real
 LAN/Wi-Fi managed-domain probe all pass.
 
+Package maintenance must preserve the repository-managed init scripts. In
+particular, upgrading the Entware sing-box package can replace `S99sing-box`
+with a script that does not implement our `status` and zombie-PID contract.
+Restore the rendered repository template and verify recovery after installation.
+Keep package database/configuration backups alongside the previous executable;
+an executable-only restore is not a complete package downgrade.
+
+TLS listener expiry probes must send the configured shared C/D certificate
+hostname as SNI. A Caddy endpoint can reject a loopback connection without SNI
+while correctly serving authenticated clients; this must not be diagnosed as
+an expired or missing certificate. The live gate checks expiry; separate
+authenticated client probes establish application behavior and hostname trust.
+
+The optional [Snell/ShadowTLS experiment](../modules/routing-core/docs/channel-snell-lab.md)
+uses a separate binary and three private listener slots. It is manually started
+after reboot and is not covered by the production anyT approval manifest.
+
+Current Entware Xray packages install `/opt/sbin/xray`. Existing Channel B
+deployment/init paths retain `/opt/bin/xray`; the role creates a compatibility
+symlink only if that legacy path is completely absent and the package binary
+exists. It never replaces an existing binary or symlink. Verify the running
+relay after package maintenance, not only the installed version string.
+
 The stable Channel A DNS contract keeps sing-box DNS resolution on the private
 VPS Unbound path over `reality-out`; direct public-resolver DNS from sing-box is
 a candidate change, not the proven-good baseline. The Reality cover contract is

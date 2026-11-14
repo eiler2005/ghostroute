@@ -55,7 +55,7 @@ components:
     package_names:
       - sing-box-go
     version_policy:
-      proven_good: Entware sing-box 1.13.3 package line is the current stable router baseline.
+      proven_good: Entware sing-box 1.14.4 package line passes current runtime and authenticated application gates; retain real-client acceptance for each supported transport.
       minimum_required: sing-box 1.13.x is required for Channel C native Naive server-side features.
       candidate: Upstream arm64-musl builds or direct public-resolver sing-box DNS require explicit LAN transparent REDIRECT and managed HTTP 204 regression testing before adoption.
       known_problematic:

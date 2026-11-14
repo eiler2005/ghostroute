@@ -87,6 +87,10 @@ What this project demonstrates, with proof in-repo:
 
 ## Channel Status
 
+An additive [Snell + ShadowTLS lab](modules/routing-core/docs/channel-snell-lab.md)
+provides three experimental identities. It requires separate client acceptance
+and does not replace the protected production anyT imports.
+
 | Channel | Status | First hop | Scope | Automatic failover |
 |---|---|---|---|---|
 | A | Production router data plane | Endpoint or LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | No |

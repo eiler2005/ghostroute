@@ -55,6 +55,10 @@ watchdog'ами и схемами каналов:
 
 ## Статус каналов
 
+Дополнительный [Snell + ShadowTLS lab](modules/routing-core/docs/channel-snell-lab.md)
+содержит три экспериментальные учётные записи. Проверка на реальном клиенте
+обязательна; рабочие профили anyT сохраняются.
+
 | Канал | Статус | Первый hop | Scope | Автоматический failover |
 |---|---|---|---|---|
 | A | Production router data plane | Endpoint или LAN -> home router | LAN split routing, selected full-VPS sets, Home Reality clients, active managed Reality egress | Нет |
