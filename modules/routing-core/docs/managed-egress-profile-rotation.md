@@ -57,6 +57,28 @@ an active Amn projection. If the former backend has been retired, its saved
 profile is not a working fallback: qualify another backend explicitly. Never
 restore availability by falling through to direct for protected destinations.
 
+## Four-channel acceptance boundaries
+
+After a rotation, test the existing imports through their client-facing ingress,
+not only the shared router SOCKS listener. For each lane, fetch a reviewed direct
+IP checker, a managed IP checker and an unauthenticated sensitive API endpoint.
+Compare direct and managed identities against independent router baselines.
+An expected HTTP 401 proves an unauthenticated API response, not account access.
+
+| Lane | Client-facing diagnostic | Additional acceptance |
+|---|---|---|
+| A | Existing Home Reality profile through a compatible VLESS/Reality client | LAN/Wi-Fi REDIRECT and actual mobile connection |
+| B | Existing XHTTP profile with a certificate pinned from trusted router access | Imported-client certificate behavior remains a separate security boundary |
+| C | Existing C1-Shadowrocket HTTPS CONNECT credentials with normal TLS validation | Native Naive requires its own compatible client; compatibility proof does not cover it |
+| D | Existing HTTPS CONNECT profile, validated from an external network | Karing/Naive behavior, messages/media and reconnection on the real phone |
+
+Record the test vantage. A working router-local relay does not prove that the
+public ingress accepts clients. Conversely, failure from a home Mac against the
+public endpoint is not proof of external failure: compare an external vantage
+before attributing the issue to DNS, NAT loopback, client policy or ingress.
+Keep exact endpoint and incident evidence private. Do not regenerate QR artifacts
+as a diagnostic step.
+
 ## Local regression checks
 
 ```bash

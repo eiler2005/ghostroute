@@ -114,6 +114,10 @@ class TelegramEgressTests(unittest.TestCase):
         self.assertNotIn('flow', outbound)
         self.assertEqual(outbound['tls']['alpn'], ['h2'])
         self.assertEqual(outbound['tls']['reality'], payload['backends']['backup_reality']['outbound']['tls']['reality'])
+        del vault['vault_router_backup_reality_flow']
+        default_grpc = control.prepare(vault, [('fixture', '192.0.2.10', 443)], 3, 8)
+        self.assertNotIn('flow', default_grpc['backends']['backup_reality']['outbound'])
+        vault['vault_router_backup_reality_flow'] = ''
         for key, bad in [('transport', 'unknown'), ('flow', 'xtls-rprx-vision'), ('grpc_service_name', ''), ('alpn', ['http/1.1']), ('alpn', 'h2')]:
             field = 'vault_router_backup_reality_' + key
             saved = vault[field]

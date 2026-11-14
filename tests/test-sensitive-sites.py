@@ -138,6 +138,10 @@ def main():
         assert "transport" not in old[tag] and old[tag]["flow"] == "xtls-rprx-vision"
         assert new[tag]["transport"] == {"type": "grpc", "service_name": 'fixture/"service'}
         assert "flow" not in new[tag]
+        default_flow = render(**overrides, router_backup_reality_transport="grpc",
+                              router_backup_reality_grpc_service_name='fixture/"service',
+                              router_backup_reality_alpn=["h2"])
+        assert default_flow == after, "gRPC must not inherit the legacy Vision default"
         assert new[tag]["tls"]["alpn"] == ["h2"]
         assert new[tag]["tls"]["reality"] == old[tag]["tls"]["reality"]
         assert {k: v for k, v in old.items() if k != tag} == {k: v for k, v in new.items() if k != tag}
