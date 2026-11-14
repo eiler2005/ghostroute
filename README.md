@@ -46,6 +46,8 @@ runtime files, services, cron watchdogs and channel diagrams, see
 [`docs/router-runtime-map.md`](docs/router-runtime-map.md).
 The [privacy assurance checklist](docs/privacy-assurance.md) records what the
 managed guard proves, what requires a real client and how to check recovery.
+External [egress profile rotation](modules/routing-core/docs/managed-egress-profile-rotation.md)
+supports TCP or gRPC with Reality while preserving existing client imports.
 For the companion VPS-side runtime map used by Channel M, GhostRoute Console
 and the routing/app surfaces, see
 [`praefectus-ai/docs/vps-runtime-map.md`](https://github.com/eiler2005/praefectus-ai/blob/main/docs/vps-runtime-map.md).

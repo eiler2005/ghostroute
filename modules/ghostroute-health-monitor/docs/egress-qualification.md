@@ -26,6 +26,11 @@ No production service, route, firewall, catalog, credentials or client profile
 is changed. Temporary files may contain credentials and are private and removed
 afterwards. Production config hashes must match before and after the run.
 
+The reserve profile builder supports TCP/Reality and gRPC/Reality. For gRPC it
+uses the exported service name and ALPN, and rejects a Vision flow. Keep these
+fields aligned with the production renderer; see
+[router-only profile rotation](../../routing-core/docs/managed-egress-profile-rotation.md).
+
 Evaluate all layers in this order:
 
 | Layer | Evidence | What it does not prove |

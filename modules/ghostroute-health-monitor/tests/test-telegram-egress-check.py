@@ -102,6 +102,25 @@ class TelegramEgressTests(unittest.TestCase):
         self.assertEqual(set(payload['backends']), {'primary_vps', 'backup_reality', 'hermes_vps'})
         self.assertEqual(payload['backends']['primary_vps']['expected_exit'], '198.51.100.10')
         self.assertNotIn('expected_exit', payload['backends']['backup_reality'])
+        self.assertEqual(payload['backends']['backup_reality']['outbound']['flow'], 'xtls-rprx-vision')
+        self.assertNotIn('transport', payload['backends']['backup_reality']['outbound'])
+        for key, value in {'transport': 'grpc', 'flow': '', 'grpc_service_name': 'fixture/service', 'alpn': ['h2']}.items():
+            vault['vault_router_backup_reality_' + key] = value
+        grpc = control.prepare(vault, [('fixture', '192.0.2.10', 443)], 3, 8)['backends']
+        self.assertEqual(grpc['primary_vps'], payload['backends']['primary_vps'])
+        self.assertEqual(grpc['hermes_vps'], payload['backends']['hermes_vps'])
+        outbound = grpc['backup_reality']['outbound']
+        self.assertEqual(outbound['transport'], {'type': 'grpc', 'service_name': 'fixture/service'})
+        self.assertNotIn('flow', outbound)
+        self.assertEqual(outbound['tls']['alpn'], ['h2'])
+        self.assertEqual(outbound['tls']['reality'], payload['backends']['backup_reality']['outbound']['tls']['reality'])
+        for key, bad in [('transport', 'unknown'), ('flow', 'xtls-rprx-vision'), ('grpc_service_name', ''), ('alpn', ['http/1.1']), ('alpn', 'h2')]:
+            field = 'vault_router_backup_reality_' + key
+            saved = vault[field]
+            vault[field] = bad
+            with self.assertRaises(ValueError):
+                control.prepare(vault, [('fixture', '192.0.2.10', 443)], 3, 8)
+            vault[field] = saved
         for targets in [[], [('bad label', '192.0.2.10', 443)], [('fixture', 'not-an-ip', 443)], [('fixture', '192.0.2.10', 0)]]:
             with self.assertRaises(ValueError):
                 control.prepare(vault, targets, 3, 8)

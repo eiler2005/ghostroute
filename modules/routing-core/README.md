@@ -126,6 +126,8 @@ backend on Channel D before moving A/B/C. Channel M is never switched here.
 
 ## Related Docs
 
+- [Router-only managed egress profile rotation](docs/managed-egress-profile-rotation.md):
+  TCP or gRPC with Reality, preserving client imports and isolated policy ownership.
 - `modules/routing-core/docs/sensitive-sites-mode.md`
 - [Channel Amn runbook](docs/channel-amn-research.md)
 - Amn diagrams: [English](../../docs/assets/diagrams/channel-amn-architecture-en.html)

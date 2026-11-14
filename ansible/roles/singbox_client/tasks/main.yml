@@ -129,13 +129,19 @@
       - router_backup_reality_server_port | int > 0
       - router_backup_reality_server_port | int <= 65535
       - router_backup_reality_uuid | string | length > 0
-      - router_backup_reality_flow | string | length > 0
+      - router_backup_reality_transport | default('tcp') in ['tcp', 'grpc']
+      - router_backup_reality_flow in ['', 'xtls-rprx-vision']
+      - router_backup_reality_alpn | default([]) is sequence
+      - router_backup_reality_alpn | default([]) is not string
+      - router_backup_reality_transport | default('tcp') != 'grpc' or router_backup_reality_flow == ''
+      - router_backup_reality_transport | default('tcp') != 'grpc' or router_backup_reality_grpc_service_name | default('') | string | length > 0
+      - router_backup_reality_transport | default('tcp') != 'grpc' or 'h2' in (router_backup_reality_alpn | default([]))
       - router_backup_reality_packet_encoding | string | length > 0
       - router_backup_reality_server_name | string | length > 0
       - router_backup_reality_utls_fingerprint | string | length > 0
       - router_backup_reality_public_key | string | length > 0
       - router_backup_reality_short_id | string | length > 0
-    fail_msg: "backup_reality mode needs a complete router-only VLESS/Reality reserve profile in Vault."
+    fail_msg: "backup_reality needs a complete router-only VLESS/Reality profile; gRPC requires an empty flow, service name and h2 ALPN."
   when: router_managed_egress_mode == 'backup_reality' or channel_d_managed_egress_mode | default('follow') == 'backup_reality'
   no_log: true
 

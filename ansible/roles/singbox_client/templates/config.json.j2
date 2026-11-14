@@ -35,10 +35,14 @@
 {% endif %}
 {% macro reality_outbound_body(mode) -%}
 {% if mode == 'backup_reality' %}
+{% set backup_transport = router_backup_reality_transport | default('tcp') %}
+{% set backup_flow = router_backup_reality_flow | default('' if backup_transport == 'grpc' else 'xtls-rprx-vision') %}
       "server": "{{ router_backup_reality_server }}",
       "server_port": {{ router_backup_reality_server_port }},
       "uuid": "{{ router_backup_reality_uuid }}",
-      "flow": "{{ router_backup_reality_flow | default('xtls-rprx-vision') }}",
+{% if backup_flow %}
+      "flow": {{ backup_flow | to_json }},
+{% endif %}
       "packet_encoding": "{{ router_backup_reality_packet_encoding | default('xudp') }}",
       "tcp_fast_open": false,
       "tcp_keep_alive_interval": "30s",
@@ -46,9 +50,18 @@
       "multiplex": {
         "enabled": false
       },
+{% if backup_transport == 'grpc' %}
+      "transport": {
+        "type": "grpc",
+        "service_name": {{ router_backup_reality_grpc_service_name | to_json }}
+      },
+{% endif %}
       "tls": {
         "enabled": true,
         "server_name": "{{ router_backup_reality_server_name }}",
+{% if router_backup_reality_alpn | default([]) | length > 0 %}
+        "alpn": {{ router_backup_reality_alpn | to_json }},
+{% endif %}
         "utls": {
           "enabled": true,
           "fingerprint": "{{ router_backup_reality_utls_fingerprint | default('chrome') }}"

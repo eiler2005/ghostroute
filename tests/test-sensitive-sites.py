@@ -122,6 +122,25 @@ def route(config, inbound, host, port=443):
 
 def main():
     c = render()
+    # Changing an external transport must not migrate any client ingress or
+    # alter the sensitive/direct split, including when Channel D is pinned.
+    for mode, d_mode in [("backup_reality", "follow"), ("primary_vps", "backup_reality")]:
+        overrides = dict(router_managed_egress_mode=mode, channel_d_managed_egress_mode=d_mode,
+                         vps_ssh_host="primary.example.invalid")
+        before = render(**overrides)
+        after = render(**overrides, router_backup_reality_transport="grpc",
+                       router_backup_reality_flow="", router_backup_reality_grpc_service_name='fixture/"service',
+                       router_backup_reality_alpn=["h2"])
+        assert {k: v for k, v in before.items() if k != "outbounds"} == {k: v for k, v in after.items() if k != "outbounds"}
+        tag = "reality-out" if d_mode == "follow" else "reality-out-d"
+        old = {o["tag"]: o for o in before["outbounds"]}
+        new = {o["tag"]: o for o in after["outbounds"]}
+        assert "transport" not in old[tag] and old[tag]["flow"] == "xtls-rprx-vision"
+        assert new[tag]["transport"] == {"type": "grpc", "service_name": 'fixture/"service'}
+        assert "flow" not in new[tag]
+        assert new[tag]["tls"]["alpn"] == ["h2"]
+        assert new[tag]["tls"]["reality"] == old[tag]["tls"]["reality"]
+        assert {k: v for k, v in old.items() if k != tag} == {k: v for k, v in new.items() if k != tag}
     inbounds = {x["tag"] for x in c["inbounds"]}
     scoped = set(c["route"]["rules"][1]["inbound"])
     assert scoped <= inbounds, scoped - inbounds

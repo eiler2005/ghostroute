@@ -32,14 +32,28 @@ def prepare(vault, targets, rounds, timeout):
     required = ['server', 'uuid', 'server_name', 'public_key', 'short_id']
     if not all(backup(k) for k in required):
         raise ValueError('backend bank configuration incomplete')
+    transport = backup('transport', 'tcp')
+    flow = backup('flow', '' if transport == 'grpc' else 'xtls-rprx-vision')
+    alpn = backup('alpn', [])
+    if transport not in ('tcp', 'grpc') or flow not in ('', 'xtls-rprx-vision') or not isinstance(alpn, list):
+        raise ValueError('invalid backup Reality transport settings')
+    if transport == 'grpc' and (flow or not backup('grpc_service_name') or 'h2' not in alpn):
+        raise ValueError('gRPC requires empty flow, service name and h2 ALPN')
     roles['backup_reality'] = {'outbound': {
         'type': 'vless', 'server': backup('server'), 'server_port': int(backup('server_port', 443)),
-        'uuid': backup('uuid'), 'flow': backup('flow', 'xtls-rprx-vision'),
+        'uuid': backup('uuid'),
         'packet_encoding': backup('packet_encoding', 'xudp'), 'tcp_fast_open': False,
         'tcp_keep_alive_interval': '30s', 'connect_timeout': '10s', 'multiplex': {'enabled': False},
         'tls': {'enabled': True, 'server_name': backup('server_name'),
                 'utls': {'enabled': True, 'fingerprint': backup('utls_fingerprint', 'chrome')},
                 'reality': {'enabled': True, 'public_key': backup('public_key'), 'short_id': backup('short_id')}}}}
+    outbound = roles['backup_reality']['outbound']
+    if flow:
+        outbound['flow'] = flow
+    if alpn:
+        outbound['tls']['alpn'] = alpn
+    if transport == 'grpc':
+        outbound['transport'] = {'type': 'grpc', 'service_name': backup('grpc_service_name')}
     checked = []
     for label, address, port in targets:
         if not label.replace('-', '').isalnum():
