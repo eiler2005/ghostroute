@@ -95,6 +95,23 @@ trace can locate incomplete handshakes without recording payloads. Repeat
 through an independent uplink before attributing filtering to a specific
 network. Preserve both successes and failures in ignored local reports.
 
+## Comparing transports and interpreting DPI signals
+
+Keep an unavailable historical endpoint separate from a working implementation
+of its former transport. Compare isolated authenticated routes from the router,
+record repeat counts and median complete-response/first-byte times, and verify
+production hashes before and after. Treat an expected unauthenticated API 401
+as an application response; distinguish it from a tunnel failure.
+
+Different endpoints and exits confound a TCP-versus-gRPC performance comparison.
+A causal test needs both transports on a controlled server with the same exit,
+paired alternating requests and an independent uplink. A saved endpoint also
+failing through a working tunnel weakens a direct-home-path-only hypothesis,
+without proving its cause. Raw TLS EOF/reset can occur on a working Reality
+endpoint and must not be labelled confirmed DPI. Website HTML probes do not
+prove video playback, model-generation latency or signed-in messaging/media.
+Keep measured deployment evidence in private reports rather than public docs.
+
 ## Local coverage
 
 ```bash
