@@ -175,6 +175,14 @@ mutating deploy entrypoints still run their own pre/post deploy gate.
 
 ## Failure Modes
 
+Ansible callbacks may redact short Vault scalar values even when they appear
+inside a machine marker (for example a port number or country code). The VPS
+checks use neutral lowercase markers for edge/profile state; their public JSON
+IDs stay unchanged. Treat a missing marker as unverified, never as healthy.
+Confirm a suspected listener fault with an independent server-side check before
+restarting the edge. See the
+[VPS compatibility procedure](../../docs/runtime-inventory.md#vps-compatibility-maintenance).
+
 - `STATUS_FAIL` or stale `summary-latest.md`.
 - Reality path unavailable on router or VPS.
 - DNS/plain port 53 leak, IPv6 drift or direct traffic leak.
@@ -186,6 +194,7 @@ mutating deploy entrypoints still run their own pre/post deploy gate.
 - `./modules/ghostroute-health-monitor/tests/test-egress-backend-health.sh`
 - `./modules/ghostroute-health-monitor/tests/test-vps-health-monitor.sh`
 - `python3 modules/ghostroute-health-monitor/tests/test-telegram-egress-check.py`
+- `python3 tests/test-vps-health-output.py` (redacted markers and genuine negative states)
 - `./tests/run-all.sh`
 
 ## Related Docs

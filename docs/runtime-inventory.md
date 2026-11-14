@@ -54,6 +54,30 @@ dedicated PostCSS plugin without replacing the existing custom stylesheet.
 Seeded desktop, Android and iPhone/WebKit checks validate the upgrade. A local
 pass does not replace the public performance and iPhone CSS gate after deploy.
 
+## VPS compatibility maintenance
+
+A router engine upgrade does not require the server to use the same engine or
+version. Qualify the active transports, credentials, certificate trust and
+application transfers before deciding to change a VPS. A working authenticated
+chain is stronger compatibility evidence than matching version numbers.
+
+Check both owned VPS roles independently: edge listeners, managed DNS, container
+and host services, effective engine versions and pending distribution updates.
+From the router, exercise ordinary/managed/sensitive requests through each active
+client lane; include anyT's eight approved imports, native application probes,
+DNS and negative-path containment. Check the isolated regional-service path
+separately. In the reverse direction, verify a permitted report through the
+dedicated Console service key with pinned host trust, plus rejection of an
+arbitrary command. Never substitute the operator key on the VPS.
+
+Do not upgrade a panel, rebuild a healthy edge or reboot a host merely to match
+repository targets. Conversely, a green compatibility gate does not clear
+pending OS security maintenance. Review package origins and applicable release
+advisories separately, preserve panel data and binaries, qualify candidates and
+plan restart/rollback boundaries that preserve protected client contracts.
+Record host observations, transient probe failures and final acceptance in
+ignored operator reports; public docs retain the procedure rather than snapshots.
+
 The registry follows the useful parts of SBOM/OBOM practice: component identity,
 supplier/origin, package names, version policy, relationships, machine-readable
 port ownership and validation. It deliberately stores symbolic references such

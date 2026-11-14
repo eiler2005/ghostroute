@@ -135,7 +135,9 @@ if [ -r /opt/ghostroute-console/router.env ]; then
     fi
   fi
 fi
-echo PROFILE=$profile
+# Lowercase, port-free markers avoid collisions with short Vault scalar values
+# redacted by newer Ansible callbacks (including country codes and port numbers).
+echo probe_state=$profile
 echo KEY=$key
 echo TCP=$tcp
 echo TOOL=$tool
@@ -150,7 +152,7 @@ echo TOOL=$tool
     return 0
   fi
 
-  profile="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="PROFILE"{print $2; exit}')"
+  profile="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="probe_state"{print $2; exit}')"
   key="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="KEY"{print $2; exit}')"
   tcp="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="TCP"{print $2; exit}')"
   tool="$(printf '%s\n' "$vps_check_output" | awk -F= '$1=="TOOL"{print $2; exit}')"
@@ -212,7 +214,7 @@ if command -v ufw >/dev/null 2>&1; then
     dns53=UNKNOWN
   fi
 fi
-echo TCP443=$tcp443
+echo edge_state=$tcp443
 echo DNS53=$dns53
 echo TOOL=$tool
 ' 2>/dev/null
@@ -226,7 +228,7 @@ echo TOOL=$tool
     return 0
   fi
 
-  tcp443="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="TCP443"{print $2; exit}')"
+  tcp443="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="edge_state"{print $2; exit}')"
   dns53="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="DNS53"{print $2; exit}')"
   tool="$(printf '%s\n' "$vps_edge_output" | awk -F= '$1=="TOOL"{print $2; exit}')"
 
