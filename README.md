@@ -175,7 +175,7 @@ Legacy WireGuard (`wgs1` + `wgc1`) is decommissioned in normal operation.
 
 If the router reports WAN `carrier=0` or "network cable unplugged", that is a
 physical/provider WAN-link incident. It is not evidence that Channel A,
-Caddy/VPS, or the Reality/Vision data plane is broken.
+Caddy/VPS, or the Reality data plane is broken.
 
 ## Operator Router Access
 
@@ -238,7 +238,7 @@ diagnostic.
   CONNECT/TLS for Shadowrocket compatibility and is live-proven. C1-sing-box
   uses sing-box Naive on the home endpoint as the native design, but current
   SFI `1.11.4` rejects outbound `type: naive`. Both router-side paths apply the
-  same managed split and Reality/Vision upstream.
+  same managed split and selected Reality upstream.
 - Channel D experimental NaiveProxy lab: selected Karing/NaiveProxy-style
   clients connect to router-native Caddy `forward_proxy@naive` on home TCP/<channel-d-public-port>.
   Caddy relays into local sing-box SOCKS `channel-d-naiveproxy-socks-in`, where
@@ -604,7 +604,7 @@ surfaces:
   home-first: selected devices connect to dedicated home ingress on
   `:<home-channel-b-port>`. A local Xray process terminates that first hop and
   forwards traffic into local sing-box SOCKS, so the second hop reuses the same
-  existing Reality/Vision upstream to VPS as Channel A.
+  existing selected Reality upstream to VPS as Channel A.
 - Channel C is the home-first Naive/compatibility lane. C1-sing-box is the
   router-side native Naive design, but the tested iPhone SFI app used sing-box
   `1.11.4` and rejected outbound `type: naive`; generated SFI native profiles

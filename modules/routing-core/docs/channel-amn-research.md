@@ -25,7 +25,7 @@ of two simultaneous iOS VPNs.
 ![Channel Amn traffic: home ingress, sensitive VPS, managed VPS and direct home WAN](../../../docs/assets/diagrams/channel-amn-traffic-en.png)
 
 AmneziaWG applies only to the client-to-router leg. Managed router-to-VPS traffic
-continues to use VLESS + Reality/Vision; an Amnezia server on the VPS is unnecessary.
+uses the selected VLESS/Reality transport (TCP/Vision or gRPC without Vision); an Amnezia server on the VPS is unnecessary.
 The mobile network sees the home endpoint as the tunnel destination. The VPS is
 the exit for matched managed traffic. Non-managed traffic retains home-WAN egress
 under the existing split policy; selected full-VPS mode for Channel A is not

@@ -23,6 +23,28 @@ and short ID. Do not reinterpret a TLS-only export as Reality or assume every
 gRPC profile uses TLS-only security. Transport and authentication must follow the
 actual profile. These settings do not enable TLS-only or other VLESS transports.
 
+## TCP/Reality/Vision versus gRPC/Reality
+
+| Layer | TCP profile | gRPC profile |
+|---|---|---|
+| Proxy protocol | VLESS | VLESS |
+| Stream transport | Raw TCP | gRPC streams over HTTP/2 over TCP |
+| Tunnel security | Reality | Reality in the supported external profile |
+| Flow | Vision | No Vision |
+| Transport-specific settings | No gRPC service name | Matching service name and `h2` ALPN |
+
+gRPC adds HTTP/2 framing and stream multiplexing. It is not a replacement for
+Reality and does not move the routing decision into HTTP. Sites still observe
+the selected exit; the home ISP still sees the outer connection and its metadata.
+This change alone proves neither improved DPI resistance nor better performance.
+Measure latency, throughput and reconnection from the actual client network.
+Additional framing and HTTP/2 stream management have a cost; losses on the
+underlying TCP connection can delay its streams. Application HTTPS remains a
+separate encrypted layer inside the tunnel.
+
+See the official [gRPC transport documentation](https://xtls.github.io/config/transports/grpc.html)
+and [sing-box transport fields](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/).
+
 ## Qualification and deployment
 
 1. Decode the new profile locally into private ignored storage. Validate its

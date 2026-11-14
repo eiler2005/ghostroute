@@ -23,6 +23,13 @@ These describe implemented mechanisms and their supported scope, not a live
 deployment snapshot. Remaining acceptance work is tracked separately in the
 [engineering register](../../routing-assurance-roadmap.md).
 
+Managed Reality egress is transport-specific: owned profiles use TCP/Vision;
+the external role also supports gRPC/Reality without Vision. The general routing
+and Amn traffic figures show this distinction; the sensitive owned path retains
+Vision. See the [transport comparison](../../../modules/routing-core/docs/managed-egress-profile-rotation.md).
+The legacy `ghostroute-architecture.png` filename is an alias of the current
+English routing figure, replacing the retired single-egress illustration.
+
 ## Mac Guard diagrams and cover
 
 [Русские исходники](ghostroute-guard-ru.html) · [English sources](ghostroute-guard-en.html)

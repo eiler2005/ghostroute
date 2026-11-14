@@ -22,7 +22,7 @@ through an isolated service policy.
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
 - Channel A — home-first router data plane: endpoint или LAN traffic попадает
-  на home router. По умолчанию managed traffic уходит через Reality/Vision на
+  на home router. По умолчанию managed traffic уходит через выбранный Reality transport на
   VPS, а non-managed traffic идет через home WAN; выбранные домашние Wi-Fi/LAN
   устройства и выбранные Home Reality профили могут включать full-VPS override
   и отправлять весь internet-bound traffic через `reality-out`.
@@ -135,7 +135,7 @@ Layer 3 VPS
 Channel Amn добавляет путь `iPhone → AmneziaWG → домашний роутер`. На роутере
 userspace-движок передаёт пакеты отдельному `sing-box-amn` с gVisor TUN и
 проекцией действующей managed/sensitive-политики. Чувствительные сайты используют
-`sensitive-out → hermes_vps`, остальные managed — выбранный Reality/Vision VPS,
+`sensitive-out → hermes_vps`, остальные managed — выбранный Reality egress,
 non-managed — домашний WAN. Основной sing-box, каналы A/B/C/D/M и legacy cold
 fallback сохраняют своих владельцев.
 
@@ -260,7 +260,7 @@ The home router terminates home-based channels and applies routing and DNS
 policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, optional
 Channel A selected full-VPS TPROXY for home Wi-Fi/LAN devices, home Reality
 ingress with optional selected `auth_user` full-VPS rules, Channel B home
-ingress relay, Channel C1 Naive ingress, and the Reality/Vision outbound to VPS.
+ingress relay, Channel C1 Naive ingress, and the selected Reality outbound to VPS.
 Router policy may either split managed/non-managed destinations or, for selected
 Channel A full-VPS sets, send internet-bound traffic through `reality-out`.
 

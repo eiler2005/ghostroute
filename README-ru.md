@@ -77,7 +77,7 @@ watchdog'ами и схемами каналов:
 Протокол и программа — разные части схемы: удалённый A использует VLESS +
 Reality/Vision на sing-box, B — VLESS + XHTTP/TLS на Xray, рабочий C1-Shadowrocket —
 HTTPS CONNECT/TLS на sing-box. Общий managed-выход с роутера на VPS использует
-VLESS + Reality/Vision. [Таблица протоколов и компонентов](docs/channels.md#protocols-and-implementations).
+VLESS + Reality: TCP/Vision или gRPC без Vision, в зависимости от выхода. [Таблица протоколов и компонентов](docs/channels.md#protocols-and-implementations).
 
 ## Обзор
 
@@ -155,7 +155,7 @@ Legacy WireGuard (`wgs1` + `wgc1`) выключен в нормальной эк
 
 Если роутер показывает WAN `carrier=0` или "сетевой кабель не подключен", это
 физическая/провайдерская авария WAN-link. Это не признак поломки Channel A,
-Caddy/VPS или Reality/Vision data plane.
+Caddy/VPS или Reality data plane.
 
 ## Операторский доступ к роутеру
 
@@ -211,12 +211,12 @@ direct LAN/Wi-Fi fallback и только потом возвращает transp
   а не failover через B/C.
 - Channel B selected-client production home-first lane: выбранные устройства сначала
   подключаются к домашнему ingress через XHTTP/TLS, затем роутер relays трафик
-  в локальный sing-box SOCKS и переиспользует Reality/Vision upstream на VPS
+  в локальный sing-box SOCKS и переиспользует выбранный Reality upstream на VPS
   `:443`.
 - Channel C C1 lane: C1-Shadowrocket использует HTTPS CONNECT/TLS как
   live-proven iPhone compatibility path; C1-sing-box использует router-side
   native Naive, но пока ожидает iOS client support for outbound `type: naive`.
-  Оба варианта применяют тот же managed split и Reality/Vision upstream.
+  Оба варианта применяют тот же managed split и выбранный Reality upstream.
 - Channel D Karing-only NaiveProxy lane: выбранные клиенты Karing подключаются
   к домашнему TCP/<channel-d-public-port>, router-native Caddy `forward_proxy@naive` relays трафик
   в `channel-d-naiveproxy-socks-in`, а sing-box применяет тот же managed split.
@@ -548,7 +548,7 @@ Channel B, Channel C и Channel D — device-client линии с разным �
 Channel B работает как production lane для selected clients: выбранные устройства
 подключаются к отдельному домашнему XHTTP/TLS ingress на роутере. Локальный
 Xray завершает первый hop и передает трафик в локальный sing-box SOCKS, где
-managed домены продолжают идти через существующий Reality/Vision upstream на VPS,
+managed домены продолжают идти через существующий выбранный Reality upstream на VPS,
 а non-managed — сразу в home WAN.
 Channel C теперь разделен на два C1-варианта. C1-Shadowrocket подключается к
 домашнему HTTPS CONNECT/TLS ingress на `:<channel-c-shadowrocket-public-port>` и попадает в

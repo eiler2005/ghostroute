@@ -50,7 +50,7 @@ specific scenarios it does and does not address.
 
 | Scenario | Primary mitigation | Secondary / verification |
 |---|---|---|
-| ISP DPI / SNI fingerprinting | VLESS+Reality+Vision egress; cover SNI rotation guide; managed UDP/443 dropped to force TCP fallback | `traffic-report check`; `live-check --active-probe`; SNI rotation runbook |
+| ISP DPI / SNI fingerprinting | VLESS+Reality egress with reviewed TCP/Vision or gRPC transport; cover SNI rotation guide; managed UDP/443 dropped to force TCP fallback | `traffic-report check`; `live-check --active-probe`; SNI rotation runbook |
 | Managed LAN direct fallthrough | First `FORWARD` guard drops direct IPv4 TCP and UDP/443 to already classified managed destinations; dynamic ipset snapshots are saved atomically | [Privacy assurance checks](docs/privacy-assurance.md); guard fixtures; real-client exit proof |
 | Mobile DNS observation | Home-first ingress + managed split → managed DNS over dnscrypt + Reality; `domains-no-vpn.txt` exceptions for apps that must stay direct | `dns-policy.md`; BrowserLeaks consistency review |
 | Regulatory blocking | Reality cover SNI choice + L4 sharing on `:443`; Channel A/B/C protocol diversity | Reality SNI rotation guide; manual SNI cover override |

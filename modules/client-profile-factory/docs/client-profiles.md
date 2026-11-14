@@ -522,7 +522,7 @@ automatic failover.
 client app -> home public IP :<home-channel-c-public-port>
            -> router sing-box Naive inbound `channel-c-naive-in`
            -> managed split
-           -> managed destinations: Reality/Vision -> VPS -> Internet
+           -> managed destinations: selected Reality transport -> VPS -> Internet
            -> non-managed destinations: home WAN -> Internet
 ```
 

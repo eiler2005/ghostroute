@@ -57,6 +57,10 @@ client-to-router ingress from the router-to-VPS egress:
 After the managed/sensitive route decision, the configured owned VPS egress
 uses sing-box's VLESS + Reality + Vision outbound and a VPS Xray Reality
 receiver. This shared second leg does not make Channel C's first leg VLESS.
+The external `backup_reality` role also supports VLESS over gRPC/HTTP/2 with
+Reality, without Vision. The selected backend determines this second-leg
+transport; it does not change A/B/C/D or Amn ingress or client QR codes. See
+[transport comparison and profile rotation](../modules/routing-core/docs/managed-egress-profile-rotation.md).
 Non-managed traffic follows `direct-out` through the home WAN under normal
 split routing. Sensitive sites mode can select its own backend before general
 managed rules; it preserves each channel's ingress protocol.
