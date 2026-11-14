@@ -23,6 +23,23 @@ and short ID. Do not reinterpret a TLS-only export as Reality or assume every
 gRPC profile uses TLS-only security. Transport and authentication must follow the
 actual profile. These settings do not enable TLS-only or other VLESS transports.
 
+## Preserve an inactive profile for a future return
+
+Keep the reviewed TCP/Reality/Vision implementation and its regression fixtures
+alongside the gRPC variant. Store each real outbound profile as a separate
+encrypted, named operator artifact under ignored `secrets/`; include these files
+and the staging instructions in the encrypted control-machine backup.
+
+Restoration must merge only `vault_router_backup_reality_*` fields into the
+current Vault. Restoring an entire old Vault could revert newer client keys,
+management access and unrelated routing settings. Stage a new encrypted candidate,
+verify all unrelated values remain equal, qualify the saved endpoint from the
+router, then deploy the outbound and refresh any active Amn projection. Preserve
+the currently working profile for rollback. Client QR regeneration is unnecessary.
+
+A saved profile is recoverable configuration, not proof of an available service.
+A retired or failing endpoint must pass qualification again before carrying traffic.
+
 ## TCP/Reality/Vision versus gRPC/Reality
 
 | Layer | TCP profile | gRPC profile |
