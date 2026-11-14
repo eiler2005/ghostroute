@@ -23,7 +23,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <div class="diagram-container">
 <svg id="ghostroute-routing-ru" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-routing-ru-title ghostroute-routing-ru-desc">
 <title id="ghostroute-routing-ru-title">Домашние входы и три варианта выхода</title>
-<desc id="ghostroute-routing-ru-desc">LAN и home-first клиенты используют домашнюю политику с отдельными sensitive, managed и direct выходами; Amn изолирован.</desc>
+<desc id="ghostroute-routing-ru-desc">LAN и home-first клиенты, включая восемь утверждённых anyT импортов, используют sensitive, managed и direct политики. anyT имеет отдельный процесс; Amn сохранён, но отключён.</desc>
 <defs>
 <marker id="ghostroute-routing-ru-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
 <path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
@@ -35,7 +35,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="48" y="128" class="subtitle">Роутер применяет каталоги и выбранные режимы после домашнего входа.</text>
 <path class="edge " data-from="lan" data-to="policy" d="M 336,244 H 392 Q 400,244 400,252 V 296 Q 400,304 408,304 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
 <path class="edge " data-from="remote" data-to="policy" d="M 336,400 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
-<path class="edge optional" data-from="amn" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
+<path class="edge " data-from="anyt" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-ru-arrow)"/>
 <path class="edge optional focal" data-from="policy" data-to="sensitive" d="M 800,304 H 864 Q 872,304 872,296 V 252 Q 872,244 880,244 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
 <path class="edge focal" data-from="policy" data-to="managed" d="M 800,400 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
 <path class="edge " data-from="policy" data-to="direct" d="M 800,496 H 864 Q 872,496 872,504 V 548 Q 872,556 880,556 H 944" marker-end="url(#ghostroute-routing-ru-arrow)"/>
@@ -52,18 +52,18 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="72" y="424" class="mono">C: CONNECT / Naive*</text>
 <text x="72" y="452" class="mono">D: Caddy / NaiveProxy lab</text>
 </g>
-<g class="node optional" data-node="amn">
+<g class="node " data-node="anyt">
 <rect x="48" y="500" width="288" height="112" rx="8"/>
-<text x="72" y="536" class="node-name">Amn: ручной lab</text>
-<text x="72" y="568" class="body">AmneziaWG → home ingress</text>
-<text x="72" y="596" class="body">Изолированные процессы</text>
+<text x="72" y="536" class="node-name">Channel anyT</text>
+<text x="72" y="568" class="body">AnyTLS / проверка TLS / TCP</text>
+<text x="72" y="596" class="body">8 утверждённых импортов</text>
 </g>
 <g class="node focal" data-node="policy">
 <rect x="440" y="240" width="360" height="300" rx="8"/>
 <text x="464" y="268" class="tag">ВЛАДЕЛЕЦ ПОЛИТИКИ</text>
 <text x="464" y="302" class="node-name">Домашний роутер</text>
 <text x="464" y="340" class="mono">A/B/C/D: sing-box</text>
-<text x="464" y="368" class="mono">Amn: sing-box-amn</text>
+<text x="464" y="368" class="mono">anyT: отдельный sing-box-atls</text>
 <text x="464" y="396" class="body">Единый смысл каталогов</text>
 <text x="464" y="424" class="body">Sensitive перед managed</text>
 <text x="464" y="452" class="body">A: выбранный full-VPS</text>
@@ -88,18 +88,18 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="968" y="596" class="body">Сайт видит домашний IP</text>
 </g>
 <line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
-<text x="48" y="678" class="legend">Сплошная: основной путь. Пунктир: opt-in или lab. Native C требует совместимого клиента (*).</text>
-<text x="48" y="704" class="fine">Клиентский DIRECT обходит домашнюю политику. M сохраняет отдельный региональный выход.</text>
+<text x="48" y="678" class="legend">Сплошная: базовый split. Пунктир: sensitive opt-in. Native C требует совместимого клиента (*).</text>
+<text x="48" y="704" class="fine">DIRECT клиента обходит политику. Amn / legacy WireGuard: сохранены, отключены. M: отдельный региональный путь.</text>
 </svg>
 </div>
-<p class="caption">Схема показывает базовый split, а не каждый пакетный exception. LAN REDIRECT охватывает классифицированный managed IPv4 TCP; managed UDP/443 блокируется. Sensitive действует только после совпадения правила. Клиентский DIRECT, скрытые имена и неподконтрольный DNS требуют отдельной проверки. Native C зависит от клиента; D и Amn остаются lab. M показан ниже отдельным служебным путём.</p>
+<p class="caption">Схема показывает базовый split, а не каждый пакетный exception. LAN REDIRECT охватывает классифицированный managed IPv4 TCP; managed UDP/443 блокируется. anyT проецирует selected-client политику в свой процесс: B не является его relay, а full-VPS overrides A не наследуются. Восемь выданных импортов сохраняются при обслуживании. Sensitive действует только после совпадения правила. Клиентский DIRECT, скрытые имена и неподконтрольный DNS требуют отдельной проверки. Native C зависит от клиента; D остаётся lab. Amn и legacy WireGuard отключены с сохранением конфигурации. M имеет отдельную служебную политику.</p>
 </section>
 <section id="lifecycle">
 <h2>Запуск и восстановление</h2>
 <div class="diagram-container">
 <svg id="ghostroute-lifecycle-ru" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-lifecycle-ru-title ghostroute-lifecycle-ru-desc">
 <title id="ghostroute-lifecycle-ru-title">Владельцы запуска и восстановления</title>
-<desc id="ghostroute-lifecycle-ru-desc">Merlin и supervisor управляют production runtime; Amn имеет отдельный ручной lifecycle, а Console ограничен чтением.</desc>
+<desc id="ghostroute-lifecycle-ru-desc">Merlin и supervisor готовят production-службы. anyT имеет отдельный контроллер, boot/firewall reconcile и минутный cron. Amn сохранён, но отключён; Console имеет доступ только к отчётам.</desc>
 <defs>
 <marker id="ghostroute-lifecycle-ru-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
 <path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
@@ -114,6 +114,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <path class="edge optional" data-from="supervisor" data-to="main" d="M 496,296 V 328 Q 496,336 488,336 H 228 Q 220,336 220,344 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
 <path class="edge optional" data-from="supervisor" data-to="companions" d="M 624,296 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
 <path class="edge optional" data-from="supervisor" data-to="dns" d="M 752,296 V 328 Q 752,336 760,336 H 1052 Q 1060,336 1060,344 V 384" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
+<path class="edge optional focal" data-from="supervisor" data-to="anyt" d="M 440,276 H 424 Q 416,276 416,284 V 328 a 8,8 0 0,0 0,16 V 520 Q 416,528 408,528 H 228 Q 220,528 220,536 V 548" marker-end="url(#ghostroute-lifecycle-ru-arrow)"/>
 <g class="node " data-node="hooks">
 <rect x="48" y="188" width="288" height="108" rx="8"/>
 <text x="72" y="224" class="node-name">Merlin hooks</text>
@@ -153,22 +154,30 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="912" y="480" class="mono">dnscrypt-proxy</text>
 <text x="912" y="508" class="body">dnsmasq принадлежит Merlin</text>
 </g>
+<g class="node focal" data-node="anyt">
+<rect x="48" y="548" width="344" height="88" rx="8"/>
+<text x="72" y="580" class="node-name">Channel anyT</text>
+<text x="72" y="604" class="body">Свой процесс и scoped INPUT</text>
+<text x="72" y="626" class="body">Boot / firewall / cron: 1 мин</text>
+</g>
 <g class="node optional" data-node="amn">
-<rect x="48" y="556" width="584" height="80" rx="8"/>
-<text x="72" y="592" class="node-name">Amn: отдельное ручное управление</text>
-<text x="72" y="624" class="mono">engine + sing-box-amn · explicit start / policy refresh</text>
+<rect x="464" y="548" width="352" height="88" rx="8"/>
+<text x="488" y="580" class="node-name">Amn: сохранён, отключён</text>
+<text x="488" y="604" class="body">Ручной start / policy refresh</text>
+<text x="488" y="626" class="body">Вне production supervisor</text>
 </g>
 <g class="node " data-node="console">
-<rect x="680" y="556" width="552" height="80" rx="8"/>
-<text x="704" y="592" class="node-name">Console: ограниченное чтение</text>
-<text x="704" y="624" class="body">Отдельный ключ → fixed report gate</text>
+<rect x="888" y="548" width="344" height="88" rx="8"/>
+<text x="912" y="580" class="node-name">Console: только чтение</text>
+<text x="912" y="604" class="body">Отдельный service key</text>
+<text x="912" y="626" class="body">Фиксированный report gate</text>
 </g>
 <line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
-<text x="48" y="678" class="legend">Supervisor восстанавливает production-службы и правила; Amn запускается отдельно после reboot/firewall rebuild.</text>
-<text x="48" y="704" class="fine">M: выбранное приложение → отдельная служебная политика → согласованный регион выхода.</text>
+<text x="48" y="678" class="legend">anyT: проверка входных данных раз в 2 с; восстановление через reconcile. Restart может прервать сессии.</text>
+<text x="48" y="704" class="fine">Ошибка входных данных: anyT закрыт. Пропавшие owned rules восстанавливаются; без failover и перевыпуска QR.</text>
 </svg>
 </div>
-<p class="caption">Схема отделяет boot/recovery ownership от data plane. Правила guard начинают действовать после firewall hook; успешный hook drill не доказывает весь интервал reboot. Операторский ключ находится на control machine, а service key Console ограничен фиксированным набором отчётов. Amn не входит в production supervisor.</p>
+<p class="caption">Стрелки показывают управление запуском, а не путь пакетов. Supervisor вызывает собственный контроллер anyT; firewall-start и минутный cron также выполняют reconcile. Исправная служба сохраняет процессы при восстановлении пропавших firewall-правил; обнаруженное изменение входных данных требует проверки и restart. Polling не означает атомарность или отсутствие перерыва. anyT использует сертификаты существующего TLS-владельца. LAN guard начинает действовать после firewall hook. Service key Console ограничен отчётами; операторский ключ остаётся на control machine. Amn требует явного включения.</p>
 </section>
 <section id="recovery">
 <h2>Recovery-копии</h2>
@@ -206,14 +215,14 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <rect x="48" y="500" width="288" height="112" rx="8"/>
 <text x="72" y="536" class="node-name">Control Mac</text>
 <text x="72" y="568" class="mono">Vault / profiles / notes</text>
-<text x="72" y="596" class="body">Локальные пробники</text>
+<text x="72" y="596" class="body">Выданные QR + manifest</text>
 </g>
 <g class="node focal" data-node="bundle">
 <rect x="440" y="240" width="360" height="304" rx="8"/>
 <text x="464" y="268" class="tag">ШИФРОВАНИЕ ДО ЗАГРУЗКИ</text>
 <text x="464" y="302" class="node-name">Recovery bundle</text>
 <text x="464" y="340" class="body">Файлы роутера и control state</text>
-<text x="464" y="368" class="mono">3 × .tar.gz.gpg</text>
+<text x="464" y="368" class="body">Зашифрованные архивы и опись</text>
 <text x="464" y="396" class="body">Инструкция внутри шифрования</text>
 <text x="464" y="424" class="mono">CLOUD-SHA256SUMS</text>
 <text x="464" y="452" class="body">Проверка локальной копии</text>
@@ -238,7 +247,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="48" y="704" class="fine">Архив не является образом firmware или работающим standby. VPS-приложения имеют собственные backup-контракты.</text>
 </svg>
 </div>
-<p class="caption">Это схема recovery-процесса, а не утверждение, что каждый экземпляр внешней копии уже прошёл проверку. Точные locations, manifest и результаты хранятся локально. Файловое чтение и реальное восстановление на запасном роутере — отдельные доказательства. Самостоятельное восстановление пароля обязательно для сценария потери Mac.</p>
+<p class="caption">Это схема recovery-процесса, а не утверждение, что каждая внешняя копия уже проверена. Включайте server settings anyT, выданные импорты, approval manifest, совместимый runtime и зависимости TLS/hooks. Клиентский ZIP не восстанавливает сервер. Сверяйте выданные файлы с приватным утверждённым набором, не генерируйте замену. Точные locations, хеши и результаты хранятся приватно. Чтение архивов и восстановление на запасном роутере — отдельные доказательства. Доступ к паролю должен переживать потерю Mac.</p>
 </section>
 <p class="caption">Local Arial/Helvetica and Menlo/Consolas font fallbacks. No external fonts or runtime scripts. Public role names only.</p>
 </main>

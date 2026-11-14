@@ -612,9 +612,15 @@ with the existing hostname certificate and no proven SNI override.
 Routing Core's [Channel anyT](../../routing-core/docs/channel-anytls-lab.md) has a
 separate local generator, `modules/routing-core/bin/channel-anytls-profile`.
 It creates private identities and a distinct diagnostic credential under ignored
-`ansible/out/channel-anytls/`. TLS verification is enabled. Existing output is
-never overwritten; restore/reuse its identity instead of rotating implicitly.
-Export eight named nodes with `--export-eight ansible/out/channel-anytls`.
+`ansible/out/channel-anytls/`. TLS verification is enabled. **The eight issued
+production imports are frozen for routine maintenance:** redistribute the saved
+files or restore the verified encrypted bundle. Follow the
+[protected production contract](../../../AGENTS.md#channel-anyt-protected-production-contract).
+
+Initial generation refuses an existing bundle. `--export-eight` preserves saved
+credentials but **rewrites** the eight PNG/URI files, index and shared config; it
+does not read the private approval manifest. It is an explicitly approved initial
+allocation tool, not a routine refresh or a substitute for restoring lost files.
 The client-only ZIP and `clients/qr-index.html` contain eight independent QR
 cards, URI imports and `Channel-anyT.conf` for Shadowrocket Config. The original
 two identities are retained. Existing channel imports remain valid.
@@ -623,8 +629,11 @@ The policy sends traffic to the router, which owns destination selection;
 Global Routing → Proxy remains a diagnostic control.
 The generic client-profile factory does not generate or deploy this service.
 The retained `--add-second <bundle>` command supports initial one-client
-bundles. Deploy the additive identities with `channel_anytls_action=enable`;
-the gate rejects replacement credentials and ingress migrations.
+bundles. A separately authorized deployment with `channel_anytls_action=enable`
+reinstalls and restarts anyT. Its comparison with existing router settings rejects
+replacement credentials and ingress migrations before stopping the service.
+It does not compare saved QR bytes; use the private approval manifest for that
+check. See the [maintenance checklist](../../routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist).
 
 ## Channel M — Regional Service Policy
 

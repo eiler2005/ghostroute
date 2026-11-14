@@ -23,7 +23,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <div class="diagram-container">
 <svg id="ghostroute-routing-en" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-routing-en-title ghostroute-routing-en-desc">
 <title id="ghostroute-routing-en-title">Home ingress, three explicit exit roles</title>
-<desc id="ghostroute-routing-en-desc">LAN and home-first clients use router policy with sensitive, managed and direct exits; Amn remains isolated.</desc>
+<desc id="ghostroute-routing-en-desc">LAN and home-first clients, including eight approved anyT imports, use sensitive, managed and direct policies. anyT owns a separate process; Amn is retained but disabled.</desc>
 <defs>
 <marker id="ghostroute-routing-en-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
 <path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
@@ -35,7 +35,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="48" y="128" class="subtitle">The home router applies reviewed catalogs and explicitly selected modes.</text>
 <path class="edge " data-from="lan" data-to="policy" d="M 336,244 H 392 Q 400,244 400,252 V 296 Q 400,304 408,304 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
 <path class="edge " data-from="remote" data-to="policy" d="M 336,400 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
-<path class="edge optional" data-from="amn" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
+<path class="edge " data-from="anyt" data-to="policy" d="M 336,556 H 384 Q 392,556 392,548 V 504 Q 392,496 400,496 H 440" marker-end="url(#ghostroute-routing-en-arrow)"/>
 <path class="edge optional focal" data-from="policy" data-to="sensitive" d="M 800,304 H 864 Q 872,304 872,296 V 252 Q 872,244 880,244 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
 <path class="edge focal" data-from="policy" data-to="managed" d="M 800,400 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
 <path class="edge " data-from="policy" data-to="direct" d="M 800,496 H 864 Q 872,496 872,504 V 548 Q 872,556 880,556 H 944" marker-end="url(#ghostroute-routing-en-arrow)"/>
@@ -52,18 +52,18 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="72" y="424" class="mono">C: CONNECT / Naive*</text>
 <text x="72" y="452" class="mono">D: Caddy / NaiveProxy lab</text>
 </g>
-<g class="node optional" data-node="amn">
+<g class="node " data-node="anyt">
 <rect x="48" y="500" width="288" height="112" rx="8"/>
-<text x="72" y="536" class="node-name">Amn: manual lab</text>
-<text x="72" y="568" class="body">AmneziaWG → home ingress</text>
-<text x="72" y="596" class="body">Separate runtime processes</text>
+<text x="72" y="536" class="node-name">Channel anyT</text>
+<text x="72" y="568" class="body">AnyTLS / verified TLS / TCP</text>
+<text x="72" y="596" class="body">8 approved client imports</text>
 </g>
 <g class="node focal" data-node="policy">
 <rect x="440" y="240" width="360" height="300" rx="8"/>
 <text x="464" y="268" class="tag">POLICY OWNER</text>
 <text x="464" y="302" class="node-name">Home router</text>
 <text x="464" y="340" class="mono">A/B/C/D: sing-box</text>
-<text x="464" y="368" class="mono">Amn: sing-box-amn</text>
+<text x="464" y="368" class="mono">anyT: separate sing-box-atls</text>
 <text x="464" y="396" class="body">One shared catalog intent</text>
 <text x="464" y="424" class="body">Sensitive precedes managed</text>
 <text x="464" y="452" class="body">A: selected full-VPS override</text>
@@ -88,18 +88,18 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="968" y="596" class="body">Site sees the home WAN IP</text>
 </g>
 <line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
-<text x="48" y="678" class="legend">Solid: default path. Dashed: opt-in mode or lab. Native C requires a compatible client (*).</text>
-<text x="48" y="704" class="fine">Endpoint DIRECT bypasses home policy. M keeps an isolated regional policy; no automatic failover.</text>
+<text x="48" y="678" class="legend">Solid: base split. Dashed: optional sensitive mode. Native C requires a compatible client (*).</text>
+<text x="48" y="704" class="fine">Client DIRECT bypasses home policy. Amn / legacy WireGuard: retained, off. M: separate regional path.</text>
 </svg>
 </div>
-<p class="caption">This is the default split, not every packet-level exception. LAN REDIRECT covers classified managed IPv4 TCP; managed UDP/443 is dropped. Sensitive applies only to matching requests. Endpoint DIRECT, hidden names and app-owned DNS need separate proof. Native C depends on client support; D and Amn remain labs. M uses the separate service path below.</p>
+<p class="caption">This is the default split, not every packet-level exception. LAN REDIRECT covers classified managed IPv4 TCP; managed UDP/443 is dropped. anyT projects the selected-client policy into its own process; it does not relay through B or inherit A's selected full-VPS overrides. Its eight issued imports remain unchanged during maintenance. Sensitive applies only to matching requests. Client DIRECT, hidden names and app-owned DNS need separate proof. Native C needs client support; D is a lab. Amn and legacy WireGuard remain disabled with configuration retained. M has an isolated service policy.</p>
 </section>
 <section id="lifecycle">
 <h2>Lifecycle ownership</h2>
 <div class="diagram-container">
 <svg id="ghostroute-lifecycle-en" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="ghostroute-lifecycle-en-title ghostroute-lifecycle-en-desc">
 <title id="ghostroute-lifecycle-en-title">Startup and recovery ownership</title>
-<desc id="ghostroute-lifecycle-en-desc">Merlin and the supervisor own production lifecycle; Amn is manual and Console uses a constrained report credential.</desc>
+<desc id="ghostroute-lifecycle-en-desc">Merlin and the supervisor prepare production services. anyT has an isolated controller, boot and firewall reconciliation and a minute cron. Amn is retained but disabled; Console has read-only report access.</desc>
 <defs>
 <marker id="ghostroute-lifecycle-en-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
 <path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
@@ -114,6 +114,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <path class="edge optional" data-from="supervisor" data-to="main" d="M 496,296 V 328 Q 496,336 488,336 H 228 Q 220,336 220,344 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
 <path class="edge optional" data-from="supervisor" data-to="companions" d="M 624,296 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
 <path class="edge optional" data-from="supervisor" data-to="dns" d="M 752,296 V 328 Q 752,336 760,336 H 1052 Q 1060,336 1060,344 V 384" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
+<path class="edge optional focal" data-from="supervisor" data-to="anyt" d="M 440,276 H 424 Q 416,276 416,284 V 328 a 8,8 0 0,0 0,16 V 520 Q 416,528 408,528 H 228 Q 220,528 220,536 V 548" marker-end="url(#ghostroute-lifecycle-en-arrow)"/>
 <g class="node " data-node="hooks">
 <rect x="48" y="188" width="288" height="108" rx="8"/>
 <text x="72" y="224" class="node-name">Merlin hooks</text>
@@ -153,22 +154,30 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="912" y="480" class="mono">dnscrypt-proxy</text>
 <text x="912" y="508" class="body">Merlin owns dnsmasq</text>
 </g>
+<g class="node focal" data-node="anyt">
+<rect x="48" y="548" width="344" height="88" rx="8"/>
+<text x="72" y="580" class="node-name">Channel anyT</text>
+<text x="72" y="604" class="body">Own process and scoped INPUT</text>
+<text x="72" y="626" class="body">Boot / firewall / minute cron</text>
+</g>
 <g class="node optional" data-node="amn">
-<rect x="48" y="556" width="584" height="80" rx="8"/>
-<text x="72" y="592" class="node-name">Amn: separate manual lifecycle</text>
-<text x="72" y="624" class="mono">engine + sing-box-amn · explicit start / policy refresh</text>
+<rect x="464" y="548" width="352" height="88" rx="8"/>
+<text x="488" y="580" class="node-name">Amn: retained, off</text>
+<text x="488" y="604" class="body">Manual start / policy refresh</text>
+<text x="488" y="626" class="body">Outside production supervisors</text>
 </g>
 <g class="node " data-node="console">
-<rect x="680" y="556" width="552" height="80" rx="8"/>
-<text x="704" y="592" class="node-name">Console: constrained report access</text>
-<text x="704" y="624" class="body">Dedicated service key → fixed report gate</text>
+<rect x="888" y="548" width="344" height="88" rx="8"/>
+<text x="912" y="580" class="node-name">Console: read-only</text>
+<text x="912" y="604" class="body">Dedicated service key</text>
+<text x="912" y="626" class="body">Fixed report gate</text>
 </g>
 <line class="rule" x1="48" y1="648" x2="1232" y2="648"/>
-<text x="48" y="678" class="legend">The supervisor reconciles production services and rules; Amn needs explicit recovery after reboot/firewall rebuild.</text>
-<text x="48" y="704" class="fine">M: selected application → isolated service policy → approved regional egress.</text>
+<text x="48" y="678" class="legend">anyT: watch inputs every 2 seconds; recover on reconciliation. A restart can interrupt sessions.</text>
+<text x="48" y="704" class="fine">Invalid input leaves anyT closed. Missing owned rules are repaired; no backend failover or QR regeneration.</text>
 </svg>
 </div>
-<p class="caption">This figure separates lifecycle ownership from the data plane. The guard becomes active after the firewall hook; a successful hook drill does not prove the entire reboot interval. The operator key stays on the control machine; the Console service key is constrained to a fixed report gate. Amn is outside the production supervisor.</p>
+<p class="caption">Arrows show lifecycle control, not packet flow. The supervisor invokes anyT's own controller; firewall-start and the minute cron also reconcile it. Healthy missing-firewall repair keeps its processes; changed inputs require validated restart after detection. Polling is not an atomic or zero-downtime guarantee. anyT reuses certificate files maintained by the existing TLS owner. The LAN guard begins after the firewall hook. Console's service key is constrained to fixed reports; the operator key stays on the control machine. Amn requires explicit activation.</p>
 </section>
 <section id="recovery">
 <h2>Recovery assets</h2>
@@ -206,14 +215,14 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <rect x="48" y="500" width="288" height="112" rx="8"/>
 <text x="72" y="536" class="node-name">Private control state</text>
 <text x="72" y="568" class="mono">Vault / profiles / notes</text>
-<text x="72" y="596" class="body">Local diagnostic tools</text>
+<text x="72" y="596" class="body">Issued QR + approval manifest</text>
 </g>
 <g class="node focal" data-node="bundle">
 <rect x="440" y="240" width="360" height="304" rx="8"/>
 <text x="464" y="268" class="tag">ENCRYPT BEFORE UPLOAD</text>
 <text x="464" y="302" class="node-name">Recovery bundle</text>
 <text x="464" y="340" class="body">Router files and control state</text>
-<text x="464" y="368" class="mono">3 × .tar.gz.gpg</text>
+<text x="464" y="368" class="body">Encrypted archives + inventory</text>
 <text x="464" y="396" class="body">Encrypted restore instructions</text>
 <text x="464" y="424" class="mono">CLOUD-SHA256SUMS</text>
 <text x="464" y="452" class="body">Local archive verification</text>
@@ -238,7 +247,7 @@ main{max-width:1360px;margin:0 auto;padding:32px}h1{font-size:32px;line-height:1
 <text x="48" y="704" class="fine">The archive is not firmware or a running standby. VPS applications have their own backup contracts.</text>
 </svg>
 </div>
-<p class="caption">This is the recovery process, not a claim that every external copy has passed it. Exact locations, manifests and results remain private. Complete archive reads and rebuilding a spare router are separate evidence levels. Independent password recovery is required for loss of the control machine.</p>
+<p class="caption">This is the recovery process, not a claim that every external copy has passed it. Include anyT server settings, issued imports, approval manifest, compatible runtime and TLS/hook dependencies. The client-only ZIP cannot restore the server. Compare issued artifacts with the private approval record; do not generate replacement identities. Exact locations, hashes and results remain private. Complete archive reads and rebuilding a spare router are separate evidence levels. Independent password recovery is required for loss of the control machine.</p>
 </section>
 <p class="caption">Local Arial/Helvetica and Menlo/Consolas font fallbacks. No external fonts or runtime scripts. Public role names only.</p>
 </main>

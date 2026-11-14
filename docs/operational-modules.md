@@ -39,6 +39,10 @@ Routing Core also owns [Channel anyT](../modules/routing-core/docs/channel-anytl
 `31-channel-anytls-lab.yml`. It has separate process/INPUT ownership, eight private
 client imports and scoped boot, firewall and process recovery. Existing channels
 are preserved; retained WireGuard/Amn configuration is disabled in steady state.
+The eight issued anyT imports are production credentials governed by the
+[protected contract](../AGENTS.md#channel-anyt-protected-production-contract).
+Use `status` for inspection; `enable` reinstalls/restarts the service. Shared
+platform health does not replace its own authenticated application check.
 
 Routing Core also owns the opt-in [Channel Amn lab](../modules/routing-core/docs/channel-amn-research.md):
 `bin/build-channel-amn`, `bin/channel-amn-profile`, the isolated router controller

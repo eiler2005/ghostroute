@@ -77,6 +77,34 @@ real targets and are run by the operator, deliberately outside CI.
 The [privacy assurance contract](privacy-assurance.md) distinguishes these
 router-side checks from real-client exit, DNS and app-transfer evidence.
 
+## Channel anyT verification
+
+Channel anyT is production for its eight issued imports. Use
+`bash tests/test-channel-anytls.sh` for the narrow offline gate; `run-fast.sh`
+already includes it. Tests use fixture identities and mocked router operations,
+never the private production QR bundle.
+
+| Layer | Coverage / required evidence | Boundary |
+|---|---|---|
+| Policy fixtures | Selected-client sensitive / managed / direct projection; port-53 override; private, IPv6 and payload UDP/443 rejection; unsupported-policy refusal | Does not prove live route reachability or a client's DoH behavior |
+| Profile fixtures | Eight distinct identities; first/second preservation; stable issued URI payloads; client ZIP excludes probe/server credentials; rekey/ingress-change rejection; QR-render failure | Does not compare the live private approval manifest or certify QR scanning on every client |
+| Lifecycle fixtures | Owned-process isolation, input signatures, cold volatile state, port reuse, missing-firewall repair and scoped restart | Does not measure a complete firmware reboot or all failure windows |
+| Router acceptance | Correct TLS/name/auth behavior; each identity authenticated; DNS and route outcomes; enabled marker, cron, hooks, process/firewall ownership | General platform checks alone do not authenticate anyT |
+| Real-client acceptance | Messages/media after reboot; separately record configured DNS, idle/roaming, calls, carriers and concurrent load | One successful device/session is not all-client or capacity proof |
+
+For hook changes also run the relevant supervisor/firewall fixtures; for Ansible
+changes syntax-check `playbooks/31-channel-anytls-lab.yml`. After a separately
+authorized runtime change, follow the
+[maintenance checklist](../modules/routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist).
+Destructive failure/reboot drills require an approved interruption window. For
+documentation/diagram changes, local diagram, public-doc and narrow fixture
+checks are sufficient; no live restart is needed.
+
+Diagram QA uses `node docs/assets/diagrams/render-platform.cjs`: it renders the
+RU/EN sources and checks label bounds, connector clearance, complexity, mobile
+scrolling and print sizing. Inspect the resulting PNGs too. Layout success is
+not routing verification.
+
 ## CI
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs two jobs on every

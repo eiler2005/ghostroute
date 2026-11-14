@@ -19,6 +19,10 @@ is router-side server-ready but client-blocked on the tested iPhone SFI
 `1.11.4`. Channel M supports applications with regional egress requirements
 through an isolated service policy.
 
+Channel anyT — production-вход AnyTLS/TLS для восьми закреплённых клиентских
+импортов. Он использует отдельный `sing-box-atls`, общий смысл sensitive / managed /
+direct правил и автоматическое восстановление своего процесса и INPUT-правил.
+
 - Layer 0 — optional endpoint/client-side routing: device/client config может
   выбрать `DIRECT` или `MANAGED/PROXY` до входа в GhostRoute.
 - Channel A — home-first router data plane: endpoint или LAN traffic попадает
@@ -41,6 +45,9 @@ through an isolated service policy.
   by the router runtime supervisor together with A/B/C/D, while the VPS/app
   side may request only Channel M on-demand recovery through the scoped
   supervisor command `channel-m-recover`.
+- Channel anyT — отдельный home-first вход с проверкой TLS. Источник проекции —
+  selected-client scope основной конфигурации; трафик не проходит через relay B.
+  Клиентский транспорт AnyTLS не меняет transport managed-выхода роутера.
 
 ```text
 Layer 0 endpoint/client routing
@@ -54,6 +61,7 @@ Layer 1 managed channels
   Channel B -> endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
   Channel C -> endpoint -> C1-sing-box Naive or C1-Shadowrocket HTTPS CONNECT -> home endpoint -> router -> managed egress
   Channel D -> Karing/Naive -> home endpoint -> router Caddy forward_proxy@naive -> sing-box D SOCKS -> managed egress
+  Channel anyT -> AnyTLS/TLS -> home endpoint -> separate sing-box-atls -> shared split
   Channel M -> isolated service policy -> approved regional egress
 
 Layer 2 home router
@@ -64,6 +72,7 @@ Layer 2 home router
     -> install the managed LAN FORWARD guard before REDIRECT refresh
     -> apply and verify LAN REDIRECT + managed UDP/443 DROP
     -> start/check dnscrypt, Channel B, Channel D, Channel M reverse
+    -> reconcile enabled Channel anyT through its isolated controller
     -> delayed firewall stabilization after Merlin chain rebuilds
 
   LAN/Wi-Fi clients
@@ -128,6 +137,29 @@ Layer 3 VPS
   -> sites see VPS IP for managed traffic
 ```
 
+## Channel anyT — рабочий дополнительный вход
+
+`Shadowrocket → AnyTLS / проверенный TLS / TCP → домашний sing-box-atls`.
+Далее sensitive-совпадения идут через `sensitive-out`, остальные managed — через
+выбранный `reality-out`, обычные назначения — через домашний `direct-out`.
+Политика проецируется из `channel-b-relay-socks`, но B не является relay этого
+канала. Full-VPS overrides отдельных клиентов A не наследуются.
+
+Контроллер владеет только отдельным процессом, watcher и цепочкой `GR_ATLS_IN`
+с TCP-port-scoped INPUT jump. Постоянные файлы находятся в
+`/opt/etc/ghostroute-anytls/`, volatile state — в `/tmp/ghostroute-anytls/`.
+Boot supervisor, firewall hook и минутный cron вызывают reconcile. Watcher
+проверяет входные данные раз в две секунды; при обнаружении изменения закрывает
+старую проекцию до её проверки и восстановления. Это восстановление с возможным
+перерывом, без автоматической смены backend.
+
+Все восемь выданных QR и первые два исходных импорта сохраняются по
+[production-контракту](../AGENTS.md#channel-anyt-protected-production-contract).
+Пароли, QR и manifest утверждения хранятся только в приватном bundle и
+зашифрованной копии. Проверка настроек перед deploy и сравнение QR с manifest —
+разные проверки. Подробности DNS, UDP, статусов, тестов и отката — в
+[runbook anyT](../modules/routing-core/docs/channel-anytls-lab.md).
+
 ## Channel Amn — отдельный home-first тестовый вход
 
 ![Channel Amn: домашний вход и выбор sensitive, managed или direct выхода](assets/diagrams/channel-amn-traffic-ru.png)
@@ -141,7 +173,8 @@ fallback сохраняют своих владельцев.
 
 На writable Entware хранятся файлы `/opt/etc/ghostroute-amn/`; в
 `/tmp/ghostroute-amn/` — PID, lock, журналы и снимок активных настроек. Этот lab
-запускается вручную и пока не включён в boot/firewall supervisor.
+запускается вручную и пока не включён в boot/firewall supervisor. В штатном
+состоянии Amn отключён; его настройки и QR сохранены. Он не нужен для работы anyT.
 
 Пользовательские идентичности называются **Channel Amn 01–08**; диагностический
 peer отделён. Первый слот сохраняет ключи проверенного подключения. Дополнение
@@ -216,7 +249,7 @@ profiles, not this general architecture document.
 ### Layer 1 — Managed Channels
 
 Layer 1 is the set of managed paths selected by Layer 0 or by explicit local
-choice. Channel A and B are production paths with different client scopes.
+choice. Channel A, B and anyT are production paths with different client scopes.
 Channel C is split into C1-sing-box Naive and C1-Shadowrocket compatibility:
 
 ```text
@@ -224,9 +257,10 @@ Channel A: endpoint -> home endpoint -> router -> managed egress
 Channel B: endpoint -> VLESS+XHTTP+TLS -> home endpoint -> router -> managed egress
 Channel C1-Shadowrocket: endpoint -> HTTPS CONNECT/TLS -> home endpoint -> router -> managed egress
 Channel C1-sing-box: endpoint -> Native Naive -> home endpoint -> router -> managed egress
+Channel anyT: endpoint -> AnyTLS/TLS -> home endpoint -> isolated policy -> managed egress
 ```
 
-Channel A/B/C are home-first for managed traffic: the first network sees
+Channel A/B/C/D/anyT are home-first for managed traffic: the first network sees
 endpoint -> home endpoint, not endpoint -> VPS. The VPS provider sees the home
 router as the source for managed traffic.
 
@@ -234,7 +268,7 @@ Channel M supports applications with regional egress requirements through an
 isolated service policy. It is authenticated and separate from A/B/C client
 routing.
 
-### Channel C/D TLS Prerequisite
+### Channel C/D and anyT TLS prerequisite
 
 Channel C and Channel D are separate selected-client lanes, but both require a
 currently valid public TLS certificate for every enabled home listener. The
@@ -254,6 +288,12 @@ challenge rule, and cleanup removes that rule whether issuance succeeds or
 fails. This TLS maintenance does not change Channel A, B or M routing, DNS,
 firewall ownership, profiles, or managed-egress selection.
 
+Channel anyT consumes the configured certificate/key files from this existing
+TLS lifecycle; it does not run a separate ACME issuer. Its own input watcher
+detects file changes and reconciliation restarts only anyT. Verify the certificate
+served by its public listener after renewal, as well as C/D, without changing
+the issued TLS server name or disabling certificate validation.
+
 ### Layer 2 — Home Router
 
 The home router terminates home-based channels and applies routing and DNS
@@ -261,6 +301,8 @@ policy. It owns dnsmasq/ipset classification, sing-box REDIRECT, optional
 Channel A selected full-VPS TPROXY for home Wi-Fi/LAN devices, home Reality
 ingress with optional selected `auth_user` full-VPS rules, Channel B home
 ingress relay, Channel C1 Naive ingress, and the selected Reality outbound to VPS.
+Channel anyT terminates its verified TLS listener in a separate process and
+projects the reviewed selected-client split; its controller owns scoped recovery.
 Router policy may either split managed/non-managed destinations or, for selected
 Channel A full-VPS sets, send internet-bound traffic through `reality-out`.
 
@@ -274,10 +316,14 @@ flowchart LR
     guard -- other traffic --> wan[Home WAN direct]
     redirect --> policy{Router route policy}
     mobile[Home Reality / B / C / D ingress] --> policy
-    amn[Amn isolated lab ingress] --> amnpolicy[Amn policy projection]
+    anyt[Channel anyT: isolated ingress] --> anytpolicy[anyT policy projection]
+    amn[Amn lab: retained, disabled] -.-> amnpolicy[Amn policy if explicitly started]
     policy -- sensitive sites --> sensitive[sensitive-out → hermes_vps]
     policy -- other managed --> managed[reality-out → active managed VPS]
     policy -- non-managed --> wan
+    anytpolicy -- sensitive sites --> sensitive
+    anytpolicy -- other managed --> managed
+    anytpolicy -- non-managed --> wan
     amnpolicy -- sensitive sites --> sensitive
     amnpolicy -- other managed --> managed
     amnpolicy -- non-managed --> wan
@@ -290,7 +336,7 @@ managed ipsets if TCP REDIRECT is absent; managed UDP/443 remains blocked during
 rule refresh. Other UDP protocols are outside this guard. It does not classify
 unknown destinations or cover traffic before the firewall hook runs. See
 [routing policy principles](routing-policy-principles.md#invariants)
-for the DNS, hidden-hostname and IPv6 boundaries. Mobile ingress, Amn and
+for the DNS, hidden-hostname and IPv6 boundaries. Mobile ingress, anyT, Amn and
 Channel M keep their separate route owners.
 
 Channel M supports applications with regional egress requirements through an
@@ -657,6 +703,7 @@ preserved only as the cold fallback documented above.
 | Channel B | production selected-client home-first lane: router XHTTP ingress + local relay -> sing-box Reality upstream |
 | Channel C | home-first selected-client lane: C1-Shadowrocket HTTPS CONNECT compatibility is live-proven; C1-sing-box Naive is server-ready but blocked by tested SFI `1.11.4` |
 | Channel D | experimental Karing-only router-native NaiveProxy lab: pinned Caddy `forward_proxy@naive` on the home router serves a neutral cover site and relays into sing-box managed split |
+| Channel anyT | production for eight issued imports: AnyTLS/TLS ingress, separate `sing-box-atls`, selected-client split and scoped automatic recovery |
 | `VPN_STATIC_NETS` | historical ipset name for static CIDR routes used by Channel A |
 | `wgc1` NVRAM | cold fallback only, disabled in steady state |
 
@@ -675,6 +722,7 @@ preserved only as the cold fallback documented above.
 | Router WAN | `:<channel-d-public-port>` | DNAT/REDIRECT to Channel D Caddy | Experimental NaiveProxy-style public endpoint |
 | Router internal | `:<channel-d-naiveproxy-ingress-port>` | Caddy `forward_proxy@naive` | Channel D first-hop termination |
 | Router local | `127.0.0.1:<channel-d-socks-port>` | sing-box `channel-d-naiveproxy-socks-in` | Channel D relay into managed split |
+| Router WAN | `:<anyt-port>` | separate `sing-box-atls`, scoped INPUT | Channel anyT verified TLS ingress for the preserved client identities |
 | Router local | `127.0.0.1:<dnscrypt-port>` | dnscrypt-proxy | Primary managed DNS forwarder from dnsmasq |
 | Router local | `127.0.0.1:<vps-dns-forward-port>` | sing-box `vps-dns-in` | DNS hijack compatibility listener, not the primary generated managed DNS target |
 | VPS public | `:443` | system Caddy layer4 | Reality/Vision entrypoint |
@@ -693,6 +741,7 @@ preserved only as the cold fallback documented above.
 | `20-stealth-router.yml` | Router | Channel A router data plane and router runtime hooks. |
 | `21-channel-b-router.yml` | Router Channel B | Channel B home XHTTP ingress + local relay add-on, isolated from Channel A REDIRECT ownership. |
 | `22-channel-c-router.yml` | Router Channel C | Channel C1 home Naive ingress add-on, isolated from Channel A REDIRECT ownership. |
+| `31-channel-anytls-lab.yml` | Router Channel anyT | Status by default; isolated controller/policy and preserved identities. `enable` reinstalls/restarts only anyT; shared hook updates require the maintenance gate. |
 
 `21` включает home-first вариант Channel B на роутере. `11` нужен только для
 direct-XHTTP варианта Channel B.
@@ -711,6 +760,7 @@ direct-XHTTP варианта Channel B.
 | Channel B selected-client profile | selected device only | TCP/<home-channel-b-port> to home router, then local relay into sing-box SOCKS with managed split | production home-first egress |
 | Channel C1-sing-box selected-client profile | selected device only | TCP/<home-channel-c-public-port> to home router, then sing-box Naive inbound with managed split | stealth-primary home-first egress |
 | Channel C1-Shadowrocket profile | selected device only | TCP/<channel-c-shadowrocket-public-port> to home router, then sing-box HTTP inbound with managed split | compatibility home-first egress |
+| Channel anyT issued profile | one of eight preserved identities | AnyTLS/TLS to home router, separate selected-client policy projection | sensitive -> dedicated exit; managed -> current managed exit; ordinary -> home WAN |
 | Router `OUTPUT` | none | no transparent capture | default WAN or explicit proxy |
 | Emergency fallback | `STEALTH_DOMAINS`, `VPN_STATIC_NETS` | explicit `0x1000` mark from fallback script | `wgc1` |
 

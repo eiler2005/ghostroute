@@ -35,7 +35,7 @@ flowchart LR
   policy -->|sensitive match first| sensitive[sensitive-out / hermes_vps]
   policy -->|general managed| managed[Configured managed backend]
   policy -->|non-managed| wan[Home WAN direct-out]
-  isolated[Amn lab: separate sing-box-amn]
+  isolated[Amn lab: retained, disabled]
   isolated --> sensitive
   isolated --> managed
   isolated --> wan
@@ -71,6 +71,10 @@ Channel anyT has independent boot, minute-cron and firewall reconciliation;
 its [runbook](../modules/routing-core/docs/channel-anytls-lab.md) includes the
 packet and recovery diagrams. WireGuard and Amn can remain disabled without
 affecting anyT.
+The anyT status command only reports owned process presence, a source-JSON hash,
+an enabled marker and configured client count. Separate checks establish cron,
+firewall, TLS, authentication and unchanged issued imports; see
+[status semantics and maintenance acceptance](../modules/routing-core/docs/channel-anytls-lab.md#reading-status-correctly).
 
 ## Storage ownership and operating modes
 

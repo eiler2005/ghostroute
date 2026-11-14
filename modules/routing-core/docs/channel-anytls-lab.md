@@ -10,6 +10,10 @@ The filename and internal `ghostroute-anytls`, `sing-box-atls` and `lab-client`
 identifiers are retained for compatibility. The operator-facing name is
 **Channel anyT**. The original first and second QR codes remain usable.
 
+[Platform routing and lifecycle images](../../../docs/assets/diagrams/ghostroute-platform-en.html)
+· [Русские схемы](../../../docs/assets/diagrams/ghostroute-platform-ru.html)
+· [Engineering review and remaining gates](../../../docs/routing-assurance-roadmap.md#ra-13--channel-anyt-проверки-обслуживания).
+
 ```mermaid
 flowchart LR
     Clients[Channel anyT 01–08] -->|AnyTLS / verified TLS / TCP| Home[Home router: sing-box-atls]
@@ -28,8 +32,9 @@ flowchart TD
     Firewall[firewall-start after core routing] --> Reconcile
     Inputs[Policy / catalogs / settings / TLS files] --> Watch[Containment watcher]
     Watch -->|changed or failed| Close[Stop stale anyT frontend]
-    Close --> Reconcile
-    Reconcile --> Validate[Project current policy and validate exact binary config]
+    Close -.->|next reconciliation| Reconcile
+    Reconcile -->|already current and healthy| Repair[Repair missing owned INPUT rules; keep processes]
+    Reconcile -->|restart needed| Validate[Stop old instance; project and validate exact binary config]
     Validate -->|valid| Start[Start only anyT / restore scoped INPUT]
     Validate -->|invalid| Closed[Keep anyT closed; preserve other channels]
 ```
@@ -57,8 +62,10 @@ cause of another channel's failure.
 
 ## Routing and DNS
 
-The projector copies the existing selected-client scope's ordered rules and
-outbounds. Unsupported unscoped, logical, user-scoped or egress-dependent changes
+The projector copies the `channel-b-relay-socks` reference scope's ordered rules
+and outbounds into its own inbound. This is a configuration dependency, not a
+packet relay through Channel B; the B process is not required for anyT traffic.
+Unsupported unscoped, logical, user-scoped or egress-dependent changes
 reject projection. It never borrows another channel's relay or changes production
 DNS, router OUTPUT, LAN REDIRECT/FORWARD, TUN or default-route ownership.
 Individual Channel A full-VPS overrides are not inherited automatically.
@@ -72,7 +79,10 @@ policy. Protocol support is not proof of successful voice/video calls.
 
 Import QR/URI nodes under Shadowrocket **Home** and `Channel-anyT.conf` under
 **Config**. The config uses `FINAL,PROXY`, disables IPv6, routes DNS through the
-proxy and avoids system-DNS fallback. Choose a Channel anyT node as active;
+proxy and avoids system-DNS fallback. The shipped configuration names DoH resolvers:
+those HTTPS requests are not port-53 queries and therefore are not rewritten by
+the router's port-53 override. Check actual client DNS behavior separately.
+Choose a Channel anyT node as active;
 importing it alone does not select it. Global Routing → Proxy is the diagnostic
 control. Client DIRECT rules, app-owned DNS/ECH and client bypasses retain the
 platform's documented assurance limits.
@@ -99,14 +109,18 @@ and preferably a parallel path for existing clients.
 
 Only symbolic client slots and acceptance rules are tracked. The ignored bundle
 contains `production-approval.private.json` with the approved settings/artifact
-fingerprints; retain it with the encrypted backup. A local hash comparison
-detects changed artifacts but does not replace runtime or real-client acceptance.
+fingerprints; retain it with the encrypted backup. It is operator evidence:
+neither the exporter nor the router reads this manifest automatically. The
+deployment gate compares proposed settings with settings fetched from the router;
+it cannot establish issued-artifact identity when the previous settings are absent.
+A local hash comparison detects changed artifacts but does not replace runtime
+or real-client acceptance.
 
 ```bash
 # New bundle only; never overwrite an existing identity.
 python3 modules/routing-core/bin/channel-anytls-profile \
   configs/private/anytls-options.json ansible/out/channel-anytls
-# Explicitly approved initial allocation/recovery only, not routine maintenance.
+# Explicitly approved initial allocation only, not routine maintenance/recovery.
 python3 modules/routing-core/bin/channel-anytls-profile \
   --export-eight ansible/out/channel-anytls
 ```
@@ -125,9 +139,12 @@ Exports are in ignored `ansible/out/channel-anytls/clients/`:
 `Channel-anyT-8-profiles.private.zip` contains client artifacts only, excluding
 server settings, production policy and the diagnostic password. It is still
 sensitive credential material. The first two slots reuse their original
-passwords. Repeat export reuses saved identities; the deployment gate refuses
-removal/rekeying or ingress changes. Restore the complete private bundle if
-credentials are missing. One identity is intended for one device; eight imports
+passwords. Repeat export reuses saved identities but rewrites PNG/URI, shared
+configuration and index files. It does not enforce the approved artifact hashes;
+do not re-export the production set during routine maintenance. The deployment
+gate refuses removal/rekeying or ingress changes against existing router settings.
+Restore the complete private bundle if credentials are missing. One identity is
+intended for one device; eight imports
 do not establish eight simultaneous heavy-stream capacity. Back up the complete
 bundle separately from the client-only ZIP. The old `--add-second` command remains
 available for an initial one-client bundle.
@@ -140,18 +157,29 @@ The existing playbook filename is retained:
 bash tests/test-channel-anytls.sh
 cd ansible
 ansible-playbook --syntax-check playbooks/31-channel-anytls-lab.yml
-ansible-playbook playbooks/31-channel-anytls-lab.yml -e channel_anytls_action=enable
+# Read-only status; no installation or restart.
 ansible-playbook playbooks/31-channel-anytls-lab.yml
+```
+
+The following actions mutate the router. `enable` and `disable` interrupt this
+production channel and require an explicitly approved maintenance window under
+the protected contract, beyond general deployment permission:
+
+```bash
+# From ansible/; only the approved action, not all three in sequence.
+ansible-playbook playbooks/31-channel-anytls-lab.yml -e channel_anytls_action=enable
 ansible-playbook playbooks/31-channel-anytls-lab.yml -e channel_anytls_action=reconcile
 ansible-playbook playbooks/31-channel-anytls-lab.yml -e channel_anytls_action=disable
 ```
 
-Status is the default. `enable` installs the isolated service/projector and
-boot/firewall integration, writes the persistent `enabled` marker and registers
+Status is the default. Playbook `enable` reinstalls the service/projector and
+boot/firewall integration, restarts anyT, writes the persistent `enabled` marker and registers
 `ChannelAnyT` minute recovery. `disable` removes the marker/cron and closes only
 anyT, retaining its keys, configuration and exports. Legacy `start/stop` remain
 for diagnostics; `stop` is temporary while recovery is enabled. Use `disable`
-for a persistent operator stop.
+for a persistent operator stop. `reconcile` does nothing when the persistent
+enabled marker is absent; when already healthy it repairs only missing owned
+firewall state. It is not a profile generator.
 
 Persistent files: `/opt/etc/ghostroute-anytls/`. Volatile state:
 `/tmp/ghostroute-anytls/`. Only a TCP-port-scoped INPUT jump and `GR_ATLS_IN`
@@ -161,10 +189,10 @@ permits restart after TCP TIME_WAIT while rejecting an occupied active listener.
 
 Boot recovery follows core service preparation. Firewall recovery restores only
 missing anyT rules, preserving healthy process identities. Process loss triggers
-a scoped restart. Policy, settings, catalog-content and TLS-file changes stop
-stale traffic before validated regeneration. Identical catalog rewrites do not
-restart the channel. Invalid input keeps anyT closed; there is no backend fallback
-or production service restart.
+a scoped restart. Once detected, policy, settings, catalog-content and TLS-file
+changes stop stale traffic before validated regeneration. Identical catalog
+rewrites do not restart the channel. Invalid input keeps anyT closed; there is no
+backend fallback or restart of other channel processes.
 
 The watcher checks every two seconds; recovery runs on the next reconciliation,
 normally within the minute. This is bounded polling, not atomic or zero-downtime
@@ -172,11 +200,63 @@ reconciliation. Unsupported policy or missing storage requires operator repair.
 Go memory targets are soft limits, not cgroups. Logs have a containment/restart
 threshold. Existing production recovery stays independent of anyT failures.
 
+Unexpected contents in the owned firewall chain stop reconciliation with an
+error for review; only missing known rules are repaired automatically. A running
+listener is not a continuous authenticated application-health check, and this
+controller does not switch egresses when a remote service fails.
+
+### Reading status correctly
+
+| Field | What it establishes | What still needs a separate check |
+|---|---|---|
+| `policy_running`, `watch_running` | Matching owned processes exist | TLS, authentication, firewall admission and real application transfer |
+| `source_current` | Main sing-box JSON matches the saved projection source hash | All catalog/TLS/settings signatures, reachability and route outcomes |
+| `boot_persistent` | The persistent `enabled` marker exists | Installed boot/firewall hooks and the actual `ChannelAnyT` cron entry |
+| `clients_configured` | Number of configured non-probe identities | Active sessions, issued-file hashes and acceptance of each identity |
+| `contained` | A containment marker exists | Current root cause; inspect private operation/watch evidence |
+
+## Maintenance acceptance checklist
+
+Apply this to anyT updates and shared routing, catalog, DNS, TLS, firewall,
+storage, supervisor or package maintenance that could affect it.
+
+1. **Before:** read status, verify the enabled marker/cron/hooks, own processes
+   and scoped INPUT rules, then make an authenticated application request using
+   the diagnostic identity. Save the baseline and reviewed rollback privately.
+2. **Preserve imports:** compare all eight issued PNG/URI files, shared Config,
+   original first/second imports and canonical settings with
+   `production-approval.private.json`. Do not publish hashes or replace the
+   manifest with new values merely to clear a mismatch. If settings on the router
+   are absent, establish identity from the verified backup before any installation.
+3. **Local gate:** run `bash tests/test-channel-anytls.sh`; for runtime changes also
+   validate the candidate policy with the exact target binary. Hook changes need
+   shared supervisor/firewall fixtures. Do not execute a broad mutating playbook
+   just to update documentation.
+4. **After an approved change:** repeat the baseline checks, authenticate all
+   eight preserved identities, and verify sensitive / managed / direct behavior.
+   Ask for real-client messages/media after relevant transport or lifecycle work;
+   server probes alone do not establish client behavior. Keep other channels healthy.
+5. **Failure:** the playbook's rescue path disables anyT after a failed mutation;
+   it does not restore the previous version automatically. Restore the reviewed
+   controller/settings/policy using the existing approved maintenance scope,
+   enable and recheck it, or explicitly report the unresolved outage. Never leave
+   a failed update described as complete or weaken TLS/routing guards to pass it.
+
+Keep server settings, the probe credential, issued artifacts and approval manifest
+with the encrypted recovery bundle, alongside controller/projector, compatible
+binary, TLS dependencies and shared hooks. The client-only ZIP is not a server
+backup. An independent copy is verified only after a complete download, hash
+comparison and authenticated decryption/read; local verification alone does not
+establish offsite recovery.
+
 ## Verification and rollback
 
 Local tests cover policy parity, guards, eight-client export, preserved identities,
 rekey rejection, QR failure, port reuse, input signatures, cold volatile state and
 scoped reconciliation. Run shared supervisor/firewall fixtures for hook changes.
+The [test/evidence matrix](../../../docs/testing.md#channel-anyt-verification)
+distinguishes fixtures, router checks and client acceptance. Existing general
+platform health gates do not authenticate anyT or validate issued artifacts.
 
 Verify TLS/name/auth rejection, TCP/UDP DNS, managed/sensitive/direct selection,
 private/IPv6 rejection and each authenticated client. Exercise process death,

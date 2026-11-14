@@ -141,11 +141,17 @@ The operator explicitly accepts:
   the separate probe password must not be distributed as a client import.
 
 Channel anyT has eight separate client identities and scoped automatic recovery
-after boot, process loss and firewall rebuild. Stale policy/catalog/TLS inputs
-close its isolated frontend before validated reconciliation; there is no sensitive
-direct fallback. Recovery is polled and can remain closed on unsupported input.
+after boot, process loss and firewall rebuild. Once the watcher detects changed
+policy/catalog/TLS inputs, it closes the isolated frontend before validated
+reconciliation; there is no sensitive direct fallback. Detection is polled every
+two seconds, with recovery on reconciliation, normally at the next minute cron.
+This is not an atomic policy switch; unsupported input can leave the channel closed.
 It does not restart other channel processes. Retained WireGuard/Amn configuration
 is disabled in steady state and requires explicit activation.
+The [issued-profile contract](AGENTS.md#channel-anyt-protected-production-contract)
+protects all eight imports. The deployment comparison rejects changes to existing
+router identities; artifact hashes in the private approval manifest are a separate
+operator check, not a universal runtime or deployment seal.
 
 Channel Amn is a manual home-first compatibility lab, not a replacement for the
 production supervisors. It blocks raw peer forwarding outside its policy TUN,

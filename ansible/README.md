@@ -44,11 +44,17 @@ operator artifacts and must stay out of git.
 
 `playbooks/31-channel-anytls-lab.yml` manages **Channel anyT**, an additional
 home-first AnyTLS service. It defaults to status; `channel_anytls_action=enable`
-installs scoped boot/firewall/cron recovery, `reconcile` repairs only anyT, and
+reinstalls/restarts the service and installs scoped boot/firewall/cron recovery;
+`reconcile` repairs only an already enabled anyT, and
 `disable` stops it persistently while retaining credentials. Eight private imports
 stay under ignored `out/channel-anytls/`. Follow the [runbook](../modules/routing-core/docs/channel-anytls-lab.md)
 and fixture/syntax checks. Deployment rejects existing-client rekeying or ingress
-changes; original imports remain valid. The playbook filename is retained.
+changes against existing router settings before stopping the service. The eight
+issued imports are protected by the [production contract](../AGENTS.md#channel-anyt-protected-production-contract).
+Do not use `enable` as a read-only health check. If installation fails after
+mutation starts, rescue disables anyT; it does not automatically restore the
+previous version. Complete the [maintenance/rollback checklist](../modules/routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist)
+before declaring success. The playbook filename is retained.
 
 Optional hardened management is installed by
 `playbooks/26-router-management-access.yml` after local fixture/syntax checks and

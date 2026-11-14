@@ -98,18 +98,21 @@ What this project demonstrates, with proof in-repo:
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | No |
 
 The optional [Amn compatibility lab](modules/routing-core/docs/channel-amn-research.md)
-adds a manually selected AmneziaWG ingress on the home router. It is outside the
-production matrix and has no boot autostart or automatic failover.
+retains a manually selected AmneziaWG ingress on the home router. It is disabled
+in steady state, outside the production matrix, with no boot autostart or automatic failover.
 Its [eight named QR profiles](modules/client-profile-factory/docs/client-profiles.md#channel-amn-eight-named-clients)
 use **Channel Amn 01–08**; existing bootstrap credentials are preserved.
 Architecture diagrams: [English](docs/assets/diagrams/channel-amn-architecture-en.html)
 and [Русский](docs/assets/diagrams/channel-amn-architecture.html).
 
 [Channel anyT](modules/routing-core/docs/channel-anytls-lab.md) provides a separate
-home-first AnyTLS/TLS ingress with eight private QR profiles and automatic
-boot/firewall/process recovery. It preserves the existing channel imports and
-selected-client routing policy. The linked runbook includes its routing and
-recovery diagrams.
+home-first AnyTLS/TLS ingress with eight approved production QR profiles and
+automatic boot/firewall/process recovery. Issued imports are preserved during
+maintenance under the [production compatibility contract](AGENTS.md#channel-anyt-protected-production-contract).
+Its separate process applies the shared sensitive / managed / direct split;
+changing a router egress does not require new client QR codes.
+[Routing and lifecycle diagrams](docs/assets/diagrams/ghostroute-platform-en.html)
+show these separate owners; the runbook defines recovery and verification.
 
 ## Why This Exists
 
@@ -416,10 +419,11 @@ For a compact channel handoff, see [docs/channels.md](docs/channels.md).
 ```mermaid
 flowchart LR
   LAN[Home LAN / Wi-Fi]
-  RC[Remote clients A/B/C/D]
+  RC[Remote clients A/B/C/D/anyT]
   LAN --> ROUTER
   RC --> ROUTER
-  ROUTER{{ASUS Merlin router: sing-box policy split}}
+  ROUTER{{ASUS Merlin: main and isolated anyT policy processes}}
+  ROUTER -. sensitive mode: matching destinations first .-> SENSITIVE[sensitive-out / hermes_vps]
   ROUTER -->|managed: STEALTH_DOMAINS / VPN_STATIC_NETS| RO[reality-out]
   ROUTER -->|non-managed| DIRECT[direct-out via home WAN]
   RO --> ACTIVE{active managed egress}
@@ -453,11 +457,14 @@ Layer 1 managed channels
   Channel D -> Karing/Naive -> home endpoint :<channel-d-public-port>
             -> router Caddy forward_proxy@naive
             -> sing-box channel-d-naiveproxy-socks-in
+  Channel anyT -> AnyTLS/TLS -> home endpoint :<anyt-port>
+               -> separate sing-box-atls -> sensitive / managed / direct
   Channel M -> isolated service policy -> approved regional egress
 Layer 2 home router
   services-start -> ghostroute-runtime-supervisor.sh boot
        prepare runtime -> sing-box -> firewall/stealth rules
        -> dnscrypt -> Channel B/D/M -> delayed firewall stabilization
+       -> enabled anyT: own reconcile / firewall hook / minute cron
 
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
@@ -495,6 +502,7 @@ Operational layer:
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
   Client Profiles     -> QR/VLESS, selected-client B/C/D artifacts from Vault
+  anyT Profiles       -> eight preserved private imports; Routing Core owns export
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```

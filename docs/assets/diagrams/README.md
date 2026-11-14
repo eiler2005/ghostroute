@@ -15,13 +15,21 @@ The Mac application has its own [visual guide](ghostroute-guard-en.html)
 
 | Figure | Русский PNG | English PNG | Meaning |
 |---|---|---|---|
-| Routing | [RU](ghostroute-routing-ru.png) | [EN](ghostroute-routing-en.png) | Home-first ingress, sensitive precedence, general managed exit and home-WAN direct exit; isolated Amn projection and separate M service path. |
-| Lifecycle | [RU](ghostroute-lifecycle-ru.png) | [EN](ghostroute-lifecycle-en.png) | Merlin, supervisor and deploy ownership; control arrows are distinct from packet paths; manual Amn and read-only Console boundaries. |
-| Recovery | [RU](ghostroute-recovery-ru.png) | [EN](ghostroute-recovery-en.png) | Public code, private configuration, encrypted archives and independent download/hash/decrypt verification; no standby-router claim. |
+| Routing | [RU](ghostroute-routing-ru.png) | [EN](ghostroute-routing-en.png) | Home-first ingress including eight approved anyT imports; separate main/anyT processes, sensitive precedence, managed and home-WAN exits. Amn/legacy WireGuard are retained but disabled; M is separate. |
+| Lifecycle | [RU](ghostroute-lifecycle-ru.png) | [EN](ghostroute-lifecycle-en.png) | Merlin/supervisor ownership and anyT's own boot/firewall/minute reconciliation; control arrows are distinct from packet paths; manual Amn and read-only Console boundaries. |
+| Recovery | [RU](ghostroute-recovery-ru.png) | [EN](ghostroute-recovery-en.png) | Public code, private settings/issued QR/approval manifest, encrypted archives and independent download/hash/decrypt verification; client ZIP is not server recovery. |
 
 These describe implemented mechanisms and their supported scope, not a live
 deployment snapshot. Remaining acceptance work is tracked separately in the
 [engineering register](../../routing-assurance-roadmap.md).
+
+anyT is production for the issued profiles, with a
+[protected compatibility contract](../../../AGENTS.md#channel-anyt-protected-production-contract).
+The lifecycle figure shows bounded polling, not uninterrupted sessions or an
+automatic backend switch. Its controller repairs missing known firewall rules;
+unexpected owned-chain contents require review. See the
+[runbook](../../../modules/routing-core/docs/channel-anytls-lab.md) for the exact
+status and maintenance checks. The diagrams never contain real QR or fingerprints.
 
 Managed Reality egress is transport-specific: owned profiles use TCP/Vision;
 the external role also supports gRPC/Reality without Vision. The general routing
@@ -74,7 +82,9 @@ Final cover prompt:
 
 ## Channel Amn diagrams
 
-The detailed manual-lab figures have their own source pages:
+The detailed manual-lab figures describe the retained optional Amn runtime when
+explicitly enabled. Amn is disabled in steady state and is not an anyT dependency.
+They have their own source pages:
 
 [Русские схемы](channel-amn-architecture.html) ·
 [English diagrams](channel-amn-architecture-en.html)

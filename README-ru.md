@@ -61,13 +61,14 @@ watchdog'ами и схемами каналов:
 | B | Production для selected device-client профилей | Endpoint -> home router XHTTP/TLS ingress | Protocol-diverse home-first client lane через managed split | Нет |
 | C | C1-Shadowrocket live compatibility + C1-sing-box native Naive design | Endpoint -> home router HTTPS CONNECT или Naive ingress | Home-first selected-client lane; C1-SR iPhone-proven, C1-sing-box server-ready, заблокирован SFI 1.11.4 | Нет |
 | D | Experimental router-native NaiveProxy lab | Endpoint -> home router Caddy forward_proxy@naive на `:<channel-d-public-port>` | Karing/NaiveProxy-style proof lane через тот же managed split; выключен по умолчанию | Нет |
-| anyT | Production для выданных клиентских профилей | Endpoint -> домашний AnyTLS/TLS | 8 защищённых от замены QR, общий split, восстановление после загрузки и firewall rebuild | Нет |
+| anyT | Production для выданных клиентских профилей | Endpoint -> домашний AnyTLS/TLS | 8 закреплённых клиентских импортов, общий split, восстановление после загрузки и firewall rebuild | Нет |
 | M | Региональная служебная политика | Выбранные приложения | Выход в заданном регионе, изолированный от клиентской маршрутизации | Нет |
 | WireGuard | Cold fallback only | Manual emergency script | Catastrophic Reality outage recovery | Нет |
 
 Отдельный [тестовый Amn](modules/routing-core/docs/channel-amn-research.md) проверяет
 вход AmneziaWG по пути iPhone → домашний роутер → managed-политика → VPS или
-домашний WAN. Он запускается вручную и пока не входит в production-каналы.
+домашний WAN. В штатном состоянии он отключён; конфигурация сохранена для
+ручного запуска. В production-каналы и автоматический boot recovery он не входит.
 Для него подготовлены [8 отдельных QR-профилей Channel Amn 01–08](modules/client-profile-factory/docs/client-profiles.md#channel-amn-eight-named-clients);
 первый сохраняет ключи уже проверенного подключения.
 Архитектурные схемы: [на русском](docs/assets/diagrams/channel-amn-architecture.html)
@@ -83,8 +84,13 @@ VLESS + Reality: TCP/Vision или gRPC без Vision, в зависимости
 ## Обзор
 
 [Channel anyT](modules/routing-core/docs/channel-anytls-lab.md) — рабочий
-дополнительный AnyTLS/TLS-вход с 8 отдельными QR и восстановлением после загрузки,
-сбоя процесса и firewall rebuild. Политика маршрутизации и существующие QR сохранены.
+дополнительный AnyTLS/TLS-вход с 8 утверждёнными production QR и восстановлением
+после загрузки, сбоя процесса и firewall rebuild. Выданные импорты сохраняются
+при обслуживании по [контракту совместимости](AGENTS.md#channel-anyt-protected-production-contract).
+Отдельный процесс применяет общий sensitive / managed / direct split; смена
+роутерного выхода не требует новых клиентских QR.
+[Схемы маршрутов и запуска](docs/assets/diagrams/ghostroute-platform-ru.html)
+показывают владельцев процессов; порядок проверки и восстановления описан в runbook.
 
 GhostRoute — layered routing setup для endpoint-клиентов, домашнего ASUS
 Merlin роутера и удаленного VPS egress. Отдельная служебная политика
@@ -398,11 +404,14 @@ Layer 1 managed channels
   Channel D -> Karing/Naive -> home endpoint :<channel-d-public-port>
             -> router Caddy forward_proxy@naive
             -> sing-box channel-d-naiveproxy-socks-in
+  Channel anyT -> AnyTLS/TLS -> home endpoint :<anyt-port>
+               -> отдельный sing-box-atls -> sensitive / managed / direct
   Channel M -> isolated service policy -> approved regional egress
 Layer 2 home router
   services-start -> ghostroute-runtime-supervisor.sh boot
        prepare runtime -> sing-box -> firewall/stealth rules
        -> dnscrypt -> Channel B/D/M -> delayed firewall stabilization
+       -> включённый anyT: свой reconcile / firewall hook / минутный cron
 
   Home Wi-Fi/LAN DNS -> dnsmasq + ipset
                               |
@@ -440,6 +449,7 @@ Operational layer:
   Performance Toolkit -> RTT/retransmit/TCP/MSS diagnostics
   SNI Rotation Guide  -> Reality cover validation, rotation, rollback
   Client Profiles     -> QR/VLESS, selected-client B/C/D artifacts from Vault
+  anyT Profiles       -> 8 сохранённых приватных импортов; экспорт в Routing Core
   Secrets Management  -> vault, generated artifacts, secret-scan
   Recovery Toolkit    -> verify.sh, Ansible verify, runbooks, cold fallback
 ```

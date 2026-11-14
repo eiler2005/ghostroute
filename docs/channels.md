@@ -18,6 +18,8 @@ Amn is an opt-in home-first AmneziaWG compatibility lab outside this production
 matrix. Its path is client -> home router -> managed policy -> VPS or home WAN.
 It has a separate manual start/stop playbook and no boot autostart. See the
 [compatibility research and isolation design](../modules/routing-core/docs/channel-amn-research.md).
+It is retained but disabled in steady state; its diagrams describe the optional
+runtime when explicitly started, not an active dependency of anyT.
 Its eight named client slots are **Channel Amn 01–08**, with a separate diagnostic
 peer. Slot 01 preserves the tested bootstrap import; the other slots are added
 without restarting the running channels.
@@ -46,6 +48,10 @@ It has eight independent client imports, selected-client split and automatic
 boot/firewall/process recovery. It does not replace A/B/C/D/M or provide automatic
 backend failover. The retained Amn/WireGuard fallback is disabled in steady state.
 Its eight issued imports are a [protected production contract](../AGENTS.md#channel-anyt-protected-production-contract).
+Reconciliation preserves a healthy instance, or validates/restarts its own
+policy after a detected change. It is polled recovery, not uninterrupted sessions
+or automatic backend failover. See the [maintenance checklist](../modules/routing-core/docs/channel-anytls-lab.md#maintenance-acceptance-checklist)
+for checks required after shared changes.
 
 VLESS is a protocol; Xray and sing-box are implementations. Separate the
 client-to-router ingress from the router-to-VPS egress:
