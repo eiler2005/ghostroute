@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Export existing Snell lab identities using Shadowrocket's native QR shape."""
+import argparse
+import base64
+import html
+import json
+import os
+from pathlib import Path
+import subprocess
+import urllib.parse
+
+
+def b64(text):
+    return base64.urlsafe_b64encode(text.encode()).decode().rstrip('=')
+
+
+def uri(settings, slot, label):
+    host = settings['host']
+    if ':' in host:
+        host = '[' + host + ']'
+    port = slot['port']
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError('Invalid listener port')
+    for value in [settings['host'], settings['cover'], slot['psk'], slot['shadowtls_password']]:
+        if not isinstance(value, str) or not value or any(c in value for c in '\r\n\0'):
+            raise ValueError('Invalid profile field')
+    identity = b64(f'chacha20-ietf-poly1305:{slot["psk"]}@{host}:{port}')
+    plugin = b64(json.dumps({'version':'3', 'host':settings['cover'],
+                            'password':slot['shadowtls_password']}, separators=(',', ':')))
+    return f'snell://{identity}?version=4&shadow-tls={plugin}#{urllib.parse.quote(label, safe="")}'
+
+
+def export(bundle):
+    settings = json.loads((bundle / 'settings.private.json').read_text())
+    if len(settings['slots']) != 3:
+        raise ValueError('Expected three existing lab slots; no identities are generated')
+    os.umask(0o077)
+    cards = []
+    for index, slot in enumerate(settings['slots'], 1):
+        stem = f'Channel-Snell-{index:02d}'
+        payload = uri(settings, slot, stem)
+        path = bundle / (stem + '.uri')
+        if path.exists() and path.read_text().strip() != payload:
+            raise ValueError('Existing URI differs; review instead of replacing an import')
+        path.write_text(payload + '\n')
+        subprocess.run(['qrencode', '-o', str(bundle / (stem + '.png')), '-s', '10', '-l', 'M'],
+                       input=payload.encode(), capture_output=True, check=True, timeout=20)
+        cards.append(f'<section><h2>{stem}</h2><img src="{stem}.png" alt="{stem}"><p><a href="{html.escape(payload, quote=True)}">Импортировать в Shadowrocket</a></p></section>')
+    (bundle / 'qr-index.html').write_text('''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Channel Snell — QR</title>
+<style>body{font:17px system-ui;background:#eef3f7;color:#17323d;margin:24px}main{max-width:1500px;margin:auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}section{background:white;border-radius:18px;padding:24px;text-align:center;break-inside:avoid}img{width:100%;max-width:600px;height:auto}a{color:#08796a}p{line-height:1.5}@media print{body{background:white}.grid{grid-template-columns:1fr}}</style>
+<main><h1>Channel Snell — три тестовых профиля</h1><p>Shadowrocket → Home → сканер QR. После импорта: Snell v4, Plugin shadow-tls, версия 3. Это дополнительный экспериментальный канал; работа на мобильной сети требует проверки.</p><div class="grid">''' + ''.join(cards) + '</div><p>QR содержат пароли. Храните эту папку приватно.</p></main></html>')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('bundle', type=Path)
+    args = parser.parse_args()
+    export(args.bundle)
+    print('Exported three private Snell/ShadowTLS QR profiles; existing settings retained')

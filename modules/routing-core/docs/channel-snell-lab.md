@@ -60,8 +60,29 @@ Three private slots live under ignored `ansible/out/channel-snell/`. Each has
 a matching sing-box JSON client and a Shadowrocket text profile. The JSON
 transport chain is exercised by authenticated probes. The Shadowrocket text
 import and preservation of its ShadowTLS fields require real-client acceptance;
-do not treat a successful text import or a green TCP test as proof. No guessed
-QR URI is published as a verified import format.
+do not treat a successful text import or a green TCP test as proof.
+
+The private bundle also contains `Channel-Snell-01.png` through
+`Channel-Snell-03.png`, matching `.uri` files and `qr-index.html`. Generate them
+from the existing three identities without rotating settings:
+
+```sh
+python3 modules/routing-core/bin/channel-snell-profile ansible/out/channel-snell
+```
+
+The URI shape was obtained from Shadowrocket's own QR export of a manually
+entered **fictional** Snell v4 / ShadowTLS v3 node. It encodes the inner Snell
+identity as URL-safe Base64 and the `shadow-tls` query field as Base64 JSON with
+version, cover name and outer password. No online QR/conversion service is used.
+The exporter refuses a conflicting existing URI. Settings, text/JSON profiles,
+server listeners and anyT imports are unchanged. Real QR/URI files remain ignored
+credential material; do not commit or publish them.
+
+Import using Shadowrocket **Home → Scan QR Code**, not the Config rule-file
+import. Confirm the node reports **SNELL / SHADOW-TLS3** and retains Snell version
+4, plugin version 3 and its cover name. Local PNG round-trip decoding verifies
+the exact URI, not phone import or cellular connectivity. Those remain separate
+acceptance steps; do not promote the lab merely because its QR scans.
 
 Before accepting a phone profile, verify Snell v4 and ShadowTLS v3, cover name,
 both passwords, and enabled certificate verification in the imported client.
@@ -87,7 +108,10 @@ does not roll back opkg's package database.
 For lab rollback, stop the watcher and keep the private profiles/settings for
 later review. Production routes and existing QR imports require no migration.
 
-Local tests: `python3 tests/test-channel-snell-policy.py`.
+Local tests: `python3 tests/test-channel-snell-policy.py` and
+`python3 tests/test-channel-snell-profile.py`. The profile tests compare a fake
+native-export fixture and cover outer-password/SNI preservation, IPv6 syntax,
+encoding and invalid-field rejection.
 
 References: [Snell inbound](https://sing-box.sagernet.org/configuration/inbound/snell/),
 [Snell outbound](https://sing-box.sagernet.org/configuration/outbound/snell/),
