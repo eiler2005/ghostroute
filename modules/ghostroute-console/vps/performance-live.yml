@@ -68,7 +68,7 @@
           outputDir: "./test-results",
           timeout: 120_000,
           workers: 1,
-          reporter: [["line"]],
+          reporter: [["line"], ["json", { outputFile: "./performance-result.json" }]],
           use: {
             baseURL: "{{ ghostroute_console_perf_base_url }}",
             trace: "retain-on-failure",
