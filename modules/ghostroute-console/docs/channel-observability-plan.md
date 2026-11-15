@@ -57,6 +57,12 @@ Console is stopped; remove the stopped database's WAL/SHM files and restore data
 ownership before restart. Verify API health, Settings, traffic detail and public
 mobile delivery after rollback. Keep backups private and outside automatic pruning.
 
+The VPS helper `vps/rollback-console.sh <backup-directory>` performs the image,
+source and configuration restore and checks local API health. Run it as root on
+the Console host. It leaves the current database intact; restoring the consistent
+database backup remains a separate explicit operator action. Validate public
+delivery after invoking it. The helper never operates router services.
+
 ## Outcome and boundaries
 
 Console should identify Channel D, Channel anyT (AnyTLS), and Snell alongside
