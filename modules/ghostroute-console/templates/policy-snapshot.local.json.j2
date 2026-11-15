@@ -81,6 +81,16 @@
       "note": "sanitized from Ansible/Vault Channel C policy"
     }
 {% endfor %}
+{% for client in (vault_channel_d_naiveproxy_clients | default([])) %}
+{% if not ns.first %},{% endif %}
+{% set ns.first = false -%}
+    {"channel": "D", "profile": "d-slot-{{ loop.index }}", "label": "Channel D {{ loop.index }}", "status": "unknown", "policy": "managed_split"}
+{% endfor %}
+{% for profile in (console_channel_inventory.stdout | default('[]') | from_json) %}
+{% if not ns.first %},{% endif %}
+{% set ns.first = false -%}
+    {{ profile | to_json }}
+{% endfor %}
   ],
   "warnings": []
 }

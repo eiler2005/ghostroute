@@ -159,6 +159,33 @@
         fi
       changed_when: false
 
+    - name: Preserve Console sources configuration and consistent database for rollback
+      ansible.builtin.shell: |
+        set -eu
+        backup="{{ console_root }}/rollback/{{ console_build_at | regex_replace('[^0-9]', '') }}"
+        mkdir -p "$backup"
+        chmod 700 "$backup"
+        if [ -d "{{ console_root }}/repo/modules/ghostroute-console" ]; then
+          tar --exclude=node_modules --exclude=.next --exclude=data --exclude=test-results --exclude=playwright-report \
+            -czf "$backup/console-source.tar.gz" -C "{{ console_root }}/repo" modules/ghostroute-console
+        fi
+        if [ -f "{{ console_root }}/data/ghostroute.db" ]; then
+          python3 - "$backup/ghostroute.db" <<'PY'
+        import sqlite3, sys
+        source = sqlite3.connect('file:{{ console_root }}/data/ghostroute.db?mode=ro', uri=True, timeout=30)
+        target = sqlite3.connect(sys.argv[1])
+        with target:
+            source.backup(target)
+        target.close()
+        source.close()
+        PY
+        fi
+        for file in policy-snapshot.local.json device-attribution.json device-attribution.local.json device-aliases.json; do
+          if [ -f "{{ console_root }}/data/$file" ]; then cp -p "{{ console_root }}/data/$file" "$backup/$file"; fi
+        done
+        printf '%s\n' "{{ console_rollback_tag }}" > "$backup/image-tag"
+      changed_when: false
+
     - name: Sync repo sources without secrets or generated artifacts
       ansible.builtin.command:
         argv:
@@ -169,6 +196,10 @@
           - --delete
           - --rsync-path=sudo rsync
           - --exclude=.git/
+          - --filter=:- .gitignore
+          - --exclude=reports/
+          - --exclude=secrets/
+          - --exclude=0
           - --exclude=ansible/secrets/
           - --exclude=ansible/out/
           - --exclude=modules/ghostroute-console/data/
@@ -197,6 +228,18 @@
         mode: "0700"
       delegate_to: localhost
       become: false
+
+    - name: Read symbolic channel slots from existing private bundles
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../bin/export-channel-inventory"
+          - "{{ playbook_dir }}/../../../ansible/out"
+      register: console_channel_inventory
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      no_log: true
 
     - name: Render sanitized Console routing policy snapshot from Vault
       ansible.builtin.template:

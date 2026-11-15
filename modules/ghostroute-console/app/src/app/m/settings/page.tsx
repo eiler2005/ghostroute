@@ -24,6 +24,9 @@ function SummaryGrid({ summary }: { summary: Record<string, any> }) {
       <div><span>A full</span><strong>{summary.channel_a_full_vps || 0}</strong></div>
       <div><span>B</span><strong>{summary.channel_b_profiles || 0}</strong></div>
       <div><span>C</span><strong>{summary.channel_c_profiles || 0}</strong></div>
+        <div><span>Channel D profiles</span><strong>{summary.channel_d_profiles || 0}</strong></div>
+        <div><span>Channel anyT profiles</span><strong>{summary.channel_anyt_profiles || 0}</strong></div>
+        <div><span>Channel Snell profiles</span><strong>{summary.channel_snell_profiles || 0}</strong></div>
     </section>
   );
 }
@@ -67,16 +70,16 @@ export default async function MobileSettingsPage({ searchParams }: { searchParam
         )}
       </MobileSection>
 
-      <MobileSection title="Channel profiles" detail={`${profiles.length} profiles`}>
+      <MobileSection title="Channel profiles" detail={`${profiles.length} profiles · inventory only; live health and traffic coverage not established`}>
         {profiles.length === 0 ? (
-          <div className="mobile-empty">No Channel A/B/C profiles in the snapshot.</div>
+          <div className="mobile-empty">No channel profiles in the snapshot.</div>
         ) : (
           <div className="mobile-list">
             {profiles.map((row: any) => (
               <div className="mobile-row" key={row.id || `${row.channel}:${row.profile}`}>
                 <span>
                   <strong>{row.label || row.profile}</strong>
-                  <small>{row.profile_type || "profile"} · {row.outbound || "managed split"}</small>
+                  <small>{row.profile_type || "profile"} · {row.lifecycle || "unknown"} · {row.outbound || "managed split"}</small>
                 </span>
                 <span className="mobile-row-meta">
                   <ChannelBadge value={`Channel ${row.channel || "A"}`} />

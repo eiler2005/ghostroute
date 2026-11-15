@@ -45,19 +45,8 @@ async function gotoReady(page: Page, path: string) {
   await page.goto(path, { waitUntil: "domcontentloaded" });
 }
 
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: "default" });
 
-test.beforeAll(async ({ browser, request }) => {
-  for (const path of apiPaths) {
-    await request.get(path).catch(() => undefined);
-  }
-  const page = await browser.newPage();
-  for (const item of pages) {
-    await gotoReady(page, item.path);
-    await Promise.any(item.markers.map((marker) => page.getByText(marker).first().waitFor({ state: "visible", timeout: 10_000 }))).catch(() => undefined);
-  }
-  await page.close();
-});
 
 for (const item of pages) {
   test(`page performance ${item.path}`, async ({ page }) => {
@@ -100,7 +89,7 @@ test("rapid sidebar navigation stays responsive", async ({ page }) => {
 for (const path of apiPaths) {
   test(`api performance ${path}`, async ({ request }) => {
     const started = performance.now();
-    const response = await request.get(path);
+    const response = await request.get(path, { timeout: 10_000 });
     const elapsed = performance.now() - started;
     expect(response.ok(), path).toBeTruthy();
     expect(elapsed, `${path} responded in ${Math.round(elapsed)}ms`).toBeLessThan(API_BUDGET_MS);

@@ -1,3 +1,4 @@
+import { explicitAccessChannel } from "../channels.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -1048,9 +1049,11 @@ function addObservedIdentity(current: Record<string, any>, row: Record<string, a
 }
 
 function preservedChannel(row: Record<string, any>) {
+  const access = explicitAccessChannel(row);
+  if (access) return access;
   const label = String(row.label || row.client || row.id || row.device_id || "").toLowerCase();
   if (/\/\s*b\d?\b|iphone-b|channel b/.test(label)) return "Channel B";
-  if (/\/\s*c\d?\b|shadowrocket|naive|channel c/.test(label)) return "Channel C";
+  if (/\/\s*c\d?\b|channel c/.test(label)) return "Channel C";
   const channel = String(row.channel || "");
   if (channel && channel !== "Unknown") return channel;
   if (label.includes("mobile-client-")) return "A/Home Reality";

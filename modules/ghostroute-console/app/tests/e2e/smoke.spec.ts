@@ -612,3 +612,12 @@ test("controlled actions require confirmation and write auditable responses", as
   const settings = await request.post("/api/notifications/settings", { data: { stale_minutes: 30 } });
   expect(settings.ok()).toBeTruthy();
 });
+
+test("new channel inventory stays distinct on desktop and mobile", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/settings" : "/settings");
+  for (const channel of ["D", "anyT", "Snell"]) {
+    await expect(page.getByText(`Test/Channel ${channel}`, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/experimental/).first()).toBeVisible();
+  await expect(page.getByText(/inventory only/i).first()).toBeVisible();
+});

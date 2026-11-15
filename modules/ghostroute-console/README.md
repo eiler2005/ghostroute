@@ -41,6 +41,12 @@ Operational details live in
 
 ## TL;DR
 
+Channel identity includes D, anyT (AnyTLS), and Snell. Settings exposes symbolic
+profile inventory with production/experimental lifecycle labels on desktop and
+mobile. Inventory is distinct from live health and byte-accounting coverage;
+missing channel evidence must not imply zero traffic or a healthy service.
+See [channel observability and release boundaries](docs/channel-observability-plan.md).
+
 GhostRoute Console is the read-only GUI for the existing GhostRoute operational
 modules. It consumes JSON snapshots from Traffic Observatory, Health Monitor,
 DNS/Catalog Intelligence and a sanitized local routing-policy snapshot, rebuilds

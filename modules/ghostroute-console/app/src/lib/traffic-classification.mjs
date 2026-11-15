@@ -1,3 +1,4 @@
+import { explicitAccessChannel } from "./channels.mjs";
 import { destinationClassification, isDnsOnlyTraffic, trafficClassForDomain, trafficDomainLabel } from "./domain-attribution.mjs";
 
 export const trafficClasses = ["client", "personal_cloud", "service_background", "unclassified", "all"];
@@ -37,10 +38,12 @@ export function displayDestination(row) {
 }
 
 export function deviceRole(row) {
+  const channel = explicitAccessChannel(row);
+  if (["Channel D", "Channel anyT", "Channel Snell"].includes(channel)) return `${channel} profile`;
   const text = [row.label, row.id, row.device_id, row.profile, row.client, row.channel].filter(Boolean).join(" ").toLowerCase();
   if (/mobile-client-\d+/.test(text)) return "Home Reality profile";
   if (/mobile-source-\d+/.test(text)) return "Unattributed mobile ingress source";
-  if (text.includes("channel c") || /\bc1\b|shadowrocket|naive/.test(text)) return "Channel C profile";
+  if (text.includes("channel c") || /\bc1\b/.test(text)) return "Channel C profile";
   if (text.includes("channel b") || /iphone-b|xhttp|selected-client/.test(text)) return "Channel B profile";
   if (text.includes("ipad")) return "iPad";
   if (text.includes("iphone")) return "iPhone";

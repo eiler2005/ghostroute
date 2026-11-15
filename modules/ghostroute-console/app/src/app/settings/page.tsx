@@ -40,7 +40,7 @@ function RoutingPolicySection({ policy }: { policy: Record<string, any> }) {
       <div className="section-heading-row">
         <div>
           <h2>Routing policy</h2>
-          <p>Readonly view of selected full-VPS sets and Channel A/B/C profile policy from the sanitized local policy snapshot.</p>
+          <p>Readonly view of selected full-VPS sets and Channel A/B/C/D/anyT/Snell profile policy from the sanitized local policy snapshot.</p>
         </div>
         <StatusBadge value={policy.status || "missing"} />
       </div>
@@ -50,6 +50,9 @@ function RoutingPolicySection({ policy }: { policy: Record<string, any> }) {
         <div><span>Channel A full-VPS</span><strong>{summary.channel_a_full_vps || 0}</strong></div>
         <div><span>Channel B profiles</span><strong>{summary.channel_b_profiles || 0}</strong></div>
         <div><span>Channel C profiles</span><strong>{summary.channel_c_profiles || 0}</strong></div>
+        <div><span>Channel D profiles</span><strong>{summary.channel_d_profiles || 0}</strong></div>
+        <div><span>Channel anyT profiles</span><strong>{summary.channel_anyt_profiles || 0}</strong></div>
+        <div><span>Channel Snell profiles</span><strong>{summary.channel_snell_profiles || 0}</strong></div>
       </div>
 
       <h3>Home Wi-Fi/LAN full-VPS</h3>
@@ -89,8 +92,9 @@ function RoutingPolicySection({ policy }: { policy: Record<string, any> }) {
       )}
 
       <h3>Channel profiles</h3>
+      <p className="muted">Profile inventory only. Enabled configuration does not prove live health or complete traffic accounting.</p>
       {profiles.length === 0 ? (
-        <p className="muted">No Channel A/B/C profiles in the sanitized snapshot.</p>
+        <p className="muted">No channel profiles in the sanitized snapshot.</p>
       ) : (
         <table className="table policy-table">
           <thead>
@@ -109,7 +113,7 @@ function RoutingPolicySection({ policy }: { policy: Record<string, any> }) {
               <tr key={row.id || `${row.channel}:${row.profile}`}>
                 <td><strong>{row.label || row.profile}</strong></td>
                 <td><ChannelBadge value={`Channel ${row.channel || "A"}`} /></td>
-                <td>{row.profile_type || "profile"}</td>
+                <td>{row.profile_type || "profile"} · {row.lifecycle || "unknown"}</td>
                 <td><PolicyBadge value={row.policy} /></td>
                 <td><StatusBadge value={row.status || "unknown"} /></td>
                 <td><ReadonlyToggle on={Boolean(row.profile_enabled)} label="Profile enabled" /></td>

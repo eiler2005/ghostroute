@@ -45,7 +45,7 @@
         run_dir="$work_dir/run"
         rm -rf "$run_dir"
         mkdir -p "$run_dir"
-        trap 'rm -rf "$work_dir"' EXIT
+        # Retain failed-run traces locally on the VPS; next run resets this workspace.
         docker run --rm --pull=missing --network host \
           -v "$tests_dir:/repo-tests:ro" \
           -v "$run_dir:/work" \
@@ -81,6 +81,7 @@
           '
       changed_when: false
       register: ghostroute_console_perf_result
+      failed_when: false
 
     - name: Show Console performance test summary
       ansible.builtin.debug:
@@ -97,3 +98,8 @@
       failed_when: false
       register: ghostroute_console_perf_image_cleanup
       when: ghostroute_console_perf_cleanup_image | bool
+
+    - name: Require all live performance checks to pass
+      ansible.builtin.assert:
+        that: ghostroute_console_perf_result.rc == 0
+        fail_msg: "Console performance failed; inspect the retained private workspace and named page/API results."

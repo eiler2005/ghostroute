@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Export symbolic profile slots from existing private bundles; never modify them."""
+import argparse
+import json
+from pathlib import Path
+
+
+def inventory(output):
+    profiles = []
+    for folder, channel, field in [('channel-anytls', 'anyT', 'users'), ('channel-snell', 'Snell', 'slots')]:
+        source = output / folder / ('settings.private.json' if channel == 'Snell' else 'settings.json')
+        if not source.is_file():
+            continue
+        entries = json.loads(source.read_text()).get(field, [])
+        for index, entry in enumerate(entries, 1):
+            if channel == 'anyT' and entry.get('name') == 'lab-probe':
+                continue
+            # Slot labels only: no usernames, credentials, hosts, or listener details.
+            slot = len([p for p in profiles if p['channel'] == channel]) + 1
+            profiles.append({'channel': channel, 'profile': f'{channel}-slot-{slot:02}',
+                             'label': f'Channel {channel} {slot:02}', 'status': 'unknown',
+                             'policy': 'managed_split'})
+    return profiles
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    print(json.dumps(inventory(args.output)))

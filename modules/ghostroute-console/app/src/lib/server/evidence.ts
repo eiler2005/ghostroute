@@ -1,3 +1,4 @@
+import { explicitAccessChannel } from "../channels.mjs";
 import type { ConsoleModel } from "./types";
 import { canonicalDeviceKey, displayDeviceLabel, resolveClient } from "../device-attribution.mjs";
 import { destinationEvidence, trafficDisplayDestination } from "../traffic-window.mjs";
@@ -43,14 +44,16 @@ function clientMatches(row: Record<string, any>, client: string) {
 }
 
 export function inferAccessChannel(row: Record<string, any>, device?: Record<string, any>) {
+  const access = explicitAccessChannel(row);
+  if (access) return access;
   const explicit = text(row.channel || device?.channel, "");
   if (explicit && explicit !== "Unknown") return explicit;
   const raw = lower(JSON.stringify({ row, device }));
   const client = lower(row.client || row.label || device?.label || device?.id || "");
   if (client.includes("mobile-client-")) return "A/Home Reality";
-  if (/\b\/\s*c1\b|\bc1_|channel-c|shadowrocket|naive/.test(`${raw} ${client}`)) return "Channel C";
+  if (/\b\/\s*c1\b|\bc1_|channel-c/.test(`${raw} ${client}`)) return "Channel C";
   if (/\b\/\s*b\b|iphone-b|channel-b|xhttp|xray|selected-client/.test(`${raw} ${client}`)) return "Channel B";
-  if (raw.includes("channel-c") || raw.includes("shadowrocket") || raw.includes("naive")) return "Channel C";
+  if (raw.includes("channel-c")) return "Channel C";
   if (raw.includes("channel-b") || raw.includes("xhttp") || raw.includes("selected-client") || raw.includes("xray")) return "Channel B";
   if (raw.includes("home_reality") || raw.includes("home-reality") || raw.includes("reality-in")) return "A/Home Reality";
   if (raw.includes("br0") || raw.includes("lan") || raw.includes("wi-fi") || raw.includes("wifi") || raw.includes("192.168.")) return "Home Wi-Fi/LAN";

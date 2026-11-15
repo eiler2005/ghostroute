@@ -1,4 +1,4 @@
-const CHANNELS = new Set(["A", "B", "C"]);
+import { channelId, channelDescriptor } from "./channels.mjs";
 const POLICIES = new Set(["full_vps", "managed_split", "compatibility"]);
 const STATUSES = new Set(["enabled", "disabled", "planned", "missing", "unknown"]);
 
@@ -22,8 +22,7 @@ function safeStatus(value, fallback = "enabled") {
 }
 
 function normalizeChannel(value) {
-  const normalized = text(value).toUpperCase().replace(/^CHANNEL\s+/, "");
-  return CHANNELS.has(normalized) ? normalized : "A";
+  return channelId(value);
 }
 
 function normalizePolicy(value, channel) {
@@ -94,7 +93,7 @@ function normalizeChannelProfile(row, index) {
   const profile = text(row?.profile || row?.name || row?.auth_user || row?.id, fallbackProfile);
   const profileType = text(
     row?.profile_type || row?.type,
-    channel === "A" ? "home_reality" : channel === "B" ? "xhttp_home" : "naive_compatibility"
+    channelDescriptor(channel).type
   );
   const status = safeStatus(row?.status, "enabled");
   const supported = channel === "A" ? bool(row?.full_vps_supported, true) : false;
@@ -108,6 +107,8 @@ function normalizeChannelProfile(row, index) {
     profile,
     label: text(row?.label || row?.display_name || profile, profile),
     profile_type: profileType,
+    lifecycle: channelDescriptor(channel).lifecycle,
+    coverage: "profile inventory; traffic coverage not established",
     status,
     profile_enabled: status === "enabled",
     policy,
@@ -132,6 +133,9 @@ function buildSummary(homeClients, profiles) {
     channel_a_full_vps: channelProfiles("A").filter((row) => row.full_vps).length,
     channel_b_profiles: channelProfiles("B").length,
     channel_c_profiles: channelProfiles("C").length,
+    channel_d_profiles: channelProfiles("D").length,
+    channel_anyt_profiles: channelProfiles("anyT").length,
+    channel_snell_profiles: channelProfiles("Snell").length,
   };
 }
 

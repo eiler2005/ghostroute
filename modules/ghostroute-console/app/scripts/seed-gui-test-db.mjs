@@ -318,6 +318,7 @@ function seed(db) {
         },
       ],
       channel_profiles: [
+        ...["D", "anyT", "Snell"].map(channel => ({ channel, profile: `test-channel-${channel}`, label: `Test/Channel ${channel}`, status: channel === "D" ? "disabled" : "enabled", policy: "managed_split" })),
         {
           channel: "A",
           profile: "test-channel-a-full",
