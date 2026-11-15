@@ -1,5 +1,9 @@
 # Runtime Inventory and Port Registry
 
+See the [software compatibility matrix](software-compatibility.md) for qualified
+combinations, rejected candidates, Snell client/server version boundaries and
+the meaning of unknown or separately owned versions.
+
 `configs/runtime-inventory.yml` is the tracked, sanitized runtime inventory for
 GhostRoute. It is a lightweight OBOM-style registry for operational components,
 version policy, compatibility claims, port/listener ownership and upgrade gates.

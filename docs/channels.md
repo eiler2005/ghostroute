@@ -1,4 +1,11 @@
-# GhostRoute Channels A / B / C / D / M, anyT and Amn
+# GhostRoute Channels A / B / C / D / M, anyT, Amn and Snell lab
+
+The additive [Snell + ShadowTLS lab](../modules/routing-core/docs/channel-snell-lab.md)
+has three experimental identities, manual start after reboot and pending
+physical-client/cellular acceptance. It shares selected-client routing policy
+without replacing production channels. See the
+[compatibility matrix](software-compatibility.md) for ingress and backend version
+boundaries; successful ingress authentication alone does not qualify the egress.
 
 This document is the short handoff view of the current channel model. The
 default managed client channels are home-first: their first remote endpoint is

@@ -17,6 +17,8 @@ Russian README is an operator-facing summary.
 dependencies, qualified runtimes and deployment targets separately.
 The [VPS software inventory](configs/vps-software-versions.json) records the
 per-role deployed baseline and explicit compatibility holds.
+The [compatibility matrix](docs/software-compatibility.md) explains tested
+combinations, retained versions and client acceptance boundaries.
 
 ---
 

@@ -95,6 +95,23 @@ do not establish cellular reachability or censorship resistance.
 
 ## Upgrade and rollback
 
+### Version boundaries
+
+The separate lab binary is pinned to sing-box **1.14.4**. Its server-side Snell
+implementation/version label must not be confused with the **v4 client profile**;
+the outer transport is **ShadowTLS v3**, not REALITY. The three existing QR
+payloads encode that combination and must retain both authentication layers.
+Updating the main Entware binary does not automatically update `sing-box-snell`.
+
+Snell changes the client-to-router hop. Managed and sensitive destinations still
+use the policy-selected post-router backend. Therefore a backend compatibility
+regression can affect a Snell client even when its ShadowTLS handshake succeeds.
+The [software compatibility matrix](../../../docs/software-compatibility.md)
+records the sensitive-egress core hold and the distinction between tested paths
+and installed versions. A working anyT or router loopback probe is not cellular
+acceptance of Snell. The lab remains manual-start after router reboot, with three
+experimental profiles; it has not acquired anyT's production recovery contract.
+
 Keep the proven Entware binary and configuration before updating any shared
 runtime. A package upgrade can replace `/opt/etc/init.d/S99sing-box`; restore
 the repo-managed rendered init script before relying on its `status`, zombie
