@@ -1,7 +1,9 @@
 # Console channel observability and performance plan
 
-Status: proposed implementation sequence. This document does not change runtime
-state, promote experimental channels, or authorize deployment.
+Status: channel identity, inventory, runtime health and bounded overview paths
+are implemented. The remaining sequence records source-coverage and release
+boundaries; experimental promotion and complete per-profile byte accounting are
+separate acceptance work.
 
 ## Implemented visibility slice
 
