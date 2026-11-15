@@ -15,6 +15,8 @@ Russian README is an operator-facing summary.
 
 [Software versions and upgrade gates](docs/runtime-inventory.md) track reviewed
 dependencies, qualified runtimes and deployment targets separately.
+The [VPS software inventory](configs/vps-software-versions.json) records the
+per-role deployed baseline and explicit compatibility holds.
 
 ---
 

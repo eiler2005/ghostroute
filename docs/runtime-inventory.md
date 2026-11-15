@@ -15,6 +15,13 @@ host:
 ./modules/ghostroute-health-monitor/bin/software-inventory --json
 ```
 
+The [per-role VPS software inventory](../configs/vps-software-versions.json)
+records the deployed host/runtime baseline separately from source targets.
+Its maintenance owner is the companion `vps_management` project; routing image
+selection and application qualification remain owned here. Unrelated application
+images and persistent build workers are listed as ownership exclusions, not
+silently advertised as updated.
+
 The fast suite rejects source-pin/lockfile drift. This is a consistency gate,
 not an automatic upstream updater: recheck official release channels at each
 maintenance window and update the review date only after reviewing them.
@@ -32,6 +39,36 @@ Go 1.27.4, Xray 26.11.9 and 3x-ui v3.11.0. These source pins do **not** mean
 the VPS was upgraded. Inspect effective Vault overrides, back up the panel
 database and qualify each candidate before a separate deployment. The panel
 image bundles its own Xray; its version is not the standalone Xray target.
+
+The reviewed runtime image recipe now combines independently pinned panel and
+core images: `ghostroute/xui:3.11.0-xray26.11.9`. Its build context contains only
+the recipe, never panel databases or certificates. The Caddy layer4 image also
+uses a versioned tag, so an old `caddy-l4:local` cache cannot silently defeat a
+source-version update. Existing Vault overrides must be reviewed at promotion.
+
+Qualify panel migrations against a consistent database copy. Compare the full
+client ingress contract and the stored Xray routing template. If a migration
+replaces outbound defaults, preserve the reviewed template before acceptance;
+in particular, the explicitly allowed private resolver must remain reachable.
+Restore the pre-migration database together with the old image on rollback.
+
+### REALITY compatibility hold
+
+The sensitive egress keeps a separately qualified panel image digest in
+`vault_hermes_qualified_panel_image`; its deploy playbook rejects an absent or
+mutable image reference. Do not inherit the primary build target for this role.
+The reviewed newer panel/core combination failed authenticated application HTTPS
+through existing sing-box clients despite an identical generated configuration.
+The previous panel/core and consistent database restored the working path.
+Changing only the edge Caddy did not restore it.
+
+This is consistent with the reported
+[REALITY ClientHello compatibility issue](https://github.com/SagerNet/sing-box/issues/4520),
+but matching symptoms do not establish packet-level causality. Keep the working
+digest until an isolated candidate passes the existing router client engine,
+ordinary/managed/sensitive HTTPS, native application probes and identity checks.
+A configuration syntax check or unchanged database alone is insufficient.
+Never weaken certificate validation or change issued client imports to pass.
 
 Router packages remain on the authenticated, qualified Entware baseline:
 sing-box 1.14.4, Xray 26.10.29, Python 3.14.7, OpenSSL 3.5.9 and dnscrypt 2.1.20.

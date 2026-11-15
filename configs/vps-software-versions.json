@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-11-15",
+  "scope": "Owned host and routing software; application-owned images require their own maintenance",
+  "hosts": [
+    {
+      "schema_version": 1,
+      "role": "primary_vps",
+      "docker": "29.9.3",
+      "compose": "5.7.1",
+      "containerd": "2.4.2",
+      "reboot_required": false,
+      "live_restore": true,
+      "host_caddy": "2.11.9",
+      "routing": {
+        "xhttp_xray": "26.11.9",
+        "xray": "26.11.9",
+        "panel": "3.11.0"
+      },
+      "other_caddy_versions": [],
+      "distribution_packages": {
+        "containerd.io": "2.4.2-4~ubuntu.24.04~noble",
+        "docker-ce": "5:29.9.3-1~ubuntu.24.04~noble",
+        "openssl": "3.0.13-0ubuntu3.16",
+        "python3": "3.12.3-0ubuntu2.1"
+      }
+    },
+    {
+      "schema_version": 1,
+      "role": "hermes_vps",
+      "docker": "29.9.3",
+      "compose": "5.7.1",
+      "containerd": "2.4.2",
+      "reboot_required": false,
+      "live_restore": true,
+      "host_caddy": null,
+      "routing": {
+        "caddy": "2.11.9",
+        "xray": "26.6.1",
+        "panel": null
+      },
+      "other_caddy_versions": [
+        "2.10.2",
+        "2.11.4"
+      ],
+      "distribution_packages": {
+        "containerd.io": "2.4.2-4~ubuntu.22.04~jammy",
+        "docker-ce": "5:29.9.3-1~ubuntu.22.04~jammy",
+        "openssl": "3.0.2-0ubuntu1.30",
+        "python3": "3.10.6-1~22.04.1"
+      },
+      "buildkit": "0.32.2"
+    }
+  ],
+  "compatibility_holds": [
+    {
+      "role": "hermes_vps",
+      "component": "panel_and_xray",
+      "policy": "Retain application-qualified image digest; newer candidate failed existing sing-box REALITY HTTPS. Exact handshake cause remains an upstream-aligned hypothesis.",
+      "source": "https://github.com/SagerNet/sing-box/issues/4520"
+    }
+  ],
+  "ownership_exclusions": [
+    "Other application Caddy images and persistent BuildKit builders are observed only; no application-owned upgrade was attempted."
+  ]
+}

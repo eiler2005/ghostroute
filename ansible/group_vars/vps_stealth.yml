@@ -1,8 +1,10 @@
 stealth_stack_dir: /opt/stealth
 caddy_dockerfile: caddy/Dockerfile
 caddy_caddyfile: caddy/Caddyfile
-caddy_image_tag: caddy-l4:local
-xui_image: "ghcr.io/mhsanaei/3x-ui:v3.11.0"
+caddy_image_tag: ghostroute/caddy-l4:2.11.9
+xui_base_image: "ghcr.io/mhsanaei/3x-ui:v3.11.0"
+xray_core_image: "ghcr.io/xtls/xray-core:26.11.9"
+xui_image: "ghostroute/xui:3.11.0-xray26.11.9"
 xray_reality_listen_port: "{{ vault_xray_reality_listen_port | default(xray_reality_listen_port_secret | default(8443)) }}"
 vps_unbound_enabled: "{{ vault_vps_unbound_enabled | default(true) }}"
 vps_unbound_listen_host: "{{ vault_vps_unbound_listen_host | default('127.0.0.1') }}"

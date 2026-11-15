@@ -1,0 +1,3 @@
+FROM {{ xray_core_image }} AS core
+FROM {{ xui_base_image }}
+COPY --from=core /usr/local/bin/xray /app/bin/xray-linux-amd64

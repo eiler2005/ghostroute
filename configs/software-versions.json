@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "checked_on": "2026-11-14",
+  "checked_on": "2026-11-15",
   "scope": "repository_dependencies_build_targets_and_qualified_router_packages",
-  "deployment_note": "Repository/build targets are not evidence that a VPS, firmware or Mac application was redeployed.",
+  "deployment_note": "Per-role deployed versions are in configs/vps-software-versions.json. Source/build targets may differ from compatibility-held production versions.",
   "components": [
     {
       "id": "node_lts",
@@ -543,7 +543,7 @@
           "contains": "2.11.9"
         }
       ],
-      "notes": "Target only; deployed custom Caddy is not automatically promoted by editing a pin."
+      "notes": "Owned VPS edges deployed at target; unrelated application images remain separately owned. Router channel-D build pin is a separate qualification."
     },
     {
       "id": "xcaddy",
@@ -594,7 +594,7 @@
           "contains": "ghcr.io/xtls/xray-core:26.11.9"
         }
       ],
-      "notes": "Qualified router Entware package remains 26.10.29; VPS rollout needs application/identity gates and effective Vault image review."
+      "notes": "Primary deployed at target; hermes_vps retains qualified 26.6.1 after candidate application regression. Do not inherit this target across roles."
     },
     {
       "id": "3x_ui",
@@ -611,7 +611,7 @@
           "contains": "ghcr.io/mhsanaei/3x-ui:v3.11.0"
         }
       ],
-      "notes": "Panel image carries its own Xray version; back up its database before a separate rollout."
+      "notes": "Primary deployed at target; hermes_vps retains its qualified panel/core digest. Syntax and database equality do not establish client compatibility."
     },
     {
       "id": "sing_box_entware",
@@ -711,6 +711,45 @@
       "status": "platform_managed",
       "bindings": [],
       "notes": "Latest upstream release audited; local Apple SDK toolchain is 6.3.1. Package.swift tools version is a minimum, not an installed-version pin. SDK/toolchain rollout is not included."
+    },
+    {
+      "id": "docker_vps",
+      "version": "29.9.3",
+      "source": "https://docs.docker.com/engine/release-notes/29/",
+      "status": "deployed_qualified",
+      "bindings": [
+        {
+          "path": "configs/vps-software-versions.json",
+          "contains": "29.9.3"
+        }
+      ],
+      "notes": "Both owned VPS hosts; preserved routing-owned daemon guard and client contracts."
+    },
+    {
+      "id": "containerd_vps",
+      "version": "2.4.2",
+      "source": "https://github.com/containerd/containerd/releases",
+      "status": "deployed_qualified",
+      "bindings": [
+        {
+          "path": "configs/vps-software-versions.json",
+          "contains": "2.4.2"
+        }
+      ],
+      "notes": "Both owned VPS hosts; preserved routing-owned daemon guard and client contracts."
+    },
+    {
+      "id": "compose_vps",
+      "version": "5.7.1",
+      "source": "https://github.com/docker/compose/releases",
+      "status": "deployed_qualified",
+      "bindings": [
+        {
+          "path": "configs/vps-software-versions.json",
+          "contains": "5.7.1"
+        }
+      ],
+      "notes": "Both owned VPS hosts; preserved routing-owned daemon guard and client contracts."
     }
   ],
   "platform_boundaries": [

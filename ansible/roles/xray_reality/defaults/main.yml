@@ -2,8 +2,10 @@
 # VPS Reality defaults. Credentials, UUIDs and real hosts belong in vault.
 stealth_stack_dir: /opt/stealth
 stealth_caddy_mode: system_listener_wrapper
-caddy_image_tag: caddy-l4:local
-xui_image: ghcr.io/mhsanaei/3x-ui:v3.11.0
+caddy_image_tag: ghostroute/caddy-l4:2.11.9
+xui_base_image: ghcr.io/mhsanaei/3x-ui:v3.11.0
+xray_core_image: ghcr.io/xtls/xray-core:26.11.9
+xui_image: ghostroute/xui:3.11.0-xray26.11.9
 xui_admin_web_port: 2053
 xui_admin_web_path: /
 xray_reality_listen_port: 8443

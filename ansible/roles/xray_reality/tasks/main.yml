@@ -8,6 +8,28 @@
     fail_msg: "xui_admin_username/xui_admin_password must be present in Vault before running the Reality VPS role."
   no_log: true
 
+- name: Build reviewed panel image with independently pinned Xray core
+  when: xui_image == 'ghostroute/xui:3.11.0-xray26.11.9'
+  block:
+    - name: Ensure isolated runtime image build context
+      ansible.builtin.file:
+        path: "{{ stealth_stack_dir }}/runtime-image"
+        state: directory
+        mode: "0755"
+    - name: Render runtime image recipe without application data
+      ansible.builtin.template:
+        src: Dockerfile.runtime.j2
+        dest: "{{ stealth_stack_dir }}/runtime-image/Dockerfile"
+        mode: "0644"
+    - name: Build versioned panel and core image
+      community.docker.docker_image:
+        name: "{{ xui_image }}"
+        source: build
+        build:
+          path: "{{ stealth_stack_dir }}/runtime-image"
+        force_source: false
+      when: not ansible_check_mode
+
 - name: Ensure xray volumes dir
   ansible.builtin.file:
     path: "{{ stealth_stack_dir }}/xray/{{ item }}"

@@ -2,7 +2,7 @@
 # Project role defaults. Production hostnames/cert paths belong in group_vars or vault.
 stealth_stack_dir: /opt/stealth
 stealth_caddy_mode: system_listener_wrapper
-caddy_image_tag: caddy-l4:local
+caddy_image_tag: ghostroute/caddy-l4:2.11.9
 system_caddy_binary_path: /usr/bin/caddy
 system_caddy_backup_path: /usr/bin/caddy.router-configuration.bak
 system_caddyfile_path: /etc/caddy/Caddyfile

@@ -15,6 +15,16 @@
     vps_unbound_reality_listen_host: ""
     vps_unbound_reality_target_host: "{{ vps_unbound_docker_bridge_host }}"
   pre_tasks:
+    - name: Require an application-qualified Hermes panel image
+      ansible.builtin.assert:
+        that:
+          - vault_hermes_qualified_panel_image | default('') is match('^.+@sha256:[a-f0-9]{64}$')
+        fail_msg: "Pin the Hermes application-qualified panel digest in Vault; a latest Xray target is not a compatibility qualification."
+      no_log: true
+    - name: Keep the qualified Hermes core independent of primary build targets
+      ansible.builtin.set_fact:
+        xui_image: "{{ vault_hermes_qualified_panel_image }}"
+      no_log: true
     - name: Validate Hermes SSH and endpoint variables before mutating
       ansible.builtin.assert:
         that:
