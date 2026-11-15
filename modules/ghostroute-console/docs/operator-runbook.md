@@ -179,6 +179,28 @@ The detailed data-pyramid contract is documented in
 
 ## Post-Deploy Collector Guard
 
+### Explicit traffic-history reset
+
+With operator authorization, stop only the Console service and run
+`python3 modules/ghostroute-console/bin/reset-traffic-history /opt/ghostroute-console/data/ghostroute.db --execute`
+from the deployed checkout. The helper checks for a busy database, builds the same
+schema in a temporary SQLite file, preserves non-traffic tables and health/catalog
+snapshots, checks integrity, and atomically replaces the old database. Settings,
+audit, catalog reviews, notification settings and external attribution/operator
+state remain intact. Unknown non-traffic tables are preserved.
+
+Delete matching traffic/DNS/live snapshot JSON files and explicitly approved old
+traffic database backups as part of the same stopped maintenance window; otherwise
+old evidence remains on disk. A new small clean database backup can serve as the
+data baseline for code rollback. Removing old traffic backups intentionally ends
+recovery of that deleted history; retain the reviewed image/source/configuration.
+Always restart Console, including after a failed reset, and verify API health and
+channel observations after collection. This procedure does not reset router
+counters, so fresh snapshots can again show cumulative current-day usage.
+
+Offline verification:
+`python3 modules/ghostroute-console/tests/test-reset-traffic-history.py`.
+
 Root `./deploy.sh` updates the router/runtime side of the repository. Console
 container releases use the module VPS playbook:
 

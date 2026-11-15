@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Replace Console SQLite with the same schema and preserved non-traffic state.
+
+Stop only Console before running. Router counters and routing are never touched.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import sqlite3
+
+TRAFFIC_TABLES = {
+    'normalized_devices', 'normalized_flows', 'normalized_dns', 'traffic_facts',
+    'router_traffic_rollups', 'traffic_clients', 'traffic_dns_links',
+    'traffic_attribution_gaps', 'hourly_traffic', 'dns_query_log', 'flow_sessions',
+    'route_decisions', 'events', 'live_cursors', 'filter_decisions',
+    'device_inventory', 'destination_enrichment', 'decision_candidates',
+    'client_route_evidence_defects', 'traffic_window_snapshots',
+    'top_clients_window', 'top_destinations_window', 'read_model_state',
+    'aggregate_state', 'console_page_summaries',
+}
+TRAFFIC_PREFIXES = ('client_traffic_', 'client_destination_', 'dns_log_')
+TRAFFIC_SNAPSHOTS = ('traffic', 'traffic_summary', 'traffic_facts', 'traffic_evidence',
+                     'router_rollups', 'dns', 'live')
+
+
+def quote(name):
+    return '"' + name.replace('"', '""') + '"'
+
+
+def reset(database):
+    database = Path(database).resolve(strict=True)
+    temporary = database.with_name(database.name + '.traffic-reset.tmp')
+    if temporary.exists():
+        raise RuntimeError('Temporary reset database already exists; inspect it first')
+    before = database.stat()
+    source = sqlite3.connect(str(database), timeout=1)
+    target = None
+    try:
+        if source.execute('pragma wal_checkpoint(truncate)').fetchone()[0] != 0:
+            raise RuntimeError('Database is busy; stop Console before resetting traffic')
+        source.execute('begin immediate')
+        schema = source.execute("select type,name,sql from sqlite_master where sql is not null and name not like 'sqlite_%' order by case type when 'table' then 0 when 'index' then 1 else 2 end").fetchall()
+        target = sqlite3.connect(str(temporary))
+        tables = [name for kind, name, _ in schema if kind == 'table']
+        for kind, _, sql in schema:
+            if kind == 'table':
+                target.execute(sql)
+        preserved = {}
+        cleared = []
+        for name in tables:
+            if name in TRAFFIC_TABLES or name.startswith(TRAFFIC_PREFIXES):
+                cleared.append(name)
+                continue
+            sql = 'select * from ' + quote(name)
+            parameters = ()
+            if name == 'snapshots':
+                sql += ' where type not in (' + ','.join('?' for _ in TRAFFIC_SNAPSHOTS) + ')'
+                parameters = TRAFFIC_SNAPSHOTS
+            cursor = source.execute(sql, parameters)
+            placeholders = ','.join('?' for _ in cursor.description)
+            count = 0
+            while rows := cursor.fetchmany(1000):
+                target.executemany('insert into ' + quote(name) + ' values (' + placeholders + ')', rows)
+                count += len(rows)
+            preserved[name] = count
+        for kind, _, sql in schema:
+            if kind != 'table':
+                target.execute(sql)
+        target.commit()
+        if target.execute('pragma integrity_check').fetchone()[0] != 'ok':
+            raise RuntimeError('Reset database integrity check failed')
+        target.close()
+        target = None
+        source.rollback()
+        source.close()
+        source = None
+        os.chmod(temporary, before.st_mode & 0o777)
+        os.chown(temporary, before.st_uid, before.st_gid)
+        os.replace(temporary, database)
+        for suffix in ('-wal', '-shm'):
+            database.with_name(database.name + suffix).unlink(missing_ok=True)
+        return {'cleared_tables': cleared, 'preserved_rows': preserved,
+                'bytes_before': before.st_size, 'bytes_after': database.stat().st_size}
+    finally:
+        if target:
+            target.close()
+        if source:
+            source.close()
+        temporary.unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('database', type=Path)
+    parser.add_argument('--execute', action='store_true', required=True)
+    args = parser.parse_args()
+    print(json.dumps(reset(args.database)))
