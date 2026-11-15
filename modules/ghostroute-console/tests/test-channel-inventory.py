@@ -19,7 +19,7 @@ class InventoryTest(unittest.TestCase):
                 {'name': 'lab-client', 'password': 'fictional-secret'},
                 {'name': 'lab-probe', 'password': 'fictional-probe'}]}),
                 ('channel-snell', 'settings.private.json', {'slots': [
-                    {'psk': 'fictional-inner', 'shadowtls_password': 'fictional-outer', 'port': 12345}]})]
+                    {'psk': 'fictional-inner', 'shadowtls_password': 'fictional-outer', 'port': '<listener>'}]})]
             originals = {}
             for folder, filename, value in values:
                 source = root / folder / filename
@@ -30,7 +30,7 @@ class InventoryTest(unittest.TestCase):
             self.assertEqual([row['channel'] for row in rows], ['anyT', 'Snell'])
             self.assertTrue(all(row['status'] == 'unknown' for row in rows))
             self.assertNotIn('fictional', json.dumps(rows))
-            self.assertNotIn('12345', json.dumps(rows))
+            self.assertNotIn('<listener>', json.dumps(rows))
             for source, original in originals.items():
                 self.assertEqual(source.read_bytes(), original)
 

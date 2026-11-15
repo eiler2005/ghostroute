@@ -51,6 +51,12 @@
       - /api/flows?pageSize=5
       - /api/clients
   tasks:
+    - name: Freeze release metadata for consistent rollback identifiers
+      ansible.builtin.set_fact:
+        console_build_commit: "{{ console_build_commit }}"
+        console_build_at: "{{ console_build_at }}"
+        console_rollback_tag: "{{ console_rollback_tag }}"
+
     - name: Create Console runtime directories
       ansible.builtin.file:
         path: "{{ item.path }}"
@@ -172,6 +178,10 @@
         if [ -f "{{ console_root }}/data/ghostroute.db" ]; then
           python3 - "$backup/ghostroute.db" <<'PY'
         import sqlite3, sys
+        import pathlib, shutil
+        database = pathlib.Path('{{ console_root }}/data/ghostroute.db')
+        if shutil.disk_usage(pathlib.Path(sys.argv[1]).parent).free < database.stat().st_size + 1073741824:
+            raise SystemExit('Insufficient free disk for a consistent Console rollback database plus reserve')
         source = sqlite3.connect('file:{{ console_root }}/data/ghostroute.db?mode=ro', uri=True, timeout=30)
         target = sqlite3.connect(sys.argv[1])
         with target:
@@ -183,7 +193,12 @@
         for file in policy-snapshot.local.json device-attribution.json device-attribution.local.json device-aliases.json; do
           if [ -f "{{ console_root }}/data/$file" ]; then cp -p "{{ console_root }}/data/$file" "$backup/$file"; fi
         done
+        if [ -f "{{ console_root }}/repo/modules/ghostroute-console/vps/.env" ]; then
+          cp -p "{{ console_root }}/repo/modules/ghostroute-console/vps/.env" "$backup/previous.env"
+        fi
         printf '%s\n' "{{ console_rollback_tag }}" > "$backup/image-tag"
+      args:
+        creates: "{{ console_root }}/rollback/{{ console_build_at | regex_replace('[^0-9]', '') }}/image-tag"
       changed_when: false
 
     - name: Sync repo sources without secrets or generated artifacts

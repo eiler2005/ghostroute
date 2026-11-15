@@ -67,6 +67,7 @@
           testDir: "./tests/e2e",
           outputDir: "./test-results",
           timeout: 120_000,
+          workers: 1,
           reporter: [["line"]],
           use: {
             baseURL: "{{ ghostroute_console_perf_base_url }}",
