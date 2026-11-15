@@ -4086,7 +4086,7 @@ export function buildCatalogModel(filters: ConsoleFilters = {}) {
 }
 
 function buildCatalogModelUncached(filters: ConsoleFilters = {}) {
-  const domains = cachedLatestByType().domains?.payload || {};
+  const domains = cachedLatestByTypes(["domains"]).domains?.payload || {};
   const normalizedCatalog = normalizedRows("normalized_catalog").slice(0, 500).map((row: any) => ({
     domain: row.domain,
     type: row.entry_type,

@@ -1486,7 +1486,7 @@ export function latestSnapshotMetas() {
 }
 
 function latestSnapshotIdsByType() {
-  return latestSnapshots()
+  return latestSnapshotMetas()
     .filter((row) => row.id > 0)
     .map((row) => row.id);
 }

@@ -18,6 +18,12 @@ warm-up hook. These are initial-load measurements in sequence, with subsequent
 navigation measured separately; they are not a guarantee of uniformly cold caches.
 Budgets remain unchanged. Failed live runner workspaces retain private traces.
 
+Production-sized evidence exposed a separate request-path issue: normalized-row
+snapshot ID lookup loaded full snapshot payloads repeatedly. It now reads metadata
+only; Catalog requests only the domains payload. A regression test rejects the
+full-payload dependency in identifier lookup. Prepared traffic data and the
+accounting contract are unchanged by this repair.
+
 ```mermaid
 flowchart LR
   Bundles[Existing private profile bundles] --> Export[Symbolic slot exporter]
