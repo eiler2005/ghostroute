@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildHealthModel } from "@/lib/server/selectors/health";
+import { buildHealthModel, getChannelHealthRows } from "@/lib/server/selectors/health";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
@@ -12,5 +12,6 @@ export async function GET() {
     snapshots: Object.values(model.snapshots).filter(Boolean).length,
     freshness_minutes: model.freshnessMinutes,
     runtime: model.runtime,
+    channels: getChannelHealthRows(),
   });
 }

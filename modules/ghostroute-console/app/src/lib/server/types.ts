@@ -5,6 +5,7 @@ export type SnapshotType =
   | "traffic_evidence"
   | "router_rollups"
   | "health"
+  | "channel_health"
   | "leaks"
   | "domains"
   | "dns"

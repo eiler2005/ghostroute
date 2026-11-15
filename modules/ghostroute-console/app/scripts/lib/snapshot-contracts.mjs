@@ -14,6 +14,7 @@ const common = z.object({
 }).passthrough();
 
 const schemas = {
+  channel_health: common.extend({ channels: z.array(z.record(z.string(), z.unknown())) }),
   traffic: common.extend({
     totals: z.record(z.string(), z.unknown()).optional(),
     devices: z.array(z.unknown()).optional(),

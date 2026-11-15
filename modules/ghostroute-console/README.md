@@ -45,6 +45,8 @@ Channel identity includes D, anyT (AnyTLS), and Snell. Settings exposes symbolic
 profile inventory with production/experimental lifecycle labels on desktop and
 mobile. Inventory is distinct from live health and byte-accounting coverage;
 missing channel evidence must not imply zero traffic or a healthy service.
+Health Center and raw mobile Health include runtime cards for D, anyT and Snell,
+with observation time and explicit application-probe coverage.
 See [channel observability and release boundaries](docs/channel-observability-plan.md).
 
 GhostRoute Console is the read-only GUI for the existing GhostRoute operational

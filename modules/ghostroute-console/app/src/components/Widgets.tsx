@@ -1,3 +1,5 @@
+import { channelDescriptor } from "@/lib/channels.mjs";
+
 export function bytes(value: number) {
   if (!value) return "0 B";
   if (value >= 1024 ** 4) return `${(value / 1024 ** 4).toFixed(2)} TB`;
@@ -62,7 +64,8 @@ export function RouteBadge({ value }: { value?: string }) {
 export function ChannelBadge({ value }: { value?: string }) {
   const channel = String(value || "Unknown");
   const slug = channel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
-  return <span className={`badge channel-badge channel-${slug}`}>{channel}</span>;
+  const descriptor = channelDescriptor(channel);
+  return <span className={`badge channel-badge channel-${slug}`} title={descriptor.type === "unknown" ? channel : `${descriptor.type} · ${descriptor.lifecycle}`}>{channel}</span>;
 }
 
 export function EmptyState({ title, detail = "No rows match the current prepared data window and filters." }: { title: string; detail?: string }) {

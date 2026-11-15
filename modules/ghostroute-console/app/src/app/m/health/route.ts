@@ -1,4 +1,4 @@
-import { getConsolePageSummary } from "@/lib/server/selectors/health";
+import { getChannelHealthRows, getConsolePageSummary } from "@/lib/server/selectors/health";
 
 export const dynamic = "force-dynamic";
 
@@ -245,6 +245,11 @@ export async function GET(request: Request) {
       ${!summary ? `<section class="card"><div class="empty">No prepared health summary yet.</div></section>` : ""}
       <section class="cards" aria-label="Health status summary">
         ${statusCards.map((card: Record<string, any>) => `<article class="card tone-${statusTone(card.status)}"><span class="muted">${escapeHtml(card.label || "Status")}</span><h2>${escapeHtml(card.status || "UNKNOWN")}</h2><p>${escapeHtml(card.detail || "not observed")}</p></article>`).join("")}
+      </section>
+      <section class="card" aria-label="Channel health">
+        <h2>Channel health</h2>
+        <p>Runtime observations; application checks and traffic coverage are separate.</p>
+        ${getChannelHealthRows().map((row: any) => `<article class="row tone-${statusTone(row.status)}" data-channel="${escapeHtml(row.channel)}"><div class="row-head"><strong>${escapeHtml(row.label)}</strong><span>${escapeHtml(row.status)}</span></div><p>${escapeHtml(row.protocol)} · ${escapeHtml(row.lifecycle)} · ${row.profiles} configured profiles</p><p>${escapeHtml(row.runtime)}</p><p>${escapeHtml(row.application)}</p><p>${escapeHtml(row.coverage)}</p><small>Observed: ${escapeHtml(row.generated_at ? shortDateTime(row.generated_at) : "not observed")}</small></article>`).join("")}
       </section>
       <section class="card">
         <div class="card-title"><h2>Alarm Center</h2><span class="muted">${filteredAlarms.length} ${escapeHtml(status)} alarms</span></div>

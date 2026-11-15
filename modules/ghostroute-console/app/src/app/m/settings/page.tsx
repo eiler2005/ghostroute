@@ -79,7 +79,7 @@ export default async function MobileSettingsPage({ searchParams }: { searchParam
               <div className="mobile-row" key={row.id || `${row.channel}:${row.profile}`}>
                 <span>
                   <strong>{row.label || row.profile}</strong>
-                  <small>{row.profile_type || "profile"} · {row.lifecycle || "unknown"} · {row.outbound || "managed split"}</small>
+                  <small>{row.profile_type || "profile"} · {row.lifecycle || "unknown"} · {row.status || "unknown"} · {row.outbound || "managed split"}</small>
                 </span>
                 <span className="mobile-row-meta">
                   <ChannelBadge value={`Channel ${row.channel || "A"}`} />

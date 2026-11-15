@@ -1938,6 +1938,8 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_ip_enrichment_cache_prefix on ip_enrichment_cache(prefix_cidr);
     create index if not exists idx_ip_prefix_catalog_v4_range on ip_prefix_catalog(range_start_u32, range_end_u32);
     create index if not exists idx_decision_candidates_status on decision_candidates(status, updated_at_utc desc);
+      create index if not exists idx_decision_candidates_updated on decision_candidates(updated_at_utc desc);
+      create index if not exists idx_destination_enrichment_last_seen on destination_enrichment(last_seen desc);
     create index if not exists idx_decision_candidates_destination on decision_candidates(destination_key, client_key, updated_at_utc desc);
     create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
     create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);

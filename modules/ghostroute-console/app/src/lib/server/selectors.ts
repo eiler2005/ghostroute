@@ -1,4 +1,5 @@
 import { explicitAccessChannel } from "../channels.mjs";
+import { channelHealthRows } from "../channel-health.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -4063,7 +4064,7 @@ export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record
 function buildLiveModelUncached(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
   const dnsQueries = listDnsQueryLog({ page: 1, pageSize: 12, filters: { ...filters, trafficClass: "all" } }).rows;
   const devices = listClientInventory({ page: 1, pageSize: 10, filters }).rows;
-  return buildShellModel(filters, { flows, devices, dnsQueries });
+  return buildLightweightShellModel(filters, { flows, devices, dnsQueries });
 }
 
 export function buildClientsModel(filters: ConsoleFilters = {}, devices: Array<Record<string, any>> = [], flows: Array<Record<string, any>> = []): ConsoleModel {
@@ -4501,6 +4502,11 @@ function readRoutingPolicySnapshot() {
       warnings: missing ? [] : [`policy snapshot ignored: ${error?.message || "invalid json"}`],
     });
   }
+}
+
+export function getChannelHealthRows() {
+  const snapshot = cachedLatestByTypes(["channel_health"]).channel_health?.payload;
+  return channelHealthRows(readRoutingPolicySnapshot(), snapshot);
 }
 
 function buildSettingsInventory(model: ConsoleModel) {
@@ -4970,8 +4976,8 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       });
     }).filter((row): row is Record<string, any> => Boolean(row))
     : [];
-  const inventory = mergeKnownDevices(knownDeviceRows(2000), false);
-  const currentRows = deviceDeltaRowsForPeriod(period);
+  const inventory = preparedRows.length ? [] : mergeKnownDevices(knownDeviceRows(2000), false);
+  const currentRows = preparedRows.length ? [] : deviceDeltaRowsForPeriod(period);
   const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));
   const seen = new Set<string>();
   const rows: Array<Record<string, any>> = inventory.map((row) => {

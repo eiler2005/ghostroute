@@ -621,3 +621,14 @@ test("new channel inventory stays distinct on desktop and mobile", async ({ page
   await expect(page.getByText(/experimental/).first()).toBeVisible();
   await expect(page.getByText(/inventory only/i).first()).toBeVisible();
 });
+
+test("channel health distinguishes runtime evidence from application acceptance", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/health" : "/health");
+  await expect(page.getByRole("heading", { name: "Channel health", exact: true })).toBeVisible();
+  for (const [channel, status] of [["D", "DISABLED"], ["anyT", "OK"], ["Snell", "WARN"]]) {
+    const card = page.locator(`[data-channel="${channel}"]`);
+    await expect(card).toContainText(status);
+    await expect(card).toContainText("Application probe not observed");
+    await expect(card).toContainText("Per-profile traffic coverage not established");
+  }
+});

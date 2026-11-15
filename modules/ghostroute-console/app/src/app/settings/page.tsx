@@ -116,7 +116,7 @@ function RoutingPolicySection({ policy }: { policy: Record<string, any> }) {
                 <td>{row.profile_type || "profile"} · {row.lifecycle || "unknown"}</td>
                 <td><PolicyBadge value={row.policy} /></td>
                 <td><StatusBadge value={row.status || "unknown"} /></td>
-                <td><ReadonlyToggle on={Boolean(row.profile_enabled)} label="Profile enabled" /></td>
+                <td>{["enabled", "disabled"].includes(row.status) ? <ReadonlyToggle on={Boolean(row.profile_enabled)} label="Profile enabled" /> : <span>Not observed</span>}</td>
                 <td>
                   {row.full_vps_supported ? (
                     <ReadonlyToggle on={Boolean(row.full_vps)} label="Profile full-VPS" />

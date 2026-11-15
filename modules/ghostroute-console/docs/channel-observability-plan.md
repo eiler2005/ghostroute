@@ -24,6 +24,19 @@ only; Catalog requests only the domains payload. A regression test rejects the
 full-payload dependency in identifier lookup. Prepared traffic data and the
 accounting contract are unchanged by this repair.
 
+Further profiling exposed writer-lock waits from repeated migration-marker
+inserts and history sorting without a time index. Existing schema versions are
+now checked before insertion. Additive time indexes serve recent intelligence
+lists. Regression tests cover a concurrent SQLite writer and indexed query plans.
+On an existing large database, prepare new indexes while Console is stopped;
+restart Console in an unconditional recovery step. This is a Console maintenance
+operation and does not stop channel processes or delete traffic history.
+
+When prepared client windows exist, Clients uses their current counters instead
+of rebuilding raw device deltas on every request. Historical rows still enrich
+inactive identity and channel history. Live uses the lightweight prepared shell
+while retaining its bounded client, DNS and flow selectors.
+
 ```mermaid
 flowchart LR
   Bundles[Existing private profile bundles] --> Export[Symbolic slot exporter]
@@ -32,13 +45,29 @@ flowchart LR
   Facts[Module-owned traffic and health evidence] --> Identity[Shared channel identity]
   Inventory --> Settings[Desktop and mobile Settings]
   Identity --> Views[Traffic, Clients and Live consumers]
+  Observer[Read-only channel process observer] --> Health[Desktop and raw mobile channel health]
   Settings --> Coverage[Explicit inventory and coverage labels]
   Views --> Coverage
 ```
 
 Per-process anyT/Snell traffic collection, per-profile byte accounting and new
-authenticated health adapters remain source-module work in step 3 below. This
+authenticated application probes remain source-module work in step 3 below. This
 slice does not claim that existing main-process logs cover isolated processes.
+
+Health Center and raw mobile Health now include D, anyT and Snell cards sourced
+from the additive `channel_health` snapshot. The Health Monitor's
+`channel-health-report --json` reads process command lines, owned PID files,
+enablement and policy freshness markers. It does not invoke controllers, start
+probes, read credential values, or modify routing/runtime state. Full collection
+refreshes this small snapshot independently; evidence older than 75 minutes is
+marked stale. Process health does not imply authenticated application acceptance.
+
+The observer uses the existing service credential and exact-body router gate.
+After its offline tests and gate tests pass, the explicitly authorized
+`vps/refresh-channel-observer.yml` refreshes only that fixed policy from the trusted
+control checkout, preserving `policy.before-channel-health.json` for rollback.
+No keys, services, firewall or DNS settings are changed by this playbook. Restore
+that saved policy and the previous collector source together to undo the adapter.
 
 ### Rollback for the visibility slice
 

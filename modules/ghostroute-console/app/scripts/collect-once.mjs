@@ -33,6 +33,7 @@ if (!lockRelease) {
 let db = null;
 
 const commands = [
+  ["channel_health", "modules/ghostroute-health-monitor/bin/channel-health-report", ["--json"], { retries: 1 }],
   ["traffic_summary", "modules/traffic-observatory/bin/traffic-summary", ["--json", "today"]],
   ["router_rollups", "modules/traffic-observatory/bin/traffic-rollup-export", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"], { allowFailure: true, retries: 1 }],
   ["traffic_evidence", "modules/traffic-observatory/bin/traffic-evidence", ["--json", process.env.GHOSTROUTE_CONSOLE_PERIOD || "today"], { allowFailure: true, retries: 1 }],

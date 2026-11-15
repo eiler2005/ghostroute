@@ -1,7 +1,7 @@
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { AlarmActions } from "@/components/AlarmActions";
 import { EmptyState, RawEvidence, shortDateTime, StatusBadge } from "@/components/Widgets";
-import { getConsolePageSummary, listAlarmEvents } from "@/lib/server/selectors/health";
+import { getChannelHealthRows, getConsolePageSummary, listAlarmEvents } from "@/lib/server/selectors/health";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 
@@ -62,6 +62,23 @@ export default async function HealthPage({ searchParams }: { searchParams?: Sear
           </section>
         ))}
       </div>
+      <section className="card" style={{ marginBottom: 14 }}>
+        <h2>Channel health</h2>
+        <p>Runtime observations for the selected-client lanes. Application checks and traffic coverage are separate.</p>
+        <div className="grid three">
+          {getChannelHealthRows().map((row: any) => (
+            <section key={row.channel} data-channel={row.channel}>
+              <h3>{row.label}</h3>
+              <StatusBadge value={row.status} />
+              <p>{row.protocol} · {row.lifecycle} · {row.profiles} configured profiles</p>
+              <p>{row.runtime}</p>
+              <p>{row.application}</p>
+              <p>{row.coverage}</p>
+              <small>Observed: {row.generated_at ? shortDateTime(row.generated_at) : "not observed"}</small>
+            </section>
+          ))}
+        </div>
+      </section>
       <section className="card" style={{ marginBottom: 14 }}>
         <div className="toolbar">
           <div>

@@ -60,6 +60,11 @@ shapes live next to each `route.ts`.
 
 ## Related
 
+`GET /api/health` includes additive `channels` rows for D, anyT and Snell. Each
+row separates runtime status, lifecycle, profile inventory, observation time,
+application-probe availability and traffic coverage. `ok: true` means the Console
+API answered; consult individual channel statuses for runtime observations.
+
 - [database-schema.md](database-schema.md) — tables these endpoints read.
 - [operator-runbook.md](operator-runbook.md) — operator action guardrails.
 - [ghostroute-console-architecture.md](../../../docs/ghostroute-console-architecture.md) — Console trust model and data flow.

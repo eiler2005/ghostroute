@@ -1,0 +1,90 @@
+#!/bin/bash
+# Read-only observations: never invoke channel controllers or authentication probes.
+set -euo pipefail
+[ "${1:-}" = --json ] && [ "$#" = 1 ] || { echo 'Usage: channel-health-report --json' >&2; exit 2; }
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "$PROJECT_ROOT/modules/shared/lib/router-health-common.sh"
+router_health_load_env
+router_ssh 'sh -s' <<'REMOTE'
+set -eu
+/opt/bin/python3 -I - <<'PY'
+import datetime
+import hashlib
+import json
+from pathlib import Path
+import time
+
+def argv(pid):
+    try:
+        return Path('/proc/' + str(int(pid)) + '/cmdline').read_bytes().split(b'\0')
+    except (OSError, ValueError):
+        return []
+
+def owned(run, name, expected):
+    try:
+        return argv((run / (name + '.pid')).read_text())[:len(expected)] == [x.encode() for x in expected]
+    except OSError:
+        return False
+
+def current(base):
+    try:
+        return (base / 'policy.source.sha256').read_text().strip() == hashlib.sha256(Path('/opt/etc/sing-box/config.json').read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+def observe():
+    base = Path('/opt/etc/ghostroute-anytls')
+    run = Path('/tmp/ghostroute-anytls')
+    anyt = {'channel': 'anyT', 'installed': (base / 'settings.json').is_file(),
+            'enabled': (base / 'enabled').is_file(),
+            'policy_running': owned(run, 'policy', [str(base / 'sing-box-atls'), 'run', '-c', str(base / 'policy.json')]),
+            'watch_running': owned(run, 'watch', ['/opt/bin/python3', str(base / 'channel-anytls.py'), 'watch']),
+            'policy_current': current(base), 'application_probe': 'not observed'}
+    base = Path('/opt/etc/ghostroute-snell')
+    run = Path('/tmp/ghostroute-snell')
+    watch = owned(run, 'watch', ['/opt/bin/python3', str(base / 'channel-snell.py'), 'watch'])
+    recent = False
+    try:
+        recent = 0 <= time.time() - float((run / 'healthy').read_text()) < 10
+    except (OSError, ValueError):
+        pass
+    engine = any(argv(p.name)[:4] == [str(base / 'sing-box-snell').encode(), b'run', b'-c', str(base / 'policy.json').encode()]
+                 for p in Path('/proc').iterdir() if p.name.isdigit())
+    snell = {'channel': 'Snell', 'installed': (base / 'settings.json').is_file(), 'enabled': None,
+             'policy_running': engine, 'watch_running': watch, 'policy_current': recent,
+             'application_probe': 'not observed'}
+    # D is owned by the main runtime; observe its exact ingress and listener process.
+    d_installed = False
+    try:
+        cfg = json.loads(Path('/opt/etc/sing-box/config.json').read_text())
+        d_installed = any(i.get('tag') == 'channel-d-naiveproxy-socks-in' for i in cfg.get('inbounds', []))
+    except (OSError, ValueError):
+        pass
+    runtime = {}
+    for name in ['/jffs/scripts/ghostroute-runtime.env', '/jffs/scripts/ghostroute-runtime-env']:
+        try:
+            runtime = dict(line.split('=', 1) for line in Path(name).read_text().splitlines() if '=' in line and not line.startswith('#'))
+            runtime = {key: value.strip().strip('"\'') for key, value in runtime.items()}
+            break
+        except OSError:
+            pass
+    binary = runtime.get('GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_BIN', '/opt/bin/caddy-channel-d-naiveproxy')
+    config = runtime.get('GHOSTROUTE_CHANNEL_D_NAIVEPROXY_CADDY_CONFIG', '/opt/etc/caddy/channel-d-naiveproxy/Caddyfile')
+    d_process = any(argv(p.name)[:4] == [binary.encode(), b'run', b'--config', config.encode()]
+                    for p in Path('/proc').iterdir() if p.name.isdigit())
+    d_enabled = runtime.get('GHOSTROUTE_CHANNEL_D_NAIVEPROXY_ENABLED')
+    def main_process(pid):
+        args = argv(pid)
+        return args[:2] == [b'/opt/bin/sing-box', b'run'] and (
+            args[2:4] == [b'-c', b'/opt/etc/sing-box/config.json'] or
+            args[2:6] == [b'-D', b'/opt/var/lib/sing-box', b'-c', b'/opt/etc/sing-box/config.json'])
+    main = any(main_process(p.name) for p in Path('/proc').iterdir() if p.name.isdigit())
+    d = {'channel': 'D', 'installed': d_installed, 'enabled': d_enabled == '1' if d_enabled in ('0', '1') else None,
+         'policy_running': main if d_installed else False, 'ingress_running': d_process, 'watch_running': None, 'policy_current': None,
+         'application_probe': 'not observed'}
+    return {'schema_version': 1, 'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'source': {'command': 'channel-health-report'}, 'confidence': 'exact', 'channels': [d, anyt, snell]}
+
+print(json.dumps(observe()))
+PY
+REMOTE

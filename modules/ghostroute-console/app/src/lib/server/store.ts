@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { recordSchemaVersions } from "../schema-versions.mjs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { dataDir, dbPath, snapshotsDir } from "./paths";
@@ -1320,6 +1321,8 @@ export function getDb() {
       create index if not exists idx_ip_enrichment_cache_prefix on ip_enrichment_cache(prefix_cidr);
       create index if not exists idx_ip_prefix_catalog_v4_range on ip_prefix_catalog(range_start_u32, range_end_u32);
       create index if not exists idx_decision_candidates_status on decision_candidates(status, updated_at_utc desc);
+      create index if not exists idx_decision_candidates_updated on decision_candidates(updated_at_utc desc);
+      create index if not exists idx_destination_enrichment_last_seen on destination_enrichment(last_seen desc);
       create index if not exists idx_decision_candidates_destination on decision_candidates(destination_key, client_key, updated_at_utc desc);
       create index if not exists idx_filter_rules_match on filter_rules(scope, match_kind, match_value);
       create index if not exists idx_filter_rules_enabled on filter_rules(enabled, priority);
@@ -1327,12 +1330,7 @@ export function getDb() {
       create index if not exists idx_filter_decisions_rule on filter_decisions(rule_id, observed_at_utc desc);
       create index if not exists idx_filter_decisions_client on filter_decisions(client_key, observed_at_utc desc);
     `);
-    for (const version of [6, 7, 8, 9, 10, 12, 13, 14, 15, 16]) {
-      db.prepare("insert or ignore into schema_migrations(version, applied_at) values (?, ?)").run(
-        version,
-        new Date().toISOString()
-      );
-    }
+    recordSchemaVersions(db, [6, 7, 8, 9, 10, 12, 13, 14, 15, 16], new Date().toISOString());
   }
   return db;
 }
@@ -1427,6 +1425,7 @@ export function latestSnapshotsForTypes(types: SnapshotType[]): SnapshotRecord[]
 
 function inferType(payload: any, fileName: string): SnapshotType | null {
   const command = String(payload?.source?.command || fileName);
+  if (command.includes("channel-health-report")) return "channel_health";
   if (command.includes("traffic-summary")) return "traffic_summary";
   if (command.includes("traffic-facts")) return "traffic_facts";
   if (command.includes("traffic")) return "traffic";

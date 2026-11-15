@@ -15,6 +15,7 @@ HEALTH_PARAMETERS = {name: PORT for name in (
     'GHOSTROUTE_VPS_DNS_FORWARD_PORT', 'GHOSTROUTE_HOME_REALITY_MSS',
     'GHOSTROUTE_HOME_REALITY_CONNLIMIT')}
 SOURCES = {
+    'modules/ghostroute-health-monitor/bin/channel-health-report': (1, {}),
     'modules/shared/lib/router-health-common.sh': (1, HEALTH_PARAMETERS),
     'modules/traffic-observatory/bin/traffic-summary': (5, {}),
     'modules/traffic-observatory/bin/traffic-evidence': (1, {}),

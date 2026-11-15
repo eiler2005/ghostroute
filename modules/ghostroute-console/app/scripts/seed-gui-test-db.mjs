@@ -257,6 +257,14 @@ function insertSnapshot(db, now, type, offsetMs, payload) {
 
 function seed(db) {
   const now = new Date();
+  insertSnapshot(db, now, "channel_health", 1000, {
+    confidence: "exact", source: { command: "channel-health-report" },
+    channels: [
+      { channel: "D", enabled: false, policy_running: false },
+      { channel: "anyT", installed: true, enabled: true, policy_running: true, watch_running: true, policy_current: true },
+      { channel: "Snell", enabled: null, policy_running: true, watch_running: false, policy_current: false },
+    ],
+  });
   const clients = [
     { key: "test-home-laptop", label: "Test/Home Laptop", ip: "10.10.0.11", channel: "Home Wi-Fi/LAN", type: "MacBook" },
     { key: "test-office-tablet", label: "Test/Office Tablet", ip: "10.10.0.21", channel: "B/Office Direct", type: "iPad" },
@@ -318,7 +326,7 @@ function seed(db) {
         },
       ],
       channel_profiles: [
-        ...["D", "anyT", "Snell"].map(channel => ({ channel, profile: `test-channel-${channel}`, label: `Test/Channel ${channel}`, status: channel === "D" ? "disabled" : "enabled", policy: "managed_split" })),
+        ...["D", "anyT", "Snell"].map(channel => ({ channel, profile: `test-channel-${channel}`, label: `Test/Channel ${channel}`, status: channel === "D" ? "disabled" : channel === "Snell" ? "unknown" : "enabled", policy: "managed_split" })),
         {
           channel: "A",
           profile: "test-channel-a-full",

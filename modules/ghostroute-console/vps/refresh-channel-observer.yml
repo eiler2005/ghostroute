@@ -1,0 +1,31 @@
+---
+- name: Build the reviewed additive channel observer policy
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../bin/build-router-readonly-policy"
+          - "{{ playbook_dir }}/../../../ansible/out/console-router-access/policy.json"
+      changed_when: false
+
+- name: Refresh only the fixed report policy without channel or SSH changes
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../../../ansible/group_vars/all.yml
+    - ../../../ansible/group_vars/routers.yml
+    - ../../../ansible/secrets/stealth.yml
+  tasks:
+    - name: Preserve the previous fixed report policy once
+      ansible.builtin.raw: >-
+        test -f /jffs/addons/ghostroute-console-readonly/policy.before-channel-health.json ||
+        cp -p /jffs/addons/ghostroute-console-readonly/policy.json
+        /jffs/addons/ghostroute-console-readonly/policy.before-channel-health.json
+      changed_when: false
+    - name: Install the locally reviewed report policy
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../ansible/out/console-router-access/policy.json"
+        dest: /jffs/addons/ghostroute-console-readonly/policy.json
+        mode: '0600'
