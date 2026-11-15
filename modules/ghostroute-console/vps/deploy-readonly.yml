@@ -160,7 +160,7 @@
       ansible.builtin.shell: |
         set -eu
         current_image="$(docker inspect ghostroute-console --format '{% raw %}{{ .Image }}{% endraw %}' 2>/dev/null || true)"
-        if [ -n "$current_image" ]; then
+        if [ -n "$current_image" ] && ! docker image inspect "{{ console_rollback_tag }}" >/dev/null 2>&1; then
           docker tag "$current_image" "{{ console_rollback_tag }}"
         fi
       changed_when: false
