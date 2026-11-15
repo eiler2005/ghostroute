@@ -404,6 +404,9 @@ test("clients row selection updates the detail panel", async ({ page, isMobile }
 test("clients expose lane drilldown and route evidence", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop-only client lane panel");
   await page.goto("/clients");
+  await expect(page.getByText("Select a device to inspect details", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Traffic lanes" })).toHaveCount(0);
+  await page.locator(".clients-card tbody tr .row-link").first().click();
   await expect(page.getByRole("heading", { name: "Traffic lanes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Destinations by lane" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Route evidence" })).toBeVisible();

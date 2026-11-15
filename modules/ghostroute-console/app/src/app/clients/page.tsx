@@ -24,7 +24,7 @@ import {
   listAlarmEvents,
   listRouteEvidenceDefects,
 } from "@/lib/server/selectors/clients";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { boundedPageSize, isMobileRequest } from "@/lib/server/mobile";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
@@ -405,11 +405,9 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
     : undefined;
   const selected: Record<string, any> | undefined =
     selectedLookup ||
-    inventoryRows.find((row) => selectedClientParam && matchesClientFilter(row, selectedClientParam)) ||
-    primaryRows[0] ||
-    inventoryRows[0];
+    inventoryRows.find((row) => selectedClientParam && matchesClientFilter(row, selectedClientParam));
   const selectedClientId = selectedClientValue(selected);
-  const model = buildShellModel(filters, { devices: clientsPage.rows });
+  const model = buildLightweightShellModel(filters, { devices: clientsPage.rows });
   const tokens = clientTokens(selected);
   const selectedAlerts = selected ? listAlarmEvents({ page: 1, pageSize: 5, filters: { ...filters, search: selectedClientId } }).rows : [];
   const selectedRoute = selected ? routeFromBytes(selected) : "Unknown";
@@ -621,7 +619,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
             <ConfidenceBadge value={selected?.confidence} />
           </div>
           {!selected ? (
-            <EmptyState title="Select a device after snapshots appear" />
+            <EmptyState title="Select a device to inspect details" />
           ) : (
             <>
               <div className="detail-list">

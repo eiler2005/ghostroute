@@ -33,7 +33,7 @@ export default async function LivePage({ searchParams }: { searchParams?: Search
   const activityPageSize = boundedPageSize(scalar(params.activityPageSize), { desktop: 50, mobile: 10, min: 10, desktopMax: 150, mobileMax: 10 }, mobile);
   const liveEvents = listLiveEvents({ page: eventsPage, pageSize: eventsPageSize, filters });
   const serviceEvents = listLiveEvents({ page: servicePage, pageSize: servicePageSize, filters: { ...filters, trafficClass: "service_background" } });
-  const trafficPage = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 150, maxRows: 4500, filters });
+  const trafficPage = listFlowSessions({ page: activityPage, pageSize: activityPageSize, maxPageSize: 150, maxRows: 4500, filters, fastList: true });
   const model = buildLiveModel(filters, trafficPage.rows);
   const activeFlows = trafficPage.rows;
   const activeClients = model.devices;

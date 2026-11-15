@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { ConfidenceBadge, EmptyState, MetricCard, Pagination, RouteBadge, StatusBadge, timeWithMillis } from "@/components/Widgets";
-import { buildShellModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { listAlarmEvents } from "@/lib/server/selectors/health";
 import { listDnsQueryLog } from "@/lib/server/selectors/dns";
 import { todayOnlyFiltersFromSearchParams, type SearchParams } from "@/lib/server/page";
@@ -70,7 +70,7 @@ export default async function DnsPage({ searchParams }: { searchParams?: SearchP
   const catalogStatus = scalar(params.catalogStatus) || "all";
   const dnsPage = listDnsQueryLog({ page, pageSize, status, catalogStatus, filters: { ...filters, trafficClass: "all" } });
   const alarms = listAlarmEvents({ page: 1, pageSize: 8, filters: { ...filters, search: "" } }).rows;
-  const model = buildShellModel(filters, { dnsQueries: dnsPage.rows, alerts: alarms });
+  const model = buildLightweightShellModel(filters, { dnsQueries: dnsPage.rows, alerts: alarms });
   const totalCount = sumCounts(dnsPage.rows);
   const managedCount = sumCounts(dnsPage.rows.filter((row) => row.catalog_status === "managed"));
   const directCount = sumCounts(dnsPage.rows.filter((row) => dnsRoute(row) === "Direct"));

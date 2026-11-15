@@ -37,6 +37,14 @@ of rebuilding raw device deltas on every request. Historical rows still enrich
 inactive identity and channel history. Live uses the lightweight prepared shell
 while retaining its bounded client, DNS and flow selectors.
 
+Clients initially opens the inventory overview. Selecting a device keeps the
+existing detail panel, lane drilldown and route evidence; the initial overview
+does not prepare an arbitrary first device's expensive history. DNS and Clients
+use the lightweight prepared shell. Live uses the same fast prepared flow-list
+mapping as Traffic, leaving nearby-DNS forensic expansion to detailed evidence.
+The public delivery spec separately verifies authenticated no-port HTTPS with
+real desktop Chromium and iPhone WebKit engines.
+
 ```mermaid
 flowchart LR
   Bundles[Existing private profile bundles] --> Export[Symbolic slot exporter]
