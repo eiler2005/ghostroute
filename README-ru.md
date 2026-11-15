@@ -59,6 +59,12 @@ watchdog'ами и схемами каналов:
 - **Operability & DX** — read-only health-мониторы, recovery-verification,
   детерминированные `deploy.sh`/`verify.sh`, ADR-дисциплина, bilingual-доки.
 
+## Обслуживание и очистка
+
+[Обслуживание и очистка](docs/maintenance-and-retention.md): что можно удалять
+на VPS, какие данные и образы сохранять для отката. История трафика Console
+автоматически ограничивается 90 днями; сырые данные хранятся меньше.
+
 ## Статус каналов
 
 Дополнительный [Snell + ShadowTLS lab](modules/routing-core/docs/channel-snell-lab.md)

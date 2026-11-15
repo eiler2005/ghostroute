@@ -92,6 +92,12 @@ What this project demonstrates, with proof in-repo:
 - **Maintainability & DX** — ADR discipline, bilingual docs, contributor review
   gate, and reproducible local checks (`./tests/run-fast.sh`).
 
+## Maintenance and retention
+
+See [maintenance and retention](docs/maintenance-and-retention.md) for safe VPS
+cleanup, protected rollback/client assets and Console's automatic rolling
+90-day traffic-history ceiling. Raw diagnostics use shorter retention windows.
+
 ## Channel Status
 
 An additive [Snell + ShadowTLS lab](modules/routing-core/docs/channel-snell-lab.md)

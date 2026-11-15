@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { trafficRetentionDays, pruneTrafficHistory } from "./lib/traffic-retention.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -71,7 +72,7 @@ function runReadOnlyCommand(args) {
 
 function days(name, fallback) {
   const parsed = Number(process.env[name] || fallback);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  return trafficRetentionDays(parsed, fallback, 0);
 }
 
 function cutoffIso(retentionDays) {
@@ -116,6 +117,7 @@ try {
     pruneOperationalTables(db);
     rebuildObservabilityReadModels(db);
     rebuildHourlyAggregates(db);
+    pruneTrafficHistory(db, new Date().toISOString());
     const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
     pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
     db.prepare("delete from snapshots where collected_at < ?").run(cutoffIso(rawDays));

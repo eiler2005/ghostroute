@@ -1,4 +1,5 @@
 import { explicitAccessChannel } from "../../src/lib/channels.mjs";
+import { trafficRetentionDays, pruneTrafficHistory } from "./traffic-retention.mjs";
 import crypto from "node:crypto";
 import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
 import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
@@ -3516,15 +3517,15 @@ export function rebuildAllTrafficReadModels(db, options = {}) {
 }
 
 export function pruneOperationalTables(db, now = new Date().toISOString()) {
-  const rawDays = Math.max(1, number(process.env.GHOSTROUTE_RAW_RETENTION_DAYS || 7));
-  const fineAggregateDays = Math.max(1, number(process.env.GHOSTROUTE_FINE_AGGREGATE_RETENTION_DAYS || 8));
-  const aggregateDays = Math.max(31, number(process.env.GHOSTROUTE_AGGREGATE_RETENTION_DAYS || 35));
-  const dailyAggregateDays = Math.max(35, number(process.env.GHOSTROUTE_DAILY_AGGREGATE_RETENTION_DAYS || 400));
-  const dnsFineDays = Math.max(1, number(process.env.GHOSTROUTE_DNS_FINE_RETENTION_DAYS || 1));
-  const dnsDailyDays = Math.max(35, number(process.env.GHOSTROUTE_DNS_DAILY_RETENTION_DAYS || 100));
-  const serviceHours = Math.max(1, number(process.env.GHOSTROUTE_SERVICE_RAW_RETENTION_HOURS || 24));
-  const unclassifiedHours = Math.max(1, number(process.env.GHOSTROUTE_UNCLASSIFIED_RAW_RETENTION_HOURS || 24));
-  const filterDays = Math.max(1, number(process.env.GHOSTROUTE_FILTER_DECISION_RETENTION_DAYS || 30));
+  const rawDays = trafficRetentionDays(process.env.GHOSTROUTE_RAW_RETENTION_DAYS, 7);
+  const fineAggregateDays = trafficRetentionDays(process.env.GHOSTROUTE_FINE_AGGREGATE_RETENTION_DAYS, 8);
+  const aggregateDays = trafficRetentionDays(process.env.GHOSTROUTE_AGGREGATE_RETENTION_DAYS, 35, 31);
+  const dailyAggregateDays = trafficRetentionDays(process.env.GHOSTROUTE_DAILY_AGGREGATE_RETENTION_DAYS, 90, 35);
+  const dnsFineDays = trafficRetentionDays(process.env.GHOSTROUTE_DNS_FINE_RETENTION_DAYS, 1);
+  const dnsDailyDays = trafficRetentionDays(process.env.GHOSTROUTE_DNS_DAILY_RETENTION_DAYS, 90, 35);
+  const serviceHours = Math.min(90 * 24, Math.max(1, number(process.env.GHOSTROUTE_SERVICE_RAW_RETENTION_HOURS || 24)));
+  const unclassifiedHours = Math.min(90 * 24, Math.max(1, number(process.env.GHOSTROUTE_UNCLASSIFIED_RAW_RETENTION_HOURS || 24)));
+  const filterDays = trafficRetentionDays(process.env.GHOSTROUTE_FILTER_DECISION_RETENTION_DAYS, 30);
   const errorDays = Math.max(1, number(process.env.GHOSTROUTE_COLLECTOR_ERROR_RETENTION_DAYS || 14));
   const cutoff = (days) => new Date(Date.parse(now) - days * 86400000).toISOString();
   const cutoffHours = (hours) => new Date(Date.parse(now) - hours * 3600000).toISOString();
@@ -3585,6 +3586,9 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
     db.exec("drop table if exists temp.old_traffic_fact_snapshots");
   }
   result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
+  result.normalized_devices = db.prepare("delete from normalized_devices where collected_at < ?").run(rawCutoff).changes;
+  result.router_traffic_rollups = db.prepare("delete from router_traffic_rollups where collected_at < ?").run(rawCutoff).changes;
+  result.decision_candidates = db.prepare("delete from decision_candidates where applied = 0 and status = 'pending' and updated_at_utc < ?").run(rawCutoff).changes;
       result.normalized_flows += db.prepare("delete from normalized_flows where traffic_class not in ('client', 'personal_cloud') and collected_at < ?").run(serviceCutoff).changes;
   result.normalized_dns += db.prepare("delete from normalized_dns where collected_at < ?").run(rawCutoff).changes;
   result.events += db.prepare("delete from events where occurred_at < ?").run(rawCutoff).changes;
@@ -3602,6 +3606,7 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   result.dns_log_hourly += db.prepare("delete from dns_log_hourly where hour_start_utc < ?").run(cutoff(aggregateDays)).changes;
   result.dns_log_daily += db.prepare("delete from dns_log_daily where day_start_utc < ?").run(cutoff(dnsDailyDays)).changes;
   result.filter_decisions += db.prepare("delete from filter_decisions where observed_at_utc < ?").run(cutoff(filterDays)).changes;
+  result.traffic_history_90d = pruneTrafficHistory(db, now);
   result.payloads_stripped += db.prepare(`
     update snapshots
        set payload_json = ''

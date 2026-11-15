@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { trafficRetentionDays, pruneTrafficHistory } from "./lib/traffic-retention.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -130,7 +131,8 @@ try {
     pruneOperationalTables(db);
     rebuildObservabilityReadModels(db);
     rebuildHourlyAggregates(db);
-    const liveRetentionHours = Math.max(1, Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6));
+    pruneTrafficHistory(db, new Date().toISOString());
+    const liveRetentionHours = trafficRetentionDays(Number(process.env.GHOSTROUTE_LIVE_RAW_RETENTION_HOURS || 6) / 24, 6 / 24, 1 / 24) * 24;
     const pruned = pruneLiveSnapshots(liveRetentionHours);
     console.log(
       `stored live: ${payload.events?.length || 0} events, cursor=${payload.cursor?.next || ""}, pruned=${pruned.files}/${pruned.rows}`

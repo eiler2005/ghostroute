@@ -179,6 +179,10 @@ The detailed data-pyramid contract is documented in
 
 ## Post-Deploy Collector Guard
 
+For routine aging, use the [maintenance and 90-day retention policy](../../../docs/maintenance-and-retention.md).
+The history reset below is an explicit maintenance action, not the routine
+retention mechanism.
+
 ### Explicit traffic-history reset
 
 With operator authorization, stop only the Console service and run
