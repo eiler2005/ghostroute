@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, StatusBadge } from "@/components/Widgets";
-import { buildConsoleModel } from "@/lib/server/selectors/shell";
+import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
+import { listFlowSessions } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { llmSafePayload } from "@/lib/server/redaction";
 
 export default async function ReportsPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const model = buildConsoleModel(filters);
-  const snapshotCount = Object.values(model.snapshots).filter(Boolean).length;
+  const flows = listFlowSessions({ filters, pageSize: 1, fastList: true }).rows;
+  const model = buildLightweightShellModel(filters, { flows });
+  const snapshotCount = Object.values(model.runtime.latestSnapshots).filter(Boolean).length;
   const payload = llmSafePayload(model);
   const sections = Object.keys(payload);
   const sampleFlow = model.flows[0] || {};

@@ -41,6 +41,12 @@ assets are removed. The mobile home links to the full history instead of
 embedding a second long client/history list.
 Its client-traffic KPI uses the same prepared channel totals as the channel list;
 router-scope interface/route counters are not presented as an all-channel total.
+The Reports page renders a bounded one-flow redaction preview from the fast
+list reader and snapshot metadata. Full JSON/Markdown export is built only by
+the explicit export API, rather than as a side effect of opening the page.
+Flow Explorer initially renders 25 rows with its inline detail panel. Pagination
+and explicit larger desktop page sizes remain available; the initial response
+does not render extra rows hidden below the fixed-height workbench.
 
 After local seeded desktop/mobile checks, refresh only these presentation assets
 with `vps/expose-caddy-readonly.yml --tags console_mobile_styles` using the usual

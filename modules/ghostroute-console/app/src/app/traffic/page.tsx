@@ -170,7 +170,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
   const filters = await todayOnlyFiltersFromSearchParams(Promise.resolve(params));
   const diagnostics = scalar(params.diagnostics) === "1";
   const page = Math.max(1, Number.parseInt(scalar(params.page) || "1", 10) || 1);
-  const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 50, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
+  const pageSize = boundedPageSize(scalar(params.pageSize), { desktop: 25, mobile: 25, min: 25, desktopMax: 100, mobileMax: 25 }, mobile);
   const trafficPage = listFlowSessions({ page, pageSize, filters, diagnostics, presentationWeight: true, fastList: !diagnostics });
   const rows = trafficPage.rows;
   const model = diagnostics
