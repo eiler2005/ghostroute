@@ -96,7 +96,8 @@ run_summary "$TMP_DIR/mobile-reset.tsv" "2026-05-17T00:30:00+0300" "$TMP_DIR/res
 ruby -rjson -e '
   payload = JSON.parse(File.read(ARGV[0]))
   total = payload.fetch("totals").fetch("home_reality_ingress_bytes").to_i
-  abort "expected reset current mobile value, got #{total}" unless total == 1_200
+  abort "unproven reset interval counted as measured bytes" unless total == 0
+  abort "missing reset-gap warning" unless payload.fetch("warnings").any? { |row| row["code"] == "counter_reset_gap" }
 ' "$TMP_DIR/reset.json"
 
 TRAFFIC_REPORT_SKIP_REFRESH=1 \

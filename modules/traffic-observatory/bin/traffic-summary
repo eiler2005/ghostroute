@@ -186,6 +186,12 @@ interfaces = counter_delta(interface_rows, 1, [2, 3], single_row_as_current: tru
 lan_raw = counter_delta(lan_rows, 1, [3, 4, 5, 6, 7, 8], single_row_as_current: true)
 mobile_raw = counter_delta(mobile_rows, 1, [3, 4])
 warnings = []
+counter_gaps = [interfaces, lan_raw, mobile_raw].flat_map(&:values).group_by { |row| row[:coverage_status] }
+%w[baseline_missing reset_gap].each do |status|
+  next unless counter_gaps[status]&.any?
+  warnings << { code: "counter_#{status}", sources: counter_gaps[status].length,
+    detail: 'Only observed non-negative adjacent increments are counted; uncovered bytes are unknown.' }
+end
 home_reality_skipped_sources = mobile_raw.values.count do |data|
   next false if data[:row_count].to_i >= 2
 
@@ -283,7 +289,7 @@ puts JSON.pretty_generate({
     client_observed_bytes: observed,
     via_vps_bytes: lan_vps,
     direct_bytes: lan_direct,
-    unknown_bytes: lan_unknown,
+    unknown_bytes: lan_unknown + mobile_total,
     confidence: 'mixed'
   },
   devices: lan_devices.sort_by { |row| [-row[:total_bytes], row[:label]] }.first(25),

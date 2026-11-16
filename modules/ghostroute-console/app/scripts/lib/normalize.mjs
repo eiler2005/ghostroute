@@ -629,7 +629,8 @@ function isOperatorTrafficRow(row, registry = loadDeviceAttributions()) {
   if (number(row?.bytes || row?.total_bytes) <= 0) return false;
   if (!["client", "personal_cloud"].includes(row?.traffic_class)) return false;
   if (String(row?.confidence || "").toLowerCase() === "dns-interest") return false;
-  return registryHasClient(registry, row?.client_key);
+  const key = text(row?.client_key);
+  return registryHasClient(registry, key) || Boolean(key && !/^(unknown|source|router|system|channel\b|a\/home reality|home reality$)/i.test(key));
 }
 
 function insertCollectorWarning(db, type, collectedAt, message, evidence = {}) {
@@ -2074,10 +2075,8 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
     )
     .all(startUtc, endUtc);
   if (hasTrafficFacts) {
-    // v3 facts are already interval deltas, and each snapshot contains the
-    // current evidence window. Read the newest copy and bucket by event time.
-    const latest = sourceRows[sourceRows.length - 1];
-    sourceRows = latest ? sourceRows.filter((row) => row.snapshot_id === latest.snapshot_id) : [];
+    // Snapshots may contain only part of the evidence window. Retain the union
+    // of stable fact identities; repeated observations replace the same fact.
     const uniqueRows = new Map();
     for (const row of sourceRows) {
       const raw = parseJson(row.raw_json, {});
@@ -2672,112 +2671,23 @@ function totalsForFacts(facts) {
   }, { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 });
 }
 
-function zeroTrafficTodayPoints() {
-  return Array.from({ length: 24 }, (_, hour) => ({
-    hour: `${String(hour).padStart(2, "0")}:00`,
-    totalBytes: 0,
-    viaVpsBytes: 0,
-    directBytes: 0,
-    unknownBytes: 0,
-  }));
-}
-
-function reconcileTrafficTodaySeries(points, key, targetBytes, fallbackHour) {
-  const target = number(targetBytes);
-  const source = points.reduce((sum, point) => sum + number(point[key]), 0);
-  if (target <= 0) {
-    for (const point of points) point[key] = 0;
-    return;
-  }
-  if (source <= 0) {
-    const bucket = points.find((point) => point.hour === fallbackHour) || points[points.length - 1];
-    if (bucket) bucket[key] = target;
-    return;
-  }
-  let applied = 0;
-  let bestIndex = 0;
-  for (let index = 0; index < points.length; index += 1) {
-    if (number(points[index][key]) >= number(points[bestIndex][key])) bestIndex = index;
-    const scaled = Math.round((number(points[index][key]) * target) / source);
-    points[index][key] = scaled;
-    applied += scaled;
-  }
-  const drift = target - applied;
-  if (drift !== 0 && points[bestIndex]) points[bestIndex][key] += drift;
-}
-
-function spreadBytesAcrossHours(points, key, targetBytes, throughHour) {
-  const target = number(targetBytes);
-  if (target <= 0) return;
-  const end = Math.max(0, Math.min(points.length - 1, Number.parseInt(String(throughHour || "00:00").slice(0, 2), 10) || 0));
-  const buckets = points.slice(0, end + 1);
-  if (buckets.length === 0) return;
-  const base = Math.floor(target / buckets.length);
-  let applied = 0;
-  for (let index = 0; index < buckets.length; index += 1) {
-    const value = index === buckets.length - 1 ? target - applied : base;
-    buckets[index][key] += value;
-    applied += value;
-  }
-}
-
-function addTrafficTodayDelta(points, delta, hour) {
-  const bucket = points.find((point) => point.hour === hour);
-  if (!bucket) return;
-  bucket.totalBytes += delta.totalBytes;
-  bucket.viaVpsBytes += delta.viaVpsBytes;
-  bucket.directBytes += delta.directBytes;
-  bucket.unknownBytes += delta.unknownBytes;
-}
-
-function spreadInitialTrafficTodaySnapshot(points, current, hour) {
-  spreadBytesAcrossHours(points, "totalBytes", current.totalBytes, hour);
-  spreadBytesAcrossHours(points, "viaVpsBytes", current.viaVpsBytes, hour);
-  spreadBytesAcrossHours(points, "directBytes", current.directBytes, hour);
-  spreadBytesAcrossHours(points, "unknownBytes", current.unknownBytes, hour);
-}
-
 function trafficTodayFromSummarySnapshots(db, now) {
   const today = toMskKey(now, "day");
-  const rows = db
-    .prepare("select collected_at, payload_json from snapshots where type = 'traffic_summary' order by collected_at asc")
-    .all()
-    .filter((row) => toMskKey(row.collected_at, "day") === today);
-  if (rows.length === 0) return [];
-  const points = zeroTrafficTodayPoints();
-  let previous = { totalBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 };
-  let observed = false;
-  let fallbackHour = "00:00";
-  let hasPreviousSnapshot = false;
+  const rows = db.prepare("select collected_at, payload_json from snapshots where type = 'traffic_summary' order by collected_at asc").all();
+  const points = new Map();
   for (const row of rows) {
+    if (toMskKey(row.collected_at, "day") !== today) continue;
     const totals = parseJson(row.payload_json, {})?.totals || {};
-    const current = {
-      totalBytes: number(totals.client_observed_bytes),
-      viaVpsBytes: number(totals.via_vps_bytes),
-      directBytes: number(totals.direct_bytes),
-      unknownBytes: number(totals.unknown_bytes),
-    };
-    const delta = {
-      totalBytes: Math.max(0, current.totalBytes - previous.totalBytes),
-      viaVpsBytes: Math.max(0, current.viaVpsBytes - previous.viaVpsBytes),
-      directBytes: Math.max(0, current.directBytes - previous.directBytes),
-      unknownBytes: Math.max(0, current.unknownBytes - previous.unknownBytes),
-    };
-    fallbackHour = `${toMskKey(row.collected_at, "hour").slice(-2)}:00`;
-    if (!hasPreviousSnapshot && current.totalBytes > 0) {
-      spreadInitialTrafficTodaySnapshot(points, current, fallbackHour);
-    } else {
-      addTrafficTodayDelta(points, delta, fallbackHour);
-    }
-    if (delta.totalBytes > 0 || delta.viaVpsBytes > 0 || delta.directBytes > 0 || delta.unknownBytes > 0) observed = true;
-    previous = current;
-    hasPreviousSnapshot = true;
+    const totalBytes = number(totals.client_observed_bytes);
+    let viaVpsBytes = number(totals.via_vps_bytes);
+    let directBytes = number(totals.direct_bytes);
+    if (viaVpsBytes + directBytes > totalBytes) { viaVpsBytes = 0; directBytes = 0; }
+    const hour = `${toMskKey(row.collected_at, "hour").slice(-2)}:00`;
+    points.set(hour, { hour, totalBytes, viaVpsBytes, directBytes,
+      unknownBytes: totalBytes - viaVpsBytes - directBytes,
+      observedAt: row.collected_at, measurement: "cumulative_day_counter" });
   }
-  reconcileTrafficTodaySeries(points, "totalBytes", previous.totalBytes, fallbackHour);
-  reconcileTrafficTodaySeries(points, "viaVpsBytes", previous.viaVpsBytes, fallbackHour);
-  reconcileTrafficTodaySeries(points, "directBytes", previous.directBytes, fallbackHour);
-  reconcileTrafficTodaySeries(points, "unknownBytes", previous.unknownBytes, fallbackHour);
-  return observed ? points : [];
+  return [...points.values()];
 }
 
 function isoPlusMs(iso, ms) {
@@ -2791,15 +2701,11 @@ function maxIso(...values) {
 function windowAggregateSegments(window, now) {
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
-  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
   const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(now, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
   const segments = [];
-  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
-    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
-  }
-  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  const dailyStart = bounds.startUtc;
   if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
     segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
@@ -3010,6 +2916,7 @@ export function deviceCounterRowsForWindow(db, window, now, registry = loadDevic
       from normalized_devices
      where collected_at >= ?
        and collected_at < ?
+       and snapshot_type = 'traffic_summary'
        and coalesce(total_bytes, 0) > 0
      order by collected_at asc, rowid asc
   `).all(bounds.startUtc, bounds.endUtc);
@@ -3044,8 +2951,12 @@ export function deviceCounterRowsForWindow(db, window, now, registry = loadDevic
     for (const sample of ordered) {
       const first = !previous;
       const deltaTotal = first ? number(sample.total_bytes) : Math.max(0, number(sample.total_bytes) - number(previous?.total_bytes));
-      const deltaVps = first ? number(sample.via_vps_bytes) : Math.max(0, number(sample.via_vps_bytes) - number(previous?.via_vps_bytes));
-      const deltaDirect = first ? number(sample.direct_bytes) : Math.max(0, number(sample.direct_bytes) - number(previous?.direct_bytes));
+      let deltaVps = first ? number(sample.via_vps_bytes) : Math.max(0, number(sample.via_vps_bytes) - number(previous?.via_vps_bytes));
+      let deltaDirect = first ? number(sample.direct_bytes) : Math.max(0, number(sample.direct_bytes) - number(previous?.direct_bytes));
+      if (deltaVps + deltaDirect > deltaTotal) {
+        deltaVps = 0;
+        deltaDirect = 0;
+      }
       const deltaUnknown = Math.max(0, deltaTotal - deltaVps - deltaDirect);
       if (deltaTotal > 0 || deltaVps > 0 || deltaDirect > 0) {
         acc.total_bytes += deltaTotal;
@@ -3187,10 +3098,20 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   if (summaryTrafficToday.length > 0) {
     dashboardAnalytics.trafficToday = {
       points: summaryTrafficToday,
-      totalBytes: summaryTrafficToday.reduce((sum, point) => sum + number(point.totalBytes), 0),
+      totalBytes: summaryTrafficToday[summaryTrafficToday.length - 1].totalBytes,
     };
   }
   dashboardAnalytics.topClients = topClientAnalyticsFromRows(clientRows);
+  dashboardAnalytics.trafficReconciliation = {
+    summaryBytes: authoritative?.observedBytes ?? null,
+    clientEvidenceBytes: clientTotals.observedBytes,
+    destinationEvidenceBytes: destinationAttributed,
+    comparison: "different_measurement_sources",
+    summaryScope: "LAN route counters and profiled Home Reality ingress",
+    evidenceScope: "Prepared client evidence; channel ingress may have different coverage",
+    windowStartUtc: bounds.startUtc,
+    observedAtUtc: now,
+  };
   dashboardAnalytics.topDestinations = buildDashboardAnalyticsFromRows(destinationRows, {
     now,
     period: window,
@@ -3572,19 +3493,19 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
     db.exec("create temp table old_traffic_fact_snapshots(id integer primary key)");
     const latestId = number(latestTrafficFactsSnapshot);
     const oldSnapshotInsert = db.prepare("insert or ignore into old_traffic_fact_snapshots(id) values (?)");
-    for (const row of db.prepare("select id from snapshots where type = 'traffic_facts' and id != ?").all(latestId)) {
+    for (const row of db.prepare("select id from snapshots where type = 'traffic_facts' and id != ? and collected_at < ?").all(latestId, rawCutoff)) {
       oldSnapshotInsert.run(number(row.id));
     }
-    for (const row of db.prepare("select distinct snapshot_id as id from normalized_flows where snapshot_type = 'traffic_facts' and snapshot_id != ?").all(latestId)) {
+    for (const row of db.prepare("select distinct snapshot_id as id from normalized_flows where snapshot_type = 'traffic_facts' and snapshot_id != ? and collected_at < ?").all(latestId, rawCutoff)) {
       oldSnapshotInsert.run(number(row.id));
     }
-    for (const row of db.prepare("select distinct snapshot_id as id from traffic_facts where snapshot_id != ?").all(latestId)) {
+    for (const row of db.prepare("select distinct snapshot_id as id from traffic_facts where snapshot_id != ? and collected_at < ?").all(latestId, rawCutoff)) {
       oldSnapshotInsert.run(number(row.id));
     }
-    for (const row of db.prepare("select distinct snapshot_id as id from traffic_clients where snapshot_id != ?").all(latestId)) {
+    for (const row of db.prepare("select distinct snapshot_id as id from traffic_clients where snapshot_id != ? and collected_at < ?").all(latestId, rawCutoff)) {
       oldSnapshotInsert.run(number(row.id));
     }
-    for (const row of db.prepare("select distinct snapshot_id as id from traffic_dns_links where snapshot_id != ?").all(latestId)) {
+    for (const row of db.prepare("select distinct snapshot_id as id from traffic_dns_links where snapshot_id != ? and collected_at < ?").all(latestId, rawCutoff)) {
       oldSnapshotInsert.run(number(row.id));
     }
     result.traffic_facts += db.prepare("delete from traffic_facts where snapshot_id in (select id from old_traffic_fact_snapshots)").run().changes;

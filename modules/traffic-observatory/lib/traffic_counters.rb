@@ -82,19 +82,25 @@ def counter_delta(rows, key_index, value_indexes, single_row_as_current: false)
     sorted = key_rows.sort_by(&:first)
     first = sorted.first[1]
     last = sorted.last[1]
-    values =
-      if single_row_as_current && sorted.length == 1
-        value_indexes.map { |idx| last[idx].to_i }
-      else
-        value_indexes.map { |idx| delta(last[idx], first[idx]) }
+    # A lone lifetime sample has no window baseline. A decrease does not prove
+    # an epoch restart: count only subsequent non-negative observed increments.
+    resets = 0
+    values = value_indexes.map do |idx|
+      sorted.each_cons(2).sum do |previous, current|
+        difference = current[1][idx].to_i - previous[1][idx].to_i
+        resets += 1 if difference < 0
+        [difference, 0].max
       end
+    end
     result[key] = {
       first_ts: sorted.first[0],
       last_ts: sorted.last[0],
       row_count: sorted.length,
       first: first,
       last: last,
-      values: values
+      values: values,
+      coverage_status: sorted.length < 2 ? 'baseline_missing' : resets > 0 ? 'reset_gap' : 'observed_interval',
+      reset_components: resets
     }
   end
   result

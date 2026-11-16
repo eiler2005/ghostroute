@@ -1,9 +1,55 @@
 # GhostRoute Console Data Pyramid
 
+## Accounting and attribution boundaries
+
+Traffic-active stable profile identities remain eligible for client rankings
+without an operator alias. Missing ownership is a review state, not a reason to
+drop bytes. Router summary, prepared client evidence and destination evidence
+are exposed together with their measurement scopes. They must not be silently
+scaled to a shared total when their coverage differs.
+
+The daily summary chart displays observed cumulative day-counter samples at
+their observation hours. It does not spread an initial sample into earlier
+hours, fill future hours with zero, or rescale historical route components.
+Counter corrections remain visible as changed cumulative observations.
+
+Client site evidence retains original measured and source-estimated byte rows.
+DNS query counts never allocate the unexplained byte remainder. Unexplained
+traffic is a separate residual; excess evidence is flagged as a conflict and
+is not reduced proportionally. The Dashboard coverage panel distinguishes the
+router summary from client and destination evidence.
+
+Calendar-month windows read daily buckets from the beginning of the month and
+use hourly/five-minute buckets for the current day. Weekly buckets that begin
+outside the month cannot represent its initial partial week. Channel History
+uses the selected period and does not treat absent day rows as measured zero.
+
+Channel totals, client rankings within a channel, and daily channel history read
+the total traffic pyramid. Destination-lane rows are used for app evidence only;
+the absence of a destination must not erase measured channel bytes.
+
+Device summary counters and traffic-fact client sums are different sources.
+Only summary samples participate in summary-counter deltas. A conflicting
+incremental route split is left unattributed rather than exceeding the observed
+increment. This does not resolve missing baselines or counter resets; those
+intervals still require coverage-aware accounting.
+
+The source counter reader sums adjacent non-negative increments. One sample
+reports a missing baseline; a decrease reports a reset gap and does not turn
+the new lifetime value into proven window traffic. Summary warnings expose
+these incomplete intervals. An unrecoverable gap is not reconstructed from
+destination popularity or DNS counts.
+
 GhostRoute Console must not rebuild a data warehouse during deploy, restart or
 ordinary UI navigation. Large raw tables are troubleshooting input, not the
 steady-state read path. The steady-state path is a prepared aggregate pyramid
 with small watermarked chunks.
+
+Recent fact snapshots are retained through the bounded raw-retention window.
+A new snapshot may be partial or empty and therefore does not revoke earlier
+observations. Rebuilds deduplicate their union by stable fact identity, with
+the latest observation replacing the same identity. Expired raw evidence still
+follows normal retention; this does not reconstruct already deleted history.
 
 ## Goals
 

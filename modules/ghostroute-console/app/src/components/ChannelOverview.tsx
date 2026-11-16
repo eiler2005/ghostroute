@@ -9,7 +9,7 @@ type App = Traffic & { client: string; label: string; app: string; last_seen: st
 export function ChannelOverview({ traffic, clients, apps, daily, health, period, channel = "all", client = "all", search = "", sort = "traffic", view = "overview" }: { traffic: Traffic[]; clients: Client[]; apps: App[]; daily: Day[]; health: Health[]; period: string; channel?: string; client?: string; search?: string; sort?: string; view?: string }) {
   const channels = Array.from(new Set([...traffic.map(row => row.channel), ...health.map(row => row.label)])).sort();
   const channelClients = clients.filter(row => channel === "all" || row.channel === channel);
-  const chosenClient = channelClients.some(row => row.client === client) ? client : "all";
+  const chosenClient = client;
   const needle = search.trim().toLowerCase();
   const filteredClients = channelClients.filter(row => (chosenClient === "all" || row.client === chosenClient) && (!needle || `${row.label} ${row.client}`.toLowerCase().includes(needle))).sort((a,b) => sort === "name" ? String(a.label).localeCompare(String(b.label)) : sort === "recent" ? String(b.last_seen).localeCompare(String(a.last_seen)) : b.bytes - a.bytes);
   const filteredApps = apps.filter(row => (channel === "all" || row.channel === channel) && (chosenClient === "all" || row.client === chosenClient) && (!needle || `${row.label} ${row.client} ${row.app}`.toLowerCase().includes(needle)));
@@ -25,11 +25,11 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
   return <>
     <section className="card" style={{ marginTop: 14 }}>
       <h2>Channels</h2>
-      <form className="filters" method="get">
+      <form className="filters channel-filters" method="get">
         <input type="hidden" name="view" value={activeView} />
         <label>Period <select name="period" defaultValue={period}><option value="today">Today</option><option value="last7">Last 7 days</option><option value="last30">Last 30 days</option><option value="week">This week</option><option value="month">This month</option></select></label>
         <label>Channel <select name="channel" defaultValue={channel}><option value="all">All channels</option>{channels.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-        <label>Client <select name="client" defaultValue={chosenClient}><option value="all">All clients</option>{channelClients.map(row => <option key={`${row.channel}:${row.client}`} value={row.client}>{row.label || row.client}</option>)}</select></label>
+        <label>Client <select name="client" defaultValue={chosenClient}><option value="all">All clients</option>{chosenClient !== "all" && !channelClients.some(row => row.client === chosenClient) && <option value={chosenClient}>Selected client (no traffic in this period)</option>}{channelClients.map(row => <option key={`${row.channel}:${row.client}`} value={row.client}>{row.label || row.client}</option>)}</select></label>
         <label>Search <input name="search" defaultValue={search} placeholder="Client or app" /></label>
         <label>Sort clients <select name="sort" defaultValue={["traffic", "recent", "name"].includes(sort) ? sort : "traffic"}><option value="traffic">Traffic</option><option value="recent">Recent</option><option value="name">Name</option></select></label>
         <button type="submit">Apply</button><a className="muted-button" href="?">Reset</a>
@@ -40,9 +40,10 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
       {activeView === "overview" && <>
       <h3>Runtime health</h3>
       <p>Runtime status is not an authenticated application test. The runtime cards below cover D, anyT, Snell and Amn; see Health Center for other channel evidence.</p>
-      <div className="grid cards">{filteredHealth.map((row) => <div className="card" key={row.channel}>
+      <div className="channel-health-grid">{filteredHealth.map((row) => <div className="card" key={row.channel}>
         <div className="toolbar"><strong>{row.label}</strong><StatusBadge value={row.status} /></div>
-        <small className="subtle block-detail">{row.runtime} · {row.application}{row.generated_at ? ` · ${shortDateTime(row.generated_at)}` : ""}</small>
+        <p className="subtle">{row.application}</p>
+        <details><summary>Runtime details</summary><small className="subtle block-detail">{row.runtime}{row.generated_at ? ` · ${shortDateTime(row.generated_at)}` : ""}</small></details>
         <a className="muted-button" href={`?${new URLSearchParams({ period, channel: row.label, client: "all", search: "", sort, view: "overview" }).toString()}`}>View channel</a>
       </div>)}</div>
       {!filteredHealth.length && <p>Runtime status is not available in this view; see Health Center.</p>}
@@ -66,9 +67,8 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
     </section>}
     {activeView === "history" && <section className="card" style={{ marginTop: 14 }}>
       <h2>Daily channel history</h2>
-      <p>Last 30 days; earlier records can be incomplete. Intervals are assigned to their end time.</p>
-      {filteredDaily.length ? <div className="detail-list" role="img" aria-label="Daily channel traffic; missing days have no displayed bar">{filteredDaily.slice(0, 30).map(row => <div className="detail-row" key={`chart:${row.day}:${row.channel}`}><span>{row.day} · {row.channel}</span><span style={{ display: "inline-block", minWidth: "2px", width: `${Math.max(1, 100 * row.bytes / Math.max(...filteredDaily.map(item => item.bytes)))}%`, maxWidth: "45%", height: "8px", background: "#58d68d", borderRadius: "4px" }} title={bytes(row.bytes)} /></div>)}</div> : null}
-      {filteredDaily.length ? <div className="detail-list">{filteredDaily.map(row => <div className="detail-row" key={`${row.day}:${row.channel}`}><span>{row.day} · {row.channel}</span><strong>{bytes(row.bytes)}</strong></div>)}</div> : <p>No history observed.</p>}
+      <p>Selected period · Earlier records can be incomplete. Missing days are not necessarily zero. Intervals are assigned to their end time.</p>
+      {filteredDaily.length ? <div className="channel-history">{filteredDaily.map(row => <div className="channel-history-row" key={`chart:${row.day}:${row.channel}`}><span>{row.day} · {row.channel}</span><span className="channel-history-track"><span style={{ width: `${100 * row.bytes / Math.max(...filteredDaily.map(item => item.bytes))}%` }} /></span><strong>{bytes(row.bytes)}</strong></div>)}</div> : <p>No history observed.</p>}
     </section>}
   </>;
 }

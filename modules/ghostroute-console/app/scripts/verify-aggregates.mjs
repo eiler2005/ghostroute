@@ -75,15 +75,11 @@ for (const table of ["client_traffic_by_lane", "client_destination_by_lane", "cl
 function aggregateSegments(window, now) {
   const bounds = mskWindowBounds(window, now);
   const todayStart = mskWindowBounds("today", now).startUtc;
-  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
   const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(now, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
   const segments = [];
-  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
-    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
-  }
-  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  const dailyStart = bounds.startUtc;
   if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
     segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
@@ -222,7 +218,7 @@ for (const window of ["today", "week", "month"]) {
 
 const topClients = db.prepare("select window, rank, client_key, label, bytes from top_clients_window where traffic_class in ('all', 'client', 'personal_cloud')").all();
 const pseudoClient = /^(A\/Home Reality|B\/XHTTP relay|C1?\b|Channel [BC]|Home Reality)$/i;
-const badClients = topClients.filter((row) => number(row.bytes) <= 0 || pseudoClient.test(String(row.label || "")) || !registry.clients[row.client_key]);
+const badClients = topClients.filter((row) => number(row.bytes) <= 0 || pseudoClient.test(String(row.label || "")) || !row.client_key);
 assert.equal(
   badClients.length,
   0,

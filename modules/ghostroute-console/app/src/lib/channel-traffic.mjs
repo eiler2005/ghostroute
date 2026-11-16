@@ -1,16 +1,20 @@
 import { classifyAppFamily, isClientFacingAppFamily } from './app-family.mjs';
 
+function totalSource(db, granularity) {
+  const layer = { '5min':['5min','bucket_start_utc','bucket_msk_key'], hour:['hourly','hour_start_utc','hour_msk_key'], day:['daily','day_start_utc','day_msk_key'], week:['weekly','week_start_utc','week_msk_key'] }[granularity];
+  if (layer && db.prepare("select 1 from sqlite_master where type='table' and name=?").get(`client_traffic_${layer[0]}`)) {
+    return { table:`client_traffic_${layer[0]}`, time:layer[1], day:layer[2], filter:'', args:[] };
+  }
+  return { table:'client_traffic_by_lane', time:'bucket_start_utc', day:'bucket_key', filter:"and bucket_granularity = ? and traffic_lane = 'all'", args:[granularity] };
+}
+
 // The 'all' lane is already the sum of its detailed lanes; never sum both.
 export function channelTrafficFromSegments(db, segments) {
   const totals = new Map();
-  const statement = db.prepare(`
-    select channel, sum(bytes) as bytes from client_traffic_by_lane
-    where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?
-      and traffic_lane = 'all'
-    group by channel
-  `);
   for (const segment of segments) {
-    for (const row of statement.all(segment.granularity, segment.start, segment.end)) {
+    const src = totalSource(db, segment.granularity);
+    const rows = db.prepare(`select channel, sum(bytes) as bytes from ${src.table} where ${src.time} >= ? and ${src.time} < ? ${src.filter} group by channel`).all(segment.start,segment.end,...src.args);
+    for (const row of rows) {
       const channel = String(row.channel || 'Unknown');
       totals.set(channel, (totals.get(channel) || 0) + Number(row.bytes || 0));
     }
@@ -20,38 +24,42 @@ export function channelTrafficFromSegments(db, segments) {
 }
 
 export function channelTrafficHistory(db, start, end, client = 'all') {
+  const src = totalSource(db, 'day');
   const daily = db.prepare(`
-    select bucket_key as day, channel, sum(bytes) as bytes
-      from client_traffic_by_lane
-     where bucket_granularity = 'day' and bucket_start_utc >= ? and bucket_start_utc < ? and traffic_lane = 'all' and (? = 'all' or client_key = ?)
-     group by bucket_key, channel having sum(bytes) > 0 order by bucket_key desc, bytes desc
-  `).all(start, end, client, client);
+    select ${src.day} as day, channel, sum(bytes) as bytes
+      from ${src.table}
+     where ${src.time} >= ? and ${src.time} < ? ${src.filter} and (? = 'all' or client_key = ?)
+     group by ${src.day}, channel having sum(bytes) > 0 order by ${src.day} desc, bytes desc
+  `).all(start, end, ...src.args, client, client);
   const clients = db.prepare(`
     select client_key as client, max(client_label) as label, sum(bytes) as bytes
-      from client_traffic_by_lane
-     where bucket_granularity = 'day' and bucket_start_utc >= ? and bucket_start_utc < ? and traffic_lane = 'all' and client_key != '' and (? = 'all' or client_key = ?)
+      from ${src.table}
+     where ${src.time} >= ? and ${src.time} < ? ${src.filter} and client_key != '' and (? = 'all' or client_key = ?)
      group by client_key having sum(bytes) > 0 order by bytes desc limit 10
-  `).all(start, end, client, client);
+  `).all(start, end, ...src.args, client, client);
   return { daily, clients };
 }
 
 // Combine mutually exclusive pyramid segments; "all" already includes detailed lanes.
 export function channelClientsFromSegments(db, segments) {
   const grouped = new Map();
+  for (const segment of segments) {
+  const src = totalSource(db, segment.granularity);
   const query = db.prepare(`
     select channel, client_key as client, max(client_label) as label,
-           sum(bytes) as bytes, max(last_seen_utc) as last_seen
-      from client_traffic_by_lane
-     where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?
-       and traffic_lane = 'all' and client_key != ''
+           sum(bytes) as bytes, max(${src.table === 'client_traffic_by_lane' ? 'last_seen_utc' : src.time}) as last_seen
+      from ${src.table}
+     where ${src.time} >= ? and ${src.time} < ? ${src.filter}
+       and client_key != ''
      group by channel, client_key having sum(bytes) > 0
   `);
-  for (const segment of segments) for (const row of query.all(segment.granularity, segment.start, segment.end)) {
+  for (const row of query.all(segment.start, segment.end, ...src.args)) {
     const key = JSON.stringify([row.channel, row.client]);
     const current = grouped.get(key) || { ...row, bytes: 0 };
     current.bytes += Number(row.bytes || 0);
     if (String(row.last_seen || '') > String(current.last_seen || '')) current.last_seen = row.last_seen;
     grouped.set(key, current);
+  }
   }
   return [...grouped.values()].sort((a, b) => b.bytes - a.bytes);
 }

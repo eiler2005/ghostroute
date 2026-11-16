@@ -76,7 +76,7 @@ test("dashboard shows traffic analytics in English", async ({ page, isMobile }) 
 test("channel traffic is visible with its coverage context", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Traffic by channel" })).toBeVisible();
-  await expect(page.getByText(/Client (?:traffic )?evidence.*(?:incomplete|estimat)/i)).toBeVisible();
+  await expect(page.locator('p').filter({ hasText: /Client (?:traffic )?evidence.*(?:incomplete|estimat)/i })).toBeVisible();
 });
 
 test("dashboard rankings hide pseudo clients and keep destinations populated", async ({ page, isMobile }) => {
@@ -117,7 +117,8 @@ test("mobile apps uses the same selected-client attribution as desktop", async (
   await expect(selectedApps).toContainText(/(?:MB|GB)/);
   await expect(selectedApps).not.toContainText("No app-family rows");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains" }) });
-  await expect(latestDns).toContainText(/gs-loc.*apple/i);
+  await expect(latestDns).toContainText("youtube.test.invalid");
+  await expect(latestDns).toContainText("Test/iPhone Heavy");
 });
 
 test("apps selected-device byte totals stay aligned for all visible app devices", async ({ page, isMobile }) => {
@@ -157,18 +158,16 @@ test("apps includes large unattributed clients and shows residual app traffic", 
   expect(parseByteText(summary)).toBeGreaterThanOrEqual(2_300_000);
 });
 
-test("client popular sites expose ranked inferred domains instead of IP-only residual", async ({ page, isMobile }) => {
+test("client sites do not manufacture byte-attributed domains from DNS interest", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop-only selected client site panel");
   await page.goto(isMobile ? "/clients?client=test-iphone-heavy&desktop=1" : "/clients?client=test-iphone-heavy");
   const popular = page.locator("section").filter({ has: page.getByRole("heading", { name: "Most popular sites for Test/iPhone Heavy" }) });
   await expect(popular).toBeVisible();
   const rows = popular.locator(".popular-site-row");
-  await expect(rows.nth(9)).toBeVisible();
-  await expect(popular).not.toContainText("IP-only destination");
-  await expect(popular).not.toContainText("Unattributed traffic not mapped to sites");
+  await expect(popular).not.toContainText("dns_inferred");
   const labels = await rows.locator("strong").evaluateAll((nodes) => nodes.map((node) => node.textContent || ""));
   const domainLabels = labels.filter((value) => /\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(value));
-  expect(domainLabels.length).toBeGreaterThanOrEqual(10);
+  expect(domainLabels.length).toBeLessThan(10);
 });
 
 test("Home Reality selected client shows estimated apps and sites without DNS rows", async ({ page, isMobile }) => {

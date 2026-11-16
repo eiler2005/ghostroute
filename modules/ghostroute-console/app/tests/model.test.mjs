@@ -1456,7 +1456,7 @@ test("operational pruning keeps raw tables bounded after prepared windows exist"
   db.close();
 });
 
-test("operational pruning keeps only the latest traffic facts snapshot", () => {
+test("operational pruning retains recent partial fact snapshots until raw retention expires", () => {
   const db = new Database(":memory:");
   ensureConsoleSchema(db);
   const insertSnapshot = db.prepare("insert into snapshots(id, type, collected_at, source, path, payload_json) values (?, 'traffic_facts', ?, 'test', '', '{}')");
@@ -1502,11 +1502,10 @@ test("operational pruning keeps only the latest traffic facts snapshot", () => {
 
   assert.equal(db.prepare("select count(*) as count from traffic_facts").get().count, 2);
   const pruned = pruneOperationalTables(db, "2026-05-12T10:00:00.000Z");
-  assert.equal(pruned.superseded_traffic_fact_snapshots, 1);
-  assert.equal(db.prepare("select group_concat(id) as ids from snapshots where type = 'traffic_facts'").get().ids, "2");
-  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from traffic_facts").get().ids, "2");
-  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from normalized_flows").get().ids, "2");
-  assert.equal(db.prepare("select group_concat(snapshot_id) as ids from flow_sessions").get().ids, "2");
+  assert.equal(pruned.superseded_traffic_fact_snapshots, 0);
+  for (const table of ["traffic_facts", "normalized_flows", "flow_sessions"]) {
+    assert.equal(db.prepare(`select count(distinct snapshot_id) as count from ${table}`).get().count, 2);
+  }
   db.close();
 });
 
@@ -1605,12 +1604,13 @@ test("prepared traffic windows use operator clients and preserve destination top
     rebuildPreparedWindows(db, "2026-05-07T09:00:00Z");
     const preparedDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
     const labels = preparedDashboard.dashboardAnalytics.topClients.map((row) => row.label);
-    assert.deepEqual(labels, ["macbook (Operator MacBook)", "operator-phone (Operator iPhone)"]);
+    assert.deepEqual(labels, ["macbook (Operator MacBook)", "lan-host-99", "operator-phone (Operator iPhone)"]);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients.some((row) => row.bytes <= 0), false);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].bytes, 3400);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].totalBytes, 3400);
     assert.equal(preparedDashboard.dashboardAnalytics.topClients[0].unknownBytes, 0);
-    assert.equal(labels.some((label) => /A\/Home Reality|lan-host-99/.test(label)), false);
+    assert.equal(labels.some((label) => /A\/Home Reality/.test(label)), false);
+    assert.equal(preparedDashboard.dashboardAnalytics.topClients.find(row => row.label === "lan-host-99").bytes, 900);
     assert.equal(preparedDashboard.dashboardAnalytics.topDestinations[0].label, "large-download.example");
     assert.equal(db.prepare("select client_key from client_destination_traffic_5min where destination_key = 'torrent.example'").get().client_key, "macbook");
     assert.equal(db.prepare("select client_key from client_destination_traffic_5min where destination_key = 'large-download.example'").get().client_key, "macbook");
@@ -1964,9 +1964,9 @@ test("prepared dashboard all traffic totals prefer authoritative router summary"
     assert.equal(allDashboard.totals.directBytes, 500_000);
     assert.equal(clientDashboard.totals.observedBytes, 100_000);
     assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "00:00").totalBytes, 200_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 200_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "04:00").totalBytes, 1_200_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "00:00"), undefined);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 800_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "04:00").totalBytes, 2_000_000);
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;
@@ -2009,9 +2009,11 @@ test("prepared dashboard traffic chart reconciles non-monotonic summary snapshot
     const points = allDashboard.dashboardAnalytics.trafficToday.points;
     assert.equal(allDashboard.totals.observedBytes, 2_000_000);
     assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
-    assert.equal(points.reduce((sum, row) => sum + row.totalBytes, 0), 2_000_000);
-    assert.equal(points.reduce((sum, row) => sum + row.viaVpsBytes, 0), 1_500_000);
-    assert.equal(points.reduce((sum, row) => sum + row.directBytes, 0), 500_000);
+    assert.equal(points.at(-1).totalBytes, 2_000_000);
+    assert.equal(points.at(-1).viaVpsBytes, 1_500_000);
+    assert.equal(points.at(-1).directBytes, 500_000);
+    for (const point of points) assert.equal(point.totalBytes, point.viaVpsBytes + point.directBytes + point.unknownBytes);
+    assert.equal(points.length, 3);
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;

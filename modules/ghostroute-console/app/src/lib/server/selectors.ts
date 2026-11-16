@@ -174,15 +174,11 @@ function windowAggregateSegmentsForSelector(window = "today", now = new Date()) 
   const rollingDays = window === "last7" ? 7 : window === "last30" ? 30 : 0;
   const bounds = rollingDays ? { ...baseBounds, startUtc: rollingMskDayStart(now, rollingDays) } : baseBounds;
   const todayStart = mskWindowBounds("today", now).startUtc;
-  const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, Number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
   const freshStart = maxIso(todayStart, bucketStartUtc(isoMinusHours(nowIso, freshHours), "hour"));
   const endExclusive = isoPlusMs(bounds.endUtc, 1);
   const segments: Array<{ layer: "weekly" | "daily" | "hourly" | "5min"; start: string; end: string }> = [];
-  if (window === "month" && Date.parse(bounds.startUtc) < Date.parse(weekStart)) {
-    segments.push({ layer: "weekly", start: bounds.startUtc, end: weekStart });
-  }
-  const dailyStart = window === "month" ? maxIso(bounds.startUtc, weekStart) : bounds.startUtc;
+  const dailyStart = bounds.startUtc;
   if (window !== "today" && Date.parse(dailyStart) < Date.parse(todayStart)) {
     segments.push({ layer: "daily", start: dailyStart, end: todayStart });
   }
@@ -1386,7 +1382,7 @@ function matchesTrafficClass(row: Record<string, any>, trafficClass = "client") 
 
 function deviceDeltaRowsForPeriod(period = "today") {
   return cacheGet(`device-deltas:${latestSnapshotVersion()}:${period}`, () => {
-  const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, TRAFFIC_DEVICE_TYPES))
+  const rows = normalizedRowsForIds("normalized_devices", snapshotIdsForDeviceWindow(period, new Set(["traffic_summary"])))
     .map((row: any) => ({
       id: row.device_id,
       device_id: row.device_id,
@@ -1433,8 +1429,12 @@ function deviceDeltaRowsForPeriod(period = "today") {
         if (!latest || Date.parse(sample.collected_at || "") >= Date.parse(latest.collected_at || "")) latest = sample;
         const first = !previous;
         const deltaTotal = first ? Number(sample.total_bytes || 0) : Math.max(0, Number(sample.total_bytes || 0) - Number(previous?.total_bytes || 0));
-        const deltaVps = first ? Number(sample.via_vps_bytes || 0) : Math.max(0, Number(sample.via_vps_bytes || 0) - Number(previous?.via_vps_bytes || 0));
-        const deltaDirect = first ? Number(sample.direct_bytes || 0) : Math.max(0, Number(sample.direct_bytes || 0) - Number(previous?.direct_bytes || 0));
+        let deltaVps = first ? Number(sample.via_vps_bytes || 0) : Math.max(0, Number(sample.via_vps_bytes || 0) - Number(previous?.via_vps_bytes || 0));
+        let deltaDirect = first ? Number(sample.direct_bytes || 0) : Math.max(0, Number(sample.direct_bytes || 0) - Number(previous?.direct_bytes || 0));
+        if (deltaVps + deltaDirect > deltaTotal) {
+          deltaVps = 0;
+          deltaDirect = 0;
+        }
         if (deltaTotal > 0 || deltaVps > 0 || deltaDirect > 0) {
           acc.total_bytes += deltaTotal;
           acc.via_vps_bytes += deltaVps;
@@ -3211,56 +3211,6 @@ function inferredRouteSplit(totalBytes: number, source: Record<string, any>) {
   return { via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: total, route: fallbackRoute === "Mixed" ? "Mixed" : "Unknown" };
 }
 
-function distributeResidualBytes(residualBytes: number, dnsRows: Array<Record<string, any>>, target: Record<string, any>) {
-  const totalQueries = dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0);
-  if (residualBytes <= 0 || totalQueries <= 0) return [];
-  let allocated = 0;
-  return dnsRows.map((row, index) => {
-    const count = Number(row.count || row.dns_queries || 0);
-    const inferred = index === dnsRows.length - 1
-      ? Math.max(0, residualBytes - allocated)
-      : Math.round(residualBytes * (count / totalQueries));
-    allocated += inferred;
-    return makeSiteEvidenceRow({
-      ...row,
-      url_label: row.domain,
-      effective_bytes: inferred,
-      factual_bytes: 0,
-      inferred_bytes: inferred,
-      dns_queries: count,
-      flows: count,
-      ...inferredRouteSplit(inferred, target),
-      attribution_source: "dns_inferred",
-      byte_confidence: "estimated",
-      confidence: row.confidence || "dns-inferred",
-    });
-  }).filter((row) => Number(row.effective_bytes || 0) > 0);
-}
-
-function scaleCoarseRowsToResidual(rows: Array<Record<string, any>>, targetBytes: number) {
-  const total = rows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || row.bytes || 0), 0);
-  if (targetBytes <= 0 || total <= 0) return rows;
-  let allocated = 0;
-  return rows.map((row, index) => {
-    const base = Number(row.factual_bytes || row.effective_bytes || row.bytes || 0);
-    const effective = index === rows.length - 1
-      ? Math.max(0, Math.round(targetBytes - allocated))
-      : Math.round(targetBytes * (base / total));
-    allocated += effective;
-    return makeSiteEvidenceRow({
-      ...row,
-      effective_bytes: effective,
-      bytes: effective,
-      total_bytes: effective,
-      factual_bytes: base,
-      inferred_bytes: Math.max(0, effective - base),
-      attribution_source: row.attribution_source || (row.provider ? "provider_hint" : "category_hint"),
-      byte_confidence: "estimated",
-      confidence: row.confidence || "estimated",
-    });
-  }).filter((row) => Number(row.effective_bytes || 0) > 0);
-}
-
 function clientWindowTrafficSummary(target: Record<string, any>, period = "today") {
   const keys = uniqueNonEmpty([resolveLaneClientKey(target, "client_traffic_by_lane"), ...laneClientKeyCandidates(target)]);
   const match = clientMatchPredicate(["client_key", "client_label"], keys);
@@ -3375,72 +3325,21 @@ export function listClientSiteEvidence(client: Record<string, any> | string, per
     const selectedBytes = observedByteValue(target);
     const targetBytes = selectedBytes > 0 ? selectedBytes : observedByteValue(windowSummary);
     const inferenceTarget = observedByteValue(windowSummary) > 0 ? windowSummary : target;
-    const residualBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes));
-    const factualDomainKeys = new Set(exactRows.map((row) => normalizedSiteKey(row.domain || row.url_label)).filter(Boolean));
-    const residualDnsRows = dnsRows.filter((row) => !factualDomainKeys.has(normalizedSiteKey(row.domain)));
-    const inferredRows = distributeResidualBytes(residualBytes, residualDnsRows.length ? residualDnsRows : dnsRows, inferenceTarget);
-    const coarseEffectiveRows = inferredRows.length > 0
-      ? []
-      : scaleCoarseRowsToResidual(coarseRows, Math.max(0, targetBytes - exactFactualBytes));
-    const coarseEffectiveBytes = coarseEffectiveRows.reduce((sum, row) => sum + Number(row.factual_bytes || row.effective_bytes || 0), 0);
-    const fallbackBytes = Math.max(0, Math.round(targetBytes - exactFactualBytes - coarseEffectiveBytes));
-    const hasUsefulEvidence = exactRows.length > 0 || coarseEffectiveRows.length > 0 || dnsRows.length > 0;
-    const residualFallback = fallbackBytes > 0 && inferredRows.length === 0 && hasUsefulEvidence
-      ? [makeSiteEvidenceRow({
-        url_label: "Other / uncategorized",
-        effective_bytes: fallbackBytes,
-        factual_bytes: 0,
-        inferred_bytes: fallbackBytes,
-        dns_queries: 0,
-        ...inferredRouteSplit(fallbackBytes, inferenceTarget),
-        attribution_source: "aggregate_residual",
-        byte_confidence: "residual",
-        confidence: "estimated",
-      })]
-      : [];
-    const evidence: Array<Record<string, any>> = mergeSiteEvidenceRows([...exactRows, ...coarseEffectiveRows, ...inferredRows, ...residualFallback], limit)
-      .filter((row) => isAttributableSiteRow(row, { includeService }) || String(row.attribution_source || "") === "aggregate_residual");
-    const returnedBytes = evidence.reduce((sum, row) => sum + siteEvidenceBytes(row), 0);
-    const hiddenTailBytes = Math.max(0, Math.round(targetBytes - returnedBytes));
-    if (hiddenTailBytes > Math.max(64 * 1024, targetBytes * 0.02)) {
-      evidence.push(makeSiteEvidenceRow({
-        url_label: "Other / uncategorized",
-        effective_bytes: hiddenTailBytes,
-        factual_bytes: 0,
-        inferred_bytes: hiddenTailBytes,
-        dns_queries: Math.max(0, dnsRows.reduce((sum, row) => sum + Number(row.count || row.dns_queries || 0), 0) - evidence.reduce((sum, row) => sum + Number(row.dns_queries || 0), 0)),
-        ...inferredRouteSplit(hiddenTailBytes, inferenceTarget),
-        attribution_source: "aggregate_residual",
-        byte_confidence: "residual",
-        confidence: "estimated",
-        matched_pattern: "truncated DNS evidence tail",
-      }));
-    }
-    const cappedBytes = evidence.reduce((sum, row) => sum + siteEvidenceBytes(row), 0);
-    const capScale = targetBytes > 0 && cappedBytes > targetBytes * 1.03 ? targetBytes / cappedBytes : 1;
-    const cappedEvidence = capScale < 1
-      ? evidence.map((row) => {
-        const scaled = Math.max(0, Math.round(siteEvidenceBytes(row) * capScale));
-        const factual = Math.round(Number(row.factual_bytes || 0) * capScale);
-        const inferred = Math.max(0, scaled - factual);
-        return {
-          ...row,
-          effective_bytes: scaled,
-          bytes: scaled,
-          total_bytes: scaled,
-          factual_bytes: factual,
-          inferred_bytes: inferred > 0 || Number(row.inferred_bytes || 0) > 0 ? inferred : 0,
-          via_vps_bytes: Math.round(Number(row.via_vps_bytes || 0) * capScale),
-          direct_bytes: Math.round(Number(row.direct_bytes || 0) * capScale),
-          unknown_bytes: Math.round(Number(row.unknown_bytes || 0) * capScale),
-          byte_confidence: row.byte_confidence === "factual" ? "estimated" : row.byte_confidence,
-          reconciled: true,
-        };
-      })
-      : evidence;
-    return cappedEvidence
-      .sort((a, b) => siteEvidenceBytes(b) - siteEvidenceBytes(a) || Number(b.dns_queries || 0) - Number(a.dns_queries || 0))
-      .map((row, idx) => ({ ...row, rank: idx + 1 }));
+    // DNS queries are interest evidence, never weights for transferred bytes.
+    // Keep original destination evidence and expose the unexplained remainder.
+    const evidence: Array<Record<string, any>> = mergeSiteEvidenceRows([...exactRows, ...coarseRows], limit);
+    const observed = evidence.reduce((sum, row) => sum + siteEvidenceBytes(row), 0);
+    const residual = Math.max(0, targetBytes - observed);
+    if (residual > 0) evidence.push(makeSiteEvidenceRow({
+      url_label: "Other / uncategorized", effective_bytes: residual,
+      factual_bytes: 0, inferred_bytes: 0, dns_queries: 0,
+      via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: residual,
+      attribution_source: "aggregate_residual", byte_confidence: "residual",
+      confidence: "unknown",
+    }));
+    return evidence.sort((a, b) => siteEvidenceBytes(b) - siteEvidenceBytes(a))
+      .map((row, idx) => ({ ...row, rank: idx + 1,
+        accounting_conflict: observed > targetBytes && targetBytes > 0 }));
   });
 }
 
@@ -4935,9 +4834,11 @@ export function channelAppsForPeriod(period = "today", options: { channel?: stri
   return channelAppEvidence(getDb(), segments, clients, options) as Array<{ channel: string; client: string; label: string; app: string; bytes: number; last_seen: string }>;
 }
 
-export function recentChannelTraffic(client = "all") {
+export function recentChannelTraffic(client = "all", period = "last30") {
   const now = new Date().toISOString();
-  const start = bucketStartUtc(isoMinusHours(now, 29 * 24), "day");
+  const start = period === "last7" ? rollingMskDayStart(now, 7)
+    : period === "last30" ? rollingMskDayStart(now, 30)
+    : mskWindowBounds(period, new Date(now)).startUtc;
   return channelTrafficHistory(getDb(), start, isoPlusMs(now, 1), client) as {
     daily: Array<{ day: string; channel: string; bytes: number }>;
     clients: Array<{ client: string; label: string; bytes: number }>;

@@ -277,7 +277,7 @@ function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
 function linePath(points: Array<Record<string, any>>, key: string, max: number, width = 100, height = 54) {
   if (points.length === 0) return "";
   return points.map((point, idx) => {
-    const x = points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
+    const x = point.measurement === "cumulative_day_counter" ? Number.parseInt(point.hour, 10) / 23 * width : points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
     const y = height - (Number(point[key] || 0) / max) * (height - 8) - 2;
     return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(" ");
@@ -296,7 +296,7 @@ function TrafficTodayChart({ points }: { points: Array<Record<string, any>> }) {
     <section className="card dashboard-chart-card dashboard-traffic-card">
       <div className="dashboard-card-head">
         <h2>Traffic today</h2>
-        <div className="dashboard-card-actions"><span>MB</span><span>...</span></div>
+        <div className="dashboard-card-actions"><span>{points.some(point => point.measurement === "cumulative_day_counter") ? "Cumulative observations" : "Observed intervals"}</span></div>
       </div>
       <div className="chart-legend">
         <span className="legend-total">Total</span>
@@ -487,6 +487,15 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
           <MetricCard label="Unknown" value={bytes(Math.max(0, model.totals.observedBytes - model.totals.viaVpsBytes - model.totals.directBytes))} detail="not attributed to VPS or direct yet" />
         </div>
         <div className="dashboard-rank-grid">
+          {analytics.trafficReconciliation && <section className="card">
+            <h2>Traffic accounting coverage</h2>
+            <p>These sources measure different parts of the path. Their difference is not attributed to a client or app.</p>
+            <div className="detail-list">
+              <div className="detail-row"><span>Router summary · LAN and Home Reality</span><strong>{analytics.trafficReconciliation.summaryBytes === null ? "Not observed" : bytes(analytics.trafficReconciliation.summaryBytes)}</strong></div>
+              <div className="detail-row"><span>Prepared client evidence</span><strong>{bytes(analytics.trafficReconciliation.clientEvidenceBytes)}</strong></div>
+              <div className="detail-row"><span>Destination evidence</span><strong>{bytes(analytics.trafficReconciliation.destinationEvidenceBytes)}</strong></div>
+            </div>
+          </section>}
           <RankedClients rows={inventoryTopClients} />
           <RankedDestinations rows={topDestinations} />
           <RankedApps rows={topApps} />

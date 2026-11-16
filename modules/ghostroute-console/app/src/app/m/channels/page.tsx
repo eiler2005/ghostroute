@@ -13,8 +13,8 @@ export default async function MobileChannelsPage({ searchParams }: { searchParam
   const health = getChannelHealthRows();
   const channel = traffic.some(row => row.channel === filters.channel) || health.some(row => row.label === filters.channel) ? filters.channel : "all";
   const clients = channelClientsForPeriod(period);
-  const client = clients.some(row => row.client === filters.client && (channel === "all" || row.channel === channel)) ? filters.client : "all";
+  const client = filters.client || "all";
   return <MobileShell active="/m/channels" model={buildLightweightShellModel(filters)} filters={filters} desktopPath="/channels">
-    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} view={view} health={health} traffic={traffic} clients={clients} apps={view === "apps" ? channelAppsForPeriod(period, { channel, client, search: filters.search }) : []} daily={view === "history" ? recentChannelTraffic(client).daily : []} />
+    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} view={view} health={health} traffic={traffic} clients={clients} apps={view === "apps" ? channelAppsForPeriod(period, { channel, client, search: filters.search }) : []} daily={view === "history" ? recentChannelTraffic(client, period).daily : []} />
   </MobileShell>;
 }
