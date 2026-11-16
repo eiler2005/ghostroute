@@ -77,14 +77,11 @@ available from this contract.
 - Apps and Clients use the same selected-client site/DNS evidence selector over
   the prepared DNS pyramid, falling back to raw DNS rows only when the prepared
   DNS layer is absent. Exact domain/SNI byte rows remain factual. IP/provider
-  residual may be distributed across client-facing DNS domains by query count
-  only when it is explicitly marked as inferred/estimated. Without DNS evidence,
-  residual stays as `Other / uncategorized`.
+  residual stays as `Other / uncategorized`; DNS counts do not allocate bytes.
 - Client popular-site panels rank by `effective_bytes` first, then DNS query
-  count and recency. Inferred DNS rows are allowed to cover aggregate residual
-  so the panel does not hide a GB-scale selected-client total behind a tiny
-  IP-only row, but the UI must not label that allocation as exact factual byte
-  accounting.
+  count and recency. Original source estimates keep their confidence; missing
+  app/site attribution stays an explicit residual. Measured byte rows are not
+  scaled to force agreement with a counter from another measurement scope.
 - Retention keeps fine 5-minute traffic buckets short-lived and hourly/daily/DNS
   aggregates around the monthly window. Raw operational rows remain bounded
   troubleshooting data.

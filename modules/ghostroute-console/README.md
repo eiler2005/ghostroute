@@ -271,10 +271,10 @@ Core read models are rebuilt from factual snapshots:
 | `read_model_state` | Rebuild freshness, source version and cache keys. |
 | `console_settings` | Non-secret settings and runtime posture. |
 
-Prepared traffic rankings are intentionally registry-first. Top clients contain
-only non-zero client traffic that resolves through the private operator device
-attribution registry; service channel labels, DNS-interest rows and accounting
-buckets stay available for diagnostics but are not ranked as clients. Detail
+Prepared traffic rankings include measured stable client/profile identities even
+before an operator alias is assigned. The private registry supplies verified
+names; missing ownership does not remove bytes. Service channel labels and
+DNS-interest rows remain diagnostics rather than ranked clients. Detail
 workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
 force the current Moscow day, while Dashboard/Clients/Reports use the prepared
 `today`, `week` and `month` aggregate windows.
@@ -312,11 +312,10 @@ from byte-attributed client destinations, service/system sites remain separate,
 and unmapped counter residual is shown as a summary rather than ranked as a
 site. The separate Latest DNS domains block lists DNS query counts for the
 selected device without turning those counts into byte estimates.
-Apps drilldowns may use selected-device byte totals plus DNS query shares to
-estimate app-family rows when destination byte attribution is still coarse. DNS
-route alone is not byte proof: missing DNS route stays `Unknown`, and
-DNS-inferred app rows inherit the selected traffic window route split instead of
-defaulting to `Direct`.
+Apps drilldowns retain source byte evidence and its confidence. DNS query counts
+are never used to distribute the remaining bytes across apps. The unexplained
+remainder stays `Other / uncategorized`, with unknown route where route evidence
+is missing. Conflicting evidence is flagged instead of proportionally rescaled.
 
 IP-only destinations can be enriched locally from an iptoasn TSV snapshot. For
 the current IPv4 traffic, download `ip2asn-v4-u32.tsv.gz` and run:
