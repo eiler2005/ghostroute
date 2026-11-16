@@ -41,6 +41,9 @@ scaled to a shared total when their coverage differs.
 Verification compares inventory to the same-scope prepared client evidence and
 compares every all-lane layer exactly to its total pyramid, rather than requiring
 all-channel client evidence to equal a LAN/Home Reality-only summary.
+Local aggregate validation and the post-deployment gate share that same volume
+contract. Neither gate requires partial destination coverage to equal total
+profile traffic; both reject any disagreement between total read models.
 
 The daily summary chart displays observed cumulative day-counter samples at
 their observation hours. It does not spread an initial sample into earlier

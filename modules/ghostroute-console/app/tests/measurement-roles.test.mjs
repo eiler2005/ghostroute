@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import {ensureConsoleSchema,normalizeSnapshot,rebuildPreparedWindows} from '../scripts/lib/normalize.mjs';
 import {trafficRankingMetrics,appByteQuality} from '../src/lib/traffic-ranking.mjs';
 import {classifyAppFamily} from '../src/lib/app-family.mjs';
+import {assertTrafficVolumeContract} from '../scripts/lib/traffic-volume-contract.mjs';
 
 test('measured volume and application detail are independent partitions, not additive traffic',()=>{
  const db=new Database(':memory:');
@@ -38,6 +39,9 @@ test('measured volume and application detail are independent partitions, not add
   ]});
   rebuildPreparedWindows(db,'2026-11-16T16:21:00.000Z');
   assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,5*volume,'independent counter sources mapped to one device are not superseded');
+  assertTrafficVolumeContract(db);
+  db.prepare("update client_traffic_by_lane set bytes=bytes+1 where bucket_granularity='5min' and traffic_lane='all'").run();
+  assert.throws(()=>assertTrafficVolumeContract(db),/volume differs/,'the production verifier rejects a broken consumer partition');
  } finally {db.close()}
 });
 test('rank share uses sum and bar geometry uses maximum',()=>{

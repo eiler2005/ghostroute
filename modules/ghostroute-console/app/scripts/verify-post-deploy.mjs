@@ -4,6 +4,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { splitCollectorRunErrors } from "./lib/post-deploy-verify.mjs";
+import { assertTrafficVolumeContract } from "./lib/traffic-volume-contract.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const moduleDir = path.resolve(appDir, "..");
@@ -170,11 +171,7 @@ for (const table of aggregateTables) {
   assert.equal(number(bad.count), 0, `${table} has invalid byte splits`);
 }
 
-const laneDetailBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_destination_by_lane").get().bytes);
-const laneSummaryBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane != 'all'").get().bytes);
-const laneAllBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane = 'all'").get().bytes);
-assert.equal(laneSummaryBytes, laneDetailBytes, "client lane summary bytes do not match detail bytes");
-assert.equal(laneAllBytes, laneDetailBytes, "client lane all bytes do not match detail bytes");
+assertTrafficVolumeContract(db);
 
 const factSplitViolations = db.prepare(`
   select count(*) as count
@@ -202,7 +199,8 @@ const homeRealitySamples = Array.isArray(latestEvidence?.home_reality_samples) ?
 const homeRealityFacts = number(db.prepare(`
   select count(*) as count
     from traffic_facts
-   where lower(coalesce(destination, '')) like '%home reality ingress%'
+    where evidence_level = 'home_reality_profile_counter'
+       or lower(coalesce(destination, '')) like '%home reality ingress%'
       or lower(coalesce(destination_kind, '')) = 'encrypted_ingress'
       or lower(coalesce(evidence_json, '')) like '%client.home_reality_ingress%'
 `).get().count);
