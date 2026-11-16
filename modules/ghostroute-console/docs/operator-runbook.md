@@ -134,6 +134,14 @@ non-secret `console_settings`. These tables feed `/api/flows`, `/api/dns`,
 the compact mobile Health/Live shells while preserving the normalized source
 tables as the collection contract.
 
+Current alarms come from the latest snapshot per source. Older alerts remain in
+normalized history and are not counted repeatedly as open incidents. Check each
+source timestamp before treating an absent alarm as a fresh successful probe.
+Channel anyT runtime presence and named inventory do not establish per-profile
+traffic accounting: the isolated process does not currently emit the required
+per-user byte evidence. Do not assign unclassified or LAN traffic to anyT users
+without authenticated source evidence.
+
 The `flow_sessions` read model includes the safe DNS/SNI and egress evidence
 fields needed by the Flow Explorer inline detail panel. Missing source evidence
 is rendered as `not observed`; when a flow has nearby same-client DNS evidence

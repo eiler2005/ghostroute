@@ -4411,7 +4411,13 @@ export function rebuildObservabilityReadModels(db) {
         evidence, suggested_action, snoozed_until, confidence, risk, evidence_json)
       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const alertRows = db.prepare("select rowid, * from normalized_alerts order by collected_at desc, rowid desc limit ?").all(alarmLimit);
+    // The current alarm view is based on the latest observation of each source;
+    // older normalized alerts remain available as history, not active alarms.
+    const alertRows = db.prepare(`
+      select a.rowid, a.* from normalized_alerts a
+      where a.snapshot_id in (select max(id) from snapshots group by type)
+      order by a.collected_at desc, a.rowid desc limit ?
+    `).all(alarmLimit);
     for (const row of alertRows) {
       const raw = parseJson(row.raw_json, {});
       const severity = lower(row.severity || raw.severity || "warning");

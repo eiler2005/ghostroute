@@ -184,7 +184,10 @@ available from this contract.
 ## Alarm State
 
 - `alarm_events` remains a derived read model from factual snapshots and
-  normalized alert evidence.
+  normalized alert evidence. The current alarm view uses the newest snapshot
+  from each source, so a later successful check removes the old fault from the
+  active view. Earlier normalized alert rows remain as historical evidence.
+  Missing or stale source observations must not be treated as proof of recovery.
 - Operator state for Alarm Center is a narrow overlay: `acknowledged`,
   `snoozed` or `open`, plus actor, update time and snooze deadline.
 - The overlay is stored on router disk through the dedicated Console
