@@ -747,6 +747,9 @@ export function ensureConsoleSchema(db) {
       raw_json text not null
     );
     create index if not exists idx_normalized_flows_snapshot on normalized_flows(snapshot_id);
+    create index if not exists idx_normalized_flows_fact_identity
+      on normalized_flows(json_extract(raw_json, '$.fact_id'))
+      where snapshot_type = 'traffic_facts' and json_valid(raw_json);
 
     create table if not exists traffic_facts (
       fact_id text primary key,
@@ -4460,6 +4463,7 @@ export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
 }
 
 function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
+  const replaceFlow = db.prepare("delete from normalized_flows where snapshot_type = 'traffic_facts' and json_valid(raw_json) and json_extract(raw_json, '$.fact_id') = ?");
   const registry = loadDeviceAttributions();
   const networkHints = buildInventoryNetworkHints(db, registry);
   const deviceInsert = db.prepare(`
@@ -4594,6 +4598,7 @@ function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
       dnsTsSource(row),
       text(row.accounting_status || "ok")
     );
+    replaceFlow.run(factId);
     flowInsert.run(
       snapshotId,
       type,

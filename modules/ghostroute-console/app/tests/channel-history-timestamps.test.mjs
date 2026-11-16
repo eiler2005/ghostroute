@@ -45,6 +45,9 @@ test('repeated snapshots retain fact event times and do not duplicate channel by
     snapshot('2026-11-16T09:20:00.000Z', [second]);
     snapshot('2026-11-16T09:25:00.000Z', []);
     snapshot('2026-11-16T09:30:00.000Z', [second, first]);
+    for (let i = 0; i < 20; i++) snapshot(`2026-11-16T09:${String(31+i).padStart(2,'0')}:00.000Z`, [first, second]);
+    assert.equal(db.prepare("select count(*) as n from normalized_flows where snapshot_type='traffic_facts'").get().n, 2);
+    assert.equal(db.prepare("select count(*) as n from traffic_facts").get().n, 2);
     const rows = db.prepare("select bucket_start_utc, sum(bytes) as bytes from client_traffic_5min where channel = 'Channel anyT' group by bucket_start_utc order by bucket_start_utc").all();
     assert.deepEqual(rows, [
       { bucket_start_utc: '2026-11-16T09:00:00.000Z', bytes: 100 },

@@ -50,6 +50,8 @@ A new snapshot may be partial or empty and therefore does not revoke earlier
 observations. Rebuilds deduplicate their union by stable fact identity, with
 the latest observation replacing the same identity. Expired raw evidence still
 follows normal retention; this does not reconstruct already deleted history.
+The normalized-flow copy is also replaced by fact identity using an indexed
+lookup, so replaying a full snapshot does not append another copy of every flow.
 
 ## Goals
 
