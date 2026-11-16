@@ -278,7 +278,8 @@ Clients still keeps historical inventory metadata for names, roles, aliases and
 last-seen state, but displayed traffic totals, route split and selected client
 domains come from the selected window only.
 
-The Channels navigation page has its own URL-backed period, channel, client and
+The Channels navigation page provides Overview, Clients, Apps and History views
+and has its own URL-backed period, channel, client and
 search controls. Channel totals and the separately labelled 30-day history follow
 the selected client; search narrows client and application tables only. Selecting
 a channel or client narrows application candidates before the profile cap.

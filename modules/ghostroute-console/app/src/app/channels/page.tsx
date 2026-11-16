@@ -7,6 +7,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Se
   const params = searchParams ? await searchParams : {};
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const sort = typeof params.sort === "string" ? params.sort : "traffic";
+  const view = typeof params.view === "string" ? params.view : "overview";
   const period = ["today", "week", "month"].includes(filters.period || "") ? filters.period! : "today";
   const traffic = channelTrafficForPeriod(period);
   const health = getChannelHealthRows();
@@ -14,6 +15,6 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Se
   const clients = channelClientsForPeriod(period);
   const client = clients.some(row => row.client === filters.client && (channel === "all" || row.channel === channel)) ? filters.client : "all";
   return <ConsoleShell active="/channels" model={buildHealthModel(filters)} filters={filters}>
-    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} health={health} traffic={traffic} clients={clients} apps={channelAppsForPeriod(period, { channel, client, search: filters.search })} daily={recentChannelTraffic(client).daily} />
+    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} view={view} health={health} traffic={traffic} clients={clients} apps={view === "apps" ? channelAppsForPeriod(period, { channel, client, search: filters.search }) : []} daily={view === "history" ? recentChannelTraffic(client).daily : []} />
   </ConsoleShell>;
 }

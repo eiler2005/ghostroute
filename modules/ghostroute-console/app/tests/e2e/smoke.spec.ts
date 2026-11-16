@@ -645,15 +645,19 @@ test("channel health distinguishes runtime evidence from application acceptance"
 test("channel overview exposes traffic, clients, history and honest health", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/m/channels" : "/channels");
   await expect(page.getByRole("heading", { name: "Channels", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Clients by channel" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Observed apps by channel" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Daily channel history" })).toBeVisible();
   await expect(page.getByText("Runtime status is not an authenticated application test.", { exact: false })).toBeVisible();
+  const tabs = page.getByRole('navigation', { name: 'Channel views' });
+  await tabs.getByRole('link', { name: 'Clients', exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clients by channel" })).toBeVisible();
+  await tabs.getByRole('link', { name: 'Apps', exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Observed apps by channel" })).toBeVisible();
+  await tabs.getByRole('link', { name: 'History', exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Daily channel history" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Channels", exact: true })).toBeVisible();
 });
 
 test("channel overview preserves selected channel in URL and filters client rows", async ({ page, isMobile }) => {
-  await page.goto(isMobile ? "/m/channels" : "/channels");
+  await page.goto(isMobile ? "/m/channels?view=clients" : "/channels?view=clients");
   const channel = page.locator('select[name="channel"]');
   const value = await channel.locator('option').nth(1).getAttribute('value');
   expect(value).toBeTruthy();
