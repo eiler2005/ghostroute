@@ -85,7 +85,7 @@ ruby -rjson -e '
   abort "future DNS was linked" unless future && future["dns_link_confidence"] == "no_dns_match" && future["dns_qname"].to_s.empty?
   shared = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.50" }
   abort "shared answer should be low confidence" unless shared && shared["dns_link_confidence"] == "low" && shared["dns_qname"].to_s.empty? && shared["destination"] == "192.0.2.50"
-  abort "sing-box mismatch should be visible" unless shared["route_verification"] == "mismatch" && shared["outbound"] == "direct-out" && shared["unknown_bytes"].to_i == shared["bytes"].to_i
+  abort "unscoped outbound log was assigned to a LAN client" unless shared["route_verification"] == "intent_only" && shared["outbound"].empty? && shared["unknown_bytes"].to_i == shared["bytes"].to_i
   no_ipset = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.70" }
   abort "no_ipset should not become intent_only" unless no_ipset && no_ipset["route_verification"] == "unknown" && no_ipset["route_status"] == "unknown"
    home = facts["traffic_facts"].select { |row| row["evidence_level"] == "home_reality_profile_counter" }

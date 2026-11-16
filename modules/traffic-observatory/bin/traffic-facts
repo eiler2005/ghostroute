@@ -293,6 +293,9 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
   sample_ts = Time.parse(iso_time(sample['ts'] || sample['event_ts'], generated_at)) rescue Time.parse(generated_at)
   matches = evidence_rows.map do |row|
     next unless row.is_a?(Hash)
+    # A shared destination and nearby timestamp cannot identify a client flow.
+    # Unscoped outbound logs remain diagnostics, never another client's proof.
+    next if text(row['client_ip']).empty? || text(row['client_ip']) != text(sample['client_ip'])
     destination_values = [row['destination'], row['destination_host']].map { |value| text(value).downcase }.reject(&:empty?)
     next if (destination_values & candidates).empty?
     evidence_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil

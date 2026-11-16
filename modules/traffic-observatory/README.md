@@ -92,6 +92,8 @@ split; they do not assign that split to sampled destinations. Ingress
 connection/outbound counts prove neither per-app bytes nor route-byte proportions.
 Profile counters remain volume-only facts with unknown destination and route
 until matching byte evidence exists.
+Joining outbound proof to a sampled flow also requires the same client identity;
+a shared destination and nearby timestamp alone cannot prove its route.
 DNS links only use safe time-ordered answers, and unverified route bytes stay in
 `unknown_bytes` to preserve the accounting invariant.
 
