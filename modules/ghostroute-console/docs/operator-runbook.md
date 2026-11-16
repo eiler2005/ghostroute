@@ -307,6 +307,11 @@ model and event preparation. Use it to distinguish cold-cache work from network
 delivery before changing queries or indexes; it contains timings only.
 The Live API flow list uses the same lightweight flow-session representation as
 the Live page and flow-list API; detailed evidence remains in the flow workbench.
+Synchronous flow, DNS and inventory list builds reuse one snapshot version within
+each build and recheck it on the next request; this avoids repeated metadata
+queries without extending the normal cache lifetime.
+Existence checks stop after the first row instead of counting entire read-model
+tables; exact pagination counts are unchanged.
 
 Operator client attribution is registry-first. Keep real household MAC/IP/host
 aliases in gitignored `device-attribution.local.json` in the Console data

@@ -3,6 +3,14 @@ import { expect, test, type Page } from "@playwright/test";
 const PAGE_BUDGET_MS = 2500;
 const API_BUDGET_MS = 1500;
 
+test("cold live API stays within its response budget", async ({ request }) => {
+  const started = performance.now();
+  const response = await request.get("/api/live?pageSize=5&fresh=1", { timeout: 10_000 });
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["server-timing"]).toMatch(/flows;dur=.*model;dur=.*events;dur=/);
+  expect(performance.now() - started).toBeLessThan(API_BUDGET_MS);
+});
+
 const pages = [
   { path: "/", nav: "Dashboard", markers: ["Observed traffic"] },
   { path: "/traffic", nav: "Flow Explorer", markers: ["Flow Explorer", "No traffic rows"] },

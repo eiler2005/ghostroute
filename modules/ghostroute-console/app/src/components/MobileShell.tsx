@@ -78,10 +78,10 @@ export function MobileShell({
         </div>
       </section>
 
-      <form className="mobile-filter" action={active}>
+      {active !== "/m/channels" && <form className="mobile-filter" action={active}>
         <input name="search" defaultValue={filters.search || ""} placeholder="Search" />
         <button type="submit">Go</button>
-      </form>
+      </form>}
 
       {children}
     </main>

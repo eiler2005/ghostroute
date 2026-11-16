@@ -1,5 +1,6 @@
 import { explicitAccessChannel } from "../channels.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
+import { createSynchronousVersionScope } from "../version-scope.mjs";
 import { channelAppEvidence, channelClientsFromSegments, channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -124,8 +125,17 @@ function latestSnapshotRecords() {
   return cacheGet(`latest-snapshots:${latestSnapshotMetaVersion()}`, () => latestSnapshots());
 }
 
-function latestSnapshotVersion(records = latestSnapshotMetaRecords()) {
-  return records.map((row) => `${row.type}:${row.collectedAt}`).sort().join("|") || "empty";
+const snapshotVersionScope = createSynchronousVersionScope(() => latestSnapshotVersion());
+
+function latestSnapshotVersion(records?: SnapshotRecord[]) {
+  if (!records && snapshotVersionScope.current() !== undefined) return snapshotVersionScope.current();
+  return (records || latestSnapshotMetaRecords()).map((row) => `${row.type}:${row.collectedAt}`).sort().join("|") || "empty";
+}
+
+// Selectors are synchronous: reuse one version while building a single list,
+// then recheck the database for the next request. Nested selectors share it.
+function withSnapshotVersion<T>(build: () => T): T {
+  return snapshotVersionScope.run(build);
 }
 
 function cachedLatestByType() {
@@ -1838,7 +1848,7 @@ function safeJson(value: unknown, fallback: any) {
 function readModelHasRows(table: string) {
   if (!/^(flow_sessions|dns_query_log|device_inventory|alarm_events)$/.test(table)) return false;
   try {
-    return Number((getDb().prepare(`select count(*) as count from ${table}`).get() as any)?.count || 0) > 0;
+    return Boolean(getDb().prepare(`select 1 from ${table} limit 1`).get());
   } catch {
     return false;
   }
@@ -1848,9 +1858,9 @@ function aggregateModelHasRows(table: string, timeColumn?: string, start?: strin
   if (!/^(dns_log_5min|dns_log_hourly|dns_log_daily|dns_log_weekly)$/.test(table)) return false;
   try {
     if (timeColumn && start && end) {
-      return Number((getDb().prepare(`select count(*) as count from ${table} where ${timeColumn} >= ? and ${timeColumn} < ? limit 1`).get(start, end) as any)?.count || 0) > 0;
+      return Boolean(getDb().prepare(`select 1 from ${table} where ${timeColumn} >= ? and ${timeColumn} < ? limit 1`).get(start, end));
     }
-    return Number((getDb().prepare(`select count(*) as count from ${table} limit 1`).get() as any)?.count || 0) > 0;
+    return Boolean(getDb().prepare(`select 1 from ${table} limit 1`).get());
   } catch {
     return false;
   }
@@ -2476,7 +2486,7 @@ export function listTrafficRows(args: PageArgs = {}) {
 }
 
 export function listFlowSessions(args: PageArgs = {}) {
-  return cacheGet(`list-flow-sessions:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listFlowSessionsUncached(args));
+  return cacheGet(`list-flow-sessions:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => withSnapshotVersion(() => listFlowSessionsUncached(args)));
 }
 
 function listFlowSessionsUncached(args: PageArgs = {}) {
@@ -2631,7 +2641,7 @@ function mapDnsFallbackRow(row: any) {
 }
 
 export function listDnsQueryLog(args: DnsPageArgs = {}) {
-  return cacheGet(`list-dns-query-log:${latestSnapshotVersion()}:${dnsPageArgsKey(args)}`, () => listDnsQueryLogUncached(args));
+  return cacheGet(`list-dns-query-log:${latestSnapshotVersion()}:${dnsPageArgsKey(args)}`, () => withSnapshotVersion(() => listDnsQueryLogUncached(args)));
 }
 
 function listDnsQueryLogUncached(args: DnsPageArgs = {}) {
@@ -5059,7 +5069,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
 }
 
 export function listClientInventory(args: PageArgs = {}) {
-  return cacheGet(`list-client-inventory:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listClientInventoryUncached(args));
+  return cacheGet(`list-client-inventory:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => withSnapshotVersion(() => listClientInventoryUncached(args)));
 }
 
 export function listAppDeviceRows(args: PageArgs = {}) {
