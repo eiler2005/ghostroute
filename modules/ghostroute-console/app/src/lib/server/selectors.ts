@@ -1,6 +1,6 @@
 import { explicitAccessChannel } from "../channels.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
-import { channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
+import { channelAppEvidence, channelClientsFromSegments, channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -4910,6 +4910,17 @@ export function channelTrafficForPeriod(period = "today") {
     ...segment, granularity: laneGranularity(segment.layer),
   }));
   return channelTrafficFromSegments(getDb(), segments) as Array<{ channel: string; bytes: number }>;
+}
+
+export function channelClientsForPeriod(period = "today") {
+  const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({ ...segment, granularity: laneGranularity(segment.layer) }));
+  return channelClientsFromSegments(getDb(), segments) as Array<{ channel: string; client: string; label: string; bytes: number; last_seen: string }>;
+}
+
+export function channelAppsForPeriod(period = "today") {
+  const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({ ...segment, granularity: laneGranularity(segment.layer) }));
+  const clients = channelClientsFromSegments(getDb(), segments);
+  return channelAppEvidence(getDb(), segments, clients) as Array<{ channel: string; client: string; label: string; app: string; bytes: number; last_seen: string }>;
 }
 
 export function recentChannelTraffic() {

@@ -1,3 +1,5 @@
+import { classifyAppFamily, isClientFacingAppFamily } from './app-family.mjs';
+
 // The 'all' lane is already the sum of its detailed lanes; never sum both.
 export function channelTrafficFromSegments(db, segments) {
   const totals = new Map();
@@ -31,4 +33,52 @@ export function channelTrafficHistory(db, start, end) {
      group by client_key having sum(bytes) > 0 order by bytes desc limit 10
   `).all(start, end);
   return { daily, clients };
+}
+
+// Combine mutually exclusive pyramid segments; "all" already includes detailed lanes.
+export function channelClientsFromSegments(db, segments) {
+  const grouped = new Map();
+  const query = db.prepare(`
+    select channel, client_key as client, max(client_label) as label,
+           sum(bytes) as bytes, max(last_seen_utc) as last_seen
+      from client_traffic_by_lane
+     where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?
+       and traffic_lane = 'all' and client_key != ''
+     group by channel, client_key having sum(bytes) > 0
+  `);
+  for (const segment of segments) for (const row of query.all(segment.granularity, segment.start, segment.end)) {
+    const key = JSON.stringify([row.channel, row.client]);
+    const current = grouped.get(key) || { ...row, bytes: 0 };
+    current.bytes += Number(row.bytes || 0);
+    if (String(row.last_seen || '') > String(current.last_seen || '')) current.last_seen = row.last_seen;
+    grouped.set(key, current);
+  }
+  return [...grouped.values()].sort((a, b) => b.bytes - a.bytes);
+}
+
+
+// Destination evidence is partial; do not distribute a profile counter over apps.
+export function channelAppEvidence(db, segments, clients) {
+  const groups = new Map();
+  const query = db.prepare(`
+    select destination_label, category, provider, sum(bytes) as bytes, max(last_seen_utc) as last_seen
+      from client_destination_by_lane
+     where client_key = ? and bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?
+       and channel = ? and traffic_lane != 'all' and bytes > 0
+     group by destination_label, category, provider order by bytes desc limit 200
+  `);
+  for (const client of clients.slice(0, 20)) for (const segment of segments) {
+    for (const row of query.all(client.client, segment.granularity, segment.start, segment.end, client.channel)) {
+      const domain = String(row.destination_label || '').trim().toLowerCase();
+      if (!domain.includes('.') || /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) || /[\s:/]/.test(domain)) continue;
+      const app = classifyAppFamily({ destination: domain, category: row.category, provider: row.provider });
+      if (!isClientFacingAppFamily(app) || app.app_source !== 'app_family_catalog') continue;
+      const key = JSON.stringify([client.channel, client.client, app.app_family]);
+      const entry = groups.get(key) || { channel: client.channel, client: client.client, label: client.label || client.client, app: app.app_family, bytes: 0, last_seen: '' };
+      entry.bytes += Number(row.bytes || 0);
+      if (String(row.last_seen || '') > entry.last_seen) entry.last_seen = row.last_seen;
+      groups.set(key, entry);
+    }
+  }
+  return [...groups.values()].sort((a, b) => b.bytes - a.bytes).slice(0, 30);
 }

@@ -9,6 +9,7 @@ const nav = [
   ["DNS Query Log", "/dns", Wifi],
   ["Intelligence", "/intelligence", Brain],
   ["Clients", "/clients", Users],
+  ["Channels", "/channels", Activity],
   ["Apps", "/apps", BarChart3],
   ["Health Center", "/health", ShieldCheck],
   ["Catalog", "/catalog", Boxes],
@@ -72,8 +73,8 @@ export function ConsoleShell({
         <div className="system-pill">
           <Activity size={16} />
           <div>
-            <strong>System healthy</strong>
-            <span>{model.alerts.length === 0 ? "No active warnings" : `${model.alerts.length} warnings`}</span>
+            <strong>{model.alerts.length ? "Warnings present" : model.freshnessStatus === "fresh" ? "No active warnings" : "Status not current"}</strong>
+            <span>{model.alerts.length ? `${model.alerts.length} warnings` : "See Health Center for evidence"}</span>
           </div>
         </div>
       </aside>

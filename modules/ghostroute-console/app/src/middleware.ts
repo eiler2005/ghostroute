@@ -5,6 +5,7 @@ const mobileRoutes: Record<string, string> = {
   "/traffic": "/m/traffic",
   "/dns": "/m/dns",
   "/clients": "/m/clients",
+  "/channels": "/m/channels",
   "/apps": "/m/apps",
   "/health": "/m/health",
   "/live": "/m/live",

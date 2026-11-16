@@ -3,6 +3,7 @@ import { ConfidenceBadge, EmptyState, RawEvidence, shortDateTime, StatusBadge } 
 import { buildIntelligenceModel } from "@/lib/server/selectors/intelligence";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { trafficClassLabel } from "@/lib/traffic-classification.mjs";
+import { groupAdvisories } from "@/lib/advisory-groups.mjs";
 
 function countOf(counts: Record<string, number>, key: string) {
   return Number(counts[key] || 0);
@@ -58,6 +59,7 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
   const activeView = scalar(params.view) || "all";
   const rows = allRows.filter((row) => matchesView(row, activeView));
   const candidates = intelligence.candidates;
+  const candidateGroups = groupAdvisories(candidates);
   const summary = intelligence.summary;
   const trackerCount = countOf(summary.byLane || {}, "privacy_risk");
   const cdnCount = countOf(summary.byLane || {}, "shared_infra");
@@ -125,7 +127,7 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
         <section className="card flow-kpi flow-kpi-warn">
           <span>Needs review</span>
           <strong>{unknownCount}</strong>
-          <small>{summary.pendingCandidates} pending advisory candidates</small>
+          <small>{summary.pendingCandidates} pending among recent advisory records</small>
         </section>
       </div>
 
@@ -198,13 +200,14 @@ export default async function IntelligencePage({ searchParams }: { searchParams?
 
         <aside className="card side-panel intelligence-panel">
           <h2>Advisory candidates</h2>
-          <p>Dry-run only. These rows do not mutate filters, routes, blocking, or router/VPS state.</p>
+          <p>Dry-run only; no rules are applied. IP-only entries lack a safe DNS match and do not identify an application. The list uses up to 200 recent advisory records. Identical recommendations are grouped while their evidence remains separate. The review count describes destination labels; pending candidates count advisory records in that sample.</p>
           <div className="detail-list">
-            {candidates.slice(0, 12).map((row) => (
+            {candidateGroups.slice(0, 12).map((row) => (
               <div className="detail-row intelligence-candidate" key={row.candidate_id}>
                 <span>
                   <strong>{row.destination_key || "destination"}</strong>
                   <small>{row.explanation || row.reason_code || "local rules"}</small>
+                  {row.evidenceRows.length > 1 ? <small>{row.evidenceRows.length} matching advisory records</small> : null}
                 </span>
                 <span>
                   <ActionBadge value={row.proposed_action} />

@@ -278,6 +278,25 @@ Clients still keeps historical inventory metadata for names, roles, aliases and
 last-seen state, but displayed traffic totals, route split and selected client
 domains come from the selected window only.
 
+The Channels navigation page shows runtime evidence, measured bytes per channel,
+clients with last observed times, and daily channel history. Its period selector
+applies to totals, client and app rows; history covers the latest 30 days. It also
+includes a bounded, partial app-family view based on destination evidence; it
+does not distribute encrypted profile totals among applications. Other global
+filters do not apply to this overview. A runtime OK is not proof of an
+authenticated application probe. Channel counters may lack route attribution,
+and unknown VPS/direct splits must not be displayed as measured zeroes. Channel
+D reports completed streams and Amn remains unobserved while disabled. Historical
+coverage varies and profiles without a verified private label remain symbolic.
+
+Traffic Intelligence advisory rows are read-only suggestions. Identical visible
+summaries are grouped with their record counts; distinct decisions and the raw
+evidence remain separate. IP-only evidence is not sufficient to identify an app
+or safely infer a blocking rule. Destination review counts and advisory-record
+counts represent different things and are not expected to match.
+The advisory list samples up to 200 recent records; its pending count describes
+that sample, not the entire historical table.
+
 Operator client attribution is registry-first. Keep real household MAC/IP/host
 aliases in gitignored `device-attribution.local.json` in the Console data
 directory, with public shape documented by

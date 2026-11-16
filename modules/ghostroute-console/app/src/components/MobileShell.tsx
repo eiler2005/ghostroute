@@ -6,6 +6,7 @@ const nav = [
   ["Flows", "/m/traffic"],
   ["DNS", "/m/dns"],
   ["Clients", "/m/clients"],
+  ["Channels", "/m/channels"],
   ["Apps", "/m/apps"],
   ["Health", "/m/health"],
   ["Live", "/m/live"],

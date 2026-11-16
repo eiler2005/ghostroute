@@ -7,6 +7,7 @@ import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayD
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 import { attributionEligibility, isAttributableSiteRow } from "@/lib/attribution-eligibility.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "@/lib/app-family.mjs";
+import { routeSplitLabel } from "@/lib/route-split-label.mjs";
 
 function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
@@ -339,10 +340,10 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
               <div className="rank-title"><strong>{row.label}</strong><small>{row.channel || "not observed"}</small></div>
               <div className="rank-meter">
                 <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || 0}%</span>
-                <small>VPS {compactBytes(row.viaVpsBytes || row.via_vps_bytes || 0)} · Direct {compactBytes(row.directBytes || row.direct_bytes || 0)} · Unknown {compactBytes(row.unknownBytes || unknownBytes(row))}</small>
+                <small title="Traffic without route evidence cannot be attributed to VPS or direct">{routeSplitLabel(row.viaVpsBytes || row.via_vps_bytes, row.directBytes || row.direct_bytes, row.unknownBytes || unknownBytes(row), compactBytes)}</small>
                 <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
               </div>
-              <span className={`rank-status status-${String(row.status || "OK").toLowerCase()}`}>{row.status || "OK"}</span>
+              <span className="rank-status" title="Traffic observed; see Channels for runtime health">Observed</span>
             </div>
           ))}
         </div>

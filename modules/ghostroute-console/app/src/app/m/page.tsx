@@ -32,7 +32,7 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
         <h1>GhostRoute Mobile</h1>
         <p>Fast read-only snapshot for iPhone and mobile browsers.</p>
       </section>
-      <MobileSection title="Traffic by channel" href="/m/clients">
+      <MobileSection title="Traffic by channel" href="/m/channels">
         <p>Client evidence may be incomplete or estimated and is separate from the VPS total.</p>
         {channelTraffic.length ? channelTraffic.map((row) => <div className="detail-row" key={row.channel}><span>{row.channel}</span><strong>{bytes(row.bytes)}</strong></div>) : <p>No channel traffic observed</p>}
         <details><summary>Last 30 days: channels and top clients</summary>

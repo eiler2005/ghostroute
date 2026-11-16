@@ -641,3 +641,21 @@ test("channel health distinguishes runtime evidence from application acceptance"
     await expect(card).toContainText("Traffic coverage depends on the channel collector");
   }
 });
+
+test("channel overview exposes traffic, clients, history and honest health", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/channels" : "/channels");
+  await expect(page.getByRole("heading", { name: "Channels", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clients by channel" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Observed apps by channel" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Daily channel history" })).toBeVisible();
+  await expect(page.getByText("Runtime status is not an authenticated application test.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Channels", exact: true })).toBeVisible();
+});
+
+test("dashboard client traffic status is not presented as a health check", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop dashboard");
+  await page.goto("/");
+  const clients = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: "Top clients" }) });
+  await expect(clients.locator(".rank-status").first()).toHaveText("Observed");
+  await expect(clients.locator(".rank-status").first()).toHaveAttribute("title", /not channel health|see Channels/i);
+});
