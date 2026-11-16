@@ -78,14 +78,20 @@ operator/debug output and a rollback source only.
 `traffic-evidence --json <period>` applies explicit UTC window bounds for
 `today`, `yesterday`, `week`, `month` and `YYYY-MM-DD` before facts are built, so
 retained router tails do not leak old rows into current accounting. Evidence
-mode includes the current Home Reality counter snapshot in a temporary state
+mode includes current LAN and Home Reality counter snapshots in a temporary state
 copy for live `today`/`week`/`month` windows, keeping the source router files
 read-only while matching `traffic-summary` freshness.
-mode is conservative: route/ipset matches are policy intent until real egress
-or outbound evidence exists. LAN/Wi-Fi and ingress bytes may also be marked
-`counter_allocated` when per-client counters or inbound/outbound route mix prove
-the route split for the same window; this is a route-split proof, not exact
-destination byte proof.
+LAN counter decreases mark a coverage gap and contribute only non-negative
+observed increments, using the same reset semantics as the summary. Live
+counter observations extend the latest historical interval; Console replaces
+contained partial intervals with their later owning interval rather than adding
+the cumulative observations together. Historical windows never append live data.
+Evidence is conservative: route/ipset matches are policy intent until real egress
+or outbound evidence exists. Per-client route counters prove their own total
+split; they do not assign that split to sampled destinations. Ingress
+connection/outbound counts prove neither per-app bytes nor route-byte proportions.
+Profile counters remain volume-only facts with unknown destination and route
+until matching byte evidence exists.
 DNS links only use safe time-ordered answers, and unverified route bytes stay in
 `unknown_bytes` to preserve the accounting invariant.
 

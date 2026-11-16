@@ -10,6 +10,18 @@ The reader applies interval ownership to retained legacy samples as well, so a
 new complete counter does not add the same sampled bytes twice. Uncovered
 samples remain partial evidence. LAN counter intervals are emitted by the source
 instead of being used only as route-allocation weights.
+Live LAN and profile reads use a temporary copy and append a fresh counter
+endpoint. A containing counter interval supersedes its earlier partial
+observations; adjacent intervals remain additive. All-lane client summaries
+read the total pyramid, while destination lanes retain their partial coverage.
+Completed proxy streams are independent events and do not use counter interval
+replacement.
+
+Connection counts do not allocate profile bytes to destinations or routes.
+Profile counters for every supported channel are volume-only evidence until
+matching byte observations exist. Retained connection-share estimates preserve
+their original profile volume as unattributed bytes; their fabricated app and
+route split is excluded, and a new counter for the same sample supersedes them.
 
 Ranking percentages use the sum of the explicitly displayed evidence set;
 bar geometry uses its maximum. These denominators are distinct. Byte confidence
@@ -225,22 +237,12 @@ and byte rows for one physical device land on the same `client_key`.
 
 The Clients page, Apps page and Dashboard ranking/API cards use one site/DNS
 evidence selector. Exact domain/SNI byte rows stay factual. Provider/category
-byte rows can provide coarse families when no better evidence exists. When the
-selected client has aggregate bytes that are otherwise only IP/provider
-residual, the selector may distribute that residual across client-facing DNS
-domains by query count so popular-site, app-family and dashboard ranking views
-cover that canonical client's current-window total. The selected-client total is
-the fuller current-window canonical source: detailed lane rows when they carry
-the whole client, or device counter deltas when flow detail is only a sampled
-explanation layer. Device-counter fallback is limited to trusted local/LAN
-device counters; public Channel A/B/C source counters remain ingress evidence so
-they are not double-counted against LAN device counters. Per-client inference
-never uses Dashboard/global totals, and synthetic `all` lanes are not summed
-together with class-specific lanes. Those
-rows are marked as inferred
-(`attribution_source=dns_inferred`, `byte_confidence=estimated`) and must not be
-presented as exact per-domain byte accounting. If no client-facing DNS evidence
-exists, the residual remains `Other / uncategorized`.
+byte rows provide coarse evidence, with app-match confidence separate from byte
+confidence. DNS interest and connection logs never distribute residual bytes.
+The selected-client volume comes from the total pyramid; destination rows
+explain only their observed portion. The unexplained remainder stays separate
+as `Other / uncategorized`. Synthetic `all` lanes are not summed together with
+class-specific lanes, and global/router totals never manufacture client bytes.
 
 When one registry client is seen through several lanes, channel labels are
 normalized as a small deduplicated set such as

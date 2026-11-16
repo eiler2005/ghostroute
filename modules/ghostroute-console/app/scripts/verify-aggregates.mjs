@@ -240,7 +240,15 @@ const laneDetailBytes = number(db.prepare("select coalesce(sum(bytes), 0) as byt
 const laneSummaryBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane != 'all'").get().bytes);
 const laneAllBytes = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane = 'all'").get().bytes);
 assert.equal(laneSummaryBytes, laneDetailBytes, "client_traffic_by_lane lane rows do not match destination detail bytes");
-assert.equal(laneAllBytes, laneDetailBytes, "client_traffic_by_lane all rows do not match destination detail bytes");
+const volumeTables = { '5min': 'client_traffic_5min', hour: 'client_traffic_hourly', day: 'client_traffic_daily', week: 'client_traffic_weekly', month: 'client_traffic_monthly' };
+let volumeBytes = 0;
+for (const [layer, table] of Object.entries(volumeTables)) {
+  const expected = number(db.prepare(`select coalesce(sum(bytes), 0) as bytes from ${table}`).get().bytes);
+  const actual = number(db.prepare("select coalesce(sum(bytes), 0) as bytes from client_traffic_by_lane where traffic_lane = 'all' and bucket_granularity = ?").get(layer).bytes);
+  assert.equal(actual, expected, `all-lane ${layer} volume differs from total pyramid`);
+  volumeBytes += expected;
+}
+assert.equal(laneAllBytes, volumeBytes, "all lanes must preserve volume independently of destination coverage");
 
 for (const model of ["client_traffic_by_lane", "client_destination_by_lane", "client_route_evidence_defects"]) {
   assert.ok(db.prepare("select 1 from aggregate_state where model = ? and window_key = 'all'").get(model), `missing aggregate_state ${model}/all`);

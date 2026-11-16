@@ -65,22 +65,8 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
   fi
 fi
 
-append_current_mobile_counters() {
-  local now_value state_file tmp_rules
-
-  case "$PERIOD_ARG" in
-    today|current|current-day|week|month) ;;
-    *) return 0 ;;
-  esac
-
-  if [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_MOBILE:-1}" != "1" ]; then
-    return 0
-  fi
-
-  if [ -z "$STATE_DIR" ]; then
-    return 0
-  fi
-
+prepare_current_state() {
+  local state_file
   if [ -z "$TMP_STATE_DIR" ]; then
     TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
     for state_file in lan-flow-facts.tsv dns-query-facts.tsv lan-device-counters.tsv mobile-reality-counters.tsv sing-box-route-evidence.tsv isolated-channel-deltas.jsonl; do
@@ -92,16 +78,48 @@ append_current_mobile_counters() {
     done
     STATE_DIR="$TMP_STATE_DIR"
   fi
+}
 
+current_counter_time() {
   if [ -n "${TRAFFIC_EVIDENCE_NOW:-}" ]; then
-    now_value="$TRAFFIC_EVIDENCE_NOW"
+    printf '%s\n' "$TRAFFIC_EVIDENCE_NOW"
   elif [ -n "${GHOSTROUTE_TRAFFIC_WINDOW_NOW:-}" ]; then
-    now_value="$GHOSTROUTE_TRAFFIC_WINDOW_NOW"
+    printf '%s\n' "$GHOSTROUTE_TRAFFIC_WINDOW_NOW"
   elif router_health_load_env >/dev/null 2>&1; then
-    now_value="$(router_ssh "date '+%Y-%m-%dT%H:%M:%S%z'" 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')"
+    router_ssh "date '+%Y-%m-%dT%H:%M:%S%z'" 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z'
   else
-    now_value="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+    date '+%Y-%m-%dT%H:%M:%S%z'
   fi
+}
+
+append_current_lan_counters() {
+  local now_value
+  case "$PERIOD_ARG" in
+    today|current|current-day|week|month) ;;
+    *) return 0 ;;
+  esac
+  [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_LAN:-1}" = "1" ] || return 0
+  [ -n "$STATE_DIR" ] || return 0
+  prepare_current_state
+  now_value="$(current_counter_time)"
+  if [ -n "${TRAFFIC_LAN_CURRENT_FILE:-}" ]; then
+    awk -F'|' -v ts="$now_value" 'NF >= 8 { print ts "|" $0 }' "$TRAFFIC_LAN_CURRENT_FILE" >> "${STATE_DIR}/lan-device-counters.tsv"
+  elif router_health_load_env >/dev/null 2>&1; then
+    { router_ssh '[ -x /jffs/scripts/lan-device-counters-snapshot ] && /jffs/scripts/lan-device-counters-snapshot 2>/dev/null || true' |
+      awk -F'|' -v ts="$now_value" 'NF >= 8 { print ts "|" $0 }' >> "${STATE_DIR}/lan-device-counters.tsv"; } || true
+  fi
+}
+
+append_current_mobile_counters() {
+  local now_value tmp_rules
+  case "$PERIOD_ARG" in
+    today|current|current-day|week|month) ;;
+    *) return 0 ;;
+  esac
+  [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_MOBILE:-1}" = "1" ] || return 0
+  [ -n "$STATE_DIR" ] || return 0
+  prepare_current_state
+  now_value="$(current_counter_time)"
 
   if [ -n "${TRAFFIC_MOBILE_CURRENT_FILE:-}" ]; then
     awk -F'|' -v ts="$now_value" 'NF >= 4 { print ts "|" $0 }' "$TRAFFIC_MOBILE_CURRENT_FILE" >> "${STATE_DIR}/mobile-reality-counters.tsv"
@@ -244,6 +262,7 @@ REMOTE
   fi
 }
 
+append_current_lan_counters
 append_current_mobile_counters
 
 TRAFFIC_EVIDENCE_PERIOD="$PERIOD_ARG" \
@@ -511,12 +530,14 @@ else
       rows.sort_by { |row| row['ts'] }.each do |row|
         in_window = in_window?(row['ts'], window_start, window_end)
         if previous && in_window
-          vpn_up = row['vpn_up_counter'] >= previous['vpn_up_counter'] ? row['vpn_up_counter'] - previous['vpn_up_counter'] : row['vpn_up_counter']
-          vpn_down = row['vpn_down_counter'] >= previous['vpn_down_counter'] ? row['vpn_down_counter'] - previous['vpn_down_counter'] : row['vpn_down_counter']
-          wan_up = row['wan_up_counter'] >= previous['wan_up_counter'] ? row['wan_up_counter'] - previous['wan_up_counter'] : row['wan_up_counter']
-          wan_down = row['wan_down_counter'] >= previous['wan_down_counter'] ? row['wan_down_counter'] - previous['wan_down_counter'] : row['wan_down_counter']
-          other_up = row['other_up_counter'] >= previous['other_up_counter'] ? row['other_up_counter'] - previous['other_up_counter'] : row['other_up_counter']
-          other_down = row['other_down_counter'] >= previous['other_down_counter'] ? row['other_down_counter'] - previous['other_down_counter'] : row['other_down_counter']
+          increments = %w[vpn_up_counter vpn_down_counter wan_up_counter wan_down_counter other_up_counter other_down_counter].map do |key|
+            difference = row[key] - previous[key]
+            if difference < 0
+              warnings << { 'code' => 'counter_reset_gap', 'source' => 'lan-device-counters.tsv', 'component' => key }
+            end
+            [difference, 0].max
+          end
+          vpn_up, vpn_down, wan_up, wan_down, other_up, other_down = increments
           vpn_bytes = vpn_up + vpn_down
           direct_bytes = wan_up + wan_down
           other_bytes = other_up + other_down
@@ -626,8 +647,12 @@ else
       rows.sort_by { |row| row['ts'] }.each do |row|
         in_window = in_window?(row['ts'], window_start, window_end)
         if previous && in_window
-          up_delta = row['bytes_up_counter'] >= previous['bytes_up_counter'] ? row['bytes_up_counter'] - previous['bytes_up_counter'] : row['bytes_up_counter']
-          down_delta = row['bytes_down_counter'] >= previous['bytes_down_counter'] ? row['bytes_down_counter'] - previous['bytes_down_counter'] : row['bytes_down_counter']
+          increments = %w[bytes_up_counter bytes_down_counter].map do |key|
+            difference = row[key] - previous[key]
+            warnings << { 'code' => 'counter_reset_gap', 'source' => 'mobile-reality-counters.tsv', 'component' => key } if difference < 0
+            [difference, 0].max
+          end
+          up_delta, down_delta = increments
           total = up_delta + down_delta
           if total > 0
             if row['client_label'].to_s.start_with?('remote:')
@@ -639,6 +664,8 @@ else
             sample = {
               'sample_id' => evidence_id('home-reality', previous['ts'].iso8601(3), row['ts'].iso8601(3), row['source_ip'], row['client_label'], total),
               'ts' => row['ts'].utc.iso8601(3),
+              'interval_start_utc' => previous['ts'].utc.iso8601(3),
+              'interval_end_utc' => row['ts'].utc.iso8601(3),
               'client_key' => row['client_key'],
               'client_label' => row['client_label'],
               'source_ip' => row['source_ip'],

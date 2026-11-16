@@ -4,6 +4,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
+export GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_LAN=0
 
 cat > "$TMP_DIR/lan-flow-facts.tsv" <<'EOF'
 2026-05-10T09:00:00+0300|192.168.1.10|192.0.2.10|443|tcp|VPS|1|2|3|1|conntrack_snapshot_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
@@ -61,11 +62,11 @@ ruby -rjson -e '
   abort "expected four today flow samples" unless evidence["flow_samples"].length == 4
   abort "expected LAN route counter delta" unless evidence["lan_device_route_deltas"].length == 1
   abort "expected sing-box route evidence" unless evidence["sing_box_route_evidence"].length == 4
-  abort "expected three Home Reality samples" unless evidence["home_reality_samples"].length == 3
+  abort "expected two observed Home Reality increments" unless evidence["home_reality_samples"].length == 2
   abort "yesterday flow leaked into today evidence" if evidence["flow_samples"].any? { |row| row["remote_ip"] == "192.0.2.10" }
   abort "expected timestamp warnings" unless evidence["warnings"].any? { |row| row["code"] == "unparsable_timestamp" }
   abort "expected traffic-facts schema v3" unless facts["schema_version"] == 3
-  abort "expected destination facts plus measured LAN total" unless facts["traffic_facts"].length == 11
+  abort "expected destination facts plus measured LAN total" unless facts["traffic_facts"].length == 7
   volume = facts["traffic_facts"].select { |row| row["measurement_scope"] == "lan_route_counter" }
   abort "LAN counter volume missing" unless volume.sum { |row| row["bytes"].to_i } == evidence["lan_device_route_deltas"].sum { |row| row["total_bytes"].to_i }
   abort "counter volume acquired an application" unless volume.all? { |row| row["destination"].to_s.empty? }
@@ -76,10 +77,10 @@ ruby -rjson -e '
   end
   linked = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.20" }
   abort "expected dns link" unless linked && linked["dns_qname"] == "example.invalid" && linked["dns_link_confidence"] == "high" && linked["dns_status"] == "exact"
-  abort "expected counter allocated route" unless linked["route"] == "Mixed" && linked["intended_route"] == "VPS" && linked["route_verification"] == "counter_allocated" && linked["route_status"] == "counter_allocated"
+  abort "expected counter allocated route" unless linked["route"] == "Unknown" && linked["intended_route"] == "VPS" && linked["route_verification"] == "intent_only" && linked["route_status"] == "intent_only"
   abort "accounting_status should only describe accounting" unless linked["accounting_status"] == "ok"
   abort "expected no synthetic outbound" unless linked["outbound"].to_s.empty?
-  abort "expected counter allocated split" unless linked["unknown_bytes"].to_i == 0 && linked["via_vps_bytes"].to_i == 2800 && linked["direct_bytes"].to_i == 1400
+  abort "expected counter allocated split" unless linked["unknown_bytes"].to_i == 4200 && linked["via_vps_bytes"].to_i == 0 && linked["direct_bytes"].to_i == 0
   future = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.40" }
   abort "future DNS was linked" unless future && future["dns_link_confidence"] == "no_dns_match" && future["dns_qname"].to_s.empty?
   shared = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.50" }
@@ -87,19 +88,12 @@ ruby -rjson -e '
   abort "sing-box mismatch should be visible" unless shared["route_verification"] == "mismatch" && shared["outbound"] == "direct-out" && shared["unknown_bytes"].to_i == shared["bytes"].to_i
   no_ipset = facts["traffic_facts"].find { |row| row["destination_ip"] == "192.0.2.70" }
   abort "no_ipset should not become intent_only" unless no_ipset && no_ipset["route_verification"] == "unknown" && no_ipset["route_status"] == "unknown"
-  home = facts["traffic_facts"].select { |row| row["client_key"] == "iphone-4" && row["evidence_level"] == "home_reality_sing_box_destination_estimate" }
-  abort "expected estimated Home Reality destination facts" unless home.length == 6
-  abort "Home Reality ingress should be residual-only" if facts["traffic_facts"].any? { |row| row["destination"] == "Home Reality ingress" }
-  abort "expected Home Reality profile key" unless home.all? { |row| row["traffic_class"] == "client" }
-  abort "Home Reality should use ingress route allocation" unless home.all? { |row| row["route_verification"] == "ingress_route_allocated" && row["route_status"] == "counter_allocated" }
-  abort "Home Reality bytes must use route split invariant" unless home.all? { |row| row["bytes"].to_i == row["unknown_bytes"].to_i + row["via_vps_bytes"].to_i + row["direct_bytes"].to_i }
-  abort "Home Reality must stay estimated without DNS proof" unless home.all? { |row| row["dns_link_confidence"] == "no_dns_match" && row["dns_qname"].to_s.empty? && row["destination_confidence"] == "sing_box_destination" && row["confidence"] == "estimated" }
-  abort "Home Reality should preserve exact counter total" unless home.sum { |row| row["bytes"].to_i } == evidence["home_reality_samples"].sum { |row| row["total_bytes"].to_i }
-  vps_home = home.select { |row| row["destination"] == "api.example.invalid" }
-  direct_home = home.select { |row| row["destination"] == "direct.example.invalid" }
-  abort "expected three VPS and three Direct Home Reality destination facts" unless vps_home.length == 3 && direct_home.length == 3
-  abort "expected VPS destination split" unless vps_home.all? { |row| row["route"] == "VPS" && row["via_vps_bytes"].to_i == row["bytes"].to_i && row["direct_bytes"].to_i == 0 && row["unknown_bytes"].to_i == 0 }
-  abort "expected Direct destination split" unless direct_home.all? { |row| row["route"] == "Direct" && row["direct_bytes"].to_i == row["bytes"].to_i && row["via_vps_bytes"].to_i == 0 && row["unknown_bytes"].to_i == 0 }
+   home = facts["traffic_facts"].select { |row| row["evidence_level"] == "home_reality_profile_counter" }
+   abort "profile counters missing" unless home.length == 2
+   abort "connection counts manufactured app bytes" unless home.all? { |row| row["destination"].empty? && row["measurement_role"] == "volume" }
+   abort "profile byte totals differ from source" unless home.sum { |row| row["bytes"] } == evidence["home_reality_samples"].sum { |row| row["total_bytes"] }
+   abort "connection counts manufactured route bytes" unless home.all? { |row| row["unknown_bytes"] == row["bytes"] && row["route"] == "Unknown" }
+   abort "counter reset gap missing" unless evidence["warnings"].any? { |row| row["code"] == "counter_reset_gap" }
 ' "$TMP_DIR/evidence.json" "$TMP_DIR/facts.json"
 
 CURRENT_DIR="$TMP_DIR/current-home-reality"
@@ -158,5 +152,29 @@ ruby -rjson -e '
   abort "expected iptables current Home Reality delta bytes" unless sample["bytes_up"].to_i == 1000 && sample["bytes_down"].to_i == 3000 && sample["total_bytes"].to_i == 4000
   abort "expected iptables current sample to preserve known profile label" unless sample["client_label"] == "phone-profile"
 ' "$IPTABLES_DIR/evidence-current.json"
+
+LAN_DIR="$TMP_DIR/current-lan"
+mkdir -p "$LAN_DIR"
+cat > "$LAN_DIR/lan-device-counters.tsv" <<'EOF'
+2026-05-11T09:00:00+0300|192.0.2.5|fixture|100|200|300|400|0|0
+EOF
+cat > "$LAN_DIR/current.tsv" <<'EOF'
+192.0.2.5|fixture|10737418340|10737418440|300|400|0|0
+EOF
+for observation in first repeated; do
+  GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_LAN=1 \
+  GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_MOBILE=0 \
+  GHOSTROUTE_TRAFFIC_WINDOW_NOW="2026-05-11T09:10:00+0300" \
+  GHOSTROUTE_TRAFFIC_STATE_DIR="$LAN_DIR" \
+  TRAFFIC_LAN_CURRENT_FILE="$LAN_DIR/current.tsv" \
+    "$PROJECT_ROOT/modules/traffic-observatory/bin/traffic-evidence" --json today > "$LAN_DIR/$observation.json"
+done
+ruby -rjson -e '
+  first, repeated = ARGV.take(2).map { |p| JSON.parse(File.read(p))["lan_device_route_deltas"] }
+  abort "fresh LAN interval missing" unless first.length == 1
+  abort "fresh LAN bytes truncated" unless first.first["total_bytes"] == 20 * 1024**3
+  abort "repeated live read changed interval identity" unless first == repeated
+  abort "live read mutated retained source" unless File.readlines(ARGV[2]).length == 1
+' "$LAN_DIR/first.json" "$LAN_DIR/repeated.json" "$LAN_DIR/lan-device-counters.tsv"
 
 echo "traffic evidence/facts v3 tests passed"

@@ -18,6 +18,21 @@ test('measured volume and application detail are independent partitions, not add
   rebuildPreparedWindows(db,'2026-11-16T09:07:00.000Z');
   assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,volume);
   assert.equal(db.prepare('select sum(bytes) n from client_destination_traffic_5min').get().n,detail);
+  assert.equal(db.prepare("select sum(bytes) n from client_traffic_by_lane where bucket_granularity='5min' and traffic_lane='all'").get().n,volume);
+  const counter=(id,start,end,bytes)=>({...common,fact_id:id,event_ts_utc:end,bytes,direct_bytes:bytes,via_vps_bytes:0,unknown_bytes:0,destination:'',destination_kind:'unattributed_counter',measurement_role:'volume',measurement_scope:'fixture_counter',interval_start_utc:start,interval_end_utc:end});
+  normalizeSnapshot(db,2,'traffic_facts','2026-11-16T09:11:00.000Z',{traffic_facts:[
+   counter('extended','2026-11-16T09:00:00.000Z','2026-11-16T09:10:00.000Z',2*volume),
+  ]});
+  rebuildPreparedWindows(db,'2026-11-16T09:12:00.000Z');
+  assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,2*volume,'live endpoint supersedes earlier partial volume');
+  normalizeSnapshot(db,3,'traffic_facts','2026-11-16T09:16:00.000Z',{traffic_facts:[
+   counter('retained','2026-11-16T09:00:00.000Z','2026-11-16T09:12:00.000Z',3*volume),
+   counter('next','2026-11-16T09:12:00.000Z','2026-11-16T09:15:00.000Z',volume),
+  ]});
+  rebuildPreparedWindows(db,'2026-11-16T09:17:00.000Z');
+  assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,4*volume,'retained interval replaces live partials and adjacent interval remains additive');
+  assert.equal(db.prepare("select sum(bytes) n from client_traffic_by_lane where bucket_granularity='5min' and traffic_lane='all'").get().n,4*volume);
+  assert.equal(db.prepare('select sum(bytes) n from client_destination_traffic_5min').get().n,detail);
  } finally {db.close()}
 });
 test('rank share uses sum and bar geometry uses maximum',()=>{

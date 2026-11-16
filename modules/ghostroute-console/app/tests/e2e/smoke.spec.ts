@@ -170,12 +170,14 @@ test("client sites do not manufacture byte-attributed domains from DNS interest"
   expect(domainLabels.length).toBeLessThan(10);
 });
 
-test("Home Reality selected client shows estimated apps and sites without DNS rows", async ({ page, isMobile }) => {
+test("retained Home Reality connection counts cannot manufacture app or site byte rankings", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop-only Home Reality attribution detail");
   await page.goto("/apps?client=test-home-reality-estimated");
   const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families for Test/Home Reality Estimated" }) });
   await expect(selectedApps).toBeVisible();
-  await expect(selectedApps).toContainText(/YouTube|Telegram|Apple/);
+  await expect(selectedApps).toContainText("Other / uncategorized");
+  await expect(selectedApps).toContainText("residual bytes");
+  await expect(selectedApps).not.toContainText(/YouTube|Telegram|Apple/);
   await expect(selectedApps).toContainText("0 queries");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains for Test/Home Reality Estimated" }) });
   await expect(latestDns).toContainText("No DNS domains for this device");
@@ -183,9 +185,8 @@ test("Home Reality selected client shows estimated apps and sites without DNS ro
   await page.goto("/clients?client=test-home-reality-estimated");
   const popular = page.locator("section").filter({ has: page.getByRole("heading", { name: "Most popular sites for Test/Home Reality Estimated" }) });
   await expect(popular).toBeVisible();
-  await expect(popular).toContainText("youtubei.googleapis.com");
-  await expect(popular).toContainText("api.telegram.org");
-  await expect(popular).not.toContainText("No site-level traffic for this client");
+  await expect(popular).not.toContainText("youtubei.googleapis.com");
+  await expect(popular).not.toContainText("api.telegram.org");
 });
 
 test("flow workbench exposes inline detail and gated evidence", async ({ page, isMobile }) => {

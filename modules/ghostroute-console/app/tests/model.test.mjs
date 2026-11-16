@@ -996,7 +996,7 @@ test("traffic facts v3 persists route accounting and dns link details", () => {
   db.close();
 });
 
-test("Home Reality estimated destination facts feed prepared client read models without DNS rows", async () => {
+test("retained connection-share estimates preserve profile totals without invented destination or route bytes", async () => {
   await withTempConsoleDataDir("ghostroute-console-home-reality-sites-", async (tmp) => {
     const db = new Database(path.join(tmp, "ghostroute.db"));
     try {
@@ -1117,12 +1117,9 @@ test("Home Reality estimated destination facts feed prepared client read models 
       rebuildPreparedWindows(db, "2026-05-17T10:11:00.000Z");
 
       const phoneTotal = db.prepare("select coalesce(sum(bytes), 0) as bytes, coalesce(sum(via_vps_bytes), 0) as vps, coalesce(sum(direct_bytes), 0) as direct from client_traffic_by_lane where bucket_granularity = '5min' and client_key = 'phone-a' and traffic_lane = 'all'").get();
-      assert.deepEqual(phoneTotal, { bytes: 1000, vps: 750, direct: 250 });
+      assert.deepEqual(phoneTotal, { bytes: 1000, vps: 0, direct: 0 });
       const phoneDestinations = db.prepare("select destination_key, bytes, via_vps_bytes, direct_bytes, dns_category from client_destination_by_lane where bucket_granularity = '5min' and client_key = 'phone-a' order by destination_key").all();
-      assert.deepEqual(phoneDestinations.map((row) => [row.destination_key, row.bytes, row.via_vps_bytes, row.direct_bytes]), [
-        ["api.telegram.org", 250, 0, 250],
-        ["youtubei.googleapis.com", 750, 750, 0],
-      ]);
+      assert.deepEqual(phoneDestinations, []);
       assert.equal(db.prepare("select count(*) as count from traffic_dns_links where client_key = 'phone-a'").get().count, 0);
       assert.equal(db.prepare("select count(*) as count from dns_log_5min where client_key = 'phone-a'").get().count, 0);
 

@@ -143,38 +143,18 @@ assert.equal(payload.schema_version, 3);
 
 const facts = payload.traffic_facts;
 const phoneA = facts.filter((row) => row.client_key === "phone-a");
-assert.equal(phoneA.length, 2);
-assert.equal(phoneA.reduce((sum, row) => sum + row.bytes, 0), 1000);
-assert.equal(phoneA.reduce((sum, row) => sum + row.via_vps_bytes + row.direct_bytes + row.unknown_bytes, 0), 1000);
-assert.equal(phoneA.some((row) => row.destination === "Home Reality ingress"), false);
-
-const youtube = phoneA.find((row) => row.destination === "youtubei.googleapis.com");
-assert.ok(youtube);
-assert.equal(youtube.bytes, 750);
-assert.equal(youtube.via_vps_bytes, 750);
-assert.equal(youtube.direct_bytes, 0);
-assert.equal(youtube.dns_qname, "");
-assert.equal(youtube.dns_status, "no_match");
-assert.equal(youtube.destination_confidence, "sing_box_destination");
-assert.equal(youtube.byte_confidence, "estimated_connection_share");
-assert.equal(youtube.allocation_basis, "home_reality_connection_share");
-assert.equal(youtube.evidence_level, "home_reality_sing_box_destination_estimate");
-assert.equal(youtube.route_verification, "ingress_route_allocated");
-
-const telegram = phoneA.find((row) => row.destination === "api.telegram.org");
-assert.ok(telegram);
-assert.equal(telegram.bytes, 250);
-assert.equal(telegram.direct_bytes, 250);
-assert.equal(telegram.via_vps_bytes, 0);
-
+assert.equal(phoneA.length, 1);
+assert.equal(phoneA[0].bytes, 1000);
+assert.equal(phoneA[0].unknown_bytes, 1000);
+assert.equal(phoneA[0].destination, "");
+assert.equal(phoneA[0].destination_kind, "unattributed_counter");
+assert.equal(phoneA[0].measurement_role, "volume");
+assert.equal(phoneA[0].evidence_level, "home_reality_profile_counter");
 const phoneB = facts.find((row) => row.client_key === "phone-b");
 assert.ok(phoneB);
-assert.equal(phoneB.destination, "Home Reality ingress");
 assert.equal(phoneB.bytes, 600);
-assert.equal(phoneB.via_vps_bytes, 450);
-assert.equal(phoneB.direct_bytes, 150);
-assert.equal(phoneB.unknown_bytes, 0);
-
+assert.equal(phoneB.unknown_bytes, 600);
+assert.equal(facts.some((row) => row.allocation_basis === "home_reality_connection_share"), false);
 const lan = facts.find((row) => row.client_key === "lan-client");
 assert.ok(lan);
 assert.equal(lan.destination, "lan.example.invalid");
@@ -184,9 +164,9 @@ assert.equal(lan.bytes, 400);
 const clientA = payload.clients.find((row) => row.client_key === "phone-a");
 assert.ok(clientA);
 assert.equal(clientA.total_bytes, 1000);
-assert.equal(clientA.via_vps_bytes, 750);
-assert.equal(clientA.direct_bytes, 250);
-assert.equal(clientA.unknown_bytes, 0);
+assert.equal(clientA.via_vps_bytes, 0);
+assert.equal(clientA.direct_bytes, 0);
+assert.equal(clientA.unknown_bytes, 1000);
 assert.equal(payload.coverage.traffic_fact_bytes, 2000);
 NODE
 
@@ -241,20 +221,20 @@ const fs = require("node:fs");
 const single = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const singleHome = single.traffic_facts.filter((row) => row.client_key === "phone-single");
 assert.equal(singleHome.length, 1);
-assert.equal(singleHome[0].destination, "video.example.invalid");
-assert.equal(singleHome[0].evidence_level, "home_reality_sing_box_destination_estimate");
+assert.equal(singleHome[0].destination, "");
+assert.equal(singleHome[0].evidence_level, "home_reality_profile_counter");
 assert.equal(singleHome[0].bytes, 100);
-assert.equal(singleHome[0].via_vps_bytes, 100);
+assert.equal(singleHome[0].unknown_bytes, 100);
 
 const multi = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 const multiHome = multi.traffic_facts.filter((row) => row.channel === "A/Home Reality");
 assert.equal(multiHome.length, 2);
-assert.equal(multiHome.every((row) => row.destination === "Home Reality ingress"), true);
+assert.equal(multiHome.every((row) => row.destination === ""), true);
 assert.equal(multiHome.every((row) => row.evidence_level === "home_reality_profile_counter"), true);
 NODE
 
-# The dedicated sensitive outbound is still VPS traffic in schema v3, with the
-# same byte attribution as the general managed path.
+# An outbound log without per-connection bytes cannot allocate profile bytes,
+# including a dedicated managed outbound.
 sed -e 's/reality-out/sensitive-out/g' -e 's/youtubei.googleapis.com/claude.ai/g' \
   "$TMPDIR/evidence.json" > "$TMPDIR/evidence-sensitive.json"
 GHOSTROUTE_TRAFFIC_FACTS_EVIDENCE_FILE="$TMPDIR/evidence-sensitive.json" \
@@ -264,9 +244,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 assert.equal(payload.schema_version, 3);
-const row = payload.traffic_facts.find((r) => r.client_key === "phone-a" && r.destination === "claude.ai");
+const row = payload.traffic_facts.find((r) => r.client_key === "phone-a");
 assert.ok(row);
-assert.equal(row.via_vps_bytes, 750);
+assert.equal(row.via_vps_bytes, 0);
+assert.equal(row.unknown_bytes, 1000);
 assert.equal(row.direct_bytes, 0);
 NODE
 

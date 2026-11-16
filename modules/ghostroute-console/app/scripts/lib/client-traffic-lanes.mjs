@@ -267,7 +267,7 @@ function enrichmentStatusFor(values) {
   return unique.length > 1 ? "mixed" : "missing";
 }
 
-function insertGroupedRows(db, detailRows, layer, updatedAt) {
+function insertGroupedRows(db, detailRows, totalRows, layer, updatedAt) {
   const insertDetail = db.prepare(`
     insert into client_destination_by_lane(bucket_granularity, bucket_key, bucket_start_utc, client_key, client_label,
       channel, route, confidence, traffic_class, traffic_lane, dns_category, decision_hint, destination_key,
@@ -368,7 +368,21 @@ function insertGroupedRows(db, detailRows, layer, updatedAt) {
       row.source, row.enrichment_status, row.bytes, row.via_vps_bytes, row.direct_bytes, row.unknown_bytes,
       row.flows, row.first_seen_utc, row.last_seen_utc, updatedAt);
   }
-  for (const row of [...laneGrouped.values(), ...allGrouped.values()]) {
+  const measuredAll = new Map();
+  for (const sourceRow of totalRows) {
+    const row = normalizeLaneRow({ ...sourceRow, destination_key: '' }, layer);
+    const key = [row.bucket_granularity, row.bucket_key, row.client_key, row.channel].join('|');
+    const total = measuredAll.get(key) || {
+      ...row, traffic_class: 'all', traffic_lane: 'all', dns_category: 'all', decision_hint: 'all',
+      destinationMap: allGrouped.get(key)?.destinationMap || new Map(),
+      enrichmentValues: allGrouped.get(key)?.enrichmentValues || new Set(),
+      confidenceValues: new Set(), bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0,
+    };
+    addMetrics(total, row);
+    total.confidenceValues.add(row.confidence);
+    measuredAll.set(key, total);
+  }
+  for (const row of [...laneGrouped.values(), ...measuredAll.values()]) {
     row.route = row.traffic_lane === "all" ? routeFromSplit(row) : row.route;
     row.confidence = row.traffic_lane === "all" ? confidenceFor(row.confidenceValues || []) : row.confidence;
     row.enrichment_status = row.traffic_lane === "all" ? enrichmentStatusFor(row.enrichmentValues || []) : row.enrichment_status;
@@ -582,7 +596,10 @@ export function rebuildClientTrafficLaneReadModels(db, options = {}) {
     const [startUtc, endUtc] = ranges[layer];
     db.prepare("delete from client_traffic_by_lane where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?").run(layer, startUtc, endUtc);
     db.prepare("delete from client_destination_by_lane where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?").run(layer, startUtc, endUtc);
-    insertGroupedRows(db, sourceRows(db, meta, startUtc, endUtc), layer, updatedAt);
+    const totals = db.prepare(`select *, ${meta.sourceTime} as bucket_start_utc, ${meta.sourceKey} as bucket_key
+      from ${meta.sourceTable.replace('client_destination_traffic_', 'client_traffic_')}
+      where ${meta.sourceTime} >= ? and ${meta.sourceTime} < ?`).all(startUtc, endUtc);
+    insertGroupedRows(db, sourceRows(db, meta, startUtc, endUtc), totals, layer, updatedAt);
     summaryRows += number(db.prepare("select count(*) as count from client_traffic_by_lane where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?").get(layer, startUtc, endUtc)?.count);
     detailRows += number(db.prepare("select count(*) as count from client_destination_by_lane where bucket_granularity = ? and bucket_start_utc >= ? and bucket_start_utc < ?").get(layer, startUtc, endUtc)?.count);
   }

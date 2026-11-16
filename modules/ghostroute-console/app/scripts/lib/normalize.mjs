@@ -2118,9 +2118,21 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       )
       .all(startUtc, endUtc);
   }
+  const counterSamples = new Set(sourceRows.flatMap((row) => {
+    const raw = parseJson(row.raw_json, {});
+    return raw.destination_kind === 'unattributed_counter' && raw.sample_id ? [raw.sample_id] : [];
+  }));
   const rows = sourceRows.map((row) => {
       const raw = parseJson(row.raw_json, {});
       if (raw.accounting_bucket) return null;
+      if (raw.allocation_basis === 'home_reality_connection_share') {
+        if (raw.sample_id && counterSamples.has(raw.sample_id)) return null;
+        // Retained estimates preserve the measured profile total, but their
+        // connection-count distribution proves neither app bytes nor routes.
+        raw.destination_kind = 'unattributed_counter';
+        raw.measurement_role = 'volume';
+        row = { ...row, route: 'Unknown', via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: row.bytes };
+      }
       const aggregateTime = row.snapshot_type === 'traffic_facts'
         ? parseSourceTimestamp(row.event_ts_utc || raw.event_ts_utc || raw.event_ts || row.event_ts || row.collected_at)
         : parseSourceTimestamp(row.collected_at);
@@ -2167,15 +2179,37 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       };
     }).filter(Boolean);
   if (hasTrafficFacts) {
-    const intervals = new Map();
+    // A live observation extends the last retained counter interval. Once a
+    // later endpoint owns that entire interval, its earlier partial observation
+    // must not contribute another copy of the same cumulative bytes.
+    const counterGroups = new Map();
     for (const row of rows) {
+      if (!row.accounting_bucket || !row.raw.interval_start_utc || !row.raw.interval_end_utc) continue;
+      const key = JSON.stringify([row.client_key, row.channel, row.raw.measurement_scope]);
+      const list = counterGroups.get(key) || [];
+      list.push(row);
+      counterGroups.set(key, list);
+    }
+    const superseded = new Set();
+    for (const list of counterGroups.values()) {
+      list.sort((a, b) => a.raw.interval_start_utc.localeCompare(b.raw.interval_start_utc)
+        || b.raw.interval_end_utc.localeCompare(a.raw.interval_end_utc) || b.rowid - a.rowid);
+      let coveredEnd = '';
+      for (const row of list) {
+        if (row.raw.interval_end_utc <= coveredEnd) superseded.add(row);
+        else coveredEnd = row.raw.interval_end_utc;
+      }
+    }
+    const ownedRows = rows.filter((row) => !superseded.has(row));
+    const intervals = new Map();
+    for (const row of ownedRows) {
       if (!row.accounting_bucket || !row.raw.interval_start_utc || !row.raw.interval_end_utc) continue;
       const key = JSON.stringify([row.client_key, row.channel]);
       const list = intervals.get(key) || [];
       list.push([row.raw.interval_start_utc, row.raw.interval_end_utc]);
       intervals.set(key, list);
     }
-    return rows.map((row) => ({ ...row, total_bytes: row.bytes,
+    return ownedRows.map((row) => ({ ...row, total_bytes: row.bytes,
       measurement_role: !row.accounting_bucket && (intervals.get(JSON.stringify([row.client_key, row.channel])) || [])
         .some(([start, end]) => row.collected_at > start && row.collected_at <= end) ? 'detail' : row.measurement_role,
     }));
