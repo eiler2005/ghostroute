@@ -36,6 +36,13 @@ reserve backend during incidents. The repo is intentionally module-native:
 routing, health, traffic, catalog, client profiles, secrets and recovery all
 have separate ownership and tests.
 
+An opt-in [cold emergency controller](modules/routing-core/docs/emergency-egress.md)
+checks `backup_reality` every five minutes and can select `backup_reality_emergency`
+after thirty continuously observed failed minutes. It stops the former profile
+before qualifying the reserve, preserves client imports and requires manual return.
+Local faults and partial application failures do not trigger this switch.
+See the [architecture diagram](docs/architecture.md#аварийное-переключение-managed-выхода).
+
 Sensitive sites mode gives reviewed destinations a dedicated `sensitive-out`
 egress before the general managed rules. The LAN managed guard protects already
 classified IPv4 TCP and UDP/443 during REDIRECT recovery; atomic ipset snapshots
@@ -103,6 +110,9 @@ cleanup, protected rollback/client assets and Console's automatic rolling
 An additive [Snell + ShadowTLS lab](modules/routing-core/docs/channel-snell-lab.md)
 provides three experimental identities. It requires separate client acceptance
 and does not replace the protected production anyT imports.
+
+The failover column below describes switching between client channels. The opt-in
+cold emergency controller changes their shared egress backend, preserving the channel.
 
 | Channel | Status | First hop | Scope | Automatic failover |
 |---|---|---|---|---|
@@ -328,7 +338,9 @@ selected Google AI destinations through `sensitive-out` (`hermes_vps` by default
 or an explicitly qualified `backup_reality` recovery selection), while
 other managed destinations retain their current backend. The separate domain
 catalog and `vault_router_sensitive_sites_enabled` switch do not change client
-imports. Matched sensitive traffic has no automatic fallback to another IP.
+imports. There is no direct fallback. Automatic backend changes require the
+explicitly enabled [cold emergency pair](modules/routing-core/docs/emergency-egress.md);
+an independently pinned sensitive profile is not silently moved.
 See [the mode contract and limitations](modules/routing-core/docs/sensitive-sites-mode.md).
 An experimental `vault_router_sensitive_telegram_enabled` extension sends Telegram
 domains and its reviewed native IPv4 ranges through the same sensitive backend.

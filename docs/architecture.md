@@ -137,6 +137,41 @@ Layer 3 VPS
   -> sites see VPS IP for managed traffic
 ```
 
+## Аварийное переключение managed-выхода
+
+Опциональный контроллер на роутере проверяет `backup_reality` каждые пять минут.
+После 30 минут непрерывно наблюдаемых общих отказов он останавливает основной
+профиль, проверяет холодный `backup_reality_emergency` и включает его при успехе.
+Два профиля одновременно не подключаются, включая диагностику. Работа контроллера
+не зависит от Mac, Ansible или Console.
+
+```mermaid
+flowchart TB
+    Clients["LAN / Home Reality / B / C / D / anyT / Snell"] --> Policy["Домашний роутер: существующая split-политика"]
+    Policy --> Direct["Обычные назначения → домашний WAN"]
+    Policy --> Selected["Managed и совпадающий sensitive-out: один выбранный профиль"]
+    Selected --> Exit["backup_reality ИЛИ backup_reality_emergency"]
+    Monitor["Контроллер на роутере<br/>проверка каждые 5 минут"] -. "наблюдение активного выхода" .-> Selected
+    Monitor -. "30 минут общего отказа<br/>остановка → проверка → включение" .-> Exit
+    Separate["Channel M: отдельная политика"] --> Regional["Независимый региональный выход"]
+```
+
+Это смена backend общего выхода, а не переключение между клиентскими каналами.
+LAN REDIRECT, управляемый DNS, каталоги, split-правила и выданные QR сохраняются.
+Проекции anyT/Snell и активного Amn перезапускаются последовательно; выключенный
+Amn не включается. Channel M остаётся вне этой процедуры.
+
+Отсутствие домашнего WAN, остановленный локальный прокси и частичный отказ
+проверок сбрасывают таймер. Проверка резерва включает native-запросы, HTTPS,
+страницу приложения, вход, API и внешний выход. Ответ служебного edge URL сам по
+себе недостаточен. При отказе резерва восстанавливается прежний профиль; при
+прерывании перехода recovery-процессы ждут восстановления согласованного состояния.
+Успешно включённый резерв остаётся выбранным до ручного возврата.
+
+Период опроса и длительность проверок добавляются к 30-минутному таймеру;
+это не обещание переключения ровно через 30 минут от начала сбоя.
+[Схема состояний, команды и восстановление](../modules/routing-core/docs/emergency-egress.md).
+
 ## Channel anyT — рабочий дополнительный вход
 
 `Shadowrocket → AnyTLS / проверенный TLS / TCP → домашний sing-box-atls`.
@@ -378,8 +413,10 @@ there is no automatic expiry or change to the AI policy.
 Promotion requires sustained real-client evidence, beyond technical smoke tests.
 
 The router sniffs HTTP/TLS before general catch-all rules to classify LAN
-REDIRECT connections. Matched sensitive destinations have no automatic fallback
-to another egress. Hidden hostnames, client-side bypasses and shared third-party
+REDIRECT connections. Matched sensitive destinations have no direct fallback;
+automatic backend changes are limited to the explicitly enabled cold emergency
+pair described above. Independently pinned profiles are not silently moved.
+Hidden hostnames, client-side bypasses and shared third-party
 resources limit the guarantee; this is not a universal application kill switch.
 See [Sensitive sites mode](../modules/routing-core/docs/sensitive-sites-mode.md)
 for the catalog, shared Google auth tradeoff, evidence and rollback procedure.

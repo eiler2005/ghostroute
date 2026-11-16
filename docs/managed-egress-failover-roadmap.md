@@ -30,10 +30,11 @@ egress is used for managed traffic.
 
 The opt-in [Sensitive sites mode](../modules/routing-core/docs/sensitive-sites-mode.md)
 is a separate destination override: its reviewed domain catalog uses
-`sensitive-out -> hermes_vps` before the general managed routes. Switching
-`reality-out` does not disable that override or move its traffic. Channel M
-remains outside both selectors; matched sensitive traffic has no automatic
-fallback to the shared backend.
+`sensitive-out` selects an explicitly qualified backend before the general managed
+routes. Ordinary bank selection does not implicitly move an independently pinned
+override. The cold emergency controller is a scoped exception: matching outbounds
+from its reviewed pair move together. Unknown configurations are refused. Channel M
+remains outside both selectors; matched sensitive traffic has no direct fallback.
 
 ## Public Mnemonic Contract
 

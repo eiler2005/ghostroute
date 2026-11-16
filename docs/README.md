@@ -57,7 +57,8 @@ today."
 
 - [routing-assurance-roadmap.md](routing-assurance-roadmap.md) - current routing/privacy/recovery priorities, evidence gates and explicit decisions to defer changes (`[RU primary]`, English summary).
 - [future-improvements-backlog.md](future-improvements-backlog.md) - broader improvement ideas (`[RU primary]`); routing assurance items are owned by the register above.
-- [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md) - future semi-auto backup VPS egress; manual reserve mode is implemented, semi-automatic failover is a future phase.
+- [managed-egress-failover-roadmap.md](managed-egress-failover-roadmap.md) - backend bank, implemented reserve modes and future failover scope.
+- [Cold emergency egress](../modules/routing-core/docs/emergency-egress.md) - five-minute monitoring, thirty-minute outage window, serial qualification, state diagram and manual return.
 - [ghostroute-console-post-mvp-roadmap.md](ghostroute-console-post-mvp-roadmap.md) - Console post-MVP priorities and broader backlog split.
 - [traffic-facts-v3-and-pyramid-plan.md](traffic-facts-v3-and-pyramid-plan.md) - traffic-facts v3 machine-contract and Console pyramid refactor plan.
 - [traffic-intelligence-layer-plan.md](traffic-intelligence-layer-plan.md) - traffic intelligence layer design on top of the v3 pipeline.

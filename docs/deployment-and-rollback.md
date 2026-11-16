@@ -5,6 +5,17 @@ VPS, and for rolling back when something goes wrong. It complements
 [`ansible/README.md`](../ansible/README.md) (control-plane mechanics) and
 [`SECURITY.md`](../SECURITY.md) §Recovery Boundaries (target times).
 
+## Cold emergency controller boundary
+
+Before replacing router configuration, inspect
+`./modules/routing-core/bin/emergency-egress status`, then disarm using `disable`.
+Disarming keeps the currently selected profile and does not return to normal.
+Never bypass the controller lease or remove an interrupted-transition marker.
+An authorized `switch-normal` qualifies normal only after emergency is stopped;
+a rejected return restores emergency. Re-enable only after qualification and
+real-client acceptance remain valid. See the
+[state model and recovery procedure](../modules/routing-core/docs/emergency-egress.md).
+
 ## Pre-deploy checklist
 
 Run **all** of these on the control machine before any mutating step. If any

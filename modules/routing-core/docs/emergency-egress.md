@@ -30,6 +30,45 @@ successful switch: return is manual. Failed qualification stops its diagnostic
 engine before restoring the previous profile. An interrupted transition blocks
 ordinary recovery until the controller restores one complete configuration.
 
+## Decision and state model
+
+| Observation on the active path | Controller decision |
+|---|---|
+| All five native probes and all three HTTP checks fail; local proxy and direct WAN work | Continue the failure timer; attempt transition after thirty minutes |
+| At least one external check succeeds | Reset timer; partial application failure does not switch the whole backend |
+| Local listener or direct WAN unavailable | Reset timer; do not treat a local fault as backend failure |
+| Reboot, backwards clock or sample gap over seven minutes | Reset timer; do not infer unobserved downtime |
+| Emergency selected | Observe health; keep the latch; no automatic return |
+| Stored profiles or qualification version changed | Require a new serial drill before enabling automatic decisions |
+| Live profile no longer matches controller state | Disarm; preserve the operator's configuration |
+
+```mermaid
+stateDiagram-v2
+    state "Normal profile active" as Normal
+    state "Continuous outage window" as Timing
+    state "Exclusive lease; stop owned engines" as Stop
+    state "Only reserve diagnostic engine active" as Qualify
+    state "Activate and verify reserve" as Activate
+    state "Emergency active; manual return only" as Emergency
+    state "Stop candidate; restore normal" as Restore
+    [*] --> Normal
+    Normal --> Timing: Complete external failure; local path healthy
+    Timing --> Normal: Success, partial/local fault, reboot or sample gap
+    Timing --> Stop: Thirty observed failed minutes
+    Stop --> Qualify: Old engines confirmed stopped
+    Qualify --> Activate: Application qualification passes
+    Qualify --> Restore: Candidate rejected
+    Activate --> Emergency: Postchecks and client preservation pass
+    Activate --> Restore: Activation or postcheck fails
+    Restore --> Normal: Previous normal profile restored
+```
+
+This diagram shows the automatic normal-to-emergency path. Manual return uses the
+same stop/qualify/activate transaction with the roles reversed. A failed manual
+return restores emergency. If rollback itself fails, the persistent transition
+marker remains: recovery owners must not start an unknown profile. Recovery retries
+the former configuration before ordinary service starts resume.
+
 ## Operator commands
 
 ```bash
@@ -74,6 +113,25 @@ that its external egress is healthy. Provider recovery remains visible as an err
 Persistent configuration and transition records use synced atomic replacement.
 Interrupted recovery also finds its exact private probe executable if a crash
 occurred before its PID was recorded; unrelated diagnostics are left untouched.
+
+## Manual return and incident recovery
+
+1. Inspect `status`: selected backend, enabled flag, transition and last checks.
+   Disabling monitoring preserves the selected route, including emergency.
+2. Before router configuration deployment, use `disable` and wait for any active
+   transition to finish. Keep a private recovery copy. Disarming preserves the
+   recovery-owner lease and the one-profile rule.
+3. Use `switch-normal` for an explicitly authorized return. It stops emergency,
+   qualifies normal in isolation, restores enabled lanes and runs postchecks.
+   Failure restores the previous profile; never start a second profile manually.
+4. Check real client requests and media/streaming without a separate VPN, plus
+   protected channel health. Unauthenticated probes cannot prove a logged-in session.
+5. Re-enable monitoring only with a current successful serial drill. Check `status`
+   again to confirm the selected backend and enabled flag.
+
+`recover` resumes an interrupted transaction using the recorded previous profile;
+it cannot bypass qualification. Raw evidence and service backups remain private.
+Do not delete a transition marker to force startup.
 
 ## Checks
 
