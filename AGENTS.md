@@ -253,6 +253,16 @@ hidden assumptions, over-engineering, broad diffs, and weak verification.
   it reads conntrack, ipset, dnsmasq logs and never changes routing decisions,
   ipset contents, sing-box config, dnsmasq config or iptables rules.
 
+- The opt-in cold emergency controller is an explicitly authorized exception to
+  manual egress selection: only `backup_reality` and `backup_reality_emergency`,
+  with one active profile, thirty continuously failed minutes and manual return.
+  Run `modules/routing-core/bin/emergency-egress status` before backend work.
+  Never authenticate both profiles concurrently, including isolated probes.
+  Disarm this controller before replacing router configuration; do not bypass
+  its recovery-owner lease or silently clear its latch. See
+  `modules/routing-core/docs/emergency-egress.md`. Issued ingress profiles remain
+  protected independently of this router-only backend selection.
+
 ## Where Things Live
 
 - Module-owned commands live in `modules/<module>/bin`.

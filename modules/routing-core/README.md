@@ -22,6 +22,10 @@ egress to the VPS and direct-out fallback for non-managed traffic.
   stabilization.
 - Installs the sing-box listener watchdog used to recover from process death or
   listener loss.
+- Provides an explicitly enabled [cold emergency egress](docs/emergency-egress.md):
+  thirty minutes of confirmed primary-profile failure, serial qualification of
+  `backup_reality_emergency`, one selected profile and manual return. Ordinary
+  backend-bank choices remain manual.
 - Preserves legacy WireGuard only as a cold fallback path, not as steady-state
   routing.
 - Provides the optional Channel Amn home-first lab: isolated AmneziaWG and
@@ -86,6 +90,10 @@ selector, saves an encrypted backup and can optionally deploy
 backend on Channel D before moving A/B/C. Channel M is never switched here.
 
 ## Runtime Storage & Artifacts
+
+The opt-in emergency controller uses `bin/emergency-egress` for installation,
+qualification, status and manual return; its private runtime lives under
+`/opt/etc/ghostroute-egress-emergency/`. See the linked runbook before activation.
 
 - `/jffs/scripts/firewall-start`
 - `/jffs/scripts/nat-start`

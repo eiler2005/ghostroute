@@ -56,7 +56,10 @@ def watch():
         signal.signal(signal.SIGTERM, halt)
         try:
             while True:
+                lease = Path('/tmp/ghostroute-egress-emergency.lock').open('a')
                 try:
+                    if Path('/opt/etc/ghostroute-egress-emergency/guard.py').exists():
+                        fcntl.flock(lease, fcntl.LOCK_SH)
                     source = json.loads(Path('/opt/etc/sing-box/config.json').read_text())
                     settings = json.loads((BASE / 'settings.json').read_text())
                     reference = anyt.project(source, json.loads(Path('/opt/etc/ghostroute-anytls/settings.json').read_text()))
@@ -101,6 +104,8 @@ def watch():
                     if child:
                         child.terminate(); child.wait(timeout=10); child = None
                     (RUN / 'healthy').unlink(missing_ok=True)
+                finally:
+                    lease.close()
                 time.sleep(2)
         finally:
             if child:
@@ -110,6 +115,9 @@ def watch():
 
 
 def main():
+    guard = Path('/opt/etc/ghostroute-egress-emergency/guard.py')
+    if guard.exists() and os.environ.get('GR_EGRESS_GUARD_WRAPPED') != '1' and sys.argv[1:2] != ['watch']:
+        os.execv('/opt/bin/python3', ['/opt/bin/python3', str(guard), '--', '/opt/bin/python3', __file__, *sys.argv[1:]])
     os.umask(0o077)
     RUN.mkdir(mode=0o700, exist_ok=True)
     action = sys.argv[1]

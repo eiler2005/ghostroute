@@ -269,6 +269,9 @@ def status():
 
 
 def main():
+    guard = Path('/opt/etc/ghostroute-egress-emergency/guard.py')
+    if guard.exists() and os.environ.get('GR_EGRESS_GUARD_WRAPPED') != '1' and sys.argv[1:2] != ['watch']:
+        os.execv('/opt/bin/python3', ['/opt/bin/python3', str(guard), '--', '/opt/bin/python3', __file__, *sys.argv[1:]])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['start', 'stop', 'status', 'preflight', 'watch', 'enable', 'disable', 'reconcile'])
     args = parser.parse_args()

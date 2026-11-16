@@ -1,5 +1,8 @@
 #!/bin/sh
 # Restart sing-box only after repeated local listener failures.
+if [ -f /opt/etc/ghostroute-egress-emergency/guard.py ] && [ "${GR_EGRESS_GUARD_WRAPPED:-0}" != 1 ]; then
+  exec /opt/bin/python3 /opt/etc/ghostroute-egress-emergency/guard.py -- /bin/sh "$0" "$@"
+fi
 
 PORTS="{{ singbox_redirect_port }} {{ singbox_dnscrypt_socks_port }} {{ router_vps_dns_forward_port }}{% if home_reality_enabled | default(false) | bool %} {{ home_reality_ingress_port }}{% endif %}"
 INIT={{ singbox_init_path }}

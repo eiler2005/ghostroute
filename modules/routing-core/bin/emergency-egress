@@ -1,0 +1,23 @@
+#!/bin/bash
+# Operator CLI for the router-owned, single-active-profile emergency controller.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+. "$ROOT/modules/shared/lib/router-health-common.sh"
+router_health_load_env
+umask 077
+case "${1:-status}" in
+  install)
+    task_dir="$(mktemp -d)"
+    trap 'rm -rf "$task_dir"' EXIT
+    (cd "$ROOT/ansible"; ansible-vault view secrets/stealth.yml) >"$task_dir/vault.yml"
+    python3 "$ROOT/modules/routing-core/control/prepare-emergency-install.py" "$task_dir/vault.yml" >"$task_dir/install.py"
+    router_ssh '/opt/bin/python3 -I -' <"$task_dir/install.py"
+    ;;
+  drill)
+    router_ssh 'umask 077; nohup /opt/bin/python3 /opt/etc/ghostroute-egress-emergency/controller.py drill >/opt/etc/ghostroute-egress-emergency/drill.private.log 2>&1 </dev/null &'
+    ;;
+  status|enable|disable|recover|switch-normal|switch-emergency|run)
+    router_ssh "/opt/bin/python3 /opt/etc/ghostroute-egress-emergency/controller.py ${1:-status}"
+    ;;
+  *) echo 'Usage: emergency-egress install|drill|status|enable|disable|recover|switch-normal|switch-emergency|run' >&2; exit 2 ;;
+esac

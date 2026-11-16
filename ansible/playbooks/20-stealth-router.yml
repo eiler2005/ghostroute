@@ -6,6 +6,10 @@
     - ../group_vars/routers.yml
     - ../secrets/stealth.yml
   tasks:
+    - name: Require emergency controller disarmed before replacing router configuration
+      ansible.builtin.raw: test ! -f /opt/etc/ghostroute-egress-emergency/enabled
+      changed_when: false
+
     - name: GhostRoute deploy gate before router mutation
       ansible.builtin.include_tasks: ../tasks/deploy-gate.yml
 

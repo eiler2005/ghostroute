@@ -1,5 +1,8 @@
 #!/bin/sh
 # Targeted boot/recovery supervisor for GhostRoute router runtime.
+if [ -f /opt/etc/ghostroute-egress-emergency/guard.py ] && [ "${GR_EGRESS_GUARD_WRAPPED:-0}" != 1 ]; then
+  exec /opt/bin/python3 /opt/etc/ghostroute-egress-emergency/guard.py -- /bin/sh "$0" "$@"
+fi
 
 RUNTIME_ENV=${GHOSTROUTE_RUNTIME_ENV:-/jffs/scripts/ghostroute-runtime.env}
 LOG=${GHOSTROUTE_RUNTIME_SUPERVISOR_LOG:-/opt/var/log/ghostroute-runtime-supervisor.log}
@@ -85,6 +88,9 @@ cron_set() {
 }
 
 register_crons() {
+  if [ -f /opt/etc/ghostroute-egress-emergency/enabled ]; then
+    cron_set EgressEmergency "*/5 * * * *" "/opt/bin/python3 /opt/etc/ghostroute-egress-emergency/controller.py run"
+  fi
   if [ -f "$CHANNEL_ANYT_ENABLED" ] && [ -x "$CHANNEL_ANYT" ]; then
     cron_set ChannelAnyT "* * * * *" "$CHANNEL_ANYT_PYTHON $CHANNEL_ANYT reconcile"
   else

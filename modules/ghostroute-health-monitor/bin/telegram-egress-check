@@ -31,7 +31,7 @@ VAULT="${GHOSTROUTE_STEALTH_VAULT_FILE:-$PROJECT_ROOT/ansible/secrets/stealth.ym
 (cd "$PROJECT_ROOT/ansible"; ANSIBLE_CONFIG="$PROJECT_ROOT/ansible/ansible.cfg" ansible-vault view "$VAULT") >"$TMPDIR/vault.yml"
 python3 "$MODULE/lib/telegram-egress-check.py" prepare "$TMPDIR/vault.yml" \
   "$MODULE/router/telegram-egress-probe.py" "$TARGETS" "$ROUNDS" "$TIMEOUT" >"$TMPDIR/probe.py"
-router_ssh '/opt/bin/python3 -I -' <"$TMPDIR/probe.py" >"$TMPDIR/result.json"
+router_ssh 'if [ -f /opt/etc/ghostroute-egress-emergency/guard.py ]; then exec /opt/bin/python3 /opt/etc/ghostroute-egress-emergency/guard.py --bank-probe /opt/bin/python3 -I -; else exec /opt/bin/python3 -I -; fi' <"$TMPDIR/probe.py" >"$TMPDIR/result.json"
 if [ "$JSON" = 1 ]; then
   python3 "$MODULE/lib/telegram-egress-check.py" report "$TMPDIR/result.json" --json
 else

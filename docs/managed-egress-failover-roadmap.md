@@ -1,7 +1,9 @@
 # Managed Egress Failover And Reserve Egress
 
-Status: implemented manual reserve mode, with semi-automatic failover still a
-future phase.
+Status: manual bank selection plus an opt-in, latched cold emergency controller.
+See [cold emergency egress](../modules/routing-core/docs/emergency-egress.md) for
+the implemented thirty-minute `backup_reality` to `backup_reality_emergency`
+procedure. The future sections below retain the broader owned-backend roadmap.
 
 ## Summary
 

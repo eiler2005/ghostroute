@@ -34,6 +34,12 @@ is [configs/runtime-inventory.yml](../configs/runtime-inventory.yml).
 
 ## Operating Rules
 
+Routing Core owns the opt-in [cold emergency egress](../modules/routing-core/docs/emergency-egress.md)
+and `./modules/routing-core/bin/emergency-egress`. It changes only a reviewed
+single-active-profile pair after thirty continuously failed minutes; qualifying
+and switching stop the former profile before starting the reserve. Return is
+manual and a successful serial live drill is required before enabling the cron.
+
 Routing Core also owns [Channel anyT](../modules/routing-core/docs/channel-anytls-lab.md):
 `bin/channel-anytls-profile`, its isolated controller/policy projection and
 `31-channel-anytls-lab.yml`. It has separate process/INPUT ownership, eight private

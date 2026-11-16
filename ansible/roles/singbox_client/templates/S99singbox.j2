@@ -1,5 +1,8 @@
 #!/bin/sh
 # Entware init for sing-box
+if [ -f /opt/etc/ghostroute-egress-emergency/guard.py ] && [ "${GR_EGRESS_GUARD_WRAPPED:-0}" != 1 ]; then
+    exec /opt/bin/python3 /opt/etc/ghostroute-egress-emergency/guard.py -- /bin/sh "$0" "$@"
+fi
 NAME="sing-box"
 DAEMON="{{ singbox_bin_path }}"
 CONFIG="{{ singbox_config_path }}"
