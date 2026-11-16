@@ -26,6 +26,10 @@ class RollbackTest(unittest.TestCase):
                 member = tarfile.TarInfo('modules/ghostroute-console/vps/restore-marker')
                 member.size = 8
                 archive.addfile(member, io.BytesIO(b'previous'))
+            with tarfile.open(backup / 'traffic-observer-source.tar.gz', 'w:gz') as archive:
+                member = tarfile.TarInfo('modules/traffic-observatory/bin/traffic-facts')
+                member.size = 8
+                archive.addfile(member, io.BytesIO(b'previous'))
             script = Path(directory) / 'rollback.sh'
             script.write_text(source.read_text().replace('root=/opt/ghostroute-console', f'root={root}'))
             binary = Path(directory) / 'bin'
@@ -44,6 +48,7 @@ class RollbackTest(unittest.TestCase):
             self.assertNotIn(' down', commands)
             self.assertEqual(database.read_bytes(), b'current traffic database')
             self.assertEqual((repo / 'modules/ghostroute-console/vps/restore-marker').read_bytes(), b'previous')
+            self.assertEqual((repo / 'modules/traffic-observatory/bin/traffic-facts').read_bytes(), b'previous')
             # An invalid backup must be rejected before any Docker action.
             before = log.read_text()
             result = subprocess.run(['sh', str(script), str(root / 'data')], env=env, capture_output=True)

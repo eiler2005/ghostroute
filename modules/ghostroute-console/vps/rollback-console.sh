@@ -15,6 +15,9 @@ docker image inspect "$image" >/dev/null
 cd "$root/repo"
 docker compose -f modules/ghostroute-console/vps/docker-compose.yml stop ghostroute-console
 tar -xzf "$archive" -C "$root/repo"
+if [ -f "$backup/traffic-observer-source.tar.gz" ]; then
+  tar -xzf "$backup/traffic-observer-source.tar.gz" -C "$root/repo"
+fi
 if [ -f "$backup/previous.env" ]; then
   cp -p "$backup/previous.env" modules/ghostroute-console/vps/.env
 fi

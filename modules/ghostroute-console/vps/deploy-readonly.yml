@@ -175,6 +175,10 @@
           tar --exclude=node_modules --exclude=.next --exclude=data --exclude=test-results --exclude=playwright-report \
             -czf "$backup/console-source.tar.gz" -C "{{ console_root }}/repo" modules/ghostroute-console
         fi
+        if [ -d "{{ console_root }}/repo/modules/traffic-observatory/bin" ]; then
+          tar -czf "$backup/traffic-observer-source.tar.gz" -C "{{ console_root }}/repo" \
+            modules/traffic-observatory/bin/traffic-evidence modules/traffic-observatory/bin/traffic-facts
+        fi
         if [ -f "{{ console_root }}/data/ghostroute.db" ]; then
           python3 - "$backup/ghostroute.db" <<'PY'
         import sqlite3, sys

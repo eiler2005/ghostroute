@@ -100,7 +100,10 @@ produce gaps; missing data is not a zero.
 ### Rollback for the visibility slice
 
 The deploy playbook preserves the previous image under a timestamped rollback
-tag before building. It also creates a private `rollback/<timestamp>/` directory
+tag and the mounted `traffic-evidence`/`traffic-facts` observer commands. The
+rollback helper restores these observer commands when that archive is present,
+so reverting the GUI also restores its accounting contract.
+Before building, it also creates a private `rollback/<timestamp>/` directory
 under the Console root containing the module source archive (including compose
 configuration), a consistent SQLite backup, available private inventory/attribution
 files and `image-tag`. Existing data is retained; no schema migration is required.
