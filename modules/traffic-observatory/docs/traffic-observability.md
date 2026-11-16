@@ -3,8 +3,9 @@
 ## Isolated-channel accounting
 
 The optional isolated-channel sampler writes a private, bounded router spool.
-Its exported JSONL contains only symbolic profile slots, byte deltas and
-timestamps; it never exports AnyTLS credentials, Snell credentials, Amn keys,
+Its exported JSONL contains symbolic profile slots, byte deltas and timestamps;
+Channel D also includes the private operator-provided profile label. It never
+exports AnyTLS credentials, Snell credentials, Amn keys,
 Channel D usernames, destination addresses or request headers. The Console's
 restricted router credential can read only the fixed sanitized export. The
 machine contract remains `traffic-evidence --json` → `traffic-facts --json`
