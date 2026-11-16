@@ -17,6 +17,7 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
   const filteredDaily = daily.filter(row => channel === "all" || row.channel === channel);
   const filteredHealth = health.filter(row => channel === "all" || row.label === channel || row.channel === channel);
   const activeView = ["overview", "clients", "apps", "history"].includes(view) ? view : "overview";
+  const periodLabel: Record<string, string> = { today: "Today", last7: "Last 7 days", last30: "Last 30 days", week: "This week", month: "This month" };
   const viewHref = (next: string) => {
     const params = new URLSearchParams({ period, channel, client: chosenClient, search, sort, view: next });
     return `?${params.toString()}`;
@@ -26,14 +27,14 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
       <h2>Channels</h2>
       <form className="filters" method="get">
         <input type="hidden" name="view" value={activeView} />
-        <label>Period <select name="period" defaultValue={period}><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option></select></label>
+        <label>Period <select name="period" defaultValue={period}><option value="today">Today</option><option value="last7">Last 7 days</option><option value="last30">Last 30 days</option><option value="week">This week</option><option value="month">This month</option></select></label>
         <label>Channel <select name="channel" defaultValue={channel}><option value="all">All channels</option>{channels.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label>Client <select name="client" defaultValue={chosenClient}><option value="all">All clients</option>{channelClients.map(row => <option key={`${row.channel}:${row.client}`} value={row.client}>{row.label || row.client}</option>)}</select></label>
         <label>Search <input name="search" defaultValue={search} placeholder="Client or app" /></label>
         <label>Sort clients <select name="sort" defaultValue={["traffic", "recent", "name"].includes(sort) ? sort : "traffic"}><option value="traffic">Traffic</option><option value="recent">Recent</option><option value="name">Name</option></select></label>
         <button type="submit">Apply</button><a className="muted-button" href="?">Reset</a>
       </form>
-      <p>Read-only channel evidence · {period}. Channel totals follow the selected client; search only filters client and app lists. Measurements at different layers cannot be added to the VPS interface total.</p>
+      <p>Read-only channel evidence · {periodLabel[period] || period}. Seven- and thirty-day windows include today in Moscow time. Channel totals follow the selected client; search only filters client and app lists. Measurements at different layers cannot be added to the VPS interface total.</p>
       <p>Route split may be unknown. Missing or inactive collection is not zero traffic. Channel D sessions appear after they close; Amn is collected only while enabled.</p>
       <nav className="intelligence-tabs" aria-label="Channel views">{[["overview", "Overview"], ["clients", "Clients"], ["apps", "Apps"], ["history", "History"]].map(([key, label]) => <a key={key} className={`muted-button ${activeView === key ? "active" : ""}`} aria-current={activeView === key ? "page" : undefined} href={viewHref(key)}>{label}</a>)}</nav>
       {activeView === "overview" && <>

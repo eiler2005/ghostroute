@@ -286,8 +286,9 @@ a channel or client narrows application candidates before the profile cap.
 Search examines all selected profiles; each profile's destination evidence is
 still bounded per time segment. The page shows runtime evidence, measured bytes per channel,
 clients with last observed times, and daily channel history. Its period selector
-applies to totals, client and app rows and uses Moscow calendar weeks and months;
-history covers the latest 30 days. The page also includes a bounded, partial
+applies to totals, client and app rows. Rolling seven- and thirty-day windows
+include the current Moscow day; calendar week and month are also available.
+History covers the latest 30 days. The page also includes a bounded, partial
 app-family view based on destination evidence; it
 does not distribute encrypted profile totals among applications. A runtime OK is not proof of an
 authenticated application probe. Channel counters may lack route attribution,

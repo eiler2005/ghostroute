@@ -142,6 +142,13 @@ export function mskWindowBounds(window = "today", nowValue = new Date()) {
   };
 }
 
+// Includes the current Moscow day and the preceding complete calendar days.
+export function rollingMskDayStart(nowValue, days) {
+  if (!Number.isInteger(days) || days < 1) throw new RangeError("days must be positive");
+  const today = mskWindowBounds("today", nowValue).startUtc;
+  return new Date(Date.parse(today) - (days - 1) * 86400000).toISOString();
+}
+
 export function mskWindowLabel(window = "today", bounds = mskWindowBounds(window)) {
   if (window === "month") return `Month from ${bounds.startMskKey}`;
   if (window === "week") return `Week from ${bounds.startMskKey}`;

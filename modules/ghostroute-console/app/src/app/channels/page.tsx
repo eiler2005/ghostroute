@@ -8,7 +8,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Se
   const filters = await filtersFromSearchParams(Promise.resolve(params));
   const sort = typeof params.sort === "string" ? params.sort : "traffic";
   const view = typeof params.view === "string" ? params.view : "overview";
-  const period = ["today", "week", "month"].includes(filters.period || "") ? filters.period! : "today";
+  const period = ["today", "week", "month", "last7", "last30"].includes(filters.period || "") ? filters.period! : "today";
   const traffic = channelTrafficForPeriod(period);
   const health = getChannelHealthRows();
   const channel = traffic.some(row => row.channel === filters.channel) || health.some(row => row.label === filters.channel) ? filters.channel : "all";

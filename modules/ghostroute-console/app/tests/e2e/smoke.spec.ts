@@ -662,8 +662,10 @@ test("channel overview preserves selected channel in URL and filters client rows
   const value = await channel.locator('option').nth(1).getAttribute('value');
   expect(value).toBeTruthy();
   await channel.selectOption(value!);
+  await page.locator('select[name="period"]').selectOption('last7');
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page).toHaveURL(/channel=/);
+  await expect(page).toHaveURL(/period=last7/);
   await expect(channel).toHaveValue(value!);
   const section = page.locator('section').filter({has: page.getByRole('heading', {name:'Clients by channel'})});
   for (const cell of await section.locator('tbody tr td:first-child').allTextContents()) expect(cell).toBe(value);

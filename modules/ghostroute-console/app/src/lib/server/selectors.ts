@@ -63,7 +63,7 @@ import {
 } from "../attribution-eligibility.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 import { normalizeChannelLabel } from "../channel-labels.mjs";
-import { bucketStartUtc, mskWindowBounds } from "../time/window.mjs";
+import { bucketStartUtc, mskWindowBounds, rollingMskDayStart } from "../time/window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 const TRAFFIC_DETAIL_TYPES = new Set(["traffic_facts", "traffic"]);
@@ -170,7 +170,9 @@ function isIpv4Literal(value: unknown) {
 
 function windowAggregateSegmentsForSelector(window = "today", now = new Date()) {
   const nowIso = now.toISOString();
-  const bounds = mskWindowBounds(window, now);
+  const baseBounds = mskWindowBounds(window, now);
+  const rollingDays = window === "last7" ? 7 : window === "last30" ? 30 : 0;
+  const bounds = rollingDays ? { ...baseBounds, startUtc: rollingMskDayStart(now, rollingDays) } : baseBounds;
   const todayStart = mskWindowBounds("today", now).startUtc;
   const weekStart = mskWindowBounds("week", now).startUtc;
   const freshHours = Math.max(1, Number(process.env.GHOSTROUTE_PREPARED_FINE_HOURS || 2));
