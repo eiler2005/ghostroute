@@ -482,7 +482,7 @@ else
     File.readlines(lan_counters_path, chomp: true).each_with_index do |line, index|
       next if line.strip.empty?
       parts = line.split('|', -1)
-      next if parts.length < 10
+      next if parts.length < 9
       parsed_ts = parse_time(parts[0])
       unless parsed_ts
         warnings << { 'code' => 'unparsable_timestamp', 'source' => 'lan-device-counters.tsv', 'line' => index + 1, 'raw_ts' => text(parts[0]) }

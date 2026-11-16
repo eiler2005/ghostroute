@@ -7,6 +7,8 @@ This preserves total usage when app/destination observation is incomplete.
 Encrypted or unobserved app attribution remains unknown; DNS query volume must
 not manufacture transferred app bytes. These additive fields keep the
 `traffic-facts` schema-v3 interface compatible with existing consumers.
+Both legacy nine-field LAN counter rows and rows extended with MAC/hostname
+metadata are accepted. Optional identity metadata must not remove counter bytes.
 
 ## Purpose
 

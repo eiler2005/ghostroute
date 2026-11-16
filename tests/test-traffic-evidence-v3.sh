@@ -24,7 +24,7 @@ bad-time|192.168.1.10|bad.invalid|A|192.0.2.60|answer|dnsmasq|ok|parsed_log
 EOF
 
 cat > "$TMP_DIR/lan-device-counters.tsv" <<'EOF'
-2026-05-11T08:55:00+0300|192.168.1.10|test-laptop|0|0|0|0|0|0|aa:bb|test-laptop
+2026-05-11T08:55:00+0300|192.168.1.10|test-laptop|0|0|0|0|0|0
 2026-05-11T09:20:00+0300|192.168.1.10|test-laptop|2000|4000|1000|2000|0|0|aa:bb|test-laptop
 bad-time|192.168.1.10|bad|0|0|0|0|0|0|aa|bad
 EOF
