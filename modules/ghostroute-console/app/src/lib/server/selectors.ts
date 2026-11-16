@@ -6138,7 +6138,7 @@ function mapLiveRow(row: any) {
 }
 
 export function listLiveEvents(args: PageArgs = {}) {
-  return cacheGet(`list-live-events:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => listLiveEventsUncached(args));
+  return cacheGet(`list-live-events:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => withSnapshotVersion(() => listLiveEventsUncached(args)));
 }
 
 function listLiveEventsUncached(args: PageArgs = {}) {
