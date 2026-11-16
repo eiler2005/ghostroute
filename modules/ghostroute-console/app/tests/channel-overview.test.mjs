@@ -40,5 +40,9 @@ test('channel app evidence excludes counters, IP-only rows and other channels', 
   add.run('p2','5min','2026-01-01','Channel anyT','client_observed','youtube.com','','',20,'2026-01-01T10:00Z');
   const rows = channelAppEvidence(db,[{granularity:'5min',start:'2026-01-01',end:'2026-01-02'}],[{channel:'Channel anyT',client:'p1',label:'One'}, {channel:'Channel anyT',client:'p2',label:'Two'}]);
   assert.deepEqual(rows.map(r => [r.channel,r.client,r.app,r.bytes]), [['Channel anyT','p1','YouTube',40],['Channel anyT','p2','YouTube',20]]);
+  const selected = channelAppEvidence(db,[{granularity:'5min',start:'2026-01-01',end:'2026-01-02'}],[...Array.from({length:20},(_,i)=>({channel:'Other',client:`unused-${i}`})),{channel:'Channel anyT',client:'p2',label:'Two'}],{channel:'Channel anyT',client:'p2'});
+  assert.deepEqual(selected.map(r => [r.client,r.bytes]), [['p2',20]]);
+  const searched = channelAppEvidence(db,[{granularity:'5min',start:'2026-01-01',end:'2026-01-02'}],[...Array.from({length:20},(_,i)=>({channel:'Other',client:`unused-${i}`})),{channel:'Channel anyT',client:'p2',label:'Two'}],{search:'youtube'});
+  assert.deepEqual(searched.map(r => [r.client,r.bytes]), [['p2',20]]);
   db.close();
 });

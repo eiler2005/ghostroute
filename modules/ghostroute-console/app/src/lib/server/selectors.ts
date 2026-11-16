@@ -4917,10 +4917,10 @@ export function channelClientsForPeriod(period = "today") {
   return channelClientsFromSegments(getDb(), segments) as Array<{ channel: string; client: string; label: string; bytes: number; last_seen: string }>;
 }
 
-export function channelAppsForPeriod(period = "today") {
+export function channelAppsForPeriod(period = "today", options: { channel?: string; client?: string; search?: string } = {}) {
   const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({ ...segment, granularity: laneGranularity(segment.layer) }));
   const clients = channelClientsFromSegments(getDb(), segments);
-  return channelAppEvidence(getDb(), segments, clients) as Array<{ channel: string; client: string; label: string; app: string; bytes: number; last_seen: string }>;
+  return channelAppEvidence(getDb(), segments, clients, options) as Array<{ channel: string; client: string; label: string; app: string; bytes: number; last_seen: string }>;
 }
 
 export function recentChannelTraffic() {

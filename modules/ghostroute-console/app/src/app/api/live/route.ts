@@ -11,6 +11,11 @@ function compact({ raw, evidence, evidence_json, ...row }: Record<string, any>) 
 }
 
 export async function GET(request: NextRequest) {
+  const timings: string[] = [];
+  function measure<T>(name: string, fn: () => T): T {
+    const start = performance.now();
+    try { return fn(); } finally { timings.push(`${name};dur=${(performance.now() - start).toFixed(1)}`); }
+  }
   const search = request.nextUrl.searchParams;
   if (search.get("fresh") === "1") clearDerivedCache();
   const filters = {
@@ -22,13 +27,13 @@ export async function GET(request: NextRequest) {
     client: search.get("client") || "all",
     search: search.get("search") || "",
   };
-  const flows = listFlowSessions({ page: 1, pageSize: 8, filters }).rows;
-  const model = buildLiveModel(filters, flows);
-  const events = listLiveEvents({
+  const flows = measure("flows", () => listFlowSessions({ page: 1, pageSize: 8, filters }).rows);
+  const model = measure("model", () => buildLiveModel(filters, flows));
+  const events = measure("events", () => listLiveEvents({
     page: Math.max(1, Number(search.get("page") || 1)),
     pageSize: Math.min(Number(search.get("pageSize") || 50), 500),
     filters,
-  });
+  }));
   return NextResponse.json({
     generated_at: model.generatedAt,
     freshness_minutes: model.freshnessMinutes,
@@ -40,5 +45,5 @@ export async function GET(request: NextRequest) {
     route_decisions: [],
     pagination: { total: events.total, page: events.page, pageSize: events.pageSize, totalPages: events.totalPages },
     alerts: model.alerts.slice(0, 5).map(compact),
-  });
+  }, { headers: { "Server-Timing": timings.join(", ") } });
 }

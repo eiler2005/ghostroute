@@ -92,6 +92,7 @@ for (const path of apiPaths) {
   test(`api performance ${path}`, async ({ request }) => {
     const started = performance.now();
     const response = await request.get(path, { timeout: 10_000 });
+    if (path.startsWith("/api/live")) expect(response.headers()["server-timing"]).toMatch(/flows;dur=.*model;dur=.*events;dur=/);
     const elapsed = performance.now() - started;
     expect(response.ok(), path).toBeTruthy();
     expect(elapsed, `${path} responded in ${Math.round(elapsed)}ms`).toBeLessThan(API_BUDGET_MS);

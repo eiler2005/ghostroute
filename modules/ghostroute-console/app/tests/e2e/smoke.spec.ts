@@ -652,6 +652,19 @@ test("channel overview exposes traffic, clients, history and honest health", asy
   await expect(page.getByRole("link", { name: "Channels", exact: true })).toBeVisible();
 });
 
+test("channel overview preserves selected channel in URL and filters client rows", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/m/channels" : "/channels");
+  const channel = page.locator('select[name="channel"]');
+  const value = await channel.locator('option').nth(1).getAttribute('value');
+  expect(value).toBeTruthy();
+  await channel.selectOption(value!);
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page).toHaveURL(/channel=/);
+  await expect(channel).toHaveValue(value!);
+  const section = page.locator('section').filter({has: page.getByRole('heading', {name:'Clients by channel'})});
+  for (const cell of await section.locator('tbody tr td:first-child').allTextContents()) expect(cell).toBe(value);
+});
+
 test("dashboard client traffic status is not presented as a health check", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop dashboard");
   await page.goto("/");

@@ -84,7 +84,7 @@ export function ConsoleShell({
             <h1>GhostRoute Console</h1>
             <p>Factual read-only monitoring for routes, clients, and system health</p>
           </div>
-          <form className="filters">
+          {active !== "/channels" && <form className="filters">
             <span className={`freshness freshness-${model.freshnessStatus}`}>
               {model.freshnessStatus}
               <small title={freshnessTitle}>{freshnessLabel}</small>
@@ -127,7 +127,7 @@ export function ConsoleShell({
             </select>
             <input name="search" defaultValue={filters.search || ""} placeholder="Search..." />
             <button type="submit"><span>Filters</span><SlidersHorizontal size={15} /></button>
-          </form>
+          </form>}
         </header>
         <div className="source-strip" title={sourceTitle}>
           <span>{model.runtime.sourceLabel}</span>

@@ -58,7 +58,7 @@ export function channelClientsFromSegments(db, segments) {
 
 
 // Destination evidence is partial; do not distribute a profile counter over apps.
-export function channelAppEvidence(db, segments, clients) {
+export function channelAppEvidence(db, segments, clients, options = {}) {
   const groups = new Map();
   const query = db.prepare(`
     select destination_label, category, provider, sum(bytes) as bytes, max(last_seen_utc) as last_seen
@@ -67,7 +67,10 @@ export function channelAppEvidence(db, segments, clients) {
        and channel = ? and traffic_lane != 'all' and bytes > 0
      group by destination_label, category, provider order by bytes desc limit 200
   `);
-  for (const client of clients.slice(0, 20)) for (const segment of segments) {
+  const selectedClients = clients.filter(row => (!options.channel || options.channel === 'all' || row.channel === options.channel) && (!options.client || options.client === 'all' || row.client === options.client));
+  // A search or explicit profile must not be restricted to the busiest 20.
+  const examinedClients = options.search || (options.client && options.client !== 'all') ? selectedClients : selectedClients.slice(0, 20);
+  for (const client of examinedClients) for (const segment of segments) {
     for (const row of query.all(client.client, segment.granularity, segment.start, segment.end, client.channel)) {
       const domain = String(row.destination_label || '').trim().toLowerCase();
       if (!domain.includes('.') || /^(\d{1,3}\.){3}\d{1,3}$/.test(domain) || /[\s:/]/.test(domain)) continue;
@@ -80,5 +83,6 @@ export function channelAppEvidence(db, segments, clients) {
       groups.set(key, entry);
     }
   }
-  return [...groups.values()].sort((a, b) => b.bytes - a.bytes).slice(0, 30);
+  const needle = String(options.search || '').trim().toLowerCase();
+  return [...groups.values()].filter(row => !needle || `${row.label} ${row.client} ${row.app}`.toLowerCase().includes(needle)).sort((a, b) => b.bytes - a.bytes).slice(0, 30);
 }
