@@ -279,14 +279,15 @@ last-seen state, but displayed traffic totals, route split and selected client
 domains come from the selected window only.
 
 The Channels navigation page has its own URL-backed period, channel, client and
-search controls. Channel totals and the separately labelled 30-day history are
-not narrowed by client or search; client and application tables are. Selecting
+search controls. Channel totals and the separately labelled 30-day history follow
+the selected client; search narrows client and application tables only. Selecting
 a channel or client narrows application candidates before the profile cap.
 Search examines all selected profiles; each profile's destination evidence is
 still bounded per time segment. The page shows runtime evidence, measured bytes per channel,
 clients with last observed times, and daily channel history. Its period selector
-applies to totals, client and app rows; history covers the latest 30 days. It also
-includes a bounded, partial app-family view based on destination evidence; it
+applies to totals, client and app rows and uses Moscow calendar weeks and months;
+history covers the latest 30 days. The page also includes a bounded, partial
+app-family view based on destination evidence; it
 does not distribute encrypted profile totals among applications. A runtime OK is not proof of an
 authenticated application probe. Channel counters may lack route attribution,
 and unknown VPS/direct splits must not be displayed as measured zeroes. Channel
@@ -304,6 +305,8 @@ that sample, not the entire historical table.
 The read-only Live API returns a `Server-Timing` header with durations for flow,
 model and event preparation. Use it to distinguish cold-cache work from network
 delivery before changing queries or indexes; it contains timings only.
+The Live API flow list uses the same lightweight flow-session representation as
+the Live page and flow-list API; detailed evidence remains in the flow workbench.
 
 Operator client attribution is registry-first. Keep real household MAC/IP/host
 aliases in gitignored `device-attribution.local.json` in the Console data

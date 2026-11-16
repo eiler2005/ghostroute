@@ -28,5 +28,7 @@ test('daily history sums channels and client profiles without including detailed
   const history = channelTrafficHistory(db, '2026-01-01', '2026-01-03');
   assert.deepEqual(history.daily.map((row) => row.bytes), [20, 100, 40]);
   assert.deepEqual(history.clients, [{ client: 'profile', label: 'Client', bytes: 160 }]);
+  assert.equal(channelTrafficHistory(db, '2026-01-01', '2026-01-03', 'other').daily.length, 0);
+  assert.equal(channelTrafficHistory(db, '2026-01-01', '2026-01-03', 'profile').daily.length, 3);
   db.close();
 });

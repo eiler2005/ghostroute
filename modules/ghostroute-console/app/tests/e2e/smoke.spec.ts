@@ -665,6 +665,15 @@ test("channel overview preserves selected channel in URL and filters client rows
   for (const cell of await section.locator('tbody tr td:first-child').allTextContents()) expect(cell).toBe(value);
 });
 
+test("live API uses the same flow list as the flows API", async ({ request }) => {
+  const [live, flows] = await Promise.all([request.get('/api/live?pageSize=5'), request.get('/api/flows?pageSize=8')]);
+  expect(live.ok()).toBeTruthy();
+  expect(flows.ok()).toBeTruthy();
+  const liveBody = await live.json();
+  const flowsBody = await flows.json();
+  expect(liveBody.flows.map((row: { id: string }) => row.id)).toEqual(flowsBody.flows.map((row: { id: string }) => row.id));
+});
+
 test("dashboard client traffic status is not presented as a health check", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop dashboard");
   await page.goto("/");

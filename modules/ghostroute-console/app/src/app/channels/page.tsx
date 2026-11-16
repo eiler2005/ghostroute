@@ -14,6 +14,6 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Se
   const clients = channelClientsForPeriod(period);
   const client = clients.some(row => row.client === filters.client && (channel === "all" || row.channel === channel)) ? filters.client : "all";
   return <ConsoleShell active="/channels" model={buildHealthModel(filters)} filters={filters}>
-    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} health={health} traffic={traffic} clients={clients} apps={channelAppsForPeriod(period, { channel, client, search: filters.search })} daily={recentChannelTraffic().daily} />
+    <ChannelOverview period={period} channel={channel} client={client} search={filters.search} sort={sort} health={health} traffic={traffic} clients={clients} apps={channelAppsForPeriod(period, { channel, client, search: filters.search })} daily={recentChannelTraffic(client).daily} />
   </ConsoleShell>;
 }

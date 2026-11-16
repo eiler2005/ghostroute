@@ -13,21 +13,21 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
   const needle = search.trim().toLowerCase();
   const filteredClients = channelClients.filter(row => (chosenClient === "all" || row.client === chosenClient) && (!needle || `${row.label} ${row.client}`.toLowerCase().includes(needle))).sort((a,b) => sort === "name" ? String(a.label).localeCompare(String(b.label)) : sort === "recent" ? String(b.last_seen).localeCompare(String(a.last_seen)) : b.bytes - a.bytes);
   const filteredApps = apps.filter(row => (channel === "all" || row.channel === channel) && (chosenClient === "all" || row.client === chosenClient) && (!needle || `${row.label} ${row.client} ${row.app}`.toLowerCase().includes(needle)));
-  const filteredTraffic = traffic.filter(row => channel === "all" || row.channel === channel);
+  const filteredTraffic = chosenClient === "all" ? traffic.filter(row => channel === "all" || row.channel === channel) : channelClients.filter(row => row.client === chosenClient).map(row => ({ channel: row.channel, bytes: row.bytes }));
   const filteredDaily = daily.filter(row => channel === "all" || row.channel === channel);
   const filteredHealth = health.filter(row => channel === "all" || row.label === channel || row.channel === channel);
   return <>
     <section className="card" style={{ marginTop: 14 }}>
       <h2>Channels</h2>
       <form className="filters" method="get">
-        <label>Period <select name="period" defaultValue={period}><option value="today">Today</option><option value="week">7 days</option><option value="month">30 days</option></select></label>
+        <label>Period <select name="period" defaultValue={period}><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option></select></label>
         <label>Channel <select name="channel" defaultValue={channel}><option value="all">All channels</option>{channels.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label>Client <select name="client" defaultValue={chosenClient}><option value="all">All clients</option>{channelClients.map(row => <option key={`${row.channel}:${row.client}`} value={row.client}>{row.label || row.client}</option>)}</select></label>
         <label>Search <input name="search" defaultValue={search} placeholder="Client or app" /></label>
         <label>Sort <select name="sort" defaultValue={["traffic", "recent", "name"].includes(sort) ? sort : "traffic"}><option value="traffic">Traffic</option><option value="recent">Recent</option><option value="name">Name</option></select></label>
         <button type="submit">Apply</button><a className="muted-button" href="?">Reset</a>
       </form>
-      <p>Read-only channel evidence · {period}. Channel totals are independent of client and search filters. Measurements at different layers cannot be added to the VPS interface total.</p>
+      <p>Read-only channel evidence · {period}. Channel totals follow the selected client; search only filters client and app lists. Measurements at different layers cannot be added to the VPS interface total.</p>
       <p>Route split may be unknown. Missing or inactive collection is not zero traffic. Channel D sessions appear after they close; Amn is collected only while enabled.</p>
       <h3>Runtime health</h3>
       <p>Runtime status is not an authenticated application test. The runtime cards below cover D, anyT, Snell and Amn; see Health Center for other channel evidence.</p>

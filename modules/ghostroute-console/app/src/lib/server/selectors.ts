@@ -4923,10 +4923,10 @@ export function channelAppsForPeriod(period = "today", options: { channel?: stri
   return channelAppEvidence(getDb(), segments, clients, options) as Array<{ channel: string; client: string; label: string; app: string; bytes: number; last_seen: string }>;
 }
 
-export function recentChannelTraffic() {
+export function recentChannelTraffic(client = "all") {
   const now = new Date().toISOString();
   const start = bucketStartUtc(isoMinusHours(now, 29 * 24), "day");
-  return channelTrafficHistory(getDb(), start, isoPlusMs(now, 1)) as {
+  return channelTrafficHistory(getDb(), start, isoPlusMs(now, 1), client) as {
     daily: Array<{ day: string; channel: string; bytes: number }>;
     clients: Array<{ client: string; label: string; bytes: number }>;
   };

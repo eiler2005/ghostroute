@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
     client: search.get("client") || "all",
     search: search.get("search") || "",
   };
-  const flows = measure("flows", () => listFlowSessions({ page: 1, pageSize: 8, filters }).rows);
+  // Live is an activity list, matching the lightweight /live and /api/flows views.
+  const flows = measure("flows", () => listFlowSessions({ page: 1, pageSize: 8, filters, fastList: true }).rows);
   const model = measure("model", () => buildLiveModel(filters, flows));
   const events = measure("events", () => listLiveEvents({
     page: Math.max(1, Number(search.get("page") || 1)),
