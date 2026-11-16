@@ -88,7 +88,7 @@ components:
       - Real Wi-Fi client browsing must be tested for both managed and direct destinations.
       - Channel D is experimental and must not be counted as Channel C native proof.
       - Channel M is service-only for maxtg_bridge and must not use managed rule-sets or reality-out.
-      - Sensitive sites mode selects sensitive-out to hermes_vps before general managed rules and excludes Channel M.
+      - Sensitive sites mode selects an explicitly qualified backend through sensitive-out before general managed rules and excludes Channel M.
 
   - id: router_runtime_supervisor
     component_name: ghostroute-runtime-supervisor.sh

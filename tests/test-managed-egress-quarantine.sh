@@ -11,7 +11,7 @@ printf '%s\n' 'vault_router_managed_egress_mode: hermes_vps' 'vault_channel_d_ma
 MOCK
 chmod +x "$TMPDIR/bin/ansible-vault"
 export PATH="$TMPDIR/bin:$PATH"
-awk -F '\t' 'BEGIN { OFS="\t" } $1 == "backup_reality" { $7="quarantined: fixture media failure" } { print }' \
+awk -F '\t' 'BEGIN { OFS="\t" } $1 == "backup_reality" { $7="quarantined: fixture media failure" } $1 == "hermes_vps" { $7="fixture qualified backend" } { print }' \
   "$PROJECT_ROOT/modules/ghostroute-health-monitor/config/managed-egress-backends.tsv" > "$TMPDIR/backends.tsv"
 export GHOSTROUTE_MANAGED_EGRESS_BACKENDS_FILE="$TMPDIR/backends.tsv"
 helper="${PROJECT_ROOT}/modules/routing-core/bin/managed-egress-mode"

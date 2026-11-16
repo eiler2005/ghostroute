@@ -296,7 +296,8 @@ real provider/ASN/endpoint/host family/account mapping остаются в Vault
 gitignored operator notes.
 
 **Режим чувствительных сайтов** отдельно направляет Claude/Anthropic,
-OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensitive-out -> hermes_vps`.
+OpenAI/ChatGPT и выбранные Google AI-сервисы через `sensitive-out`: по умолчанию
+`hermes_vps`, либо явно согласованный и проверенный `backup_reality` для восстановления.
 Остальные managed-направления сохраняют текущий backend. Режим включается
 `vault_router_sensitive_sites_enabled`, использует отдельный каталог доменов и
 не меняет client imports. Для совпавшего sensitive-трафика нет автоматического

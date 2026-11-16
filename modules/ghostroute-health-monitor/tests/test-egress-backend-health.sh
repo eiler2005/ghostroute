@@ -54,6 +54,7 @@ vault_router_hermes_vps_port: 443
 vault_router_hermes_vps_server_name: "hermes.example.invalid"
 VAULT
   printf 'vault_router_sensitive_sites_enabled: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED:-false}"
+printf 'vault_router_sensitive_sites_backend: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_SITES_BACKEND:-hermes_vps}"
   printf 'vault_router_sensitive_telegram_enabled: %s\n' "${GHOSTROUTE_TEST_SENSITIVE_TELEGRAM_ENABLED:-false}"
   exit 0
 fi
@@ -246,6 +247,15 @@ raise 'Disabled Telegram attribution' unless disabled['app_canaries'].find { |ro
 RUBY
 
 # Receiving HTTP 200 is insufficient when curl fails before the body completes.
+env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_SENSITIVE_SITES_ENABLED=true GHOSTROUTE_TEST_SENSITIVE_TELEGRAM_ENABLED=true GHOSTROUTE_TEST_SENSITIVE_SITES_BACKEND=backup_reality \
+  "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/sensitive-backup.json"
+ruby -rjson - "$TMPDIR/sensitive-backup.json" <<'RUBY'
+j = JSON.parse(File.read(ARGV[0]))
+raise 'Recovery backend attribution' unless j['sensitive_sites_backend'] == 'backup_reality'
+raise 'Recovery Telegram attribution' unless j['app_canaries'].find { |r| r['app'] == 'telegram' }['expected_backend'] == 'backup_reality'
+raise 'Recovery sensitive attribution' unless j['app_canaries'].find { |r| r['app'] == 'claude' }['expected_backend'] == 'backup_reality'
+RUBY
+
 printf 'cobalt\thttps://cobalt.tools/\t2\n' >>"$CANARIES_FILE"
 if env "${COMMON_ENV[@]}" GHOSTROUTE_TEST_PARTIAL_COBALT=1 \
   "${PROJECT_ROOT}/modules/ghostroute-health-monitor/bin/egress-backend-health" --json >"$TMPDIR/partial.json"; then

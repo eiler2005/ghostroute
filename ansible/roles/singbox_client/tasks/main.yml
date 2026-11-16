@@ -120,6 +120,7 @@
       - channel_d_managed_egress_mode | default('follow') in ['follow', 'primary_vps', 'backup_reality', 'hermes_vps']
       - router_backup_dns_mode in ['cover_dns', 'managed_vps_dns']
       - router_hermes_dns_mode | default('managed_vps_dns') in ['cover_dns', 'managed_vps_dns']
+      - router_sensitive_sites_backend | default('hermes_vps') in ['hermes_vps', 'backup_reality']
     fail_msg: "router_managed_egress_mode must be primary_vps, backup_reality or hermes_vps; channel_d_managed_egress_mode must be follow, primary_vps, backup_reality or hermes_vps."
 
 - name: Validate backup Reality managed egress settings
@@ -142,7 +143,7 @@
       - router_backup_reality_public_key | string | length > 0
       - router_backup_reality_short_id | string | length > 0
     fail_msg: "backup_reality needs a complete router-only VLESS/Reality profile; gRPC requires an empty flow, service name and h2 ALPN."
-  when: router_managed_egress_mode == 'backup_reality' or channel_d_managed_egress_mode | default('follow') == 'backup_reality'
+  when: router_managed_egress_mode == 'backup_reality' or channel_d_managed_egress_mode | default('follow') == 'backup_reality' or ((router_sensitive_sites_enabled | default(false) | bool) and router_sensitive_sites_backend | default('hermes_vps') == 'backup_reality')
   no_log: true
 
 - name: Validate Hermes owned managed egress settings
@@ -156,7 +157,7 @@
       - reality_server_public_key | string | length > 0
       - (clients | selectattr('name','equalto','router') | list | length) == 1
     fail_msg: "hermes_vps mode needs a complete owned VPS endpoint and the existing router Reality client identity."
-  when: router_managed_egress_mode == 'hermes_vps' or channel_d_managed_egress_mode | default('follow') == 'hermes_vps' or router_sensitive_sites_enabled | default(false) | bool
+  when: router_managed_egress_mode == 'hermes_vps' or channel_d_managed_egress_mode | default('follow') == 'hermes_vps' or ((router_sensitive_sites_enabled | default(false) | bool) and router_sensitive_sites_backend | default('hermes_vps') == 'hermes_vps')
   no_log: true
 
 - name: Validate sensitive sites mode catalog

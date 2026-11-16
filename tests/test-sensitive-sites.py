@@ -122,6 +122,14 @@ def route(config, inbound, host, port=443):
 
 def main():
     c = render()
+    for transport, extra in [('tcp', {}), ('grpc', {'router_backup_reality_grpc_service_name':'fixture', 'router_backup_reality_alpn':['h2']})]:
+        before = render(router_backup_reality_transport=transport, **extra)
+        after = render(router_backup_reality_transport=transport, router_sensitive_sites_backend='backup_reality', **extra)
+        assert {k:v for k,v in before.items() if k != 'outbounds'} == {k:v for k,v in after.items() if k != 'outbounds'}, 'Recovery must preserve ingress, DNS, catalog and scoped rules'
+        old = {o['tag']:o for o in before['outbounds']}
+        new = {o['tag']:o for o in after['outbounds']}
+        assert {k:v for k,v in old.items() if k != 'sensitive-out'} == {k:v for k,v in new.items() if k != 'sensitive-out'}
+        assert new['sensitive-out'] == dict(new['reality-out'], tag='sensitive-out'), 'Sensitive recovery must use the complete qualified backup transport with no direct fallback'
     # Changing an external transport must not migrate any client ingress or
     # alter the sensitive/direct split, including when Channel D is pinned.
     for mode, d_mode in [("backup_reality", "follow"), ("primary_vps", "backup_reality")]:

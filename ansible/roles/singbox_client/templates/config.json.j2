@@ -322,7 +322,7 @@
     {
       "type": "vless",
       "tag": "sensitive-out",
-{{ reality_outbound_body('hermes_vps') }}
+{{ reality_outbound_body(router_sensitive_sites_backend | default('hermes_vps')) }}
     },
 {% endif %}
 {% if d_mode != 'follow' %}

@@ -146,6 +146,7 @@ vault_ref() {
 ACTIVE_BACKEND="$(vault_scalar vault_router_managed_egress_mode primary_vps)"
 CHANNEL_D_BACKEND="$(vault_scalar vault_channel_d_managed_egress_mode follow)"
 SENSITIVE_SITES_ENABLED="$(vault_scalar vault_router_sensitive_sites_enabled false)"
+SENSITIVE_SITES_BACKEND="$(vault_scalar vault_router_sensitive_sites_backend hermes_vps)"
 SENSITIVE_DOMAINS_FILE="${GHOSTROUTE_SENSITIVE_DOMAINS_FILE:-${PROJECT_ROOT}/configs/sensitive-domains.txt}"
 SENSITIVE_TELEGRAM_ENABLED="$(vault_scalar vault_router_sensitive_telegram_enabled false)"
 SENSITIVE_TELEGRAM_DOMAINS_FILE="${GHOSTROUTE_SENSITIVE_TELEGRAM_DOMAINS_FILE:-${PROJECT_ROOT}/configs/sensitive-telegram-domains.txt}"
@@ -295,6 +296,7 @@ GR_CANARY_BACKEND="$CANARY_BACKEND" \
 GR_CANARY_LABEL="$CANARY_LABEL" \
 GR_SPLIT_NOTE="$SPLIT_NOTE" \
 GR_SENSITIVE_SITES_ENABLED="$SENSITIVE_SITES_ENABLED" \
+GR_SENSITIVE_SITES_BACKEND="$SENSITIVE_SITES_BACKEND" \
 GR_SENSITIVE_DOMAINS_FILE="$SENSITIVE_DOMAINS_FILE" \
 GR_SENSITIVE_TELEGRAM_ENABLED="$SENSITIVE_TELEGRAM_ENABLED" \
 GR_SENSITIVE_TELEGRAM_DOMAINS_FILE="$SENSITIVE_TELEGRAM_DOMAINS_FILE" \
@@ -353,7 +355,7 @@ app_canaries = canary_rows.map do |app, status, code, time_s|
   host = canary_hosts.fetch(app, '')
   sensitive = sensitive_domains.any? { |d| host == d || host.end_with?(".#{d}") }
   { 'app' => app, 'status' => status, 'http_code' => code, 'time_s' => time_s,
-    'expected_backend' => sensitive ? 'hermes_vps' : ENV['GR_CANARY_BACKEND'] }
+    'expected_backend' => sensitive ? ENV['GR_SENSITIVE_SITES_BACKEND'] : ENV['GR_CANARY_BACKEND'] }
 end
 
 if ENV['GR_JSON'] == '1'
@@ -364,7 +366,7 @@ if ENV['GR_JSON'] == '1'
     'active_backend' => ENV['GR_ACTIVE_BACKEND'],
     'channel_d_backend' => ENV['GR_CHANNEL_D_BACKEND'],
     'canary_backend' => ENV['GR_CANARY_BACKEND'],
-    'sensitive_sites_backend' => sensitive_enabled ? 'hermes_vps' : nil,
+    'sensitive_sites_backend' => sensitive_enabled ? ENV['GR_SENSITIVE_SITES_BACKEND'] : nil,
     'telegram_sensitive_sites_enabled' => telegram_sensitive_enabled,
     'rollup' => rollup,
     'note' => ENV['GR_SPLIT_NOTE'].to_s.empty? ? nil : ENV['GR_SPLIT_NOTE'],

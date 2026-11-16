@@ -324,7 +324,8 @@ roles. The real provider, endpoint, ASN, host family, account and role mapping
 belong in Vault or gitignored operator notes.
 
 **Sensitive sites mode** optionally sends Claude/Anthropic, OpenAI/ChatGPT and
-selected Google AI destinations through `sensitive-out -> hermes_vps`, while
+selected Google AI destinations through `sensitive-out` (`hermes_vps` by default,
+or an explicitly qualified `backup_reality` recovery selection), while
 other managed destinations retain their current backend. The separate domain
 catalog and `vault_router_sensitive_sites_enabled` switch do not change client
 imports. Matched sensitive traffic has no automatic fallback to another IP.
