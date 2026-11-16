@@ -679,6 +679,18 @@ test("live API uses the same flow list as the flows API", async ({ request }) =>
   expect(liveBody.flows.map((row: { id: string }) => row.id)).toEqual(flowsBody.flows.map((row: { id: string }) => row.id));
 });
 
+test("dashboard app percentages describe displayed evidence rather than leader size", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop ranking percentages");
+  await page.goto('/');
+  const panel = page.locator('section').filter({has: page.getByRole('heading',{name:'Top app families',exact:true})});
+  await expect(panel).toContainText('Shares of displayed app evidence');
+  const shares = await panel.locator('.rank-meter > span').allTextContents();
+  if (shares.length) {
+    const sum = shares.reduce((total,value)=>total+Number.parseInt(value,10),0);
+    expect(Math.abs(sum-100)).toBeLessThanOrEqual(shares.length);
+  }
+});
+
 test("dashboard client traffic status is not presented as a health check", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop dashboard");
   await page.goto("/");

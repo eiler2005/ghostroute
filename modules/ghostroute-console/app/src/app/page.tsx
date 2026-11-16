@@ -8,6 +8,7 @@ import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 import { attributionEligibility, isAttributableSiteRow } from "@/lib/attribution-eligibility.mjs";
 import { classifyAppFamily, isClientFacingAppFamily } from "@/lib/app-family.mjs";
 import { routeSplitLabel } from "@/lib/route-split-label.mjs";
+import { trafficRankingMetrics } from "@/lib/traffic-ranking.mjs";
 
 function share(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
@@ -353,25 +354,25 @@ function RankedClients({ rows }: { rows: Array<Record<string, any>> }) {
 }
 
 function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
-  const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
-  const total = Math.max(1, rows.reduce((sum, row) => sum + observedBytes(row), 0));
+  const metrics = trafficRankingMetrics(rows, observedBytes);
   return (
     <section className="card dashboard-rank-card">
       <div className="dashboard-card-head">
         <h2>Top destinations</h2>
         <Link className="dashboard-card-link" href="/traffic">Open all</Link>
       </div>
+      <p className="subtle">Shares of displayed destination evidence; not total channel traffic.</p>
       {rows.length === 0 ? <EmptyState title="No destination traffic observed" /> : (
         <div className="dashboard-rank-list">
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <div className="dashboard-rank-row destination-row" key={row.key || row.label}>
               <span className="rank-index">{row.rank}</span>
               <div className="rank-title"><strong>{row.label}</strong><small>{row.detail || "not observed"}</small></div>
               <RouteBadge value={row.route} />
               <div className="rank-meter">
-                <strong>{compactBytes(observedBytes(row))}</strong><span>{row.sharePct || pct(observedBytes(row), total)}%</span>
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{metrics[index].sharePct}%</span>
                 <small>VPS {compactBytes(row.viaVpsBytes || 0)} · Direct {compactBytes(row.directBytes || 0)} · Unknown {compactBytes(row.unknownBytes || 0)}</small>
-                <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
+                <i><b style={{ width: `${metrics[index].relativePct}%` }} /></i>
               </div>
             </div>
           ))}
@@ -382,16 +383,17 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
 }
 
 function RankedApps({ rows }: { rows: Array<Record<string, any>> }) {
-  const max = Math.max(1, ...rows.map((row) => observedBytes(row)));
+  const metrics = trafficRankingMetrics(rows, observedBytes);
   return (
     <section className="card dashboard-rank-card">
       <div className="dashboard-card-head">
         <h2>Top app families</h2>
         <Link className="dashboard-card-link" href="/apps">Open Apps</Link>
       </div>
+      <p className="subtle">Shares of displayed app evidence; encrypted or unattributed bytes may be absent.</p>
       {rows.length === 0 ? <EmptyState title="No app-family traffic observed" /> : (
         <div className="dashboard-rank-list">
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <div className="dashboard-rank-row destination-row" key={row.app_family}>
               <span className="rank-index">{row.rank}</span>
               <div className="rank-title">
@@ -400,9 +402,9 @@ function RankedApps({ rows }: { rows: Array<Record<string, any>> }) {
               </div>
               <RouteBadge value={row.route} />
               <div className="rank-meter">
-                <strong>{compactBytes(observedBytes(row))}</strong><span>{pct(observedBytes(row), max)}%</span>
+                <strong>{compactBytes(observedBytes(row))}</strong><span>{metrics[index].sharePct}%</span>
                 <small>{row.dns_queries || 0} DNS queries · {row.app_confidence || "estimated"}</small>
-                <i><b style={{ width: `${pct(observedBytes(row), max)}%` }} /></i>
+                <i><b style={{ width: `${metrics[index].relativePct}%` }} /></i>
               </div>
             </div>
           ))}

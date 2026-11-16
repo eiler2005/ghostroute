@@ -643,6 +643,10 @@ if source_mode == 'report'
 else
   answers = dns_answer_rows(input)
   route_allocations = lan_route_allocations(input)
+  volume_intervals = (input['lan_device_route_deltas'] || []).select { |row| !text(row['interval_start_utc']).empty? }
+    .group_by { |row| text(row['client_ip']) }.transform_values { |rows|
+      rows.map { |row| [iso_time(row['interval_start_utc'], generated_at), iso_time(row['interval_end_utc'] || row['ts'], generated_at)] }.sort_by(&:last)
+    }
   ingress_allocations = ingress_route_allocations(input)
   ingress_destination_groups = ingress_destination_allocations(input)
   ingress_profiles = ingress_sample_profiles(input)
@@ -665,6 +669,7 @@ else
     total, vps, direct, unknown = route_verification == 'counter_allocated' ? split_for_counter_allocation(total, allocation) : split_for_verification(route_verification, total)
     total, vps, direct, unknown, corrected_split = enforce_split(total, vps, direct, unknown)
     event_ts = iso_time(sample['ts'], generated_at)
+    covering_interval = (volume_intervals[text(sample['client_ip'])] || []).bsearch { |interval| interval[1] >= event_ts }
     key = text(sample['client_key'], text(sample['client_ip'], 'unknown-client'))
     fact = {
       'fact_id' => fact_hash('evidence', sample['sample_id'], event_ts, key, sample['remote_ip'], total),
@@ -717,6 +722,7 @@ else
       'accounting_status' => accounting_status_for(corrected_split),
       'allocation_basis' => text(sample['allocation_basis'], 'observed_delta'),
       'evidence_level' => 'flow_sample',
+      'measurement_role' => covering_interval && covering_interval[0] < event_ts ? 'detail' : 'volume',
       'sources' => ['traffic-evidence', text(sample['source'], 'lan-flow-facts')],
       'evidence_json' => JSON.generate({
         'sample' => sample,
@@ -929,7 +935,30 @@ else
   end
 end
 
+if source_mode != 'report'
+  (input['lan_device_route_deltas'] || []).each do |counter|
+    next if number(counter['total_bytes']) <= 0 || text(counter['sample_id']).empty? || text(counter['interval_start_utc']).empty?
+    total, vps, direct, unknown, corrected = enforce_split(number(counter['total_bytes']), number(counter['vpn_bytes']), number(counter['direct_bytes']), number(counter['other_bytes']))
+    ts = iso_time(counter['ts'], generated_at)
+    facts << {
+      'fact_id' => fact_hash('lan-volume', counter['sample_id']), 'sample_id' => counter['sample_id'],
+      'event_ts' => ts, 'event_ts_utc' => ts, 'display_ts_utc' => ts, 'observed_at_utc' => ts,
+      'client_key' => counter['client_key'], 'client_ip' => counter['client_ip'], 'client_label' => client_label(counter),
+      'channel' => 'Home Wi-Fi/LAN', 'traffic_class' => 'client', 'destination' => '',
+      'destination_kind' => 'unattributed_counter', 'measurement_role' => 'volume',
+      'measurement_scope' => 'lan_route_counter', 'interval_start_utc' => counter['interval_start_utc'],
+      'interval_end_utc' => counter['interval_end_utc'] || ts,
+      'bytes' => total, 'via_vps_bytes' => vps, 'direct_bytes' => direct, 'unknown_bytes' => unknown,
+      'route' => route_from_split(vps, direct, unknown), 'confidence' => 'observed',
+      'byte_confidence' => 'observed', 'destination_confidence' => 'unknown',
+      'allocation_basis' => 'client_counter_delta', 'evidence_level' => 'lan_device_route_counter',
+      'accounting_status' => accounting_status_for(corrected), 'sources' => ['traffic-evidence', 'lan-device-counters']
+    }
+  end
+end
+
 facts.each do |fact|
+  next if fact['measurement_role'] == 'detail'
   key = fact['client_key']
   clients[key] ||= {
     'client_key' => key,
@@ -957,7 +986,7 @@ end
 
 coverage = {
   'scope' => 'traffic_facts',
-  'traffic_fact_bytes' => facts.sum { |row| number(row['bytes']) },
+  'traffic_fact_bytes' => facts.reject { |row| row['measurement_role'] == 'detail' }.sum { |row| number(row['bytes']) },
   'gap_bytes' => gaps.sum { |row| number(row['bytes']) },
   'facts' => facts.length,
   'gaps' => gaps.length,

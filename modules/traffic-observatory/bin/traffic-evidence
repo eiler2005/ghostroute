@@ -525,6 +525,8 @@ else
             lan_device_route_deltas << {
               'sample_id' => evidence_id('lan-device-route', previous['ts'].iso8601(3), row['ts'].iso8601(3), row['client_ip'], total),
               'ts' => row['ts'].utc.iso8601(3),
+              'interval_start_utc' => previous['ts'].utc.iso8601(3),
+              'interval_end_utc' => row['ts'].utc.iso8601(3),
               'client_ip' => row['client_ip'],
               'client_key' => row['client_ip'],
               'client_label' => row['client_label'],

@@ -1,4 +1,5 @@
 import { explicitAccessChannel } from "../channels.mjs";
+import { appByteQuality } from "../traffic-ranking.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
 import { createSynchronousVersionScope } from "../version-scope.mjs";
 import { channelAppEvidence, channelClientsFromSegments, channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
@@ -5586,7 +5587,7 @@ function reconcileAppFamilyRowsToClientTotal(rows: Array<Record<string, any>>, t
   const residual = Math.round(targetBytes - rowBytes);
   if (targetBytes <= 0 || residual <= Math.max(64 * 1024, targetBytes * 0.05)) return rows;
   const residualSource = observedByteValue(summary) > 0 ? summary : target;
-  const residualSplit = inferredRouteSplit(residual, residualSource);
+    const residualSplit = { via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: residual, route: "Unknown" };
   const next: Array<Record<string, any>> = rows.map((row) => ({ ...row, sample_domains: Array.isArray(row.sample_domains) ? [...row.sample_domains] : row.sample_domains }));
   const existing = next.find((row) => String(row.app_family || "").toLowerCase() === "other / uncategorized");
   const residualSample = "aggregate client byte evidence";
@@ -5637,18 +5638,21 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
     const bytes = siteEvidenceBytes(row);
     if (bytes <= 0) continue;
     const app = withAppFamily(row);
-    const key = app.app_family || row.app_family || "Other / uncategorized";
+    const residual = row.attribution_source === "aggregate_residual";
+    const family = app.app_family || row.app_family || "Other / uncategorized";
+    const key = residual ? `${family}:residual` : family;
     const current = grouped.get(key) || {
       ...app,
-      app_family: key,
-      label: key,
-      destinationLabel: key,
+      app_family: family,
+      label: family,
+      destinationLabel: family,
       app_category: app.app_category || row.category || "uncategorized",
       bytes: 0,
       total_bytes: 0,
       effective_bytes: 0,
       factual_bytes: 0,
       inferred_bytes: 0,
+      residual_bytes: 0,
       via_vps_bytes: 0,
       direct_bytes: 0,
       unknown_bytes: 0,
@@ -5660,7 +5664,7 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
       attributionSources: new Set<string>(),
       confidence: "estimated",
       app_source: row.attribution_source || app.app_source || "dns_inferred",
-      app_confidence: row.byte_confidence || app.app_confidence || "estimated",
+       app_confidence: app.app_confidence || "unknown",
       matched_pattern: row.matched_pattern || row.attribution_source || "",
       provider: row.provider || "",
       category: row.category || row.dns_category || "",
@@ -5670,6 +5674,7 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
     current.effective_bytes += bytes;
     current.factual_bytes += Number(row.factual_bytes || 0);
     current.inferred_bytes += Number(row.inferred_bytes || 0);
+    if (residual) current.residual_bytes += bytes;
     current.via_vps_bytes += Number(row.via_vps_bytes || 0);
     current.direct_bytes += Number(row.direct_bytes || 0);
     current.unknown_bytes += Number(row.unknown_bytes || Math.max(0, bytes - Number(row.via_vps_bytes || 0) - Number(row.direct_bytes || 0)));
@@ -5677,7 +5682,7 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
     current.dns_queries += Number(row.dns_queries || row.count || 0);
     if (row.client_key || row.client_label || row.client) current.clients.add(String(row.client_key || row.client_label || row.client));
     if (row.route) current.routes.add(String(row.route));
-    if (row.domain || row.url_label || row.label) current.sample_domains.add(String(row.domain || row.url_label || row.label));
+    if (!residual && (row.domain || row.url_label || row.label)) current.sample_domains.add(String(row.domain || row.url_label || row.label));
     if (row.attribution_source) current.attributionSources.add(String(row.attribution_source));
     if (!current.provider && row.provider) current.provider = row.provider;
     if (!current.category && (row.category || row.dns_category)) current.category = row.category || row.dns_category;
@@ -5694,7 +5699,9 @@ function groupAppFamilyRowsFromSiteEvidence(siteRows: Array<Record<string, any>>
       route: row.routes?.size === 1 ? Array.from(row.routes)[0] : row.routes?.size > 1 ? "Mixed" : "Unknown",
       sample_domains: Array.from(row.sample_domains || []).slice(0, 6),
       app_source: Array.from(row.attributionSources || [])[0] || row.app_source,
-      app_confidence: Number(row.factual_bytes || 0) > 0 && Number(row.inferred_bytes || 0) <= 0 ? "factual" : row.app_confidence,
+      app_confidence: Number(row.residual_bytes || 0) > 0 ? "unknown" : row.app_confidence,
+      byte_confidence: appByteQuality(row),
+      confidence: appByteQuality(row),
     }));
 }
 

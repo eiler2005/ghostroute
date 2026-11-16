@@ -527,6 +527,10 @@ function hintedFamily(input, host) {
 }
 
 export function classifyAppFamily(input) {
+  if (input && typeof input === 'object' && (input.attribution_source === 'aggregate_residual' || input.app_source === 'aggregate_residual')) {
+    return { app_family: 'Other / uncategorized', app_category: 'uncategorized', traffic_role: 'unknown',
+      app_confidence: 'residual', app_source: 'aggregate_residual', matched_pattern: '' };
+  }
   const host = hostFor(input);
   if (host && !isIpLiteral(host)) {
     for (const entry of RULES) {

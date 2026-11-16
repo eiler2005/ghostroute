@@ -2,6 +2,21 @@
 
 ## Accounting and attribution boundaries
 
+Facts may declare `measurement_role` (`volume` or `detail`), measurement scope,
+and UTC interval bounds. Volume counter facts with
+`destination_kind=unattributed_counter` contribute to totals without becoming
+destinations. Covered connection samples contribute to destination detail only.
+The reader applies interval ownership to retained legacy samples as well, so a
+new complete counter does not add the same sampled bytes twice. Uncovered
+samples remain partial evidence. LAN counter intervals are emitted by the source
+instead of being used only as route-allocation weights.
+
+Ranking percentages use the sum of the explicitly displayed evidence set;
+bar geometry uses its maximum. These denominators are distinct. Byte confidence
+and app-match confidence are also independent: exact bytes to a provider do not
+prove an exact application identity. Aggregate residuals cannot inherit app or
+provider hints and remain separate from classified application evidence.
+
 Traffic-active stable profile identities remain eligible for client rankings
 without an operator alias. Missing ownership is a review state, not a reason to
 drop bytes. Router summary, prepared client evidence and destination evidence

@@ -218,8 +218,8 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
                     </td>
                     <td>{(row.sample_domains || []).join(", ") || "not observed"}</td>
                     <td>
-                      {row.confidence || row.app_confidence || "estimated"}
-                      <small className="subtle block-detail">{[row.app_confidence, row.matched_pattern].filter(Boolean).map(labelToken).join(" · ") || "byte-ranked"}</small>
+                      {row.byte_confidence || row.confidence || "unknown"} bytes
+                      <small className="subtle block-detail">App match: {[row.app_confidence, row.matched_pattern].filter(Boolean).map(labelToken).join(" · ") || "unknown"}</small>
                     </td>
                   </tr>
                 );

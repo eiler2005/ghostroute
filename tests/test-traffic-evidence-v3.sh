@@ -65,7 +65,10 @@ ruby -rjson -e '
   abort "yesterday flow leaked into today evidence" if evidence["flow_samples"].any? { |row| row["remote_ip"] == "192.0.2.10" }
   abort "expected timestamp warnings" unless evidence["warnings"].any? { |row| row["code"] == "unparsable_timestamp" }
   abort "expected traffic-facts schema v3" unless facts["schema_version"] == 3
-  abort "expected ten traffic facts" unless facts["traffic_facts"].length == 10
+  abort "expected destination facts plus measured LAN total" unless facts["traffic_facts"].length == 11
+  volume = facts["traffic_facts"].select { |row| row["measurement_scope"] == "lan_route_counter" }
+  abort "LAN counter volume missing" unless volume.sum { |row| row["bytes"].to_i } == evidence["lan_device_route_deltas"].sum { |row| row["total_bytes"].to_i }
+  abort "counter volume acquired an application" unless volume.all? { |row| row["destination"].to_s.empty? }
   abort "yesterday flow leaked into today facts" if facts["traffic_facts"].any? { |row| row["destination_ip"] == "192.0.2.10" }
   facts["traffic_facts"].each do |row|
     sum = row["via_vps_bytes"].to_i + row["direct_bytes"].to_i + row["unknown_bytes"].to_i

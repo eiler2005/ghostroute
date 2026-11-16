@@ -1,5 +1,13 @@
 # Traffic Observatory Module Overview
 
+LAN route-counter deltas carry explicit interval bounds and are emitted as
+volume facts independently of sampled connection detail. A covered connection
+sample is detail evidence and must not be added to its owning volume interval.
+This preserves total usage when app/destination observation is incomplete.
+Encrypted or unobserved app attribution remains unknown; DNS query volume must
+not manufacture transferred app bytes. These additive fields keep the
+`traffic-facts` schema-v3 interface compatible with existing consumers.
+
 ## Purpose
 
 Traffic Observatory provides day-to-day usage and routing reports for WAN,

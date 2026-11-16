@@ -2148,7 +2148,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         client_label: resolved.client_label,
         channel: resolved.channel || text(row.channel || inferChannel(raw), "Unknown"),
         destination,
-        destination_key: destination,
+        destination_key: raw.destination_kind === 'unattributed_counter' ? '' : destination,
         route: text(row.route || routeFromTraffic(raw), "Unknown"),
         intended_route: text(row.intended_route || raw.intended_route || row.route || routeFromTraffic(raw), "Unknown"),
         route_verification: text(row.route_verification || raw.route_verification || "unknown"),
@@ -2161,11 +2161,25 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         direct_bytes: split.directBytes,
         unknown_bytes: split.unknownBytes,
         connections: number(row.connections),
-        accounting_bucket: Boolean(raw.accounting_bucket),
+        accounting_bucket: Boolean(raw.accounting_bucket) || raw.destination_kind === 'unattributed_counter',
+        measurement_role: raw.measurement_role || 'volume',
         raw,
       };
     }).filter(Boolean);
-  if (hasTrafficFacts) return rows.map((row) => ({ ...row, total_bytes: row.bytes }));
+  if (hasTrafficFacts) {
+    const intervals = new Map();
+    for (const row of rows) {
+      if (!row.accounting_bucket || !row.raw.interval_start_utc || !row.raw.interval_end_utc) continue;
+      const key = JSON.stringify([row.client_key, row.channel]);
+      const list = intervals.get(key) || [];
+      list.push([row.raw.interval_start_utc, row.raw.interval_end_utc]);
+      intervals.set(key, list);
+    }
+    return rows.map((row) => ({ ...row, total_bytes: row.bytes,
+      measurement_role: !row.accounting_bucket && (intervals.get(JSON.stringify([row.client_key, row.channel])) || [])
+        .some(([start, end]) => row.collected_at > start && row.collected_at <= end) ? 'detail' : row.measurement_role,
+    }));
+  }
   const grouped = new Map();
   for (const row of rows) {
     const key = flowRollupKey(row);
@@ -2405,7 +2419,7 @@ function rebuildTrafficAggregates(db, facts, now, dirtyStartUtc, dirtyEndUtc = n
 
   for (const row of facts) {
     const bucket = bucketStartUtc(row.collected_at, "5min");
-    if (!useRouterTotals) {
+    if (!useRouterTotals && row.measurement_role !== 'detail') {
       const totalKey = [bucket, row.client_key, row.channel, row.route, row.confidence, row.traffic_class].join("|");
       addToGroup(totalBuckets, totalKey, {
         bucket_start_utc: bucket,
