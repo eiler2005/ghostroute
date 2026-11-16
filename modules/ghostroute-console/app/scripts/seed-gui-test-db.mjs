@@ -263,6 +263,7 @@ function seed(db) {
       { channel: "D", enabled: false, policy_running: false },
       { channel: "anyT", installed: true, enabled: true, policy_running: true, watch_running: true, policy_current: true },
       { channel: "Snell", enabled: null, policy_running: true, watch_running: false, policy_current: false },
+      { channel: "Amn", installed: true, enabled: false, policy_running: false, ingress_running: false },
     ],
   });
   const clients = [

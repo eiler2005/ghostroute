@@ -18,14 +18,40 @@
     - ../../../ansible/group_vars/routers.yml
     - ../../../ansible/secrets/stealth.yml
   tasks:
+    - name: Preserve the prior restricted router gate
+      ansible.builtin.raw: >-
+        test -f /jffs/addons/ghostroute-console-readonly/gate.before-channel-accounting.py ||
+        cp -p /jffs/addons/ghostroute-console-readonly/gate.py
+        /jffs/addons/ghostroute-console-readonly/gate.before-channel-accounting.py
+      changed_when: false
+    - name: Install the reviewed additive restricted router gate
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../router/console-router-readonly.py"
+        dest: /jffs/addons/ghostroute-console-readonly/gate.py
+        mode: '0700'
     - name: Preserve the previous fixed report policy once
       ansible.builtin.raw: >-
-        test -f /jffs/addons/ghostroute-console-readonly/policy.before-channel-health.json ||
+        test -f /jffs/addons/ghostroute-console-readonly/policy.before-channel-accounting.json ||
         cp -p /jffs/addons/ghostroute-console-readonly/policy.json
-        /jffs/addons/ghostroute-console-readonly/policy.before-channel-health.json
+        /jffs/addons/ghostroute-console-readonly/policy.before-channel-accounting.json
       changed_when: false
-    - name: Install the locally reviewed report policy
+    - name: Stage the locally reviewed report policy
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../../../ansible/out/console-router-access/policy.json"
-        dest: /jffs/addons/ghostroute-console-readonly/policy.json
+        dest: /jffs/addons/ghostroute-console-readonly/policy.channel-accounting.next.json
         mode: '0600'
+    - name: Install the additive policy merger
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../router/merge-readonly-policy.py"
+        dest: /jffs/addons/ghostroute-console-readonly/merge-readonly-policy.py
+        mode: '0700'
+    - name: Add reviewed report bodies while retaining the running collector's policy
+      ansible.builtin.raw: >-
+        /opt/bin/python3 -I /jffs/addons/ghostroute-console-readonly/merge-readonly-policy.py
+        /jffs/addons/ghostroute-console-readonly/policy.json
+        /jffs/addons/ghostroute-console-readonly/policy.channel-accounting.next.json
+      changed_when: true
+    - name: Remove staged policy
+      ansible.builtin.file:
+        path: /jffs/addons/ghostroute-console-readonly/policy.channel-accounting.next.json
+        state: absent

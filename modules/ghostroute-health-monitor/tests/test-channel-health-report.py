@@ -15,7 +15,8 @@ class ObserverTest(unittest.TestCase):
             (root / 'proc').mkdir()
             namespace['Path'] = lambda value: root / str(value).lstrip('/')
             observed = namespace['observe']()
-            self.assertEqual([row['channel'] for row in observed['channels']], ['D', 'anyT', 'Snell'])
+            self.assertEqual([row['channel'] for row in observed['channels']], ['D', 'anyT', 'Snell', 'Amn'])
+            self.assertFalse(observed['channels'][-1]['enabled'])
             self.assertTrue(all(row['application_probe'] == 'not observed' for row in observed['channels']))
             run = root / 'tmp/ghostroute-anytls'
             run.mkdir(parents=True)

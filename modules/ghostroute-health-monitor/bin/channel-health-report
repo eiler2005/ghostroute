@@ -53,6 +53,14 @@ def observe():
     snell = {'channel': 'Snell', 'installed': (base / 'settings.json').is_file(), 'enabled': None,
              'policy_running': engine, 'watch_running': watch, 'policy_current': recent,
              'application_probe': 'not observed'}
+    base = Path('/opt/etc/ghostroute-amn')
+    run = Path('/tmp/ghostroute-amn')
+    amn = {'channel': 'Amn', 'installed': (base / 'settings.json').is_file(),
+           'enabled': (run / 'owned.json').is_file(),
+           'policy_running': owned(run, 'policy', [str(base / 'sing-box-amn'), 'run', '-c', str(base / 'policy.json')]),
+           'ingress_running': owned(run, 'engine', [str(base / 'amneziawg-go'), '-f', 'gr-amn']),
+           'policy_current': current(base) if (run / 'owned.json').is_file() else None,
+           'application_probe': 'not observed'}
     # D is owned by the main runtime; observe its exact ingress and listener process.
     d_installed = False
     try:
@@ -83,7 +91,7 @@ def observe():
          'policy_running': main if d_installed else False, 'ingress_running': d_process, 'watch_running': None, 'policy_current': None,
          'application_probe': 'not observed'}
     return {'schema_version': 1, 'generated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            'source': {'command': 'channel-health-report'}, 'confidence': 'exact', 'channels': [d, anyt, snell]}
+            'source': {'command': 'channel-health-report'}, 'confidence': 'exact', 'channels': [d, anyt, snell, amn]}
 
 print(json.dumps(observe()))
 PY

@@ -5,12 +5,14 @@ const descriptors = {
   D: { label: 'Channel D', type: 'naiveproxy', lifecycle: 'experimental' },
   anyT: { label: 'Channel anyT', type: 'anytls', lifecycle: 'production' },
   Snell: { label: 'Channel Snell', type: 'snell_shadowtls', lifecycle: 'experimental' },
+  Amn: { label: 'Channel Amn', type: 'amneziawg', lifecycle: 'disabled_lab' },
 };
 
 export function channelId(value) {
   const key = String(value || '').trim().replace(/^channel[ _-]*/i, '').toLowerCase();
   if (key === 'anytls' || key === 'anyt') return 'anyT';
   if (key === 'snell') return 'Snell';
+  if (key === 'amn') return 'Amn';
   return ['a', 'b', 'c', 'd'].includes(key) ? key.toUpperCase() : 'Unknown';
 }
 

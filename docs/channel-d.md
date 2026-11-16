@@ -166,15 +166,32 @@ Use the iOS Camera/Safari deep-link flow for the QR. Karing's in-app QR scanner
 passes scanned text directly into `Add Profile Link`; when using that flow,
 copy the raw Naive URL and set `Remark` to `<client-name>-channel-d` manually.
 
-## Known Console Gap
+## Console accounting
 
-GhostRoute Console was not updated for Channel D in this rollout. Channel D has
-router runtime, Ansible verification, CLI status, generated client artifacts and
-docs, but the Console does not yet expose Channel D as a first-class lane with
-D-specific Caddy state, client/QR inventory, proof labels or traffic
-attribution. Until that follow-up is implemented, use `99-verify.yml`,
-`verify.sh --verbose`, `router-health-report` and router logs for Channel D
-proof.
+Console can show Channel D inventory and read-only runtime observations. Optional
+per-profile accounting uses Caddy's filtered access log and a private mapping of
+authenticated usernames to stable profile slots. It requires a separately
+approved Channel D restart to enable; the default remains off. The log excludes
+request and response-header objects and is bounded on the router. No passwords,
+destinations or source addresses are exported to Console.
+
+Only completed authenticated HTTP/2 or HTTP/3 CONNECT streams are counted. A
+long-running session appears when it ends, and HTTP/1 hijacked streams are a
+coverage gap. Caddy counts stream bytes, including Naive padding, which is not
+necessarily equal to payload or VPS interface bytes. See the
+[traffic observability guide](../modules/traffic-observatory/docs/traffic-observability.md)
+for collection, retention and rollback boundaries.
+
+To install the observer on an existing Channel D, set the encrypted Vault flag
+`vault_channel_d_traffic_observability_enabled` and run the dedicated
+`playbooks/27-channel-d-accounting.yml` with
+`channel_d_observability_restart_approved=true`. The playbook validates the
+candidate and preserves the prior configuration and profile map in the private
+`rollback-d` directory. It refuses to overwrite that rollback point. Restoring
+those files and restarting only Channel D restores the previous behavior; check
+an authenticated client after either change. Both restarts require the
+operator's authorization. If client identities change later, refresh the private
+profile map before expecting new profiles to appear in accounting.
 
 ## Managed Egress Selection (Independent Backend)
 

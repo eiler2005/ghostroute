@@ -73,6 +73,12 @@ test("dashboard shows traffic analytics in English", async ({ page, isMobile }) 
   await expect(page.locator("body")).not.toContainText("Трафик");
 });
 
+test("channel traffic is visible with its coverage context", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Traffic by channel" })).toBeVisible();
+  await expect(page.getByText(/Client (?:traffic )?evidence.*(?:incomplete|estimat)/i)).toBeVisible();
+});
+
 test("dashboard rankings hide pseudo clients and keep destinations populated", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/?desktop=1" : "/");
   await expect(page.getByRole("heading", { name: "Top destinations" })).toHaveCount(1);
@@ -628,10 +634,10 @@ test("new channel inventory stays distinct on desktop and mobile", async ({ page
 test("channel health distinguishes runtime evidence from application acceptance", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/m/health" : "/health");
   await expect(page.getByRole("heading", { name: "Channel health", exact: true })).toBeVisible();
-  for (const [channel, status] of [["D", "DISABLED"], ["anyT", "OK"], ["Snell", "WARN"]]) {
+  for (const [channel, status] of [["D", "DISABLED"], ["anyT", "OK"], ["Snell", "WARN"], ["Amn", "DISABLED"]]) {
     const card = page.locator(`[data-channel="${channel}"]`);
     await expect(card).toContainText(status);
     await expect(card).toContainText("Application probe not observed");
-    await expect(card).toContainText("Per-profile traffic coverage not established");
+    await expect(card).toContainText("Traffic coverage depends on the channel collector");
   }
 });

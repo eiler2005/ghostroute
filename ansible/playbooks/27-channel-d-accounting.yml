@@ -1,0 +1,131 @@
+---
+- name: Enable optional Channel D accounting with an isolated rollback
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    sampler_dir: /opt/etc/ghostroute-observability
+    rollback_dir: /opt/etc/ghostroute-observability/rollback-d
+  tasks:
+    - name: Require specific approval for the short Channel D restart
+      ansible.builtin.assert:
+        that:
+          - channel_d_observability_restart_approved | default(false) | bool
+          - channel_d_naiveproxy_enabled | bool
+          - channel_d_naiveproxy_clients | length > 0
+          - channel_d_naiveproxy_clients | length <= 99
+    - name: Check sampler and backup preconditions
+      ansible.builtin.raw: >-
+        test -x {{ sampler_dir }}/isolated-channel-snapshot.py &&
+        test -f {{ sampler_dir }}/enabled &&
+        test ! -e {{ rollback_dir }} &&
+        test -f {{ channel_d_naiveproxy_caddy_config_path | quote }}
+      changed_when: false
+    - name: Install Channel D mapping helper and library
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../modules/traffic-observatory/{{ item.source }}"
+        dest: "{{ sampler_dir }}/{{ item.target }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { source: router/update-channel-d-profiles.py, target: update-channel-d-profiles.py, mode: '0700' }
+        - { source: lib/channel_d_profiles.py, target: channel_d_profiles.py, mode: '0600' }
+    - name: Render the unchanged Channel D baseline for comparison
+      ansible.builtin.template:
+        src: ../roles/channel_d_naiveproxy/templates/Caddyfile.j2
+        dest: "{{ sampler_dir }}/channel-d-baseline.candidate"
+        mode: '0600'
+      vars:
+        channel_d_traffic_observability_enabled: false
+      no_log: true
+    - name: Refuse to replace a locally modified Channel D configuration
+      ansible.builtin.raw: >-
+        cmp -s {{ sampler_dir }}/channel-d-baseline.candidate {{ channel_d_naiveproxy_caddy_config_path | quote }}
+      changed_when: false
+    - name: Render candidate Channel D accounting configuration
+      ansible.builtin.template:
+        src: ../roles/channel_d_naiveproxy/templates/Caddyfile.j2
+        dest: "{{ sampler_dir }}/channel-d-accounting.candidate"
+        mode: '0600'
+      vars:
+        channel_d_traffic_observability_enabled: true
+      no_log: true
+    - name: Validate the candidate using the installed Channel D binary
+      ansible.builtin.raw: >-
+        {{ channel_d_naiveproxy_caddy_bin_path | quote }} validate --adapter caddyfile
+        --config {{ sampler_dir }}/channel-d-accounting.candidate
+      changed_when: false
+      no_log: true
+    - name: Stage private username and profile labels only
+      ansible.builtin.copy:
+        dest: "{{ sampler_dir }}/channel-d-profiles.candidate"
+        mode: '0600'
+        content: |
+          [
+          {% for client in channel_d_naiveproxy_clients %}
+            {"username": {{ client.username | to_json }}, "name": {{ client.name | to_json }}}{% if not loop.last %},{% endif %}
+          {% endfor %}
+          ]
+      no_log: true
+    - name: Back up existing Channel D state
+      ansible.builtin.raw: |
+        set -eu
+        umask 077
+        mkdir {{ rollback_dir }}
+        cp -p {{ channel_d_naiveproxy_caddy_config_path | quote }} {{ rollback_dir }}/Caddyfile
+        if [ -f {{ sampler_dir }}/channel-d-profiles.json ]; then
+          cp -p {{ sampler_dir }}/channel-d-profiles.json {{ rollback_dir }}/profiles.json
+        else
+          touch {{ rollback_dir }}/profiles-absent
+        fi
+      no_log: true
+    - name: Apply only Channel D accounting, or restore its original state
+      block:
+        - name: Create or update the stable private profile map
+          ansible.builtin.raw: >-
+            /opt/bin/python3 -I {{ sampler_dir }}/update-channel-d-profiles.py
+            {{ sampler_dir }}/channel-d-profiles.json {{ sampler_dir }}/channel-d-profiles.candidate
+          no_log: true
+        - name: Install the validated Channel D configuration
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ sampler_dir }}/channel-d-accounting.candidate"
+            dest: "{{ channel_d_naiveproxy_caddy_config_path }}"
+            mode: '0600'
+          no_log: true
+        - name: Restart only Channel D and verify its process
+          ansible.builtin.raw: |
+            set -eu
+            {{ channel_d_naiveproxy_caddy_init_path | quote }} restart
+            sleep 2
+            {{ channel_d_naiveproxy_caddy_init_path | quote }} status | grep -q '^running$'
+          changed_when: true
+          no_log: true
+      rescue:
+        - name: Restore previous Channel D config and mapping and restart only D
+          ansible.builtin.raw: |
+            set -eu
+            cp -p {{ rollback_dir }}/Caddyfile {{ channel_d_naiveproxy_caddy_config_path | quote }}
+            if [ -f {{ rollback_dir }}/profiles-absent ]; then
+              rm -f {{ sampler_dir }}/channel-d-profiles.json
+            else
+              cp -p {{ rollback_dir }}/profiles.json {{ sampler_dir }}/channel-d-profiles.json
+            fi
+            {{ channel_d_naiveproxy_caddy_init_path | quote }} restart
+            sleep 2
+            {{ channel_d_naiveproxy_caddy_init_path | quote }} status | grep -q '^running$'
+          no_log: true
+        - ansible.builtin.fail:
+            msg: Channel D accounting activation failed; the prior Channel D configuration was restored.
+      always:
+        - name: Remove temporary private Channel D candidates
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ sampler_dir }}/channel-d-profiles.candidate"
+            - "{{ sampler_dir }}/channel-d-baseline.candidate"
+            - "{{ sampler_dir }}/channel-d-accounting.candidate"
+          no_log: true

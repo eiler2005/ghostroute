@@ -96,6 +96,12 @@ class ConsoleRouterBoundary(unittest.TestCase):
         self.reject('cat "/opt/var/log/router_configuration/dns-forensics/../../keys/private.tsv"')
         self.reject(command+'; id')
 
+    def test_channel_evidence_read_is_fixed_and_scoped(self):
+        command = "cat '/opt/var/log/router_configuration/isolated-channel-deltas.jsonl' 2>/dev/null || true"
+        self.assertEqual(gate.plan(command, b'', self.policy)[0][-1], '/opt/var/log/router_configuration/isolated-channel-deltas.jsonl')
+        self.reject(command.replace('isolated-channel-deltas.jsonl', 'isolated-channel.sqlite'))
+        self.reject(command + '; id')
+
     def test_symlink_escape_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

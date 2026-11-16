@@ -1,1 +1,1 @@
-export { buildDashboardModel } from "../selectors";
+export { buildDashboardModel, channelTrafficForPeriod, recentChannelTraffic } from "../selectors";

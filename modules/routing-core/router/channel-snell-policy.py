@@ -17,6 +17,8 @@ def project(reference, slots, cover):
         raise ValueError('Require reviewed AnyTLS policy projection')
     old_tag = reference['inbounds'][0]['tag']
     result = copy.deepcopy(reference)
+    # The reference may carry AnyTLS telemetry. Snell owns a separate API.
+    result.pop('experimental', None)
     result['log'] = {'level': 'warn', 'output': '/tmp/ghostroute-snell/policy.log', 'timestamp': True}
     result['inbounds'] = []
     tags = ['snell-lab-' + str(i) for i in range(1, 4)]

@@ -2,6 +2,9 @@
   admin off
   auto_https disable_redirects
   order forward_proxy before file_server
+{% if channel_d_traffic_observability_enabled | default(false) %}
+  order log_append before forward_proxy
+{% endif %}
   log {
     exclude http.log.error
   }
@@ -10,6 +13,24 @@
 :{{ channel_d_naiveproxy_ingress_port }} {
   tls {{ channel_d_naiveproxy_tls_cert_path }} {{ channel_d_naiveproxy_tls_key_path }}
   encode gzip zstd
+{% if channel_d_traffic_observability_enabled | default(false) %}
+  log_append method {http.request.method}
+  log_append proto {http.request.proto}
+  log {
+    output file /opt/var/log/router_configuration/channel-d-access.log {
+      mode 0600
+      roll_at 00:00
+      roll_size 4MiB
+      roll_keep 9
+      roll_keep_for 192h
+      roll_uncompressed
+    }
+    format filter {
+      request delete
+      resp_headers delete
+    }
+  }
+{% endif %}
 
   forward_proxy {
 {% for client in channel_d_naiveproxy_clients %}

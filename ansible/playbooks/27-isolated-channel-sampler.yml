@@ -1,0 +1,67 @@
+---
+# Installs only the bounded observer and its boot-time scheduling hook. Channel
+# statistics must be enabled separately after the protected restart approval.
+- name: Install isolated channel traffic sampler
+  hosts: routers
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/routers.yml
+    - ../secrets/stealth.yml
+  vars:
+    sampler_dir: /opt/etc/ghostroute-observability
+    sampler_binary: "{{ playbook_dir }}/../../reports/console-channels/ghostroute-channel-stats"
+  tasks:
+    - name: Verify the locally built router binary exists
+      ansible.builtin.stat:
+        path: "{{ sampler_binary }}"
+      delegate_to: localhost
+      register: sampler_local_binary
+    - name: Require the reviewed local binary
+      ansible.builtin.assert:
+        that: sampler_local_binary.stat.isreg | default(false)
+        fail_msg: Build the ARM64 channel-stats binary before installing the sampler.
+    - name: Verify router Python SQLite support
+      ansible.builtin.raw: /opt/bin/python3 -c 'import sqlite3'
+      changed_when: false
+    - name: Preserve the previous runtime supervisor
+      ansible.builtin.raw: >-
+        test -f /jffs/scripts/ghostroute-runtime-supervisor.before-channel-accounting ||
+        cp -p /jffs/scripts/ghostroute-runtime-supervisor.sh /jffs/scripts/ghostroute-runtime-supervisor.before-channel-accounting
+      changed_when: false
+    - name: Create private sampler directory
+      ansible.builtin.file:
+        path: "{{ sampler_dir }}"
+        state: directory
+        mode: '0700'
+    - name: Ensure executable directory exists without changing existing permissions
+      ansible.builtin.file:
+        path: /opt/libexec
+        state: directory
+    - name: Install read-only sampler and helpers
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../modules/traffic-observatory/{{ item.source }}"
+        dest: "{{ sampler_dir }}/{{ item.target }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { source: router/isolated-channel-snapshot.py, target: isolated-channel-snapshot.py, mode: '0700' }
+        - { source: router/activate-anyt-stats.py, target: activate-anyt-stats.py, mode: '0700' }
+        - { source: router/activate-snell-stats.py, target: activate-snell-stats.py, mode: '0700' }
+        - { source: router/update-channel-d-profiles.py, target: update-channel-d-profiles.py, mode: '0700' }
+        - { source: lib/isolated_channel_collector.py, target: isolated_channel_collector.py, mode: '0600' }
+        - { source: lib/isolated_channel_store.py, target: isolated_channel_store.py, mode: '0600' }
+        - { source: lib/amn_counters.py, target: amn_counters.py, mode: '0600' }
+        - { source: lib/channel_d_log.py, target: channel_d_log.py, mode: '0600' }
+        - { source: lib/channel_d_spool.py, target: channel_d_spool.py, mode: '0600' }
+        - { source: lib/channel_d_profiles.py, target: channel_d_profiles.py, mode: '0600' }
+    - name: Install the loopback-only stats client
+      ansible.builtin.copy:
+        src: "{{ sampler_binary }}"
+        dest: /opt/libexec/ghostroute-channel-stats
+        mode: '0700'
+    - name: Install the reviewed supervisor with optional sampler cron
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../modules/routing-core/router/ghostroute-runtime-supervisor"
+        dest: /jffs/scripts/ghostroute-runtime-supervisor.sh
+        mode: '0755'
+    # Activation is a separate operator step after channel-specific preflight.

@@ -889,6 +889,44 @@ else
     }
     facts << fact
   end
+  # These are independently observed profile deltas, not route allocations.
+  # Inbound, user and outbound counters describe overlapping bytes; only the
+  # profile counter is emitted as a traffic fact here.
+  (input['isolated_channel_samples'] || []).each do |sample|
+    next unless sample.is_a?(Hash)
+    next unless %w[anyT Snell Amn D].include?(sample['channel'])
+    next unless sample['bytes_up'].is_a?(Integer) && sample['bytes_down'].is_a?(Integer)
+    next if sample['bytes_up'].negative? || sample['bytes_down'].negative?
+    key = text(sample['client_key'])
+    sample_id = text(sample['sample_id'])
+    next if key.empty? || sample_id.empty?
+    total = sample['bytes_up'] + sample['bytes_down']
+    next if total.zero?
+    event_ts = iso_time(sample['ts'], generated_at)
+    fact_id = fact_hash('isolated-channel-profile', sample['channel'], sample_id, key)
+    facts << {
+      'fact_id' => fact_id, 'flow_group_key' => fact_id, 'sample_id' => sample_id,
+      'event_ts' => event_ts, 'event_ts_utc' => event_ts, 'observed_at_utc' => event_ts,
+      'display_ts_utc' => event_ts, 'time_precision' => 'second',
+      'client_key' => key, 'client_label' => text(sample['client_label'], key),
+      'client_ip' => '', 'channel' => { 'anyT' => 'Channel anyT', 'Snell' => 'Channel Snell', 'Amn' => 'Channel Amn', 'D' => 'Channel D' }.fetch(sample['channel']), 'route' => 'Unknown',
+      'intended_route' => 'Unknown', 'route_verification' => 'unknown', 'route_status' => 'unknown',
+      'route_source' => '', 'route_basis' => '', 'matched_ipset' => '', 'egress_iface' => '', 'fwmark' => '',
+      'traffic_class' => 'client', 'destination' => 'Encrypted channel ingress',
+      'destination_kind' => 'encrypted_ingress', 'destination_ip' => '', 'destination_port' => '',
+      'protocol' => sample['channel'] == 'Amn' ? 'udp' : sample['channel'] == 'D' ? 'tcp' : '', 'dns_qname' => '', 'dns_answer_ip' => '', 'dns_link_id' => '',
+      'dns_link_confidence' => 'no_dns_match', 'dns_status' => 'no_match', 'dns_ts_source' => '',
+      'sni' => '', 'policy' => '', 'matched_rule' => '', 'outbound' => '',
+      'bytes' => total, 'bytes_up' => sample['bytes_up'], 'bytes_down' => sample['bytes_down'],
+      'via_vps_bytes' => 0, 'direct_bytes' => 0, 'unknown_bytes' => total, 'connections' => 0,
+      'identity_confidence' => 'profile', 'byte_confidence' => 'observed_delta',
+      'destination_confidence' => 'none', 'confidence' => 'observed', 'accounting_status' => 'ok',
+      'allocation_basis' => sample['channel'] == 'D' ? 'completed_proxy_stream' : 'observed_profile_counter_delta',
+      'evidence_level' => sample['channel'] == 'Amn' ? 'amneziawg_peer_counter' : sample['channel'] == 'D' ? 'caddy_connect_stream' : 'isolated_channel_profile_counter',
+      'sources' => ['traffic-evidence', sample['channel'] == 'Amn' ? 'amneziawg_peer_counter_delta' : sample['channel'] == 'D' ? 'caddy_connect_stream' : 'isolated_channel_counter_delta'],
+      'evidence_json' => JSON.generate({ 'sample' => sample })
+    }
+  end
 end
 
 facts.each do |fact|
@@ -945,6 +983,7 @@ output = {
       'lan_device_route_deltas' => (input['lan_device_route_deltas'] || []).length,
       'sing_box_route_evidence' => (input['sing_box_route_evidence'] || []).length,
       'home_reality_samples' => (input['home_reality_samples'] || []).length,
+      'isolated_channel_samples' => (input['isolated_channel_samples'] || []).length,
       'dns_queries' => (input['dns_queries'] || []).length,
       'traffic_facts' => facts.length,
       'attribution_gaps' => gaps.length,

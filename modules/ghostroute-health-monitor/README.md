@@ -46,11 +46,13 @@ operator action.
 ## Public Commands
 
 `channel-health-report --json` emits a small schema-v1 observation of Channel D,
-anyT and Snell: installed/enabled state, exact process ownership and available
+anyT, Snell and Amn: installed/enabled state, exact process ownership and available
 policy freshness markers. It reads runtime files and `/proc` without invoking
 controllers or probes. It exports no authentication material or endpoints.
 Console consumes it as `channel_health`; runtime presence is separate from
 authenticated application acceptance and per-profile traffic accounting.
+Amn's absence of an ownership journal is its retained disabled lab state; it is
+not automatically started by the observer.
 
 Run its offline fixture with
 `python3 modules/ghostroute-health-monitor/tests/test-channel-health-report.py`.

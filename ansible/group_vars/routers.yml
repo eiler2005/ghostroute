@@ -82,6 +82,7 @@ channel_c_shadowrocket_mss: "{{ vault_channel_c_shadowrocket_mss | default(chann
 # local sing-box SOCKS inbound that applies the managed split. This lane is
 # experimental, disabled by default, and isolated from Channel A/B/C ownership.
 channel_d_naiveproxy_enabled: "{{ vault_channel_d_naiveproxy_enabled | default(false) }}"
+channel_d_traffic_observability_enabled: "{{ vault_channel_d_traffic_observability_enabled | default(false) }}"
 channel_d_naiveproxy_profiles_enabled: "{{ vault_channel_d_naiveproxy_profiles_enabled | default(channel_d_naiveproxy_enabled, true) }}"
 channel_d_naiveproxy_public_host: "{{ vault_channel_d_naiveproxy_public_host | default(channel_c_home_public_host | default(home_reality_public_host, true), true) }}"
 channel_d_naiveproxy_public_port: "{{ vault_channel_d_naiveproxy_public_port | default(4444, true) }}"

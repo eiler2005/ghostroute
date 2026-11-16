@@ -60,6 +60,51 @@ class PolicyTests(unittest.TestCase):
         for outbound in cfg['outbounds']:
             self.assertEqual(outbound, next(o for o in before['outbounds'] if o['tag'] == outbound['tag']))
 
+    def test_optional_stats_are_loopback_only_and_preserve_policy(self):
+        stats = policy.stats_api('127.0.0.1:12099', ['lab-client', 'lab-probe'], ['in'], ['out'])
+        self.assertEqual(stats['v2ray_api']['listen'], '127.0.0.1:12099')
+        self.assertEqual(stats['v2ray_api']['stats']['users'], ['lab-client', 'lab-probe'])
+        self.assertNotIn('experimental', policy.project(self.source, settings()))
+        for invalid in ('0.0.0.0:12099', 'localhost:12099', '127.0.0.1:80', '127.0.0.1:1234:5'):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                policy.stats_api(invalid, [], [], [])
+
+    def test_stats_projection_never_rewrites_approved_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source = base / 'source.json'
+            source.write_text(json.dumps(self.source))
+            (base / 'channel-anytls-policy.py').write_bytes((ROOT / 'modules/routing-core/router/channel-anytls-policy.py').read_bytes())
+            settings_path = base / 'settings.json'
+            settings_path.write_text(json.dumps(settings()))
+            original = settings_path.read_bytes()
+            (base / 'observability.json').write_text(json.dumps({'stats_listen': '127.0.0.1:12099'}))
+            with patch.object(runtime, 'BASE', base), patch.object(runtime, 'SOURCE', source), patch.object(runtime, 'call'):
+                runtime.refresh_policy()
+            projected = json.loads((base / 'policy.json').read_text())
+            self.assertEqual(settings_path.read_bytes(), original)
+            self.assertEqual(projected['inbounds'], self.cfg['inbounds'])
+            self.assertEqual(projected['route'], self.cfg['route'])
+            self.assertEqual(projected['experimental']['v2ray_api']['listen'], '127.0.0.1:12099')
+
+    def test_occupied_or_invalid_stats_listener_does_not_change_ingress(self):
+        with tempfile.TemporaryDirectory() as temporary, socket.socket() as occupied:
+            base = Path(temporary)
+            source = base / 'source.json'
+            source.write_text(json.dumps(self.source))
+            (base / 'channel-anytls-policy.py').write_bytes((ROOT / 'modules/routing-core/router/channel-anytls-policy.py').read_bytes())
+            (base / 'settings.json').write_text(json.dumps(settings()))
+            occupied.bind(('127.0.0.1', 0))
+            address = '127.0.0.1:' + str(occupied.getsockname()[1])
+            for content in (json.dumps({'stats_listen': address}), '{not-json'):
+                (base / 'observability.json').write_text(content)
+                with patch.object(runtime, 'BASE', base), patch.object(runtime, 'SOURCE', source), patch.object(runtime, 'call'):
+                    runtime.refresh_policy()
+                projected = json.loads((base / 'policy.json').read_text())
+                self.assertNotIn('experimental', projected)
+                self.assertEqual(projected['inbounds'], self.cfg['inbounds'])
+                self.assertEqual(projected['route'], self.cfg['route'])
+
     def test_unknown_policy_and_egress_dependencies_are_rejected(self):
         for change in ('unscoped', 'dns', 'user', 'selector', 'detour', 'terminal'):
             source = copy.deepcopy(self.source)

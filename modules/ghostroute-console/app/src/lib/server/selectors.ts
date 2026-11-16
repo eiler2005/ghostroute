@@ -1,5 +1,6 @@
 import { explicitAccessChannel } from "../channels.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
+import { channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -4900,6 +4901,24 @@ function aggregateClientRowsForPeriod(period = "today") {
     }
   }
   return Array.from(byKey.values()).map(inventoryRowFromTraffic).filter((row): row is Record<string, any> => Boolean(row));
+}
+
+// This is a client-evidence view, not the VPS interface total. The read model
+// keeps channel as a key even when one device has more than one profile.
+export function channelTrafficForPeriod(period = "today") {
+  const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({
+    ...segment, granularity: laneGranularity(segment.layer),
+  }));
+  return channelTrafficFromSegments(getDb(), segments) as Array<{ channel: string; bytes: number }>;
+}
+
+export function recentChannelTraffic() {
+  const now = new Date().toISOString();
+  const start = bucketStartUtc(isoMinusHours(now, 29 * 24), "day");
+  return channelTrafficHistory(getDb(), start, isoPlusMs(now, 1)) as {
+    daily: Array<{ day: string; channel: string; bytes: number }>;
+    clients: Array<{ client: string; label: string; bytes: number }>;
+  };
 }
 
 function mergeInventoryRows(rows: Array<Record<string, any>>): Array<Record<string, any>> {

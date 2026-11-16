@@ -31,6 +31,15 @@ def owned_pid():
         return None
 
 
+def select_stats(anyt, listen, stats, child, child_listen, suspended):
+    if listen != suspended:
+        suspended = None
+    same_owner = child and child.poll() is None and child_listen == listen
+    if stats and not same_owner and (suspended == listen or not anyt.stats_listener_available(listen)):
+        return None, listen
+    return stats, suspended
+
+
 def watch():
     import fcntl
     with (RUN / 'lock').open('w') as lock:
@@ -40,6 +49,8 @@ def watch():
         snell = load('snell', BASE / 'channel-snell-policy.py')
         child = None
         previous = None
+        child_stats_listen = None
+        suspended_stats_listen = None
         def halt(*_):
             raise SystemExit()
         signal.signal(signal.SIGTERM, halt)
@@ -50,17 +61,30 @@ def watch():
                     settings = json.loads((BASE / 'settings.json').read_text())
                     reference = anyt.project(source, json.loads(Path('/opt/etc/ghostroute-anytls/settings.json').read_text()))
                     config = snell.project(reference, settings['slots'], settings['cover'])
+                    observability = BASE / 'observability.json'
+                    try:
+                        listen = json.loads(observability.read_text())['stats_listen'] if observability.exists() else None
+                        stats = anyt.stats_api(listen,
+                                                ['snell-lab-' + str(i) for i in range(1, 4)],
+                                                ['snell-lab-' + str(i) for i in range(1, 4)],
+                                                [o['tag'] for o in config['outbounds']])
+                    except (OSError, ValueError, KeyError, TypeError):
+                        listen, stats = None, None
+                    stats, suspended_stats_listen = select_stats(anyt, listen, stats, child, child_stats_listen, suspended_stats_listen)
+                    if stats is not None:
+                        config['experimental'] = stats
                     raw = json.dumps(config, sort_keys=True).encode()
                     fingerprint = hashlib.sha256(raw).hexdigest()
                     # Stop stale policy before accepting a changed configuration.
                     if child and (fingerprint != previous or child.poll() is not None):
-                        child.terminate(); child.wait(timeout=10); child = None
+                        child.terminate(); child.wait(timeout=10); child = None; child_stats_listen = None
                     if child is None:
                         path = BASE / 'policy.json'
                         path.write_bytes(raw)
                         subprocess.run([str(BINARY), 'check', '-c', str(path)], check=True, capture_output=True, timeout=20)
                         with (RUN / 'engine.log').open('ab') as log:
                             child = subprocess.Popen([str(BINARY), 'run', '-c', str(path)], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+                        child_stats_listen = listen if stats else None
                         previous = fingerprint
                     for slot in settings['slots']:
                         subprocess.run(['iptables', '-N', 'GR_SNELL_IN'], capture_output=True)

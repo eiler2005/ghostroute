@@ -13,10 +13,11 @@ test('channel health keeps missing, disabled, runtime, and application evidence 
       { channel: 'D', enabled: false, policy_running: false },
       { channel: 'anyT', installed: true, enabled: true, policy_running: true, watch_running: true, policy_current: true },
       { channel: 'Snell', enabled: null, policy_running: true, watch_running: false, policy_current: false },
+      { channel: 'Amn', enabled: false, installed: true, policy_running: false, ingress_running: false },
     ],
   });
   const rows = channelHealthRows(inventory, snapshot, now);
-  assert.deepEqual(rows.map(row => row.status), ['DISABLED', 'OK', 'WARN']);
+  assert.deepEqual(rows.map(row => row.status), ['DISABLED', 'OK', 'WARN', 'DISABLED']);
   assert.ok(rows.every(row => row.application === 'Application probe not observed'));
   assert.equal(rows[1].profiles, 1);
   assert.ok(channelHealthRows(inventory, snapshot, now + 76 * 60_000).every(row => row.status === 'STALE'));

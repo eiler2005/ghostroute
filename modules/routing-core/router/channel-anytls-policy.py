@@ -3,6 +3,7 @@
 import argparse
 import copy
 import hashlib
+import socket
 import json
 import os
 from pathlib import Path
@@ -32,6 +33,29 @@ def validate_settings(s):
         if not str(s[key]).startswith('/opt/') or '..' in Path(s[key]).parts:
             raise ValueError('TLS files must be explicit Entware paths')
     return s
+
+
+def stats_api(listen, users, inbounds, outbounds):
+    """Optional loopback-only statistics; never changes traffic routing."""
+    if listen is None:
+        return None
+    if not isinstance(listen, str) or not listen.startswith('127.0.0.1:'):
+        raise ValueError('Statistics must listen on IPv4 loopback')
+    port = listen[len('127.0.0.1:'):]
+    if not port.isascii() or not port.isdigit() or not 1024 < int(port) <= 65535:
+        raise ValueError('Invalid statistics listener')
+    return {'v2ray_api': {'listen': listen, 'stats': {
+        'enabled': True, 'users': users, 'inbounds': inbounds, 'outbounds': outbounds}}}
+
+
+def stats_listener_available(listen):
+    """A telemetry listener must never prevent the ingress from starting."""
+    try:
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', int(listen[len('127.0.0.1:'):])))
+        return True
+    except OSError:
+        return False
 
 
 def project(source, settings):

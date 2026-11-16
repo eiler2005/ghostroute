@@ -1,5 +1,85 @@
 # Traffic Observability
 
+## Isolated-channel accounting
+
+The optional isolated-channel sampler writes a private, bounded router spool.
+Its exported JSONL contains only symbolic profile slots, byte deltas and
+timestamps; it never exports AnyTLS credentials, Snell credentials, Amn keys,
+Channel D usernames, destination addresses or request headers. The Console's
+restricted router credential can read only the fixed sanitized export. The
+machine contract remains `traffic-evidence --json` → `traffic-facts --json`
+schema v3 → the Console pyramid.
+
+- anyT and Snell use separate, loopback-only sing-box statistics APIs. User
+  counters, inbound counters and outbound counters overlap. Only the named
+  user counter becomes a client fact; the diagnostic anyT user is excluded.
+- Amn reads `get=1` from its own local userspace interface and keeps only byte
+  counters mapped to the eight known peer slots. The diagnostic peer and all
+  key material are discarded in memory. The sampler never starts Amn; its
+  disabled state is not recorded as zero traffic.
+- Optional Channel D accounting uses a filtered local Caddy access log. It
+  counts authenticated, completed HTTP/2 or HTTP/3 CONNECT streams, including
+  protocol padding. A long-running connection appears only after it closes;
+  HTTP/1 hijacking and missing profile mappings are coverage gaps. The Caddy
+  file omits the request and response-header objects, uses private permissions
+  and bounded, uncompressed rotation. The sampler does not export the private
+  username-to-slot map.
+- A baseline, restart, reset, missing collector or invalid record is a coverage
+  gap. A process is identified by boot ID, PID and process start ticks; an API
+  sample is discarded if the instance changes during the query. Counter
+  updates and the spool cursor are committed atomically. The router spool is
+  retained for eight days to bridge collection outages, while Console aggregate
+  retention is capped separately at 90 days.
+- A completed interval is assigned to its end time. If it crosses a reporting
+  boundary, the result has interval-level precision, not exact midnight
+  attribution. Older traffic that was never measured cannot be recovered.
+  Counters from different layers have different overhead and must not be added
+  to another observation of the same traffic or reconciled to VPS interface
+  bytes as if they were identical. Per-client direct/VPS attribution remains
+  unknown without independent evidence.
+
+### Installation and rollback
+
+Build the small ARM64 stats client into ignored operator storage, run the
+sampler and channel fixture tests, and install the optional observer:
+
+```sh
+mkdir -p reports/console-channels
+cd modules/traffic-observatory/tools/channel-stats
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -buildvcs=false \
+  -o ../../../../reports/console-channels/ghostroute-channel-stats .
+cd ../../../../ansible
+ansible-playbook playbooks/27-isolated-channel-sampler.yml
+```
+
+Installation saves the previous supervisor and does not activate collection or
+restart a channel. Before enabling statistics, validate loopback listeners and
+candidate policy files on the router, preserve the private rollback files and
+confirm that anyT and Snell settings and client imports have not changed. The
+reviewed controller uses a separate private `observability.json` per process;
+never insert statistics settings into the approved anyT profile settings or
+change credentials. Enable and verify channels sequentially. These changes
+restart the affected channel and require the operator's explicit interruption
+approval under the production channel contract. The sampler's `enabled` marker
+and its isolated five-minute cron are enabled only after successful checks.
+
+The sampler playbook installs the two rollback helpers in its private runtime
+directory. With the corresponding private backup present, the following
+operator commands restore the prior controller and optional statistics file,
+then restart only the named channel:
+
+```sh
+/opt/bin/python3 /opt/etc/ghostroute-observability/activate-anyt-stats.py rollback
+/opt/bin/python3 /opt/etc/ghostroute-observability/activate-snell-stats.py rollback
+```
+
+Recheck authenticated anyT and Snell traffic, policy freshness and retained
+imports after rollback. To disable collection without changing channel
+configuration, remove the sampler's private `enabled` marker and its
+`IsolatedChannelCounters` cron entry; retain the spool and backups until their
+retention or an explicitly approved cleanup. Restore the saved supervisor and
+restricted router gate/policy together when rolling back their changes.
+
 Этот документ описывает систему отчётности GhostRoute: как понять, сколько
 трафика прошло через домашний интернет, сколько ушло через VPS, какие
 устройства и приложения создают основную нагрузку, и не появились ли ошибки

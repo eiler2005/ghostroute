@@ -59,6 +59,7 @@ if [ -z "$STATE_DIR" ] && [ "${GHOSTROUTE_TRAFFIC_EVIDENCE_REFRESH_REMOTE:-1}" =
     router_ssh "cat '${REMOTE_STATE_DIR}/dns-query-facts.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/dns-query-facts.tsv" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/lan-device-counters.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/lan-device-counters.tsv" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/mobile-reality-counters.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/mobile-reality-counters.tsv" || true
+    router_ssh "cat '${REMOTE_STATE_DIR}/isolated-channel-deltas.jsonl' 2>/dev/null || true" > "${TMP_STATE_DIR}/isolated-channel-deltas.jsonl" || true
     router_ssh "cat '${REMOTE_STATE_DIR}/sing-box-route-evidence.tsv' 2>/dev/null || true" > "${TMP_STATE_DIR}/sing-box-route-evidence.tsv" || true
     STATE_DIR="$TMP_STATE_DIR"
   fi
@@ -82,7 +83,7 @@ append_current_mobile_counters() {
 
   if [ -z "$TMP_STATE_DIR" ]; then
     TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ghostroute-traffic-evidence.XXXXXX")"
-    for state_file in lan-flow-facts.tsv dns-query-facts.tsv lan-device-counters.tsv mobile-reality-counters.tsv sing-box-route-evidence.tsv; do
+    for state_file in lan-flow-facts.tsv dns-query-facts.tsv lan-device-counters.tsv mobile-reality-counters.tsv sing-box-route-evidence.tsv isolated-channel-deltas.jsonl; do
       if [ -f "${STATE_DIR}/${state_file}" ]; then
         cp "${STATE_DIR}/${state_file}" "${TMP_STATE_DIR}/${state_file}"
       else
@@ -346,11 +347,47 @@ dns_queries = []
 lan_device_route_deltas = []
 sing_box_route_evidence = []
 home_reality_samples = []
+isolated_channel_samples = []
 route_evidence = []
 
 if state_dir.empty? || !Dir.exist?(state_dir)
   warnings << { 'code' => 'state_dir_unavailable', 'message' => 'traffic state directory was not found', 'state_dir' => state_dir }
 else
+  isolated_path = File.join(state_dir, 'isolated-channel-deltas.jsonl')
+  if File.file?(isolated_path)
+    seen = {}
+    File.foreach(isolated_path).with_index do |line, index|
+      begin
+        row = JSON.parse(line)
+        raise ArgumentError unless row.is_a?(Hash) && %w[anyT Snell Amn D].include?(row['channel'])
+        if row['kind'] == 'gap'
+          gap_ts = parse_time(row['ts'])
+          raise ArgumentError unless gap_ts && row['reason'].is_a?(String) && row['reason'].match?(/\A(?:initial_baseline|process_changed|sampling_failed|inactive|invalid_log|unmapped_profile|unsupported_protocol|(?:anyT|Snell|Amn)-\d{2}:counter_reset)\z/)
+          warnings << { 'code' => 'isolated_channel_collection_gap', 'channel' => row['channel'], 'reason' => row['reason'], 'ts' => gap_ts.utc.iso8601(3) } if in_window?(gap_ts, window_start, window_end)
+          next
+        end
+        raise ArgumentError unless row['client_key'].is_a?(String) && row['client_key'].match?(/\A(?:anyT|Snell|Amn|D)-\d{2}\z/)
+        raise ArgumentError unless row['client_key'].start_with?(row['channel'] + '-')
+        if row.key?('client_label')
+          raise ArgumentError unless row['client_label'].is_a?(String) && row['client_label'].length <= 120 && !row['client_label'].match?(/[\r\n]/)
+        end
+        raise ArgumentError unless row['sample_id'].is_a?(String) && row['sample_id'].match?(/\A[0-9a-f]{64}\z/)
+        raise ArgumentError unless %w[bytes_up bytes_down].all? { |k| row[k].is_a?(Integer) && row[k] >= 0 }
+        start_ts = parse_time(row['start'])
+        end_ts = parse_time(row['ts'])
+        raise ArgumentError unless start_ts && end_ts && start_ts < end_ts
+        next unless in_window?(end_ts, window_start, window_end)
+        if start_ts < window_start
+          warnings << { 'code' => 'isolated_channel_cross_window_interval', 'source' => 'isolated-channel-deltas.jsonl', 'line' => index + 1 }
+        end
+        next if seen[row['sample_id']]
+        seen[row['sample_id']] = true
+        isolated_channel_samples << row.slice('sample_id', 'start', 'ts', 'channel', 'client_key', 'client_label', 'bytes_up', 'bytes_down')
+      rescue JSON::ParserError, ArgumentError, TypeError
+        warnings << { 'code' => 'isolated_channel_invalid_sample', 'source' => 'isolated-channel-deltas.jsonl', 'line' => index + 1 }
+      end
+    end
+  end
   lan_path = File.join(state_dir, 'lan-flow-facts.tsv')
   if File.file?(lan_path)
     File.readlines(lan_path, chomp: true).each_with_index do |line, index|
@@ -640,6 +677,7 @@ output = {
   'lan_device_route_deltas' => lan_device_route_deltas,
   'sing_box_route_evidence' => sing_box_route_evidence,
   'home_reality_samples' => home_reality_samples,
+  'isolated_channel_samples' => isolated_channel_samples,
   'dns_queries' => dns_queries,
   'route_evidence' => route_evidence,
   'rollups' => {},
@@ -650,6 +688,7 @@ output = {
       'lan_device_route_deltas' => lan_device_route_deltas.length,
       'sing_box_route_evidence' => sing_box_route_evidence.length,
       'home_reality_samples' => home_reality_samples.length,
+      'isolated_channel_samples' => isolated_channel_samples.length,
       'dns_queries' => dns_queries.length,
       'route_evidence' => route_evidence.length
     }

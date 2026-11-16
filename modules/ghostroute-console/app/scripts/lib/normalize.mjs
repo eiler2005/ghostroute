@@ -224,11 +224,11 @@ export function resolvedTrafficDestination(row = {}, linkedDns = {}) {
 }
 
 function eventTimestamp(row, collectedAt) {
-  return parseSourceTimestamp(row.ts || row.timestamp || row.occurred_at || collectedAt);
+  return parseSourceTimestamp(row.event_ts_utc || row.event_ts || row.ts || row.timestamp || row.occurred_at || collectedAt);
 }
 
 function sourceTimeRaw(row) {
-  return text(row?.ts || row?.timestamp || row?.occurred_at || "");
+  return text(row?.event_ts_utc || row?.event_ts || row?.ts || row?.timestamp || row?.occurred_at || "");
 }
 
 function hasExplicitMillis(raw) {
@@ -595,6 +595,8 @@ function buildInventoryNetworkHints(db, registry = loadDeviceAttributions()) {
 
 function resolveOperatorClient(row, registry = loadDeviceAttributions(), networkHints = new Map()) {
   const raw = row?.raw || {};
+  const sourceChannel = ["isolated_channel_profile_counter", "amneziawg_peer_counter", "caddy_connect_stream"].includes(row?.evidence_level || raw.evidence_level)
+    ? explicitAccessChannel(row) : "";
   const resolved = resolveClient({
     ...row,
     raw,
@@ -618,7 +620,7 @@ function resolveOperatorClient(row, registry = loadDeviceAttributions(), network
     client_key: registered ? resolved.client_key : text(row?.client_key || row?.client || raw.profile || raw.client || row?.client_ip || "Unknown client"),
     client_label: registered ? resolved.client_label : text(row?.client_label || row?.label || row?.client_key || row?.client || raw.client || "Unknown client"),
     device_key: registered ? resolved.device_key : "",
-    channel: registered ? text(resolved.client_channel || row?.channel || inferChannel(raw), "Unknown") : text(row?.channel || inferChannel(raw), "Unknown"),
+    channel: sourceChannel || (registered ? text(resolved.client_channel || row?.channel || inferChannel(raw), "Unknown") : text(row?.channel || inferChannel(raw), "Unknown")),
     matched_by: resolved.matched_by || "unmatched",
   };
 }
@@ -2072,6 +2074,10 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
     )
     .all(startUtc, endUtc);
   if (hasTrafficFacts) {
+    // v3 facts are already interval deltas, and each snapshot contains the
+    // current evidence window. Read the newest copy and bucket by event time.
+    const latest = sourceRows[sourceRows.length - 1];
+    sourceRows = latest ? sourceRows.filter((row) => row.snapshot_id === latest.snapshot_id) : [];
     const uniqueRows = new Map();
     for (const row of sourceRows) {
       const raw = parseJson(row.raw_json, {});
@@ -2113,6 +2119,10 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
   const rows = sourceRows.map((row) => {
       const raw = parseJson(row.raw_json, {});
       if (raw.accounting_bucket) return null;
+      const aggregateTime = row.snapshot_type === 'traffic_facts'
+        ? parseSourceTimestamp(row.event_ts_utc || raw.event_ts_utc || raw.event_ts || row.event_ts || row.collected_at)
+        : parseSourceTimestamp(row.collected_at);
+      if (row.snapshot_type === 'traffic_facts' && (aggregateTime < startUtc || aggregateTime >= endUtc)) return null;
       const trafficClass = text(row.traffic_class || flowTrafficClass({ ...raw, ...row }), "client");
       const split = signedByteSplit({ ...raw, ...row }, row.route, number(row.bytes));
       const eligibility = trafficAggregateEligibility(row, raw, split);
@@ -2130,7 +2140,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
       return {
         rowid: row.rowid,
         snapshot_id: row.snapshot_id,
-        collected_at: parseSourceTimestamp(row.collected_at),
+        collected_at: aggregateTime,
         last_seen: parseSourceTimestamp(row.event_ts || row.collected_at),
         client_key: resolved.client_key,
         client_label: resolved.client_label,
@@ -2153,6 +2163,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
         raw,
       };
     }).filter(Boolean);
+  if (hasTrafficFacts) return rows.map((row) => ({ ...row, total_bytes: row.bytes }));
   const grouped = new Map();
   for (const row of rows) {
     const key = flowRollupKey(row);
@@ -3429,7 +3440,7 @@ function rebuildPreparedWindowPayloads(db, sourceVersion, computedAt) {
 export function rebuildPreparedWindows(db, computedAt = new Date().toISOString()) {
   const sourceVersion = compactSourceVersion(readModelSourceVersion(db));
   const dirtyStart = aggregateDirtyStart(db, computedAt);
-  const facts = flowFactsFromNormalized(db, dirtyStart, computedAt);
+  const facts = flowFactsFromNormalized(db, bucketStartUtc(dirtyStart, "5min"), computedAt);
   rebuildTrafficAggregates(db, facts, computedAt, dirtyStart, computedAt, sourceVersion);
   rebuildDnsAggregates(db, computedAt, dirtyStart);
   writeAggregateLayerStates(db, { model: "client_traffic_5min", table: "client_traffic_5min", timeColumn: "bucket_start_utc", mskKeyColumn: "bucket_msk_key", startUtc: bucketStartUtc(dirtyStart, "5min"), endUtc: computedAt, sourceVersion, detail: { dirty_start_utc: dirtyStart, fact_count: facts.length } });

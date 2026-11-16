@@ -37,17 +37,25 @@ def input_signature():
     source = json.loads(SOURCE.read_text())
     settings = json.loads((BASE / 'settings.json').read_text())
     files = [SOURCE, BASE / 'settings.json', Path(settings['certificate_path']), Path(settings['key_path'])]
+    observability = BASE / 'observability.json'
+    if observability.exists():
+        files.append(observability)
     for item in source['route'].get('rule_set', []):
         if item.get('type') != 'local' or not item.get('path'):
             raise ValueError('Channel anyT requires explicit local rule-set ownership')
         files.append(Path(item['path']))
     values = []
     for path in files:
-        stat = path.stat()
-        key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
-        if path not in INPUT_CACHE or INPUT_CACHE[path][0] != key:
-            INPUT_CACHE[path] = (key, digest(path))
-        values.append((str(path), INPUT_CACHE[path][1]))
+        try:
+            stat = path.stat()
+            key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+            if path not in INPUT_CACHE or INPUT_CACHE[path][0] != key:
+                INPUT_CACHE[path] = (key, digest(path))
+            values.append((str(path), INPUT_CACHE[path][1]))
+        except OSError:
+            if path != observability:
+                raise
+            values.append((str(path), 'unreadable'))
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
@@ -56,7 +64,17 @@ def refresh_policy():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     raw = SOURCE.read_bytes()
-    config = module.project(json.loads(raw), json.loads((BASE / 'settings.json').read_text()))
+    settings = json.loads((BASE / 'settings.json').read_text())
+    config = module.project(json.loads(raw), settings)
+    observability = BASE / 'observability.json'
+    try:
+        listen = json.loads(observability.read_text())['stats_listen'] if observability.exists() else None
+        stats = module.stats_api(listen, [u['name'] for u in settings['users']],
+                                 [config['inbounds'][0]['tag']], [o['tag'] for o in config['outbounds']])
+    except (OSError, ValueError, KeyError, TypeError):
+        listen, stats = None, None
+    if stats is not None and module.stats_listener_available(listen):
+        config['experimental'] = stats
     temporary = BASE / 'policy.next.json'
     temporary.write_text(json.dumps(config, indent=2) + '\n')
     try:

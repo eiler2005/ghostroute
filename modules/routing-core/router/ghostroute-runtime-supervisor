@@ -94,6 +94,9 @@ register_crons() {
   [ -x /jffs/scripts/cron-save-ipset ] && cron_set SaveIPSet "0 */6 * * *" "/jffs/scripts/cron-save-ipset"
   [ -x /jffs/scripts/cron-traffic-snapshot ] && cron_set TrafficSnapshot "0 */6 * * *" "/jffs/scripts/cron-traffic-snapshot"
   [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && cron_set MobileRealityCounters "*/5 * * * *" "/jffs/scripts/mobile-reality-accounting-refresh"
+  if [ -f /opt/etc/ghostroute-observability/enabled ] && [ -x /opt/etc/ghostroute-observability/isolated-channel-snapshot.py ]; then
+    cron_set IsolatedChannelCounters "*/5 * * * *" "/opt/bin/python3 /opt/etc/ghostroute-observability/isolated-channel-snapshot.py"
+  fi
   [ -x /jffs/scripts/rotate-singbox-log ] && cron_set RotateSingBoxLog "17 * * * *" "/jffs/scripts/rotate-singbox-log"
   [ -x "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}" ] && cron_set SingBoxWatchdog "* * * * *" "${GHOSTROUTE_SINGBOX_WATCHDOG:-/jffs/scripts/singbox-watchdog.sh}"
   [ -x "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}" ] && cron_set DnscryptWatchdog "* * * * *" "${GHOSTROUTE_DNSCRYPT_WATCHDOG:-/jffs/scripts/dnscrypt-watchdog.sh}"

@@ -15,7 +15,7 @@ MAX_SCRIPT = 256 * 1024
 SAFE_PATH = '/sbin:/bin:/usr/sbin:/usr/bin:/opt/sbin:/opt/bin'
 STATE_ROOTS = ('/opt/var/log/router_configuration', '/jffs/addons/router_configuration/traffic')
 FACT_FILES = ('lan-flow-facts.tsv', 'dns-query-facts.tsv', 'lan-device-counters.tsv',
-              'mobile-reality-counters.tsv', 'sing-box-route-evidence.tsv')
+              'mobile-reality-counters.tsv', 'sing-box-route-evidence.tsv', 'isolated-channel-deltas.jsonl')
 LOG_FILES = ('/opt/var/log/sing-box.log', '/opt/var/log/dnsmasq.log',
              '/opt/var/log/domain-activity.log')
 

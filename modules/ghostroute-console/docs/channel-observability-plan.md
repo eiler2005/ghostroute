@@ -60,11 +60,17 @@ flowchart LR
   Views --> Coverage
 ```
 
-Per-process anyT/Snell traffic collection, per-profile byte accounting and new
-authenticated application probes remain source-module work in step 3 below. This
-slice does not claim that existing main-process logs cover isolated processes.
+Per-profile byte accounting uses isolated source counters rather than inferring
+identities from an IP address. Channel anyT and Snell expose loopback-only
+sing-box counters. Amn uses its own peer counters when manually active. Channel D
+can emit privacy-filtered completed HTTP/2 or HTTP/3 CONNECT stream counts from
+its own Caddy process. These are different measurement layers: D includes stream
+padding, Amn measures peer tunnel bytes, and the sing-box counters measure its
+user traffic. Neither these values nor an arbitrary sum of them is the VPS
+interface total. Older data cannot be reconstructed when source counters were
+not collected.
 
-Health Center and raw mobile Health now include D, anyT and Snell cards sourced
+Health Center and raw mobile Health include D, anyT, Snell and Amn cards sourced
 from the additive `channel_health` snapshot. The Health Monitor's
 `channel-health-report --json` reads process command lines, owned PID files,
 enablement and policy freshness markers. It does not invoke controllers, start
@@ -74,10 +80,22 @@ marked stale. Process health does not imply authenticated application acceptance
 
 The observer uses the existing service credential and exact-body router gate.
 After its offline tests and gate tests pass, the explicitly authorized
-`vps/refresh-channel-observer.yml` refreshes only that fixed policy from the trusted
-control checkout, preserving `policy.before-channel-health.json` for rollback.
-No keys, services, firewall or DNS settings are changed by this playbook. Restore
-that saved policy and the previous collector source together to undo the adapter.
+`vps/refresh-channel-observer.yml` refreshes the fixed gate and policy from the
+trusted control checkout, preserving the prior gate and policy with the
+`before-channel-accounting` suffix. Its additive merge keeps already approved
+report bodies available during the collector transition. No keys, services,
+firewall or DNS settings are changed. Restore the saved gate, policy and previous
+collector source together to undo the adapter.
+
+The desktop and mobile dashboard show channel evidence and a 30-day daily view
+with leading client profiles. The source stores client and channel separately;
+the same profile can use more than one channel. Current totals include only
+available observed or estimated client evidence and can be incomplete. Older
+history may have been bucketed by collection time or missed counter data. A
+Channel D connection appears after it closes; HTTP/1 hijacked sessions are
+explicit coverage gaps. The per-client VPS/direct split is unknown unless a
+separate trustworthy source proves it. Counter restarts and collector errors
+produce gaps; missing data is not a zero.
 
 ### Rollback for the visibility slice
 
@@ -118,28 +136,14 @@ The first release should provide correct identities and honest coverage labels.
 Complete byte accounting is a separate milestone where source evidence is absent;
 do not delay basic visibility or manufacture totals to fill that gap.
 
-## Current implementation gaps
+## Remaining evidence limits
 
-- [Policy normalization](../app/src/lib/routing-policy-snapshot.mjs) accepts only
-  A/B/C and defaults unrecognized channels to A. The
-  [snapshot template](../templates/policy-snapshot.local.json.j2) exports only
-  A/B/C profiles.
-- [Traffic normalization](../app/scripts/lib/normalize.mjs) infers C from generic
-  `naive` and `shadowrocket` strings. A client application name cannot establish
-  its ingress channel; native Naive must not conflate C and D.
-- The [GUI seed](../app/scripts/seed-gui-test-db.mjs) needs representative new
-  channel profiles, attribution, traffic, missing-evidence, and lifecycle cases.
-- [Performance tests](../app/tests/e2e/performance.spec.ts) perform serial API and
-  desktop warm-up in `beforeAll`, suppress individual warm-up errors, and run as
-  a serial group. A setup timeout can prevent the entire measurement set from
-  running. The mobile cases in the desktop performance project use Chromium with
-  an iPhone user agent; actual WebKit coverage is a separate functional gate.
-- The [live runner](../vps/performance-live.yml) targets a VPS-local listener and
-  removes its temporary workspace on exit. Public delivery needs separate proof,
-  and failed-run traces need preservation before cleanup.
-
-These are code-level findings, not a diagnosis of the current live server.
-Keep incident measurements and deployment-specific evidence in ignored reports.
+An application name does not establish its ingress channel. Existing A/B/C
+sources can include sampled or estimated attribution; D completed streams,
+anyT/Snell user counters and Amn peer counters use different measurement layers.
+Use source and coverage metadata when comparing channels. The live performance
+runner targets a VPS-local listener; public delivery and actual WebKit remain
+separate acceptance checks. Keep deployment-specific evidence in ignored reports.
 
 ## Channel and identity model
 

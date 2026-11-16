@@ -1,5 +1,6 @@
 ---
 channel_d_naiveproxy_enabled: false
+channel_d_traffic_observability_enabled: false
 channel_d_naiveproxy_public_host: ""
 channel_d_naiveproxy_public_port: 4444
 channel_d_naiveproxy_listen: 0.0.0.0

@@ -53,6 +53,12 @@ Ansible Vault.
 Generated client profiles and QR files are written under `out/`. They are local
 operator artifacts and must stay out of git.
 
+`playbooks/27-isolated-channel-sampler.yml` installs the optional channel traffic
+observer and preserves the prior router supervisor. It does not activate the
+sampler, change profiles, or restart a channel. Build prerequisites, per-channel
+activation, sampling limitations and rollback are in the
+[traffic observability guide](../modules/traffic-observatory/docs/traffic-observability.md).
+
 ## Router Access Profiles
 
 `playbooks/31-channel-anytls-lab.yml` manages **Channel anyT**, an additional

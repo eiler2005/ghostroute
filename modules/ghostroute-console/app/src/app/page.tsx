@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
-import { buildDashboardModel } from "@/lib/server/selectors/dashboard";
+import { buildDashboardModel, channelTrafficForPeriod, recentChannelTraffic } from "@/lib/server/selectors/dashboard";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
@@ -444,6 +444,8 @@ function UsageChart({ points, note }: { points: Array<Record<string, any>>; note
 export default async function Dashboard({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const model = buildDashboardModel(filters);
+  const channelTraffic = channelTrafficForPeriod(filters.period || "today");
+  const channelHistory = recentChannelTraffic();
   const total = model.totals.observedBytes || 1;
   const trafficWindow = [model.totals.periodLabel, model.totals.windowLabel].filter(Boolean).join(" · ");
   const trafficWindowText = trafficWindow || "today, window not observed";
@@ -488,6 +490,25 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
           <RankedDestinations rows={topDestinations} />
           <RankedApps rows={topApps} />
         </div>
+        <section className="card" style={{ marginTop: 14 }}>
+          <h2>Traffic by channel</h2>
+          <p>Client traffic evidence for the selected period, across all channels and filters. Coverage differs by channel and may include estimates; these values are not the VPS interface total.</p>
+          {channelTraffic.length ? <div className="detail-list">{channelTraffic.map((row) => (
+            <div className="detail-row" key={row.channel}><span>{row.channel}</span><strong>{bytes(row.bytes)}</strong></div>
+          ))}</div> : <EmptyState title="No channel traffic observed" />}
+          <details>
+            <summary>Last 30 days: channels and top clients</summary>
+            <p>Older history can be incomplete or assigned to the wrong interval; new channel measurements start when collection is enabled. Completed Channel D sessions are recorded when they close.</p>
+            <h3>Top client profiles</h3>
+            {channelHistory.clients.length ? <div className="detail-list">{channelHistory.clients.map((row) => (
+              <div className="detail-row" key={row.client}><span>{row.label || row.client}</span><strong>{bytes(row.bytes)}</strong></div>
+            ))}</div> : <p>No client traffic observed</p>}
+            <h3>Daily channel history</h3>
+            {channelHistory.daily.length ? <div className="detail-list">{channelHistory.daily.map((row) => (
+              <div className="detail-row" key={`${row.day}:${row.channel}`}><span>{row.day} · {row.channel}</span><strong>{bytes(row.bytes)}</strong></div>
+            ))}</div> : <p>No channel history observed</p>}
+          </details>
+        </section>
       </div>
 
       <div className="grid cards">
