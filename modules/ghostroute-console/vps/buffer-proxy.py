@@ -4,6 +4,8 @@ import gzip
 import json
 import os
 import re
+from pathlib import Path
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -71,6 +73,15 @@ html,body{margin:0;min-height:100%;background:#07111f;color:#f2f6fb}
 .badge{display:inline-flex;align-items:center;justify-content:center;min-height:24px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;border:1px solid #33465e;color:#d8e5f7;background:rgba(15,31,52,.9)}.mobile-shell .badge{min-height:21px;padding:1px 7px;font-size:11px}.route-badge{min-width:70px}.route-vps,.route-badge.route-vps,.status-ok,.confidence-exact,.confidence-managed,.mobile-health-ok{color:#65e89b;border-color:rgba(101,232,155,.45);background:rgba(38,166,91,.12)}.route-direct,.route-badge.route-direct,.status-warn,.confidence-estimated,.severity-warning,.mobile-health-warning{color:#ffc85a;border-color:rgba(255,200,90,.48);background:rgba(255,200,90,.12)}.route-mixed,.route-badge.route-mixed,.confidence-direct,.confidence-dns-interest{color:#91bdff;border-color:rgba(145,189,255,.52);background:rgba(145,189,255,.12)}.route-unknown,.route-badge.route-unknown,.confidence-unknown,.status-unknown,.mobile-health-unknown{color:#b7c3d2;border-color:rgba(183,195,210,.34);background:rgba(183,195,210,.08)}.severity-critical,.mobile-health-critical{color:#ff7a7a;border-color:rgba(255,122,122,.52);background:rgba(255,86,86,.13)}
 .pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;color:#a9bad0;flex-wrap:wrap}.pagination>div{display:flex;align-items:center;gap:10px}.pagination strong{color:#e6edf7}.muted-button{min-height:34px;border-radius:8px;border:1px solid #33465e;background:#0d1b2e;color:#8db6ff;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:8px}.mobile-shell .pagination{font-size:12px;gap:8px}.mobile-shell .pagination .muted-button{min-height:30px;padding:4px 8px}
 """
+_mobile_components = Path(__file__).with_name("ghostroute-console-mobile.css")
+if not _mobile_components.is_file():
+    _mobile_components = Path(__file__).resolve().parents[1] / "app/public/mobile-components.css"
+MOBILE_CRITICAL_CSS += _mobile_components.read_text(encoding="utf-8")
+
+mobile_components_path = Path(__file__).with_name("ghostroute-console-mobile.css")
+if not mobile_components_path.exists():
+    mobile_components_path = Path(__file__).resolve().parents[1] / "app/public/mobile-components.css"
+MOBILE_CRITICAL_CSS += mobile_components_path.read_text(encoding="utf-8")
 
 HOP_BY_HOP = {
     "connection",

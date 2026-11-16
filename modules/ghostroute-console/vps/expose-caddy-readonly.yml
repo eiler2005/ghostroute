@@ -221,13 +221,36 @@
         comment: "GhostRoute Console HTTPS"
       when: console_manage_ufw | bool
 
+    - name: Preserve public mobile presentation for rollback
+      ansible.builtin.shell: |
+        set -eu
+        backup="{{ console_root }}/rollback/public-mobile-$(date -u +%Y%m%d%H%M%S)"
+        mkdir -p "$backup"
+        chmod 700 "$backup"
+        for file in ghostroute-console-buffer-proxy ghostroute-console-mobile.css; do
+          if [ -f "/usr/local/bin/$file" ]; then cp -p "/usr/local/bin/$file" "$backup/$file"; fi
+        done
+      tags: [console_mobile_styles]
+
     - name: Install GhostRoute Console buffer proxy
       ansible.builtin.copy:
         src: buffer-proxy.py
         dest: /usr/local/bin/ghostroute-console-buffer-proxy
+        backup: true
         owner: root
         group: root
         mode: "0755"
+      tags: [console_mobile_styles]
+
+    - name: Install shared mobile component styles for inline first paint
+      ansible.builtin.copy:
+        src: ../app/public/mobile-components.css
+        dest: /usr/local/bin/ghostroute-console-mobile.css
+        backup: true
+        owner: root
+        group: root
+        mode: "0644"
+      tags: [console_mobile_styles]
 
     - name: Install GhostRoute Console buffer proxy systemd unit
       ansible.builtin.copy:
@@ -475,6 +498,7 @@
         state: restarted
         enabled: true
         daemon_reload: true
+      tags: [console_mobile_styles]
 
     - name: Validate GhostRoute Console nginx config
       ansible.builtin.command: /usr/sbin/nginx -t -c {{ console_nginx_root }}/nginx.conf

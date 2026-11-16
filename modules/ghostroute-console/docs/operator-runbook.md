@@ -33,6 +33,33 @@ browsers must not depend on HTTP/3/QUIC for Console access. Provider-level
 firewalls must allow the configured public TCP port; host UFW alone is not
 enough if the cloud firewall drops packets before they reach the VPS.
 
+Mobile shared components use `app/public/mobile-components.css` in both the
+Next.js bundle and the public proxy's inline first-paint stylesheet. Keep form,
+channel card, traffic row and history changes in that shared file; adding styles
+only to `globals.css` leaves the public mobile view incomplete when external
+assets are removed. The mobile home links to the full history instead of
+embedding a second long client/history list.
+
+After local seeded desktop/mobile checks, refresh only these presentation assets
+with `vps/expose-caddy-readonly.yml --tags console_mobile_styles` using the usual
+private inventory/Vault inputs. That tag copies the proxy and shared CSS and
+restarts only the Console buffer proxy; it does not reload Caddy or change TLS,
+firewall or channel configuration. Ansible retains existing copies for rollback.
+Restore the matching proxy/CSS backup pair and restart the buffer service when
+reverting this presentation layer. Then verify the public no-port URL in WebKit,
+including `/m/channels` with external CSS unavailable.
+
+Mobile shared components use `app/public/mobile-components.css` in both the app
+bundle and the inline public first-paint stylesheet. Refresh the installed asset
+and buffer proxy with `expose-caddy-readonly.yml --tags console_mobile_styles`
+after a relevant Console release. This narrow tag preserves the previous pair
+under `rollback/public-mobile-*`, copies only the proxy and CSS, and restarts only
+the Console buffer proxy. It does not reload Caddy, change listeners or firewall
+rules. To undo that slice, restore the saved pair to `/usr/local/bin/` and restart
+`ghostroute-console-buffer-proxy`; an absent old CSS file means the old proxy was
+self-contained. Verify public iPhone/WebKit first paint, mobile channel filters,
+traffic rows and History with external CSS unavailable after either direction.
+
 ## Device Attribution Registry
 
 Operator-local client identity is stored in the same data directory as

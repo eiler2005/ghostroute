@@ -29,3 +29,16 @@ test('public desktop compressed delivery retains inline traffic detail', async (
   await expect(page.locator('.flow-detail-panel')).toBeVisible();
   await expect(page.locator('.flow-detail-panel')).toContainText('Why this route?');
 });
+
+test('public mobile channel design survives unavailable external CSS', async ({ page }) => {
+  await page.route('**/_next/static/**/*.css', route => route.abort());
+  await page.goto('/m');
+  await expect(page.locator('.mobile-card .detail-row').first()).toHaveCSS('display','grid');
+  await page.goto('/m/channels');
+  await expect(page.locator('.channel-filters')).toHaveCSS('display','grid');
+  await expect(page.locator('.channel-filters select').first()).toHaveCSS('background-color','rgb(13, 27, 46)');
+  await expect(page.locator('.channel-health-grid')).toHaveCSS('display','grid');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.goto('/m/channels?view=history');
+  await expect(page.locator('.channel-history-row').first()).toHaveCSS('display','grid');
+});

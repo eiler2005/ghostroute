@@ -36,6 +36,9 @@ without an operator alias. Missing ownership is a review state, not a reason to
 drop bytes. Router summary, prepared client evidence and destination evidence
 are exposed together with their measurement scopes. They must not be silently
 scaled to a shared total when their coverage differs.
+Verification compares inventory to the same-scope prepared client evidence and
+compares every all-lane layer exactly to its total pyramid, rather than requiring
+all-channel client evidence to equal a LAN/Home Reality-only summary.
 
 The daily summary chart displays observed cumulative day-counter samples at
 their observation hours. It does not spread an initial sample into earlier

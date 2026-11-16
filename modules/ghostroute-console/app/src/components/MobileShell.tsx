@@ -47,6 +47,7 @@ export function MobileShell({
       : model.freshnessMinutes === 0
         ? "fresh now"
         : `${model.freshnessMinutes}m ago`;
+  const trafficTimestamp = model.runtime.latestSnapshots.traffic_facts || model.runtime.latestSnapshots.traffic_summary || model.runtime.latestSnapshots.traffic;
   return (
     <main className="mobile-shell">
       <header className="mobile-header">
@@ -70,7 +71,7 @@ export function MobileShell({
         </div>
         <div>
           <span>Traffic</span>
-          <strong>{model.runtime.latestSnapshots.traffic ? shortDateTime(model.runtime.latestSnapshots.traffic) : "n/a"}</strong>
+          <strong title={trafficTimestamp ? shortDateTime(trafficTimestamp) : undefined}>{trafficTimestamp ? shortDateTime(trafficTimestamp).split(" ").pop()?.slice(0, 8) : "n/a"}</strong>
         </div>
         <div>
           <span>Build</span>

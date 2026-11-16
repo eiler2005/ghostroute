@@ -32,11 +32,13 @@ export function ChannelOverview({ traffic, clients, apps, daily, health, period,
         <label>Client <select name="client" defaultValue={chosenClient}><option value="all">All clients</option>{chosenClient !== "all" && !channelClients.some(row => row.client === chosenClient) && <option value={chosenClient}>Selected client (no traffic in this period)</option>}{channelClients.map(row => <option key={`${row.channel}:${row.client}`} value={row.client}>{row.label || row.client}</option>)}</select></label>
         <label>Search <input name="search" defaultValue={search} placeholder="Client or app" /></label>
         <label>Sort clients <select name="sort" defaultValue={["traffic", "recent", "name"].includes(sort) ? sort : "traffic"}><option value="traffic">Traffic</option><option value="recent">Recent</option><option value="name">Name</option></select></label>
-        <button type="submit">Apply</button><a className="muted-button" href="?">Reset</a>
+        <div className="channel-filter-actions"><button type="submit">Apply</button><a className="muted-button" href="?">Reset</a></div>
       </form>
-      <p>Read-only channel evidence · {periodLabel[period] || period}. Seven- and thirty-day windows include today in Moscow time. Channel totals follow the selected client; search only filters client and app lists. Measurements at different layers cannot be added to the VPS interface total.</p>
-      <p>Route split may be unknown. Missing or inactive collection is not zero traffic. Channel D sessions appear after they close; Amn is collected only while enabled.</p>
       <nav className="intelligence-tabs" aria-label="Channel views">{[["overview", "Overview"], ["clients", "Clients"], ["apps", "Apps"], ["history", "History"]].map(([key, label]) => <a key={key} className={`muted-button ${activeView === key ? "active" : ""}`} aria-current={activeView === key ? "page" : undefined} href={viewHref(key)}>{label}</a>)}</nav>
+      <details className="channel-evidence-notes"><summary>About traffic and collection · {periodLabel[period] || period}</summary>
+        <p>Seven- and thirty-day windows include today in Moscow time. Channel totals follow the selected client; search only filters client and app lists. Measurements at different layers cannot be added to the VPS interface total.</p>
+        <p>Route split may be unknown. Missing or inactive collection is not zero traffic. Channel D sessions appear after they close; Amn is collected only while enabled.</p>
+      </details>
       {activeView === "overview" && <>
       <h3>Runtime health</h3>
       <p>Runtime status is not an authenticated application test. The runtime cards below cover D, anyT, Snell and Amn; see Health Center for other channel evidence.</p>

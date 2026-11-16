@@ -1,0 +1,45 @@
+/* Shared by the app bundle and the public mobile first-paint stylesheet. */
+.mobile-shell button,.mobile-shell input,.mobile-shell select{font:inherit}
+.mobile-shell .card{min-width:0;border:1px solid #243954;border-radius:8px;background:linear-gradient(180deg,rgba(16,35,57,.96),rgba(9,22,38,.96));padding:12px;margin-bottom:10px}
+.mobile-shell .card h2{margin:0 0 12px;font-size:20px;line-height:1.2}
+.mobile-shell .card h3{margin:16px 0 8px;font-size:15px}
+.mobile-shell .card p,.mobile-shell .mobile-card>p,.mobile-shell details p{margin:8px 0 12px;color:#9fb1c7;font-size:13px;line-height:1.45}
+.mobile-shell .subtle{color:#9fb1c7;font-size:12px;line-height:1.4}
+.mobile-shell .block-detail{display:block;overflow-wrap:anywhere}
+.mobile-shell .detail-list{display:grid;gap:0}
+.mobile-shell .detail-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #1f3148;font-size:14px;line-height:1.35}
+.mobile-shell .detail-row:last-child{border-bottom:0}
+.mobile-shell .detail-row>span{min-width:0;color:#c5d2e4;overflow-wrap:anywhere}
+.mobile-shell .detail-row>strong{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:#e6edf7}
+.mobile-shell details{margin-top:10px}
+.mobile-shell summary{color:#8db6ff;font-size:13px;line-height:1.4;cursor:pointer;padding:6px 0}
+.mobile-shell .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.mobile-shell .channel-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:none;margin:14px 0;align-items:end}
+.mobile-shell .channel-filters label{display:grid;gap:5px;min-width:0;color:#a9bad0;font-size:12px}
+.mobile-shell .channel-filters label:nth-of-type(3),.mobile-shell .channel-filters label:nth-of-type(4){grid-column:1/-1}
+.mobile-shell .channel-filters input,.mobile-shell .channel-filters select,.mobile-shell .channel-filters button{width:100%;max-width:none;min-width:0;min-height:40px;border:1px solid #2a405c;border-radius:8px;background:#0d1b2e;color:#f2f6fb;padding:8px 10px;font-size:14px}
+.mobile-shell .channel-filters button{border-color:#2563eb;background:#123d75;font-weight:700}
+.mobile-shell .channel-filters .muted-button{min-height:40px}
+.mobile-shell .channel-filters label:nth-of-type(5){grid-column:1/-1}
+.mobile-shell .channel-filter-actions{grid-column:1/-1;display:flex;gap:8px}
+.mobile-shell .channel-filter-actions>*{flex:1;min-width:0}
+.mobile-shell .intelligence-tabs{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0}
+.mobile-shell .intelligence-tabs .active{border-color:#5ca8ff;background:#173956;color:#e6edf7}
+.mobile-shell .channel-health-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.mobile-shell .channel-health-grid>.card{margin:0;padding:12px}
+.mobile-shell .channel-health-grid .toolbar>strong{font-size:14px}
+.mobile-shell .channel-health-grid .muted-button{margin-top:10px;width:100%;font-size:13px}
+.mobile-shell .channel-history{display:grid;margin-top:12px}
+.mobile-shell .channel-history-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;border-bottom:1px solid #1f3148;padding:12px 0;font-size:13px}
+.mobile-shell .channel-history-row>span{overflow-wrap:anywhere;color:#c5d2e4}
+.mobile-shell .channel-history-row>strong{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mobile-shell .channel-history-track{grid-column:1/-1;grid-row:2;height:7px;border-radius:4px;background:#1c3048;overflow:hidden}
+.mobile-shell .channel-history-track>span{display:block;height:100%;border-radius:inherit;background:#58d68d}
+.mobile-shell .live-table-wrap{max-width:100%;overflow-x:auto;margin-top:12px}
+.mobile-shell .table{width:100%;border-collapse:collapse;font-size:13px}
+.mobile-shell .table th,.mobile-shell .table td{text-align:left;padding:10px 8px;border-bottom:1px solid #1f3148;line-height:1.35}
+.mobile-shell .table th{color:#9fb1c7;font-size:11px;white-space:nowrap}
+.mobile-shell .table td{min-width:105px;color:#e6edf7}
+.mobile-shell .mobile-card>.muted-button{margin-top:10px;font-size:13px}
+@media(max-width:420px){.mobile-shell .channel-health-grid{grid-template-columns:1fr}}
+@media(min-width:600px){.mobile-shell .channel-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.mobile-shell .channel-filters label:nth-of-type(3),.mobile-shell .channel-filters label:nth-of-type(4){grid-column:auto}}

@@ -256,10 +256,12 @@ for (const model of ["client_traffic_by_lane", "client_destination_by_lane", "cl
 
 const todayDashboard = payload("dashboard", "today", "all");
 const todayClients = payload("clients", "today", "all");
-const dashboardObserved = number(todayDashboard?.totals?.observedBytes || todayDashboard?.dashboardAnalytics?.trafficToday?.totalBytes);
+const clientEvidence = todayDashboard?.dashboardAnalytics?.trafficReconciliation?.clientEvidenceBytes;
 const inventoryRows = preparedClientRows(todayClients, todayDashboard).filter((row) => byteValue(row) > 0);
 const inventoryBytes = inventoryRows.reduce((sum, row) => sum + byteValue(row), 0);
-assertWithinRatio(inventoryBytes, dashboardObserved, trafficDriftTolerance, "today client inventory total does not match dashboard observed traffic");
+if (clientEvidence !== undefined) {
+  assert.equal(inventoryBytes, number(clientEvidence), "today inventory differs from the same-scope prepared client evidence");
+}
 
 db.close();
 console.log("aggregate windows ok");

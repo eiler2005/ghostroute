@@ -699,3 +699,23 @@ test("dashboard client traffic status is not presented as a health check", async
   await expect(clients.locator(".rank-status").first()).toHaveText("Observed");
   await expect(clients.locator(".rank-status").first()).toHaveAttribute("title", /not channel health|see Channels/i);
 });
+
+test("mobile channel components keep styled controls and separated traffic values", async ({ page }) => {
+  await page.goto('/m');
+  const row = page.locator('.mobile-card .detail-row').first();
+  await expect(row).toHaveCSS('display', 'grid');
+  expect(await row.evaluate(element => {
+    const label=element.querySelector('span')!.getBoundingClientRect();
+    const value=element.querySelector('strong')!.getBoundingClientRect();
+    return label.right < value.left;
+  })).toBe(true);
+  await expect(page.getByRole('link',{name:'30-day history'})).toBeVisible();
+  await page.goto('/m/channels');
+  await expect(page.locator('.channel-filters')).toHaveCSS('display','grid');
+  await expect(page.locator('.channel-filters select').first()).toHaveCSS('background-color','rgb(13, 27, 46)');
+  await expect(page.locator('.channel-health-grid')).toHaveCSS('display','grid');
+  await expect(page.locator('.intelligence-tabs')).toHaveCSS('display','flex');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.goto('/m/channels?period=last30&view=history');
+  await expect(page.locator('.channel-history-row').first()).toHaveCSS('display','grid');
+});
