@@ -25,11 +25,11 @@ test('measured volume and application detail are independent partitions, not add
   ]});
   rebuildPreparedWindows(db,'2026-11-16T09:12:00.000Z');
   assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,2*volume,'live endpoint supersedes earlier partial volume');
-  normalizeSnapshot(db,3,'traffic_facts','2026-11-16T09:16:00.000Z',{traffic_facts:[
+  normalizeSnapshot(db,3,'traffic_facts','2026-11-16T16:16:00.000Z',{traffic_facts:[
    counter('retained','2026-11-16T09:00:00.000Z','2026-11-16T09:12:00.000Z',3*volume),
-   counter('next','2026-11-16T09:12:00.000Z','2026-11-16T09:15:00.000Z',volume),
+   counter('next','2026-11-16T09:12:00.000Z','2026-11-16T16:15:00.000Z',volume),
   ]});
-  rebuildPreparedWindows(db,'2026-11-16T09:17:00.000Z');
+  rebuildPreparedWindows(db,'2026-11-16T16:17:00.000Z');
   assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,4*volume,'retained interval replaces live partials and adjacent interval remains additive');
   assert.equal(db.prepare("select sum(bytes) n from client_traffic_by_lane where bucket_granularity='5min' and traffic_lane='all'").get().n,4*volume);
   assert.equal(db.prepare('select sum(bytes) n from client_destination_traffic_5min').get().n,detail);

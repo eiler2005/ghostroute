@@ -2059,7 +2059,14 @@ function aggregateDirtyStart(db, now) {
   const todayStart = mskWindowBounds("today", now).startUtc;
   const hours = Math.max(1, number(process.env.GHOSTROUTE_ROLLUP_REBUILD_HOURS || 6));
   const rollingStart = isoMinusHours(now, hours);
-  return Date.parse(rollingStart) > Date.parse(todayStart) ? rollingStart : todayStart;
+  const ordinaryStart = Date.parse(rollingStart) > Date.parse(todayStart) ? rollingStart : todayStart;
+  const interval = db.prepare(`select min(json_extract(raw_json, '$.interval_start_utc')) as start
+    from normalized_flows where snapshot_type = 'traffic_facts'
+    and snapshot_id = (select max(snapshot_id) from normalized_flows where snapshot_type = 'traffic_facts')
+    and json_valid(raw_json) and json_extract(raw_json, '$.destination_kind') = 'unattributed_counter'`).get();
+  // Extending an interval can supersede a partial observation older than the
+  // rolling rebuild horizon. Rebuild its original range as well.
+  return interval?.start && interval.start < ordinaryStart ? (interval.start < monthStart ? monthStart : interval.start) : ordinaryStart;
 }
 
 function flowFactsFromNormalized(db, startUtc, endUtc) {

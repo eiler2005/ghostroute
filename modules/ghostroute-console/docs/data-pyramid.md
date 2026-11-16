@@ -16,6 +16,8 @@ observations; adjacent intervals remain additive. All-lane client summaries
 read the total pyramid, while destination lanes retain their partial coverage.
 Completed proxy streams are independent events and do not use counter interval
 replacement.
+The rebuild range expands to the latest counter snapshot's original interval
+start, including superseded partials older than the normal rolling horizon.
 
 Connection counts do not allocate profile bytes to destinations or routes.
 Profile counters for every supported channel are volume-only evidence until
