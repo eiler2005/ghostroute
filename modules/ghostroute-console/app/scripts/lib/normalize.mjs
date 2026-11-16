@@ -2192,7 +2192,7 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
     const counterGroups = new Map();
     for (const row of rows) {
       if (!row.accounting_bucket || !row.raw.interval_start_utc || !row.raw.interval_end_utc) continue;
-      const key = JSON.stringify([row.client_key, row.channel, row.raw.measurement_scope]);
+      const key = JSON.stringify([row.client_key, row.channel, row.raw.measurement_scope, row.raw.client_ip || row.raw.source_ip || '']);
       const list = counterGroups.get(key) || [];
       list.push(row);
       counterGroups.set(key, list);
@@ -2211,13 +2211,13 @@ function flowFactsFromNormalized(db, startUtc, endUtc) {
     const intervals = new Map();
     for (const row of ownedRows) {
       if (!row.accounting_bucket || !row.raw.interval_start_utc || !row.raw.interval_end_utc) continue;
-      const key = JSON.stringify([row.client_key, row.channel]);
+      const key = JSON.stringify([row.client_key, row.channel, row.raw.client_ip || row.raw.source_ip || '']);
       const list = intervals.get(key) || [];
       list.push([row.raw.interval_start_utc, row.raw.interval_end_utc]);
       intervals.set(key, list);
     }
     return ownedRows.map((row) => ({ ...row, total_bytes: row.bytes,
-      measurement_role: !row.accounting_bucket && (intervals.get(JSON.stringify([row.client_key, row.channel])) || [])
+      measurement_role: !row.accounting_bucket && (intervals.get(JSON.stringify([row.client_key, row.channel, row.raw.client_ip || row.raw.source_ip || ''])) || [])
         .some(([start, end]) => row.collected_at > start && row.collected_at <= end) ? 'detail' : row.measurement_role,
     }));
   }

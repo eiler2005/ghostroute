@@ -18,6 +18,8 @@ Completed proxy streams are independent events and do not use counter interval
 replacement.
 The rebuild range expands to the latest counter snapshot's original interval
 start, including superseded partials older than the normal rolling horizon.
+Interval ownership includes the source counter identity (such as the observed
+client address), so two interfaces mapped to one operator device remain additive.
 
 Connection counts do not allocate profile bytes to destinations or routes.
 Profile counters for every supported channel are volume-only evidence until

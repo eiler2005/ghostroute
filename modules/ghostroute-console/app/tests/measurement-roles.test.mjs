@@ -33,6 +33,11 @@ test('measured volume and application detail are independent partitions, not add
   assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,4*volume,'retained interval replaces live partials and adjacent interval remains additive');
   assert.equal(db.prepare("select sum(bytes) n from client_traffic_by_lane where bucket_granularity='5min' and traffic_lane='all'").get().n,4*volume);
   assert.equal(db.prepare('select sum(bytes) n from client_destination_traffic_5min').get().n,detail);
+  normalizeSnapshot(db,4,'traffic_facts','2026-11-16T16:20:00.000Z',{traffic_facts:[
+   {...counter('second-interface','2026-11-16T09:00:00.000Z','2026-11-16T16:15:00.000Z',volume),client_ip:'192.0.2.30'},
+  ]});
+  rebuildPreparedWindows(db,'2026-11-16T16:21:00.000Z');
+  assert.equal(db.prepare('select sum(bytes) n from client_traffic_5min').get().n,5*volume,'independent counter sources mapped to one device are not superseded');
  } finally {db.close()}
 });
 test('rank share uses sum and bar geometry uses maximum',()=>{
