@@ -702,6 +702,8 @@ test("dashboard client traffic status is not presented as a health check", async
 
 test("mobile channel components keep styled controls and separated traffic values", async ({ page }) => {
   await page.goto('/m');
+  await expect(page.locator('.mobile-kpis')).toContainText('Client traffic');
+  await expect(page.locator('.mobile-kpis')).toContainText('Channels');
   const row = page.locator('.mobile-card .detail-row').first();
   await expect(row).toHaveCSS('display', 'grid');
   expect(await row.evaluate(element => {

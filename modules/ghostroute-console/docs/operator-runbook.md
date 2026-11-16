@@ -39,6 +39,8 @@ channel card, traffic row and history changes in that shared file; adding styles
 only to `globals.css` leaves the public mobile view incomplete when external
 assets are removed. The mobile home links to the full history instead of
 embedding a second long client/history list.
+Its client-traffic KPI uses the same prepared channel totals as the channel list;
+router-scope interface/route counters are not presented as an all-channel total.
 
 After local seeded desktop/mobile checks, refresh only these presentation assets
 with `vps/expose-caddy-readonly.yml --tags console_mobile_styles` using the usual

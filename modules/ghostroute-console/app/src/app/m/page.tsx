@@ -25,6 +25,7 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
   const live = Array.isArray(mobileHome.live) ? mobileHome.live : [];
   const alarms = summaryAlarms.slice(0, 5);
   const channelTraffic = channelTrafficForPeriod("today");
+  const clientTrafficBytes = channelTraffic.reduce((sum, row) => sum + Number(row.bytes || 0), 0);
   return (
     <MobileShell active="/m" model={model} filters={filters} desktopPath="/">
       <section className="mobile-hero">
@@ -37,8 +38,8 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
         <a className="muted-button" href="/m/channels?period=last30&view=history">30-day history</a>
       </MobileSection>
       <section className="mobile-kpis">
-        <div><span>Observed</span><strong>{bytes(model.totals.observedBytes)}</strong></div>
-        <div><span>Via VPS</span><strong>{bytes(model.totals.viaVpsBytes)}</strong></div>
+        <div><span>Client traffic</span><strong>{bytes(clientTrafficBytes)}</strong></div>
+        <div><span>Channels</span><strong>{channelTraffic.length}</strong></div>
         <div><span>Alerts</span><strong>{model.alerts.length}</strong></div>
       </section>
       <MobileSection title="Recent flows" href="/m/traffic"><MobileFlowList rows={flows} /></MobileSection>
