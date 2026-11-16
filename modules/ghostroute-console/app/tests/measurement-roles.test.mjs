@@ -5,6 +5,38 @@ import {ensureConsoleSchema,normalizeSnapshot,rebuildPreparedWindows} from '../s
 import {trafficRankingMetrics,appByteQuality} from '../src/lib/traffic-ranking.mjs';
 import {classifyAppFamily} from '../src/lib/app-family.mjs';
 import {assertTrafficVolumeContract} from '../scripts/lib/traffic-volume-contract.mjs';
+import {observedClientLabel} from '../src/lib/device-attribution.mjs';
+import {channelClientsFromSegments,channelTrafficHistory} from '../src/lib/channel-traffic.mjs';
+
+test('unregistered LAN sources with the same DHCP placeholder retain independent gigabyte totals',()=>{
+ const db=new Database(':memory:');
+ try {
+  ensureConsoleSchema(db);
+  const sources=['192.0.2.80','192.0.2.81'];
+  const amounts=[3*1024**3,2*1024**3];
+  const facts=sources.map((ip,i)=>({fact_id:`unregistered-${i}`,client_key:ip,client_ip:ip,client_label:'?',
+   channel:'Home Wi-Fi/LAN',route:'VPS',traffic_class:'client',confidence:'observed',
+   bytes:amounts[i],via_vps_bytes:amounts[i],direct_bytes:0,unknown_bytes:0,
+   event_ts_utc:'2026-11-16T09:05:00.000Z',interval_start_utc:'2026-11-16T09:00:00.000Z',interval_end_utc:'2026-11-16T09:05:00.000Z',
+   destination:'',destination_kind:'unattributed_counter',measurement_role:'volume',measurement_scope:'lan_route_counter',evidence_level:'fixture_counter'}));
+  normalizeSnapshot(db,1,'traffic_facts','2026-11-16T09:06:00.000Z',{traffic_facts:facts});
+  rebuildPreparedWindows(db,'2026-11-16T09:07:00.000Z');
+  const rows=db.prepare('select client_key,client_label,sum(bytes) bytes from client_traffic_5min group by client_key order by client_key').all();
+  assert.deepEqual(rows.map(r=>[r.client_key,r.bytes]),sources.map((ip,i)=>[ip,amounts[i]]));
+  assert.deepEqual(rows.map(r=>r.client_label),sources);
+  assertTrafficVolumeContract(db);
+  // Old retained labels must also render correctly without rewriting history.
+  db.prepare("update client_traffic_5min set client_label='?'").run();
+  db.prepare("update client_traffic_daily set client_label='?'").run();
+  const segment={granularity:'5min',start:'2026-11-16T00:00:00.000Z',end:'2026-11-17T00:00:00.000Z'};
+  const clients=channelClientsFromSegments(db,[segment]);
+  assert.deepEqual(clients.map(r=>[r.client,r.label,r.bytes]),sources.map((ip,i)=>[ip,ip,amounts[i]]));
+  assert.deepEqual(channelTrafficHistory(db,'2026-11-15T21:00:00.000Z',segment.end).clients.map(r=>r.label),sources);
+  assert.equal(observedClientLabel({client_label:'Verified fixture',client_key:sources[0]}),'Verified fixture');
+  assert.equal(observedClientLabel({label:'?'}),'Unattributed client');
+  assert.equal(observedClientLabel({label:'?',key:'fixture-source'}),'fixture-source');
+ } finally {db.close()}
+});
 
 test('measured volume and application detail are independent partitions, not additive traffic',()=>{
  const db=new Database(':memory:');

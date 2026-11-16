@@ -22,6 +22,16 @@ function clean(value) {
   return String(value || "").trim();
 }
 
+// Display hints are not identities. In particular, repeated DHCP '?' names
+// must never replace the distinct source keys used for byte accounting.
+export function observedClientLabel(value) {
+  const row = typeof value === "string" ? { label: value } : value || {};
+  const candidates = [row.client_label, row.label, row.client, row.profile,
+    row.client_ip, row.ip, row.source_ip, row.client_key, row.device_key, row.id, row.key];
+  return candidates.map(clean).find(text => text && !/^(\?|\*|-|unknown(?: client| device)?|undefined|null)$/i.test(text))
+    || "Unattributed client";
+}
+
 function literalKey(value) {
   return clean(value).toLowerCase();
 }
@@ -275,7 +285,7 @@ function networkCandidateValues(value) {
 
 function fallbackResolution(value) {
   const key = canonicalDeviceKey(value);
-  const text = clean(typeof value === "string" ? value : value?.label || value?.client || value?.profile || value?.id || value?.device_id || "Unknown");
+  const text = observedClientLabel(value);
   const label = fallbackLabelFor(key, text);
   const role = key.startsWith("mobile-source-") ? "Unattributed mobile ingress source" : "";
   return {

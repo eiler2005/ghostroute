@@ -112,6 +112,18 @@ endpoint and must not be labelled confirmed DPI. Website HTML probes do not
 prove video playback, model-generation latency or signed-in messaging/media.
 Keep measured deployment evidence in private reports rather than public docs.
 
+When a server is administratively reachable but the router cannot connect,
+compare the same authenticated backend directly and through an isolated,
+already-qualified relay. Verify the expected final exit in both cases. A
+successful relayed tunnel with a failed direct connection narrows the problem
+to the direct path; it does not establish which network or filter caused it.
+If needed, compare initial TCP headers at the server with a synchronized router
+attempt, storing no payloads. An absent SYN at the server is different evidence
+from a SYN rejected by its firewall. Neither a running VM nor access to its
+hosting control panel proves that the router can use its application listener.
+Diagnostic detours must not silently become production routes; selection still
+requires operator authorization and the normal rollback and acceptance gates.
+
 ## Local coverage
 
 ```bash

@@ -279,6 +279,17 @@ workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
 force the current Moscow day, while Dashboard/Clients/Reports use the prepared
 `today`, `week` and `month` aggregate windows.
 
+A raw LAN source address in Top clients identifies an observed local source,
+not the home public/WAN address or a verified person. `Observed` describes byte
+evidence, not ownership or successful application access. DHCP hostnames are
+untrusted naming hints; an operator-approved IP/MAC/profile alias in the private
+registry supplies the verified name. Keep separate source keys even when DHCP
+names coincide. Placeholder names such as `?` fall back to the source identity
+on Dashboard, Clients and Channels, including retained history; changing the
+display label must not change bytes or merge unrelated sources. Inspect current
+DHCP/ARP together with the observation time before assigning an alias: a current
+lease alone does not establish historical ownership after address reuse.
+
 Default GUI destination labels prefer DNS/SNI/domain evidence and platform or
 category labels. Raw IP addresses remain available in DNS answers, route
 diagnostics, exports and raw evidence, but they are not used as primary

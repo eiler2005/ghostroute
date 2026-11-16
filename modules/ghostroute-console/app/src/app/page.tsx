@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { observedClientLabel } from "@/lib/device-attribution.mjs";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { bytes, ConfidenceBadge, EmptyState, MetricCard, RouteBadge, StatusBadge } from "@/components/Widgets";
 import { buildDashboardModel, channelTrafficForPeriod, recentChannelTraffic } from "@/lib/server/selectors/dashboard";
@@ -210,7 +211,7 @@ function rankPreparedClients(rows: Array<Record<string, any>>, limit = 5) {
     ...row,
     rank: idx + 1,
     key: row.key || row.client_key || row.id || row.label,
-    label: row.label || row.client_label || row.client || row.id || "Unknown client",
+    label: observedClientLabel(row),
     bytes: observedBytes(row),
     total_bytes: observedBytes(row),
     viaVpsBytes: Number(row.via_vps_bytes || row.viaVpsBytes || 0),

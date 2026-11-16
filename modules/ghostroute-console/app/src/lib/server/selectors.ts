@@ -40,6 +40,7 @@ import {
   canonicalDeviceKey,
   displayDeviceLabel,
   loadDeviceAttributions,
+  observedClientLabel,
   resolveClient,
 } from "../device-attribution.mjs";
 import {
@@ -4732,11 +4733,12 @@ function aggregateClientRowsForPeriod(period = "today") {
   const remember = (row: Record<string, any>) => {
     const key = String(row.client_key || row.client_label || row.client || "").trim();
     if (!key) return;
+    const label = observedClientLabel(row);
     const current = byKey.get(key) || {
       client_key: key,
-      client_label: row.client_label || key,
-      client: row.client_label || key,
-      label: row.client_label || key,
+      client_label: label,
+      client: label,
+      label,
       channel: row.channel || "Unknown",
       confidence: row.confidence || "estimated",
       traffic_class: row.traffic_class || "client",

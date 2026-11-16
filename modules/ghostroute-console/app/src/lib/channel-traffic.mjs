@@ -1,4 +1,5 @@
 import { classifyAppFamily, isClientFacingAppFamily } from './app-family.mjs';
+import { observedClientLabel } from './device-attribution.mjs';
 
 function totalSource(db, granularity) {
   const layer = { '5min':['5min','bucket_start_utc','bucket_msk_key'], hour:['hourly','hour_start_utc','hour_msk_key'], day:['daily','day_start_utc','day_msk_key'], week:['weekly','week_start_utc','week_msk_key'] }[granularity];
@@ -37,7 +38,7 @@ export function channelTrafficHistory(db, start, end, client = 'all') {
      where ${src.time} >= ? and ${src.time} < ? ${src.filter} and client_key != '' and (? = 'all' or client_key = ?)
      group by client_key having sum(bytes) > 0 order by bytes desc limit 10
   `).all(start, end, ...src.args, client, client);
-  return { daily, clients };
+  return { daily, clients: clients.map(row => ({ ...row, label: observedClientLabel(row) })) };
 }
 
 // Combine mutually exclusive pyramid segments; "all" already includes detailed lanes.
@@ -55,7 +56,7 @@ export function channelClientsFromSegments(db, segments) {
   `);
   for (const row of query.all(segment.start, segment.end, ...src.args)) {
     const key = JSON.stringify([row.channel, row.client]);
-    const current = grouped.get(key) || { ...row, bytes: 0 };
+    const current = grouped.get(key) || { ...row, label: observedClientLabel(row), bytes: 0 };
     current.bytes += Number(row.bytes || 0);
     if (String(row.last_seen || '') > String(current.last_seen || '')) current.last_seen = row.last_seen;
     grouped.set(key, current);

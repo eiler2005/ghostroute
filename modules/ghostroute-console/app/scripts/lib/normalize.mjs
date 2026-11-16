@@ -3,7 +3,7 @@ import { trafficRetentionDays, pruneTrafficHistory } from "./traffic-retention.m
 import crypto from "node:crypto";
 import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
 import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
-import { loadDeviceAttributions, resolveClient } from "../../src/lib/device-attribution.mjs";
+import { loadDeviceAttributions, observedClientLabel, resolveClient } from "../../src/lib/device-attribution.mjs";
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
 import { CLIENT_TRAFFIC_LANE_TABLES, rebuildClientTrafficLaneReadModels } from "./client-traffic-lanes.mjs";
@@ -618,7 +618,7 @@ function resolveOperatorClient(row, registry = loadDeviceAttributions(), network
   return {
     registered,
     client_key: registered ? resolved.client_key : text(row?.client_key || row?.client || raw.profile || raw.client || row?.client_ip || "Unknown client"),
-    client_label: registered ? resolved.client_label : text(row?.client_label || row?.label || row?.client_key || row?.client || raw.client || "Unknown client"),
+    client_label: registered ? resolved.client_label : observedClientLabel({ ...raw, ...row }),
     device_key: registered ? resolved.device_key : "",
     channel: sourceChannel || (registered ? text(resolved.client_channel || row?.channel || inferChannel(raw), "Unknown") : text(row?.channel || inferChannel(raw), "Unknown")),
     matched_by: resolved.matched_by || "unmatched",
