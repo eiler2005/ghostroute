@@ -299,6 +299,10 @@ connection-local `total_changes()`, with distinct connection identities. It must
 detect external commits and local updates/DDL without scanning retained history
 or relying on row counts or timestamps that an in-place update might preserve.
 
+Follow the [six-layer acceptance order](../../tests/README.md#traffic-layer-gates):
+collection, normalization, prepared/API contracts, seeded GUI, production data and
+production browser/performance. A passing later layer does not waive an earlier one.
+
 A raw LAN source address in Top clients identifies an observed local source,
 not the home public/WAN address or a verified person. `Observed` describes byte
 evidence, not ownership or successful application access. DHCP hostnames are

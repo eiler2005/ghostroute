@@ -37,6 +37,43 @@ measured domain/provider rows. It asserts preserved detail and exact totals, wit
 requiring partial application evidence to equal all bytes. GUI tests compare actual
 prepared API rankings with visible cards. Passing one layer cannot stand in for another.
 
+#### Acceptance order and failure ownership
+
+```mermaid
+flowchart LR
+  A[Router collection fixtures] --> B[SQLite facts and byte reconciliation]
+  B --> C[Prepared windows and API payloads]
+  C --> D[Seeded desktop and mobile GUI]
+  D --> E[Production source and aggregate verification]
+  E --> F[Live performance and public WebKit delivery]
+```
+
+| Layer | Evidence required before proceeding | Where to fix a failure |
+|---|---|---|
+| 1. Collection | Read-only routing boundary; successful sampler status; original event timestamps; no DNS replay after polling/rotation; new records append without rewriting quiet history; hourly/safety-ceiling compaction preserves the retained records | Router reader, cursor, cadence or bounded storage helper. A load/lock skip is partial coverage, not a successful zero-byte sample |
+| 2. Facts and storage | Exact counter bytes and stable client/channel identities; no overlap/double counting; correct midnight windows; volume, destination detail and DNS interest remain separate | Normalization, fact ownership or SQLite aggregation. Never scale sparse app/DNS observations to fill a counter gap |
+| 3. Prepared/API | Prepared destination/app rankings preserve measured domain/provider evidence; sums and residuals reconcile within their own scope; repeated imports do not duplicate bytes; cache invalidation notices external commits, local writes and DDL | Prepared-window builder, API selector or cache versioning. An empty ranking with existing eligible detail is a data failure |
+| 4. GUI | Local seeded database and production build; API/card parity; filters, selection and pagination; distinct byte/DNS displays; applied mobile CSS and reachable controls on desktop/mobile/iPhone | Rendering, filtering or delivery. A screenshot cannot establish collection correctness |
+| 5. Production data | A completed real full collection; expected sources present without blocking errors; `verify:post-deploy`, `verify:aggregates` and `verify:timezone` pass against the deployed data | Deployed reader/access gate, ingestion or aggregation. Retain private diagnostics and resolve this before interpreting browser results |
+| 6. Production browser/performance | Live response budgets; public no-port HTTPS in Chromium and iPhone/WebKit; mobile first paint, Live summary and inline traffic detail work | Query/render/delivery path. Keep timing failures distinct from missing data or attribution gaps |
+
+Layers 2 and 3 run together under `--data`; API-to-card assertions also run under
+`--gui`. Layers 5 and 6 are explicit live checks, not part of a fixture run.
+Run the module npm verification commands from the app directory with the intended
+database selected; seeded verification must never be mistaken for production evidence.
+Live browser/performance setup and commands belong to the
+[Console runbook](../modules/ghostroute-console/README.md).
+
+Start production acceptance after the initial full collection has completed.
+Keep failed timing evidence from startup/ingestion contention, then repeat after
+that known overlap has ended; do not disable normal collectors, relax budgets or
+reuse an earlier release's green result to obtain acceptance.
+
+For a bug fix, add a reproducing case at the earliest failing layer and then verify
+the downstream layers affected by the change. In particular, a collection fix needs
+source fixtures and data reconciliation before GUI review. A cache/performance fix
+must preserve visibility of newly committed data, not merely serve stale cached rows.
+
 ### Fast checks
 
 ```bash
@@ -63,8 +100,9 @@ configuration, seeded GUI data and Console fixtures.
 ./tests/run-smoke.sh
 ```
 
-This runs a small Playwright subset for the Console first screen and API smoke.
-Use it for UI-facing changes without paying for the full e2e suite.
+This compatibility entrypoint runs the seeded GUI gate, including the production
+build and desktop/mobile/iPhone browser coverage. Its historical `smoke` name does
+not mean that only the first screen is checked.
 
 Equivalent explicit bridge command:
 
