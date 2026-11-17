@@ -23,9 +23,9 @@ class CadenceTests(unittest.TestCase):
                 p=folder/name;p.write_text('#!/bin/sh\necho '+name+' >> "'+str(folder/'calls')+'"\n');p.chmod(0o755)
             subprocess.run(['sh',str(job)],check=True)
             self.assertEqual((folder/'calls').read_text().splitlines(),expected)
-    def test_supervisor_registers_minute_evidence_separately_from_maintenance(self):
+    def test_supervisor_registers_five_minute_evidence_separately_from_maintenance(self):
         source=(ROOT/'modules/routing-core/router/ghostroute-runtime-supervisor').read_text()
-        self.assertIn('cron_set TrafficEvidence "* * * * *"',source)
+        self.assertIn('cron_set TrafficEvidence "*/5 * * * *"',source)
         self.assertIn('cron_set TrafficSnapshot "0 */6 * * *"',source)
     def test_disabled_kernel_accounting_is_reported_without_enabling_it(self):
         with tempfile.TemporaryDirectory() as d:

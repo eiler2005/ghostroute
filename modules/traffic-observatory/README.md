@@ -52,7 +52,7 @@ warehouse/read-model layer and imports router rollups as preferred totals.
 ## Read-only / Mutating Contract
 
 Readers observe existing counters/logs and write only their evidence state.
-`cron-traffic-evidence` runs the flow, DNS and route-log readers every minute,
+`cron-traffic-evidence` runs the flow, DNS and route-log readers every five minutes,
 separately from the six-hour maintenance job. It never refreshes firewall rules.
 Kernel byte visibility (`nf_conntrack_acct`) is provisioned by the explicit
 `lan-traffic-accounting-refresh` owner, which saves the prior value; the sampler
@@ -65,6 +65,16 @@ and bounded backlog is reported. Parsed log timestamps are retained across midni
 unknown log formats remain explicitly approximate. Conntrack polling is still partial:
 connections completed between polls and hardware-offloaded bytes may be absent.
 An unobserved destination cannot be reconstructed from client totals or DNS popularity.
+
+The five-minute interval balances bounded detail collection with router CPU and
+history-file rewrites. It is independent of byte-counter ownership and the Console
+ingestion interval. Before shortening it, measure successful (not locked or
+load-skipped) sampler runs: elapsed time, child CPU time, available memory and
+storage writes. Average whole-router CPU share is `cpu_seconds / (interval_seconds
+* cpu_count)`; elapsed duty is `elapsed_seconds / interval_seconds`. File-size growth
+is not bytes written: retained TSV histories can be rewritten even without growth.
+Use repeated observations under ordinary and peak traffic; do not infer throughput
+impact from load average alone or change routing to benchmark an observer.
 
 Run collection checks with `./tests/run-traffic.sh --collection`. Console data and
 GUI checks are separate gates described in [tests](../../tests/README.md#traffic-layer-gates).

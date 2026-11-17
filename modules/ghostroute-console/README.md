@@ -251,7 +251,7 @@ stored for debug/history, but they are not allowed into prepared traffic windows
 ## Data And Read Models
 
 Detailed ingestion defaults to fifteen minutes both day and night. Router evidence
-is sampled every minute independently of accounting-rule maintenance. Dashboard
+is sampled every five minutes independently of accounting-rule maintenance. Dashboard
 rankings are prepared from measured destination evidence with shared local provider
 and application classification; missing attribution remains a residual. Mobile DNS
 lists use DNS evidence independently of application bytes. See

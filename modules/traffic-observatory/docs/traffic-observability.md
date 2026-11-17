@@ -565,7 +565,7 @@ Important interpretation:
   load guards. The explicit accounting-maintenance owner provisions
   `nf_conntrack_acct` and saves its previous value. The observer reports a disabled
   counter instead of enabling it. Rollback is `/jffs/scripts/lan-flow-facts-rollback`.
-- `TrafficEvidence` polls flow/DNS/route evidence every minute; the existing
+- `TrafficEvidence` polls flow/DNS/route evidence every five minutes; the existing
   six-hour `TrafficSnapshot` remains maintenance, not the detail polling cadence.
   DNS cursors prevent repeated-log inflation and retain parsed source timestamps.
 - `HOME REALITY INGRESS CLIENTS` combines two signals:
