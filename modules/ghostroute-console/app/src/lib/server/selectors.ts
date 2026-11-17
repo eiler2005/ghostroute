@@ -2436,6 +2436,12 @@ export function listTrafficRows(args: PageArgs = {}) {
   };
 }
 
+export function listReportPreviewFlows(filters: ConsoleFilters = {}) {
+  const prepared = preparedDashboard(filters.period || "today", filters.trafficClass || "all");
+  if (!prepared) return [];
+  return filterRows(prepared.flows || [], filters).slice(0, 1).map(decorateTrafficRow);
+}
+
 export function listFlowSessions(args: PageArgs = {}) {
   return cacheGet(`list-flow-sessions:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => withSnapshotVersion(() => listFlowSessionsUncached(args)));
 }

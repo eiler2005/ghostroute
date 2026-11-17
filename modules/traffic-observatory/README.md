@@ -67,7 +67,14 @@ connections completed between polls and hardware-offloaded bytes may be absent.
 An unobserved destination cannot be reconstructed from client totals or DNS popularity.
 
 The five-minute interval balances bounded detail collection with router CPU and
-history-file rewrites. It is independent of byte-counter ownership and the Console
+storage activity. Readers append only new evidence; quiet route-log polls do not
+rewrite the retained TSV. The shared `traffic-evidence-lib` compacts histories
+hourly to 50,000 rows, or earlier at a 60,000-row safety ceiling (20% headroom).
+Those limits apply independently to each history, not to total device traffic.
+Compaction removes only old records; retained timestamps and byte values are unchanged.
+Storage occupied and bytes written are separate measures: an append/compaction
+budget does not imply that the drive fills by that amount every day.
+The polling interval is independent of byte-counter ownership and the Console
 ingestion interval. Before shortening it, measure successful (not locked or
 load-skipped) sampler runs: elapsed time, child CPU time, available memory and
 storage writes. Average whole-router CPU share is `cpu_seconds / (interval_seconds

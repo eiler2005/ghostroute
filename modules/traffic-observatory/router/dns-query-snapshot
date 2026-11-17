@@ -2,6 +2,7 @@
 
 # Best-effort DNS query/answer sampler for GhostRoute Console.
 # This script only reads dnsmasq logs and writes local evidence files.
+. "$(dirname "$0")/traffic-evidence-lib"
 
 STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-/jffs/addons/router_configuration/traffic}"
 [ -x /opt/bin/opkg ] && STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-/opt/var/log/router_configuration}"
@@ -148,7 +149,7 @@ awk -v snapshot_ts="$timestamp" -v source_log="$LOG_PATH" '
 
 if [ -s "$TMP_FACTS" ]; then
   cat "$TMP_FACTS" >> "$FACTS_FILE"
-  tail -n 50000 "$FACTS_FILE" > "$FACTS_FILE.tmp" && mv "$FACTS_FILE.tmp" "$FACTS_FILE"
+  traffic_evidence_retain "$FACTS_FILE" 50000
   rows_written="$(wc -l < "$TMP_FACTS" 2>/dev/null | tr -d ' ')"
   status "ok" "sampled" "${rows_written:-0}"
 else

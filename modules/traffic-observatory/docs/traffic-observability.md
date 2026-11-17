@@ -568,6 +568,10 @@ Important interpretation:
 - `TrafficEvidence` polls flow/DNS/route evidence every five minutes; the existing
   six-hour `TrafficSnapshot` remains maintenance, not the detail polling cadence.
   DNS cursors prevent repeated-log inflation and retain parsed source timestamps.
+  Readers append new rows and use shared hourly compaction, with 20% row-count
+  headroom before mandatory compaction; quiet route-log polling does not rewrite
+  the retained history. This limits storage write amplification independently of
+  the polling interval, without allocating missing bytes to applications.
 - `HOME REALITY INGRESS CLIENTS` combines two signals:
   - byte totals from router-side TCP/<home-reality-port> counters
     (`RC_MOBILE_REALITY_IN/OUT`)

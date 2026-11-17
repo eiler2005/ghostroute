@@ -3,6 +3,7 @@
 # Read-only sing-box outbound evidence snapshot for route diagnostics.
 # This script tails logs only. It must not change routing, NAT, sing-box,
 # dnsmasq, ipset membership, or Channel A/B/C ownership.
+. "$(dirname "$0")/traffic-evidence-lib"
 
 STATE_DIR="${GHOSTROUTE_TRAFFIC_STATE_DIR:-}"
 if [ -z "$STATE_DIR" ]; then
@@ -40,7 +41,8 @@ fi
 
 TMP_TAIL="/tmp/sing-box-route-evidence.tail.$$"
 TMP_ROWS="/tmp/sing-box-route-evidence.rows.$$"
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_TAIL" "$TMP_ROWS"' EXIT
+TMP_NEW="/tmp/sing-box-route-evidence.new.$$"
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_TAIL" "$TMP_ROWS" "$TMP_NEW"' EXIT
 
 if [ ! -r "$LOG_PATH" ]; then
   status "missing_source" "sing_box_log_unreadable" 0
@@ -148,8 +150,11 @@ case "$rows" in ''|*[!0-9]*) rows=0 ;; esac
 
 if [ "$rows" -gt 0 ]; then
   # Re-reading a quiet log must not fill retention with duplicate observations.
-  { [ ! -f "$EVIDENCE_FILE" ] || cat "$EVIDENCE_FILE"; cat "$TMP_ROWS"; } |
-    awk '!seen[$0]++' | tail -n "$MAX_HISTORY" > "$EVIDENCE_FILE.tmp" && mv "$EVIDENCE_FILE.tmp" "$EVIDENCE_FILE"
+  [ -f "$EVIDENCE_FILE" ] || : > "$EVIDENCE_FILE"
+  awk 'FILENAME == ARGV[1] { seen[$0] = 1; next } !seen[$0]++' \
+    "$EVIDENCE_FILE" "$TMP_ROWS" > "$TMP_NEW"
+  [ ! -s "$TMP_NEW" ] || cat "$TMP_NEW" >> "$EVIDENCE_FILE"
+  traffic_evidence_retain "$EVIDENCE_FILE" "$MAX_HISTORY"
   status "ok" "sampled" "$rows"
 else
   status "partial" "no_route_evidence" 0

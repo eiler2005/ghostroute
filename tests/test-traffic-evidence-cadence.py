@@ -11,7 +11,10 @@ class CadenceTests(unittest.TestCase):
             folder=Path(d);log=folder/'sing-box.log'
             log.write_text('+0300 2026-11-17 09:00:00 INFO [123 0ms] outbound/vless[reality-out]: outbound connection to example.invalid:443\n')
             env={'PATH':'/usr/bin:/bin','GHOSTROUTE_TRAFFIC_STATE_DIR':d,'SINGBOX_LOG_PATH':str(log)}
-            for _ in range(2):subprocess.run(['sh',str(R/'sing-box-route-evidence-snapshot')],check=True,env=env)
+            subprocess.run(['sh',str(R/'sing-box-route-evidence-snapshot')],check=True,env=env)
+            before=(folder/'sing-box-route-evidence.tsv').stat().st_mtime_ns
+            subprocess.run(['sh',str(R/'sing-box-route-evidence-snapshot')],check=True,env=env)
+            self.assertEqual((folder/'sing-box-route-evidence.tsv').stat().st_mtime_ns,before,'quiet polls must not rewrite retained history')
             rows=(folder/'sing-box-route-evidence.tsv').read_text().splitlines()
             self.assertEqual(len(rows),1)
             self.assertTrue(rows[0].startswith('2026-11-17T09:00:00+0300|123|'))
@@ -32,6 +35,7 @@ class CadenceTests(unittest.TestCase):
             folder=Path(d);acct=folder/'acct';acct.write_text('0\n')
             source=(R/'lan-flow-facts-snapshot').read_text().replace('STATE_DIR="/jffs/addons/router_configuration/traffic"','STATE_DIR="'+d+'"').replace('[ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"',':').replace('ACCT_SYSCTL="/proc/sys/net/netfilter/nf_conntrack_acct"','ACCT_SYSCTL="'+str(acct)+'"')
             p=folder/'sampler';p.write_text(source)
+            (folder/'traffic-evidence-lib').write_text((R/'traffic-evidence-lib').read_text())
             subprocess.run(['sh',str(p)],check=True,env={'PATH':'/usr/bin:/bin','GHOSTROUTE_LAN_FLOW_MAX_LOAD_X100':'999999'})
             self.assertEqual(acct.read_text(),'0\n')
             self.assertIn('accounting_disabled',(folder/'lan-flow-facts.status').read_text())

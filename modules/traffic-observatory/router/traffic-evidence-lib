@@ -1,0 +1,29 @@
+#!/bin/sh
+# Append-only evidence histories compact hourly, or sooner at the safety ceiling.
+# Callers own their sampler lock; this helper never changes routing or counters.
+traffic_evidence_retain() {
+  evidence_file="$1"
+  retained_rows="$2"
+  [ -f "$evidence_file" ] || return 0
+  evidence_rows="$(wc -l < "$evidence_file" | tr -d ' ')"
+  [ "$evidence_rows" -gt "$retained_rows" ] || return 0
+  ceiling_rows=$((retained_rows + retained_rows / 5))
+  retention_marker="$evidence_file.compacted-at"
+  retention_now="${3:-$(date '+%s')}"
+  retention_last="$(cat "$retention_marker" 2>/dev/null || true)"
+  case "$retention_last" in
+    ''|*[!0-9]*)
+      retention_last="$retention_now"
+      printf '%s\n' "$retention_now" > "$retention_marker"
+      ;;
+  esac
+  if [ "$evidence_rows" -ge "$ceiling_rows" ] ||
+     [ "$((retention_now - retention_last))" -ge 3600 ] ||
+     [ "$retention_now" -lt "$retention_last" ]; then
+    compacted_file="$evidence_file.compact.$$"
+    tail -n "$retained_rows" "$evidence_file" > "$compacted_file" || return 1
+    mv "$compacted_file" "$evidence_file" || return 1
+    printf '%s\n' "$retention_now" > "$retention_marker"
+  fi
+  return 0
+}

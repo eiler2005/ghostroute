@@ -287,8 +287,9 @@ workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
 force the current Moscow day, while Dashboard/Clients/Reports use the prepared
 `today`, `week` and `month` aggregate windows.
 
-The Reports real/redacted preview displays one example from at most 25 candidate
-flows. It must not decorate a full workbench page just to display one record;
+The Reports real/redacted preview displays one matching example from the prepared
+traffic window, decorating only that row. It must not scan/count the raw workbench
+tables or decorate a full workbench page just to display one record;
 the export endpoints retain their independent reporting contract. Seeded browser
 checks cover the paired fields, and the live performance gate covers cold Reports
 rendering and sidebar navigation with the production evidence volume.

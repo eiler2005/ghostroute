@@ -50,6 +50,7 @@
   loop:
     - cron-traffic-snapshot
     - cron-traffic-evidence
+    - traffic-evidence-lib
     - lan-flow-facts-snapshot
     - dns-query-snapshot
     - sing-box-route-evidence-snapshot

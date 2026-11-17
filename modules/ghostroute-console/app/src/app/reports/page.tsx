@@ -2,13 +2,13 @@ import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, StatusBadge } from "@/components/Widgets";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
-import { listFlowSessions } from "@/lib/server/selectors/traffic";
+import { listReportPreviewFlows } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { llmSafePayload } from "@/lib/server/redaction";
 
 export default async function ReportsPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const flows = listFlowSessions({ filters, pageSize: 1, maxRows: 25, fastList: true }).rows;
+  const flows = listReportPreviewFlows(filters);
   const model = buildLightweightShellModel(filters, { flows });
   const snapshotCount = Object.values(model.runtime.latestSnapshots).filter(Boolean).length;
   const payload = llmSafePayload(model);
@@ -25,8 +25,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
           </div>
           <StatusBadge value="OK" />
         </div>
-        {snapshotCount === 0 ? (
-          <EmptyState title="No snapshots for this report" />
+        {snapshotCount === 0 || flows.length === 0 ? (
+          <EmptyState title="No prepared example for this report" />
         ) : (
           <div className="redaction-grid">
             <section>

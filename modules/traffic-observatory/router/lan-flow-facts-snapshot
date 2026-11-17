@@ -3,6 +3,7 @@
 # Best-effort LAN flow byte sampler for GhostRoute Console.
 # This script observes conntrack counters only. It must not change routing,
 # NAT, sing-box, dnsmasq, ipset membership, or Channel A/B/C ownership.
+. "$(dirname "$0")/traffic-evidence-lib"
 
 STATE_DIR="/jffs/addons/router_configuration/traffic"
 [ -x /opt/bin/opkg ] && STATE_DIR="/opt/var/log/router_configuration"
@@ -229,7 +230,7 @@ while IFS='|' read -r client remote port proto out_delta in_delta total conns co
 done < "$TMP_DELTA"
 
 cp "$TMP_CURRENT" "$PREV_FILE"
-[ -f "$FACTS_FILE" ] && tail -n 50000 "$FACTS_FILE" > "$FACTS_FILE.tmp" && mv "$FACTS_FILE.tmp" "$FACTS_FILE"
+traffic_evidence_retain "$FACTS_FILE" 50000
 
 if [ "$facts_written" -gt 0 ]; then
   status "ok" "sampled" "$rows_seen" "$facts_written" "$acct_state"
