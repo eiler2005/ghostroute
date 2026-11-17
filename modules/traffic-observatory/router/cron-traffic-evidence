@@ -1,0 +1,11 @@
+#!/bin/sh
+# Frequent evidence collection is separate from firewall/accounting maintenance.
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+for sampler in lan-flow-facts-snapshot dns-query-snapshot sing-box-route-evidence-snapshot; do
+  [ -x "$SCRIPT_DIR/$sampler" ] || continue
+  if command -v nice >/dev/null 2>&1; then
+    nice -n 10 "$SCRIPT_DIR/$sampler" >/dev/null 2>&1
+  else
+    "$SCRIPT_DIR/$sampler" >/dev/null 2>&1
+  fi
+done

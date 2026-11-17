@@ -1,5 +1,6 @@
 import { explicitAccessChannel } from "../channels.mjs";
 import { appByteQuality } from "../traffic-ranking.mjs";
+import { localIpContext, withLocalIpContext } from "../ip-context.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
 import { createSynchronousVersionScope } from "../version-scope.mjs";
 import { channelAppEvidence, channelClientsFromSegments, channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
@@ -400,8 +401,8 @@ function moscowHour(now = new Date()) {
 
 function collectionIntervalMinutes(now = new Date()) {
   const hour = moscowHour(now);
-  const daySeconds = Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || 1800);
-  const nightSeconds = Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 10800);
+  const daySeconds = Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || 900);
+  const nightSeconds = Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 900);
   return Math.max(1, Math.round(((hour >= 7 && hour <= 23) ? daySeconds : nightSeconds) / 60));
 }
 
@@ -2146,51 +2147,12 @@ function ipv4Literal(value?: string) {
   return /^(\d{1,3}\.){3}\d{1,3}$/.test(String(value || "").trim());
 }
 
-function ipv4ToU32(value?: string) {
-  const parts = String(value || "").trim().split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
-  return ((parts[0] * 256 ** 3) + (parts[1] * 256 ** 2) + (parts[2] * 256) + parts[3]) >>> 0;
-}
-
 function ipEnrichmentFor(value?: string) {
   const ip = String(value || "").trim();
   if (!ipv4Literal(ip)) return null;
   return cacheGet(`ip-enrichment:${latestSnapshotVersion()}:${ip}`, () => {
     try {
-      const row = getDb().prepare(`
-        select ip, prefix_cidr, asn, asn_org, provider, category_hint,
-               traffic_lane_hint, dns_category_hint, decision_hint, country,
-               source, confidence, lookup_status
-          from ip_enrichment_cache
-         where ip = ?
-           and lookup_status = 'hit'
-         limit 1
-      `).get(ip) as Record<string, any> | undefined;
-      if (row) return row;
-      const ipU32 = ipv4ToU32(ip);
-      if (ipU32 === null) return null;
-      const prefix = getDb().prepare(`
-        select prefix_cidr, asn, asn_org, provider, country, registry, source
-          from ip_prefix_catalog
-         where range_start_u32 <= ?
-           and range_end_u32 >= ?
-         order by (range_end_u32 - range_start_u32) asc
-         limit 1
-      `).get(ipU32, ipU32) as Record<string, any> | undefined;
-      if (!prefix) return null;
-      const provider = prefix.provider || prefix.asn_org || "";
-      const normalizedProvider = String(provider).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "network";
-      return {
-        ip,
-        ...prefix,
-        provider,
-        category_hint: `ip_asn.network_provider.${normalizedProvider}`,
-        traffic_lane_hint: "shared_infra",
-        dns_category_hint: "network_provider",
-        decision_hint: "monitor",
-        confidence: "estimated",
-        lookup_status: "prefix_hit",
-      };
+      return localIpContext(getDb(), ip);
     } catch {
       return null;
     }
@@ -2200,22 +2162,7 @@ function ipEnrichmentFor(value?: string) {
 function destinationContextFromIp(row: Record<string, any>) {
   const candidate = row.destination_ip || (ipv4Literal(row.destination) ? row.destination : "");
   const enrichment = ipEnrichmentFor(candidate);
-  if (!enrichment) return row;
-  return {
-    ...row,
-    ip_provider: enrichment.provider || "",
-    ip_asn: enrichment.asn || "",
-    ip_asn_org: enrichment.asn_org || "",
-    ip_category_hint: enrichment.category_hint || "",
-    ip_traffic_lane_hint: enrichment.traffic_lane_hint || "",
-    ip_dns_category_hint: enrichment.dns_category_hint || "",
-    ip_decision_hint: enrichment.decision_hint || "",
-    ip_enrichment_source: enrichment.source || "",
-    ip_enrichment_confidence: enrichment.confidence || "",
-    provider: row.provider || enrichment.provider || enrichment.asn_org || "",
-    asn_org: row.asn_org || enrichment.asn_org || "",
-    category: row.category || enrichment.category_hint || "",
-  };
+  return withLocalIpContext(row, enrichment);
 }
 
 function mapFlowRow(row: any) {
@@ -4453,8 +4400,8 @@ function buildSettingsInventory(model: ConsoleModel) {
       ["Full collector", process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
       ["Light collector", process.env.GHOSTROUTE_LIGHT_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
       ["Live collector", process.env.GHOSTROUTE_LIVE_COLLECTOR_MODE || process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled"],
-      ["Day interval", `${envNumber("GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS", 1800)}s`],
-      ["Night interval", `${envNumber("GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS", 10800)}s`],
+      ["Day interval", `${envNumber("GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS", 900)}s`],
+      ["Night interval", `${envNumber("GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS", 900)}s`],
       ["Light interval", `${envNumber("GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS", 300)}s`],
       ["Live poll", `${envNumber("GHOSTROUTE_LIVE_POLL_SECONDS", 600)}s`],
       ["Writer lock wait", `${envNumber("GHOSTROUTE_COLLECTOR_WRITER_LOCK_WAIT_SECONDS", 120)}s`],

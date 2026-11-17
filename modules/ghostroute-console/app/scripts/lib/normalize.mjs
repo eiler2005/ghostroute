@@ -2,7 +2,8 @@ import { explicitAccessChannel } from "../../src/lib/channels.mjs";
 import { trafficRetentionDays, pruneTrafficHistory } from "./traffic-retention.mjs";
 import crypto from "node:crypto";
 import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
-import { buildDashboardAnalyticsFromRows } from "../../src/lib/dashboard-analytics.mjs";
+import { buildDashboardAnalyticsFromRows, rankAppFamilyEvidence } from "../../src/lib/dashboard-analytics.mjs";
+import { localIpContext, withLocalIpContext } from "../../src/lib/ip-context.mjs";
 import { loadDeviceAttributions, observedClientLabel, resolveClient } from "../../src/lib/device-attribution.mjs";
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
 import { bucketStartUtc, mskWindowBounds, mskWindowLabel, parseSourceTimestamp, toMskKey, toUtcIsoFromMskKey } from "../../src/lib/time/window.mjs";
@@ -3134,6 +3135,7 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
     unknown_bytes: number(row.unknown_bytes),
     last_seen: row.last_seen || row.collected_at,
   }));
+  const ipContexts = new Map();
   const destinationRows = groupedFlowRows.map((row) => ({
     ...row,
     bytes: aggregateTotalBytes(row),
@@ -3142,7 +3144,13 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
     direct_bytes: number(row.direct_bytes),
     unknown_bytes: number(row.unknown_bytes),
     last_seen: row.last_seen || row.collected_at,
-  })).filter((row) => !row.accounting_bucket && isConcreteDestination(row.destination));
+  })).filter((row) => !row.accounting_bucket && isConcreteDestination(row.destination)).map((row) => {
+    if (!ipContexts.has(row.destination)) ipContexts.set(row.destination, localIpContext(db, row.destination));
+    const enriched = withLocalIpContext(row, ipContexts.get(row.destination));
+    // An IP is a measured destination, not a DNS name or SNI. Keeping it in those
+    // fields suppresses the shared provider-label fallback.
+    return ipContexts.get(row.destination) ? { ...enriched, destination_ip: row.destination, dns_qname: "", sni: "" } : enriched;
+  });
   const dashboardAnalytics = buildDashboardAnalyticsFromRows(dashboardRows, {
     now,
     period: window,
@@ -3174,6 +3182,7 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
     now,
     period: window,
   }).topDestinations;
+  dashboardAnalytics.topAppFamilies = rankAppFamilyEvidence(destinationRows, 10);
   return {
     generatedAt: now,
     prepared: true,

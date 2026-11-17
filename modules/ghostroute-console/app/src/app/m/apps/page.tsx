@@ -1,7 +1,7 @@
 import { MobileShell } from "@/components/MobileShell";
 import { bytes, ChannelBadge, RouteBadge } from "@/components/Widgets";
 import { listAppDeviceRows, listAppFamilyRows } from "@/lib/server/selectors/apps";
-import { listClientInventory, listClientSiteEvidence } from "@/lib/server/selectors/clients";
+import { listClientInventory, listClientDnsEvidence } from "@/lib/server/selectors/clients";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { dnsInterestTrafficClass, filterDnsInterestRows } from "@/lib/traffic-window.mjs";
@@ -79,7 +79,7 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
     filters: { ...filters, client: selectedClientId || "all" },
     clientTarget: selected,
   });
-  const dnsAll = selected ? listClientSiteEvidence(selected, filters.period || "today", { limit: 120, includeService: includeServiceDns }) : [];
+  const dnsAll = selected ? listClientDnsEvidence(selected, filters.period || "today", { limit: 120 }) : [];
   const dnsFiltered = filterDnsInterestRows(dnsAll, { includeService: includeServiceDns });
   const dnsRows = (dnsFiltered.length > 0 || includeServiceDns ? dnsFiltered : dnsAll).slice(0, 12);
   const model = buildLightweightShellModel(filters, { devices: inventory.rows });

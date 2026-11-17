@@ -16,6 +16,17 @@ REDIRECT_PORT="${SINGBOX_REDIRECT_PORT:-${GHOSTROUTE_REDIRECT_PORT:-}}"
 }
 LEASES_FILE="/var/lib/misc/dnsmasq.leases"
 
+# Provision byte visibility with the explicit accounting owner, never from the
+# read-only evidence sampler. This does not change destination policy.
+ACCT_SYSCTL=/proc/sys/net/netfilter/nf_conntrack_acct
+if [ -r "$ACCT_SYSCTL" ]; then
+  STATE_DIR=/jffs/addons/router_configuration/traffic
+  [ -x /opt/bin/opkg ] && STATE_DIR=/opt/var/log/router_configuration
+  mkdir -p "$STATE_DIR"
+  [ -f "$STATE_DIR/lan-flow-facts-acct.previous" ] || cat "$ACCT_SYSCTL" > "$STATE_DIR/lan-flow-facts-acct.previous"
+  [ "$(cat "$ACCT_SYSCTL")" = 1 ] || echo 1 > "$ACCT_SYSCTL"
+fi
+
 ensure_chain() {
   iptables -t mangle -N "$1" 2>/dev/null || true
 }

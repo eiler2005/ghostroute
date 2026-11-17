@@ -7,7 +7,7 @@ import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
 import { groupAttributionRows, isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 import { trafficIntelligenceFor } from "@/lib/traffic-classification.mjs";
 import { attributionEligibility, isAttributableSiteRow } from "@/lib/attribution-eligibility.mjs";
-import { classifyAppFamily, isClientFacingAppFamily } from "@/lib/app-family.mjs";
+import { rankAppFamilyEvidence } from "@/lib/dashboard-analytics.mjs";
 import { routeSplitLabel } from "@/lib/route-split-label.mjs";
 import { trafficRankingMetrics } from "@/lib/traffic-ranking.mjs";
 
@@ -230,46 +230,7 @@ function topPreparedRows(rows: Array<Record<string, any>> | undefined, limit = 1
 }
 
 function groupAppFamiliesFromRows(rows: Array<Record<string, any>>, limit = 5) {
-  const grouped = new Map<string, Record<string, any>>();
-  for (const row of rows) {
-    const rowBytes = observedBytes(row);
-    if (rowBytes <= 0) continue;
-    const family = classifyAppFamily(row);
-    if (!family?.app_family || !isClientFacingAppFamily(family)) continue;
-    const current = grouped.get(family.app_family) || {
-      app_family: family.app_family,
-      app_category: family.app_category,
-      app_confidence: family.app_confidence,
-      bytes: 0,
-      total_bytes: 0,
-      viaVpsBytes: 0,
-      directBytes: 0,
-      unknownBytes: 0,
-      dns_queries: 0,
-      sample_domains: new Set<string>(),
-      routes: new Set<string>(),
-    };
-    const split = routeSplit(row);
-    current.bytes += rowBytes;
-    current.total_bytes += rowBytes;
-    current.viaVpsBytes += split.viaVps;
-    current.directBytes += split.direct;
-    current.unknownBytes += split.unknown;
-    current.dns_queries += Number(row.dns_queries || row.query_count || 0);
-    const domain = domainForRow(row);
-    if (domain) current.sample_domains.add(domain);
-    if (row.route) current.routes.add(String(row.route));
-    grouped.set(family.app_family, current);
-  }
-  return Array.from(grouped.values())
-    .sort((a, b) => Number(b.bytes || 0) - Number(a.bytes || 0))
-    .slice(0, limit)
-    .map((row, idx) => ({
-      ...row,
-      rank: idx + 1,
-      route: routeFromRoutes(row.routes || new Set()),
-      sample_domains: Array.from(row.sample_domains || []).slice(0, 3),
-    }));
+  return rankAppFamilyEvidence(rows, limit);
 }
 
 function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
@@ -363,7 +324,7 @@ function RankedDestinations({ rows }: { rows: Array<Record<string, any>> }) {
         <Link className="dashboard-card-link" href="/traffic">Open all</Link>
       </div>
       <p className="subtle">Shares of displayed destination evidence; not total channel traffic.</p>
-      {rows.length === 0 ? <EmptyState title="No destination traffic observed" /> : (
+      {rows.length === 0 ? <EmptyState title="No attributed destinations in collected detail" /> : (
         <div className="dashboard-rank-list">
           {rows.map((row, index) => (
             <div className="dashboard-rank-row destination-row" key={row.key || row.label}>
@@ -392,7 +353,7 @@ function RankedApps({ rows }: { rows: Array<Record<string, any>> }) {
         <Link className="dashboard-card-link" href="/apps">Open Apps</Link>
       </div>
       <p className="subtle">Shares of displayed app evidence; encrypted or unattributed bytes may be absent.</p>
-      {rows.length === 0 ? <EmptyState title="No app-family traffic observed" /> : (
+      {rows.length === 0 ? <EmptyState title="No attributed applications in collected detail" /> : (
         <div className="dashboard-rank-list">
           {rows.map((row, index) => (
             <div className="dashboard-rank-row destination-row" key={row.app_family}>
@@ -404,7 +365,7 @@ function RankedApps({ rows }: { rows: Array<Record<string, any>> }) {
               <RouteBadge value={row.route} />
               <div className="rank-meter">
                 <strong>{compactBytes(observedBytes(row))}</strong><span>{metrics[index].sharePct}%</span>
-                <small>{row.dns_queries || 0} DNS queries · {row.app_confidence || "estimated"}</small>
+                <small>{row.dns_queries || 0} linked DNS queries · App match: {row.app_confidence || "estimated"}</small>
                 <i><b style={{ width: `${metrics[index].relativePct}%` }} /></i>
               </div>
             </div>

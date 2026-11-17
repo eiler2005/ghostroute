@@ -97,6 +97,29 @@ test("dashboard rankings hide pseudo clients and keep destinations populated", a
   await expect(topDestinations).not.toContainText("Home Reality ingress");
 });
 
+test("dashboard renders prepared destination and app rankings without losing measured detail", async ({ page, isMobile }) => {
+  await page.goto(isMobile ? "/?desktop=1" : "/");
+  const response = await page.request.get("/api/dashboard?period=today&trafficClass=all");
+  expect(response.ok()).toBeTruthy();
+  const payload = await response.json();
+  const analytics = payload.dashboard_analytics;
+  expect(analytics.topDestinations.length).toBeGreaterThan(0);
+  expect(analytics.topAppFamilies.length).toBeGreaterThan(0);
+  for (const [heading, rows, key, limit] of [
+    ["Top destinations", analytics.topDestinations, "label", 10],
+    ["Top app families", analytics.topAppFamilies, "app_family", 5],
+  ] as const) {
+    const card = page.locator(".dashboard-rank-card").filter({ has: page.getByRole("heading", { name: heading, exact: true }) });
+    await expect(card.locator(".dashboard-rank-row")).toHaveCount(Math.min(rows.length, limit));
+    for (const row of rows.slice(0, limit)) await expect(card.getByText(row[key], { exact: true }).first()).toBeVisible();
+    await expect(card).not.toContainText(/No attributed|No .*traffic observed/);
+    await expect(card).not.toContainText(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+  }
+  expect(analytics.topAppFamilies.reduce((sum: number, row: {bytes: number}) => sum + row.bytes, 0))
+    .toBeLessThanOrEqual(analytics.trafficReconciliation.destinationEvidenceBytes);
+  await page.screenshot({ path: test.info().outputPath("prepared-rankings.png"), fullPage: true });
+});
+
 test("apps selected device keeps byte traffic separate from DNS evidence", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/apps?client=test-iphone-heavy&desktop=1" : "/apps?client=test-iphone-heavy");
   const selectedApps = page.locator("section").filter({ has: page.getByRole("heading", { name: "App families for Test/iPhone Heavy" }) });
@@ -117,7 +140,12 @@ test("mobile apps uses the same selected-client attribution as desktop", async (
   await expect(selectedApps).toContainText(/(?:MB|GB)/);
   await expect(selectedApps).not.toContainText("No app-family rows");
   const latestDns = page.locator("section").filter({ has: page.getByRole("heading", { name: "Latest DNS domains" }) });
-  await expect(latestDns).toContainText("youtube.test.invalid");
+  // This DNS-only fixture has no transferred bytes; the similarly named
+  // youtube.test.invalid byte fixture must not substitute for DNS evidence.
+  await expect(latestDns).toContainText("ip-only-dns.example.invalid");
+  await expect(latestDns).toContainText("40 queries");
+  await expect(latestDns).toContainText("youtubei.googleapis.com");
+  await expect(latestDns).not.toContainText("youtube.test.invalid");
   await expect(latestDns).toContainText("Test/iPhone Heavy");
 });
 

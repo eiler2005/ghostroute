@@ -12,7 +12,6 @@ PREV_FILE="$STATE_DIR/lan-flow-facts.prev"
 STATUS_FILE="$STATE_DIR/lan-flow-facts.status"
 LOCK_DIR="$STATE_DIR/lan-flow-facts.lock"
 ACCT_SYSCTL="/proc/sys/net/netfilter/nf_conntrack_acct"
-ACCT_PREVIOUS_FILE="$STATE_DIR/lan-flow-facts-acct.previous"
 
 MAX_ROWS="${GHOSTROUTE_LAN_FLOW_MAX_ROWS:-6000}"
 MAX_FACTS="${GHOSTROUTE_LAN_FLOW_MAX_FACTS:-1200}"
@@ -63,12 +62,9 @@ fi
 acct_state="missing"
 if [ -f "$ACCT_SYSCTL" ]; then
   acct_state="$(cat "$ACCT_SYSCTL" 2>/dev/null || printf 'unknown')"
-  if [ ! -f "$ACCT_PREVIOUS_FILE" ]; then
-    printf '%s\n' "$acct_state" > "$ACCT_PREVIOUS_FILE"
-  fi
   if [ "$acct_state" != "1" ]; then
-    echo 1 > "$ACCT_SYSCTL" 2>/dev/null || true
-    acct_state="$(cat "$ACCT_SYSCTL" 2>/dev/null || printf 'unknown')"
+    status "partial" "accounting_disabled" 0 0 "$acct_state"
+    exit 0
   fi
 fi
 

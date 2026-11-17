@@ -1,4 +1,27 @@
 import { isPrimaryTrafficDestinationLabel, trafficDisplayDestination } from "./traffic-window.mjs";
+import { classifyAppFamily, isClientFacingAppFamily } from "./app-family.mjs";
+
+export function rankAppFamilyEvidence(rows, limit = 5) {
+  const grouped=new Map();
+  for(const row of rows){
+    if(row.accounting_bucket || row.attribution_source==='aggregate_residual')continue;
+    const app=classifyAppFamily(row);
+    const bytes=rowBytes(row);
+    if(bytes<=0 || !isClientFacingAppFamily(app))continue;
+    const current=grouped.get(app.app_family)||{...app,app_family:app.app_family,bytes:0,total_bytes:0,
+      viaVpsBytes:0,directBytes:0,unknownBytes:0,dns_queries:0,samples:new Set(),routes:new Set()};
+    const split=routeByteSplit(row);
+    current.bytes+=bytes;current.total_bytes+=bytes;
+    current.viaVpsBytes+=split.viaVpsBytes;current.directBytes+=split.directBytes;current.unknownBytes+=split.unknownBytes;
+    current.dns_queries+=number(row.dns_queries||row.query_count);
+    const label=trafficDisplayDestination(row);
+    if(isPrimaryTrafficDestinationLabel(label))current.samples.add(label);
+    if(row.route)current.routes.add(row.route);
+    grouped.set(app.app_family,current);
+  }
+  return [...grouped.values()].sort((a,b)=>b.bytes-a.bytes).slice(0,limit).map(({samples,routes,...row},i)=>({
+    ...row,rank:i+1,label:row.app_family,route:dominantRoute(routes),sample_domains:[...samples].slice(0,3)}));
+}
 
 function text(value, fallback = "") {
   if (value === undefined || value === null || value === "") return fallback;

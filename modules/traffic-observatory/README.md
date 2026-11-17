@@ -51,10 +51,23 @@ warehouse/read-model layer and imports router rollups as preferred totals.
 
 ## Read-only / Mutating Contract
 
-The module is read-only for routing policy. It mutates only its own accounting
-counters and snapshot files on the router. The LAN flow collector may enable
-`nf_conntrack_acct` for byte visibility; it stores the previous value and ships a
-rollback script.
+Readers observe existing counters/logs and write only their evidence state.
+`cron-traffic-evidence` runs the flow, DNS and route-log readers every minute,
+separately from the six-hour maintenance job. It never refreshes firewall rules.
+Kernel byte visibility (`nf_conntrack_acct`) is provisioned by the explicit
+`lan-traffic-accounting-refresh` owner, which saves the prior value; the sampler
+reports `accounting_disabled` rather than changing it. The rollback helper remains
+available for operator-directed restoration.
+
+DNS collection uses an inode/offset/prefix cursor: repeated polls do not duplicate
+queries, rotation/truncation resets the cursor, incomplete lines wait for completion
+and bounded backlog is reported. Parsed log timestamps are retained across midnight;
+unknown log formats remain explicitly approximate. Conntrack polling is still partial:
+connections completed between polls and hardware-offloaded bytes may be absent.
+An unobserved destination cannot be reconstructed from client totals or DNS popularity.
+
+Run collection checks with `./tests/run-traffic.sh --collection`. Console data and
+GUI checks are separate gates described in [tests](../../tests/README.md#traffic-layer-gates).
 
 ## Public Commands
 

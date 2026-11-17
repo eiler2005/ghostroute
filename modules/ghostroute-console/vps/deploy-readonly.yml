@@ -157,6 +157,7 @@
         manage_dir: true
 
     - name: Tag current Console image for rollback before syncing updated sources
+      when: ghostroute_console_preserve_release | default(true) | bool
       ansible.builtin.shell: |
         set -eu
         current_image="$(docker inspect ghostroute-console --format '{% raw %}{{ .Image }}{% endraw %}' 2>/dev/null || true)"
@@ -166,6 +167,7 @@
       changed_when: false
 
     - name: Preserve Console sources configuration and consistent database for rollback
+      when: ghostroute_console_preserve_release | default(true) | bool
       ansible.builtin.shell: |
         set -eu
         backup="{{ console_root }}/rollback/{{ console_build_at | regex_replace('[^0-9]', '') }}"
@@ -348,8 +350,8 @@
           GHOSTROUTE_LIVE_MODE=poll
           GHOSTROUTE_LIVE_COLLECTOR_MODE=ssh
           GHOSTROUTE_ALARM_STATE_MODE=ssh
-          GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS=1800
-          GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS=10800
+          GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS=900
+          GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS=900
           GHOSTROUTE_COLLECT_TIMEOUT_SECONDS=900
           GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS=300
           GHOSTROUTE_LIGHT_COLLECT_TIMEOUT_SECONDS=45

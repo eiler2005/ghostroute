@@ -250,6 +250,14 @@ stored for debug/history, but they are not allowed into prepared traffic windows
 
 ## Data And Read Models
 
+Detailed ingestion defaults to fifteen minutes both day and night. Router evidence
+is sampled every minute independently of accounting-rule maintenance. Dashboard
+rankings are prepared from measured destination evidence with shared local provider
+and application classification; missing attribution remains a residual. Mobile DNS
+lists use DNS evidence independently of application bytes. See
+[the data contract](docs/data-pyramid.md) and the
+[collection/data/GUI gates](../../tests/README.md#traffic-layer-gates).
+
 Core read models are rebuilt from factual snapshots:
 
 | Read model | Purpose |
@@ -548,6 +556,12 @@ npm run test:gui:all
 ```
 
 ## Deployment Notes
+
+An operator can explicitly deploy without creating a release image tag, source
+archive or database copy by passing `-e ghostroute_console_preserve_release=false`
+to `vps/deploy-readonly.yml`. Preservation remains enabled by default. This option
+does not delete existing backups or reset traffic history. Normal collector SQLite
+backup policy is independent and remains disabled by default.
 
 The VPS deployment is still read-only from the Console perspective. It builds a
 new Console image before replacing the running container, tags the prepared

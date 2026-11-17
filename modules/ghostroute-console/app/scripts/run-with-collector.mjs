@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 
 const appDir = path.resolve(new URL("..", import.meta.url).pathname);
-const dayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || 1800));
-const nightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 10800));
+const dayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_COLLECT_INTERVAL_SECONDS || 900));
+const nightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_COLLECT_NIGHT_INTERVAL_SECONDS || 900));
 const collectTimeoutMs = Math.max(30000, Number(process.env.GHOSTROUTE_COLLECT_TIMEOUT_SECONDS || 900) * 1000);
 const lightDayIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_DAY_INTERVAL_SECONDS || process.env.GHOSTROUTE_LIGHT_COLLECT_INTERVAL_SECONDS || 300));
 const lightNightIntervalSeconds = Math.max(60, Number(process.env.GHOSTROUTE_LIGHT_COLLECT_NIGHT_INTERVAL_SECONDS || 1800));

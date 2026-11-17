@@ -561,10 +561,13 @@ Important interpretation:
 - `Via Reality` is counted by mangle rules before nat REDIRECT rewrites the destination.
 - `Direct WAN` is counted by per-device `FORWARD ... -o/-i wan0` rules.
 - Per-device LAN byte accounting is best-effort and based on router-side counters, not app telemetry.
-- `lan-flow-facts-snapshot` is a non-routing observer. It may enable
-  `nf_conntrack_acct`, saves the previous value, uses a lock, max-row/fact and
-  load guards, and writes only Traffic Observatory state files. Rollback is
-  `/jffs/scripts/lan-flow-facts-rollback`.
+- `lan-flow-facts-snapshot` is a read-only observer with lock, max-row/fact and
+  load guards. The explicit accounting-maintenance owner provisions
+  `nf_conntrack_acct` and saves its previous value. The observer reports a disabled
+  counter instead of enabling it. Rollback is `/jffs/scripts/lan-flow-facts-rollback`.
+- `TrafficEvidence` polls flow/DNS/route evidence every minute; the existing
+  six-hour `TrafficSnapshot` remains maintenance, not the detail polling cadence.
+  DNS cursors prevent repeated-log inflation and retain parsed source timestamps.
 - `HOME REALITY INGRESS CLIENTS` combines two signals:
   - byte totals from router-side TCP/<home-reality-port> counters
     (`RC_MOBILE_REALITY_IN/OUT`)

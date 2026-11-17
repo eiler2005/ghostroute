@@ -17,12 +17,12 @@ EOF
 case "${1:-}" in
   --fast)
     "${PROJECT_ROOT}/modules/ghostroute-console/tests/test-json-contracts.sh"
-    npm --prefix "${CONSOLE_APP}" test
+    "${PROJECT_ROOT}/tests/run-traffic.sh" --data
     npm --prefix "${CONSOLE_APP}" run build
     echo "console fast tests passed"
     ;;
   --smoke)
-    npm --prefix "${CONSOLE_APP}" run test:e2e:gui
+    "${PROJECT_ROOT}/tests/run-traffic.sh" --gui
     echo "console smoke tests passed"
     ;;
   --perf)

@@ -99,6 +99,7 @@ register_crons() {
   cru l >/dev/null 2>&1 || return 0
   [ -x /jffs/scripts/cron-save-ipset ] && cron_set SaveIPSet "0 */6 * * *" "/jffs/scripts/cron-save-ipset"
   [ -x /jffs/scripts/cron-traffic-snapshot ] && cron_set TrafficSnapshot "0 */6 * * *" "/jffs/scripts/cron-traffic-snapshot"
+  [ -x /jffs/scripts/cron-traffic-evidence ] && cron_set TrafficEvidence "* * * * *" "/jffs/scripts/cron-traffic-evidence"
   [ -x /jffs/scripts/mobile-reality-accounting-refresh ] && cron_set MobileRealityCounters "*/5 * * * *" "/jffs/scripts/mobile-reality-accounting-refresh"
   if [ -f /opt/etc/ghostroute-observability/enabled ] && [ -x /opt/etc/ghostroute-observability/isolated-channel-snapshot.py ]; then
     cron_set IsolatedChannelCounters "*/5 * * * *" "/opt/bin/python3 /opt/etc/ghostroute-observability/isolated-channel-snapshot.py"

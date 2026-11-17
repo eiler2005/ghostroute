@@ -147,8 +147,9 @@ rows="$(wc -l < "$TMP_ROWS" 2>/dev/null | tr -d ' ')"
 case "$rows" in ''|*[!0-9]*) rows=0 ;; esac
 
 if [ "$rows" -gt 0 ]; then
-  cat "$TMP_ROWS" >> "$EVIDENCE_FILE"
-  tail -n "$MAX_HISTORY" "$EVIDENCE_FILE" > "$EVIDENCE_FILE.tmp" && mv "$EVIDENCE_FILE.tmp" "$EVIDENCE_FILE"
+  # Re-reading a quiet log must not fill retention with duplicate observations.
+  { [ ! -f "$EVIDENCE_FILE" ] || cat "$EVIDENCE_FILE"; cat "$TMP_ROWS"; } |
+    awk '!seen[$0]++' | tail -n "$MAX_HISTORY" > "$EVIDENCE_FILE.tmp" && mv "$EVIDENCE_FILE.tmp" "$EVIDENCE_FILE"
   status "ok" "sampled" "$rows"
 else
   status "partial" "no_route_evidence" 0

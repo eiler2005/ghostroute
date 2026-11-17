@@ -2,6 +2,19 @@
 
 ## Accounting and attribution boundaries
 
+Source and presentation gates are separate. Router evidence polling runs every
+minute, while full Console ingestion defaults to fifteen minutes both day and
+night. Summary polling is independent. A fresh summary alone does not prove fresh
+destination detail. Source retention must cover ingestion gaps; poll sampling and
+offload can still leave genuine attribution gaps.
+
+Prepared Dashboard destination rows use the same local IP/provider metadata as
+detail selectors, and app rankings are built from measured detail before display
+limits. A provider label is a hint, not a DNS/SNI observation. The collector and
+Dashboard fallback share the app-ranking function. These enrichments never change
+volumes, assign residual bytes to popular apps, or turn unknown route evidence into
+known zeroes. Mobile Apps' DNS list reads DNS evidence, not the application byte list.
+
 Facts may declare `measurement_role` (`volume` or `detail`), measurement scope,
 and UTC interval bounds. Volume counter facts with
 `destination_kind=unattributed_counter` contribute to totals without becoming

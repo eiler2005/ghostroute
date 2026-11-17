@@ -17,6 +17,26 @@ Legacy expectations such as `br0 -> RC_VPN_ROUTE`, `OUTPUT -> RC_VPN_ROUTE`, or 
 
 ## What Tests Cover
 
+### Traffic layer gates
+
+| Gate | Command | Defects caught |
+|---|---|---|
+| Collection | `./tests/run-traffic.sh --collection` | Router cadence/read-only boundary, DNS cursor replay/rotation/incomplete lines, source timestamps and source JSON/counter contracts |
+| Data | `./tests/run-traffic.sh --data` | SQLite normalization, volume/detail ownership, midnight windows, channel/client reconciliation and prepared destination/application rankings |
+| GUI/API | `./tests/run-traffic.sh --gui` | Seeded desktop/mobile/iPhone rendering, API-to-card parity, filters and selected-client DNS/application separation |
+
+Run the smallest relevant layer first; `./tests/run-traffic.sh --all` executes
+them in that order and stops at the first failed layer. The collection gate is
+part of `run-fast.sh`; the data gate is used by `run-console.sh --fast`; the GUI
+gate is used by `run-console.sh --smoke`. Existing CI entrypoints therefore retain
+coverage with explicit layer labels. Production source freshness and browser
+delivery/performance still require the separate post-deployment gates.
+
+The overnight data fixture deliberately combines gigabyte counters with smaller
+measured domain/provider rows. It asserts preserved detail and exact totals, without
+requiring partial application evidence to equal all bytes. GUI tests compare actual
+prepared API rankings with visible cards. Passing one layer cannot stand in for another.
+
 ### Fast checks
 
 ```bash
