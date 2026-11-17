@@ -659,15 +659,21 @@ bool_grep() {
 }
 
 singbox_port_by_tag() {
-  tag="$1"
-  printf '%s\n' "$singbox_config" | awk -v tag="\"tag\": \""$tag"\"" '
-    index($0, tag) { seen = 1 }
-    seen && /"listen_port"/ {
-      gsub(/[^0-9]/, "", $0)
-      print $0
-      exit
-    }
-  '
+  json_python=/opt/bin/python3
+  [ -x "$json_python" ] || json_python=python3
+  printf '%s\n' "$singbox_config" | "$json_python" -I -c '
+import json, sys
+try:
+    config = json.load(sys.stdin)
+    matches = [row for row in config.get("inbounds", [])
+               if isinstance(row, dict) and row.get("tag") == sys.argv[1]]
+    if len(matches) == 1:
+        port = matches[0].get("listen_port")
+        if type(port) is int and 1 <= port <= 65535:
+            print(port)
+except (ValueError, TypeError, AttributeError):
+    pass
+' "$1"
 }
 
 bool_nonempty() {

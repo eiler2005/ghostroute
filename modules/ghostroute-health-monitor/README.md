@@ -195,6 +195,23 @@ Confirm a suspected listener fault with an independent server-side check before
 restarting the edge. See the
 [VPS compatibility procedure](../../docs/runtime-inventory.md#vps-compatibility-maintenance).
 
+The router health reader resolves inbound ports by JSON structure and exact tag,
+using the router's Python runtime. It must accept pretty, compact and reordered
+configuration equally; a serialization change does not change listener health.
+Duplicate tags, invalid ports or malformed JSON must not select another inbound
+or emit configuration contents. Regression coverage belongs to the collection
+layer in `recovery-verification/tests/test-health-json-reader.py` and runs through
+`test-router-health.sh` before any Console rendering checks.
+
+Console displays the source health statuses, rather than independently testing
+application access. `Router` is the aggregate of the report's checks; `Reality`
+describes its home ingress listener; `DNS` describes the configured SOCKS path.
+The report currently marks `rule_set_sync` as `UNKNOWN` when no dedicated mirror
+result was collected. Neither an unknown result nor a listener-only OK is an
+authenticated end-to-end application acceptance test. Before deploying a changed
+inline reader, follow the explicit trusted-control allowlist refresh procedure in
+[Console router access](../../docs/console-router-ssh-access.md).
+
 - `STATUS_FAIL` or stale `summary-latest.md`.
 - Reality path unavailable on router or VPS.
 - DNS/plain port 53 leak, IPv6 drift or direct traffic leak.

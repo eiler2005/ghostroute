@@ -4,6 +4,7 @@ set -euo pipefail
 
 MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${MODULE_DIR}/../.." && pwd)"
+python3 "${MODULE_DIR}/tests/test-health-json-reader.py"
 . "${PROJECT_ROOT}/modules/shared/lib/router-health-common.sh"
 
 TMPDIR="$(mktemp -d)"

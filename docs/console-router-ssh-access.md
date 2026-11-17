@@ -38,6 +38,29 @@ and router configuration remain trusted inputs. This boundary reduces the powers
 of a stolen service key; it does not sandbox bugs in approved reporting code or
 protect against compromise of the control Mac/router firmware.
 
+### Updating an already reviewed report
+
+For an existing dedicated service identity, publish a parser/report correction as
+a narrowly reviewed policy refresh:
+
+1. Run the source collector fixtures and restricted-gate tests. Build the candidate
+   policy from the trusted control checkout and compare it with the baseline:
+   identify the changed report body, and verify that literal commands and parameter
+   allowlists are unchanged unless a separate expansion was explicitly approved.
+2. With explicit operator approval, atomically add only that reviewed body to the
+   router policy. Retain the prior approved body while in-flight collectors may
+   still use it. Preserve the gate, authorized keys and routing configuration.
+3. Copy only the affected report helper into the VPS report checkout. Collect the
+   report through the normal restricted service key and validate its JSON contract.
+4. Refresh its normal Console snapshot/read models under the collector writer lock.
+   Compare the source result, prepared health cards and rendered page; verify that
+   traffic windows and operator metadata remain unchanged.
+
+This workflow requires no credential migration, channel restart, frontend rebuild
+or routing change. Keep raw report evidence and policy fingerprints private. A
+listener/parser correction must preserve genuine negative results rather than
+forcing statuses to OK in the GUI.
+
 Persistent gate, allowlist and public-key migration metadata live under
 `/jffs/addons/ghostroute-console-readonly/`. The gate uses Entware Python in
 isolated mode; unavailable USB/Python causes service access to fail closed.
