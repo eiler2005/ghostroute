@@ -287,6 +287,12 @@ workbenches (`/traffic`, `/dns`, `/live` and their mobile/API variants) always
 force the current Moscow day, while Dashboard/Clients/Reports use the prepared
 `today`, `week` and `month` aggregate windows.
 
+The Reports real/redacted preview displays one example from at most 25 candidate
+flows. It must not decorate a full workbench page just to display one record;
+the export endpoints retain their independent reporting contract. Seeded browser
+checks cover the paired fields, and the live performance gate covers cold Reports
+rendering and sidebar navigation with the production evidence volume.
+
 A raw LAN source address in Top clients identifies an observed local source,
 not the home public/WAN address or a verified person. `Observed` describes byte
 evidence, not ownership or successful application access. DHCP hostnames are

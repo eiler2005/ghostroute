@@ -30,6 +30,20 @@ for (const path of pages) {
   });
 }
 
+test("report preview keeps real and sanitized fields aligned", async ({ page }) => {
+  await page.goto("/reports?desktop=1");
+  await expect(page.getByRole("heading", { name: "Privacy / Redaction Mode" })).toBeVisible();
+  const panels = page.locator(".redaction-grid section");
+  await expect(panels).toHaveCount(2);
+  for (const panel of await panels.all()) {
+    await expect(panel.locator(".detail-row")).toHaveCount(4);
+    for (const field of ["Client", "Domain", "IP", "Rule"]) {
+      await expect(panel.getByText(field, { exact: true })).toBeVisible();
+    }
+  }
+  await expect(page.getByRole("link", { name: "JSON", exact: true })).toHaveAttribute("href", "/api/reports/llm-safe?format=json");
+});
+
 test("filters are visible and stable", async ({ page, isMobile }) => {
   await page.goto(isMobile ? "/traffic?desktop=1" : "/traffic");
   await expect(page.locator("select[name='period']")).toBeVisible();

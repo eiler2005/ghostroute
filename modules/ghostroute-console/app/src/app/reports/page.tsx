@@ -8,7 +8,7 @@ import { llmSafePayload } from "@/lib/server/redaction";
 
 export default async function ReportsPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
-  const flows = listFlowSessions({ filters, pageSize: 1, fastList: true }).rows;
+  const flows = listFlowSessions({ filters, pageSize: 1, maxRows: 25, fastList: true }).rows;
   const model = buildLightweightShellModel(filters, { flows });
   const snapshotCount = Object.values(model.runtime.latestSnapshots).filter(Boolean).length;
   const payload = llmSafePayload(model);
