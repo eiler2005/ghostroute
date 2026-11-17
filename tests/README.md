@@ -59,6 +59,8 @@ flowchart LR
 
 Layers 2 and 3 run together under `--data`; API-to-card assertions also run under
 `--gui`. Layers 5 and 6 are explicit live checks, not part of a fixture run.
+Ranking screenshots capture the checked cards rather than an unbounded full page,
+so high-density iPhone/WebKit captures do not exceed browser image-size limits.
 Run the module npm verification commands from the app directory with the intended
 database selected; seeded verification must never be mistaken for production evidence.
 Live browser/performance setup and commands belong to the

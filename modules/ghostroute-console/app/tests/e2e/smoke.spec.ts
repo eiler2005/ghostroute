@@ -128,10 +128,10 @@ test("dashboard renders prepared destination and app rankings without losing mea
     for (const row of rows.slice(0, limit)) await expect(card.getByText(row[key], { exact: true }).first()).toBeVisible();
     await expect(card).not.toContainText(/No attributed|No .*traffic observed/);
     await expect(card).not.toContainText(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+    await card.screenshot({ path: test.info().outputPath(`prepared-${key}.png`) });
   }
   expect(analytics.topAppFamilies.reduce((sum: number, row: {bytes: number}) => sum + row.bytes, 0))
     .toBeLessThanOrEqual(analytics.trafficReconciliation.destinationEvidenceBytes);
-  await page.screenshot({ path: test.info().outputPath("prepared-rankings.png"), fullPage: true });
 });
 
 test("apps selected device keeps byte traffic separate from DNS evidence", async ({ page, isMobile }) => {
