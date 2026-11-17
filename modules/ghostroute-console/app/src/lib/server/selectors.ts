@@ -3,6 +3,7 @@ import { appByteQuality } from "../traffic-ranking.mjs";
 import { localIpContext, withLocalIpContext } from "../ip-context.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
 import { createSynchronousVersionScope } from "../version-scope.mjs";
+import { sqliteContentVersion } from "../sqlite-content-version.mjs";
 import { channelAppEvidence, channelClientsFromSegments, channelTrafficFromSegments, channelTrafficHistory } from "../channel-traffic.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -79,24 +80,7 @@ const USE_PREPARED_WINDOWS = process.env.GHOSTROUTE_CONSOLE_USE_PREPARED_WINDOWS
 
 function dbContentVersion() {
   try {
-    const db = getDb();
-    const snapshots = db
-      .prepare("select count(*) as count, max(collected_at) as max_collected from snapshots")
-      .get() as { count?: number; max_collected?: string } | undefined;
-    const collectors = db
-      .prepare("select count(*) as count, max(coalesce(finished_at, started_at)) as max_run from collector_runs")
-      .get() as { count?: number; max_run?: string } | undefined;
-    const prepared = db
-      .prepare("select count(*) as count, max(computed_at_utc) as max_computed from traffic_window_snapshots")
-      .get() as { count?: number; max_computed?: string } | undefined;
-    return [
-      snapshots?.count || 0,
-      snapshots?.max_collected || "",
-      collectors?.count || 0,
-      collectors?.max_run || "",
-      prepared?.count || 0,
-      prepared?.max_computed || "",
-    ].join(":");
+    return sqliteContentVersion(getDb());
   } catch {
     return "unknown";
   }

@@ -294,6 +294,11 @@ the export endpoints retain their independent reporting contract. Seeded browser
 checks cover the paired fields, and the live performance gate covers cold Reports
 rendering and sidebar navigation with the production evidence volume.
 
+Derived-cache invalidation uses SQLite `data_version`, `schema_version` and
+connection-local `total_changes()`, with distinct connection identities. It must
+detect external commits and local updates/DDL without scanning retained history
+or relying on row counts or timestamps that an in-place update might preserve.
+
 A raw LAN source address in Top clients identifies an observed local source,
 not the home public/WAN address or a verified person. `Observed` describes byte
 evidence, not ownership or successful application access. DHCP hostnames are
