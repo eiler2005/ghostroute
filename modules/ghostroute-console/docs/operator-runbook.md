@@ -202,6 +202,9 @@ an empty ranking until collection rebuilds it.
 Expression indexes cover the same timestamp fallbacks used by the mobile home
 flow and DNS filters. These daily previews must use indexed range searches instead
 of scanning retained history during every summary rebuild.
+Fact replacement also has an expression index on its stable fact ID. Each snapshot
+normalizes in one SQLite transaction, so retries replace rows consistently and a
+failed import restores the prior snapshot rows instead of leaving a partial reset.
 Clients and its API also give prepared traffic amounts precedence over fallback
 lane aggregates. Inventory identity enrichment cannot replace that selected-window
 amount with a larger alternative. Aggregate verification includes stable observed

@@ -1901,6 +1901,8 @@ export function ensureConsoleSchema(db) {
     create unique index if not exists idx_events_event_id on events(event_id) where event_id != '';
     create unique index if not exists idx_route_decisions_event_id on route_decisions(event_id) where event_id != '';
     create index if not exists idx_flow_sessions_time on flow_sessions(last_seen desc, first_seen desc);
+    create index if not exists idx_normalized_flows_fact_id on normalized_flows(json_extract(raw_json, '$.fact_id'))
+      where snapshot_type = 'traffic_facts' and json_valid(raw_json);
     create index if not exists idx_flow_sessions_mobile_time on flow_sessions(
       coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) desc, id desc);
     create index if not exists idx_flow_sessions_snapshot_bytes on flow_sessions(snapshot_id, bytes desc, last_seen desc, collected_at desc, id);
@@ -4501,23 +4503,25 @@ export function resetNormalizedForSnapshot(db, snapshotId) {
 }
 
 export function normalizeSnapshot(db, snapshotId, type, collectedAt, payload) {
-  resetNormalizedForSnapshot(db, snapshotId);
-  if (type === "router_rollups") normalizeRouterRollups(db, snapshotId, type, collectedAt, payload, {
-    text,
-    number,
-    json,
-    loadDeviceAttributions,
-    buildInventoryNetworkHints,
-    resolveOperatorClient,
-  });
-  if (type === "traffic_facts") normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload);
-  if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
-  if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);
-  if (type === "deploy_gate") normalizeDeployGate(db, snapshotId, type, collectedAt, payload);
-  if (type === "leaks") normalizeLeaks(db, snapshotId, type, collectedAt, payload);
-  if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);
-  if (type === "dns") normalizeDns(db, snapshotId, collectedAt, payload);
-  if (type === "live") normalizeLive(db, snapshotId, type, collectedAt, payload);
+  return db.transaction(() => {
+    resetNormalizedForSnapshot(db, snapshotId);
+    if (type === "router_rollups") normalizeRouterRollups(db, snapshotId, type, collectedAt, payload, {
+      text,
+      number,
+      json,
+      loadDeviceAttributions,
+      buildInventoryNetworkHints,
+      resolveOperatorClient,
+    });
+    if (type === "traffic_facts") normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload);
+    if (type === "traffic" || type === "traffic_summary") normalizeTraffic(db, snapshotId, type, collectedAt, payload);
+    if (type === "health") normalizeHealth(db, snapshotId, type, collectedAt, payload);
+    if (type === "deploy_gate") normalizeDeployGate(db, snapshotId, type, collectedAt, payload);
+    if (type === "leaks") normalizeLeaks(db, snapshotId, type, collectedAt, payload);
+    if (type === "domains") normalizeDomains(db, snapshotId, type, collectedAt, payload);
+    if (type === "dns") normalizeDns(db, snapshotId, collectedAt, payload);
+    if (type === "live") normalizeLive(db, snapshotId, type, collectedAt, payload);
+  })();
 }
 
 function normalizeTrafficFacts(db, snapshotId, type, collectedAt, payload) {
