@@ -157,7 +157,6 @@
         manage_dir: true
 
     - name: Tag current Console image for rollback before syncing updated sources
-      when: ghostroute_console_preserve_release | default(false) | bool
       ansible.builtin.shell: |
         set -eu
         current_image="$(docker inspect ghostroute-console --format '{% raw %}{{ .Image }}{% endraw %}' 2>/dev/null || true)"
@@ -167,7 +166,7 @@
       changed_when: false
 
     - name: Preserve Console sources configuration and consistent database for rollback
-      when: ghostroute_console_preserve_release | default(true) | bool
+      when: ghostroute_console_preserve_release | default(false) | bool
       ansible.builtin.shell: |
         set -eu
         backup="{{ console_root }}/rollback/{{ console_build_at | regex_replace('[^0-9]', '') }}"
