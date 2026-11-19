@@ -145,6 +145,13 @@ but the canonical live A/B/C health owner is
 
 ## Failure Modes
 
+`traffic-facts` indexes DNS answers by destination IP and route observations by
+client before correlating flows. This preserves shared-answer, timestamp and
+client-isolation semantics while avoiding a daily flow-by-DNS cross product.
+Run `python3 tests/test-traffic-facts-index.py` for equivalence and bounded-size
+regressions. A transport timeout can leave a report subprocess running on the
+report host; verify its ancestry and age before terminating that report alone.
+
 - Stale traffic snapshots.
 - Missing counter chains after firewall restart.
 - Device labels unavailable, causing redacted or unknown labels.

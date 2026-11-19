@@ -227,11 +227,9 @@ def dns_link_for(sample, answers, generated_at, window_seconds)
   sample_ip = text(sample['remote_ip'] || sample['destination_ip'])
   sample_client = text(sample['client_ip'])
   sample_ts = Time.parse(iso_time(sample['ts'] || sample['event_ts'], generated_at)) rescue Time.parse(generated_at)
-  candidates = answers.map do |row|
-    next unless text(row['answer_ip']) == sample_ip
+  candidates = answers.fetch(sample_ip, []).map do |row, dns_ts|
     dns_client = text(row['client_ip'])
     next if dns_client != '' && sample_client != '' && dns_client != sample_client
-    dns_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil
     next unless dns_ts
     age = sample_ts - dns_ts
     next if age.negative? || age > window_seconds
@@ -291,7 +289,7 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
   candidates = route_candidates_for(sample, dns_link).map(&:downcase)
   return nil if candidates.empty?
   sample_ts = Time.parse(iso_time(sample['ts'] || sample['event_ts'], generated_at)) rescue Time.parse(generated_at)
-  matches = evidence_rows.map do |row|
+  matches = evidence_rows.fetch(text(sample['client_ip']), []).map do |row|
     next unless row.is_a?(Hash)
     # A shared destination and nearby timestamp cannot identify a client flow.
     # Unscoped outbound logs remain diagnostics, never another client's proof.
@@ -419,12 +417,14 @@ if source_mode == 'report'
     facts << fact
   end
 else
-  answers = dns_answer_rows(input)
+  answers = dns_answer_rows(input).group_by { |row| text(row['answer_ip']) }
+    .transform_values { |rows| rows.map { |row| [row, (Time.parse(iso_time(row['ts'], generated_at)) rescue nil)] } }
   volume_intervals = (input['lan_device_route_deltas'] || []).select { |row| !text(row['interval_start_utc']).empty? }
     .group_by { |row| text(row['client_ip']) }.transform_values { |rows|
       rows.map { |row| [iso_time(row['interval_start_utc'], generated_at), iso_time(row['interval_end_utc'] || row['ts'], generated_at)] }.sort_by(&:last)
     }
   sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row| row.is_a?(Hash) }
+    .group_by { |row| text(row['client_ip']) }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
   (input['flow_samples'] || []).each_with_index do |sample, index|
