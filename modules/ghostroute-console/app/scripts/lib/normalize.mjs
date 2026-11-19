@@ -3705,6 +3705,7 @@ function compactPreparedCheck(row) {
 }
 
 export function buildPreparedMobileHomeSummary(db, rebuiltAt, healthSummary = {}) {
+  const { startUtc, endUtc } = mskWindowBounds("today", rebuiltAt);
   const flows = db.prepare(`
     select id, snapshot_id, collected_at, first_seen, last_seen, event_ts_utc, observed_at_utc,
            display_ts_utc, time_precision, client, client_ip, device_key, channel, destination,
@@ -3712,13 +3713,17 @@ export function buildPreparedMobileHomeSummary(db, rebuiltAt, healthSummary = {}
            dns_qname, dns_answer_ip, sni, confidence, traffic_class, via_vps_bytes, direct_bytes,
            unknown_bytes, bytes, connections
       from flow_sessions
-     where (bytes > 0 or connections > 1)
+     where coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) >= ?
+       and coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) <= ?
+       and (bytes > 0 or connections > 1)
        and lower(coalesce(nullif(client, ''), nullif(client_ip, ''), nullif(device_key, ''), 'unknown')) not in ('unknown', 'not observed')
        and lower(coalesce(nullif(destination, ''), nullif(dns_qname, ''), nullif(sni, ''), nullif(destination_ip, ''), '')) not in ('', 'unknown', 'unknown destination', 'n/a')
        and lower(coalesce(traffic_class, 'client')) in ('client', 'personal_cloud')
-     order by bytes desc, coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) desc, id desc
+       and coalesce(evidence_json, '') not like '%"accounting_bucket":true%'
+       and coalesce(evidence_json, '') not like '%"device_counter":true%'
+      order by coalesce(nullif(display_ts_utc, ''), nullif(last_seen, ''), collected_at) desc, id desc
      limit 5
-  `).all().map((row) => ({
+   `).all(startUtc, endUtc).map((row) => ({
     id: text(row.id),
     snapshot_id: row.snapshot_id,
     collected_at: text(row.collected_at),
@@ -3758,11 +3763,13 @@ export function buildPreparedMobileHomeSummary(db, rebuiltAt, healthSummary = {}
            time_precision, client, client_ip, device_key, domain, qtype, answer_ip, route,
            catalog_status, status, count, risk, confidence
       from dns_query_log
-     where lower(coalesce(domain, '')) not in ('', 'unknown', 'n/a')
+     where coalesce(nullif(display_ts_utc, ''), nullif(event_ts_utc, ''), nullif(event_ts, ''), collected_at) >= ?
+       and coalesce(nullif(display_ts_utc, ''), nullif(event_ts_utc, ''), nullif(event_ts, ''), collected_at) <= ?
+       and lower(coalesce(domain, '')) not in ('', 'unknown', 'n/a')
        and lower(coalesce(nullif(client, ''), nullif(client_ip, ''), nullif(device_key, ''), 'unknown')) not in ('unknown', 'not observed')
      order by count desc, coalesce(nullif(display_ts_utc, ''), nullif(event_ts, ''), collected_at) desc, id desc
      limit 5
-  `).all().map((row) => ({
+   `).all(startUtc, endUtc).map((row) => ({
     id: text(row.id),
     snapshot_id: row.snapshot_id,
     collected_at: text(row.collected_at),
@@ -3788,55 +3795,38 @@ export function buildPreparedMobileHomeSummary(db, rebuiltAt, healthSummary = {}
     confidence: confidence(row.confidence, "dns-interest"),
   }));
 
-  const clients = db.prepare(`
-    select device_key, label, ip, hostname, profile, trust_state, device_type, channel, route,
-           confidence, last_seen, total_bytes, via_vps_bytes, direct_bytes, unknown_bytes,
-           health_status, risk
-      from device_inventory
-     where total_bytes > 0
-     order by total_bytes desc, last_seen desc, device_key asc
-     limit 5
-  `).all().map((row) => ({
-    id: text(row.device_key || row.label),
-    device_key: text(row.device_key),
-    label: text(row.label || row.device_key || "Unknown device"),
-    device_label: text(row.label || row.device_key || "Unknown device"),
-    ip: text(row.ip),
-    hostname: text(row.hostname),
-    profile: text(row.profile),
-    owner: text(row.profile || row.device_type || "Inventory"),
-    trust_state: text(row.trust_state || "unknown"),
-    device_type: text(row.device_type || "unknown"),
-    channel: text(row.channel || "Unknown"),
-    route: text(row.route || "Unknown"),
-    confidence: confidence(row.confidence),
-    last_seen: text(row.last_seen),
-    total_bytes: number(row.total_bytes),
-    via_vps_bytes: number(row.via_vps_bytes),
-    direct_bytes: number(row.direct_bytes),
-    unknown_bytes: number(row.unknown_bytes),
-    health_status: text(row.health_status || "unknown"),
-    risk: text(row.risk || "low"),
-  }));
-
+  const preparedClients = parseJson(db.prepare(`
+    select payload_json from traffic_window_snapshots
+     where kind = 'clients' and window = 'today' and traffic_class = 'all'
+       and window_start_utc = ?
+  `).get(startUtc)?.payload_json).rows || [];
+  const clients = preparedClients.filter((row) => number(row.total_bytes ?? row.bytes) > 0)
+    .sort((a, b) => number(b.total_bytes ?? b.bytes) - number(a.total_bytes ?? a.bytes))
+    .slice(0, 5).map((row) => ({
+      ...row,
+      id: text(row.id || row.client_key || row.device_key || row.label),
+      total_bytes: number(row.total_bytes ?? row.bytes),
+    }));
   const live = [
     ...db.prepare(`
       select 'event' as kind, id, event_type, occurred_at, event_ts_utc, observed_at_utc,
              display_ts_utc, time_precision, client, client_ip, channel, destination,
              dns_qname, destination_ip, route, confidence, summary, source_log
         from events
+        where occurred_at >= ? and occurred_at <= ?
        order by occurred_at desc, id desc
        limit 5
-    `).all(),
+    `).all(startUtc, endUtc),
     ...db.prepare(`
       select 'route_decision' as kind, id, 'route.decision' as event_type, occurred_at,
              event_ts_utc, observed_at_utc, display_ts_utc, time_precision, client, client_ip,
              channel, destination, dns_qname, destination_ip, route, confidence, '' as summary,
              source_log
         from route_decisions
+        where occurred_at >= ? and occurred_at <= ?
        order by occurred_at desc, id desc
        limit 5
-    `).all(),
+    `).all(startUtc, endUtc),
   ].sort((a, b) => String(b.occurred_at || "").localeCompare(String(a.occurred_at || "")) || number(b.id) - number(a.id))
     .slice(0, 5)
     .map((row) => {

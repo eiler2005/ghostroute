@@ -44,7 +44,7 @@ export default async function MobileHomePage({ searchParams }: { searchParams?: 
       </section>
       <MobileSection title="Recent flows" href="/m/traffic"><MobileFlowList rows={flows} /></MobileSection>
       <MobileSection title="DNS interest" href="/m/dns"><MobileDnsList rows={dnsRows} /></MobileSection>
-      <MobileSection title="Top clients" href="/m/clients"><MobileClientList rows={clients} /></MobileSection>
+      <MobileSection title="Top clients" detail="Today · measured client traffic" href="/m/clients"><MobileClientList rows={clients} /></MobileSection>
       <MobileSection title="Health Center" href="/m/health"><MobileAlarmList rows={alarms} /></MobileSection>
       <MobileSection title="Live events" href="/m/live"><MobileLiveList rows={live} /></MobileSection>
     </MobileShell>

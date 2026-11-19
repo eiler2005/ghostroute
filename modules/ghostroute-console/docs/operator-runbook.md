@@ -193,6 +193,20 @@ shell, freshness strip, navigation chrome or `/m` root cards.
 
 Traffic windows are prepared after each collector pass. Source timestamps stay in
 UTC in SQLite, while `today`, `week` and `month` are keyed by Moscow local time.
+The mobile home client ranking reads the same prepared `clients/today/all`
+payload as the desktop inventory window. Retained inventory counters never supply
+its traffic amounts. Mobile home flows, DNS and live events are limited to the
+current Moscow day; recent flows are ordered by observation time. Accounting-only
+rows are excluded from that flow preview. Missing prepared client data produces
+an empty ranking until collection rebuilds it.
+Clients and its API also give prepared traffic amounts precedence over fallback
+lane aggregates. Inventory identity enrichment cannot replace that selected-window
+amount with a larger alternative. Aggregate verification includes stable observed
+client keys without requiring an operator-assigned registry name.
+The Apps workbench explicitly flags destination evidence exceeding the measured
+client window. It preserves measured samples and their amounts, since overlapping
+samples or differing observation intervals cannot be repaired by silently scaling
+application bytes to the device counter.
 Dashboard, Clients, DNS and safe report APIs should use
 `traffic_window_snapshots` plus the aggregate tables for all three windows. The
 prepared Dashboard, Clients and `reports_llm_safe` windows are class-aware and

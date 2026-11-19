@@ -176,6 +176,9 @@ export default async function AppsPage({ searchParams }: { searchParams?: Search
           <span className="subtle">{apps.total} families · {compactBytes(totalBytes)} on this page</span>
         </div>
         <div className="status-grid" style={{ marginBottom: 14 }}>
+          {totalBytes > Number(selected?.total_bytes || 0) && Number(selected?.total_bytes || 0) > 0 ? (
+            <p className="subtle" role="status">Evidence exceeds measured window traffic ({bytes(selected!.total_bytes)}). Application samples may overlap or cover a different observation interval.</p>
+          ) : null}
           <div className="status-card">
             <span className="subtle">nDPI diagnostic prototype</span>
             <strong>read-only</strong>

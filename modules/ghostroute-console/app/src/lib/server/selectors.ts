@@ -4859,8 +4859,8 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       });
     }).filter((row): row is Record<string, any> => Boolean(row))
     : [];
-  const inventory = preparedRows.length ? [] : mergeKnownDevices(knownDeviceRows(2000), false);
-  const currentRows = preparedRows.length ? [] : deviceDeltaRowsForPeriod(period);
+   const inventory = prepared ? [] : mergeKnownDevices(knownDeviceRows(2000), false);
+   const currentRows = prepared ? [] : deviceDeltaRowsForPeriod(period);
   const currentByKey = new Map<string, Record<string, any>>(mergeKnownDevices(currentRows, false).map((row) => [keyForDevice(row), row]));
   const seen = new Set<string>();
   const rows: Array<Record<string, any>> = inventory.map((row) => {
@@ -4897,7 +4897,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       ...registeredInventoryRows(),
       ...inactiveHistoryRows(),
       ...preparedRows,
-      ...aggregateClientRowsForPeriod(period),
+      ...aggregateClientRowsForPeriod(period).filter((row) => !preparedRows.some((preparedRow) => preparedRow.client_key === row.client_key)),
       ...currentDeviceRows,
     ]) as Array<Record<string, any>>)
     .sort((a, b) => {

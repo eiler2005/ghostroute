@@ -85,6 +85,13 @@ or signed-in application behavior; tunnel identity is checked separately.
 
 ## Distinguishing an endpoint fault from path interference
 
+The scheduled `channel_a_reality` and `vps_path` probes cannot infer availability
+from retained `reality-out` log entries. A failed active check with such entries
+is `UNKNOWN`; a failed check without them remains `CRIT`. The TCP probe reads
+the active outbound's configured port and reports missing configuration as
+`UNKNOWN`. TCP success establishes listener reachability only. Run the local
+regression with `python3 modules/ghostroute-health-monitor/tests/test-probe-availability.py`.
+
 Use `egress-dpi-probe --from both` for a sanitized control/router comparison,
 and read-only server diagnostics when needed. Confirm the actual control
 vantage first: a Mac behind another VPN is not the home-router uplink.

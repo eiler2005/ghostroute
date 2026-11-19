@@ -269,12 +269,12 @@ hm_singbox_port_by_tag() {
 hm_extract_reality_server() {
   config="$(hm_singbox_config)"
   [ -r "$config" ] || return 1
-  awk '
+  awk -v field="${1:-server}" '
     /"tag"[[:space:]]*:[[:space:]]*"reality-out"/ { in_reality = 1 }
-    in_reality && /"server"[[:space:]]*:/ {
+    in_reality && $0 ~ "\"" field "\"[[:space:]]*:" {
       line = $0
-      sub(/^.*"server"[[:space:]]*:[[:space:]]*"/, "", line)
-      sub(/".*$/, "", line)
+      sub("^.*\"" field "\"[[:space:]]*:[[:space:]]*", "", line)
+      gsub(/[",[:space:]]/, "", line)
       print line
       exit
     }' "$config"

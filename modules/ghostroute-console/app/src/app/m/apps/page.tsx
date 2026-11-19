@@ -109,6 +109,9 @@ export default async function MobileAppsPage({ searchParams }: { searchParams?: 
       </MobileSection>
 
       <MobileSection title="App families" detail={selectedTitle}>
+        {totalBytes > Number(selected?.total_bytes || 0) && Number(selected?.total_bytes || 0) > 0 ? (
+          <p role="status">Evidence exceeds measured window traffic ({bytes(selected!.total_bytes)}). Application samples may overlap or cover a different observation interval.</p>
+        ) : null}
         {apps.rows.length === 0 ? (
           <div className="mobile-empty">No app-family rows for this device.</div>
         ) : (

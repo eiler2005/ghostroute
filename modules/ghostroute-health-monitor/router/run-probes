@@ -47,10 +47,10 @@ probe_channel_a_reality() {
 
   if [ -z "$exit_ip" ]; then
     if [ "${recent_reality:-0}" -gt 0 ]; then
-      hm_emit channel_a_reality OK "Channel A / Reality path down" \
-        "Active SOCKS exit-IP probe is unavailable, but recent reality-out traffic is visible." \
+      hm_emit channel_a_reality UNKNOWN "Channel A / Reality path down" \
+        "Active exit-IP probe failed; log entries alone cannot establish availability." \
         "active_check=unavailable curl_rc=$curl_rc recent_reality_out=$recent_reality expected=${expected:-unknown}" \
-        "No action unless users report managed-site failures."
+        "Verify a complete authenticated application request."
     else
       hm_emit channel_a_reality CRIT "Channel A / Reality path down" \
         "SOCKS path through sing-box did not return an exit IP and no recent reality-out traffic was visible." \
@@ -73,9 +73,14 @@ probe_channel_a_reality() {
 probe_vps_path() {
   should_run vps_path || return 0
   server="$(hm_extract_reality_server 2>/dev/null || true)"
-  if [ -z "$server" ]; then
+  port="$(hm_extract_reality_server server_port 2>/dev/null || true)"
+  case "$port" in
+    ''|*[!0-9]*) port="" ;;
+    *) [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || port="" ;;
+  esac
+  if [ -z "$server" ] || [ -z "$port" ]; then
     hm_emit vps_path UNKNOWN "VPS path unavailable" \
-      "Could not read reality-out server from sing-box config." \
+      "Could not read reality-out server and port from sing-box config." \
       "config=$(hm_singbox_config)" \
       "Check sing-box config rendering."
     return 0
@@ -83,20 +88,20 @@ probe_vps_path() {
 
   log="$(hm_singbox_log)"
   recent_reality="$(tail -1000 "$log" 2>/dev/null | grep -c 'outbound/vless\[reality-out\]' || true)"
-  if hm_tcp_open "$server" 443 || hm_curl -skI --max-time 5 "https://$server/" >/dev/null 2>&1; then
+  if hm_tcp_open "$server" "$port"; then
     hm_emit vps_path OK "VPS path unavailable" \
-      "Router can open TCP/443 to the configured Reality VPS." \
-      "server=$server port=443" \
+      "Router can open the configured Reality TCP listener." \
+      "server=$server port=$port" \
       "No action."
   elif [ "${recent_reality:-0}" -gt 0 ]; then
-    hm_emit vps_path OK "VPS path unavailable" \
-      "Direct TCP probe tool could not verify the VPS, but recent reality-out traffic is visible." \
-      "server=$server port=443 active_check=unavailable recent_reality_out=$recent_reality" \
-      "No action unless users report managed-site failures."
+    hm_emit vps_path UNKNOWN "VPS path unavailable" \
+      "TCP probe failed; log entries alone cannot establish availability." \
+      "server=$server port=$port active_check=unavailable recent_reality_out=$recent_reality" \
+      "Verify the configured listener and an authenticated application request."
   else
     hm_emit vps_path CRIT "VPS path unavailable" \
-      "Router cannot open TCP/443 to the configured Reality VPS." \
-      "server=$server port=443" \
+      "Router cannot open the configured Reality TCP listener." \
+      "server=$server port=$port" \
       "Check home WAN, VPS reachability, Caddy listener, and provider status."
   fi
 }

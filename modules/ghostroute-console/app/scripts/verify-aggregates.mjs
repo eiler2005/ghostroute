@@ -126,7 +126,7 @@ function composedRows(window, now, trafficClass = "client") {
 function observedBytes(rows, allowedClientKeys = null) {
   const groups = new Map();
   for (const row of rows) {
-    if (!registry.clients[row.client_key]) continue;
+    if (!row.client_key) continue;
     if (allowedClientKeys && !allowedClientKeys.has(row.client_key)) continue;
     if (String(row.confidence || "").toLowerCase() === "dns-interest") continue;
     const key = [row.client_key, row.channel || ""].join("|");
