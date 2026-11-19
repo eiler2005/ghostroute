@@ -265,6 +265,12 @@ Offline verification:
 Root `./deploy.sh` updates the router/runtime side of the repository. Console
 container releases use the module VPS playbook:
 
+Routine Console releases do not create a full database/source recovery copy.
+The explicit `ghostroute_console_preserve_release=true` option enables that copy
+when requested. The previous image is available during the switch and smoke
+checks; its temporary rollback tag is removed after successful smoke unless
+release preservation was explicitly enabled.
+
 ```bash
 cd ansible
 ansible-playbook -i inventory/stealth.yml -e @secrets/stealth.yml ../modules/ghostroute-console/vps/deploy-readonly.yml

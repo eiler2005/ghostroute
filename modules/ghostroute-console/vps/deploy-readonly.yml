@@ -157,7 +157,7 @@
         manage_dir: true
 
     - name: Tag current Console image for rollback before syncing updated sources
-      when: ghostroute_console_preserve_release | default(true) | bool
+      when: ghostroute_console_preserve_release | default(false) | bool
       ansible.builtin.shell: |
         set -eu
         current_image="$(docker inspect ghostroute-console --format '{% raw %}{{ .Image }}{% endraw %}' 2>/dev/null || true)"
@@ -489,8 +489,13 @@
         docker image ls ghostroute-console --format '{% raw %}{{ .ID }}	{{ .Repository }}:{{ .Tag }}{% endraw %}' \
           | while IFS="$(printf '\t')" read -r image_id image_ref; do
               case "$image_ref" in
-                ghostroute-console:latest|"{{ console_rollback_tag }}")
+                ghostroute-console:latest)
                   continue
+                  ;;
+                "{{ console_rollback_tag }}")
+                  {% if ghostroute_console_preserve_release | default(false) | bool %}
+                  continue
+                  {% endif %}
                   ;;
                 ghostroute-console:rollback-*|ghostroute-console:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
                   ;;
