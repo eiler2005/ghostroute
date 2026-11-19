@@ -199,6 +199,9 @@ its traffic amounts. Mobile home flows, DNS and live events are limited to the
 current Moscow day; recent flows are ordered by observation time. Accounting-only
 rows are excluded from that flow preview. Missing prepared client data produces
 an empty ranking until collection rebuilds it.
+Expression indexes cover the same timestamp fallbacks used by the mobile home
+flow and DNS filters. These daily previews must use indexed range searches instead
+of scanning retained history during every summary rebuild.
 Clients and its API also give prepared traffic amounts precedence over fallback
 lane aggregates. Inventory identity enrichment cannot replace that selected-window
 amount with a larger alternative. Aggregate verification includes stable observed

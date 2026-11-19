@@ -21,7 +21,18 @@ test("mobile home uses today's prepared client totals and excludes retained prev
       db.prepare("insert into dns_query_log(id,snapshot_id,collected_at,event_ts,event_ts_utc,display_ts_utc,client,domain,count) values (?,1,?,?,?,?,'Fixture','example.invalid',1)")
         .run(id, at, at, at, at);
     }
-    const mobile = buildPreparedMobileHomeSummary(db, now);
+    const plans = [];
+    const queryDb = { prepare(sql) {
+      if (sql.includes("from flow_sessions") || sql.includes("from dns_query_log")) {
+        plans.push(db.prepare("explain query plan " + sql).all("2026-11-18T21:00:00.000Z", now));
+      }
+      return db.prepare(sql);
+    }};
+    const mobile = buildPreparedMobileHomeSummary(queryDb, now);
+    assert.equal(plans.length, 2);
+    for (const plan of plans) {
+      assert.ok(plan.some(row => /SEARCH .* USING INDEX idx_.*_mobile_time/.test(row.detail)), JSON.stringify(plan));
+    }
     assert.equal(mobile.clients[0].total_bytes, rows[0].total_bytes);
     assert.deepEqual(mobile.flows.map(row => row.id), ["current"]);
     assert.deepEqual(mobile.dnsRows.map(row => row.id), ["current"]);
