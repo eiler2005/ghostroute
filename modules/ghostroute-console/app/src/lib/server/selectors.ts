@@ -2422,6 +2422,20 @@ export function listReportPreviewFlows(filters: ConsoleFilters = {}) {
   return filterRows(prepared.flows || [], filters).slice(0, 1).map(decorateTrafficRow);
 }
 
+export function buildReportModel(filters: ConsoleFilters = {}): ConsoleModel {
+  return withSnapshotVersion(() => {
+    const prepared = getPreparedWindowSnapshot("reports_llm_safe", filters.period || "today", filters.trafficClass || "all")?.payload;
+    const shell = buildLightweightShellModel(filters);
+    return {
+      ...shell,
+      snapshots: latestByType(latestSnapshotMetaRecords()),
+      totals: { ...shell.totals, ...prepared?.totals },
+      flows: filterRows(prepared?.flows || [], filters).slice(0, 40).map(decorateTrafficRow),
+      devices: filterRows(prepared?.devices || [], filters).slice(0, 30),
+    };
+  });
+}
+
 export function listFlowSessions(args: PageArgs = {}) {
   return cacheGet(`list-flow-sessions:${latestSnapshotVersion()}:${pageArgsKey(args)}`, () => withSnapshotVersion(() => listFlowSessionsUncached(args)));
 }
@@ -3893,7 +3907,7 @@ function buildDashboardModelUncached(filters: ConsoleFilters = {}): ConsoleModel
 
 export function buildLiveModel(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {
   const flowKey = flows.map((row) => row.id || row.destination || row.client).slice(0, 200).join("|");
-  return cacheGet(`build-live-model:${latestSnapshotVersion()}:${filtersKey(filters)}:${flows.length}:${flowKey}`, () => buildLiveModelUncached(filters, flows));
+  return cacheGet(`build-live-model:${latestSnapshotVersion()}:${filtersKey(filters)}:${flows.length}:${flowKey}`, () => withSnapshotVersion(() => buildLiveModelUncached(filters, flows)));
 }
 
 function buildLiveModelUncached(filters: ConsoleFilters = {}, flows: Array<Record<string, any>> = []): ConsoleModel {

@@ -98,15 +98,17 @@ export function trafficPresentationBytes(row) {
   return Math.max(1, Math.round(bytes / rule.factor));
 }
 
+const moscowDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Moscow",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function moscowParts(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
+  const parts = moscowDateFormatter.formatToParts(date);
   const pick = (type) => parts.find((part) => part.type === type)?.value || "";
   return `${pick("year")}-${pick("month")}-${pick("day")}`;
 }

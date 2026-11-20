@@ -230,6 +230,15 @@ reads small prepared health data instead of loading all raw latest snapshots.
 The Reports example sanitizes only its displayed sample fields; full safe exports
 come from the prepared report API, so rendering the example does not repeatedly
 sanitize hidden health/alert evidence.
+Safe JSON/Markdown exports read `reports_llm_safe` for the selected window/class
+and cap traffic/client rows before decoration and sanitization. Export anchors
+do not prefetch an API response. The visible redaction example applies the same
+sanitizer as the export. Existing v1 sections remain present; detailed raw catalog
+and route models are not reconstructed by the export request.
+Live model construction shares one snapshot-version scope across its nested
+selectors. Calendar helpers reuse their fixed Moscow formatters rather than
+constructing a formatter per source row or aggregate bucket.
+The notification-settings read API reads its small settings table directly.
 The Apps workbench explicitly flags destination evidence exceeding the measured
 client window. It preserves measured samples and their amounts, since overlapping
 samples or differing observation intervals cannot be repaired by silently scaling

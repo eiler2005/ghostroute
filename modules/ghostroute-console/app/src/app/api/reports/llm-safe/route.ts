@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildConsoleModel } from "@/lib/server/selectors/shell";
+import { buildReportModel } from "@/lib/server/selectors/reports";
+import { filtersFromSearchParams } from "@/lib/server/page";
 import { llmSafePayload, redactedMarkdown, redactJson } from "@/lib/server/redaction";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
 
 export async function GET(request: NextRequest) {
-  const model = buildConsoleModel();
+  const filters = await filtersFromSearchParams(Promise.resolve(Object.fromEntries(request.nextUrl.searchParams)));
+  const model = buildReportModel(filters);
   const format = request.nextUrl.searchParams.get("format") || "json";
   const payload = llmSafePayload(model);
 

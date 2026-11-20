@@ -35,6 +35,14 @@ test("report preview keeps real and sanitized fields aligned", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Privacy / Redaction Mode" })).toBeVisible();
   const panels = page.locator(".redaction-grid section");
   await expect(panels).toHaveCount(2);
+  const realFields = panels.nth(0).locator('.detail-row strong');
+  const safeFields = panels.nth(1).locator('.detail-row strong');
+  if ((await realFields.nth(1).innerText()).includes('.')) {
+    await expect(safeFields.nth(1)).not.toHaveText(await realFields.nth(1).innerText());
+  }
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(await realFields.nth(2).innerText())) {
+    await expect(safeFields.nth(2)).toHaveText(/^ip-/);
+  }
   for (const panel of await panels.all()) {
     await expect(panel.locator(".detail-row")).toHaveCount(4);
     for (const field of ["Client", "Domain", "IP", "Rule"]) {

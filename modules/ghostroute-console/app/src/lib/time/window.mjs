@@ -12,6 +12,16 @@ export function newestSourceTimestamp(values) {
 }
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+const mskFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -34,16 +44,7 @@ function dateFrom(value) {
 
 function mskDateParts(value = new Date()) {
   const date = dateFrom(value);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
+  const parts = mskFormatter.formatToParts(date);
   const pick = (type) => parts.find((part) => part.type === type)?.value || "";
   return {
     year: number(pick("year")),

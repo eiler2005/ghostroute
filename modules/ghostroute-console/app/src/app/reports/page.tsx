@@ -1,22 +1,21 @@
-import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
 import { EmptyState, StatusBadge } from "@/components/Widgets";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
 import { listReportPreviewFlows } from "@/lib/server/selectors/traffic";
 import { filtersFromSearchParams, type SearchParams } from "@/lib/server/page";
-import { llmSafePayload } from "@/lib/server/redaction";
+import { llmSafePayload, redactJson } from "@/lib/server/redaction";
 
 export default async function ReportsPage({ searchParams }: { searchParams?: SearchParams }) {
   const filters = await filtersFromSearchParams(searchParams);
   const flows = listReportPreviewFlows(filters);
   const model = buildLightweightShellModel(filters, { flows });
   const snapshotCount = Object.values(model.runtime.latestSnapshots).filter(Boolean).length;
-  const payload = llmSafePayload({ flows: flows.map((row) => ({
+  const payload = redactJson(llmSafePayload({ flows: flows.map((row) => ({
     client: row.client,
     destination: row.destination,
     client_ip: row.client_ip,
     matched_rule: row.policy || row.matched_rule || "STEALTH_DOMAINS",
-  })) });
+  })) }));
   const sections = Object.keys(payload);
   const sampleFlow = model.flows[0] || {};
   const redactedFlow = payload.flows?.[0] || {};
@@ -75,8 +74,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
         <section className="card">
           <h2>Exports</h2>
           <div className="operator-actions">
-            <Link className="muted-button" href="/api/reports/llm-safe?format=json">JSON</Link>
-            <Link className="muted-button" href="/api/reports/llm-safe?format=markdown">Markdown</Link>
+            <a className="muted-button" href="/api/reports/llm-safe?format=json">JSON</a>
+            <a className="muted-button" href="/api/reports/llm-safe?format=markdown">Markdown</a>
           </div>
         </section>
       </div>

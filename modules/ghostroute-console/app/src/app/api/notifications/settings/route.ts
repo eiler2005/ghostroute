@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveNotificationSettings } from "@/lib/server/actions";
-import { buildConsoleModel } from "@/lib/server/selectors/shell";
+import { notificationSettings } from "@/lib/server/store";
 
 export async function GET() {
-  return NextResponse.json(buildConsoleModel().notificationSettings);
+  return NextResponse.json(notificationSettings());
 }
 
 export async function POST(request: NextRequest) {
