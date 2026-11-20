@@ -361,10 +361,18 @@ read-only, installs the matching `@playwright/test` runner in a temporary
 workspace, and connects to the local Console listener at `http://127.0.0.1:<console-local-port>`.
 
 The live config keeps the spec's page/API budgets intact but allows a longer
-global test timeout for warmup. The spec itself warms page and API paths before
-timed assertions so one-time read-model/cache initialization is not measured as a
-steady-state render or API regression. Temporary npm and Playwright artifacts are
-removed at the end of the playbook run.
+global test timeout. The cold live API case explicitly clears derived caches;
+page cases time the first navigation in their browser context. Traces remain in
+the temporary workspace for review until cleanup or the next run.
+
+On a small VPS, the browser and tracing process compete with Console for CPU and
+memory. To measure from an external client, run the same spec on the control
+machine through a loopback-only SSH forward to the live Console listener. Use a
+temporary Playwright config with no local web server, one worker, the same
+desktop profile and unchanged page/API budgets; no database copy or fixture seed
+is involved. Record where the browser ran when comparing results. Close the
+tunnel and remove temporary workspaces, credentials and unused browser images
+after verification.
 
 Traffic-driven UI surfaces use one selected traffic window at a time. The
 default `today` window means the operator-local day, from Moscow midnight to the
