@@ -7,4 +7,5 @@ if command -v ansible >/dev/null 2>&1; then
   [ -x "$ansible_python" ] && PYTHON="$ansible_python"
 fi
 "$PYTHON" "$ROOT/tests/test-channel-anytls.py"
+"$PYTHON" "$ROOT/tests/test-channel-connection-logging.py"
 "$PYTHON" "$ROOT/tests/test-channel-anyt-gate.py"

@@ -58,6 +58,28 @@ def stats_listener_available(listen):
         return False
 
 
+def connection_logging(config, options):
+    """Opt in to bounded connection evidence; never change policy or users."""
+    enabled = isinstance(options, dict) and options.get('connection_events') is True
+    if enabled:
+        config['log']['level'] = 'info'
+    return enabled
+
+
+def compact_connection_log(path):
+    """Bound the owned append-mode event log without restarting its writer."""
+    path = Path(path)
+    if not path.exists() or path.stat().st_size <= 2 * 1024 * 1024:
+        return False
+    with path.open('r+b') as stream:
+        stream.seek(-1024 * 1024, os.SEEK_END)
+        tail = stream.read(1024 * 1024).split(b'\n', 1)[-1]
+        stream.seek(0)
+        stream.write(tail)
+        stream.truncate()
+    return True
+
+
 def project(source, settings):
     s = validate_settings(settings)
     if not any(i.get('tag') == REFERENCE for i in source['inbounds']):

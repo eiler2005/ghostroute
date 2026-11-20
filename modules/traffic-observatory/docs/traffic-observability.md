@@ -56,6 +56,33 @@ then obtain explicit approval for affected channel interruptions. In particular,
 do not simply switch anyT to `info`: its production watchdog treats oversized
 logs as a containment condition. Preserve all issued imports and routing owners.
 
+#### Opt-in bounded anyT/Snell connection logging
+
+The reviewed controllers support `connection_events: true` in their existing
+private `observability.json`. It defaults to disabled and changes only the
+engine's log level. Existing statistics options, client settings, credentials,
+listeners, TLS validation and policy projection stay unchanged. Stage the
+matching projector and controller together; copying a candidate does not imply
+approval to activate it.
+
+The owning watcher checks the policy event log every two seconds and compacts
+an oversized log at a two-MiB threshold to at most its last one MiB, retaining
+the same inode. The engine logger and policy stdio use append mode. Other log
+budgets and containment remain active. This is sampled, bounded diagnostic
+history: compaction can discard events and does not make per-destination bytes
+measured. The Traffic Observatory reader remains read-only.
+
+Before activation, run the policy/lifecycle tests and
+`python3 tests/test-channel-connection-logging.py`, validate the projected
+candidate using the target engine, check the actual logger's append-mode file
+descriptor and verify the approved client manifest. Activating anyT rebuilds
+its policy and briefly disconnects current sessions for all eight profiles;
+it requires explicit interruption approval. Existing QR/URI imports remain
+valid. Keep inactive labs inactive. Verify application traffic and preserved
+profiles afterwards. Roll back by removing only this optional flag and
+reconciling the reviewed working controller under the same approved maintenance
+scope; preserve statistics settings and client identities.
+
 Verification:
 
 ```sh

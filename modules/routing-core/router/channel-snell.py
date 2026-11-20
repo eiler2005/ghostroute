@@ -66,13 +66,17 @@ def watch():
                     config = snell.project(reference, settings['slots'], settings['cover'])
                     observability = BASE / 'observability.json'
                     try:
-                        listen = json.loads(observability.read_text())['stats_listen'] if observability.exists() else None
+                        options = json.loads(observability.read_text()) if observability.exists() else {}
+                        if not isinstance(options, dict):
+                            raise ValueError('Invalid observability options')
+                        listen = options.get('stats_listen')
                         stats = anyt.stats_api(listen,
                                                 ['snell-lab-' + str(i) for i in range(1, 4)],
                                                 ['snell-lab-' + str(i) for i in range(1, 4)],
                                                 [o['tag'] for o in config['outbounds']])
                     except (OSError, ValueError, KeyError, TypeError):
-                        listen, stats = None, None
+                        listen, stats, options = None, None, {}
+                    events = anyt.connection_logging(config, options)
                     stats, suspended_stats_listen = select_stats(anyt, listen, stats, child, child_stats_listen, suspended_stats_listen)
                     if stats is not None:
                         config['experimental'] = stats
@@ -89,6 +93,8 @@ def watch():
                             child = subprocess.Popen([str(BINARY), 'run', '-c', str(path)], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
                         child_stats_listen = listen if stats else None
                         previous = fingerprint
+                    if events:
+                        anyt.compact_connection_log(RUN / 'policy.log')
                     for slot in settings['slots']:
                         subprocess.run(['iptables', '-N', 'GR_SNELL_IN'], capture_output=True)
                         accept = ['GR_SNELL_IN', '-p', 'tcp', '--dport', str(slot['port']), '-j', 'ACCEPT']

@@ -272,6 +272,15 @@ establish offsite recovery.
 
 ## Verification and rollback
 
+Optional connection-event telemetry is controlled by the private
+`observability.json` `connection_events` flag, defaulting to disabled. The
+watcher bounds the policy event log without restarting its writer; the full
+[measurement, storage and activation contract](../../traffic-observatory/docs/traffic-observability.md#opt-in-bounded-anytsnell-connection-logging)
+keeps routing and issued imports unchanged. Activation still requires an
+explicitly approved interruption for the eight production profiles. Per-profile
+byte counters do not become per-destination or per-route byte counters merely
+because connection logging is enabled.
+
 Local tests cover policy parity, guards, eight-client export, preserved identities,
 rekey rejection, QR failure, port reuse, input signatures, cold volatile state and
 scoped reconciliation. Run shared supervisor/firewall fixtures for hook changes.

@@ -59,20 +59,29 @@ def input_signature():
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
-def refresh_policy():
+def policy_module():
     spec = importlib.util.spec_from_file_location('anyt_policy', BASE / 'channel-anytls-policy.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def refresh_policy():
+    module = policy_module()
     raw = SOURCE.read_bytes()
     settings = json.loads((BASE / 'settings.json').read_text())
     config = module.project(json.loads(raw), settings)
     observability = BASE / 'observability.json'
     try:
-        listen = json.loads(observability.read_text())['stats_listen'] if observability.exists() else None
+        options = json.loads(observability.read_text()) if observability.exists() else {}
+        if not isinstance(options, dict):
+            raise ValueError('Invalid observability options')
+        listen = options.get('stats_listen')
         stats = module.stats_api(listen, [u['name'] for u in settings['users']],
                                  [config['inbounds'][0]['tag']], [o['tag'] for o in config['outbounds']])
     except (OSError, ValueError, KeyError, TypeError):
-        listen, stats = None, None
+        listen, stats, options = None, None, {}
+    module.connection_logging(config, options)
     if stats is not None and module.stats_listener_available(listen):
         config['experimental'] = stats
     temporary = BASE / 'policy.next.json'
@@ -161,7 +170,7 @@ def stop():
 
 
 def spawn(name, argv):
-    with (RUN / (name + '.log')).open('wb') as log:
+    with (RUN / (name + '.log')).open('ab' if name == 'policy' else 'wb') as log:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                              env=dict(os.environ, GOMAXPROCS='2', GOMEMLIMIT='64MiB'), start_new_session=True)
     (RUN / (name + '.pid')).write_text(str(p.pid))
@@ -206,9 +215,16 @@ def start():
 def watch():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
+        events = json.loads((BASE / 'observability.json').read_text()).get('connection_events') is True
+    except (OSError, ValueError, AttributeError):
+        events = False
+    try:
+        module = policy_module() if events else None
         while owned_pid('policy'):
             time.sleep(2)
             changed = input_signature() != (BASE / 'inputs.sha256').read_text().strip()
+            if events:
+                module.compact_connection_log(RUN / 'policy.log')
             oversized = any(p.stat().st_size > 4 * 1024 * 1024 for p in RUN.glob('*.log'))
             if changed or oversized:
                 (RUN / 'contained.txt').write_text('Source policy changed' if changed else 'Lab log budget exceeded')
