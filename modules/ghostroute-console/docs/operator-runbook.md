@@ -136,8 +136,9 @@ startup pass. The full snapshot timeout defaults to 15 minutes because it may
 run several read-only reports in one pass.
 
 Retention separates duplicated raw archives from useful normalized history.
-All raw JSON files and SQLite snapshot payloads expire after 6 hours, while the
+Raw JSON files and heavy SQLite snapshot payloads expire after 6 hours, while the
 latest payload/file of each source stays available even during a source outage.
+Small `traffic_summary` payloads retain seven days for cumulative counter charts.
 Normalized factual detail is kept for 7 days, fine traffic buckets for 8 days,
 hourly traffic and DNS aggregates for about 35 days, daily history for up to 90 days,
 and full local SQLite safety backups are disabled unless explicitly enabled with

@@ -2746,7 +2746,8 @@ function trafficTodayFromSummarySnapshots(db, now) {
   const points = new Map();
   for (const row of rows) {
     if (toMskKey(row.collected_at, "day") !== today) continue;
-    const totals = parseJson(row.payload_json, {})?.totals || {};
+    const totals = parseJson(row.payload_json, {})?.totals;
+    if (!totals) continue;
     const totalBytes = number(totals.client_observed_bytes);
     let viaVpsBytes = number(totals.via_vps_bytes);
     let directBytes = number(totals.direct_bytes);

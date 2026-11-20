@@ -15,7 +15,7 @@ if collectors were stopped. It is not an independent router cron job.
 | Data | Normal retention | Boundary |
 |---|---|---|
 | Raw JSON files and SQLite snapshot payloads, including evidence/facts/rollups | 6 hours plus latest source observation | Short troubleshooting archive; latest source is preserved during outages. |
-| Normalized traffic/DNS, device counters and snapshot metadata | 7 days | Independent of raw payload archival; aggregate history remains available. |
+| Normalized traffic/DNS, device counters, small `traffic_summary` payloads and snapshot metadata | 7 days | Counter charts keep their small source summaries; aggregate history remains available. |
 | Service/background and unclassified raw facts | 24 hours | Separate short-lived diagnostic evidence. |
 | Fine traffic / fine DNS aggregates | 8 days / 1 day | Higher aggregate layers preserve useful history. |
 | Hourly traffic and DNS | 35 days; legacy `hourly_traffic` 30 days | Longer overrides are capped at 90 days. |

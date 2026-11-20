@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { ensureConsoleSchema, pruneOperationalTables } from "../scripts/lib/normalize.mjs";
+import { ensureConsoleSchema, pruneOperationalTables, rebuildPreparedWindows } from "../scripts/lib/normalize.mjs";
 import { pruneSnapshotFiles, pruneSnapshotMetadata, pruneSnapshotPayloads } from "../scripts/lib/snapshot-retention.mjs";
 
 test("six-hour raw archive keeps latest source payloads and normalized/aggregate history", () => {
@@ -21,10 +21,13 @@ test("six-hour raw archive keeps latest source payloads and normalized/aggregate
     // Latest means source time, even when a delayed old snapshot was inserted later.
     insert.run("health", "2026-11-01T00:00:00.000Z");
     insert.run("leaks", "2026-11-01T00:00:00.000Z");
+    insert.run("traffic_summary", "2026-11-20T01:00:00.000Z");
+    insert.run("traffic_summary", "2026-11-20T07:00:00.000Z");
     db.prepare("insert into client_traffic_daily(day_msk_key,day_start_utc,client_key,updated_at_utc) values('fixture','2026-11-01T00:00:00.000Z','fixture',?)").run(now);
     assert.equal(pruneSnapshotPayloads(db, now), 6);
     assert.equal(db.prepare("select count(*) as n from snapshots where payload_json='' and collected_at >= '2026-11-20T06:00:00.000Z'").get().n, 0);
     assert.notEqual(db.prepare("select payload_json from snapshots where type='leaks'").get().payload_json, "");
+    assert.equal(db.prepare("select count(*) as n from snapshots where type='traffic_summary' and payload_json!=''").get().n, 2);
     assert.equal(db.prepare("select count(*) as n from client_traffic_daily").get().n, 1);
     assert.equal(pruneSnapshotPayloads(db, now), 0);
     assert.equal(pruneSnapshotMetadata(db, "2026-11-13T12:00:00.000Z"), 1);
@@ -61,5 +64,20 @@ test("operational pruning bounds old catalog and health rows while keeping each 
     }
     pruneOperationalTables(db,now);
     for(const table of ["normalized_catalog","normalized_health"]) assert.equal(db.prepare(`select count(*) as n from ${table}`).get().n,1);
+  } finally {db.close();}
+});
+
+test("counter charts retain small summaries and skip empty archived payloads", () => {
+  const db=new Database(":memory:");
+  try {
+    ensureConsoleSchema(db);
+    const insert=db.prepare("insert into snapshots(type,collected_at,source,path,payload_json) values('traffic_summary',?,'fixture','',?)");
+    insert.run('2026-11-20T01:00:00.000Z',JSON.stringify({totals:{client_observed_bytes:100,via_vps_bytes:40,direct_bytes:60}}));
+    insert.run('2026-11-20T01:30:00.000Z','');
+    pruneSnapshotPayloads(db,'2026-11-20T12:00:00.000Z');
+    rebuildPreparedWindows(db,'2026-11-20T12:00:00.000Z');
+    const prepared=JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind='dashboard' and window='today' and traffic_class='all'").get().payload_json);
+    assert.equal(prepared.dashboardAnalytics.trafficToday.points.length,1);
+    assert.equal(prepared.dashboardAnalytics.trafficToday.points[0].totalBytes,100);
   } finally {db.close();}
 });

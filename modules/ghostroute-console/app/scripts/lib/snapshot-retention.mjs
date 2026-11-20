@@ -13,7 +13,7 @@ export function pruneSnapshotPayloads(db, now = new Date().toISOString()) {
   if (!latest.length) return 0;
   const cutoff = new Date(Date.parse(now) - SNAPSHOT_ARCHIVE_HOURS * 3600000).toISOString();
   const update = db.prepare(`update snapshots set payload_json='' where id in (
-    select id from snapshots where payload_json!='' and collected_at < ?
+    select id from snapshots where payload_json!='' and type!='traffic_summary' and collected_at < ?
       and id not in (${latest.map(() => "?").join(",")}) limit 10)`);
   let total = 0, changed;
   do {
