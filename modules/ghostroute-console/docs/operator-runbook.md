@@ -453,14 +453,19 @@ path.
 Because detailed snapshots can be cumulative, Console derives current-window
 client rows from positive deltas between same-day samples per observed source,
 then aggregates those sources into the canonical registry client. Dashboard
-KPI totals may still reconcile to authoritative summary counters, but
-individual clients, Apps and popular-site inference must use only the
-canonical client's current-window aggregate rows. Do not reconcile one client
-against the global Dashboard total, and do not add synthetic `all` lanes to
-class-specific rows.
+KPI totals, the daily chart, the complete client inventory and channel totals
+use the same selected client-volume model for the same window and traffic class.
+Compute sums before display limits or pagination. A narrower router summary
+remains diagnostic when client-volume evidence exists; it is a fallback only
+when that evidence is absent. Prepared identities stay stable until an accounting
+rebuild: newer inventory hints must not merge disjoint byte rows on the read path.
+Individual Apps and popular-site inference use only that client's measured
+destination detail. Do not reconcile one client against the global Dashboard
+total, and do not add synthetic `all` lanes to class-specific rows.
 
-Destination views share the `traffic-report --json`
-`destination_attribution_coverage` contract. Concrete destination rows plus
+Destination views derive coverage from `traffic-facts --json` (schema v3) and
+the Console accounting pyramid; `traffic-report` remains operator/debug output,
+not a machine input. Concrete destination rows plus
 explicit `Unknown/Unattributed ...` accounting buckets must add back to the
 observed client/channel total for the selected window. The unknown buckets carry
 real counter bytes, `destination_evidence=none` and

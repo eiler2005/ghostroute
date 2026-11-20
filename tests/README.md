@@ -66,6 +66,19 @@ database selected; seeded verification must never be mistaken for production evi
 Live browser/performance setup and commands belong to the
 [Console runbook](../modules/ghostroute-console/README.md).
 
+The collection gate includes `test-traffic-measurement-core.py` for the shared
+cross-channel volume builder and `test-traffic-evidence-cadence.py` for read-only
+counter readers. Console unit tests include `dashboard-volume-contract.test.mjs`:
+all-channel totals survive a narrower router summary, more than 200 clients,
+overlapping destination detail and registry channel hints. The seeded GUI gate
+also runs `dashboard-volume.spec.ts` on desktop, mobile and iPhone. It compares
+the Dashboard KPI, every client API page, channel totals and the daily chart,
+and checks that the chart area ends at the last observation. The seed includes
+an inventory hint arriving after prepared accounting to catch read-time identity
+merges that would lose bytes. Aggregate and post-deployment verification share
+the exact same-scope volume contract; partial destination coverage is checked
+separately and is never scaled to the total.
+
 Start production acceptance after the initial full collection has completed.
 Keep failed timing evidence from startup/ingestion contention, then repeat after
 that known overlap has ended; do not disable normal collectors, relax budgets or
