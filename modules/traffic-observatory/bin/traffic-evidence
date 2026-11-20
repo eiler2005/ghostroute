@@ -267,7 +267,7 @@ append_current_mobile_counters
 
 TRAFFIC_EVIDENCE_PERIOD="$PERIOD_ARG" \
 TRAFFIC_EVIDENCE_STATE_DIR="$STATE_DIR" \
-ruby -rjson -rdigest -rtime -rdate - <<'RUBY'
+ruby -rjson -rdigest -rtime -rdate -r"${PROJECT_ROOT}/modules/traffic-observatory/lib/traffic_measurements" - <<'RUBY'
 def text(value, fallback = '')
   value.nil? || value.to_s.empty? ? fallback : value.to_s
 end
@@ -530,13 +530,8 @@ else
       rows.sort_by { |row| row['ts'] }.each do |row|
         in_window = in_window?(row['ts'], window_start, window_end)
         if previous && in_window
-          increments = %w[vpn_up_counter vpn_down_counter wan_up_counter wan_down_counter other_up_counter other_down_counter].map do |key|
-            difference = row[key] - previous[key]
-            if difference < 0
-              warnings << { 'code' => 'counter_reset_gap', 'source' => 'lan-device-counters.tsv', 'component' => key }
-            end
-            [difference, 0].max
-          end
+          increments, resets = TrafficMeasurements.increments(previous, row, %w[vpn_up_counter vpn_down_counter wan_up_counter wan_down_counter other_up_counter other_down_counter])
+          resets.each { |key| warnings << { 'code' => 'counter_reset_gap', 'source' => 'lan-device-counters.tsv', 'component' => key } }
           vpn_up, vpn_down, wan_up, wan_down, other_up, other_down = increments
           vpn_bytes = vpn_up + vpn_down
           direct_bytes = wan_up + wan_down
@@ -650,11 +645,8 @@ else
       rows.sort_by { |row| row['ts'] }.each do |row|
         in_window = in_window?(row['ts'], window_start, window_end)
         if previous && in_window
-          increments = %w[bytes_up_counter bytes_down_counter].map do |key|
-            difference = row[key] - previous[key]
-            warnings << { 'code' => 'counter_reset_gap', 'source' => 'mobile-reality-counters.tsv', 'component' => key } if difference < 0
-            [difference, 0].max
-          end
+          increments, resets = TrafficMeasurements.increments(previous, row, %w[bytes_up_counter bytes_down_counter])
+          resets.each { |key| warnings << { 'code' => 'counter_reset_gap', 'source' => 'mobile-reality-counters.tsv', 'component' => key } }
           up_delta, down_delta = increments
           total = up_delta + down_delta
           if total > 0

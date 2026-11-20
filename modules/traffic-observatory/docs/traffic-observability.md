@@ -11,6 +11,29 @@ pipeline. Each fact carries `measurement_kind` (`counter_delta`, `flow_sample`,
 `connection_count` on a conntrack sample is the observed population at that
 sample, not a count of unique connections across the reporting period.
 
+`lib/traffic_measurements.rb` is the shared calculation module for the machine
+pipeline. `traffic-evidence` uses its component-increment calculation for legacy
+LAN and Home Reality histories. `traffic-facts` uses its counter adapters and
+single volume-fact builder for LAN, Home Reality, anyT, Snell, Amn and completed
+Channel D streams, then applies the same measurement and coverage calculations
+to every fact. Fact IDs and the schema-v3 external contract remain stable.
+
+An adapter extracts the source's identity, timestamp, byte components and scope;
+it does not allocate traffic by destination popularity or by another channel's
+route. New independently measured channel sources must enter this common path,
+with a fixture covering reset/baseline behavior, large counters, overlapping
+sources and absent observations. Shared relays alone cannot provide per-user
+volume for B/C; M requires evidence from its separate service owner.
+
+The existing isolated-engine spool additionally knows the process epoch and
+discards intervals spanning a restart/reset. Legacy iptables histories lack
+that epoch: decreasing components produce a gap and only independently observed
+non-negative increments remain. These are source guarantees, not competing
+channel-specific byte formulas. The protocol readers stay separate from runtime
+maintenance: the LAN and Home Reality snapshot commands never invoke accounting
+refresh; the scheduled maintenance and firewall/runtime owners still provision
+their counters.
+
 Volume, destination evidence, route evidence and client identity are independent:
 
 | Source/channel | Byte source | Destination and selected-exit evidence | Remaining limit |
@@ -47,6 +70,11 @@ volume as **not measured**, rather than an observed zero. These events can show 
 destination and selected outbound without assigning any part of an overlapping
 counter to that destination. Conflicting exit evidence in a correlation window
 does not prove the route of a conntrack sample.
+LAN route correlation rejects observations explicitly owned by another channel,
+even when client address, destination, port and time coincide. Legacy unscoped
+rows remain readable, but a known foreign ingress is not LAN route proof.
+The dedicated `sensitive-out` tag is a VPS observation under the same rule as
+`reality-out`; its connection events still carry no measured bytes.
 
 The observer never changes log levels, starts a channel, enables an API or
 restarts a process. A `warn`-only engine cannot supply ordinary connection
@@ -87,6 +115,7 @@ Verification:
 
 ```sh
 python3 tests/test-universal-traffic-evidence.py
+python3 tests/test-traffic-measurement-core.py
 cd modules/ghostroute-console/app
 node --test tests/universal-measurement.test.mjs
 ```

@@ -7,8 +7,6 @@ TMP_RULES="/tmp/mobile-reality-counters.$$"
 TMP_CLIENT_IPS="/tmp/mobile-reality-clients.$$"
 TMP_CLIENT_MAP="/tmp/mobile-reality-client-map.$$"
 
-[ -x /jffs/scripts/mobile-reality-accounting-refresh ] && \
-  /jffs/scripts/mobile-reality-accounting-refresh >/dev/null 2>&1 || true
 
 iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || {
   rm -f "$TMP_RULES" "$TMP_CLIENT_IPS" "$TMP_CLIENT_MAP"

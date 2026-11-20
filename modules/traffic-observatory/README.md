@@ -25,7 +25,8 @@ mistakes.
 
 ## How It Works
 
-Router-side collector scripts refresh mangle counters and snapshot byte totals.
+Accounting maintenance owners refresh mangle counters; read-only collector
+scripts snapshot the existing byte totals without invoking those owners.
 Control-machine reports pull those counters through the shared router SSH helper,
 combine them with local metadata and render safe Markdown/text output for humans
 and LLM handoff.
@@ -47,7 +48,18 @@ warehouse/read-model layer and imports router rollups as preferred totals.
 
 - `bin/` contains local reporting commands.
 - `router/` contains ASUS Merlin runtime collectors.
+- `lib/traffic_measurements.rb` owns common counter increments, byte partitions,
+  volume-fact construction, measurement kinds and per-channel coverage. LAN,
+  Home Reality and isolated-channel sources are adapters to this shared core,
+  rather than separate accounting implementations.
 - Shared parsing and redaction helpers live in `modules/shared/lib`.
+
+The router keeps protocol-specific readers: conntrack and device counters for
+LAN/Wi-Fi, encrypted ingress counters for Home Reality, named statistics/peer
+counters for isolated engines and completed CONNECT streams for Channel D.
+Their different visibility is preserved. B/C/M without independent byte evidence
+remain `not_observed`; neither another channel's counters nor connection counts
+can fill that gap. Inactive labs are never started for monitoring.
 
 ## Read-only / Mutating Contract
 
@@ -122,7 +134,7 @@ split; they do not assign that split to sampled destinations. Ingress
 connection/outbound counts prove neither per-app bytes nor route-byte proportions.
 Profile counters remain volume-only facts with unknown destination and route
 until matching byte evidence exists.
-Joining outbound proof to a sampled flow also requires the same client identity;
+Joining outbound proof to a sampled flow also requires the same channel and client identity;
 a shared destination and nearby timestamp alone cannot prove its route.
 DNS links only use safe time-ordered answers, and unverified route bytes stay in
 `unknown_bytes` to preserve the accounting invariant.
@@ -162,6 +174,8 @@ report host; verify its ancestry and age before terminating that report alone.
 - Covered by `./tests/run-all.sh`, `modules/traffic-observatory/tests/test-router-rollups.sh`
   and health/report fixture tests.
 - Live behavior is confirmed by `./verify.sh` and traffic report smoke checks.
+- `python3 tests/test-traffic-measurement-core.py` checks the cross-channel byte
+  contract, large counters, sensitive exit observations and LAN correlation isolation.
 
 ## Related Docs
 

@@ -3,7 +3,6 @@
 LEASES_FILE="/var/lib/misc/dnsmasq.leases"
 TMP_RULES="/tmp/lan-device-counters.$$"
 
-[ -x /jffs/scripts/lan-traffic-accounting-refresh ] && /jffs/scripts/lan-traffic-accounting-refresh >/dev/null 2>&1 || true
 
 iptables-save -t mangle -c > "$TMP_RULES" 2>/dev/null || {
   rm -f "$TMP_RULES"

@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
 """Evidence cadence and read-only sampler boundaries, independent of production."""
 from pathlib import Path
-import subprocess,tempfile,unittest
+import os,subprocess,tempfile,unittest
 ROOT=Path(__file__).resolve().parents[1]
 R=ROOT/'modules/traffic-observatory/router'
 
 class CadenceTests(unittest.TestCase):
+    def test_counter_readers_do_not_invoke_accounting_maintenance(self):
+        for name in ['lan-device-counters-snapshot','mobile-reality-counters-snapshot']:
+            with self.subTest(reader=name), tempfile.TemporaryDirectory() as d:
+                folder=Path(d); calls=folder/'mutations'
+                for owner in ['lan-traffic-accounting-refresh','mobile-reality-accounting-refresh']:
+                    stub=folder/owner
+                    stub.write_text('#!/bin/sh\necho mutation >> "'+str(calls)+'"\n')
+                    stub.chmod(0o755)
+                save=folder/'iptables-save'
+                save.write_text('#!/bin/sh\necho "[1:9000000000] -A RC_MOBILE_REALITY_IN -s 192.0.2.10/32 -j RETURN"\n')
+                save.chmod(0o755)
+                reader=folder/name
+                reader.write_text((R/name).read_text().replace('/jffs/scripts/',str(folder)+'/'))
+                subprocess.run(['sh',str(reader)],check=True,capture_output=True,
+                    env=dict(os.environ,PATH=str(folder)+':'+os.environ['PATH'],SINGBOX_LOG=str(folder/'absent.log')))
+                self.assertFalse(calls.exists(),'reading counters must not install or refresh firewall rules')
     def test_repeated_route_log_does_not_consume_retention_with_duplicates(self):
         with tempfile.TemporaryDirectory() as d:
             folder=Path(d);log=folder/'sing-box.log'

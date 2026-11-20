@@ -60,7 +60,7 @@ TRAFFIC_FACTS_PERIOD="$PERIOD_ARG" \
 TRAFFIC_FACTS_DEEP="$DEEP_MODE" \
 TRAFFIC_FACTS_DURATION_MS="$((END_MS - START_MS))" \
 TRAFFIC_FACTS_SOURCE_MODE="$SOURCE_MODE" \
-ruby -rjson -rdigest -rtime - "$TMP_JSON" <<'RUBY'
+ruby -rjson -rdigest -rtime -r"${PROJECT_ROOT}/modules/traffic-observatory/lib/traffic_measurements" - "$TMP_JSON" <<'RUBY'
 def text(value, fallback = '')
   value.nil? || value.to_s.empty? ? fallback : value.to_s
 end
@@ -84,14 +84,7 @@ def first_present(*values)
 end
 
 def route_from_split(vps, direct, unknown)
-  vps = number(vps)
-  direct = number(direct)
-  unknown = number(unknown)
-  return 'Mixed' if [vps > 0, direct > 0, unknown > 0].count(true) > 1
-  return 'VPS' if vps > 0
-  return 'Direct' if direct > 0
-  return 'Unknown' if unknown > 0
-  'Unknown'
+  TrafficMeasurements.route(number(vps), number(direct), number(unknown))
 end
 
 def split_for_route(route, total)
@@ -125,6 +118,7 @@ end
 
 def outbound_route(outbound)
   value = text(outbound).downcase
+  return 'VPS' if value == 'sensitive-out'
   return 'VPS' if value.match?(/reality|proxy|vps|tunnel|sing-box/)
   return 'Direct' if value.match?(/direct|wan|bypass/)
   ''
@@ -175,12 +169,7 @@ def route_status_for(route_verification)
 end
 
 def enforce_split(total, vps, direct, unknown)
-  total = number(total)
-  vps = number(vps)
-  direct = number(direct)
-  unknown = number(unknown)
-  return [total, vps, direct, unknown, false] if total == vps + direct + unknown
-  [total, 0, 0, total, true]
+  TrafficMeasurements.split(total, vps, direct, unknown)
 end
 
 def accounting_status_for(corrected)
@@ -428,7 +417,9 @@ else
     .group_by { |row| text(row['client_ip']) }.transform_values { |rows|
       rows.map { |row| [iso_time(row['interval_start_utc'], generated_at), iso_time(row['interval_end_utc'] || row['ts'], generated_at)] }.sort_by(&:last)
     }
-  sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row| row.is_a?(Hash) }
+  sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row|
+    TrafficMeasurements.lan_route_event?(row)
+  }
     .group_by { |row| text(row['client_ip']) }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
@@ -514,142 +505,10 @@ else
     end
     facts << fact
   end
-  (input['home_reality_samples'] || []).each do |sample|
-    next unless sample.is_a?(Hash)
-    total = number(sample['total_bytes'])
-    next if total <= 0
-    event_ts = iso_time(sample['ts'], generated_at)
-    key = text(sample['client_key'], text(sample['client_label'], text(sample['source_ip'], 'unknown-home-reality-profile')))
-    label = text(sample['client_label'], key)
-    route_verification = 'unknown'
-    route_status = 'unknown'
-    total, vps, direct, unknown, corrected_split = enforce_split(total, 0, 0, total)
-    fact = {
-      'fact_id' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
-      'flow_group_key' => fact_hash('home-reality', sample['sample_id'], event_ts, key, total),
-      'sample_id' => text(sample['sample_id']),
-      'event_ts' => event_ts,
-      'event_ts_utc' => event_ts,
-      'observed_at_utc' => event_ts,
-      'display_ts_utc' => event_ts,
-      'time_precision' => 'second',
-      'client_key' => key,
-      'client_label' => label,
-      'client_ip' => text(sample['source_ip']),
-      'channel' => text(sample['channel'], 'A/Home Reality'),
-      'route' => route_from_split(vps, direct, unknown),
-      'intended_route' => 'Unknown',
-      'route_verification' => route_verification,
-      'route_status' => route_status,
-      'route_source' => '',
-      'route_basis' => '',
-      'matched_ipset' => '',
-      'egress_iface' => '',
-      'fwmark' => '',
-      'traffic_class' => 'client',
-      'destination' => '',
-      'destination_kind' => 'unattributed_counter',
-      'measurement_role' => 'volume', 'measurement_scope' => 'home_profile_counter',
-      'interval_start_utc' => sample['interval_start_utc'],
-      'interval_end_utc' => sample['interval_end_utc'],
-      'destination_ip' => '',
-      'destination_port' => '',
-      'protocol' => 'tcp',
-      'dns_qname' => '',
-      'dns_answer_ip' => '',
-      'dns_link_id' => '',
-      'dns_link_confidence' => 'no_dns_match',
-      'dns_status' => 'no_match',
-      'dns_ts_source' => '',
-      'sni' => '',
-      'policy' => '',
-      'matched_rule' => '',
-      'outbound' => '',
-      'bytes' => total,
-      'bytes_up' => number(sample['bytes_up']),
-      'bytes_down' => number(sample['bytes_down']),
-      'via_vps_bytes' => vps,
-      'direct_bytes' => direct,
-      'unknown_bytes' => unknown,
-      'connections' => 0,
-      'identity_confidence' => text(sample['client_label']).empty? ? 'source_ip' : 'profile',
-      'byte_confidence' => 'observed_delta',
-      'destination_confidence' => 'none',
-      'confidence' => 'observed',
-      'accounting_status' => accounting_status_for(corrected_split),
-      'allocation_basis' => text(sample['allocation_basis'], 'observed_profile_counter_delta'),
-      'evidence_level' => 'home_reality_profile_counter',
-      'sources' => ['traffic-evidence', text(sample['source'], 'mobile-reality-counters')],
-      'evidence_json' => JSON.generate({
-        'sample' => sample
-      })
-    }
-    facts << fact
-  end
-  # These are independently observed profile deltas, not route allocations.
-  # Inbound, user and outbound counters describe overlapping bytes; only the
-  # profile counter is emitted as a traffic fact here.
-  (input['isolated_channel_samples'] || []).each do |sample|
-    next unless sample.is_a?(Hash)
-    next unless %w[anyT Snell Amn D].include?(sample['channel'])
-    next unless sample['bytes_up'].is_a?(Integer) && sample['bytes_down'].is_a?(Integer)
-    next if sample['bytes_up'].negative? || sample['bytes_down'].negative?
-    key = text(sample['client_key'])
-    sample_id = text(sample['sample_id'])
-    next if key.empty? || sample_id.empty?
-    total = sample['bytes_up'] + sample['bytes_down']
-    next if total.zero?
-    event_ts = iso_time(sample['ts'], generated_at)
-    fact_id = fact_hash('isolated-channel-profile', sample['channel'], sample_id, key)
-    facts << {
-      'fact_id' => fact_id, 'flow_group_key' => fact_id, 'sample_id' => sample_id,
-      'event_ts' => event_ts, 'event_ts_utc' => event_ts, 'observed_at_utc' => event_ts,
-      'display_ts_utc' => event_ts, 'time_precision' => 'second',
-      'client_key' => key, 'client_label' => text(sample['client_label'], key),
-      'client_ip' => '', 'channel' => { 'anyT' => 'Channel anyT', 'Snell' => 'Channel Snell', 'Amn' => 'Channel Amn', 'D' => 'Channel D' }.fetch(sample['channel']), 'route' => 'Unknown',
-      'intended_route' => 'Unknown', 'route_verification' => 'unknown', 'route_status' => 'unknown',
-      'route_source' => '', 'route_basis' => '', 'matched_ipset' => '', 'egress_iface' => '', 'fwmark' => '',
-      'traffic_class' => 'client', 'destination' => '',
-      'destination_kind' => 'unattributed_counter',
-      'measurement_role' => 'volume', 'measurement_scope' => sample['channel'] == 'D' ? 'completed_stream' : 'isolated_profile_counter', 'destination_ip' => '', 'destination_port' => '',
-      'interval_start_utc' => text(sample['start']).empty? ? nil : iso_time(sample['start'], event_ts), 'interval_end_utc' => event_ts,
-      'protocol' => sample['channel'] == 'Amn' ? 'udp' : sample['channel'] == 'D' ? 'tcp' : '', 'dns_qname' => '', 'dns_answer_ip' => '', 'dns_link_id' => '',
-      'dns_link_confidence' => 'no_dns_match', 'dns_status' => 'no_match', 'dns_ts_source' => '',
-      'sni' => '', 'policy' => '', 'matched_rule' => '', 'outbound' => '',
-      'bytes' => total, 'bytes_up' => sample['bytes_up'], 'bytes_down' => sample['bytes_down'],
-      'via_vps_bytes' => 0, 'direct_bytes' => 0, 'unknown_bytes' => total, 'connections' => 0,
-      'identity_confidence' => 'profile', 'byte_confidence' => 'observed_delta',
-      'destination_confidence' => 'none', 'confidence' => 'observed', 'accounting_status' => 'ok',
-      'allocation_basis' => sample['channel'] == 'D' ? 'completed_proxy_stream' : 'observed_profile_counter_delta',
-      'evidence_level' => sample['channel'] == 'Amn' ? 'amneziawg_peer_counter' : sample['channel'] == 'D' ? 'caddy_connect_stream' : 'isolated_channel_profile_counter',
-      'sources' => ['traffic-evidence', sample['channel'] == 'Amn' ? 'amneziawg_peer_counter_delta' : sample['channel'] == 'D' ? 'caddy_connect_stream' : 'isolated_channel_counter_delta'],
-      'evidence_json' => JSON.generate({ 'sample' => sample })
-    }
-  end
+  facts.concat(TrafficMeasurements.counter_facts(input, generated_at))
 end
 
 connection_event_candidates = []
-if source_mode != 'report'
-  (input['lan_device_route_deltas'] || []).each do |counter|
-    next if number(counter['total_bytes']) <= 0 || text(counter['sample_id']).empty? || text(counter['interval_start_utc']).empty?
-    total, vps, direct, unknown, corrected = enforce_split(number(counter['total_bytes']), number(counter['vpn_bytes']), number(counter['direct_bytes']), number(counter['other_bytes']))
-    ts = iso_time(counter['ts'], generated_at)
-    facts << {
-      'fact_id' => fact_hash('lan-volume', counter['sample_id']), 'sample_id' => counter['sample_id'],
-      'event_ts' => ts, 'event_ts_utc' => ts, 'display_ts_utc' => ts, 'observed_at_utc' => ts,
-      'client_key' => counter['client_key'], 'client_ip' => counter['client_ip'], 'client_label' => client_label(counter),
-      'channel' => 'Home Wi-Fi/LAN', 'traffic_class' => 'client', 'destination' => '',
-      'destination_kind' => 'unattributed_counter', 'measurement_role' => 'volume',
-      'measurement_scope' => 'lan_route_counter', 'interval_start_utc' => counter['interval_start_utc'],
-      'interval_end_utc' => counter['interval_end_utc'] || ts,
-      'bytes' => total, 'via_vps_bytes' => vps, 'direct_bytes' => direct, 'unknown_bytes' => unknown,
-      'route' => route_from_split(vps, direct, unknown), 'confidence' => 'observed',
-      'byte_confidence' => 'observed', 'destination_confidence' => 'unknown',
-      'allocation_basis' => 'client_counter_delta', 'evidence_level' => 'lan_device_route_counter',
-      'accounting_status' => accounting_status_for(corrected), 'sources' => ['traffic-evidence', 'lan-device-counters']
-    }
-  end
-end
 
 if source_mode != 'report'
   # Connection events prove an observed destination/selected outbound, never a
@@ -707,23 +566,7 @@ if source_mode != 'report'
 end
 
 facts.uniq! { |fact| fact['fact_id'] }
-facts.each do |fact|
-  fact['measurement_kind'] = if fact['evidence_level'] == 'proxy_connection_event'
-    'connection_event'
-  elsif fact['evidence_level'] == 'caddy_connect_stream'
-    'completed_stream'
-  elsif fact['destination_kind'] == 'unattributed_counter'
-    'counter_delta'
-  else
-    'flow_sample'
-  end
-  fact['sample_count'] = 1
-  fact['connection_count'] = case fact['measurement_kind']
-    when 'completed_stream', 'connection_event' then 1
-    when 'flow_sample' then number(fact['connections'])
-    else nil
-  end
-end
+facts.each { |fact| TrafficMeasurements.annotate!(fact) }
 
 facts.each do |fact|
   next if fact['measurement_role'] == 'detail'
@@ -763,21 +606,7 @@ coverage = {
 }
 
 # Missing observations are not zero traffic and are not proof of inactivity.
-channels = ['Home Wi-Fi/LAN', 'A/Home Reality', 'Channel B', 'Channel C', 'Channel D', 'Channel anyT', 'Channel Snell', 'Channel Amn', 'Channel M']
-coverage['channels'] = (channels + facts.map { |row| row['channel'] }).uniq.to_h do |channel|
-  rows = facts.select { |row| row['channel'] == channel }
-  volume = rows.reject { |row| row['measurement_role'] == 'detail' }
-  detail = rows.select { |row| row['measurement_role'] == 'detail' }
-  [channel, {
-    'volume_status' => volume.empty? ? 'not_observed' : 'observed',
-    'volume_bytes' => volume.sum { |row| number(row['bytes']) },
-    'route_known_bytes' => volume.sum { |row| number(row['via_vps_bytes']) + number(row['direct_bytes']) },
-    'route_unknown_bytes' => volume.sum { |row| number(row['unknown_bytes']) },
-    'volume_samples' => volume.length, 'detail_samples' => detail.length,
-    'connection_events' => rows.count { |row| row['measurement_kind'] == 'connection_event' },
-    'destination_status' => rows.any? { |row| text(row['destination']) != '' && row['destination_kind'] != 'unattributed_counter' } ? 'observed' : 'not_observed'
-  }]
-end
+coverage['channels'] = TrafficMeasurements.channel_coverage(facts)
 coverage['connection_event_limit'] = 2000
 coverage['connection_events_truncated'] = connection_event_candidates.length > 2000
 
