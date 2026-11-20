@@ -198,7 +198,11 @@ latest traffic report or rebuild the desktop Health model just to render the
 shell, freshness strip, navigation chrome or `/m` root cards.
 
 Traffic windows are prepared after each collector pass. Source timestamps stay in
-UTC in SQLite, while `today`, `week` and `month` are keyed by Moscow local time.
+UTC in traffic buckets, while `today`, `week` and `month` are keyed by Moscow
+local time. Source observations may retain their explicit time-zone offset.
+Freshness selects the newest source by parsed timestamp, including UTC offsets;
+lexical wall-clock ordering must not make an older offset-formatted source hide
+a newer UTC observation.
 The mobile home client ranking reads the same prepared `clients/today/all`
 payload as the desktop inventory window. Retained inventory counters never supply
 its traffic amounts. Mobile home flows, DNS and live events are limited to the
@@ -223,6 +227,9 @@ client keys without requiring an operator-assigned registry name.
 Budget uses the same prepared window totals as Dashboard and the same client list
 as Clients, including period and traffic-class filters in its JSON API. Its shell
 reads small prepared health data instead of loading all raw latest snapshots.
+The Reports example sanitizes only its displayed sample fields; full safe exports
+come from the prepared report API, so rendering the example does not repeatedly
+sanitize hidden health/alert evidence.
 The Apps workbench explicitly flags destination evidence exceeding the measured
 client window. It preserves measured samples and their amounts, since overlapping
 samples or differing observation intervals cannot be repaired by silently scaling

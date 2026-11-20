@@ -67,7 +67,7 @@ import {
 } from "../attribution-eligibility.mjs";
 import { buildDashboardAnalyticsFromRows } from "../dashboard-analytics.mjs";
 import { normalizeChannelLabel } from "../channel-labels.mjs";
-import { bucketStartUtc, mskWindowBounds, rollingMskDayStart } from "../time/window.mjs";
+import { bucketStartUtc, mskWindowBounds, rollingMskDayStart, newestSourceTimestamp } from "../time/window.mjs";
 
 const routes = new Set(["VPS", "Direct", "Mixed", "Unknown"]);
 const TRAFFIC_DETAIL_TYPES = new Set(["traffic_facts", "traffic"]);
@@ -1507,11 +1507,7 @@ function buildConsoleModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
   const dnsWindowIds = snapshotIdsForWindow(period, TRAFFIC_DNS_TYPES);
   const alertWindowIds = snapshotIdsForWindow(period, ALERT_CONTEXT_TYPES);
 
-  const newest = Object.values(snapshots)
-    .filter(Boolean)
-    .map((row) => row?.collectedAt)
-    .sort()
-    .pop();
+  const newest = newestSourceTimestamp(Object.values(snapshots).map((row) => row?.collectedAt));
 
   const normalizedDevices = deviceDeltaRowsForPeriod(period);
 
@@ -3449,11 +3445,7 @@ function buildChromeModel(filters: ConsoleFilters, overrides: Partial<ConsoleMod
   const dashboardTraffic = trafficSummary;
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
-  const newest = Object.values(snapshots)
-    .filter(Boolean)
-    .map((row) => row?.collectedAt)
-    .sort()
-    .pop();
+  const newest = newestSourceTimestamp(Object.values(snapshots).map((row) => row?.collectedAt));
   const staleMinutes = minutesSince(newest);
   const staleThreshold = staleThresholdMinutes();
   const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
@@ -3544,11 +3536,7 @@ export function buildShellModel(filters: ConsoleFilters = {}, overrides: Partial
   const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : {};
   const health = snapshots.health?.payload || {};
   const leaks = snapshots.leaks?.payload || {};
-  const newest = Object.values(snapshotMetas)
-    .filter(Boolean)
-    .map((row) => row?.collectedAt)
-    .sort()
-    .pop();
+  const newest = newestSourceTimestamp(Object.values(snapshotMetas).map((row) => row?.collectedAt));
   const staleMinutes = minutesSince(newest);
   const staleThreshold = staleThresholdMinutes();
   const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
@@ -3634,11 +3622,7 @@ export function buildLightweightShellModel(filters: ConsoleFilters = {}, overrid
   const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
   const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : {};
   const shellSummary = getConsolePageSummary("health_shell")?.payload || getConsolePageSummary("health_mobile")?.payload || {};
-  const newest = Object.values(snapshotMetas)
-    .filter(Boolean)
-    .map((row) => row?.collectedAt)
-    .sort()
-    .pop();
+  const newest = newestSourceTimestamp(Object.values(snapshotMetas).map((row) => row?.collectedAt));
   const staleMinutes = minutesSince(newest);
   const staleThreshold = staleThresholdMinutes();
   const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";

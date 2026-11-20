@@ -1,4 +1,15 @@
 export const TZ = "Europe/Moscow";
+export function newestSourceTimestamp(values) {
+  let newest = "", newestTime = -Infinity;
+  for (const value of values) {
+    const timestamp = Date.parse(value);
+    if (Number.isFinite(timestamp) && timestamp > newestTime) {
+      newest = value;
+      newestTime = timestamp;
+    }
+  }
+  return newest;
+}
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 

@@ -11,7 +11,12 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
   const flows = listReportPreviewFlows(filters);
   const model = buildLightweightShellModel(filters, { flows });
   const snapshotCount = Object.values(model.runtime.latestSnapshots).filter(Boolean).length;
-  const payload = llmSafePayload(model);
+  const payload = llmSafePayload({ flows: flows.map((row) => ({
+    client: row.client,
+    destination: row.destination,
+    client_ip: row.client_ip,
+    matched_rule: row.policy || row.matched_rule || "STEALTH_DOMAINS",
+  })) });
   const sections = Object.keys(payload);
   const sampleFlow = model.flows[0] || {};
   const redactedFlow = payload.flows?.[0] || {};
