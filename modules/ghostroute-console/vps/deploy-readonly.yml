@@ -216,6 +216,11 @@
           - --delete
           - --rsync-path=sudo rsync
           - --exclude=.git/
+          # Exclude-only .gitignore merging cannot apply its public-route negations.
+          - --include=/modules/ghostroute-console/app/src/app/reports/
+          - --include=/modules/ghostroute-console/app/src/app/reports/**
+          - --include=/modules/ghostroute-console/app/src/app/api/reports/
+          - --include=/modules/ghostroute-console/app/src/app/api/reports/**
           - --filter=:- .gitignore
           - --exclude=reports/
           - --exclude=secrets/
@@ -240,6 +245,18 @@
       delegate_to: localhost
       become: false
       changed_when: true
+
+    - name: Verify report route sources match the reviewed checkout before building
+      ansible.builtin.stat:
+        path: "{{ console_root }}/repo/modules/ghostroute-console/app/src/app/{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - reports/page.tsx
+        - api/reports/llm-safe/route.ts
+      register: console_report_source
+      failed_when: >-
+        (console_report_source.stat.checksum | default('missing')) !=
+        (lookup('ansible.builtin.file', playbook_dir ~ '/../app/src/app/' ~ item, rstrip=false) | hash('sha256'))
 
     - name: Ensure local Console private data directory exists
       ansible.builtin.file:

@@ -239,6 +239,11 @@ Live model construction shares one snapshot-version scope across its nested
 selectors. Calendar helpers reuse their fixed Moscow formatters rather than
 constructing a formatter per source row or aggregate bucket.
 The notification-settings read API reads its small settings table directly.
+Deployment explicitly includes the tracked Reports page and API source trees
+before excluding private diagnostic `reports/` directories. Rsync's exclude-only
+`.gitignore` merge does not implement Git negations. Before building, deployment
+compares both route source checksums against the control checkout; a build-commit
+label alone is insufficient evidence that those sources were delivered.
 The Apps workbench explicitly flags destination evidence exceeding the measured
 client window. It preserves measured samples and their amounts, since overlapping
 samples or differing observation intervals cannot be repaired by silently scaling
