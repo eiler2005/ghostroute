@@ -4397,7 +4397,8 @@ function buildSettingsInventory(model: ConsoleModel) {
       ["Writer lock wait", `${envNumber("GHOSTROUTE_COLLECTOR_WRITER_LOCK_WAIT_SECONDS", 120)}s`],
     ],
     retention: [
-      ["Raw snapshots", `${envNumber("GHOSTROUTE_RAW_RETENTION_DAYS", 7)}d`],
+      ["Raw payload archive", "6h + latest per source"],
+      ["Normalized detail", `${envNumber("GHOSTROUTE_RAW_RETENTION_DAYS", 7)}d`],
       ["Live raw snapshots", `${envNumber("GHOSTROUTE_LIVE_RAW_RETENTION_HOURS", 6)}h`],
       ["Hourly aggregates", `${envNumber("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30)}d`],
       ["DB backup mode", backupStatus.mode],

@@ -14,8 +14,8 @@ if collectors were stopped. It is not an independent router cron job.
 
 | Data | Normal retention | Boundary |
 |---|---|---|
-| Raw traffic/DNS snapshots, normalized traffic and device counters | 7 days | File and SQLite cleanup; shorter than the 90-day ceiling. |
-| Raw live snapshot files | 6 hours | Bounded live events also receive ordinary raw retention. |
+| Raw JSON files and SQLite snapshot payloads, including evidence/facts/rollups | 6 hours plus latest source observation | Short troubleshooting archive; latest source is preserved during outages. |
+| Normalized traffic/DNS, device counters and snapshot metadata | 7 days | Independent of raw payload archival; aggregate history remains available. |
 | Service/background and unclassified raw facts | 24 hours | Separate short-lived diagnostic evidence. |
 | Fine traffic / fine DNS aggregates | 8 days / 1 day | Higher aggregate layers preserve useful history. |
 | Hourly traffic and DNS | 35 days; legacy `hourly_traffic` 30 days | Longer overrides are capped at 90 days. |
@@ -30,6 +30,9 @@ and the collector's
 Legacy daily settings of 400/100 days no longer extend traffic retention beyond
 90 days. The Compose/deploy defaults explicitly set daily traffic and DNS to 90.
 Raw settings can shorten retention; the ceiling still applies.
+The latest traffic-source observation is also subject to the absolute 90-day
+ceiling. Preserving a stale latest source does not authorize indefinite traffic
+archival.
 
 This policy does not expire credentials, client imports, operator attribution,
 settings, audit records, catalog reviews or static IP classification catalogs.
@@ -39,8 +42,14 @@ Other operational logs have their own module retention. It is not a blanket
 Deleting rows makes SQLite pages reusable; it does not necessarily reduce the
 database file immediately. Do not delete a live `-wal` or `-shm` file to reclaim
 space. Inspect file size and free pages first. Physical compaction requires a
-separate maintenance window, adequate temporary disk space and a consistent
-backup. There is no scheduled heavyweight `VACUUM` on page requests or collector
+separate maintenance window and adequate temporary disk space. Normally preserve
+a consistent backup first; if the operator explicitly declines same-disk copies,
+document that deleted archive history cannot be recovered. Stop only Console,
+prune expired raw files first to make room, apply retention with the reviewed
+schema, run `pragma wal_checkpoint(truncate)` and `VACUUM`, then run
+`pragma integrity_check` and restart Console even if maintenance fails.
+Compare aggregate totals before/after; do not rebuild or reset aggregate history
+as part of physical compaction. There is no scheduled heavyweight `VACUUM` on page requests or collector
 cycles.
 
 ## What can be cleaned

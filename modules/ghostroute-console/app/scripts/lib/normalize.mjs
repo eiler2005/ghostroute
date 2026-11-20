@@ -1,5 +1,6 @@
 import { explicitAccessChannel } from "../../src/lib/channels.mjs";
 import { trafficRetentionDays, pruneTrafficHistory } from "./traffic-retention.mjs";
+import { pruneSnapshotPayloads } from "./snapshot-retention.mjs";
 import crypto from "node:crypto";
 import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
 import { buildDashboardAnalyticsFromRows, rankAppFamilyEvidence } from "../../src/lib/dashboard-analytics.mjs";
@@ -3595,6 +3596,10 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   }
   result.normalized_flows += db.prepare("delete from normalized_flows where collected_at < ?").run(rawCutoff).changes;
   result.normalized_devices = db.prepare("delete from normalized_devices where collected_at < ?").run(rawCutoff).changes;
+  for (const table of ["normalized_catalog", "normalized_health"]) {
+    result[table] = db.prepare(`delete from ${table} where collected_at < ?
+      and snapshot_id not in (select max(id) from snapshots group by type)`).run(rawCutoff).changes;
+  }
   result.router_traffic_rollups = db.prepare("delete from router_traffic_rollups where collected_at < ?").run(rawCutoff).changes;
   result.decision_candidates = db.prepare("delete from decision_candidates where applied = 0 and status = 'pending' and updated_at_utc < ?").run(rawCutoff).changes;
       result.normalized_flows += db.prepare("delete from normalized_flows where traffic_class not in ('client', 'personal_cloud') and collected_at < ?").run(serviceCutoff).changes;
@@ -3615,14 +3620,7 @@ export function pruneOperationalTables(db, now = new Date().toISOString()) {
   result.dns_log_daily += db.prepare("delete from dns_log_daily where day_start_utc < ?").run(cutoff(dnsDailyDays)).changes;
   result.filter_decisions += db.prepare("delete from filter_decisions where observed_at_utc < ?").run(cutoff(filterDays)).changes;
   result.traffic_history_90d = pruneTrafficHistory(db, now);
-  result.payloads_stripped += db.prepare(`
-    update snapshots
-       set payload_json = ''
-     where payload_json != ''
-       and type in ('traffic', 'dns', 'live')
-       and collected_at < ?
-       and id not in (select max(id) from snapshots group by type)
-  `).run(cutoffHours(24)).changes;
+  result.payloads_stripped += pruneSnapshotPayloads(db, now);
   return result;
 }
 

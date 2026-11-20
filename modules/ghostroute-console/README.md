@@ -42,7 +42,9 @@ Operational details live in
 ## TL;DR
 
 Traffic history expires automatically after at most 90 days; raw detail has
-shorter retention. See the [maintenance guide](../../docs/maintenance-and-retention.md)
+shorter retention. Duplicated JSON files and SQLite snapshot payloads keep six
+hours plus the latest observation of each source; normalized detail keeps seven
+days. See the [maintenance guide](../../docs/maintenance-and-retention.md)
 for cleanup scope, database compaction and protected rollback/operator state.
 
 Channel identity includes D, anyT (AnyTLS), and Snell. Settings exposes symbolic

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { trafficRetentionDays, pruneTrafficHistory } from "./lib/traffic-retention.mjs";
+import { pruneSnapshotFiles, pruneSnapshotMetadata } from "./lib/snapshot-retention.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -79,22 +80,6 @@ function cutoffIso(retentionDays) {
   return new Date(Date.now() - retentionDays * 86400000).toISOString();
 }
 
-function pruneFiles(dir, retentionDays, predicate = () => true) {
-  if (!fs.existsSync(dir)) return 0;
-  const cutoff = Date.now() - retentionDays * 86400000;
-  let deleted = 0;
-  for (const name of fs.readdirSync(dir)) {
-    const file = path.join(dir, name);
-    if (!predicate(name, file)) continue;
-    const stat = fs.statSync(file);
-    if (stat.isFile() && stat.mtimeMs < cutoff) {
-      fs.unlinkSync(file);
-      deleted += 1;
-    }
-  }
-  return deleted;
-}
-
 try {
   const stdout = runReadOnlyCommand(["--json", "today"]);
   const payload = JSON.parse(stdout);
@@ -119,8 +104,8 @@ try {
     rebuildHourlyAggregates(db);
     pruneTrafficHistory(db, new Date().toISOString());
     const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
-    pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
-    db.prepare("delete from snapshots where collected_at < ?").run(cutoffIso(rawDays));
+    pruneSnapshotFiles(db, snapshotDir);
+    pruneSnapshotMetadata(db, cutoffIso(rawDays));
   } finally {
     try {
       db?.close();

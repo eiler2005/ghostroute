@@ -135,9 +135,11 @@ collector skips; startup light/live collection is serialized after the full
 startup pass. The full snapshot timeout defaults to 15 minutes because it may
 run several read-only reports in one pass.
 
-Retention defaults are intentionally small enough for a 40 GB VPS: raw factual
-snapshots are kept for 7 days, fine traffic buckets for 8 days, hourly/daily
-traffic and DNS aggregates for about 35 days, live raw snapshots for 6 hours,
+Retention separates duplicated raw archives from useful normalized history.
+All raw JSON files and SQLite snapshot payloads expire after 6 hours, while the
+latest payload/file of each source stays available even during a source outage.
+Normalized factual detail is kept for 7 days, fine traffic buckets for 8 days,
+hourly traffic and DNS aggregates for about 35 days, daily history for up to 90 days,
 and full local SQLite safety backups are disabled unless explicitly enabled with
 `GHOSTROUTE_DB_BACKUP_MODE=local_daily`. In disabled mode, retention removes
 existing local full DB copies instead of preserving one large same-disk file.
@@ -147,9 +149,12 @@ and enforces max count, max total bytes and disk guards before creating a new
 copy. Raw normalized
 traffic, DNS, event and route-decision rows are bounded by the raw retention
 window; service/background traffic can be pruned sooner than client traffic.
-Heavy `traffic`, `dns` and `live` snapshot payloads older than the short
-troubleshooting window may be stripped once a newer payload of the same type
-exists. The live collector stores normalized events in SQLite; the per-poll raw
+The six-hour archive limit includes `traffic_evidence`, `traffic_facts` and
+`router_rollups`; keeping these duplicated payloads for the full detail window
+can consume much of a small VPS disk. Historical snapshot metadata remains under
+the ordinary raw retention policy. Normalized catalog and health rows also expire
+under that policy, preserving the latest source rows. The live collector stores
+normalized events in SQLite; the per-poll raw
 JSON is only short-term troubleshooting material.
 
 ## Read Models And Accounting

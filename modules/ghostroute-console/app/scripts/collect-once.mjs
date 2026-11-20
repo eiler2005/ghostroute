@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { trafficRetentionDays, pruneTrafficHistory } from "./lib/traffic-retention.mjs";
+import { pruneSnapshotFiles, pruneSnapshotMetadata } from "./lib/snapshot-retention.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -132,22 +133,6 @@ function cutoffIso(retentionDays) {
   return new Date(Date.now() - retentionDays * 86400000).toISOString();
 }
 
-function pruneFiles(dir, retentionDays, predicate = () => true) {
-  if (!fs.existsSync(dir)) return 0;
-  const cutoff = Date.now() - retentionDays * 86400000;
-  let deleted = 0;
-  for (const name of fs.readdirSync(dir)) {
-    const file = path.join(dir, name);
-    if (!predicate(name, file)) continue;
-    const stat = fs.statSync(file);
-    if (stat.isFile() && stat.mtimeMs < cutoff) {
-      fs.unlinkSync(file);
-      deleted += 1;
-    }
-  }
-  return deleted;
-}
-
 function applyRetention() {
   const rawDays = days("GHOSTROUTE_RAW_RETENTION_DAYS", 7);
   const hourlyDays = days("GHOSTROUTE_HOURLY_RETENTION_DAYS", 30);
@@ -160,10 +145,8 @@ function applyRetention() {
   if (backupRetention.skippedReason && !["disabled", "missing-db", "already-backed-up-today"].includes(backupRetention.skippedReason)) {
     console.log(`sqlite backup skipped: ${backupRetention.skippedReason}`);
   }
-  const rawDeleted = pruneFiles(snapshotDir, rawDays, (name) => name.endsWith(".json"));
-  const snapshotRows = db
-    .prepare("delete from snapshots where collected_at < ?")
-    .run(cutoffIso(rawDays)).changes;
+  const rawDeleted = pruneSnapshotFiles(db, snapshotDir);
+  const snapshotRows = pruneSnapshotMetadata(db, cutoffIso(rawDays));
   db.prepare("delete from hourly_traffic where hour_key < ?").run(cutoffIso(hourlyDays));
   db.prepare(
     `insert into retention_runs(ran_at, raw_deleted, snapshot_rows_deleted, backups_deleted, backup_path)
