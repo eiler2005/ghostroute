@@ -220,6 +220,9 @@ Clients and its API also give prepared traffic amounts precedence over fallback
 lane aggregates. Inventory identity enrichment cannot replace that selected-window
 amount with a larger alternative. Aggregate verification includes stable observed
 client keys without requiring an operator-assigned registry name.
+Budget uses the same prepared window totals as Dashboard and the same client list
+as Clients, including period and traffic-class filters in its JSON API. Its shell
+reads small prepared health data instead of loading all raw latest snapshots.
 The Apps workbench explicitly flags destination evidence exceeding the measured
 client window. It preserves measured samples and their amounts, since overlapping
 samples or differing observation intervals cannot be repaired by silently scaling

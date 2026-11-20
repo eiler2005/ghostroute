@@ -4467,91 +4467,20 @@ export function buildBudgetModel(filters: ConsoleFilters = {}): ConsoleModel {
 }
 
 function buildBudgetModelUncached(filters: ConsoleFilters = {}): ConsoleModel {
-  const snapshots = cachedLatestByType();
   const period = filters.period || "today";
-  const trafficSummarySnapshot = latestWindowSnapshot(snapshots, "traffic_summary", period);
-  const trafficSnapshot = latestWindowSnapshot(snapshots, "traffic", period);
-  const dashboardTraffic = trafficSummarySnapshot?.payload?.totals ? trafficSummarySnapshot.payload : trafficSnapshot?.payload || {};
-  const health = snapshots.health?.payload || {};
-  const leaks = snapshots.leaks?.payload || {};
-  const newest = Object.values(snapshots)
-    .filter(Boolean)
-    .map((row) => row?.collectedAt)
-    .sort()
-    .pop();
-  const staleMinutes = minutesSince(newest);
-  const staleThreshold = staleThresholdMinutes();
-  const totals = dashboardTraffic.totals || {};
-  const currentRows = mergeKnownDevices(deviceDeltaRowsForPeriod(period), false).slice(0, 50);
-  const collectorDisabled = (process.env.GHOSTROUTE_COLLECTOR_MODE || "disabled") === "disabled";
-  const collectorErrors = collectorDisabled ? [] : (latestCollectorErrors(3) as Array<Record<string, any>>);
-  const leakAlerts = (leaks.leaks || []).map((row: any) => ({
-    severity: row.severity || "warning",
-    title: row.label || row.probe,
-    source: "leak-check",
-    status: row.status,
-    evidence: row.evidence,
-    confidence: row.confidence || "exact",
-  }));
-  const statusCards = [
-    { label: "Router", status: normalizeStatus(health.services?.router || health.overall), detail: formatDetail(health.router?.product) },
-    { label: "Reality", status: normalizeStatus(health.services?.reality), detail: "home ingress / reality-out" },
-    { label: "DNS", status: normalizeStatus(health.services?.dns), detail: "dnscrypt + policy" },
-    { label: "IPv6", status: normalizeStatus(health.services?.ipv6), detail: "not in routing scope" },
-    { label: "Rule-set", status: normalizeStatus(health.services?.rule_set_sync), detail: "catalog mirror" },
-    { label: "Leaks", status: normalizeStatus(leaks.overall), detail: `${leakAlerts.length} signals` },
-  ];
-  const staleAlert =
-    staleMinutes !== null && staleMinutes > staleThreshold
-      ? [{
-          severity: "warning",
-          title: "stale snapshot",
-          source: "console",
-          status: "WARN",
-          evidence: `${staleMinutes} minutes since latest snapshot; threshold ${staleThreshold} minutes`,
-          confidence: "exact",
-        }]
-      : [];
+  const shell = buildLightweightShellModel(filters);
+  const totals = authoritativeTotalsForPeriod(period, filters.trafficClass || "all");
   return {
-    generatedAt: new Date().toISOString(),
-    freshnessMinutes: staleMinutes,
-    freshnessStatus: staleMinutes === null ? "empty" : staleMinutes > staleThreshold || collectorErrors.length > 0 ? "stale" : "fresh",
-    freshnessLabel: newest || "",
-    nextExpectedCollection: nextExpectedCollection(newest),
-    staleThresholdMinutes: staleThreshold,
-    runtime: runtimeInfo(snapshots),
-    collectorErrors,
-    collectorRun: collectorDisabled ? null : (latestCollectorRun() as Record<string, any> | null),
+    ...shell,
     hourlyTraffic: hourlyTraffic(96) as Array<Record<string, any>>,
-    events: [],
-    routeDecisions: [],
-    catalogReviews: [],
-    notifications: [],
-    notificationSettings: {},
-    auditLog: [],
-    opsRuns: [],
-    snapshots,
-    statusCards,
     totals: {
-      observedBytes: Number(totals.client_observed_bytes || 0),
-      viaVpsBytes: Number(totals.via_vps_bytes || 0),
-      directBytes: Number(totals.direct_bytes || 0),
-      unknownBytes: Number(totals.unknown_bytes || 0),
-      periodLabel: trafficPeriodLabel(dashboardTraffic),
-      windowLabel: trafficWindowLabel(dashboardTraffic),
+      ...shell.totals,
+      observedBytes: totals.observed,
+      viaVpsBytes: totals.vps,
+      directBytes: totals.direct,
+      unknownBytes: totals.unknown,
     },
-    devices: filterRows(reconcileTrafficRows(currentRows, authoritativeTotalsForPeriod(period, filters.trafficClass || "all")), filters),
-    flows: [],
-    dnsQueries: [],
-    alerts: dedupeAlerts([...staleAlert, ...leakAlerts, ...collectorErrors.map((row) => ({
-      severity: "warning",
-      title: row.type || "collector warning",
-      source: "collector",
-      status: "WARN",
-      evidence: row.message || "",
-      confidence: "exact",
-    }))]),
-    catalog: [],
+    devices: listClientInventory({ filters, page: 1, pageSize: 50 }).rows,
   };
 }
 

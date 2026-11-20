@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildBudgetModel } from "@/lib/server/selectors/budget";
+import { filtersFromSearchParams } from "@/lib/server/page";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
@@ -22,8 +23,9 @@ function dailyHistory(rows: Array<Record<string, any>>) {
   return Array.from(byDay.entries()).map(([day, routes]) => ({ day, routes }));
 }
 
-export async function GET() {
-  const model = buildBudgetModel();
+export async function GET(request: Request) {
+  const filters = await filtersFromSearchParams(Promise.resolve(Object.fromEntries(new URL(request.url).searchParams)));
+  const model = buildBudgetModel(filters);
   return NextResponse.json({
     generated_at: model.generatedAt,
     freshness_minutes: model.freshnessMinutes,
