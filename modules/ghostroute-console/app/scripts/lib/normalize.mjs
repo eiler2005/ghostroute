@@ -3,7 +3,7 @@ import { trafficRetentionDays, pruneTrafficHistory } from "./traffic-retention.m
 import { pruneSnapshotPayloads } from "./snapshot-retention.mjs";
 import crypto from "node:crypto";
 import { classifyDestination } from "../../../../traffic-intelligence/lib/classification.mjs";
-import { buildDashboardAnalyticsFromRows, rankAppFamilyEvidence } from "../../src/lib/dashboard-analytics.mjs";
+import { cumulativeClientTrafficToday, buildDashboardAnalyticsFromRows, rankAppFamilyEvidence } from "../../src/lib/dashboard-analytics.mjs";
 import { localIpContext, withLocalIpContext } from "../../src/lib/ip-context.mjs";
 import { loadDeviceAttributions, observedClientLabel, resolveClient } from "../../src/lib/device-attribution.mjs";
 import { trafficClassFor } from "../../src/lib/traffic-classification.mjs";
@@ -597,8 +597,7 @@ function buildInventoryNetworkHints(db, registry = loadDeviceAttributions()) {
 
 function resolveOperatorClient(row, registry = loadDeviceAttributions(), networkHints = new Map()) {
   const raw = row?.raw || {};
-  const sourceChannel = ["isolated_channel_profile_counter", "amneziawg_peer_counter", "caddy_connect_stream", "proxy_connection_event"].includes(row?.evidence_level || raw.evidence_level)
-    ? explicitAccessChannel(row) : "";
+  const sourceChannel = explicitAccessChannel(row);
   const resolved = resolveClient({
     ...row,
     raw,
@@ -614,7 +613,7 @@ function resolveOperatorClient(row, registry = loadDeviceAttributions(), network
     for (const candidate of [row?.client_ip, row?.ip, row?.source_ip, row?.mac, row?.device_key, raw.client_ip, raw.ip, raw.source_ip, raw.mac, raw.mac_address]) {
       const key = networkHints.get(normalizedHint(candidate));
       const hinted = registeredClientResult(registry, key, row, "device_inventory_network_hint");
-      if (hinted) return hinted;
+      if (hinted) return { ...hinted, channel: sourceChannel || hinted.channel };
     }
   }
   return {
@@ -2798,7 +2797,7 @@ function aggregateLayerMeta(layer, detail = false) {
   return { table: `${prefix}_5min`, timeColumn: "bucket_start_utc" };
 }
 
-function aggregateRowsFromLayer(db, layer, startUtc, endUtc, detail = false) {
+function aggregateRowsFromLayer(db, layer, startUtc, endUtc, detail = false, byTime = false) {
   if (Date.parse(startUtc) >= Date.parse(endUtc)) return [];
   const { table, timeColumn } = aggregateLayerMeta(layer, detail);
   return db.prepare(`
@@ -2818,14 +2817,15 @@ function aggregateRowsFromLayer(db, layer, startUtc, endUtc, detail = false) {
            ${layer === "5min" ? "sum(connections)" : "0"} as connections,
            sum(observed_bytes) as observed_bytes,
            sum(attributed_bytes) as attributed_bytes,
-           max(${timeColumn}) as collected_at,
-           max(${timeColumn}) as last_seen,
+           ${byTime ? timeColumn : `max(${timeColumn})`} as collected_at,
+           ${byTime ? timeColumn : `max(${timeColumn})`} as last_seen,
            ${detail ? "case when sum(attributed_bytes) <= 0 or destination_key = '' or destination_key = 'unknown destination' then 1 else 0 end" : "1"} as accounting_bucket,
-           '${layer}' as aggregate_layer
+           '${layer}' as aggregate_layer,
+           '${detail ? "detail" : "volume"}' as measurement_role
       from ${table}
      where ${timeColumn} >= ?
        and ${timeColumn} < ?
-     group by client_key, channel, route, confidence, traffic_class${detail ? ", destination_key" : ""}
+     group by client_key, channel, route, confidence, traffic_class${detail ? ", destination_key" : ""}${byTime ? `, ${timeColumn}` : ""}
   `).all(startUtc, endUtc);
 }
 
@@ -2837,7 +2837,7 @@ function aggregateRowsForWindow(db, window, now) {
   ];
   return groupRows(
     rows,
-    (row) => [row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key].join("|"),
+    (row) => [row.client_key, row.channel, row.route, row.confidence, row.traffic_class, row.destination_key, row.measurement_role].join("|"),
     (row) => ({
       client_key: row.client_key,
       client_label: row.client_label,
@@ -2847,6 +2847,7 @@ function aggregateRowsForWindow(db, window, now) {
       traffic_class: row.traffic_class,
       destination_key: row.destination_key,
       accounting_bucket: Boolean(row.accounting_bucket),
+      measurement_role: row.measurement_role,
       collected_at: row.collected_at,
       last_seen: row.last_seen,
     })
@@ -2948,6 +2949,7 @@ function clientChannelObservedRows(rows) {
     };
     const target = row.accounting_source === "device_counter_delta"
       ? current.counter
+      : row.measurement_role === 'detail' ? current.detail
       : row.accounting_bucket || !text(row.destination_key) ? current.accounting : current.detail;
     target.bytes += aggregateTotalBytes(row);
     target.via_vps_bytes += number(row.via_vps_bytes);
@@ -3017,6 +3019,7 @@ export function deviceCounterRowsForWindow(db, window, now, registry = loadDevic
     const ordered = list.sort((a, b) => Date.parse(a.collected_at || "") - Date.parse(b.collected_at || ""));
     let previous = null;
     let latest = ordered[ordered.length - 1];
+    const intervals = [];
     const acc = { total_bytes: 0, via_vps_bytes: 0, direct_bytes: 0, unknown_bytes: 0, flows: 0 };
     for (const sample of ordered) {
       const first = !previous;
@@ -3029,6 +3032,7 @@ export function deviceCounterRowsForWindow(db, window, now, registry = loadDevic
       }
       const deltaUnknown = Math.max(0, deltaTotal - deltaVps - deltaDirect);
       if (deltaTotal > 0 || deltaVps > 0 || deltaDirect > 0) {
+        intervals.push({collected_at:sample.collected_at,bytes:deltaTotal,via_vps_bytes:deltaVps,direct_bytes:deltaDirect,unknown_bytes:deltaUnknown});
         acc.total_bytes += deltaTotal;
         acc.via_vps_bytes += deltaVps;
         acc.direct_bytes += deltaDirect;
@@ -3044,7 +3048,8 @@ export function deviceCounterRowsForWindow(db, window, now, registry = loadDevic
       client_key: latest.resolved.client_key,
       client_label: latest.resolved.client_label,
       label: latest.resolved.client_label,
-      channel: text(latest.resolved.channel || latest.channel, "Unknown"),
+      channel: text(latest.channel || latest.resolved.channel, "Unknown"),
+      volume_intervals: intervals,
       route: routeFromAggregate(acc),
       confidence: latest.confidence || "exact",
       traffic_class: "client",
@@ -3096,7 +3101,7 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   const counterRows = window === "today" && (trafficClass === "all" || trafficClass === "client")
     ? deviceCounterRowsForWindow(db, window, now, registry)
     : [];
-  const clientRows = clientObservedRows([...operatorRows, ...counterRows]).sort((a, b) => number(b.bytes) - number(a.bytes)).slice(0, 200);
+  const clientRows = clientObservedRows([...operatorRows, ...counterRows]).sort((a, b) => number(b.bytes) - number(a.bytes));
   const supportRows = allRows.filter((row) => !isOperatorTrafficRow(row, registry) && ["service_background", "unclassified"].includes(row.traffic_class));
   const modelRows = trafficClass === "client" || trafficClass === "personal_cloud"
     ? operatorRows
@@ -3127,9 +3132,8 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
   const authoritative = latestAuthoritativeTotals(db, window, now);
   const clientTotals = totalsForFacts(clientRows);
   const factTotals = totalsForFacts(primaryRows.filter((row) => row.accounting_bucket || !text(row.destination_key)));
-  const accountingTotals = trafficClass === "all" && authoritative?.observedBytes > 0
-    ? authoritative
-    : clientTotals.observedBytes > 0 ? clientTotals : factTotals.observedBytes > 0 ? factTotals : authoritative;
+  const accountingTotals = clientTotals.observedBytes > 0
+    ? clientTotals : factTotals.observedBytes > 0 ? factTotals : authoritative;
   const totals = {
     ...(accountingTotals || { observedBytes: 0, viaVpsBytes: 0, directBytes: 0, unknownBytes: 0 }),
     periodLabel: authoritative?.periodLabel || window,
@@ -3171,14 +3175,32 @@ function buildPreparedWindowPayload(db, window, facts, now, trafficClass = "all"
     lteQuotaGb: process.env.GHOSTROUTE_CONSOLE_LTE_QUOTA_GB,
     resetDay: process.env.GHOSTROUTE_CONSOLE_BILLING_RESET_DAY,
   });
-  const summaryTrafficToday = trafficClass === "all" && window === "today" ? trafficTodayFromSummarySnapshots(db, now) : [];
-  if (summaryTrafficToday.length > 0) {
-    dashboardAnalytics.trafficToday = {
-      points: summaryTrafficToday,
-      totalBytes: summaryTrafficToday[summaryTrafficToday.length - 1].totalBytes,
-    };
+  if (window === "today" && clientTotals.observedBytes > 0) {
+    // Reuse the client/channel source selection; retain time buckets instead of
+    // spreading a daily total or using destination popularity to invent hours.
+    const scopeKey = row => [row.client_key, row.channel || "Unknown"].join("|");
+    const scopes = new Map(clientChannelObservedRows([...operatorRows, ...counterRows])
+      .map(row => [scopeKey(row), row.counter.bytes > 0 ? "counter" : "facts"]));
+    const timedFacts = windowAggregateSegments(window, now).flatMap(segment =>
+      aggregateRowsFromLayer(db, segment.layer, segment.start, segment.end, false, true));
+    const volumeTimeline = [
+      ...preparedRowsForWindow(timedFacts, trafficClass).filter(row => isOperatorTrafficRow(row, registry) && scopes.get(scopeKey(row)) === "facts"),
+      ...counterRows.filter(row => scopes.get(scopeKey(row)) === "counter").flatMap(row => row.volume_intervals || []),
+    ];
+    dashboardAnalytics.trafficToday = cumulativeClientTrafficToday(volumeTimeline, new Date(now));
+  } else {
+    const summaryTrafficToday = trafficClass === "all" && window === "today" ? trafficTodayFromSummarySnapshots(db, now) : [];
+    if (summaryTrafficToday.length > 0) {
+      dashboardAnalytics.trafficToday = { points: summaryTrafficToday,
+        totalBytes: summaryTrafficToday[summaryTrafficToday.length - 1].totalBytes };
+    }
   }
   dashboardAnalytics.topClients = topClientAnalyticsFromRows(clientRows);
+  const channelClients = clientChannelObservedRows([...operatorRows, ...counterRows]);
+  dashboardAnalytics.channelClients = channelClients.map(row => ({ channel:row.channel,
+    client:row.client_key,label:row.client_label,bytes:row.bytes,last_seen:row.last_seen }));
+  dashboardAnalytics.channelTraffic = groupRows(channelClients,row=>row.channel,row=>({channel:row.channel}))
+    .map(row=>({channel:row.channel,bytes:row.bytes})).sort((a,b)=>b.bytes-a.bytes);
   dashboardAnalytics.trafficReconciliation = {
     summaryBytes: authoritative?.observedBytes ?? null,
     clientEvidenceBytes: clientTotals.observedBytes,

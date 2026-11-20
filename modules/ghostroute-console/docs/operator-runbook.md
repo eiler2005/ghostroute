@@ -117,8 +117,7 @@ The VPS deployment defaults to read-only SSH collection through the generated
 
 - lightweight current-day traffic summaries every 5 minutes during the day and
   every 30 minutes during 23:00-06:00 Moscow time;
-- full snapshots every 30 minutes during 06:00-22:59 Moscow time;
-- full snapshots every 3 hours during 23:00-05:59 Moscow time;
+- full snapshots every 15 minutes, day and night;
 - live event polling every 10 minutes during the day and every 30 minutes during
   23:00-06:00 Moscow time by default;
 - deploy-gate snapshots with the full pass.
@@ -138,7 +137,12 @@ run several read-only reports in one pass.
 Retention separates duplicated raw archives from useful normalized history.
 Raw JSON files and heavy SQLite snapshot payloads expire after 6 hours, while the
 latest payload/file of each source stays available even during a source outage.
-Small `traffic_summary` payloads retain seven days for cumulative counter charts.
+Small `traffic_summary` payloads retain seven days for independent counter diagnostics
+and summary-only chart fallback. The normal Dashboard chart follows the same
+prepared client-volume sources as its KPI and complete client list, including
+channels outside the LAN/Home Reality summary. Run
+`node --test tests/dashboard-volume-contract.test.mjs` and the seeded
+`tests/e2e/dashboard-volume.spec.ts` checks when changing this source selection.
 Normalized factual detail is kept for 7 days, fine traffic buckets for 8 days,
 hourly traffic and DNS aggregates for about 35 days, daily history for up to 90 days,
 and full local SQLite safety backups are disabled unless explicitly enabled with

@@ -58,10 +58,22 @@ Local aggregate validation and the post-deployment gate share that same volume
 contract. Neither gate requires partial destination coverage to equal total
 profile traffic; both reject any disagreement between total read models.
 
-The daily summary chart displays observed cumulative day-counter samples at
-their observation hours. It does not spread an initial sample into earlier
-hours, fill future hours with zero, or rescale historical route components.
-Counter corrections remain visible as changed cumulative observations.
+Dashboard totals and the complete client list use one selected client-volume
+model across channels. The daily cumulative chart uses the same source selection
+with retained time buckets and counter intervals. Destination-detail buckets,
+including unattributed destinations, cannot become a second copy of volume.
+Client totals are computed before display limits or pagination. Unregistered
+measured identities remain visible in the attribution queue. A registry primary
+channel never replaces the measured access channel.
+Current channel totals and channel-client rankings are prepared from that same
+source selection and reused by desktop and mobile selectors; their sum equals
+the all-client total for the same period and class.
+
+The chart does not spread a daily total into fabricated hours, fill future hours
+with zero, or rescale historical route components. Its filled area ends at the
+last observation. A router-summary-only chart is a fallback when no client-volume
+evidence exists; that narrower summary remains separately labeled as diagnostic
+coverage when client evidence is present.
 
 Client site evidence retains original measured and source-estimated byte rows.
 DNS query counts never allocate the unexplained byte remainder. Unexplained
@@ -122,10 +134,10 @@ DBs aligned for route/accounting metadata, detailed DNS links and fact lookup
 indexes. Old Console SQLite and old snapshot-derived aggregates are quarantined
 for audit only and must not seed new calculations. The current source model is:
 
-- router edge rollups for authoritative LAN/Wi-Fi totals;
+- router edge rollups for independently scoped LAN/Wi-Fi diagnostics;
 - `traffic_evidence` for raw flow/DNS/route evidence;
-- `traffic_facts` v3 for audit, detail, DNS links, route/accounting metadata and
-  fallback;
+- `traffic_facts` v3 for measured volume, separate destination detail, DNS links
+  and route/accounting metadata;
 - `traffic_attribution_gaps` for attribution debt;
 - DNS facts for factual DNS views and DNS pyramid chunks.
 
@@ -137,8 +149,8 @@ normal destination rankings.
 
 ```text
 router edge rollups / traffic_evidence / traffic_facts snapshots
-  -> router rollups are preferred totals
-  -> facts remain audit/detail/fallback source
+  -> traffic facts feed the volume and destination pyramids separately
+  -> router rollups remain independently scoped diagnostics
 
 client_traffic_5min / client_destination_traffic_5min / dns_log_5min
   -> fine current-day chunks
@@ -273,14 +285,12 @@ normalized as a small deduplicated set such as
 split before merging, so repeated evidence cannot grow into long synthetic
 channel strings.
 
-`verify:aggregates` includes a coarse traffic-conservation guardrail for the
-current day: prepared client totals should stay close to Dashboard observed
-traffic, with `GHOSTROUTE_AGGREGATE_TRAFFIC_DRIFT_TOLERANCE` available for
-stricter operator checks. The default warns because live global observed traffic
-can include unattributed Channel A/B/C ingress or router-level residual that is
-not yet safe to assign to registered devices. Set
-`GHOSTROUTE_AGGREGATE_STRICT_TRAFFIC_DRIFT=1` when deliberately investigating
-traffic-conservation regressions and wanting the check to fail hard.
+The shared `assertTrafficVolumeContract` gate requires exact agreement between
+prepared Dashboard totals, the complete prepared client sum and the current-day
+chart. Its route components must also sum exactly to total bytes. Independent
+router summaries and partial destination evidence are not forced to equal that
+all-channel client volume. Browser coverage additionally compares the Dashboard
+API with every page of the Clients API.
 
 Latest DNS domains uses the same selector, but ranks by recency/query count and
 keeps DNS query counts visible as evidence. Service DNS stays excluded unless
@@ -320,10 +330,11 @@ The router edge layer is a bounded cache/spool, not the primary warehouse.
 Router chunk starts are aligned to Moscow time: 5-minute buckets, `HH:00:00`,
 MSK day start, MSK Monday week start and MSK month start.
 
-Prepared Dashboard totals for `traffic_class=all` prefer the latest
-authoritative current-day router summary. Client-ranked rows and class-specific
-client views remain registry/operator-scoped, but the top-level all-traffic KPI
-must not be reduced to only the subset that has concrete client attribution.
+Prepared Dashboard totals for every traffic class prefer the same selected
+client-volume rows used by client rankings. Existing per-device summary counter
+fallbacks are selected per client/channel and never added to overlapping facts.
+The global LAN/Home Reality summary is not an all-channel denominator and cannot
+replace that total merely because it is newer. Missing aliases do not erase bytes.
 
 ## Collector Contract
 

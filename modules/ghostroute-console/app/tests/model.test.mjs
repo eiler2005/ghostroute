@@ -1903,7 +1903,7 @@ test("prepared traffic windows keep personal-cloud clients visible in all traffi
   }
 });
 
-test("prepared dashboard all traffic totals prefer authoritative router summary", () => {
+test("prepared dashboard uses client volume while retaining the narrower router summary as diagnostic", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ghostroute-console-authoritative-"));
   fs.writeFileSync(
     path.join(tmp, "device-attribution.json"),
@@ -1956,14 +1956,14 @@ test("prepared dashboard all traffic totals prefer authoritative router summary"
     rebuildPreparedWindows(db, "2026-05-13T07:05:00.000Z");
     const allDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'all'").get().payload_json);
     const clientDashboard = JSON.parse(db.prepare("select payload_json from traffic_window_snapshots where kind = 'dashboard' and window = 'today' and traffic_class = 'client'").get().payload_json);
-    assert.equal(allDashboard.totals.observedBytes, 2_000_000);
-    assert.equal(allDashboard.totals.viaVpsBytes, 1_500_000);
-    assert.equal(allDashboard.totals.directBytes, 500_000);
+    assert.equal(allDashboard.totals.observedBytes, 100_000);
+    assert.equal(allDashboard.totals.viaVpsBytes, 0);
+    assert.equal(allDashboard.totals.directBytes, 100_000);
     assert.equal(clientDashboard.totals.observedBytes, 100_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 2_000_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.totalBytes, 100_000);
     assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "00:00"), undefined);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "03:00").totalBytes, 800_000);
-    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.find((row) => row.hour === "04:00").totalBytes, 2_000_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficToday.points.at(-1).totalBytes, 100_000);
+    assert.equal(allDashboard.dashboardAnalytics.trafficReconciliation.summaryBytes, 2_000_000);
   } finally {
     db.close();
     if (previousDataDir === undefined) delete process.env.GHOSTROUTE_CONSOLE_DATA_DIR;

@@ -783,7 +783,7 @@ function operatorClientRow(row: Record<string, any>): Record<string, any> | null
     owner: resolved.client_owner || row.owner || "",
     device_type: resolved.device_type || row.device_type || "",
     client_channel: resolved.client_channel || row.client_channel || "",
-    channel: resolved.client_channel || row.channel || "Unknown",
+    channel: explicitAccessChannel(row) || resolved.client_channel || "Unknown",
     matched_by: resolved.matched_by || row.matched_by,
     attribution_confidence: resolved.attribution_confidence || row.attribution_confidence,
     confidence: row.confidence || resolved.attribution_confidence || "operator-local",
@@ -4688,6 +4688,8 @@ function aggregateClientRowsForPeriod(period = "today") {
 // This is a client-evidence view, not the VPS interface total. The read model
 // keeps channel as a key even when one device has more than one profile.
 export function channelTrafficForPeriod(period = "today") {
+  const prepared = preparedDashboard(period, "all")?.dashboardAnalytics?.channelTraffic;
+  if (Array.isArray(prepared)) return prepared as Array<{ channel: string; bytes: number }>;
   const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({
     ...segment, granularity: laneGranularity(segment.layer),
   }));
@@ -4695,6 +4697,8 @@ export function channelTrafficForPeriod(period = "today") {
 }
 
 export function channelClientsForPeriod(period = "today") {
+  const prepared = preparedDashboard(period, "all")?.dashboardAnalytics?.channelClients;
+  if (Array.isArray(prepared)) return prepared as Array<{ channel: string; client: string; label: string; bytes: number; last_seen: string }>;
   const segments = windowAggregateSegmentsForSelector(period).map((segment) => ({ ...segment, granularity: laneGranularity(segment.layer) }));
   return channelClientsFromSegments(getDb(), segments) as Array<{ channel: string; client: string; label: string; bytes: number; last_seen: string }>;
 }
@@ -4778,7 +4782,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
     ? (prepared.rows as Array<Record<string, any>>).map((row) => {
       const total = observedByteValue(row);
       const split = splitCounters(row, total);
-      return operatorClientRow({
+      return inventoryRowFromTraffic({
       ...row,
       bytes: total,
       total_bytes: total,
@@ -4828,7 +4832,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       ...registeredInventoryRows(),
       ...inactiveHistoryRows(),
       ...preparedRows,
-      ...aggregateClientRowsForPeriod(period).filter((row) => !preparedRows.some((preparedRow) => preparedRow.client_key === row.client_key)),
+      ...(prepared ? [] : aggregateClientRowsForPeriod(period).filter((row) => !preparedRows.some((preparedRow) => preparedRow.client_key === row.client_key))),
       ...currentDeviceRows,
     ]) as Array<Record<string, any>>)
     .sort((a, b) => {

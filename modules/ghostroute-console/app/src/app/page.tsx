@@ -240,7 +240,7 @@ function maxSeries(points: Array<Record<string, any>>, keys: string[]) {
 function linePath(points: Array<Record<string, any>>, key: string, max: number, width = 100, height = 54) {
   if (points.length === 0) return "";
   return points.map((point, idx) => {
-    const x = point.measurement === "cumulative_day_counter" ? Number.parseInt(point.hour, 10) / 23 * width : points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
+    const x = String(point.measurement || "").startsWith("cumulative_") ? Number.parseInt(point.hour, 10) / 23 * width : points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
     const y = height - (Number(point[key] || 0) / max) * (height - 8) - 2;
     return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(" ");
@@ -249,7 +249,9 @@ function linePath(points: Array<Record<string, any>>, key: string, max: number, 
 function areaPath(points: Array<Record<string, any>>, key: string, max: number, width = 100, height = 54) {
   const path = linePath(points, key, max, width, height);
   if (!path) return "";
-  return `${path} L ${width} ${height} L 0 ${height} Z`;
+  const x = (point: Record<string, any>, index: number) => String(point.measurement || "").startsWith("cumulative_")
+    ? Number.parseInt(point.hour, 10) / 23 * width : points.length === 1 ? 0 : index / (points.length - 1) * width;
+  return `${path} L ${x(points[points.length - 1], points.length - 1).toFixed(2)} ${height} L ${x(points[0], 0).toFixed(2)} ${height} Z`;
 }
 
 function TrafficTodayChart({ points }: { points: Array<Record<string, any>> }) {
@@ -259,7 +261,7 @@ function TrafficTodayChart({ points }: { points: Array<Record<string, any>> }) {
     <section className="card dashboard-chart-card dashboard-traffic-card">
       <div className="dashboard-card-head">
         <h2>Traffic today</h2>
-        <div className="dashboard-card-actions"><span>{points.some(point => point.measurement === "cumulative_day_counter") ? "Cumulative observations" : "Observed intervals"}</span></div>
+        <div className="dashboard-card-actions"><span>{points.some(point => String(point.measurement || "").startsWith("cumulative_")) ? "Cumulative observations" : "Observed intervals"}</span></div>
       </div>
       <div className="chart-legend">
         <span className="legend-total">Total</span>
@@ -453,7 +455,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: Searc
         <div className="dashboard-rank-grid">
           {analytics.trafficReconciliation && <section className="card">
             <h2>Traffic accounting coverage</h2>
-            <p>These sources measure different parts of the path. Their difference is not attributed to a client or app.</p>
+            <p>The total and client ranking use the same client-volume sources. Router summary covers LAN and Home Reality; destination evidence is a separately measured subset.</p>
             <div className="detail-list">
               <div className="detail-row"><span>Router summary · LAN and Home Reality</span><strong>{analytics.trafficReconciliation.summaryBytes === null ? "Not observed" : bytes(analytics.trafficReconciliation.summaryBytes)}</strong></div>
               <div className="detail-row"><span>Prepared client evidence</span><strong>{bytes(analytics.trafficReconciliation.clientEvidenceBytes)}</strong></div>

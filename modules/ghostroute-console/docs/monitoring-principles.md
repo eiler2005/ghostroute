@@ -38,19 +38,18 @@ available from this contract.
 
 ## Freshness
 
-- Dashboard traffic KPI uses lightweight `traffic-summary today`: current local
-  day from 00:00 to the latest summary snapshot, collected about every 5 minutes.
-  The Dashboard `today` route chart uses the same cumulative summary snapshots
-  when available, turning summary deltas into Moscow-hour buckets so the chart
-  and KPI keep the same accounting scope.
-- Detailed traffic views use saved `traffic-report` snapshots. These are heavier
-  and refresh less often: about every 30 minutes during the day and every 3
-  hours overnight.
+- Dashboard traffic KPI, its current-day graph and the full client list use the
+  same prepared client-volume sources and Moscow-day window. The graph retains
+  real bucket/interval timing; destination observations never allocate unknown
+  volume. The narrower `traffic-summary` remains diagnostic and a fallback when
+  client volume is absent.
+- Detailed traffic views use saved `traffic-facts` schema-v3 snapshots and the
+  aggregate pyramid. Full collection defaults to 15 minutes, day and night;
+  collection duration and source failures can increase the actual data age.
 - Live events are event snapshots, not a continuous per-second stream. The UI and
   collector default to about 10 minutes to keep the small VPS calm.
 - During 23:00-06:00 Moscow time, lightweight and live collectors default to
-  wider 30-minute intervals. Full collection already uses the wider overnight
-  interval. This trades nighttime freshness for lower VPS/router/SQLite pressure.
+  wider 30-minute intervals. Full collection keeps its 15-minute interval.
 - Week/month views must read prepared aggregate tables and
   `traffic_window_snapshots`. They must not launch heavy on-demand full reports
   or scan raw normalized rows on the request path.

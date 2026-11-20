@@ -259,6 +259,27 @@ function trafficToday(rows, now) {
   return Array.from(byHour.values());
 }
 
+// These are byte intervals from the selected client-volume sources, not
+// destination samples or independent router-wide counters.
+export function cumulativeClientTrafficToday(rows, now = new Date()) {
+  const today = dateKey('', now), byHour = new Map();
+  for (const row of rows) {
+    const ts = rowTime(row);
+    if (!ts || dateKey(ts, now) !== today || Date.parse(ts) > now.getTime()) continue;
+    const hour = hourKey(ts, now);
+    const point = byHour.get(hour) || { hour, totalBytes:0, viaVpsBytes:0, directBytes:0, unknownBytes:0, observedAt:ts };
+    addRouteBytes(point, row);
+    if (Date.parse(ts) > Date.parse(point.observedAt)) point.observedAt = ts;
+    byHour.set(hour, point);
+  }
+  const totals = { totalBytes:0, viaVpsBytes:0, directBytes:0, unknownBytes:0 };
+  const points = [...byHour.values()].sort((a,b)=>a.hour.localeCompare(b.hour)).map(point=>{
+    for (const key of Object.keys(totals)) totals[key] += point[key];
+    return { ...point, ...totals, measurement:'cumulative_client_volume' };
+  });
+  return { points, totalBytes:totals.totalBytes };
+}
+
 function topClients(rows, limit = 5) {
   const grouped = new Map();
   for (const row of rows) {
