@@ -1051,6 +1051,11 @@ createSchema(db);
 ensureConsoleSchema(db);
 db.transaction(() => seed(db))();
 rebuildPreparedWindows(db);
+// Simulate metadata arriving after accounting: a new hint must not merge an
+// already prepared raw source into a registered row and drop its byte volume.
+db.prepare(`insert into normalized_devices(snapshot_id,snapshot_type,collected_at,device_id,label,ip,hostname,mac,route,confidence,total_bytes,via_vps_bytes,direct_bytes,raw_json,channel)
+  values (1,'traffic_summary',?,'test-home-laptop','Test/Home Laptop','192.0.2.90','','','Unknown','exact',0,0,0,'{}','Home Wi-Fi/LAN')`)
+  .run(new Date().toISOString());
 const seededHome = db.prepare("select rebuilt_at, payload_json from console_page_summaries where page = 'health_mobile'").get();
 db.prepare("update console_page_summaries set payload_json = ? where page = 'mobile_home'")
   .run(JSON.stringify(buildPreparedMobileHomeSummary(db, seededHome.rebuilt_at, JSON.parse(seededHome.payload_json))));

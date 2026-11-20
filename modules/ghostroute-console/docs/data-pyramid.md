@@ -65,6 +65,9 @@ including unattributed destinations, cannot become a second copy of volume.
 Client totals are computed before display limits or pagination. Unregistered
 measured identities remain visible in the attribution queue. A registry primary
 channel never replaces the measured access channel.
+Prepared identities are also stable on the read path: newer inventory hints may
+be applied during the next accounting rebuild, but the GUI cannot merge disjoint
+prepared rows by taking their maximum and thereby erase measured bytes.
 Current channel totals and channel-client rankings are prepared from that same
 source selection and reused by desktop and mobile selectors; their sum equals
 the all-client total for the same period and class.

@@ -4778,11 +4778,16 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
   const trafficClass = filters.trafficClass || "all";
   return cacheGet(`client-inventory:${latestSnapshotVersion()}:${period}:${trafficClass}`, () => {
   const prepared = getPreparedWindowSnapshot("clients", period, trafficClass)?.payload;
+   const registry = loadDeviceAttributions();
   const preparedRows = prepared?.rows
     ? (prepared.rows as Array<Record<string, any>>).map((row) => {
       const total = observedByteValue(row);
       const split = splitCounters(row, total);
-      return inventoryRowFromTraffic({
+      // Prepared identities own the accounting. Newer runtime hints may enrich
+      // the next rebuild, but cannot merge these disjoint rows at display time.
+      const display = (registry.clients as Record<string, any>)[String(row.client_key || "")]
+        ? operatorClientRow : needsAttributionClientRow;
+      const displayed = display({
       ...row,
       bytes: total,
       total_bytes: total,
@@ -4792,6 +4797,7 @@ function clientInventoryRows(filters: ConsoleFilters = {}) {
       route: routeFromCounters(split),
       traffic_window_active: total > 0,
       });
+      return displayed ? withDeviceReviewState({ ...displayed, client_key:row.client_key, id:row.client_key }) : null;
     }).filter((row): row is Record<string, any> => Boolean(row))
     : [];
    const inventory = prepared ? [] : mergeKnownDevices(knownDeviceRows(2000), false);
