@@ -1917,6 +1917,9 @@ export function ensureConsoleSchema(db) {
     create index if not exists idx_normalized_flows_fast on normalized_flows(snapshot_id, collected_at desc, event_ts desc, client, route, channel, confidence);
     create index if not exists idx_normalized_flows_destination on normalized_flows(snapshot_id, destination, destination_ip, dns_qname);
     create index if not exists idx_normalized_devices_fast on normalized_devices(collected_at desc, label, device_id, channel, route);
+    create index if not exists idx_normalized_flows_recent on normalized_flows(collected_at);
+    create index if not exists idx_normalized_dns_recent on normalized_dns(collected_at);
+    create index if not exists idx_normalized_devices_recent on normalized_devices(collected_at);
     create index if not exists idx_ct5_msk on client_traffic_5min(bucket_msk_key desc);
     create index if not exists idx_ct5_class_msk on client_traffic_5min(traffic_class, bucket_msk_key desc);
     create index if not exists idx_ct5_client_msk on client_traffic_5min(client_key, bucket_msk_key desc);
