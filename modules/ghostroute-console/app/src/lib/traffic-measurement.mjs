@@ -5,10 +5,10 @@ export function trafficMeasurement(row = {}) {
     try { raw = JSON.parse(row.evidence_json); } catch { raw = {}; }
   }
   if (!raw || typeof raw !== 'object') raw = {};
-  const kind = row.measurement_kind || raw.measurement_kind
+  const kind = row.measurement_kind || raw.measurement_kind || row.measurement?.kind
     || (raw.evidence_level === 'proxy_connection_event' ? 'connection_event'
       : raw.destination_kind === 'unattributed_counter' ? 'counter_delta' : 'flow_sample');
-  const byteConfidence = row.byte_confidence || raw.byte_confidence || row.confidence || raw.confidence || 'unknown';
+  const byteConfidence = row.byte_confidence || raw.byte_confidence || row.measurement?.byteConfidence || row.confidence || raw.confidence || 'unknown';
   const bytesMeasured = kind !== 'connection_event' && byteConfidence !== 'not_measured';
   return {
     kind,

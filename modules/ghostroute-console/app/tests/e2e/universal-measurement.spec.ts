@@ -34,3 +34,13 @@ test('connection evidence shows an unmeasured amount on each browser surface', a
   if (!mobile) await expect(row).toContainText('Proxy target');
   await page.screenshot({path:info.outputPath('connection-evidence.png'),fullPage:true});
 });
+
+test('flow API retains measurement meaning while omitting raw evidence', async ({request}) => {
+  const response=await request.get('/api/flows?'+new URLSearchParams({search:target,trafficClass:'all',fresh:'1'}));
+  expect(response.ok()).toBe(true);
+  const payload=await response.json();
+  const row=payload.flows.find((candidate:any)=>candidate.id===fixtureId);
+  expect(row).toBeTruthy();
+  expect(row).not.toHaveProperty('raw');
+  expect(row.measurement).toMatchObject({kind:'connection_event',bytesMeasured:false,byteConfidence:'not_measured'});
+});

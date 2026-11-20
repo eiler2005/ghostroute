@@ -648,6 +648,11 @@ not unique connections. A counter-only client has zero observed destinations;
 reconciliation must not invent one. Desktop and mobile show **not measured**
 for connection events without byte counters. Their destinations and selected
 outbounds are detail evidence and never allocate overlapping profile bytes.
+Flow API responses preserve a small `measurement` object (`kind`,
+`bytesMeasured`, `byteConfidence`, `label`) while omitting raw evidence. Clients
+must treat `bytesMeasured=false` as **not measured**, even when the accounting
+placeholder is zero. Fast list reads preserve this metadata for counters and
+connection events as well as ordinary flow samples.
 For channel-specific source limits and the shared coverage contract, see
 [Traffic Observability](../../traffic-observatory/docs/traffic-observability.md#common-measurement-contract).
 

@@ -46,3 +46,12 @@ test('unmeasured event bytes remain distinct from an observed zero on desktop an
     assert.equal(trafficMeasurement({channel,bytes:0,confidence:'observed'}).bytesMeasured, true);
   }
 });
+
+test('measurement metadata survives an API roundtrip without raw evidence',()=>{
+  for(const kind of ['connection_event','counter_delta','completed_stream','flow_sample']) {
+    const source={measurement_kind:kind,byte_confidence:kind==='connection_event'?'not_measured':'observed_delta'};
+    const measurement=trafficMeasurement({evidence_json:JSON.stringify(source),bytes:0});
+    const api=JSON.parse(JSON.stringify({bytes:0,confidence:'observed',measurement}));
+    assert.deepEqual(trafficMeasurement(api),measurement);
+  }
+});

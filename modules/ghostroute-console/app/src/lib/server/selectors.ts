@@ -1,4 +1,5 @@
 import { explicitAccessChannel } from "../channels.mjs";
+import { trafficMeasurement } from "../traffic-measurement.mjs";
 import { appByteQuality } from "../traffic-ranking.mjs";
 import { localIpContext, withLocalIpContext } from "../ip-context.mjs";
 import { channelHealthRows } from "../channel-health.mjs";
@@ -566,6 +567,7 @@ function decorateTrafficRow(row: Record<string, any>): Record<string, any> {
   const unknown = Number(row.unknown_bytes || raw.unknown_bytes || 0);
   return {
     ...row,
+    measurement: trafficMeasurement(row),
     raw_client: rawClient,
     raw_profile: rawProfile,
     client,
@@ -2265,6 +2267,7 @@ function mapFlowSessionRow(row: any) {
 function mapFlowSessionListRow(row: any) {
   const rowid = String(row.id || "").replace(/^flow:/, "");
   return decorateTrafficRow({
+    measurement: trafficMeasurement(row),
     id: row.id,
     rowid,
     snapshot_id: row.snapshot_id,
