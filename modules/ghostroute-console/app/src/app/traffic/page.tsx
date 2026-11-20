@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConsoleShell } from "@/components/ConsoleShell";
-import { EmptyState, Pagination, bytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
+import { EmptyState, Pagination, bytes, measuredTrafficBytes, ChannelBadge, ConfidenceBadge, RouteBadge, timeWithMillis } from "@/components/Widgets";
 import { FlowDetailPanel } from "@/components/RouteExplanation";
 import { buildRouteEvidenceForRow, buildRouteEvidenceSet } from "@/lib/server/evidence";
 import { buildLightweightShellModel } from "@/lib/server/selectors/shell";
@@ -367,7 +367,7 @@ export default async function TrafficPage({ searchParams }: { searchParams?: Sea
                           <Link className="row-link" href={href}>{row.policy || row.rule_set || row.matched_rule || "DEFAULT"}</Link>
                         </td>
                         <td className="col-traffic"><Link className="row-link" href={href}>
-                          {bytes(row.bytes || row.total_bytes || 0)} · {row.connections || 0} sessions
+                          {measuredTrafficBytes(row)} · {row.connections || 0} connection observations
                           {noisy ? <small>display {bytes(rowPresentationBytes(row))}</small> : null}
                         </Link></td>
                         <td className="col-duration"><Link className="row-link" href={href}>{durationLabel(row.duration_seconds)}</Link></td>

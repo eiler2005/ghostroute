@@ -721,10 +721,10 @@ function observedByteValue(row: Record<string, any>) {
       + Number(row.unknown_bytes || row.unresolved_bytes || 0);
 }
 
-function operatorTrafficRow(row: Record<string, any>, options: { allowAccountingBucket?: boolean } = {}): Record<string, any> | null {
+function operatorTrafficRow(row: Record<string, any>, options: { allowAccountingBucket?: boolean; allowConnectionEvent?: boolean } = {}): Record<string, any> | null {
   const decorated = decorateTrafficRow(row);
   const total = observedByteValue(decorated);
-  if (total <= 0) return null;
+  if (total <= 0 && !(options.allowConnectionEvent && decorated.raw?.evidence_level === "proxy_connection_event" && Number(decorated.connections || 0) > 0)) return null;
   if (!options.allowAccountingBucket && decorated.accounting_bucket) return null;
   if (String(decorated.confidence || "").toLowerCase() === "dns-interest") return null;
   const rowClass = decorated.trafficClass || decorated.traffic_class || trafficClassFor(decorated);
@@ -742,7 +742,7 @@ function operatorTrafficRow(row: Record<string, any>, options: { allowAccounting
     device_key: resolved.device_key || decorated.device_key,
     device_label: resolved.device_label || decorated.device_label,
     label: resolved.client_label || decorated.label,
-    channel: resolved.client_channel || decorated.channel,
+    channel: explicitAccessChannel(decorated) || resolved.client_channel || decorated.channel,
     matched_by: resolved.matched_by || decorated.matched_by,
   };
 }
@@ -2316,7 +2316,7 @@ function mapFlowSessionListRow(row: any) {
     duration_confidence: row.duration_confidence,
     event_ts: row.display_ts_utc || row.last_seen || row.first_seen || row.collected_at,
     source_log: row.source_kind,
-    raw: {},
+    raw: Number(row.bytes || 0) === 0 && Number(row.connections || 0) > 0 ? evidenceJson(row) : {},
   });
 }
 
@@ -2376,7 +2376,7 @@ export function listTrafficRows(args: PageArgs = {}) {
   addCommonFilters(where, params, args.filters || {});
   if (!args.diagnostics) {
     where.push(isUsefulClientSql());
-    where.push("(bytes > 0 or connections > 1)");
+    where.push("(bytes > 0 or connections > 1 or (connections > 0 and json_valid(raw_json) and json_extract(raw_json, '$.evidence_level') = 'proxy_connection_event'))");
     where.push(notSystemDestinationSql());
     where.push(notSyntheticAccountingBucketSql("raw_json"));
   }
@@ -2395,7 +2395,7 @@ export function listTrafficRows(args: PageArgs = {}) {
      )
      .all(...params, fetchLimit)
      .map(mapFlowRow)
-    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true, allowConnectionEvent: true }) : row)
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], args.filters || {}).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
@@ -2473,7 +2473,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
   }
   if (!args.diagnostics) {
     where.push(isUsefulClientSql());
-    where.push("(bytes > 0 or connections > 1)");
+    where.push("(bytes > 0 or connections > 1 or (connections > 0 and json_valid(evidence_json) and json_extract(evidence_json, '$.evidence_level') = 'proxy_connection_event'))");
     where.push(notSystemDestinationSql("destination", "destination"));
     where.push(notSyntheticAccountingBucketSql("evidence_json"));
   }
@@ -2499,7 +2499,7 @@ function listFlowSessionsUncached(args: PageArgs = {}) {
       )
       .all(...params, fetchLimit)
       .map(args.fastList ? mapFlowSessionListRow : mapFlowSessionRow)
-    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true }) : row)
+    .map((row) => ["client", "personal_cloud"].includes(trafficClass) ? operatorTrafficRow(row, { allowAccountingBucket: true, allowConnectionEvent: true }) : row)
      .filter((row): row is Record<string, any> => Boolean(row))
      .filter((row) => filterRows([row], filters).length > 0)
      .filter((row) => matchesTrafficClass(row, trafficClass))
@@ -5971,7 +5971,7 @@ export function filterOptions(model: ConsoleModel) {
     clients,
     routes: routeValues,
     channels,
-    confidences: ["exact", "estimated", "dns-interest", "unknown", "mixed"],
+    confidences: ["exact", "observed", "estimated", "dns-interest", "unknown", "mixed"],
     trafficClasses: trafficClasses.map((value) => ({ value, label: trafficClassLabel(value) })),
   };
 }

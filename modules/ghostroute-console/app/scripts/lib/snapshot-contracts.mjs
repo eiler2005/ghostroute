@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const confidence = z.enum(["exact", "estimated", "dns-interest", "unknown", "mixed"]);
+const confidence = z.enum(["exact", "observed", "estimated", "dns-interest", "unknown", "mixed"]);
 
 const source = z.object({
   command: z.string().min(1),

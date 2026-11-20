@@ -294,6 +294,8 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
     # A shared destination and nearby timestamp cannot identify a client flow.
     # Unscoped outbound logs remain diagnostics, never another client's proof.
     next if text(row['client_ip']).empty? || text(row['client_ip']) != text(sample['client_ip'])
+    next if text(row['destination_port']) != '' && text(sample['remote_port']) != '' && text(row['destination_port']) != text(sample['remote_port'])
+    next if text(row['protocol']) != '' && text(sample['proto']) != '' && text(row['protocol']) != text(sample['proto'])
     destination_values = [row['destination'], row['destination_host']].map { |value| text(value).downcase }.reject(&:empty?)
     next if (destination_values & candidates).empty?
     evidence_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil
@@ -302,6 +304,9 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
     next if age > window_seconds
     [age, row]
   end.compact
+  # Conflicting observed exits in the correlation window cannot prove which
+  # route carried this conntrack delta. Keep it unknown instead of guessing.
+  return nil if matches.map { |match| outbound_route(match[1]['outbound']) }.uniq.length > 1
   matches.sort_by(&:first).first&.last
 end
 
@@ -607,6 +612,7 @@ else
       'traffic_class' => 'client', 'destination' => '',
       'destination_kind' => 'unattributed_counter',
       'measurement_role' => 'volume', 'measurement_scope' => sample['channel'] == 'D' ? 'completed_stream' : 'isolated_profile_counter', 'destination_ip' => '', 'destination_port' => '',
+      'interval_start_utc' => text(sample['start']).empty? ? nil : iso_time(sample['start'], event_ts), 'interval_end_utc' => event_ts,
       'protocol' => sample['channel'] == 'Amn' ? 'udp' : sample['channel'] == 'D' ? 'tcp' : '', 'dns_qname' => '', 'dns_answer_ip' => '', 'dns_link_id' => '',
       'dns_link_confidence' => 'no_dns_match', 'dns_status' => 'no_match', 'dns_ts_source' => '',
       'sni' => '', 'policy' => '', 'matched_rule' => '', 'outbound' => '',
@@ -622,6 +628,7 @@ else
   end
 end
 
+connection_event_candidates = []
 if source_mode != 'report'
   (input['lan_device_route_deltas'] || []).each do |counter|
     next if number(counter['total_bytes']) <= 0 || text(counter['sample_id']).empty? || text(counter['interval_start_utc']).empty?
@@ -644,10 +651,85 @@ if source_mode != 'report'
   end
 end
 
+if source_mode != 'report'
+  # Connection events prove an observed destination/selected outbound, never a
+  # share of an overlapping profile counter. Keep their unmeasured bytes zero.
+  connection_event_candidates = (input['sing_box_route_evidence'] || []).select do |row|
+    row.is_a?(Hash) && text(row['channel'], 'Unknown') != 'Unknown'
+  end
+  connection_event_candidates.sort_by { |row| text(row['ts']) }.last(2000).each do |row|
+    next unless row.is_a?(Hash)
+    channel = text(row['channel'], 'Unknown')
+    next if channel == 'Unknown' || text(row['connection_id']).empty?
+    outbound = text(row['outbound'])
+    route = outbound_route(outbound)
+    next if route.empty? || text(row['destination_host']).empty?
+    profile = text(row['profile'])
+    key = profile
+    if channel == 'Channel anyT'
+      next if profile == 'lab-probe'
+      key = profile == 'lab-client' ? 'anyT-01' : profile.sub(/\Alab-client-(0[2-8])\z/, 'anyT-\1')
+      next unless key.match?(/\AanyT-0[1-8]\z/)
+    elsif channel == 'Channel Snell'
+      slot = text(row['inbound']).match(/\Asnell-lab-([1-3])\z/)
+      next unless slot
+      key = format('Snell-%02d', slot[1].to_i)
+    elsif channel == 'Home Wi-Fi/LAN'
+      key = text(row['client_ip'])
+      next if key.empty? || key == '::1' || key.start_with?('127.')
+    end
+    # Relay-only evidence cannot identify an end user behind a shared ingress.
+    key = "unattributed:#{channel}" if key.empty?
+    ts = iso_time(row['ts'], generated_at)
+    id = fact_hash('proxy-connection', row['source'], row['connection_id'], ts, row['destination_host'], outbound)
+    facts << {
+      'fact_id' => id, 'sample_id' => id, 'flow_group_key' => id,
+      'event_ts' => ts, 'event_ts_utc' => ts, 'display_ts_utc' => ts, 'observed_at_utc' => ts,
+      'time_precision' => 'second', 'client_key' => key, 'client_label' => key,
+      'client_ip' => channel == 'Home Wi-Fi/LAN' ? text(row['client_ip']) : '',
+      'channel' => channel, 'route' => route, 'intended_route' => 'Unknown',
+      'route_verification' => route == 'VPS' ? 'verified_vps' : 'verified_direct',
+      'route_status' => 'verified', 'route_source' => 'sing-box', 'route_basis' => 'outbound_log',
+      'outbound' => outbound, 'destination' => text(row['destination_host']), 'protocol' => text(row['protocol']),
+      'destination_ip' => text(row['destination_host']).match?(/\A[0-9a-f:.]+\z/i) ? row['destination_host'] : '',
+      'destination_port' => text(row['destination_port']), 'destination_kind' => 'connection_event',
+      'destination_confidence' => 'proxy_target', 'traffic_class' => traffic_class_for(row['destination_host']),
+      'measurement_role' => 'detail', 'measurement_scope' => 'proxy_connection_event',
+      'bytes' => 0, 'bytes_up' => 0, 'bytes_down' => 0,
+      'via_vps_bytes' => 0, 'direct_bytes' => 0, 'unknown_bytes' => 0, 'connections' => 1,
+      'byte_confidence' => 'not_measured', 'confidence' => 'observed',
+      'identity_confidence' => key.start_with?('unattributed:') ? 'channel_only' : 'observed',
+      'allocation_basis' => 'connection_event_only', 'evidence_level' => 'proxy_connection_event',
+      'accounting_status' => 'ok', 'sources' => ['traffic-evidence', text(row['source'])],
+      'evidence_json' => JSON.generate(row)
+    }
+  end
+end
+
+facts.uniq! { |fact| fact['fact_id'] }
+facts.each do |fact|
+  fact['measurement_kind'] = if fact['evidence_level'] == 'proxy_connection_event'
+    'connection_event'
+  elsif fact['evidence_level'] == 'caddy_connect_stream'
+    'completed_stream'
+  elsif fact['destination_kind'] == 'unattributed_counter'
+    'counter_delta'
+  else
+    'flow_sample'
+  end
+  fact['sample_count'] = 1
+  fact['connection_count'] = case fact['measurement_kind']
+    when 'completed_stream', 'connection_event' then 1
+    when 'flow_sample' then number(fact['connections'])
+    else nil
+  end
+end
+
 facts.each do |fact|
   next if fact['measurement_role'] == 'detail'
   key = fact['client_key']
-  clients[key] ||= {
+  scope = [key, fact['channel']]
+  clients[scope] ||= {
     'client_key' => key,
     'client_label' => fact['client_label'],
     'client_ip' => fact['client_ip'],
@@ -663,12 +745,12 @@ facts.each do |fact|
     'identity_confidence' => fact['identity_confidence'],
     'sources' => []
   }
-  clients[key]['total_bytes'] += number(fact['bytes'])
-  clients[key]['via_vps_bytes'] += number(fact['via_vps_bytes'])
-  clients[key]['direct_bytes'] += number(fact['direct_bytes'])
-  clients[key]['unknown_bytes'] += number(fact['unknown_bytes'])
-  clients[key]['sources'] = (clients[key]['sources'] + (fact['sources'] || [])).uniq
-  clients[key]['route'] = route_from_split(clients[key]['via_vps_bytes'], clients[key]['direct_bytes'], clients[key]['unknown_bytes'])
+  clients[scope]['total_bytes'] += number(fact['bytes'])
+  clients[scope]['via_vps_bytes'] += number(fact['via_vps_bytes'])
+  clients[scope]['direct_bytes'] += number(fact['direct_bytes'])
+  clients[scope]['unknown_bytes'] += number(fact['unknown_bytes'])
+  clients[scope]['sources'] = (clients[scope]['sources'] + (fact['sources'] || [])).uniq
+  clients[scope]['route'] = route_from_split(clients[scope]['via_vps_bytes'], clients[scope]['direct_bytes'], clients[scope]['unknown_bytes'])
 end
 
 coverage = {
@@ -679,6 +761,25 @@ coverage = {
   'gaps' => gaps.length,
   'dns_links' => dns_links.length
 }
+
+# Missing observations are not zero traffic and are not proof of inactivity.
+channels = ['Home Wi-Fi/LAN', 'A/Home Reality', 'Channel B', 'Channel C', 'Channel D', 'Channel anyT', 'Channel Snell', 'Channel Amn', 'Channel M']
+coverage['channels'] = (channels + facts.map { |row| row['channel'] }).uniq.to_h do |channel|
+  rows = facts.select { |row| row['channel'] == channel }
+  volume = rows.reject { |row| row['measurement_role'] == 'detail' }
+  detail = rows.select { |row| row['measurement_role'] == 'detail' }
+  [channel, {
+    'volume_status' => volume.empty? ? 'not_observed' : 'observed',
+    'volume_bytes' => volume.sum { |row| number(row['bytes']) },
+    'route_known_bytes' => volume.sum { |row| number(row['via_vps_bytes']) + number(row['direct_bytes']) },
+    'route_unknown_bytes' => volume.sum { |row| number(row['unknown_bytes']) },
+    'volume_samples' => volume.length, 'detail_samples' => detail.length,
+    'connection_events' => rows.count { |row| row['measurement_kind'] == 'connection_event' },
+    'destination_status' => rows.any? { |row| text(row['destination']) != '' && row['destination_kind'] != 'unattributed_counter' } ? 'observed' : 'not_observed'
+  }]
+end
+coverage['connection_event_limit'] = 2000
+coverage['connection_events_truncated'] = connection_event_candidates.length > 2000
 
 output = {
   'schema_version' => 3,

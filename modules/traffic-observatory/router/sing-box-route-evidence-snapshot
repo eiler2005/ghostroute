@@ -44,14 +44,17 @@ TMP_ROWS="/tmp/sing-box-route-evidence.rows.$$"
 TMP_NEW="/tmp/sing-box-route-evidence.new.$$"
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$TMP_TAIL" "$TMP_ROWS" "$TMP_NEW"' EXIT
 
-if [ ! -r "$LOG_PATH" ]; then
-  status "missing_source" "sing_box_log_unreadable" 0
-  exit 0
-fi
-
-tail -n "$MAX_LINES" "$LOG_PATH" > "$TMP_TAIL" 2>/dev/null || : > "$TMP_TAIL"
-
-awk '
+: > "$TMP_ROWS"
+read_log() {
+  log_path="$1"
+  source_role="$2"
+  [ -r "$log_path" ] || return 0
+  tail -n "$MAX_LINES" "$log_path" > "$TMP_TAIL" 2>/dev/null || : > "$TMP_TAIL"
+  awk -v source_role="$source_role" '
+  function safe(value) {
+    gsub(/[|\r\n]/, "_", value)
+    return value
+  }
   function conn_id(line,   body, parts) {
     if (match(line, /\[[0-9]+ [^]]+\]/)) {
       body = substr(line, RSTART + 1, RLENGTH - 2)
@@ -62,7 +65,7 @@ awk '
   }
   function destination_from_line(line, value) {
     value = line
-    sub(/^.* outbound connection to /, "", value)
+    sub(/^.* outbound (packet )?connection to /, "", value)
     sub(/[[:space:]].*$/, "", value)
     return value
   }
@@ -85,7 +88,7 @@ awk '
     return ""
   }
   function inbound_profile(line, value) {
-    if (line !~ /inbound\/[^[]+\[[^]]+\]: \[[^]]+\] inbound connection to /) {
+    if (line !~ /inbound\/[^[]+\[[^]]+\]: \[[^]]+\] inbound (packet )?connection to /) {
       return ""
     }
     value = line
@@ -103,47 +106,70 @@ awk '
     id = conn_id(line)
     tag = inbound_tag(line)
     if (id != "") {
-      inbound[id] = tag
-      profile[id] = inbound_profile(line)
+      inbound[id] = safe(tag)
+      if (inbound_profile(line) != "") profile[id] = safe(inbound_profile(line))
+      if (line ~ / inbound (packet )?connection from /) {
+        value = line
+        sub(/^.* inbound (packet )?connection from /, "", value)
+        sub(/[[:space:]].*$/, "", value)
+        source_ip[id] = safe(destination_host(value))
+      }
     }
+  }
+  function channel_for(tag, line) {
+    if (source_role == "anyT") return "Channel anyT"
+    if (source_role == "Snell") return "Channel Snell"
+    if (source_role == "Amn") return "Channel Amn"
+    if (tag == "reality-in") return "A/Home Reality"
+    if (tag ~ /^channel-b-/) return "Channel B"
+    if (tag ~ /^channel-c-/) return "Channel C"
+    if (tag ~ /^channel-d-/) return "Channel D"
+    if (line ~ /inbound\/(redirect|tproxy)\[/) return "Home Wi-Fi/LAN"
+    return "Unknown"
   }
   function emit(route, outbound, line, id, destination, host, port, ts) {
     id = conn_id(line)
-    destination = destination_from_line(line)
+    destination = safe(destination_from_line(line))
     host = destination_host(destination)
     port = destination_port(destination)
-    ts = $2 "T" $3 $1
-    print ts "|" id "|" route "|" outbound "|" destination "|" host "|" port "|sing-box.log|ok|" inbound[id] "|" profile[id]
+    if (id == "") return
+    ts = $1 ~ /^[+-][0-9]+$/ ? $2 "T" $3 $1 : $1
+    print ts "|" id "|" route "|" outbound "|" destination "|" host "|" port "|" source_role "|ok|" inbound[id] "|" profile[id] "|" source_ip[id] "|" channel[id] "|" (line ~ / packet connection / ? "udp" : "tcp")
   }
-  /inbound\/vless\[reality-in\]: \[[^]]+\] inbound connection to / {
-    remember_ingress($0)
+  /sing-box started/ {
+    # Connection IDs belong to one process lifetime, never another restart.
+    for (key in inbound) delete inbound[key]
+    for (key in profile) delete profile[key]
+    for (key in source_ip) delete source_ip[key]
+    for (key in channel) delete channel[key]
     next
   }
-  /inbound\/socks\[channel-b-relay-socks\]: inbound connection to / {
+  /inbound\/[^[]+\[[^]]+\]: (\[[^]]+\] )?inbound (packet )?connection (from|to) / {
     remember_ingress($0)
+    channel[conn_id($0)] = channel_for(inbound_tag($0), $0)
     next
   }
-  /inbound\/http\[channel-c-shadowrocket-http-in\]: (\[[^]]+\] )?inbound connection to / {
-    remember_ingress($0)
-    next
-  }
-  /inbound\/naive\[channel-c-naive-in\]: inbound connection to / {
-    remember_ingress($0)
-    next
-  }
-  /outbound\/vless\[reality-out\]: outbound connection to / {
+  /outbound\/vless\[reality-out\]: outbound (packet )?connection to / {
     emit("VPS", "reality-out", $0)
     next
   }
-  /outbound\/vless\[sensitive-out\]: outbound connection to / {
+  /outbound\/vless\[sensitive-out\]: outbound (packet )?connection to / {
     emit("VPS", "sensitive-out", $0)
     next
   }
-  /outbound\/direct\[direct-out\]: outbound connection to / {
+  /outbound\/direct\[direct-out\]: outbound (packet )?connection to / {
     emit("Direct", "direct-out", $0)
     next
   }
-' "$TMP_TAIL" > "$TMP_ROWS"
+' "$TMP_TAIL" >> "$TMP_ROWS"
+}
+
+# Separate invocations keep connection IDs scoped to the owning process.
+# Reading these logs never enables logging or restarts an engine.
+read_log "$LOG_PATH" "sing-box.log"
+read_log "${GHOSTROUTE_ANYT_LOG_PATH:-/tmp/ghostroute-anytls/policy.log}" "anyT"
+read_log "${GHOSTROUTE_SNELL_LOG_PATH:-/tmp/ghostroute-snell/policy.log}" "Snell"
+read_log "${GHOSTROUTE_AMN_LOG_PATH:-/tmp/ghostroute-amn/policy.log}" "Amn"
 
 rows="$(wc -l < "$TMP_ROWS" 2>/dev/null | tr -d ' ')"
 case "$rows" in ''|*[!0-9]*) rows=0 ;; esac

@@ -1,4 +1,4 @@
-import { bytes, ChannelBadge, ConfidenceBadge, Pagination, RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
+import { bytes, measuredTrafficBytes, ChannelBadge, ConfidenceBadge, Pagination, RouteBadge, shortDateTime, timeWithMillis } from "@/components/Widgets";
 import { trafficDisplayDestination } from "@/lib/traffic-window.mjs";
 
 export const MOBILE_PAGE_SIZE = 10;
@@ -85,7 +85,7 @@ export function MobileFlowList({ rows }: { rows: Array<Record<string, any>> }) {
           </span>
           <span className="mobile-row-meta">
             <RouteBadge value={row.route} />
-            <b>{bytes(row.bytes || row.total_bytes || 0)}</b>
+            <b>{measuredTrafficBytes(row)}</b>
           </span>
         </a>
       ))}

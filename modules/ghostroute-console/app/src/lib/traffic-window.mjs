@@ -273,6 +273,9 @@ function isClientOnlyDestination(value) {
 }
 
 export function destinationEvidence(row) {
+  const observedTarget = row?.raw?.destination_kind === "connection_event" || row?.destination_kind === "connection_event"
+    || row?.raw?.evidence_level === "proxy_connection_event" || row?.evidence_level === "proxy_connection_event";
+  if (observedTarget) return { label: text(row.destination || row.raw?.destination), kind: "Proxy target", exact: true };
   const dns = text(row?.dns_qname || row?.raw?.dns_qname).trim();
   if (dns) {
     const linked = Boolean(text(row?.dns_link_confidence || row?.dns_status || row?.raw?.dns_link_confidence || row?.raw?.dns_status).trim());

@@ -593,6 +593,9 @@ else
         'status' => text(parts[8], 'ok'),
         'inbound' => text(parts[9]),
         'profile' => text(parts[10]),
+        'client_ip' => text(parts[11]),
+        'channel' => text(parts[12], 'Unknown'),
+        'protocol' => text(parts[13]),
         'raw_refs' => [{ 'source' => 'sing-box-route-evidence.tsv', 'line' => index + 1 }]
       }
       sing_box_route_evidence << row

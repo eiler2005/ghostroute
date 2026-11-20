@@ -41,7 +41,7 @@ function json(value) {
 
 function confidence(value, fallback = "unknown") {
   const normalized = String(value || fallback);
-  if (["exact", "estimated", "dns-interest", "unknown", "mixed"].includes(normalized)) return normalized;
+  if (["exact", "observed", "estimated", "dns-interest", "unknown", "mixed"].includes(normalized)) return normalized;
   return fallback;
 }
 
@@ -597,7 +597,7 @@ function buildInventoryNetworkHints(db, registry = loadDeviceAttributions()) {
 
 function resolveOperatorClient(row, registry = loadDeviceAttributions(), networkHints = new Map()) {
   const raw = row?.raw || {};
-  const sourceChannel = ["isolated_channel_profile_counter", "amneziawg_peer_counter", "caddy_connect_stream"].includes(row?.evidence_level || raw.evidence_level)
+  const sourceChannel = ["isolated_channel_profile_counter", "amneziawg_peer_counter", "caddy_connect_stream", "proxy_connection_event"].includes(row?.evidence_level || raw.evidence_level)
     ? explicitAccessChannel(row) : "";
   const resolved = resolveClient({
     ...row,

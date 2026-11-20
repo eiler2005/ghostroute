@@ -1,4 +1,5 @@
 import { channelDescriptor } from "@/lib/channels.mjs";
+import { trafficMeasurement } from "@/lib/traffic-measurement.mjs";
 
 export function bytes(value: number) {
   if (!value) return "0 B";
@@ -24,6 +25,10 @@ export function shortDateTime(value?: string | number | Date) {
   }).formatToParts(date);
   const pick = (type: string) => parts.find((part) => part.type === type)?.value || "00";
   return `${pick("day")}.${pick("month")} ${pick("hour")}:${pick("minute")}:${pick("second")}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+}
+
+export function measuredTrafficBytes(row: Record<string, any>) {
+  return trafficMeasurement(row).bytesMeasured ? bytes(Number(row.bytes || row.total_bytes || 0)) : "not measured";
 }
 
 export function timeWithMillis(value?: string | number | Date, alwaysShowMillis = true) {
@@ -177,6 +182,7 @@ export function ConfidenceHelp() {
   return (
     <div className="confidence-help">
       <div><strong>exact</strong><span>Counter, check or explicit report evidence.</span></div>
+      <div><strong>observed</strong><span>Measured counter or observed event. Route proof and collection coverage are separate.</span></div>
       <div><strong>estimated</strong><span>Derived from mixed counters or log summaries.</span></div>
       <div><strong>dns-interest</strong><span>DNS observation, not proof of routed traffic.</span></div>
       <div><strong>mixed</strong><span>Several sources disagree or the row combines VPS and Direct counters.</span></div>

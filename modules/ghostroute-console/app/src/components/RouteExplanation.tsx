@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import { ArrowLeft, CheckCircle2, CircleDot, Download, Eye, Globe2, Network, Router, Server, Share2, ShieldCheck, User, Waypoints } from "lucide-react";
-import { bytes, ChannelBadge, ConfidenceBadge, RawEvidence, RouteBadge } from "@/components/Widgets";
+import { bytes, measuredTrafficBytes, ChannelBadge, ConfidenceBadge, RawEvidence, RouteBadge } from "@/components/Widgets";
 
 type Evidence = Record<string, any>;
 
@@ -165,7 +165,7 @@ export function FlowDetailPanel({ evidence }: { evidence: Evidence | null }) {
       <section className="flow-detail-section">
         <h3><Network size={16} /> Flow details</h3>
         <div className="detail-list compact-detail-list">
-          <div className="detail-row"><span>Transferred</span><strong>{bytes(evidence.bytes)}</strong></div>
+          <div className="detail-row"><span>Transferred</span><strong>{measuredTrafficBytes(evidence.flow || evidence)}</strong></div>
           <div className="detail-row"><span>Connections</span><strong>{evidence.connections || 0}</strong></div>
           <div className="detail-row"><span>Protocol</span><strong>{notObserved(evidence.protocol)}</strong></div>
           <div className="detail-row"><span>SNI</span><strong>{notObserved(evidence.sni)}</strong></div>
@@ -249,7 +249,7 @@ export function RouteExplanation({ evidence, all }: { evidence: Evidence; all: E
               detail={`${evidence.connections} connections · SNI ${evidence.sni} · ${evidence.outbound}`}
             />
             <EvidenceCard title="Decision" value={<RouteBadge value={evidence.route} />} detail={evidence.operatorView.decision} />
-            <EvidenceCard title="Transferred" value={bytes(evidence.bytes)} detail="snapshot/event counters" />
+        <EvidenceCard title="Transferred" value={measuredTrafficBytes(evidence.flow || evidence)} detail="snapshot/event counters" />
             <EvidenceCard title="Visible egress IP" value={evidence.visibleIpLabel || evidence.visibleIp} detail={evidence.siteView.countryAs} />
             <EvidenceCard title="Event time" value={evidence.eventTimeLabel} detail={evidence.flow.ts_confidence || evidence.sourceKind} />
             <EvidenceCard title="Confidence" value={evidence.confidence} detail={evidence.confidenceReason} tone="evidence-confidence" />

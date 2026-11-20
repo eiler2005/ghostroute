@@ -640,6 +640,17 @@ not infer egress IP/ASN/country from the public Console URL.
 
 ## Interface Notes
 
+Traffic confidence preserves `observed` from the machine source. It describes
+the observation and does not assert complete collection, known identity,
+destination bytes or a proven route. Client lane counters are labelled
+**observations**, because a counter interval and repeated conntrack samples are
+not unique connections. A counter-only client has zero observed destinations;
+reconciliation must not invent one. Desktop and mobile show **not measured**
+for connection events without byte counters. Their destinations and selected
+outbounds are detail evidence and never allocate overlapping profile bytes.
+For channel-specific source limits and the shared coverage contract, see
+[Traffic Observability](../../traffic-observatory/docs/traffic-observability.md#common-measurement-contract).
+
 - `/traffic` keeps wide flow tables horizontally scrollable and treats
   category-only rows as aggregates in the route explanation instead of implying
   a concrete site saw the category label.

@@ -12,7 +12,7 @@ export type SnapshotType =
   | "live"
   | "deploy_gate"
   | "routing_policy";
-export type Confidence = "exact" | "estimated" | "dns-interest" | "unknown" | "mixed";
+export type Confidence = "exact" | "observed" | "estimated" | "dns-interest" | "unknown" | "mixed";
 
 export type SnapshotRecord = {
   id: number;

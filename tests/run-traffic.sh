@@ -8,6 +8,7 @@ case "${1:-}" in
     python3 "$ROOT/tests/test-traffic-evidence-retention.py"
     bash "$ROOT/tests/test-dns-query-snapshot.sh"
     bash "$ROOT/tests/test-traffic-evidence-v3.sh"
+    python3 "$ROOT/tests/test-universal-traffic-evidence.py"
     bash "$ROOT/tests/test-traffic-summary-midnight.sh"
     bash "$ROOT/modules/traffic-observatory/tests/test-router-rollups.sh"
     bash "$ROOT/modules/traffic-observatory/tests/test-traffic-facts-home-reality.sh"

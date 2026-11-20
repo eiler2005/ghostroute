@@ -2,6 +2,68 @@
 
 ## Isolated-channel accounting
 
+### Common measurement contract
+
+All channels use the same `traffic-evidence` → `traffic-facts` v3 → Console
+pipeline. Each fact carries `measurement_kind` (`counter_delta`, `flow_sample`,
+`completed_stream`, or `connection_event`), `sample_count`, and a nullable
+`connection_count`. A counter interval is an observation, never a connection.
+`connection_count` on a conntrack sample is the observed population at that
+sample, not a count of unique connections across the reporting period.
+
+Volume, destination evidence, route evidence and client identity are independent:
+
+| Source/channel | Byte source | Destination and selected-exit evidence | Remaining limit |
+|---|---|---|---|
+| Home Wi-Fi/LAN | Per-device route-counter deltas; sampled conntrack detail | Main sing-box redirect events joined to their source address; DNS answers scoped to the client | Direct traffic outside the proxy has no proxy event; conntrack and DNS are sampled. Policy/ipset membership alone is not actual-exit proof. |
+| A/Home Reality | Encrypted ingress/profile deltas | Main sing-box profile/connection events | Ingress volume is not per-destination volume. |
+| B | Existing independent source, when present | Main sing-box relay events | A shared relay without a profile does not identify the end user; absent byte sampling is `not_observed`. |
+| C | Existing independent source, when present | Main sing-box authenticated ingress events | An unauthenticated/shared ingress cannot identify a profile. |
+| D | Authenticated completed CONNECT-stream records | Main sing-box relay events | Relay identity is not automatically the ingress profile; long-running streams are counted only after completion. |
+| anyT, Snell | Named user-counter deltas | Isolated engine logs, when connection logging is available | Separate user and outbound API counters cannot establish per-user route bytes. |
+| Amn | Named peer-counter deltas, only while enabled | Isolated policy logs, when available | Shared TUN events do not identify a peer without independent evidence; do not enable this lab to fill a chart. |
+| M | Only independently collected service evidence | Only the actual service owner can provide its exit evidence | Never infer M from an application name or borrow another channel's bytes. |
+
+`coverage.channels` lists every channel, including channels with no observation.
+It reports volume status, volume/known-route/unknown-route bytes, sample counts,
+connection events and destination status. `not_observed` means missing coverage,
+not zero traffic, inactivity or a routing failure. Its period is the enclosing
+facts window; it is not a replacement for channel health.
+
+The route sampler reads the main and isolated policy logs independently, with
+bounded tails and the existing bounded history. Connection IDs are scoped to
+their log owner; a process-start marker clears prior ingress identity. Repeated
+reads do not duplicate observations. Existing eleven-column TSV remains readable;
+new records append the observed source address, explicit channel and TCP/UDP
+protocol. Both connection and packet-connection messages are supported.
+Each facts response retains at most the latest 2,000 scoped connection events;
+`coverage.connection_events_truncated` identifies a clipped event window. This
+bound protects the small Console host from duplicating a full verbose event
+history into every snapshot. Byte counters are not clipped by this detail cap.
+
+Scoped connection events enter `traffic-facts` as `measurement_role=detail`,
+`byte_confidence=not_measured`, and zero accounting bytes. Console displays their
+volume as **not measured**, rather than an observed zero. These events can show a
+destination and selected outbound without assigning any part of an overlapping
+counter to that destination. Conflicting exit evidence in a correlation window
+does not prove the route of a conntrack sample.
+
+The observer never changes log levels, starts a channel, enables an API or
+restarts a process. A `warn`-only engine cannot supply ordinary connection
+events. Enabling additional production telemetry is a separate change: verify
+bounded log storage and process resources first, qualify a candidate locally,
+then obtain explicit approval for affected channel interruptions. In particular,
+do not simply switch anyT to `info`: its production watchdog treats oversized
+logs as a containment condition. Preserve all issued imports and routing owners.
+
+Verification:
+
+```sh
+python3 tests/test-universal-traffic-evidence.py
+cd modules/ghostroute-console/app
+node --test tests/universal-measurement.test.mjs
+```
+
 The optional isolated-channel sampler writes a private, bounded router spool.
 Its exported JSONL contains symbolic profile slots, byte deltas and timestamps;
 Channel D also includes the private operator-provided profile label. It never

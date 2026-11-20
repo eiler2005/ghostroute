@@ -157,7 +157,7 @@ function reconcileLaneSummary(summary: Record<string, Record<string, any>>, sele
   if (Number(all.bytes || 0) >= total) return summary;
   all.bytes = total;
   all.flows = Math.max(Number(all.flows || 0), Number(selected.flows || selected.connections || selected.snapshot_samples || 0));
-  all.destinations = Math.max(Number(all.destinations || 0), Number(selected.destinations_count || 0), 1);
+  all.destinations = Math.max(Number(all.destinations || 0), Number(selected.destinations_count || 0));
   all.reconciled = true;
   all.reconciliationLabel = "window total reconciled";
   return summary;
@@ -640,7 +640,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 <div className="detail-row"><span>Last seen</span><strong>{timeWithMillis(selected.display_ts_utc || selected.last_seen || selected.event_ts_utc || selected.collected_at, true)}</strong></div>
                 <div className="detail-row"><span>Traffic observed</span><strong>{selected.traffic_collected_at ? timeWithMillis(selected.traffic_collected_at, true) : "not in window"}</strong></div>
                 <div className="detail-row"><span>Route behavior</span><strong><RouteBadge value={selectedRoute} /></strong></div>
-                <div className="detail-row"><span>Confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
+                <div className="detail-row"><span>Volume confidence</span><strong>{selected.confidence || "unknown"}</strong></div>
                 <div className="detail-row"><span>Review state</span><strong>{selected.review_state ? title(selected.review_state) : "registry known"}</strong></div>
                 {selected.review_reason ? (
                   <div className="detail-row"><span>Review reason</span><strong>{selected.review_reason}</strong></div>
@@ -651,6 +651,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                 direct={selected.direct_bytes || 0}
                 unknown={Math.max(0, Number(selected.total_bytes || 0) - Number(selected.via_vps_bytes || 0) - Number(selected.direct_bytes || 0))}
               />
+              {Number(selected.unknown_bytes || 0) > 0 ? <p className="subtle">Unknown means the route of these bytes was not measured. Client identity and measured volume are independent of route and destination evidence.</p> : null}
               <div className="toolbar compact-toolbar" style={{ marginTop: 16 }}>
                 <h3>App/DNS detail</h3>
                 <a className="muted-button" href={appsHref()}>Open Apps</a>
@@ -662,7 +663,7 @@ export default async function ClientsPage({ searchParams }: { searchParams?: Sea
                     <span>
                       <a href={laneHref(tab.value)}>{tab.label}</a>
                       <small className="subtle block-detail">
-                        {(selectedLaneSummary[tab.value]?.flows || 0)} flows · {(selectedLaneSummary[tab.value]?.destinations || 0)} destinations{selectedLaneSummary[tab.value]?.reconciled ? " · window total reconciled" : ""}
+                        {(selectedLaneSummary[tab.value]?.flows || 0)} observations · {(selectedLaneSummary[tab.value]?.destinations || 0)} destinations{selectedLaneSummary[tab.value]?.reconciled ? " · window total reconciled" : ""}
                       </small>
                     </span>
                     <strong>{bytes(selectedLaneSummary[tab.value]?.bytes || 0)}</strong>
