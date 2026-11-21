@@ -158,8 +158,12 @@ but the canonical live A/B/C health owner is
 ## Failure Modes
 
 `traffic-facts` indexes DNS answers by destination IP and route observations by
-client before correlating flows. This preserves shared-answer, timestamp and
-client-isolation semantics while avoiding a daily flow-by-DNS cross product.
+client and destination, with pre-parsed timestamps and bounded time lookup.
+Indexing by client alone is insufficient: one busy client can otherwise trigger
+a flow-by-route-log cross product and exceed the collection timeout. The join
+preserves source-order ties, shared-answer ambiguity, port/protocol checks,
+time-window boundaries and conflicting-outbound rejection. It never assigns
+unmeasured bytes to applications.
 Run `python3 tests/test-traffic-facts-index.py` for equivalence and bounded-size
 regressions. A transport timeout can leave a report subprocess running on the
 report host; verify its ancestry and age before terminating that report alone.

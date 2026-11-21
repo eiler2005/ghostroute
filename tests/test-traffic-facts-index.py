@@ -12,6 +12,30 @@ REPORT = ROOT / "modules/traffic-observatory/bin/traffic-facts"
 
 
 class IndexedFactsTests(unittest.TestCase):
+    def test_route_index_preserves_scope_protocol_time_and_conflict_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sample={"sample_id":"sample", "client_ip":"192.0.2.10", "remote_ip":"192.0.2.20", "remote_port":"443", "proto":"tcp", "ts":"2026-11-21T10:00:00Z", "total_bytes":100}
+            row={"client_ip":"192.0.2.10", "destination":"192.0.2.20", "destination_host":"192.0.2.20", "destination_port":"443", "protocol":"tcp", "ts":"2026-11-21T10:00:00Z", "outbound":"reality-out"}
+            cases=[([row],"VPS"),([{**row,"client_ip":"192.0.2.99"}],"Unknown"),
+                ([{**row,"client_ip":""}],"Unknown"),([{**row,"protocol":"udp"}],"Unknown"),
+                ([{**row,"destination_port":"80"}],"Unknown"),([{**row,"ts":"2026-11-21T09:49:59Z"}],"Unknown"),
+                ([{**row,"ts":"2026-11-21T09:50:00Z"}],"VPS"),([{**row,"ts":"2026-11-21T10:10:00Z"}],"VPS"),
+                ([row,{**row,"outbound":"direct-out"}],"Unknown")]
+            for rows,expected in cases:
+                output=self.run_report(REPORT,{"generated_at":"2026-11-21T10:01:00Z","flow_samples":[sample],"sing_box_route_evidence":rows},Path(directory))
+                self.assertEqual(output["traffic_facts"][0]["route"],expected)
+                self.assertEqual(output["coverage"]["traffic_fact_bytes"],100)
+
+    def test_one_busy_client_with_unrelated_destinations_stays_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = {"generated_at":"2026-11-21T10:01:00Z",
+                "flow_samples":[{"sample_id":str(i), "client_ip":"192.0.2.10", "remote_ip":"192.0.2.20", "ts":"2026-11-21T10:00:00Z", "total_bytes":1} for i in range(4000)],
+                "sing_box_route_evidence":[{"client_ip":"192.0.2.10", "destination":f"other-{i}.invalid", "outbound":"direct-out", "ts":"2026-11-21T10:00:00Z"} for i in range(12000)]}
+            output = self.run_report(REPORT, payload, Path(directory), timeout=8)
+            self.assertEqual(len(output["traffic_facts"]),4000)
+            self.assertEqual(output["coverage"]["traffic_fact_bytes"],4000)
+            self.assertTrue(all(row["unknown_bytes"]==1 for row in output["traffic_facts"]))
+
     def run_report(self, report, payload, directory, timeout=10):
         evidence = directory / "evidence.json"
         evidence.write_text(json.dumps(payload))

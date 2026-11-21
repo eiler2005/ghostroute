@@ -278,7 +278,13 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
   candidates = route_candidates_for(sample, dns_link).map(&:downcase)
   return nil if candidates.empty?
   sample_ts = Time.parse(iso_time(sample['ts'] || sample['event_ts'], generated_at)) rescue Time.parse(generated_at)
-  matches = evidence_rows.fetch(text(sample['client_ip']), []).map do |row|
+  nearby = candidates.flat_map do |destination|
+    rows = evidence_rows.fetch([text(sample['client_ip']), destination], [])
+    first = rows.bsearch_index { |entry| entry[1] >= sample_ts - window_seconds } || rows.length
+    last = rows.bsearch_index { |entry| entry[1] > sample_ts + window_seconds } || rows.length
+    rows[first...last]
+  end.uniq { |entry| entry[2] }
+  matches = nearby.map do |row, evidence_ts, source_index|
     next unless row.is_a?(Hash)
     # A shared destination and nearby timestamp cannot identify a client flow.
     # Unscoped outbound logs remain diagnostics, never another client's proof.
@@ -287,16 +293,14 @@ def sing_box_route_for(sample, dns_link, evidence_rows, generated_at, window_sec
     next if text(row['protocol']) != '' && text(sample['proto']) != '' && text(row['protocol']) != text(sample['proto'])
     destination_values = [row['destination'], row['destination_host']].map { |value| text(value).downcase }.reject(&:empty?)
     next if (destination_values & candidates).empty?
-    evidence_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil
-    next unless evidence_ts
     age = (sample_ts - evidence_ts).abs
     next if age > window_seconds
-    [age, row]
+    [age, row, source_index]
   end.compact
   # Conflicting observed exits in the correlation window cannot prove which
   # route carried this conntrack delta. Keep it unknown instead of guessing.
   return nil if matches.map { |match| outbound_route(match[1]['outbound']) }.uniq.length > 1
-  matches.sort_by(&:first).first&.last
+  matches.min_by { |match| [match[0], match[2]] }&.[](1)
 end
 
 def verification_with_evidence(sample, dns_link, sing_box_evidence, generated_at, window_seconds)
@@ -417,10 +421,16 @@ else
     .group_by { |row| text(row['client_ip']) }.transform_values { |rows|
       rows.map { |row| [iso_time(row['interval_start_utc'], generated_at), iso_time(row['interval_end_utc'] || row['ts'], generated_at)] }.sort_by(&:last)
     }
-  sing_box_evidence = (input['sing_box_route_evidence'] || []).select { |row|
-    TrafficMeasurements.lan_route_event?(row)
-  }
-    .group_by { |row| text(row['client_ip']) }
+  sing_box_evidence = Hash.new { |hash, key| hash[key] = [] }
+  (input['sing_box_route_evidence'] || []).each_with_index do |row, source_index|
+    next unless TrafficMeasurements.lan_route_event?(row)
+    evidence_ts = Time.parse(iso_time(row['ts'], generated_at)) rescue nil
+    next unless evidence_ts
+    [row['destination'], row['destination_host']].map { |value| text(value).downcase }.reject(&:empty?).uniq.each do |destination|
+      sing_box_evidence[[text(row['client_ip']), destination]] << [row, evidence_ts, source_index]
+    end
+  end
+  sing_box_evidence.each_value { |rows| rows.sort_by! { |entry| entry[1] } }
   window_seconds = [1, number(ENV['GHOSTROUTE_DNS_LINK_WINDOW_SECONDS'] || 600)].max
   (input['warnings'] || []).each { |warning| warnings << warning if warning.is_a?(Hash) }
   (input['flow_samples'] || []).each_with_index do |sample, index|
