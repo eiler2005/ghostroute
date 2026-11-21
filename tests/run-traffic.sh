@@ -5,6 +5,8 @@ case "${1:-}" in
   --collection)
     echo '[traffic/collection] Router readers, cadence, DNS cursor and source contracts'
     python3 "$ROOT/tests/test-traffic-evidence-cadence.py"
+    python3 "$ROOT/tests/test-lan-flow-connection-deltas.py"
+    python3 "$ROOT/tests/test-traffic-facts-index.py"
     python3 "$ROOT/tests/test-traffic-evidence-retention.py"
     bash "$ROOT/tests/test-dns-query-snapshot.sh"
     bash "$ROOT/tests/test-traffic-evidence-v3.sh"

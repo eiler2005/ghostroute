@@ -136,27 +136,29 @@ awk -v max_facts="$MAX_FACTS" '
       else if ($i ~ /^bytes=/) bytes[++bytes_count] = clean($i) + 0
       else if ($i ~ /^(ESTABLISHED|SYN_SENT|SYN_RECV|FIN_WAIT|TIME_WAIT|CLOSE|CLOSE_WAIT|LAST_ACK|LISTEN|CLOSING|UNREPLIED|ASSURED)$/) conn_state = $i
     }
-    if (src_count < 1 || dst_count < 1 || bytes_count < 1) next
+    if (src_count < 1 || dst_count < 1 || bytes_count < 2) next
 
-    client = remote = port = ""
+    client = remote = port = local_port = ""
     out_bytes = in_bytes = 0
     if (src[1] in lan) {
       client = src[1]
       remote = dst[1]
       port = dport[1]
+      local_port = sport[1]
       out_bytes = bytes[1] + 0
       in_bytes = bytes[2] + 0
     } else if (dst[1] in lan) {
       client = dst[1]
       remote = src[1]
       port = sport[1]
+      local_port = dport[1]
       in_bytes = bytes[1] + 0
       out_bytes = bytes[2] + 0
     } else {
       next
     }
-    if (local_ip(remote)) next
-    key = client "|" remote "|" port "|" proto
+    if (local_ip(remote) || port == "" || local_port == "") next
+    key = client "|" remote "|" port "|" proto "|" local_port
     out[key] += out_bytes
     inb[key] += in_bytes
     conn[key] += 1
@@ -165,9 +167,7 @@ awk -v max_facts="$MAX_FACTS" '
   END {
     for (key in out) {
       split(key, parts, "|")
-      printf "%s|%s|%s|%s|%d|%d|%d|%s\n", parts[1], parts[2], parts[3], parts[4], out[key], inb[key], conn[key], state[key]
-      emitted++
-      if (emitted >= max_facts) break
+      printf "%s|%s|%s|%s|%.0f|%.0f|%d|%s|%s\n", parts[1], parts[2], parts[3], parts[4], out[key], inb[key], conn[key], state[key], parts[5]
     }
   }
 ' "$TMP_LAN" "$TMP_CONNTRACK" > "$TMP_CURRENT"
@@ -178,19 +178,37 @@ if [ ! -s "$PREV_FILE" ]; then
   exit 0
 fi
 
-awk -F'|' '
+awk -F'|' -v max_facts="$MAX_FACTS" '
   BEGIN { OFS = "|" }
   NR == FNR {
-    prev_out[$1 "|" $2 "|" $3 "|" $4] = $5 + 0
-    prev_in[$1 "|" $2 "|" $3 "|" $4] = $6 + 0
+    # Legacy aggregate baselines lack a local port and cannot identify a flow.
+    if (NF < 9 || $9 == "") next
+    key = $1 "|" $2 "|" $3 "|" $4 "|" $9
+    previous[key] = 1
+    prev_out[key] = $5 + 0
+    prev_in[key] = $6 + 0
     next
   }
   {
-    key = $1 "|" $2 "|" $3 "|" $4
-    out_delta = ($5 + 0) >= prev_out[key] ? ($5 + 0) - prev_out[key] : ($5 + 0)
-    in_delta = ($6 + 0) >= prev_in[key] ? ($6 + 0) - prev_in[key] : ($6 + 0)
-    total = out_delta + in_delta
-    if (total > 0) print $1, $2, $3, $4, out_delta, in_delta, total, $7, $8
+    key = $1 "|" $2 "|" $3 "|" $4 "|" $9
+    # New/reappearing tuples and reset counters have no interval baseline.
+    # Their lifetime bytes must not be replayed into this sample interval.
+    if (!(key in previous) || ($5 + 0) < prev_out[key] || ($6 + 0) < prev_in[key]) next
+    group = $1 "|" $2 "|" $3 "|" $4
+    out[group] += ($5 + 0) - prev_out[key]
+    inb[group] += ($6 + 0) - prev_in[key]
+    conn[group] += 1
+    state[group] = $8
+  }
+  END {
+    for (group in out) {
+      total = out[group] + inb[group]
+      if (total <= 0) continue
+      split(group, parts, "|")
+      printf "%s|%s|%s|%s|%.0f|%.0f|%.0f|%d|%s\n", parts[1], parts[2], parts[3], parts[4], out[group], inb[group], total, conn[group], state[group]
+      emitted++
+      if (emitted >= max_facts) break
+    }
   }
 ' "$PREV_FILE" "$TMP_CURRENT" > "$TMP_DELTA"
 
@@ -221,7 +239,7 @@ while IFS='|' read -r client remote port proto out_delta in_delta total conns co
   rest="${rest#*|}"
   route_basis="${rest%%|*}"
   matched_ipset="${rest#*|}"
-  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|conntrack_snapshot_delta|observed_delta|ip|ok|%s|%s|%s|%s|%s|%s\n' \
+  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|conntrack_connection_delta|observed_delta|ip|ok|%s|%s|%s|%s|%s|%s\n' \
     "$timestamp" "$client" "$remote" "$port" "$proto" "$route" \
     "$out_delta" "$in_delta" "$total" "${conns:-1}" \
     "$route_source" "$route_basis" "$matched_ipset" "" "" "${conn_state:-}" >> "$FACTS_FILE"

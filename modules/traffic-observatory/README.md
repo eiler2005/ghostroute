@@ -157,6 +157,22 @@ but the canonical live A/B/C health owner is
 
 ## Failure Modes
 
+The LAN conntrack sampler calculates deltas per connection tuple, including the
+client port, before grouping by destination. Closing one parallel connection
+must not reset a destination's aggregate and replay the surviving connection's
+lifetime bytes. Newly observed/reappearing tuples and decreasing counters
+initialize a baseline; their previous lifetime is not an interval measurement.
+All bounded observed connections retain a baseline even when the output fact
+limit is smaller. Conntrack detail remains a sampled lower bound: short-lived
+connections between polls and initial baseline bytes cannot be reconstructed.
+
+Corrected rows use `conntrack_connection_delta`. Legacy grouped
+`conntrack_snapshot_delta` rows remain in raw history for diagnosis but are
+excluded by evidence export and edge rollups with an explicit evidence warning.
+Do not use them to reconstruct historical app bytes. The independent LAN and
+profile counters remain the volume sources. Test the actual router awk stages
+with `python3 tests/test-lan-flow-connection-deltas.py` before deployment.
+
 `traffic-facts` indexes DNS answers by destination IP and route observations by
 client and destination, with pre-parsed timestamps and bounded time lookup.
 Indexing by client alone is insufficient: one busy client can otherwise trigger

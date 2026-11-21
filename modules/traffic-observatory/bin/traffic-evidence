@@ -420,6 +420,14 @@ else
       end
       next unless in_window?(parsed_ts, window_start, window_end)
       ts = parsed_ts.iso8601(3)
+      # Grouped cumulative counters can replay bytes when connections close.
+      # Retain a visible gap rather than treating those legacy rows as facts.
+      if parts[10] == 'conntrack_snapshot_delta'
+        unless warnings.any? { |warning| warning['code'] == 'legacy_grouped_flow_bytes_excluded' }
+          warnings << { 'code' => 'legacy_grouped_flow_bytes_excluded', 'source' => 'lan-flow-facts.tsv' }
+        end
+        next
+      end
       total = number(parts[8])
       row = {
         'ts' => ts,

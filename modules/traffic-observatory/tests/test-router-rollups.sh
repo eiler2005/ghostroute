@@ -6,8 +6,9 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 cat > "$TMPDIR/lan-flow-facts.tsv" <<'EOF'
-2026-05-11T12:35:12+0300|192.0.2.10|198.51.100.20|443|tcp|VPS|10|90|100|1|conntrack_snapshot_delta|observed_delta|ip|ok
-2026-05-11T12:39:59+0300|192.0.2.10|198.51.100.21|443|tcp|Direct|20|30|50|1|conntrack_snapshot_delta|observed_delta|ip|ok
+2026-05-11T12:35:12+0300|192.0.2.10|198.51.100.20|443|tcp|VPS|10|90|100|1|conntrack_connection_delta|observed_delta|ip|ok
+2026-05-11T12:39:59+0300|192.0.2.10|198.51.100.21|443|tcp|Direct|20|30|50|1|conntrack_connection_delta|observed_delta|ip|ok
+2026-05-11T12:39:59+0300|192.0.2.10|198.51.100.21|443|tcp|Direct|2000000|3000000|5000000|1|conntrack_snapshot_delta|observed_delta|ip|ok
 EOF
 
 GHOSTROUTE_TRAFFIC_STATE_DIR="$TMPDIR" "${PROJECT_ROOT}/modules/traffic-observatory/router/traffic-rollup-snapshot"

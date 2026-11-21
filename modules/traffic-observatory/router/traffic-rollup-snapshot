@@ -143,6 +143,7 @@ awk -F'|' '
   }
 
   NF >= 10 {
+    if ($11 == "conntrack_snapshot_delta") next
     ts = $1
     client_ip = $2
     remote_ip = $3

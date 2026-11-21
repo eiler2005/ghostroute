@@ -7,12 +7,13 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 export GHOSTROUTE_TRAFFIC_EVIDENCE_APPEND_CURRENT_LAN=0
 
 cat > "$TMP_DIR/lan-flow-facts.tsv" <<'EOF'
-2026-05-10T09:00:00+0300|192.168.1.10|192.0.2.10|443|tcp|VPS|1|2|3|1|conntrack_snapshot_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
-not-a-time|192.168.1.10|192.0.2.11|443|tcp|VPS|1|2|3|1|conntrack_snapshot_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
-2026-05-11T09:00:00+0300|192.168.1.10|192.0.2.20|443|tcp|VPS|1200|3000|4200|1|conntrack_snapshot_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
-2026-05-11T09:05:00+0300|192.168.1.10|192.0.2.40|443|tcp|Direct|100|200|300|1|conntrack_snapshot_delta|observed_delta|ip|ok|route_lookup|default_direct||||
-2026-05-11T09:10:00+0300|192.168.1.10|192.0.2.50|443|tcp|VPS|10|20|30|1|conntrack_snapshot_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
-2026-05-11T09:15:00+0300|192.168.1.11|192.0.2.70|443|tcp|Direct|10|15|25|1|conntrack_snapshot_delta|observed_delta|ip|ok|none|no_ipset||||
+2026-05-10T09:00:00+0300|192.168.1.10|192.0.2.10|443|tcp|VPS|1|2|3|1|conntrack_connection_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
+not-a-time|192.168.1.10|192.0.2.11|443|tcp|VPS|1|2|3|1|conntrack_connection_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
+2026-05-11T09:00:00+0300|192.168.1.10|192.0.2.20|443|tcp|VPS|1200|3000|4200|1|conntrack_connection_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
+2026-05-11T09:05:00+0300|192.168.1.10|192.0.2.40|443|tcp|Direct|100|200|300|1|conntrack_connection_delta|observed_delta|ip|ok|route_lookup|default_direct||||
+2026-05-11T09:10:00+0300|192.168.1.10|192.0.2.50|443|tcp|VPS|10|20|30|1|conntrack_connection_delta|observed_delta|ip|ok|ipset|ipset_membership|STEALTH_DOMAINS|||
+2026-05-11T09:15:00+0300|192.168.1.11|192.0.2.70|443|tcp|Direct|10|15|25|1|conntrack_connection_delta|observed_delta|ip|ok|none|no_ipset||||
+2026-05-11T09:15:00+0300|192.0.2.12|198.51.100.12|443|tcp|VPS|1000000|2000000|3000000|1|conntrack_snapshot_delta|observed_delta|ip|ok||||||
 EOF
 
 cat > "$TMP_DIR/dns-query-facts.tsv" <<'EOF'
@@ -60,6 +61,7 @@ ruby -rjson -e '
   abort "expected evidence schema v1" unless evidence["schema_version"] == 1
   abort "expected window bounds" unless evidence.dig("window", "start_ts_utc") && evidence.dig("window", "end_ts_utc")
   abort "expected four today flow samples" unless evidence["flow_samples"].length == 4
+  abort "legacy grouped counter gap missing" unless evidence["warnings"].any? { |row| row["code"] == "legacy_grouped_flow_bytes_excluded" }
   abort "expected LAN route counter delta" unless evidence["lan_device_route_deltas"].length == 1
   abort "expected sing-box route evidence" unless evidence["sing_box_route_evidence"].length == 4
   abort "expected two observed Home Reality increments" unless evidence["home_reality_samples"].length == 2
