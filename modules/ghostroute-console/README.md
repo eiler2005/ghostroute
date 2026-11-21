@@ -1,5 +1,31 @@
 # GhostRoute Console
 
+### Collector ownership and freshness
+
+Collector locks identify a Linux process by boot ID and process start time as
+well as PID. A recycled PID must not suppress future detailed collection.
+Legacy per-collector locks are recovered when their PID belongs to a different
+script. An active writer remains protected regardless of lock age. Cleanup
+removes only the lock content owned by that invocation. Lock contention exits
+with temporary-failure code 75 rather than reporting a successful collection.
+
+Validate ingestion before investigating presentation: compare the latest
+`traffic_summary`, `traffic_evidence`, and `traffic_facts` timestamps, inspect
+collector errors and locks, then verify current-period volume and destination
+facts. A fresh summary does not establish that detailed collection is healthy;
+zero destination evidence is not proof of zero destination traffic. Never
+allocate missing bytes to applications to conceal an ingestion gap.
+
+`app/tests/collector-lock-identity.test.mjs` covers live peer exclusion, stale
+process identity, legacy PID reuse and ownership-safe release. Run these tests
+on Linux as well as local Node tests before installing lock changes. Follow
+with source snapshot freshness and numeric parity checks, then prepared-model
+and GUI checks; a renderer test alone cannot validate collection recovery.
+`verify:post-deploy` requires each mandatory source snapshot to be no more than
+one hour old and rejects missing, invalid or future timestamps. The dedicated
+`collector-source-health.test.mjs` regression demonstrates that a fresh summary
+cannot mask a day-old detailed snapshot or an old successful collector run.
+
 Development and container builds use Node LTS 26.13.1 (root `.nvmrc`). Exact
 dependencies are locked and checked against the
 [software inventory](../../docs/runtime-inventory.md). Next 16 build/dev commands

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { splitCollectorRunErrors } from "./lib/post-deploy-verify.mjs";
+import { splitCollectorRunErrors, assertFreshSourceSnapshot } from "./lib/post-deploy-verify.mjs";
 import { assertTrafficVolumeContract } from "./lib/traffic-volume-contract.mjs";
 
 const appDir = path.resolve(import.meta.dirname, "..");
@@ -122,6 +122,7 @@ for (const type of requiredFullSnapshots) {
      limit 1
   `).get(type);
   assert.ok(row, `missing required post-deploy snapshot type=${type}`);
+  assertFreshSourceSnapshot(row);
 }
 
 for (const column of ["protocol", "bytes_up", "bytes_down", "route_source", "route_basis", "matched_ipset", "intended_route", "route_verification", "route_status", "dns_link_id", "dns_link_confidence", "dns_status", "dns_ts_source", "accounting_status"]) {

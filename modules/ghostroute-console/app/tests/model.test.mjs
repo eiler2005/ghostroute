@@ -476,10 +476,11 @@ test("collector lock replaces stale locks and preserves active peer locks", asyn
     child.once("spawn", resolve);
     child.once("error", reject);
   });
-  fs.writeFileSync(lockFile, `collector ${child.pid} 2026-05-05T00:00:00.000Z\n`);
-  assert.equal(acquireCollectorLock(lockFile, "collector", 60000), null);
+  const peerFile = path.join(tmp, "peer.lock");
+  fs.writeFileSync(peerFile, `collector ${child.pid} 2026-05-05T00:00:00.000Z\n`);
+  assert.equal(acquireCollectorLock(peerFile, "collector", 60000), null);
   child.kill("SIGTERM");
-  fs.unlinkSync(lockFile);
+  fs.unlinkSync(peerFile);
 });
 
 test("post-deploy verification treats health collector errors as optional", () => {

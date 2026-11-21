@@ -1,5 +1,12 @@
 export const optionalPostDeployErrorTypes = new Set(["health"]);
 
+export function assertFreshSourceSnapshot(row, nowMs = Date.now(), maxAgeMs = 3600000) {
+  const observedMs = Date.parse(row?.collected_at || "");
+  if (!Number.isFinite(observedMs) || nowMs - observedMs > maxAgeMs || observedMs - nowMs > 300000) {
+    throw new Error(`missing, stale or future source snapshot: ${row?.type || "unknown"}`);
+  }
+}
+
 function number(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;

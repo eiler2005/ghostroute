@@ -29,7 +29,7 @@ const lockRelease = acquireCollectorLock(
 );
 if (!lockRelease) {
   console.log("collector skipped: another collect-once run is active");
-  process.exit(0);
+  process.exit(75);
 }
 
 let db = null;
